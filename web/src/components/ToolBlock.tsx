@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { DiffViewer } from "./DiffViewer.js";
 
 const TOOL_ICONS: Record<string, string> = {
@@ -16,6 +18,9 @@ const TOOL_ICONS: Record<string, string> = {
   TaskCreate: "list",
   TaskUpdate: "list",
   SendMessage: "message",
+  EnterPlanMode: "plan",
+  ExitPlanMode: "plan",
+  AskUserQuestion: "question",
   // Codex tool types (mapped by codex-adapter)
   web_search: "globe",
   mcp_tool_call: "tool",
@@ -38,6 +43,9 @@ export function getToolLabel(name: string): string {
   if (name === "TodoWrite") return "Tasks";
   if (name === "NotebookEdit") return "Notebook";
   if (name === "SendMessage") return "Message";
+  if (name === "EnterPlanMode") return "Enter Plan Mode";
+  if (name === "ExitPlanMode") return "Plan";
+  if (name === "AskUserQuestion") return "Question";
   if (name === "web_search") return "Web Search";
   if (name === "mcp_tool_call") return "MCP Tool";
   // Codex MCP tools come as "mcp:server:tool"
@@ -54,7 +62,10 @@ export function ToolBlock({
   input: Record<string, unknown>;
   toolUseId: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // ExitPlanMode and AskUserQuestion default to expanded so users see the
+  // plan content / question before the permission banner below
+  const defaultOpen = name === "ExitPlanMode" || name === "AskUserQuestion";
+  const [open, setOpen] = useState(defaultOpen);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
@@ -122,6 +133,12 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
       return <NotebookEditDetail input={input} />;
     case "SendMessage":
       return <SendMessageDetail input={input} />;
+    case "ExitPlanMode":
+      return <ExitPlanModeDetail input={input} />;
+    case "EnterPlanMode":
+      return <div className="text-xs text-cc-muted">Entering plan mode...</div>;
+    case "AskUserQuestion":
+      return <AskUserQuestionDetail input={input} />;
     default:
       return (
         <pre className="text-[11px] text-cc-muted font-mono-code whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
@@ -350,6 +367,82 @@ function SendMessageDetail({ input }: { input: Record<string, unknown> }) {
   );
 }
 
+function ExitPlanModeDetail({ input }: { input: Record<string, unknown> }) {
+  const plan = typeof input.plan === "string" ? input.plan : "";
+  const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : [];
+
+  return (
+    <div className="space-y-2">
+      {plan && (
+        <div className="rounded-lg border border-cc-border overflow-hidden">
+          <div className="px-2.5 py-1.5 bg-cc-code-bg/10 border-b border-cc-border text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">
+            Plan
+          </div>
+          <div className="px-3 py-2.5 max-h-64 overflow-y-auto text-xs text-cc-fg leading-relaxed markdown-body">
+            <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
+          </div>
+        </div>
+      )}
+      {allowedPrompts.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] text-cc-muted uppercase tracking-wider">Requested permissions</div>
+          <div className="space-y-1">
+            {allowedPrompts.map((p: Record<string, unknown>, i: number) => (
+              <div key={i} className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+                <span className="text-cc-muted shrink-0">{String(p.tool || "")}</span>
+                <span className="text-cc-fg">{String(p.prompt || "")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!plan && allowedPrompts.length === 0 && (
+        <div className="text-xs text-cc-muted">Plan approval requested</div>
+      )}
+    </div>
+  );
+}
+
+function AskUserQuestionDetail({ input }: { input: Record<string, unknown> }) {
+  const questions = Array.isArray(input.questions) ? input.questions as Record<string, unknown>[] : [];
+
+  return (
+    <div className="space-y-2">
+      {questions.map((q, i) => {
+        const header = typeof q.header === "string" ? q.header : "";
+        const question = typeof q.question === "string" ? q.question : "";
+        const options = Array.isArray(q.options) ? q.options as Record<string, unknown>[] : [];
+        return (
+          <div key={i} className="space-y-1.5">
+            {header && (
+              <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary">
+                {header}
+              </span>
+            )}
+            {question && (
+              <div className="text-xs text-cc-fg font-medium">{question}</div>
+            )}
+            {options.length > 0 && (
+              <div className="space-y-1">
+                {options.map((opt, j) => {
+                  const label = typeof opt.label === "string" ? opt.label : "";
+                  const desc = typeof opt.description === "string" ? opt.description : "";
+                  return (
+                    <div key={j} className="flex items-start gap-2 text-[11px] bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+                      <span className="text-cc-fg font-medium shrink-0">{label}</span>
+                      {desc && <span className="text-cc-muted">{desc}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Preview ────────────────────────────────────────────────────────────────
 
 export function getPreview(name: string, input: Record<string, unknown>): string {
@@ -389,6 +482,23 @@ export function getPreview(name: string, input: Record<string, unknown>): string
   }
   if (name === "SendMessage" && input.recipient) {
     return `\u2192 ${String(input.recipient)}`;
+  }
+  if (name === "ExitPlanMode") {
+    const plan = typeof input.plan === "string" ? input.plan : "";
+    if (plan) {
+      const firstLine = plan.split("\n").find((l: string) => l.trim()) || "";
+      return firstLine.length > 60 ? firstLine.slice(0, 60) + "..." : firstLine;
+    }
+    return "Plan approval";
+  }
+  if (name === "EnterPlanMode") return "Entering plan mode";
+  if (name === "AskUserQuestion") {
+    const questions = Array.isArray(input.questions) ? input.questions : [];
+    if (questions.length > 0) {
+      const q = (questions[0] as Record<string, unknown>).question;
+      if (typeof q === "string") return q.length > 60 ? q.slice(0, 60) + "..." : q;
+    }
+    return "Question";
   }
   return "";
 }
@@ -465,6 +575,23 @@ export function ToolIcon({ type }: { type: string }) {
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={cls}>
         <rect x="3" y="1" width="10" height="14" rx="1" />
         <path d="M6 1v14M3 5h3M3 9h3M3 13h3" />
+      </svg>
+    );
+  }
+  if (type === "plan") {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={cls}>
+        <rect x="3" y="2" width="10" height="12" rx="1" />
+        <path d="M6 5h4M6 8h4M6 11h2" />
+      </svg>
+    );
+  }
+  if (type === "question") {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={cls}>
+        <circle cx="8" cy="8" r="6" />
+        <path d="M6.5 6.5a1.5 1.5 0 012.6 1c0 1-1.6 1-1.6 2" strokeLinecap="round" />
+        <circle cx="8" cy="12" r="0.5" fill="currentColor" stroke="none" />
       </svg>
     );
   }
