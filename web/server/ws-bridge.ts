@@ -85,6 +85,8 @@ interface Session {
   processedClientMessageIdSet: Set<string>;
   /** Full tool results indexed by tool_use_id for lazy fetch */
   toolResults: Map<string, { content: string; is_error: boolean; timestamp: number }>;
+  /** Set after compact_boundary; the next user text message is the summary */
+  awaitingCompactSummary?: boolean;
 }
 
 type GitSessionKey = "git_branch" | "is_worktree" | "is_containerized" | "repo_root" | "git_ahead" | "git_behind";
@@ -783,9 +785,34 @@ export class WsBridge {
         this.handleControlResponse(session, msg);
         break;
 
-      case "user":
+      case "user": {
+        // Check if this is the compaction summary (text block following compact_boundary)
+        if (session.awaitingCompactSummary) {
+          const content = (msg as CLIUserMessage).message?.content;
+          let summaryText: string | undefined;
+          if (typeof content === "string" && content.length > 0) {
+            summaryText = content;
+          } else if (Array.isArray(content)) {
+            const textBlock = content.find((b) => b.type === "text") as { type: "text"; text: string } | undefined;
+            summaryText = textBlock?.text;
+          }
+          if (summaryText) {
+            session.awaitingCompactSummary = false;
+            // Update the compact marker in history with the summary
+            const marker = session.messageHistory.find((m) => m.type === "compact_marker");
+            if (marker && marker.type === "compact_marker") {
+              (marker as { summary?: string }).summary = summaryText;
+            }
+            this.broadcastToBrowsers(session, { type: "compact_summary", summary: summaryText });
+            this.persistSession(session);
+            break;
+          }
+          // No summary text found — clear the flag to avoid getting stuck
+          session.awaitingCompactSummary = false;
+        }
         this.handleToolResultMessage(session, msg as CLIUserMessage);
         break;
+      }
 
       case "keep_alive":
         // Silently consume keepalives
@@ -852,16 +879,23 @@ export class WsBridge {
         status: msg.status ?? null,
       });
     } else if (msg.subtype === "compact_boundary") {
-      // CLI has compacted its context — clear server-side history to stay in sync.
-      // Keeping stale pre-compact history causes mismatch with CLI state after restart.
+      // CLI has compacted its context — replace server-side history with a compact marker.
+      // The next CLI "user" message with a text block will contain the compaction summary.
       const ts = Date.now();
+      const meta = (msg as CLISystemCompactBoundaryMessage).compact_metadata;
       session.messageHistory = [{
-        type: "user_message" as const,
-        content: "[conversation compacted]",
+        type: "compact_marker" as const,
         timestamp: ts,
         id: `compact-boundary-${ts}`,
+        trigger: meta?.trigger,
+        preTokens: meta?.pre_tokens,
       }];
-      this.broadcastToBrowsers(session, { type: "compact_boundary" });
+      session.awaitingCompactSummary = true;
+      this.broadcastToBrowsers(session, {
+        type: "compact_boundary",
+        trigger: meta?.trigger,
+        preTokens: meta?.pre_tokens,
+      });
       this.persistSession(session);
     }
     // Other system subtypes (task_notification, etc.) can be forwarded as needed

@@ -2982,7 +2982,7 @@ describe("MCP control messages", () => {
 // ─── compact_boundary handling ──────────────────────────────────────────────
 
 describe("compact_boundary handling", () => {
-  it("clears messageHistory when compact_boundary is received from CLI", () => {
+  it("replaces messageHistory with compact_marker when compact_boundary is received", () => {
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -3001,23 +3001,26 @@ describe("compact_boundary handling", () => {
     const sessionBefore = bridge.getOrCreateSession("s1");
     expect(sessionBefore.messageHistory.length).toBeGreaterThan(0);
 
-    // Send compact_boundary
+    // Send compact_boundary with metadata
     bridge.handleCLIMessage(cli, JSON.stringify({
       type: "system",
       subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual" },
+      compact_metadata: { trigger: "manual", pre_tokens: 50000 },
       uuid: "u3",
       session_id: "cli-123",
     }));
 
-    // History should be cleared and replaced with a compact marker
+    // History should be replaced with a single compact_marker containing metadata
     const sessionAfter = bridge.getOrCreateSession("s1");
     expect(sessionAfter.messageHistory.length).toBe(1);
-    expect(sessionAfter.messageHistory[0].type).toBe("user_message");
-    expect((sessionAfter.messageHistory[0] as any).content).toBe("[conversation compacted]");
+    expect(sessionAfter.messageHistory[0].type).toBe("compact_marker");
+    const marker = sessionAfter.messageHistory[0] as any;
+    expect(marker.trigger).toBe("manual");
+    expect(marker.preTokens).toBe(50000);
+    expect(marker.id).toMatch(/^compact-boundary-/);
   });
 
-  it("broadcasts compact_boundary event to browsers", () => {
+  it("broadcasts compact_boundary event with metadata to browsers", () => {
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -3035,15 +3038,156 @@ describe("compact_boundary handling", () => {
     bridge.handleCLIMessage(cli, JSON.stringify({
       type: "system",
       subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto" },
+      compact_metadata: { trigger: "auto", pre_tokens: 80000 },
       uuid: "u4",
       session_id: "cli-123",
     }));
 
-    // Browser should have received a compact_boundary message
+    // Browser should have received a compact_boundary message with metadata
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const compactMsg = calls.find((m: any) => m.type === "compact_boundary");
     expect(compactMsg).toBeTruthy();
+    expect(compactMsg.trigger).toBe("auto");
+    expect(compactMsg.preTokens).toBe(80000);
+  });
+
+  it("captures compaction summary from next CLI user message and broadcasts compact_summary", () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Subscribe browser
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "session_subscribe",
+      last_seq: 0,
+    }));
+
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Send compact_boundary (sets awaitingCompactSummary)
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto" },
+      uuid: "u5",
+      session_id: "cli-123",
+    }));
+
+    browser.send.mockClear();
+
+    // Send a CLI "user" message with a text block (this is the compaction summary)
+    const summaryText = "This session is being continued from a previous conversation. Key context: the user is building a web app.";
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: summaryText }] },
+      parent_tool_use_id: null,
+      uuid: "u6",
+      session_id: "cli-123",
+    }));
+
+    // compact_marker in history should now have the summary
+    const session = bridge.getOrCreateSession("s1");
+    const marker = session.messageHistory.find((m) => m.type === "compact_marker") as any;
+    expect(marker).toBeTruthy();
+    expect(marker.summary).toBe(summaryText);
+
+    // Browser should have received a compact_summary event
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const summaryMsg = calls.find((m: any) => m.type === "compact_summary");
+    expect(summaryMsg).toBeTruthy();
+    expect(summaryMsg.summary).toBe(summaryText);
+
+    // awaitingCompactSummary should be cleared
+    expect(session.awaitingCompactSummary).toBe(false);
+  });
+
+  it("captures compaction summary from a plain string content (CLI actual format)", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "session_subscribe",
+      last_seq: 0,
+    }));
+
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Send compact_boundary
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+      uuid: "u-str-1",
+      session_id: "cli-123",
+    }));
+
+    browser.send.mockClear();
+
+    // CLI sends the summary as a plain string (not an array of content blocks)
+    const summaryText = "This session is being continued from a previous conversation. The user is building a web UI.";
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: summaryText },
+      parent_tool_use_id: null,
+      uuid: "u-str-2",
+      session_id: "cli-123",
+    }));
+
+    // compact_marker in history should have the summary
+    const session = bridge.getOrCreateSession("s1");
+    const marker = session.messageHistory.find((m) => m.type === "compact_marker") as any;
+    expect(marker).toBeTruthy();
+    expect(marker.summary).toBe(summaryText);
+
+    // Browser should have received compact_summary
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const summaryMsg = calls.find((m: any) => m.type === "compact_summary");
+    expect(summaryMsg).toBeTruthy();
+    expect(summaryMsg.summary).toBe(summaryText);
+
+    // awaitingCompactSummary should be cleared
+    expect(session.awaitingCompactSummary).toBe(false);
+  });
+
+  it("processes normal tool_result user messages after summary is captured", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Send compact_boundary
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual" },
+      uuid: "u7",
+      session_id: "cli-123",
+    }));
+
+    // Send summary (consumes awaitingCompactSummary)
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "Summary text" }] },
+      parent_tool_use_id: null,
+      uuid: "u8",
+      session_id: "cli-123",
+    }));
+
+    // Now send a normal tool_result user message — should be handled normally
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "result data" }] },
+      parent_tool_use_id: null,
+      uuid: "u9",
+      session_id: "cli-123",
+    }));
+
+    // The tool_result_preview should be in history (not silently dropped)
+    const session = bridge.getOrCreateSession("s1");
+    const previewMsg = session.messageHistory.find((m) => m.type === "tool_result_preview");
+    expect(previewMsg).toBeTruthy();
   });
 });
 

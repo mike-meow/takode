@@ -24,6 +24,10 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
         </div>
       );
     }
+    // Expandable compact marker
+    if (message.id.startsWith("compact-boundary-")) {
+      return <CompactMarker message={message} />;
+    }
     return (
       <div className="flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-cc-border" />
@@ -245,6 +249,45 @@ function MarkdownContent({ text }: { text: string }) {
       >
         {text}
       </Markdown>
+    </div>
+  );
+}
+
+function CompactMarker({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasSummary = message.content && message.content !== "Conversation compacted";
+
+  return (
+    <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="flex items-center gap-3 py-1">
+        <div className="flex-1 h-px bg-cc-border" />
+        <button
+          onClick={() => hasSummary && setExpanded(!expanded)}
+          className={`flex items-center gap-1.5 text-[11px] text-cc-muted italic font-mono-code shrink-0 px-2 py-0.5 rounded-md transition-colors ${
+            hasSummary ? "hover:bg-cc-hover cursor-pointer" : ""
+          }`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 shrink-0 opacity-60">
+            <path d="M2 4h12M4 8h8M6 12h4" strokeLinecap="round" />
+          </svg>
+          <span>Conversation compacted</span>
+          {hasSummary && (
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          )}
+        </button>
+        <div className="flex-1 h-px bg-cc-border" />
+      </div>
+      {expanded && hasSummary && (
+        <div className="mt-2 mx-4 max-h-96 overflow-y-auto rounded-lg border border-cc-border bg-cc-card p-3">
+          <MarkdownContent text={message.content} />
+        </div>
+      )}
     </div>
   );
 }

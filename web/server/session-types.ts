@@ -245,7 +245,9 @@ export type BrowserIncomingMessageBase =
   | { type: "session_name_update"; name: string }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
-  | { type: "compact_boundary" }
+  | { type: "compact_boundary"; trigger?: string; preTokens?: number }
+  | { type: "compact_marker"; timestamp: number; id?: string; summary?: string; trigger?: string; preTokens?: number }
+  | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };

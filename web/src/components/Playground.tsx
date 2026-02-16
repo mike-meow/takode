@@ -261,6 +261,38 @@ const MSG_SYSTEM: ChatMessage = {
   timestamp: Date.now() - 30000,
 };
 
+const MSG_COMPACT_COLLAPSED: ChatMessage = {
+  id: "compact-boundary-collapsed",
+  role: "system",
+  content: "Conversation compacted",
+  timestamp: Date.now() - 28000,
+  variant: "info",
+};
+
+const MSG_COMPACT_WITH_SUMMARY: ChatMessage = {
+  id: "compact-boundary-with-summary",
+  role: "system",
+  content: `This session is being continued from a previous conversation that hit the context limit.
+
+## Key Context
+- The user is building a **JWT authentication module** for an Express.js application
+- We've already created the JWT utility with sign/verify helpers in \`src/auth/jwt.ts\`
+- The middleware in \`src/middleware/auth.ts\` has been updated to validate Bearer tokens
+- **Migration of the login endpoint** is still in progress
+
+## Files Modified
+- \`src/auth/jwt.ts\` — new file with \`signToken()\` and \`verifyToken()\` functions
+- \`src/middleware/auth.ts\` — switched from session cookies to JWT Bearer tokens
+- \`src/routes/login.ts\` — partially migrated, needs refresh token support
+
+## Pending Tasks
+1. Complete refresh token implementation
+2. Update all auth-related tests
+3. Run full test suite`,
+  timestamp: Date.now() - 28000,
+  variant: "info",
+};
+
 const MSG_ERROR_CONTEXT_LIMIT: ChatMessage = {
   id: "msg-err-1",
   role: "system",
@@ -671,6 +703,12 @@ export function Playground() {
             </Card>
             <Card label="System message">
               <MessageBubble message={MSG_SYSTEM} />
+            </Card>
+            <Card label="Compact marker (collapsed, no summary)">
+              <MessageBubble message={MSG_COMPACT_COLLAPSED} />
+            </Card>
+            <Card label="Compact marker (expandable, with summary)">
+              <MessageBubble message={MSG_COMPACT_WITH_SUMMARY} />
             </Card>
             <Card label="Error — context limit (with guidance)">
               <MessageBubble message={MSG_ERROR_CONTEXT_LIMIT} />
