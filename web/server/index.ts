@@ -181,6 +181,7 @@ const server = Bun.serve<SocketData>({
     return app.fetch(req, server);
   },
   websocket: {
+    idleTimeout: 0, // Disable Bun's idle timeout; we manage liveness via ws.ping heartbeats
     open(ws: ServerWebSocket<SocketData>) {
       const data = ws.data;
       if (data.kind === "cli") {
@@ -214,6 +215,9 @@ const server = Bun.serve<SocketData>({
     },
   },
 });
+
+// Start server→browser heartbeat to prevent idle timeout disconnections
+wsBridge.startHeartbeat();
 
 console.log(`Server running on http://localhost:${server.port}`);
 console.log(`  CLI WebSocket:     ws://localhost:${server.port}/ws/cli/:sessionId`);

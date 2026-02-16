@@ -5,10 +5,19 @@ import { playNotificationSound } from "./utils/notification-sound.js";
 
 const sockets = new Map<string, WebSocket>();
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const reconnectAttempts = new Map<string, number>();
+const heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
 const lastSeqBySession = new Map<string, number>();
 const taskCounters = new Map<string, number>();
 /** Track processed tool_use IDs to prevent duplicate task creation */
 const processedToolUseIds = new Map<string, Set<string>>();
+
+/** Heartbeat interval — send a ping every 30s to keep the connection alive */
+const HEARTBEAT_INTERVAL_MS = 30_000;
+/** Max reconnect delay — exponential backoff caps at 30s */
+const MAX_RECONNECT_DELAY_MS = 30_000;
+/** Base reconnect delay */
+const BASE_RECONNECT_DELAY_MS = 2_000;
 
 function normalizePath(path: string): string {
   const isAbs = path.startsWith("/");
@@ -563,6 +572,9 @@ function handleParsedMessage(
 export function connectSession(sessionId: string) {
   if (sockets.has(sessionId)) return;
 
+  // Clear in-memory seq cache so we use localStorage as source of truth on reconnect
+  lastSeqBySession.delete(sessionId);
+
   const store = useStore.getState();
   store.setConnectionStatus(sessionId, "connecting");
 
@@ -571,6 +583,7 @@ export function connectSession(sessionId: string) {
 
   ws.onopen = () => {
     useStore.getState().setConnectionStatus(sessionId, "connected");
+    reconnectAttempts.delete(sessionId); // Reset backoff on successful connect
     const lastSeq = getLastSeq(sessionId);
     ws.send(JSON.stringify({ type: "session_subscribe", last_seq: lastSeq }));
     // Clear any reconnect timer
@@ -579,12 +592,24 @@ export function connectSession(sessionId: string) {
       clearTimeout(timer);
       reconnectTimers.delete(sessionId);
     }
+    // Start heartbeat to keep connection alive
+    const hb = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+    heartbeatIntervals.set(sessionId, hb);
   };
 
   ws.onmessage = (event) => handleMessage(sessionId, event);
 
   ws.onclose = () => {
     sockets.delete(sessionId);
+    const hb = heartbeatIntervals.get(sessionId);
+    if (hb) {
+      clearInterval(hb);
+      heartbeatIntervals.delete(sessionId);
+    }
     useStore.getState().setConnectionStatus(sessionId, "disconnected");
     scheduleReconnect(sessionId);
   };
@@ -596,6 +621,9 @@ export function connectSession(sessionId: string) {
 
 function scheduleReconnect(sessionId: string) {
   if (reconnectTimers.has(sessionId)) return;
+  const attempts = reconnectAttempts.get(sessionId) || 0;
+  const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, attempts), MAX_RECONNECT_DELAY_MS);
+  reconnectAttempts.set(sessionId, attempts + 1);
   const timer = setTimeout(() => {
     reconnectTimers.delete(sessionId);
     const store = useStore.getState();
@@ -604,7 +632,7 @@ function scheduleReconnect(sessionId: string) {
     if (sdkSession && !sdkSession.archived) {
       connectSession(sessionId);
     }
-  }, 2000);
+  }, delay);
   reconnectTimers.set(sessionId, timer);
 }
 
@@ -613,6 +641,12 @@ export function disconnectSession(sessionId: string) {
   if (timer) {
     clearTimeout(timer);
     reconnectTimers.delete(sessionId);
+  }
+  reconnectAttempts.delete(sessionId);
+  const hb = heartbeatIntervals.get(sessionId);
+  if (hb) {
+    clearInterval(hb);
+    heartbeatIntervals.delete(sessionId);
   }
   const ws = sockets.get(sessionId);
   if (ws) {
@@ -693,4 +727,18 @@ export function sendMcpReconnect(sessionId: string, serverName: string) {
 
 export function sendMcpSetServers(sessionId: string, servers: Record<string, McpServerConfig>) {
   sendToSession(sessionId, { type: "mcp_set_servers", servers });
+}
+
+// ── Page visibility: reconnect disconnected sessions when tab becomes visible ──
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      const store = useStore.getState();
+      for (const s of store.sdkSessions) {
+        if (!s.archived && !sockets.has(s.sessionId)) {
+          connectSession(s.sessionId);
+        }
+      }
+    }
+  });
 }
