@@ -239,6 +239,13 @@ function handleParsedMessage(
 
   switch (data.type) {
     case "session_init": {
+      // Reset stale seq if browser is ahead of server (e.g. after server restart)
+      if (typeof data.nextEventSeq === "number") {
+        const browserSeq = getLastSeq(sessionId);
+        if (browserSeq >= data.nextEventSeq) {
+          setLastSeq(sessionId, 0);
+        }
+      }
       const existingSession = store.sessions.get(sessionId);
       store.addSession(data.session);
       store.setCliConnected(sessionId, true);
@@ -370,6 +377,7 @@ function handleParsedMessage(
           role: "system",
           content: `Error: ${r.errors.join(", ")}`,
           timestamp: Date.now(),
+          variant: "error",
         });
       }
       break;
@@ -439,6 +447,7 @@ function handleParsedMessage(
           role: "system",
           content: `Auth error: ${data.error}`,
           timestamp: Date.now(),
+          variant: "error",
         });
       }
       break;
@@ -450,6 +459,7 @@ function handleParsedMessage(
         role: "system",
         content: data.message,
         timestamp: Date.now(),
+        variant: "error",
       });
       break;
     }
@@ -478,6 +488,13 @@ function handleParsedMessage(
 
     case "pr_status_update": {
       store.setPRStatus(sessionId, { available: data.available, pr: data.pr });
+      break;
+    }
+
+    case "compact_boundary": {
+      // CLI has compacted — clear local messages so the next message_history
+      // (which now only contains post-compact messages) rebuilds the view cleanly
+      store.setMessages(sessionId, []);
       break;
     }
 
@@ -516,13 +533,14 @@ function handleParsedMessage(
             extractChangedFilesFromBlocks(sessionId, msg.content);
           }
         } else if (histMsg.type === "result") {
-          const r = histMsg.data;
+          const r = histMsg.data as { is_error?: boolean; errors?: string[] };
           if (r.is_error && r.errors?.length) {
             chatMessages.push({
               id: `hist-error-${i}`,
               role: "system",
               content: `Error: ${r.errors.join(", ")}`,
               timestamp: Date.now(),
+              variant: "error",
             });
           }
         }

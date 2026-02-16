@@ -14,6 +14,7 @@ import type {
   CLIControlRequestMessage,
   CLIControlResponseMessage,
   CLIAuthStatusMessage,
+  CLISystemCompactBoundaryMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
   ReplayableBrowserIncomingMessage,
@@ -637,10 +638,11 @@ export class WsBridge {
     // Refresh git state on browser connect so branch changes made mid-session are reflected.
     this.refreshGitInfo(session, { notifyPoller: true });
 
-    // Send current session state as snapshot
+    // Send current session state as snapshot (includes nextEventSeq for stale seq detection)
     const snapshot: BrowserIncomingMessage = {
       type: "session_init",
       session: session.state,
+      nextEventSeq: session.nextEventSeq,
     };
     this.sendToBrowser(ws, snapshot);
 
@@ -757,7 +759,7 @@ export class WsBridge {
     }
   }
 
-  private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage) {
+  private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage | CLISystemCompactBoundaryMessage) {
     if (msg.subtype === "init") {
       // Keep the launcher-assigned session_id as the canonical ID.
       // The CLI may report its own internal session_id which differs
@@ -797,8 +799,20 @@ export class WsBridge {
         type: "status_change",
         status: msg.status ?? null,
       });
+    } else if (msg.subtype === "compact_boundary") {
+      // CLI has compacted its context — clear server-side history to stay in sync.
+      // Keeping stale pre-compact history causes mismatch with CLI state after restart.
+      const ts = Date.now();
+      session.messageHistory = [{
+        type: "user_message" as const,
+        content: "[conversation compacted]",
+        timestamp: ts,
+        id: `compact-boundary-${ts}`,
+      }];
+      this.broadcastToBrowsers(session, { type: "compact_boundary" });
+      this.persistSession(session);
     }
-    // Other system subtypes (compact_boundary, task_notification, etc.) can be forwarded as needed
+    // Other system subtypes (task_notification, etc.) can be forwarded as needed
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
@@ -1084,7 +1098,7 @@ export class WsBridge {
     if (lastAckSeq >= session.nextEventSeq - 1) return;
 
     const earliest = session.eventBuffer[0]?.seq ?? session.nextEventSeq;
-    const hasGap = lastAckSeq > 0 && lastAckSeq < earliest - 1;
+    const hasGap = lastAckSeq < earliest - 1;
     if (hasGap) {
       this.sendToBrowser(ws, {
         type: "message_history",

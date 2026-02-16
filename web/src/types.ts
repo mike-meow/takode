@@ -22,6 +22,8 @@ export interface ChatMessage {
   isStreaming?: boolean;
   model?: string;
   stopReason?: string | null;
+  /** For system messages: "error" renders prominently, default renders as subtle divider */
+  variant?: "error" | "info";
 }
 
 export interface TaskItem {

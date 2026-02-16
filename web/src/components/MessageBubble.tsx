@@ -6,6 +6,24 @@ import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./To
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.role === "system") {
+    if (message.variant === "error") {
+      const isContextLimit = message.content.toLowerCase().includes("prompt is too long");
+      return (
+        <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-cc-error/8 border border-cc-error/20 animate-[fadeSlideIn_0.2s_ease-out]">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-error shrink-0 mt-0.5">
+            <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm-.75 3.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zM8 11a1 1 0 100 2 1 1 0 000-2z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-cc-error">{message.content}</p>
+            {isContextLimit && (
+              <p className="text-xs text-cc-muted mt-1">
+                Try <code className="px-1 py-0.5 rounded bg-cc-code-bg/30 text-[11px] font-mono-code">/compact</code> to reduce context, or start a new session.
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-cc-border" />

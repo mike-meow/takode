@@ -25,7 +25,7 @@ describe("Claude ws-bridge method drift vs upstream Agent SDK snapshot", () => {
     const handledFromCLI = extractCaseMethods(
       bridge,
       "private routeCLIMessage(session: Session, msg: CLIMessage) {",
-      "private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage) {",
+      "private handleSystemMessage(session: Session, msg: CLISystemInitMessage | CLISystemStatusMessage | CLISystemCompactBoundaryMessage) {",
     );
     expect(handledFromCLI.size).toBeGreaterThan(0);
 

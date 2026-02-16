@@ -44,6 +44,57 @@ describe("MessageBubble - system messages", () => {
   });
 });
 
+describe("MessageBubble - error system messages", () => {
+  it("renders error variant with prominent styling and warning icon", () => {
+    const msg = makeMessage({ role: "system", content: "Error: something failed", variant: "error" });
+    const { container } = render(<MessageBubble message={msg} />);
+
+    // Should have error styling (red border/background)
+    const errorDiv = container.querySelector(".border-cc-error\\/20");
+    expect(errorDiv).toBeTruthy();
+
+    // Should show the error text
+    expect(screen.getByText("Error: something failed")).toBeTruthy();
+
+    // Should NOT have divider lines (those are for info system messages)
+    const dividers = container.querySelectorAll(".h-px");
+    expect(dividers.length).toBe(0);
+  });
+
+  it("renders 'prompt is too long' error with actionable guidance", () => {
+    const msg = makeMessage({ role: "system", content: "Error: Prompt is too long", variant: "error" });
+    render(<MessageBubble message={msg} />);
+
+    // Should show the error
+    expect(screen.getByText("Error: Prompt is too long")).toBeTruthy();
+    // Should show compact guidance
+    expect(screen.getByText(/\/compact/)).toBeTruthy();
+    expect(screen.getByText(/start a new session/)).toBeTruthy();
+  });
+
+  it("renders generic error without compact guidance", () => {
+    const msg = makeMessage({ role: "system", content: "Error: API rate limit exceeded", variant: "error" });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByText("Error: API rate limit exceeded")).toBeTruthy();
+    // Should NOT show compact guidance for non-context-limit errors
+    expect(screen.queryByText(/\/compact/)).toBeNull();
+  });
+
+  it("renders info/default system messages with divider style (no variant)", () => {
+    const msg = makeMessage({ role: "system", content: "Session started" });
+    const { container } = render(<MessageBubble message={msg} />);
+
+    // Should have divider lines
+    const dividers = container.querySelectorAll(".h-px");
+    expect(dividers.length).toBe(2);
+
+    // Should have italic text
+    const italicSpan = container.querySelector(".italic");
+    expect(italicSpan).toBeTruthy();
+  });
+});
+
 // ─── User messages ───────────────────────────────────────────────────────────
 
 describe("MessageBubble - user messages", () => {
