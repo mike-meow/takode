@@ -8,9 +8,10 @@ import type {
   McpServerDetail,
   McpServerConfig,
   CreationProgressEvent,
+  ToolResultPreview,
 } from "../server/session-types.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview };
 
 export interface ChatMessage {
   id: string;

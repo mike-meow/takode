@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+export function MessageBubble({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   if (message.role === "system") {
     if (message.variant === "error") {
       const isContextLimit = message.content.toLowerCase().includes("prompt is too long");
@@ -62,7 +62,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   // Assistant message
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-      <AssistantMessage message={message} />
+      <AssistantMessage message={message} sessionId={sessionId} />
     </div>
   );
 }
@@ -100,7 +100,7 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return groups;
 }
 
-function AssistantMessage({ message }: { message: ChatMessage }) {
+function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   const blocks = message.contentBlocks || [];
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
@@ -127,10 +127,10 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
           // Single tool_use renders as before
           if (group.items.length === 1) {
             const item = group.items[0];
-            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} />;
+            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />;
           }
           // Grouped tool_uses
-          return <ToolGroupBlock key={i} name={group.name} items={group.items} />;
+          return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
         })}
       </div>
     </div>
@@ -279,7 +279,7 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
   return null;
 }
 
-function ToolGroupBlock({ name, items }: { name: string; items: ToolGroupItem[] }) {
+function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolGroupItem[]; sessionId?: string }) {
   const [open, setOpen] = useState(false);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);

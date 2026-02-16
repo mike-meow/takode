@@ -21,6 +21,8 @@ export interface PersistedSession {
   lastAckSeq?: number;
   processedClientMessageIds?: string[];
   archived?: boolean;
+  /** Serialized Map entries for full tool results (tool_use_id → result) */
+  toolResults?: [string, { content: string; is_error: boolean; timestamp: number }][];
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────

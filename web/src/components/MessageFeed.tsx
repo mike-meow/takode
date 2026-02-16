@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { useStore } from "../store.js";
 import { MessageBubble } from "./MessageBubble.js";
-import { getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import type { ChatMessage, ContentBlock } from "../types.js";
 
 const FEED_PAGE_SIZE = 100;
@@ -189,13 +189,13 @@ function groupMessages(messages: ChatMessage[]): FeedEntry[] {
 
 // ─── Components ──────────────────────────────────────────────────────────────
 
-function ToolMessageGroup({ group }: { group: ToolMsgGroup }) {
+function ToolMessageGroup({ group, sessionId }: { group: ToolMsgGroup; sessionId: string }) {
   const [open, setOpen] = useState(false);
   const iconType = getToolIcon(group.toolName);
   const label = getToolLabel(group.toolName);
   const count = group.items.length;
 
-  // Single item — don't group, render inline
+  // Single item — render using ToolBlock which includes result section
   if (count === 1) {
     const item = group.items[0];
     return (
@@ -203,28 +203,7 @@ function ToolMessageGroup({ group }: { group: ToolMsgGroup }) {
         <div className="flex items-start gap-3">
           <AssistantAvatar />
           <div className="flex-1 min-w-0">
-            <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
-              <button
-                onClick={() => setOpen(!open)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
-                  <path d="M6 4l4 4-4 4" />
-                </svg>
-                <ToolIcon type={iconType} />
-                <span className="text-xs font-medium text-cc-fg">{label}</span>
-                <span className="text-xs text-cc-muted truncate flex-1 font-mono-code">
-                  {getPreview(item.name, item.input)}
-                </span>
-              </button>
-              {open && (
-                <div className="px-3 pb-3 pt-0 border-t border-cc-border mt-0">
-                  <pre className="mt-2 text-[11px] text-cc-muted font-mono-code whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                    {JSON.stringify(item.input, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
+            <ToolBlock name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
           </div>
         </div>
       </div>
@@ -272,23 +251,23 @@ function ToolMessageGroup({ group }: { group: ToolMsgGroup }) {
   );
 }
 
-function FeedEntries({ entries }: { entries: FeedEntry[] }) {
+function FeedEntries({ entries, sessionId }: { entries: FeedEntry[]; sessionId: string }) {
   return (
     <>
       {entries.map((entry, i) => {
         if (entry.kind === "tool_msg_group") {
-          return <ToolMessageGroup key={entry.firstId || i} group={entry} />;
+          return <ToolMessageGroup key={entry.firstId || i} group={entry} sessionId={sessionId} />;
         }
         if (entry.kind === "subagent") {
-          return <SubagentContainer key={entry.taskToolUseId} group={entry} />;
+          return <SubagentContainer key={entry.taskToolUseId} group={entry} sessionId={sessionId} />;
         }
-        return <MessageBubble key={entry.msg.id} message={entry.msg} />;
+        return <MessageBubble key={entry.msg.id} message={entry.msg} sessionId={sessionId} />;
       })}
     </>
   );
 }
 
-function SubagentContainer({ group }: { group: SubagentGroup }) {
+function SubagentContainer({ group, sessionId }: { group: SubagentGroup; sessionId: string }) {
   const [open, setOpen] = useState(false);
   const label = group.description || "Subagent";
   const agentType = group.agentType;
@@ -345,7 +324,7 @@ function SubagentContainer({ group }: { group: SubagentGroup }) {
 
         {open && (
           <div className="space-y-3 pb-2">
-            <FeedEntries entries={group.children} />
+            <FeedEntries entries={group.children} sessionId={sessionId} />
           </div>
         )}
       </div>
@@ -468,7 +447,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
               </button>
             </div>
           )}
-          <FeedEntries entries={visibleEntries} />
+          <FeedEntries entries={visibleEntries} sessionId={sessionId} />
 
           {/* Tool progress indicator */}
           {toolProgress && toolProgress.size > 0 && !streamingText && (

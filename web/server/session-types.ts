@@ -157,6 +157,18 @@ export interface CLIControlResponseMessage {
   };
 }
 
+export interface CLIUserMessage {
+  type: "user";
+  message: {
+    role: "user";
+    content: ContentBlock[];
+  };
+  parent_tool_use_id: string | null;
+  tool_use_result?: Record<string, unknown>;
+  uuid: string;
+  session_id: string;
+}
+
 export type CLIMessage =
   | CLISystemInitMessage
   | CLISystemStatusMessage
@@ -169,7 +181,23 @@ export type CLIMessage =
   | CLIControlRequestMessage
   | CLIControlResponseMessage
   | CLIKeepAliveMessage
-  | CLIAuthStatusMessage;
+  | CLIAuthStatusMessage
+  | CLIUserMessage;
+
+// ─── Tool Result Preview ─────────────────────────────────────────────────────
+
+export interface ToolResultPreview {
+  tool_use_id: string;
+  /** Truncated content (last TOOL_RESULT_PREVIEW_LIMIT chars) */
+  content: string;
+  is_error: boolean;
+  /** Original content size in characters */
+  total_size: number;
+  /** Whether the preview was truncated */
+  is_truncated: boolean;
+}
+
+export const TOOL_RESULT_PREVIEW_LIMIT = 300;
 
 // ─── Content Block Types ──────────────────────────────────────────────────────
 
@@ -217,7 +245,8 @@ export type BrowserIncomingMessageBase =
   | { type: "session_name_update"; name: string }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
-  | { type: "compact_boundary" };
+  | { type: "compact_boundary" }
+  | { type: "tool_result_preview"; previews: ToolResultPreview[] };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 
