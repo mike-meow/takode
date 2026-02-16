@@ -1217,6 +1217,13 @@ export class WsBridge {
       request: { subtype: "set_permission_mode", mode },
     });
     this.sendToCLI(session, ndjson);
+    // Optimistically update server-side state and broadcast to all browsers
+    session.state.permissionMode = mode;
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { permissionMode: mode },
+    });
+    this.persistSession(session);
   }
 
   // ── Control response handling ─────────────────────────────────────────

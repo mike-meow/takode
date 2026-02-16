@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
 import { api } from "../api.js";
-import { CLAUDE_MODES, CODEX_MODES } from "../utils/backends.js";
+import { CLAUDE_MODES, CODEX_MODES, getNextMode } from "../utils/backends.js";
 import type { ModeOption } from "../utils/backends.js";
 
 let idCounter = 0;
@@ -36,13 +36,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const cliConnected = useStore((s) => s.cliConnected);
   const assistantSessionId = useStore((s) => s.assistantSessionId);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
-  const previousMode = useStore((s) => s.previousPermissionMode.get(sessionId) || "acceptEdits");
 
   const isConnected = cliConnected.get(sessionId) ?? false;
   const currentMode = sessionData?.permissionMode || "acceptEdits";
@@ -105,6 +106,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
       selected.scrollIntoView({ block: "nearest" });
     }
   }, [slashMenuIndex, slashMenuOpen]);
+
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    }
+    document.addEventListener("pointerdown", handleClick);
+    return () => document.removeEventListener("pointerdown", handleClick);
+  }, []);
 
   const selectCommand = useCallback((cmd: CommandItem) => {
     setText(`/${cmd.name} `);
@@ -173,7 +185,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
     if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
-      toggleMode();
+      cycleMode();
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -227,18 +239,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
   }
 
-  function toggleMode() {
+  function selectMode(mode: string) {
     if (!isConnected || isCodex) return;
-    const store = useStore.getState();
-    if (!isPlan) {
-      store.setPreviousPermissionMode(sessionId, currentMode);
-      sendToSession(sessionId, { type: "set_permission_mode", mode: "plan" });
-      store.updateSession(sessionId, { permissionMode: "plan" });
-    } else {
-      const restoreMode = previousMode || "acceptEdits";
-      sendToSession(sessionId, { type: "set_permission_mode", mode: restoreMode });
-      store.updateSession(sessionId, { permissionMode: restoreMode });
-    }
+    sendToSession(sessionId, { type: "set_permission_mode", mode });
+    useStore.getState().updateSession(sessionId, { permissionMode: mode });
+  }
+
+  function cycleMode() {
+    selectMode(getNextMode(currentMode, modes));
   }
 
   const sessionStatus = useStore((s) => s.sessionStatus);
@@ -398,31 +406,55 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 <span>bypass</span>
               </span>
             ) : (
-              <button
-                onClick={toggleMode}
-                disabled={!isConnected || isCodex}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium transition-all select-none ${
-                  !isConnected || isCodex
-                    ? "opacity-30 cursor-not-allowed text-cc-muted"
-                    : isPlan
-                    ? "text-cc-primary hover:bg-cc-primary/10 cursor-pointer"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                }`}
-                title={isCodex ? "Mode is fixed for Codex sessions" : "Toggle mode (Shift+Tab)"}
-              >
-                {isPlan ? (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <rect x="3" y="3" width="3.5" height="10" rx="0.75" />
-                    <rect x="9.5" y="3" width="3.5" height="10" rx="0.75" />
+              <div className="relative" ref={modeDropdownRef}>
+                <button
+                  onClick={() => !isConnected || isCodex ? undefined : setShowModeDropdown(!showModeDropdown)}
+                  disabled={!isConnected || isCodex}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium transition-all select-none ${
+                    !isConnected || isCodex
+                      ? "opacity-30 cursor-not-allowed text-cc-muted"
+                      : isPlan
+                      ? "text-cc-primary hover:bg-cc-primary/10 cursor-pointer"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                  }`}
+                  title={isCodex ? "Mode is fixed for Codex sessions" : "Change mode (Shift+Tab to cycle)"}
+                >
+                  {isPlan ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <rect x="3" y="3" width="3.5" height="10" rx="0.75" />
+                      <rect x="9.5" y="3" width="3.5" height="10" rx="0.75" />
+                    </svg>
+                  ) : currentMode === "default" ? (
+                    <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5">
+                      <path d="M8 1.5l5 2.5v4c0 3-2.2 5.2-5 6.5-2.8-1.3-5-3.5-5-6.5V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                    </svg>
+                  )}
+                  <span>{modeLabel}</span>
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
+                    <path d="M4 6l4 4 4-4" />
                   </svg>
-                ) : (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  </svg>
+                </button>
+                {showModeDropdown && (
+                  <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                    {modes.map((m) => (
+                      <button
+                        key={m.value}
+                        onClick={() => { selectMode(m.value); setShowModeDropdown(false); }}
+                        className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
+                          m.value === currentMode ? "text-cc-primary font-medium" : "text-cc-fg"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
-                <span>{modeLabel}</span>
-              </button>
+              </div>
             )}
 
             {/* Right: image + send/stop */}

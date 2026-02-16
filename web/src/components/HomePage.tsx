@@ -41,9 +41,13 @@ export function HomePage() {
   const [model, setModel] = useState(() => getDefaultModel(
     (localStorage.getItem("cc-backend") as BackendType) || "claude",
   ));
-  const [mode, setMode] = useState(() => getDefaultMode(
-    (localStorage.getItem("cc-backend") as BackendType) || "claude",
-  ));
+  const [mode, setMode] = useState(() => {
+    const saved = localStorage.getItem("cc-mode");
+    const b = (localStorage.getItem("cc-backend") as BackendType) || "claude";
+    const modes = getModesForBackend(b);
+    if (saved && modes.some((m) => m.value === saved)) return saved;
+    return getDefaultMode(b);
+  });
   const [cwd, setCwd] = useState(() => getRecentDirs()[0] || "");
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [sending, setSending] = useState(false);
@@ -111,13 +115,18 @@ export function HomePage() {
     api.getBackends().then(setBackends).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function updateMode(value: string) {
+    setMode(value);
+    localStorage.setItem("cc-mode", value);
+  }
+
   // When backend changes, reset model and mode to defaults
   function switchBackend(newBackend: BackendType) {
     setBackend(newBackend);
     localStorage.setItem("cc-backend", newBackend);
     setDynamicModels(null);
     setModel(getDefaultModel(newBackend));
-    setMode(getDefaultMode(newBackend));
+    updateMode(getDefaultMode(newBackend));
   }
 
   // Fetch dynamic models for the selected backend
@@ -236,7 +245,7 @@ export function HomePage() {
       const currentModes = getModesForBackend(backend);
       const currentIndex = currentModes.findIndex((m) => m.value === mode);
       const nextIndex = (currentIndex + 1) % currentModes.length;
-      setMode(currentModes[nextIndex].value);
+      updateMode(currentModes[nextIndex].value);
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -480,7 +489,7 @@ export function HomePage() {
                   {MODES.map((m) => (
                     <button
                       key={m.value}
-                      onClick={() => { setMode(m.value); setShowModeDropdown(false); }}
+                      onClick={() => { updateMode(m.value); setShowModeDropdown(false); }}
                       className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
                         m.value === mode ? "text-cc-primary font-medium" : "text-cc-fg"
                       }`}

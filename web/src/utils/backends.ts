@@ -55,6 +55,7 @@ export const CODEX_MODELS: ModelOption[] = [
 
 export const CLAUDE_MODES: ModeOption[] = [
   { value: "bypassPermissions", label: "Agent" },
+  { value: "default", label: "Default" },
   { value: "plan", label: "Plan" },
 ];
 
@@ -80,4 +81,10 @@ export function getDefaultModel(backend: BackendType): string {
 
 export function getDefaultMode(backend: BackendType): string {
   return backend === "codex" ? CODEX_MODES[0].value : CLAUDE_MODES[0].value;
+}
+
+/** Cycle to the next mode; falls back to first mode if currentMode is unknown. */
+export function getNextMode(currentMode: string, modes: ModeOption[]): string {
+  const idx = modes.findIndex((m) => m.value === currentMode);
+  return modes[(idx + 1) % modes.length].value;
 }

@@ -197,20 +197,79 @@ describe("Composer sending messages", () => {
   });
 });
 
-// ─── Plan mode toggle ────────────────────────────────────────────────────────
+// ─── Mode cycling ───────────────────────────────────────────────────────────
 
-describe("Composer plan mode toggle", () => {
-  it("pressing Shift+Tab toggles plan mode", () => {
+describe("Composer mode cycling", () => {
+  it("pressing Shift+Tab cycles to the next mode", () => {
+    // Start in bypassPermissions (Agent) — first in CLAUDE_MODES
+    setupMockStore({ session: { permissionMode: "bypassPermissions" } });
     const { container } = render(<Composer sessionId="s1" />);
     const textarea = container.querySelector("textarea")!;
 
     fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
 
-    // Should call sendToSession to set plan mode
+    // Should cycle to the next mode (default)
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "set_permission_mode",
+      mode: "default",
+    });
+  });
+
+  it("cycles from plan back to bypassPermissions", () => {
+    // Start in plan — last in CLAUDE_MODES, should wrap to first
+    setupMockStore({ session: { permissionMode: "plan" } });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "set_permission_mode",
+      mode: "bypassPermissions",
+    });
+  });
+});
+
+// ─── Mode dropdown ──────────────────────────────────────────────────────────
+
+describe("Composer mode dropdown", () => {
+  it("clicking mode button opens dropdown with available modes", () => {
+    // Start in bypassPermissions (Agent) mode
+    setupMockStore({ session: { permissionMode: "bypassPermissions" } });
+    render(<Composer sessionId="s1" />);
+
+    const modeBtn = screen.getByTitle("Change mode (Shift+Tab to cycle)");
+    fireEvent.click(modeBtn);
+
+    // All three Claude modes should be listed
+    expect(screen.getByText("Agent")).toBeTruthy();
+    expect(screen.getByText("Default")).toBeTruthy();
+    expect(screen.getByText("Plan")).toBeTruthy();
+  });
+
+  it("selecting a mode from dropdown sends set_permission_mode", () => {
+    setupMockStore({ session: { permissionMode: "bypassPermissions" } });
+    render(<Composer sessionId="s1" />);
+
+    // Open dropdown
+    const modeBtn = screen.getByTitle("Change mode (Shift+Tab to cycle)");
+    fireEvent.click(modeBtn);
+
+    // Click "Plan" option
+    fireEvent.click(screen.getByText("Plan"));
+
     expect(mockSendToSession).toHaveBeenCalledWith("s1", {
       type: "set_permission_mode",
       mode: "plan",
     });
+  });
+
+  it("dropdown is disabled when CLI is not connected", () => {
+    setupMockStore({ isConnected: false, session: { permissionMode: "bypassPermissions" } });
+    render(<Composer sessionId="s1" />);
+
+    const modeBtn = screen.getByTitle("Change mode (Shift+Tab to cycle)");
+    expect(modeBtn.hasAttribute("disabled")).toBe(true);
   });
 });
 
