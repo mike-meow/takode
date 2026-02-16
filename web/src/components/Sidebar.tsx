@@ -5,6 +5,7 @@ import { connectSession, connectAllSessions, disconnectSession } from "../ws.js"
 import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
 import { ContextMenu } from "./ContextMenu.js";
+import { SessionHoverCard } from "./SessionHoverCard.js";
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 export function Sidebar() {
@@ -13,6 +14,7 @@ export function Sidebar() {
   const [showArchived, setShowArchived] = useState(false);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
+  const [hoveredSession, setHoveredSession] = useState<{ sessionId: string; rect: DOMRect } | null>(null);
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
   const editInputRef = useRef<HTMLInputElement>(null);
   const sessions = useStore((s) => s.sessions);
@@ -151,6 +153,29 @@ export function Sidebar() {
     setContextMenu({ sessionId, x: e.clientX, y: e.clientY });
   }
 
+  // Hover card: use a flag to detect if mouse moved to the popover card
+  const hoverIntentRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleHoverStart(sessionId: string, rect: DOMRect) {
+    if (hoverIntentRef.current) clearTimeout(hoverIntentRef.current);
+    setHoveredSession({ sessionId, rect });
+  }
+
+  function handleHoverEnd() {
+    // Small delay to allow mouse to move from session item to popover card
+    hoverIntentRef.current = setTimeout(() => {
+      setHoveredSession(null);
+    }, 100);
+  }
+
+  function handleHoverCardEnter() {
+    if (hoverIntentRef.current) clearTimeout(hoverIntentRef.current);
+  }
+
+  function handleHoverCardLeave() {
+    setHoveredSession(null);
+  }
+
   const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     try {
@@ -270,6 +295,8 @@ export function Sidebar() {
     onDelete: handleDeleteSession,
     onClearRecentlyRenamed: clearRecentlyRenamed,
     onContextMenu: handleContextMenu,
+    onHoverStart: handleHoverStart,
+    onHoverEnd: handleHoverEnd,
     editingSessionId,
     editingName,
     setEditingName,
@@ -542,6 +569,22 @@ export function Sidebar() {
           onClose={() => setContextMenu(null)}
         />
       )}
+      {/* Session hover card */}
+      {hoveredSession && (() => {
+        const s = allSessionList.find((item) => item.id === hoveredSession.sessionId);
+        if (!s) return null;
+        return (
+          <SessionHoverCard
+            session={s}
+            sessionName={sessionNames.get(hoveredSession.sessionId)}
+            sessionPreview={sessionPreviews.get(hoveredSession.sessionId)}
+            sessionState={sessions.get(hoveredSession.sessionId)}
+            anchorRect={hoveredSession.rect}
+            onMouseEnter={handleHoverCardEnter}
+            onMouseLeave={handleHoverCardLeave}
+          />
+        );
+      })()}
     </aside>
   );
 }

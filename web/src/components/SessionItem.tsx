@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useRef, type RefObject } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 interface SessionItemProps {
@@ -16,6 +16,8 @@ interface SessionItemProps {
   onDelete: (e: React.MouseEvent, id: string) => void;
   onClearRecentlyRenamed: (id: string) => void;
   onContextMenu?: (e: React.MouseEvent, id: string) => void;
+  onHoverStart?: (sessionId: string, rect: DOMRect) => void;
+  onHoverEnd?: () => void;
   editingSessionId: string | null;
   editingName: string;
   setEditingName: (name: string) => void;
@@ -39,6 +41,8 @@ export function SessionItem({
   onDelete,
   onClearRecentlyRenamed,
   onContextMenu: onCtxMenu,
+  onHoverStart,
+  onHoverEnd,
   editingSessionId,
   editingName,
   setEditingName,
@@ -46,6 +50,7 @@ export function SessionItem({
   onCancelRename,
   editInputRef,
 }: SessionItemProps) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const shortId = s.id.slice(0, 8);
   const label = sessionName || s.model || shortId;
   const isRunning = s.status === "running";
@@ -81,6 +86,7 @@ export function SessionItem({
   return (
     <div className={`relative group ${archived ? "opacity-50" : ""}`}>
       <button
+        ref={buttonRef}
         onClick={() => onSelect(s.id)}
         onDoubleClick={(e) => {
           e.preventDefault();
@@ -91,6 +97,14 @@ export function SessionItem({
             e.preventDefault();
             onCtxMenu(e, s.id);
           }
+        }}
+        onMouseEnter={() => {
+          if (onHoverStart && buttonRef.current) {
+            onHoverStart(s.id, buttonRef.current.getBoundingClientRect());
+          }
+        }}
+        onMouseLeave={() => {
+          if (onHoverEnd) onHoverEnd();
         }}
         className={`w-full pl-3.5 pr-8 py-2 ${archived ? "pr-14" : ""} text-left rounded-lg transition-all duration-100 cursor-pointer ${
           isActive

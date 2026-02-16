@@ -18,6 +18,8 @@ interface ProjectGroupProps {
   onDelete: (e: React.MouseEvent, id: string) => void;
   onClearRecentlyRenamed: (id: string) => void;
   onContextMenu?: (e: React.MouseEvent, id: string) => void;
+  onHoverStart?: (sessionId: string, rect: DOMRect) => void;
+  onHoverEnd?: () => void;
   editingSessionId: string | null;
   editingName: string;
   setEditingName: (name: string) => void;
@@ -43,6 +45,8 @@ export function ProjectGroup({
   onDelete,
   onClearRecentlyRenamed,
   onContextMenu,
+  onHoverStart,
+  onHoverEnd,
   editingSessionId,
   editingName,
   setEditingName,
@@ -111,6 +115,8 @@ export function ProjectGroup({
                 onDelete={onDelete}
                 onClearRecentlyRenamed={onClearRecentlyRenamed}
                 onContextMenu={onContextMenu}
+                onHoverStart={onHoverStart}
+                onHoverEnd={onHoverEnd}
                 editingSessionId={editingSessionId}
                 editingName={editingName}
                 setEditingName={setEditingName}

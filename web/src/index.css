@@ -296,3 +296,10 @@ select {
 .dark .diff-word-del {
   background: rgba(252, 129, 129, 0.2);
 }
+
+/* Hide hover card on touch-only devices */
+@media (hover: none) {
+  .hidden-on-touch {
+    display: none !important;
+  }
+}
