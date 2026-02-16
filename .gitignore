@@ -11,3 +11,5 @@ web/dist/
 web/.env.local
 .dev-*.pid
 .dev-*.log
+e2e_tests/screenshots/
+.mcp-cmd.json
