@@ -580,6 +580,9 @@ function handleParsedMessage(
 export function connectSession(sessionId: string) {
   if (sockets.has(sessionId)) return;
 
+  // Clear in-memory seq cache so we use localStorage as source of truth on reconnect
+  lastSeqBySession.delete(sessionId);
+
   const store = useStore.getState();
   store.setConnectionStatus(sessionId, "connecting");
 

@@ -187,6 +187,7 @@ export class WsBridge {
   private onFirstTurnCompleted: ((sessionId: string, firstUserMessage: string) => void) | null = null;
   private autoNamingAttempted = new Set<string>();
   private userMsgCounter = 0;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
     "git_branch",
@@ -214,6 +215,22 @@ export class WsBridge {
   /** Register a callback for when git info is resolved and branch is known. */
   onSessionGitInfoReadyCallback(cb: (sessionId: string, cwd: string, branch: string) => void): void {
     this.onGitInfoReady = cb;
+  }
+
+  /** Send periodic pings to all browser sockets to prevent Bun's idle timeout from closing them. */
+  startHeartbeat(): void {
+    if (this.heartbeatInterval) return;
+    this.heartbeatInterval = setInterval(() => {
+      for (const session of this.sessions.values()) {
+        for (const ws of session.browserSockets) {
+          try {
+            ws.ping();
+          } catch {
+            session.browserSockets.delete(ws);
+          }
+        }
+      }
+    }, 30_000);
   }
 
   /** Push a message to all connected browsers for a session (public, for PRPoller etc.). */
@@ -686,7 +703,8 @@ export class WsBridge {
     if (!session) return;
 
     session.browserSockets.delete(ws);
-    console.log(`[ws-bridge] Browser disconnected for session ${sessionId} (${session.browserSockets.size} browsers)`);
+    const hasBackend = session.backendType === "codex" ? !!session.codexAdapter : !!session.cliSocket;
+    console.log(`[ws-bridge] Browser disconnected for session ${sessionId} (${session.browserSockets.size} remaining, backend=${hasBackend ? "alive" : "dead"})`);
   }
 
   // ── CLI message routing ─────────────────────────────────────────────────
@@ -1189,6 +1207,7 @@ export class WsBridge {
       });
       this.sendToCLI(session, ndjson);
     }
+    this.persistSession(session);
   }
 
   private handleInterrupt(session: Session) {
