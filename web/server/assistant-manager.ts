@@ -118,6 +118,13 @@ Or write the SKILL.md file directly to \`~/.claude/skills/<slug>/SKILL.md\` usin
 
 The skill will be available in the next Claude Code session as \`/my-skill\`.
 
+## Troubleshooting: \`companion\` command not found
+
+The \`companion\` CLI is defined in the \`bin\` field of the Companion's \`package.json\` (entry point: \`bin/cli.ts\`).
+If it's not in PATH, you can invoke it directly with \`bun <path-to-companion-repo>/web/bin/cli.ts <command> [args]\`.
+To fix permanently, create a symlink: \`ln -s <path-to-companion-repo>/web/bin/cli.ts ~/.local/bin/companion\`.
+Find the repo path by checking where this Companion server is running from (e.g. look at the process or check \`__COMPANION_PACKAGE_ROOT\` env var).
+
 ## Guidelines
 1. For coding tasks: create a NEW session in the right project directory rather than doing work yourself
 2. Use worktrees for isolated branch work (\`--worktree --branch <name>\`)
