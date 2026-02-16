@@ -97,6 +97,7 @@ interface AppState {
   // Message actions
   appendMessage: (sessionId: string, msg: ChatMessage) => void;
   setMessages: (sessionId: string, msgs: ChatMessage[]) => void;
+  updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
   updateLastAssistantMessage: (sessionId: string, updater: (msg: ChatMessage) => ChatMessage) => void;
   setStreaming: (sessionId: string, text: string | null) => void;
   setStreamingStats: (sessionId: string, stats: { startedAt?: number; outputTokens?: number } | null) => void;
@@ -423,6 +424,16 @@ export const useStore = create<AppState>((set) => ({
     set((s) => {
       const messages = new Map(s.messages);
       messages.set(sessionId, msgs);
+      return { messages };
+    }),
+
+  updateMessage: (sessionId, msgId, updates) =>
+    set((s) => {
+      const messages = new Map(s.messages);
+      const list = messages.get(sessionId);
+      if (!list) return s;
+      const updated = list.map((m) => (m.id === msgId ? { ...m, ...updates } : m));
+      messages.set(sessionId, updated);
       return { messages };
     }),
 

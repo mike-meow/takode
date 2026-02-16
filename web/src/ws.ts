@@ -502,9 +502,26 @@ function handleParsedMessage(
     }
 
     case "compact_boundary": {
-      // CLI has compacted — clear local messages so the next message_history
-      // (which now only contains post-compact messages) rebuilds the view cleanly
-      store.setMessages(sessionId, []);
+      // CLI has compacted — preserve existing messages and insert a compact marker divider
+      store.appendMessage(sessionId, {
+        id: `compact-boundary-${Date.now()}`,
+        role: "system",
+        content: "Conversation compacted",
+        timestamp: Date.now(),
+        variant: "info",
+      });
+      break;
+    }
+
+    case "compact_summary": {
+      // Update the most recent compact marker with the full summary text
+      const msgs = store.messages.get(sessionId) || [];
+      const lastCompact = [...msgs].reverse().find(
+        (m) => m.role === "system" && m.id.startsWith("compact-boundary-"),
+      );
+      if (lastCompact) {
+        store.updateMessage(sessionId, lastCompact.id, { content: data.summary });
+      }
       break;
     }
 
@@ -542,6 +559,14 @@ function handleParsedMessage(
             extractTasksFromBlocks(sessionId, msg.content);
             extractChangedFilesFromBlocks(sessionId, msg.content);
           }
+        } else if (histMsg.type === "compact_marker") {
+          chatMessages.push({
+            id: histMsg.id || `compact-${i}`,
+            role: "system",
+            content: histMsg.summary || "Conversation compacted",
+            timestamp: histMsg.timestamp,
+            variant: "info",
+          });
         } else if (histMsg.type === "tool_result_preview") {
           for (const preview of histMsg.previews) {
             store.setToolResult(sessionId, preview.tool_use_id, preview);

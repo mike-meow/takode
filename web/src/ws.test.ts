@@ -1290,3 +1290,129 @@ describe("handleMessage: assistant clears only completed tool progress", () => {
     expect(progress?.get("tu-b")).toEqual({ toolName: "Glob", elapsedSeconds: 2 });
   });
 });
+
+// ===========================================================================
+// handleMessage: compact_boundary (preserves messages + inserts marker)
+// ===========================================================================
+describe("handleMessage: compact_boundary", () => {
+  it("appends a system compact marker instead of clearing messages", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    // Add some existing messages
+    useStore.getState().appendMessage("s1", {
+      id: "msg-1",
+      role: "user",
+      content: "hello",
+      timestamp: 1000,
+    });
+    useStore.getState().appendMessage("s1", {
+      id: "msg-2",
+      role: "assistant",
+      content: "hi there",
+      timestamp: 2000,
+    });
+
+    // Fire compact_boundary — should preserve existing messages and add a marker
+    fireMessage({ type: "compact_boundary", trigger: "auto", preTokens: 80000 });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    // Existing messages should still be there
+    expect(msgs.length).toBe(3);
+    expect(msgs[0].id).toBe("msg-1");
+    expect(msgs[1].id).toBe("msg-2");
+    // Third message should be the compact marker
+    const marker = msgs[2];
+    expect(marker.role).toBe("system");
+    expect(marker.content).toBe("Conversation compacted");
+    expect(marker.variant).toBe("info");
+    expect(marker.id).toMatch(/^compact-boundary-/);
+  });
+});
+
+// ===========================================================================
+// handleMessage: compact_summary (updates compact marker content)
+// ===========================================================================
+describe("handleMessage: compact_summary", () => {
+  it("updates the most recent compact marker with summary text", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    // Insert a compact marker
+    useStore.getState().appendMessage("s1", {
+      id: "compact-boundary-12345",
+      role: "system",
+      content: "Conversation compacted",
+      timestamp: 12345,
+      variant: "info",
+    });
+
+    const summary = "This session is being continued. Key context: building a web app.";
+    fireMessage({ type: "compact_summary", summary });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    const marker = msgs.find((m) => m.id === "compact-boundary-12345");
+    expect(marker).toBeTruthy();
+    expect(marker!.content).toBe(summary);
+  });
+});
+
+// ===========================================================================
+// handleMessage: message_history with compact_marker
+// ===========================================================================
+describe("handleMessage: message_history with compact_marker", () => {
+  it("renders compact_marker as a system message with summary", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    const summary = "Previous conversation summary text.";
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "compact_marker",
+          timestamp: 5000,
+          id: "compact-boundary-5000",
+          summary,
+          trigger: "auto",
+          preTokens: 60000,
+        },
+        { type: "user_message", content: "new message after compact", timestamp: 6000 },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs.length).toBe(2);
+
+    // First message should be the compact marker rendered as system
+    const marker = msgs[0];
+    expect(marker.role).toBe("system");
+    expect(marker.content).toBe(summary);
+    expect(marker.variant).toBe("info");
+    expect(marker.id).toBe("compact-boundary-5000");
+
+    // Second should be the user message
+    expect(msgs[1].role).toBe("user");
+    expect(msgs[1].content).toBe("new message after compact");
+  });
+
+  it("renders compact_marker without summary as default text", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "compact_marker",
+          timestamp: 7000,
+          id: "compact-boundary-7000",
+        },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs.length).toBe(1);
+    expect(msgs[0].content).toBe("Conversation compacted");
+  });
+});
