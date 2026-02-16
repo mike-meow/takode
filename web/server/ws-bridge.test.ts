@@ -513,8 +513,9 @@ describe("Browser handlers", () => {
     expect(gitInfoCb).toHaveBeenCalledWith("s1", "/repo", "feat/dynamic-branch");
   });
 
-  it("handleBrowserOpen: replays message history", () => {
-    // First populate some history
+  it("handleBrowserOpen: does NOT send message_history (deferred to session_subscribe)", () => {
+    // History is now delivered via handleSessionSubscribe (triggered by session_subscribe
+    // from the browser) instead of handleBrowserOpen, to prevent double delivery.
     mockExecSync.mockImplementation(() => {
       throw new Error("not a git repo");
     });
@@ -539,18 +540,30 @@ describe("Browser handlers", () => {
     });
     bridge.handleCLIMessage(cli, assistantMsg);
 
-    // Now connect a new browser
+    // Connect a browser — handleBrowserOpen should NOT send message_history
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const sessionInit = calls.find((c: any) => c.type === "session_init");
+    expect(sessionInit).toBeDefined();
     const historyMsg = calls.find((c: any) => c.type === "message_history");
-    expect(historyMsg).toBeDefined();
-    expect(historyMsg.messages).toHaveLength(1);
-    expect(historyMsg.messages[0].type).toBe("assistant");
+    expect(historyMsg).toBeUndefined();
+
+    // message_history is sent after session_subscribe
+    browser.send.mockClear();
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+
+    const subscribeCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const historyAfterSubscribe = subscribeCalls.find((c: any) => c.type === "message_history");
+    expect(historyAfterSubscribe).toBeDefined();
+    expect(historyAfterSubscribe.messages).toHaveLength(1);
+    expect(historyAfterSubscribe.messages[0].type).toBe("assistant");
   });
 
-  it("handleBrowserOpen: sends pending permissions", () => {
+  it("handleBrowserOpen: sends pending permissions via session_subscribe", () => {
+    // Pending permissions are now delivered via handleSessionSubscribe instead of
+    // handleBrowserOpen, to prevent double delivery on reconnect.
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
 
@@ -567,9 +580,10 @@ describe("Browser handlers", () => {
     });
     bridge.handleCLIMessage(cli, controlReq);
 
-    // Now connect a browser
+    // Now connect a browser and send session_subscribe
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const permMsg = calls.find((c: any) => c.type === "permission_request");
@@ -2170,9 +2184,11 @@ describe("Restore from disk with pendingPermissions", () => {
     const cli = makeCliSocket("perm-replay");
     bridge.handleCLIOpen(cli, "perm-replay");
 
-    // Now connect a browser
+    // Now connect a browser and send session_subscribe (permissions are
+    // delivered via handleSessionSubscribe, not handleBrowserOpen)
     const browser = makeBrowserSocket("perm-replay");
     bridge.handleBrowserOpen(browser, "perm-replay");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const permMsg = calls.find((c: any) => c.type === "permission_request");
@@ -2960,5 +2976,152 @@ describe("MCP control messages", () => {
     expect(sent.request.subtype).toBe("mcp_set_servers");
     expect(sent.request.servers).toEqual(servers);
     vi.useRealTimers();
+  });
+});
+
+// ─── compact_boundary handling ──────────────────────────────────────────────
+
+describe("compact_boundary handling", () => {
+  it("clears messageHistory when compact_boundary is received from CLI", () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Send init + an assistant message so history is non-empty
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hello" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "u2",
+      session_id: "cli-123",
+    }));
+
+    // Verify history has the assistant message
+    const sessionBefore = bridge.getOrCreateSession("s1");
+    expect(sessionBefore.messageHistory.length).toBeGreaterThan(0);
+
+    // Send compact_boundary
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual" },
+      uuid: "u3",
+      session_id: "cli-123",
+    }));
+
+    // History should be cleared and replaced with a compact marker
+    const sessionAfter = bridge.getOrCreateSession("s1");
+    expect(sessionAfter.messageHistory.length).toBe(1);
+    expect(sessionAfter.messageHistory[0].type).toBe("user_message");
+    expect((sessionAfter.messageHistory[0] as any).content).toBe("[conversation compacted]");
+  });
+
+  it("broadcasts compact_boundary event to browsers", () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Subscribe browser so it receives sequenced broadcasts
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "session_subscribe",
+      last_seq: 0,
+    }));
+
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    browser.send.mockClear();
+
+    // Send compact_boundary
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto" },
+      uuid: "u4",
+      session_id: "cli-123",
+    }));
+
+    // Browser should have received a compact_boundary message
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const compactMsg = calls.find((m: any) => m.type === "compact_boundary");
+    expect(compactMsg).toBeTruthy();
+  });
+});
+
+// ─── handleSessionSubscribe — single message_history delivery ───────────────
+
+describe("handleSessionSubscribe — no double message_history", () => {
+  it("does NOT send message_history in handleBrowserOpen (even with history present)", () => {
+    // CLI must connect first so the session exists when CLI messages arrive
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Add a message to history
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hi" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "u2",
+      session_id: "cli-123",
+    }));
+
+    // Verify history is non-empty before connecting browser
+    const session = bridge.getOrCreateSession("s1");
+    expect(session.messageHistory.length).toBeGreaterThan(0);
+
+    // Now connect a browser
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Check that handleBrowserOpen sends session_init but NOT message_history
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const sessionInitMsgs = calls.filter((m: any) => m.type === "session_init");
+    const historyMsgs = calls.filter((m: any) => m.type === "message_history");
+    expect(sessionInitMsgs.length).toBe(1);
+    expect(historyMsgs.length).toBe(0); // message_history NOT sent yet
+  });
+
+  it("sends message_history only after session_subscribe with lastSeq=0", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hi" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "u2",
+      session_id: "cli-123",
+    }));
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    // Now subscribe with last_seq=0
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "session_subscribe",
+      last_seq: 0,
+    }));
+
+    // Should now receive message_history
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const historyMsgs = calls.filter((m: any) => m.type === "message_history");
+    expect(historyMsgs.length).toBe(1);
+  });
+
+  it("includes nextEventSeq in session_init", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const sessionInit = calls.find((m: any) => m.type === "session_init");
+    expect(sessionInit).toBeTruthy();
+    expect(typeof sessionInit.nextEventSeq).toBe("number");
+    expect(sessionInit.nextEventSeq).toBeGreaterThan(0);
   });
 });

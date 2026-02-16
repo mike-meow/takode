@@ -520,6 +520,14 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
+          {/* Compacting indicator */}
+          {sessionStatus === "compacting" && (
+            <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning animate-pulse" />
+              <span>Compacting conversation...</span>
+            </div>
+          )}
+
           <div ref={bottomRef} />
         </div>
       </div>

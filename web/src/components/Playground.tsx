@@ -261,6 +261,22 @@ const MSG_SYSTEM: ChatMessage = {
   timestamp: Date.now() - 30000,
 };
 
+const MSG_ERROR_CONTEXT_LIMIT: ChatMessage = {
+  id: "msg-err-1",
+  role: "system",
+  content: "Error: Prompt is too long",
+  timestamp: Date.now() - 25000,
+  variant: "error",
+};
+
+const MSG_ERROR_GENERIC: ChatMessage = {
+  id: "msg-err-2",
+  role: "system",
+  content: "Error: Connection to API failed after 3 retries",
+  timestamp: Date.now() - 20000,
+  variant: "error",
+};
+
 // Tool result with error
 const MSG_TOOL_ERROR: ChatMessage = {
   id: "msg-7",
@@ -632,6 +648,12 @@ export function Playground() {
             </Card>
             <Card label="System message">
               <MessageBubble message={MSG_SYSTEM} />
+            </Card>
+            <Card label="Error — context limit (with guidance)">
+              <MessageBubble message={MSG_ERROR_CONTEXT_LIMIT} />
+            </Card>
+            <Card label="Error — generic">
+              <MessageBubble message={MSG_ERROR_GENERIC} />
             </Card>
           </div>
         </Section>

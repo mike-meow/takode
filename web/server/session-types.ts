@@ -29,6 +29,17 @@ export interface CLISystemStatusMessage {
   session_id: string;
 }
 
+export interface CLISystemCompactBoundaryMessage {
+  type: "system";
+  subtype: "compact_boundary";
+  compact_metadata?: {
+    trigger?: "auto" | "manual";
+    pre_tokens?: number;
+  };
+  uuid: string;
+  session_id: string;
+}
+
 export interface CLIAssistantMessage {
   type: "assistant";
   message: {
@@ -149,6 +160,7 @@ export interface CLIControlResponseMessage {
 export type CLIMessage =
   | CLISystemInitMessage
   | CLISystemStatusMessage
+  | CLISystemCompactBoundaryMessage
   | CLIAssistantMessage
   | CLIResultMessage
   | CLIStreamEventMessage
@@ -185,7 +197,7 @@ export type BrowserOutgoingMessage =
 
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
-  | { type: "session_init"; session: SessionState }
+  | { type: "session_init"; session: SessionState; nextEventSeq?: number }
   | { type: "session_update"; session: Partial<SessionState> }
   | { type: "assistant"; message: CLIAssistantMessage["message"]; parent_tool_use_id: string | null; timestamp?: number }
   | { type: "stream_event"; event: unknown; parent_tool_use_id: string | null }
@@ -204,7 +216,8 @@ export type BrowserIncomingMessageBase =
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_name_update"; name: string }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
-  | { type: "mcp_status"; servers: McpServerDetail[] };
+  | { type: "mcp_status"; servers: McpServerDetail[] }
+  | { type: "compact_boundary" };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

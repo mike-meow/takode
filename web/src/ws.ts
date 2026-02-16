@@ -239,6 +239,13 @@ function handleParsedMessage(
 
   switch (data.type) {
     case "session_init": {
+      // Reset stale seq if browser is ahead of server (e.g. after server restart)
+      if (typeof data.nextEventSeq === "number") {
+        const browserSeq = getLastSeq(sessionId);
+        if (browserSeq >= data.nextEventSeq) {
+          setLastSeq(sessionId, 0);
+        }
+      }
       const existingSession = store.sessions.get(sessionId);
       store.addSession(data.session);
       store.setCliConnected(sessionId, true);
@@ -364,12 +371,16 @@ function handleParsedMessage(
       if (!document.hasFocus() && store.notificationDesktop) {
         sendBrowserNotification("Session completed", "Claude finished the task", sessionId);
       }
-      if (r.is_error && r.errors?.length) {
+      if (r.is_error) {
+        const errorText = r.errors?.length
+          ? r.errors.join(", ")
+          : r.result || "An error occurred";
         store.appendMessage(sessionId, {
           id: nextId(),
           role: "system",
-          content: `Error: ${r.errors.join(", ")}`,
+          content: `Error: ${errorText}`,
           timestamp: Date.now(),
+          variant: "error",
         });
       }
       break;
@@ -439,6 +450,7 @@ function handleParsedMessage(
           role: "system",
           content: `Auth error: ${data.error}`,
           timestamp: Date.now(),
+          variant: "error",
         });
       }
       break;
@@ -450,6 +462,7 @@ function handleParsedMessage(
         role: "system",
         content: data.message,
         timestamp: Date.now(),
+        variant: "error",
       });
       break;
     }
@@ -478,6 +491,13 @@ function handleParsedMessage(
 
     case "pr_status_update": {
       store.setPRStatus(sessionId, { available: data.available, pr: data.pr });
+      break;
+    }
+
+    case "compact_boundary": {
+      // CLI has compacted — clear local messages so the next message_history
+      // (which now only contains post-compact messages) rebuilds the view cleanly
+      store.setMessages(sessionId, []);
       break;
     }
 
@@ -516,13 +536,17 @@ function handleParsedMessage(
             extractChangedFilesFromBlocks(sessionId, msg.content);
           }
         } else if (histMsg.type === "result") {
-          const r = histMsg.data;
-          if (r.is_error && r.errors?.length) {
+          const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
+          if (r.is_error) {
+            const errorText = r.errors?.length
+              ? r.errors.join(", ")
+              : r.result || "An error occurred";
             chatMessages.push({
               id: `hist-error-${i}`,
               role: "system",
-              content: `Error: ${r.errors.join(", ")}`,
+              content: `Error: ${errorText}`,
               timestamp: Date.now(),
+              variant: "error",
             });
           }
         }
@@ -582,9 +606,15 @@ export function connectSession(sessionId: string) {
   sockets.set(sessionId, ws);
 
   ws.onopen = () => {
-    useStore.getState().setConnectionStatus(sessionId, "connected");
+    const currentStore = useStore.getState();
+    currentStore.setConnectionStatus(sessionId, "connected");
     reconnectAttempts.delete(sessionId); // Reset backoff on successful connect
-    const lastSeq = getLastSeq(sessionId);
+    // After a page refresh the Zustand store is empty but localStorage still
+    // holds a high last_seq. Sending that stale seq would tell the server we
+    // already have all messages, so it skips sending message_history. Fix: when
+    // the in-memory store has no messages, request full history with last_seq=0.
+    const storeMessages = currentStore.messages.get(sessionId);
+    const lastSeq = (storeMessages && storeMessages.length > 0) ? getLastSeq(sessionId) : 0;
     ws.send(JSON.stringify({ type: "session_subscribe", last_seq: lastSeq }));
     // Clear any reconnect timer
     const timer = reconnectTimers.get(sessionId);

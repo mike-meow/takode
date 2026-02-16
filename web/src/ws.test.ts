@@ -116,14 +116,49 @@ describe("connectSession", () => {
     expect(lastWs).toBe(first);
   });
 
-  it("sends session_subscribe with last_seq on open", () => {
+  it("sends session_subscribe with last_seq on open when store has messages", () => {
+    // Simulate a WebSocket reconnect (not a page refresh): store already has
+    // messages, so we use the cached last_seq from localStorage
     localStorage.setItem("companion:last-seq:s1", "12");
+    useStore.getState().appendMessage("s1", {
+      id: "msg-existing",
+      role: "user",
+      content: "existing message",
+      timestamp: 1000,
+    });
     wsModule.connectSession("s1");
 
     lastWs.onopen?.(new Event("open"));
 
     expect(lastWs.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "session_subscribe", last_seq: 12 }),
+    );
+  });
+
+  // Regression test: after a full page refresh, the Zustand store is empty but
+  // localStorage still holds a stale high last_seq. If we send that stale value,
+  // the server thinks we're caught up and skips sending message_history, leaving
+  // the UI empty. Fix: send last_seq: 0 when the store has no messages.
+  it("sends last_seq: 0 on open when store has no messages (page refresh scenario)", () => {
+    localStorage.setItem("companion:last-seq:s1", "50");
+    // Store is empty (simulates page refresh — Zustand resets but localStorage persists)
+    wsModule.connectSession("s1");
+
+    lastWs.onopen?.(new Event("open"));
+
+    expect(lastWs.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "session_subscribe", last_seq: 0 }),
+    );
+  });
+
+  it("sends last_seq: 0 when localStorage has no entry", () => {
+    // Brand new session — no localStorage, no store messages
+    wsModule.connectSession("s1");
+
+    lastWs.onopen?.(new Event("open"));
+
+    expect(lastWs.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "session_subscribe", last_seq: 0 }),
     );
   });
 });
