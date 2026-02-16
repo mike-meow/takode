@@ -429,18 +429,56 @@ function GrepDisplay({ input }: { input: Record<string, unknown> }) {
 function ExitPlanModeDisplay({ input }: { input: Record<string, unknown> }) {
   const plan = typeof input.plan === "string" ? input.plan : "";
   const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : [];
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="space-y-2">
       {plan && (
+        <>
         <div className="rounded-lg border border-cc-border overflow-hidden">
-          <div className="px-2.5 py-1.5 bg-cc-code-bg/10 border-b border-cc-border text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">
-            Plan
+          <div className="px-2.5 py-1.5 bg-cc-code-bg/10 border-b border-cc-border text-[10px] text-cc-muted font-mono-code uppercase tracking-wider flex items-center justify-between">
+            <span>Plan</span>
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-0.5 -m-0.5"
+              title="Expand plan"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                <path d="M2 2h4.5M2 2v4.5M2 2l5 5M14 14h-4.5M14 14v-4.5M14 14l-5-5" />
+              </svg>
+            </button>
           </div>
           <div className="px-3 py-2.5 max-h-64 overflow-y-auto text-xs text-cc-fg leading-relaxed markdown-body">
             <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
           </div>
         </div>
+
+        {/* Expanded overlay */}
+        {expanded && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-[fadeIn_0.15s_ease-out]"
+            onClick={(e) => { if (e.target === e.currentTarget) setExpanded(false); }}
+          >
+            <div className="bg-cc-bg rounded-xl border border-cc-border shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col animate-[fadeSlideIn_0.15s_ease-out]">
+              <div className="px-4 py-3 border-b border-cc-border flex items-center justify-between shrink-0">
+                <span className="text-xs font-semibold text-cc-fg uppercase tracking-wider">Plan</span>
+                <button
+                  onClick={() => setExpanded(false)}
+                  className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-1 -m-1"
+                  title="Close"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto flex-1 text-sm text-cc-fg leading-relaxed markdown-body">
+                <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
+              </div>
+            </div>
+          </div>
+        )}
+        </>
       )}
       {allowedPrompts.length > 0 && (
         <div className="space-y-1">

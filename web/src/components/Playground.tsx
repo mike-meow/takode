@@ -678,6 +678,9 @@ export function Playground() {
             ]}} toolUseId="tb-10" />
             <ToolBlock name="NotebookEdit" input={{ notebook_path: "/Users/stan/Dev/project/analysis.ipynb", cell_type: "code", edit_mode: "replace", cell_number: 3, new_source: "import pandas as pd\ndf = pd.read_csv('data.csv')\ndf.describe()" }} toolUseId="tb-11" />
             <ToolBlock name="SendMessage" input={{ type: "message", recipient: "researcher", content: "Please investigate the auth module structure and report back.", summary: "Requesting auth module investigation" }} toolUseId="tb-12" />
+            <ToolBlock name="ExitPlanMode" input={{ plan: "## Implementation Plan\n\n1. Add authentication middleware to Express routes\n2. Create JWT token generation and validation utilities\n3. Update database schema with user credentials table\n4. Write integration tests for the auth flow\n\n### Key Decisions\n- Use **bcrypt** for password hashing\n- JWT tokens expire after 24 hours", allowedPrompts: [{ tool: "Bash", prompt: "run tests" }, { tool: "Bash", prompt: "install dependencies" }] }} toolUseId="tb-13" />
+            <ToolBlock name="EnterPlanMode" input={{}} toolUseId="tb-14" />
+            <ToolBlock name="AskUserQuestion" input={{ questions: [{ header: "Auth method", question: "Which authentication method should we use for the API?", options: [{ label: "JWT (Recommended)", description: "Stateless tokens, good for distributed systems" }, { label: "Session cookies", description: "Traditional server-side sessions" }], multiSelect: false }] }} toolUseId="tb-15" />
           </div>
         </Section>
 
