@@ -2,6 +2,8 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DiffViewer } from "./DiffViewer.js";
+import { useStore } from "../store.js";
+import { api } from "../api.js";
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: "terminal",
@@ -57,10 +59,12 @@ export function ToolBlock({
   name,
   input,
   toolUseId,
+  sessionId,
 }: {
   name: string;
   input: Record<string, unknown>;
   toolUseId: string;
+  sessionId?: string;
 }) {
   // ExitPlanMode and AskUserQuestion default to expanded so users see the
   // plan content / question before the permission banner below
@@ -99,7 +103,69 @@ export function ToolBlock({
           <div className="mt-2">
             <ToolDetail name={name} input={input} />
           </div>
+          {sessionId && <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ToolResultSection({ toolUseId, sessionId }: { toolUseId: string; sessionId: string }) {
+  const preview = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId));
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  if (!preview) return null;
+
+  const displayContent = fullContent ?? preview.content;
+  const showExpandButton = preview.is_truncated && fullContent === null;
+
+  const fetchFull = async () => {
+    setLoading(true);
+    try {
+      const result = await api.getToolResult(sessionId, toolUseId);
+      setFullContent(result.content);
+    } catch {
+      setFullContent("[Failed to load full result]");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-cc-border/50">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[10px] font-medium text-cc-muted uppercase tracking-wider">Result</span>
+        {preview.is_error && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-error/10 text-cc-error font-medium">error</span>
+        )}
+        {preview.is_truncated && fullContent === null && (
+          <span className="text-[10px] text-cc-muted">{formatBytes(preview.total_size)}</span>
+        )}
+      </div>
+      <pre className={`text-[11px] font-mono-code whitespace-pre-wrap leading-relaxed rounded-lg px-2.5 py-2 ${
+        fullContent === null ? "max-h-40" : "max-h-96"
+      } overflow-y-auto ${
+        preview.is_error
+          ? "bg-cc-error/5 border border-cc-error/20 text-cc-error"
+          : "bg-cc-code-bg text-cc-muted"
+      }`}>
+        {displayContent}{showExpandButton ? "..." : ""}
+      </pre>
+      {showExpandButton && (
+        <button
+          onClick={fetchFull}
+          disabled={loading}
+          className="mt-1 text-[10px] text-cc-primary hover:underline cursor-pointer disabled:opacity-50"
+        >
+          {loading ? "Loading..." : `Show full result (${formatBytes(preview.total_size)})`}
+        </button>
       )}
     </div>
   );

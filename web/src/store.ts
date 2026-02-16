@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview } from "./types.js";
 import type { UpdateInfo, PRStatusResponse } from "./api.js";
 
 interface AppState {
@@ -54,6 +54,9 @@ interface AppState {
 
   // Tool progress (session → tool_use_id → progress info)
   toolProgress: Map<string, Map<string, { toolName: string; elapsedSeconds: number }>>;
+
+  // Tool results (session → tool_use_id → truncated preview)
+  toolResults: Map<string, Map<string, ToolResultPreview>>;
 
   // Sidebar project grouping
   collapsedProjects: Set<string>;
@@ -128,6 +131,9 @@ interface AppState {
   // Tool progress actions
   setToolProgress: (sessionId: string, toolUseId: string, data: { toolName: string; elapsedSeconds: number }) => void;
   clearToolProgress: (sessionId: string, toolUseId?: string) => void;
+
+  // Tool result actions
+  setToolResult: (sessionId: string, toolUseId: string, preview: ToolResultPreview) => void;
 
   // Sidebar project grouping actions
   toggleProjectCollapse: (projectKey: string) => void;
@@ -239,6 +245,7 @@ export const useStore = create<AppState>((set) => ({
   prStatus: new Map(),
   mcpServers: new Map(),
   toolProgress: new Map(),
+  toolResults: new Map(),
   collapsedProjects: getInitialCollapsedProjects(),
   updateInfo: null,
   updateDismissedVersion: getInitialDismissedVersion(),
@@ -364,6 +371,8 @@ export const useStore = create<AppState>((set) => ({
       mcpServers.delete(sessionId);
       const toolProgress = new Map(s.toolProgress);
       toolProgress.delete(sessionId);
+      const toolResults = new Map(s.toolResults);
+      toolResults.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
       localStorage.setItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
@@ -389,6 +398,7 @@ export const useStore = create<AppState>((set) => ({
         diffPanelSelectedFile,
         mcpServers,
         toolProgress,
+        toolResults,
         prStatus,
         sdkSessions: s.sdkSessions.filter((sdk) => sdk.sessionId !== sessionId),
         currentSessionId: s.currentSessionId === sessionId ? null : s.currentSessionId,
@@ -588,6 +598,15 @@ export const useStore = create<AppState>((set) => ({
       return { toolProgress };
     }),
 
+  setToolResult: (sessionId, toolUseId, preview) =>
+    set((s) => {
+      const toolResults = new Map(s.toolResults);
+      const sessionResults = new Map(toolResults.get(sessionId) || []);
+      sessionResults.set(toolUseId, preview);
+      toolResults.set(sessionId, sessionResults);
+      return { toolResults };
+    }),
+
   toggleProjectCollapse: (projectKey) =>
     set((s) => {
       const collapsedProjects = new Set(s.collapsedProjects);
@@ -675,6 +694,7 @@ export const useStore = create<AppState>((set) => ({
       sessionPreviews: new Map(),
       mcpServers: new Map(),
       toolProgress: new Map(),
+      toolResults: new Map(),
       prStatus: new Map(),
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),

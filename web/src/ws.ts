@@ -434,6 +434,13 @@ function handleParsedMessage(
       break;
     }
 
+    case "tool_result_preview": {
+      for (const preview of data.previews) {
+        store.setToolResult(sessionId, preview.tool_use_id, preview);
+      }
+      break;
+    }
+
     case "status_change": {
       if (data.status === "compacting") {
         store.setSessionStatus(sessionId, "compacting");
@@ -534,6 +541,10 @@ function handleParsedMessage(
           if (msg.content?.length) {
             extractTasksFromBlocks(sessionId, msg.content);
             extractChangedFilesFromBlocks(sessionId, msg.content);
+          }
+        } else if (histMsg.type === "tool_result_preview") {
+          for (const preview of histMsg.previews) {
+            store.setToolResult(sessionId, preview.tool_use_id, preview);
           }
         } else if (histMsg.type === "result") {
           const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };

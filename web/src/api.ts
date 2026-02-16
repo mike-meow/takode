@@ -391,6 +391,11 @@ export const api = {
   unarchiveSession: (sessionId: string) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/unarchive`),
 
+  getToolResult: (sessionId: string, toolUseId: string) =>
+    get<{ content: string; is_error: boolean }>(
+      `/sessions/${encodeURIComponent(sessionId)}/tool-result/${encodeURIComponent(toolUseId)}`,
+    ),
+
   renameSession: (sessionId: string, name: string) =>
     patch<{ ok: boolean; name: string }>(
       `/sessions/${encodeURIComponent(sessionId)}/name`,

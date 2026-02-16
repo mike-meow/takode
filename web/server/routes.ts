@@ -360,6 +360,20 @@ export function createRoutes(
     return c.json({ recordings: recorder.listRecordings() });
   });
 
+  // ─── Tool result lazy fetch ────────────────────────────────
+
+  api.get("/sessions/:id/tool-result/:toolUseId", (c) => {
+    const sessionId = c.req.param("id");
+    const toolUseId = c.req.param("toolUseId");
+
+    const result = wsBridge.getToolResult(sessionId, toolUseId);
+    if (!result) {
+      return c.json({ error: "Tool result not found" }, 404);
+    }
+
+    return c.json(result);
+  });
+
   // ─── Available backends ─────────────────────────────────────
 
   api.get("/backends", (c) => {

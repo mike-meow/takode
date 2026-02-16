@@ -509,6 +509,29 @@ export function Playground() {
     store.addPermission(sessionId, PERM_BASH);
     store.addPermission(sessionId, PERM_DYNAMIC);
 
+    // Mock tool results for ToolResultSection demo
+    store.setToolResult(sessionId, "tu-1", {
+      tool_use_id: "tu-1",
+      content: "src/auth/middleware.ts\nsrc/auth/login.ts\nsrc/auth/session.ts",
+      is_error: false,
+      total_size: 58,
+      is_truncated: false,
+    });
+    store.setToolResult(sessionId, "tu-2", {
+      tool_use_id: "tu-2",
+      content: 'export function authMiddleware(req, res, next) {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: "Unauthorized" });\n  }\n  next();\n}',
+      is_error: false,
+      total_size: 156,
+      is_truncated: false,
+    });
+    store.setToolResult(sessionId, "tu-3", {
+      tool_use_id: "tu-3",
+      content: "FAIL src/auth/__tests__/middleware.test.ts\n  \u25CF Auth Middleware \u203A should reject expired toke",
+      is_error: true,
+      total_size: 185,
+      is_truncated: false,
+    });
+
     return () => {
       useStore.setState((s) => {
         const sessions = new Map(s.sessions);

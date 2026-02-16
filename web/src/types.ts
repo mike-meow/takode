@@ -7,9 +7,10 @@ import type {
   BackendType,
   McpServerDetail,
   McpServerConfig,
+  ToolResultPreview,
 } from "../server/session-types.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, ToolResultPreview };
 
 export interface ChatMessage {
   id: string;

@@ -15,16 +15,19 @@ import type {
   CLIControlResponseMessage,
   CLIAuthStatusMessage,
   CLISystemCompactBoundaryMessage,
+  CLIUserMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
   ReplayableBrowserIncomingMessage,
   BufferedBrowserEvent,
+  ToolResultPreview,
   SessionState,
   PermissionRequest,
   BackendType,
   McpServerDetail,
   McpServerConfig,
 } from "./session-types.js";
+import { TOOL_RESULT_PREVIEW_LIMIT } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
 import type { CodexAdapter } from "./codex-adapter.js";
 import type { RecorderManager } from "./recorder.js";
@@ -80,6 +83,8 @@ interface Session {
   /** Recently processed browser client_msg_id values for idempotency on reconnect retries */
   processedClientMessageIds: string[];
   processedClientMessageIdSet: Set<string>;
+  /** Full tool results indexed by tool_use_id for lazy fetch */
+  toolResults: Map<string, { content: string; is_error: boolean; timestamp: number }>;
 }
 
 type GitSessionKey = "git_branch" | "is_worktree" | "repo_root" | "git_ahead" | "git_behind";
@@ -276,6 +281,7 @@ export class WsBridge {
         processedClientMessageIdSet: new Set(
           Array.isArray(p.processedClientMessageIds) ? p.processedClientMessageIds : [],
         ),
+        toolResults: new Map(Array.isArray(p.toolResults) ? p.toolResults : []),
       };
       session.state.backend_type = session.backendType;
       // Resolve git info for restored sessions (may have been persisted without it)
@@ -306,6 +312,7 @@ export class WsBridge {
       nextEventSeq: session.nextEventSeq,
       lastAckSeq: session.lastAckSeq,
       processedClientMessageIds: session.processedClientMessageIds,
+      toolResults: Array.from(session.toolResults.entries()),
     });
   }
 
@@ -374,6 +381,7 @@ export class WsBridge {
         lastAckSeq: 0,
         processedClientMessageIds: [],
         processedClientMessageIdSet: new Set(),
+        toolResults: new Map(),
       };
       this.sessions.set(sessionId, session);
     } else if (backendType) {
@@ -749,6 +757,10 @@ export class WsBridge {
         this.handleControlResponse(session, msg);
         break;
 
+      case "user":
+        this.handleToolResultMessage(session, msg as CLIUserMessage);
+        break;
+
       case "keep_alive":
         // Silently consume keepalives
         break;
@@ -926,6 +938,66 @@ export class WsBridge {
       summary: msg.summary,
       tool_use_ids: msg.preceding_tool_use_ids,
     });
+  }
+
+  private handleToolResultMessage(session: Session, msg: CLIUserMessage) {
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) return;
+
+    const previews: ToolResultPreview[] = [];
+
+    for (const block of content) {
+      if (block.type !== "tool_result") continue;
+
+      const resultContent = typeof block.content === "string"
+        ? block.content
+        : JSON.stringify(block.content);
+      const totalSize = resultContent.length;
+      const isTruncated = totalSize > TOOL_RESULT_PREVIEW_LIMIT;
+
+      // Store full result for lazy fetch
+      session.toolResults.set(block.tool_use_id, {
+        content: resultContent,
+        is_error: !!block.is_error,
+        timestamp: Date.now(),
+      });
+
+      previews.push({
+        tool_use_id: block.tool_use_id,
+        content: isTruncated
+          ? resultContent.slice(0, TOOL_RESULT_PREVIEW_LIMIT)
+          : resultContent,
+        is_error: !!block.is_error,
+        total_size: totalSize,
+        is_truncated: isTruncated,
+      });
+    }
+
+    if (previews.length === 0) return;
+
+    const browserMsg: BrowserIncomingMessage = {
+      type: "tool_result_preview",
+      previews,
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+    this.persistSession(session);
+  }
+
+  /** Look up a full tool result by tool_use_id for lazy fetch via REST. */
+  getToolResult(sessionId: string, toolUseId: string): {
+    content: string;
+    is_error: boolean;
+  } | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+
+    const indexed = session.toolResults.get(toolUseId);
+    if (indexed) {
+      return { content: indexed.content, is_error: indexed.is_error };
+    }
+
+    return null;
   }
 
   private handleAuthStatus(session: Session, msg: CLIAuthStatusMessage) {
@@ -1358,7 +1430,8 @@ export class WsBridge {
     return msg.type === "assistant"
       || msg.type === "result"
       || msg.type === "user_message"
-      || msg.type === "error";
+      || msg.type === "error"
+      || msg.type === "tool_result_preview";
   }
 
   private sequenceEvent(
