@@ -1000,24 +1000,6 @@ export class WsBridge {
 
   private handleControlRequest(session: Session, msg: CLIControlRequestMessage) {
     if (msg.request.subtype === "can_use_tool") {
-      // Auto-approve tool permissions when askPermission is false, except for
-      // ExitPlanMode which always requires explicit user approval.
-      if (session.state.askPermission === false && msg.request.tool_name !== "ExitPlanMode") {
-        const ndjson = JSON.stringify({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: msg.request_id,
-            response: {
-              behavior: "allow",
-              updatedInput: msg.request.input ?? {},
-            },
-          },
-        });
-        this.sendToCLI(session, ndjson);
-        return;
-      }
-
       const perm: PermissionRequest = {
         request_id: msg.request_id,
         tool_name: msg.request.tool_name,
