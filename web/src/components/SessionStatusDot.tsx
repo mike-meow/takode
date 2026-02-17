@@ -103,7 +103,7 @@ export function SessionStatusDot(props: SessionStatusDotProps) {
       />
       {showPulse && (
         <span
-          className={`absolute inset-0 w-2 h-2 rounded-full ${pulseColor} animate-[pulse-dot_1.5s_ease-in-out_infinite]`}
+          className={`absolute inset-0 w-2 h-2 rounded-full ${pulseColor} animate-[pulse-ring_1.5s_ease-out_infinite]`}
           data-testid="session-status-pulse"
         />
       )}
