@@ -6,18 +6,9 @@ interface MockStoreState {
   darkMode: boolean;
   notificationSound: boolean;
   notificationDesktop: boolean;
-  updateInfo: {
-    currentVersion: string;
-    latestVersion: string | null;
-    updateAvailable: boolean;
-    isServiceMode: boolean;
-    updateInProgress: boolean;
-    lastChecked: number;
-  } | null;
   toggleDarkMode: ReturnType<typeof vi.fn>;
   toggleNotificationSound: ReturnType<typeof vi.fn>;
   setNotificationDesktop: ReturnType<typeof vi.fn>;
-  setUpdateInfo: ReturnType<typeof vi.fn>;
 }
 
 let mockState: MockStoreState;
@@ -27,11 +18,9 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     darkMode: false,
     notificationSound: true,
     notificationDesktop: false,
-    updateInfo: null,
     toggleDarkMode: vi.fn(),
     toggleNotificationSound: vi.fn(),
     setNotificationDesktop: vi.fn(),
-    setUpdateInfo: vi.fn(),
     ...overrides,
   };
 }
@@ -39,8 +28,6 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
 const mockApi = {
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
-  forceCheckForUpdate: vi.fn(),
-  triggerUpdate: vi.fn(),
 };
 
 const mockTelemetry = {
@@ -52,8 +39,6 @@ vi.mock("../api.js", () => ({
   api: {
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
     updateSettings: (...args: unknown[]) => mockApi.updateSettings(...args),
-    forceCheckForUpdate: (...args: unknown[]) => mockApi.forceCheckForUpdate(...args),
-    triggerUpdate: (...args: unknown[]) => mockApi.triggerUpdate(...args),
   },
 }));
 
@@ -81,18 +66,6 @@ beforeEach(() => {
   mockApi.updateSettings.mockResolvedValue({
     openrouterApiKeyConfigured: true,
     openrouterModel: "openrouter/free",
-  });
-  mockApi.forceCheckForUpdate.mockResolvedValue({
-    currentVersion: "0.22.1",
-    latestVersion: null,
-    updateAvailable: false,
-    isServiceMode: false,
-    updateInProgress: false,
-    lastChecked: Date.now(),
-  });
-  mockApi.triggerUpdate.mockResolvedValue({
-    ok: true,
-    message: "Update started. Server will restart shortly.",
   });
   mockTelemetry.getTelemetryPreferenceEnabled.mockReturnValue(true);
 });
@@ -294,49 +267,4 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("checks for updates from settings and stores update info", async () => {
-    mockApi.forceCheckForUpdate.mockResolvedValueOnce({
-      currentVersion: "0.22.1",
-      latestVersion: "0.23.0",
-      updateAvailable: true,
-      isServiceMode: true,
-      updateInProgress: false,
-      lastChecked: Date.now(),
-    });
-
-    render(<SettingsPage />);
-    await screen.findByText("OpenRouter key configured");
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-
-    await waitFor(() => {
-      expect(mockApi.forceCheckForUpdate).toHaveBeenCalledTimes(1);
-      expect(mockState.setUpdateInfo).toHaveBeenCalledWith(expect.objectContaining({
-        latestVersion: "0.23.0",
-        updateAvailable: true,
-      }));
-    });
-    expect(await screen.findByText("Update v0.23.0 is available.")).toBeInTheDocument();
-  });
-
-  it("triggers app update from settings when service mode is enabled", async () => {
-    mockState = createMockState({
-      updateInfo: {
-        currentVersion: "0.22.1",
-        latestVersion: "0.23.0",
-        updateAvailable: true,
-        isServiceMode: true,
-        updateInProgress: false,
-        lastChecked: Date.now(),
-      },
-    });
-    render(<SettingsPage />);
-    await screen.findByText("OpenRouter key configured");
-
-    fireEvent.click(screen.getByRole("button", { name: "Update & Restart" }));
-
-    await waitFor(() => {
-      expect(mockApi.triggerUpdate).toHaveBeenCalledTimes(1);
-    });
-    expect(await screen.findByText("Update started. Server will restart shortly.")).toBeInTheDocument();
-  });
 });

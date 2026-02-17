@@ -27,8 +27,6 @@ import { PRPoller } from "./pr-poller.js";
 import { RecorderManager } from "./recorder.js";
 import { CronScheduler } from "./cron-scheduler.js";
 import { AssistantManager } from "./assistant-manager.js";
-import { startPeriodicCheck, setServiceMode } from "./update-checker.js";
-import { isRunningAsService } from "./service.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -236,13 +234,6 @@ if (assistantConfig.enabled) {
   assistantManager.start().catch((e) => {
     console.error("[server] Failed to auto-start assistant:", e);
   });
-}
-
-// ── Update checker ──────────────────────────────────────────────────────────
-startPeriodicCheck();
-if (isRunningAsService()) {
-  setServiceMode(true);
-  console.log("[server] Running as background service (auto-update available)");
 }
 
 // ── Graceful shutdown — persist container state ──────────────────────────────

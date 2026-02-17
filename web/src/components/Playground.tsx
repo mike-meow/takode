@@ -5,13 +5,12 @@ import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./To
 import { DiffViewer } from "./DiffViewer.js";
 import { useStore } from "../store.js";
 import { navigateToSession, navigateHome } from "../utils/routing.js";
-import { UpdateBanner } from "./UpdateBanner.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { ChatView } from "./ChatView.js";
 import { api } from "../api.js";
 import type { PermissionRequest, ChatMessage, ContentBlock, SessionState, McpServerDetail } from "../types.js";
 import type { TaskItem } from "../types.js";
-import type { UpdateInfo, GitHubPRInfo } from "../api.js";
+import type { GitHubPRInfo } from "../api.js";
 import { GitHubPRDisplay, CodexRateLimitsSection, CodexTokenDetailsSection } from "./TaskPanel.js";
 import { SessionCreationProgress } from "./SessionCreationProgress.js";
 import { SessionLaunchOverlay } from "./SessionLaunchOverlay.js";
@@ -885,48 +884,6 @@ export function Playground() {
           </div>
         </Section>
 
-        {/* ─── Update Banner ──────────────────────────────── */}
-        <Section title="Update Banner" description="Notification banner for available updates">
-          <div className="space-y-4 max-w-3xl">
-            <Card label="Service mode (auto-update)">
-              <PlaygroundUpdateBanner
-                updateInfo={{
-                  currentVersion: "0.22.1",
-                  latestVersion: "0.23.0",
-                  updateAvailable: true,
-                  isServiceMode: true,
-                  updateInProgress: false,
-                  lastChecked: Date.now(),
-                }}
-              />
-            </Card>
-            <Card label="Foreground mode (manual)">
-              <PlaygroundUpdateBanner
-                updateInfo={{
-                  currentVersion: "0.22.1",
-                  latestVersion: "0.23.0",
-                  updateAvailable: true,
-                  isServiceMode: false,
-                  updateInProgress: false,
-                  lastChecked: Date.now(),
-                }}
-              />
-            </Card>
-            <Card label="Update in progress">
-              <PlaygroundUpdateBanner
-                updateInfo={{
-                  currentVersion: "0.22.1",
-                  latestVersion: "0.23.0",
-                  updateAvailable: true,
-                  isServiceMode: true,
-                  updateInProgress: true,
-                  lastChecked: Date.now(),
-                }}
-              />
-            </Card>
-          </div>
-        </Section>
-
         {/* ─── Status Indicators ──────────────────────────────── */}
         <Section title="Status Indicators" description="Connection and session status banners">
           <div className="space-y-3 max-w-3xl">
@@ -1527,28 +1484,6 @@ function CodexPlaygroundDemo() {
       <CodexTokenDetailsSection sessionId={CODEX_DEMO_SESSION} />
     </div>
   );
-}
-
-// ─── Inline UpdateBanner (sets store state for playground preview) ───────────
-
-function PlaygroundUpdateBanner({ updateInfo }: { updateInfo: UpdateInfo }) {
-  useEffect(() => {
-    const prev = useStore.getState().updateInfo;
-    const prevDismissed = useStore.getState().updateDismissedVersion;
-    useStore.getState().setUpdateInfo(updateInfo);
-    // Clear any dismiss so the banner shows
-    if (prevDismissed) {
-      useStore.setState({ updateDismissedVersion: null });
-    }
-    return () => {
-      useStore.getState().setUpdateInfo(prev);
-      if (prevDismissed) {
-        useStore.setState({ updateDismissedVersion: prevDismissed });
-      }
-    };
-  }, [updateInfo]);
-
-  return <UpdateBanner />;
 }
 
 // ─── Inline ClaudeMd Button (opens the real editor modal) ───────────────────

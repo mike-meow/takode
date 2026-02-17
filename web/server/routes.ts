@@ -22,16 +22,8 @@ import { hasContainerClaudeAuth } from "./claude-container-auth.js";
 import { hasContainerCodexAuth } from "./codex-container-auth.js";
 import { DEFAULT_OPENROUTER_MODEL, getSettings, updateSettings } from "./settings-manager.js";
 import { getUsageLimits } from "./usage-limits.js";
-import {
-  getUpdateState,
-  checkForUpdate,
-  isUpdateAvailable,
-  setUpdateInProgress,
-} from "./update-checker.js";
-import { refreshServiceDefinition } from "./service.js";
 import type { AssistantManager } from "./assistant-manager.js";
 
-const UPDATE_CHECK_STALE_MS = 5 * 60 * 1000;
 const ROUTES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = dirname(ROUTES_DIR);
 
@@ -1449,131 +1441,6 @@ export function createRoutes(
     // Claude sessions: use existing logic
     const limits = await getUsageLimits();
     return c.json(limits);
-  });
-
-  // ─── Update checking ─────────────────────────────────────────────────
-
-  api.get("/update-check", async (c) => {
-    const initialState = getUpdateState();
-    const needsRefresh =
-      initialState.lastChecked === 0
-      || Date.now() - initialState.lastChecked > UPDATE_CHECK_STALE_MS;
-    if (needsRefresh) {
-      await checkForUpdate();
-    }
-
-    const state = getUpdateState();
-    return c.json({
-      currentVersion: state.currentVersion,
-      latestVersion: state.latestVersion,
-      updateAvailable: isUpdateAvailable(),
-      isServiceMode: state.isServiceMode,
-      updateInProgress: state.updateInProgress,
-      lastChecked: state.lastChecked,
-    });
-  });
-
-  api.post("/update-check", async (c) => {
-    await checkForUpdate();
-    const state = getUpdateState();
-    return c.json({
-      currentVersion: state.currentVersion,
-      latestVersion: state.latestVersion,
-      updateAvailable: isUpdateAvailable(),
-      isServiceMode: state.isServiceMode,
-      updateInProgress: state.updateInProgress,
-      lastChecked: state.lastChecked,
-    });
-  });
-
-  api.post("/update", async (c) => {
-    const state = getUpdateState();
-    if (!state.isServiceMode) {
-      return c.json(
-        { error: "Update & restart is only available in service mode" },
-        400,
-      );
-    }
-    if (!isUpdateAvailable()) {
-      return c.json({ error: "No update available" }, 400);
-    }
-    if (state.updateInProgress) {
-      return c.json({ error: "Update already in progress" }, 409);
-    }
-
-    setUpdateInProgress(true);
-
-    // Respond immediately, then perform update async
-    setTimeout(async () => {
-      try {
-        console.log(
-          `[update] Updating the-companion to ${state.latestVersion}...`,
-        );
-        const proc = Bun.spawn(
-          ["bun", "install", "-g", `the-companion@${state.latestVersion}`],
-          { stdout: "pipe", stderr: "pipe" },
-        );
-        const exitCode = await proc.exited;
-        if (exitCode !== 0) {
-          const stderr = await new Response(proc.stderr).text();
-          console.error(
-            `[update] bun install failed (code ${exitCode}):`,
-            stderr,
-          );
-          setUpdateInProgress(false);
-          return;
-        }
-
-        // Refresh the service definition so the new unit/plist template
-        // (e.g. Restart=always) takes effect for existing installations.
-        try {
-          refreshServiceDefinition();
-          console.log("[update] Service definition refreshed.");
-        } catch (err) {
-          console.warn("[update] Failed to refresh service definition:", err);
-        }
-
-        console.log(
-          "[update] Update successful, restarting service...",
-        );
-
-        // Explicitly restart via the service manager in a detached process
-        // so the restart survives our own exit.
-        const isLinux = process.platform === "linux";
-        const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
-        const restartCmd = isLinux
-          ? ["systemctl", "--user", "restart", "the-companion.service"]
-          : uid !== undefined
-            ? ["launchctl", "kickstart", "-k", `gui/${uid}/sh.thecompanion.app`]
-            : ["launchctl", "kickstart", "-k", "sh.thecompanion.app"];
-
-        Bun.spawn(restartCmd, {
-          stdout: "ignore",
-          stderr: "ignore",
-          stdin: "ignore",
-          env: isLinux
-            ? {
-                ...process.env,
-                XDG_RUNTIME_DIR:
-                  process.env.XDG_RUNTIME_DIR ||
-                  `/run/user/${uid ?? 1000}`,
-              }
-            : undefined,
-        });
-
-        // Give the spawn a moment to dispatch, then exit cleanly.
-        // The service manager restart will kill us if we haven't exited yet.
-        setTimeout(() => process.exit(0), 500);
-      } catch (err) {
-        console.error("[update] Update failed:", err);
-        setUpdateInProgress(false);
-      }
-    }, 100);
-
-    return c.json({
-      ok: true,
-      message: "Update started. Server will restart shortly.",
-    });
   });
 
   // ─── Terminal ──────────────────────────────────────────────────────
