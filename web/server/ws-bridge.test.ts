@@ -2934,7 +2934,7 @@ describe("MCP control messages", () => {
 // ─── compact_boundary handling ──────────────────────────────────────────────
 
 describe("compact_boundary handling", () => {
-  it("replaces messageHistory with compact_marker when compact_boundary is received", () => {
+  it("appends compact_marker to messageHistory (preserving old messages) when compact_boundary is received", () => {
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -2951,7 +2951,8 @@ describe("compact_boundary handling", () => {
 
     // Verify history has the assistant message
     const sessionBefore = bridge.getOrCreateSession("s1");
-    expect(sessionBefore.messageHistory.length).toBeGreaterThan(0);
+    const historyLenBefore = sessionBefore.messageHistory.length;
+    expect(historyLenBefore).toBeGreaterThan(0);
 
     // Send compact_boundary with metadata
     bridge.handleCLIMessage(cli, JSON.stringify({
@@ -2962,14 +2963,64 @@ describe("compact_boundary handling", () => {
       session_id: "cli-123",
     }));
 
-    // History should be replaced with a single compact_marker containing metadata
+    // History should have old messages PLUS the new compact_marker appended
     const sessionAfter = bridge.getOrCreateSession("s1");
-    expect(sessionAfter.messageHistory.length).toBe(1);
-    expect(sessionAfter.messageHistory[0].type).toBe("compact_marker");
-    const marker = sessionAfter.messageHistory[0] as any;
+    expect(sessionAfter.messageHistory.length).toBe(historyLenBefore + 1);
+    const lastEntry = sessionAfter.messageHistory[sessionAfter.messageHistory.length - 1];
+    expect(lastEntry.type).toBe("compact_marker");
+    const marker = lastEntry as any;
     expect(marker.trigger).toBe("manual");
     expect(marker.preTokens).toBe(50000);
     expect(marker.id).toMatch(/^compact-boundary-/);
+  });
+
+  it("supports multiple compactions creating multiple compact_markers in history", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Send an assistant message
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-a", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "first response" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "ua",
+      session_id: "cli-123",
+    }));
+
+    // First compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 30000 },
+      uuid: "uc1",
+      session_id: "cli-123",
+    }));
+
+    // Another assistant message after compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-b", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "second response" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "ub",
+      session_id: "cli-123",
+    }));
+
+    // Second compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+      uuid: "uc2",
+      session_id: "cli-123",
+    }));
+
+    // History should contain: [assistant(first), compact_marker(1), assistant(second), compact_marker(2)]
+    const session = bridge.getOrCreateSession("s1");
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers.length).toBe(2);
+    expect((markers[0] as any).preTokens).toBe(30000);
+    expect((markers[1] as any).preTokens).toBe(60000);
   });
 
   it("broadcasts compact_boundary event with metadata to browsers", () => {
@@ -3101,6 +3152,65 @@ describe("compact_boundary handling", () => {
 
     // awaitingCompactSummary should be cleared
     expect(session.awaitingCompactSummary).toBe(false);
+  });
+
+  it("attaches summary to the LAST compact_marker when multiple compactions occurred (findLast)", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // First compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 30000 },
+      uuid: "uf1",
+      session_id: "cli-123",
+    }));
+
+    // Provide summary for first compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "First compaction summary" },
+      parent_tool_use_id: null,
+      uuid: "uf2",
+      session_id: "cli-123",
+    }));
+
+    // Some more messages between compactions
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: { id: "msg-mid", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "middle" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+      parent_tool_use_id: null,
+      uuid: "uf3",
+      session_id: "cli-123",
+    }));
+
+    // Second compaction
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+      uuid: "uf4",
+      session_id: "cli-123",
+    }));
+
+    // Provide summary for second compaction — should attach to the LAST marker
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "Second compaction summary" },
+      parent_tool_use_id: null,
+      uuid: "uf5",
+      session_id: "cli-123",
+    }));
+
+    const session = bridge.getOrCreateSession("s1");
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers.length).toBe(2);
+    // First marker should have its own summary
+    expect((markers[0] as any).summary).toBe("First compaction summary");
+    // Second marker should have the second summary (findLast ensures this)
+    expect((markers[1] as any).summary).toBe("Second compaction summary");
   });
 
   it("processes normal tool_result user messages after summary is captured", () => {

@@ -799,6 +799,36 @@ describe("handleMessage: message_history", () => {
     expect(useStore.getState().messages.get("s1")).toHaveLength(2);
   });
 
+  it("replaces (not merges) existing messages when message_history arrives", () => {
+    // This tests the fix for cross-session message contamination where the old
+    // merge logic would keep stale messages from a previous session in the store.
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    // First history load
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "user-1", content: "old message", timestamp: 1000 },
+      ],
+    });
+    expect(useStore.getState().messages.get("s1")).toHaveLength(1);
+    expect(useStore.getState().messages.get("s1")![0].content).toBe("old message");
+
+    // Second history load with different messages — should REPLACE, not merge
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "user-2", content: "new message", timestamp: 2000 },
+      ],
+    });
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe("new message");
+    // Old message should NOT be present
+    expect(msgs.find((m) => m.content === "old message")).toBeUndefined();
+  });
+
   it("preserves original timestamps from history instead of using Date.now()", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
@@ -1394,6 +1424,52 @@ describe("handleMessage: message_history with compact_marker", () => {
     // Second should be the user message
     expect(msgs[1].role).toBe("user");
     expect(msgs[1].content).toBe("new message after compact");
+  });
+
+  it("preserves old messages before compact_marker in history (flat history)", () => {
+    // After compaction, server sends full history: old messages + compact_marker + new messages.
+    // Browser should render all of them, with the compact marker acting as a visual divider.
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "old-1", content: "old question", timestamp: 1000 },
+        {
+          type: "assistant",
+          message: {
+            id: "old-2",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [{ type: "text", text: "old answer" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 2000,
+        },
+        {
+          type: "compact_marker",
+          timestamp: 3000,
+          id: "compact-boundary-3000",
+          summary: "Summary of old conversation",
+          trigger: "manual",
+          preTokens: 50000,
+        },
+        { type: "user_message", id: "new-1", content: "new question", timestamp: 4000 },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    // All 4 items should be present: old user, old assistant, compact marker, new user
+    expect(msgs.length).toBe(4);
+    expect(msgs[0].content).toBe("old question");
+    expect(msgs[1].role).toBe("assistant");
+    expect(msgs[2].role).toBe("system");
+    expect(msgs[2].content).toBe("Summary of old conversation");
+    expect(msgs[3].content).toBe("new question");
   });
 
   it("renders compact_marker without summary as default text", () => {

@@ -161,7 +161,7 @@ export interface CLIUserMessage {
   type: "user";
   message: {
     role: "user";
-    content: ContentBlock[];
+    content: ContentBlock[] | string;
   };
   parent_tool_use_id: string | null;
   tool_use_result?: Record<string, unknown>;

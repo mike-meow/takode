@@ -123,6 +123,14 @@ Each entry captures:
 
 **Code**: `web/server/recorder.ts` (recorder + manager), `web/server/replay.ts` (load & filter utilities).
 
+## Key Architectural Principles
+(please keep these updated as you work on the codebase)
+
+- **Server history is authoritative.** The browser `message_history` handler must always replace local state with what the server sends — never merge/dedup. Merging causes cross-session message contamination because stale messages from a previous session are never removed. The server's `session.messageHistory` is the single source of truth.
+- **`messageHistory` is browser-only.** The server's `session.messageHistory` array is only used for replaying history to browsers on (re)connect. It is never sent to the CLI. Compaction only affects the CLI's internal context — changes to `messageHistory` (like appending compact markers) don't interfere with Claude Code's session.
+- **CLI protocol types can diverge from TypeScript definitions.** The CLI sometimes sends fields in unexpected formats (e.g. compaction summary as a plain `string` instead of `ContentBlock[]`). Always handle both forms defensively and update the types in `session-types.ts` to match observed behavior. Protocol recordings in `~/.companion/recordings/` are the ground truth.
+- **Use `process.execPath` in tests**, not `"bun"`. Bun may not be on the default PATH (e.g. installed in `~/.bun/bin`). `process.execPath` resolves to whatever runtime is executing the tests.
+
 ## Browser Exploration
 
 Always use `agent-browser` CLI command to explore the browser. Never use playwright or other browser automation libraries.

@@ -587,24 +587,12 @@ function handleParsedMessage(
           }
         }
       }
-      if (chatMessages.length > 0) {
-        const existing = store.messages.get(sessionId) || [];
-        if (existing.length === 0) {
-          // Initial connect: history is the full truth
-          store.setMessages(sessionId, chatMessages);
-        } else {
-          // Reconnect: merge history with live messages, dedup by ID
-          const existingIds = new Set(existing.map((m) => m.id));
-          const newFromHistory = chatMessages.filter((m) => !existingIds.has(m.id));
-          if (newFromHistory.length > 0) {
-            // Merge and sort by timestamp to maintain chronological order
-            const merged = [...newFromHistory, ...existing].sort(
-              (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0),
-            );
-            store.setMessages(sessionId, merged);
-          }
-        }
-      }
+      // Server history is authoritative — always replace browser state.
+      // This prevents cross-session message contamination that occurred
+      // when the old merge logic kept stale messages from a previous session.
+      store.setMessages(sessionId, chatMessages);
+      processedToolUseIds.delete(sessionId);
+      taskCounters.delete(sessionId);
       // Extract last user message as sidebar preview
       for (let i = data.messages.length - 1; i >= 0; i--) {
         const m = data.messages[i];

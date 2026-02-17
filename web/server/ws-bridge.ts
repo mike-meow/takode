@@ -772,8 +772,8 @@ export class WsBridge {
           }
           if (summaryText) {
             session.awaitingCompactSummary = false;
-            // Update the compact marker in history with the summary
-            const marker = session.messageHistory.find((m) => m.type === "compact_marker");
+            // Update the most recent compact marker in history with the summary
+            const marker = session.messageHistory.findLast((m) => m.type === "compact_marker");
             if (marker && marker.type === "compact_marker") {
               (marker as { summary?: string }).summary = summaryText;
             }
@@ -839,17 +839,19 @@ export class WsBridge {
         status: msg.status ?? null,
       });
     } else if (msg.subtype === "compact_boundary") {
-      // CLI has compacted its context — replace server-side history with a compact marker.
-      // The next CLI "user" message with a text block will contain the compaction summary.
+      // CLI has compacted its context — append a compact marker as a divider.
+      // Old messages are preserved for browser display; the marker visually separates
+      // pre- and post-compaction segments. The next CLI "user" message with a text
+      // block will contain the compaction summary.
       const ts = Date.now();
       const meta = (msg as CLISystemCompactBoundaryMessage).compact_metadata;
-      session.messageHistory = [{
+      session.messageHistory.push({
         type: "compact_marker" as const,
         timestamp: ts,
         id: `compact-boundary-${ts}`,
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
-      }];
+      });
       session.awaitingCompactSummary = true;
       this.broadcastToBrowsers(session, {
         type: "compact_boundary",

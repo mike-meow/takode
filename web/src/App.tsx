@@ -126,7 +126,7 @@ export default function App() {
               {/* Chat tab — visible when activeTab is "chat" or no session */}
               <div className={`absolute inset-0 ${activeTab === "chat" || !currentSessionId ? "" : "hidden"}`}>
                 {currentSessionId ? (
-                  <ChatView sessionId={currentSessionId} />
+                  <ChatView key={currentSessionId} sessionId={currentSessionId} />
                 ) : (
                   <HomePage key={homeResetKey} />
                 )}
