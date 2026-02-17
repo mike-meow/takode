@@ -2,12 +2,12 @@
  * SessionStatusDot — a small colored indicator showing the current state of a session.
  *
  * Status priority (highest to lowest):
- *   1. archived       -> gray dot, no pulse
- *   2. permission      -> amber dot, pulsing (needs user action)
- *   3. disconnected    -> red dot, no pulse (CLI exited or WS disconnected)
- *   4. running         -> green dot, pulsing (agent actively working)
- *   5. compacting      -> amber dot, pulsing (context compaction)
- *   6. idle            -> dim green dot, no pulse (connected, waiting for input)
+ *   1. archived       -> gray dot, no glow
+ *   2. permission      -> amber dot, breathing glow (needs user action)
+ *   3. disconnected    -> red dot, no glow
+ *   4. running         -> green dot, breathing glow (agent actively working)
+ *   5. compacting      -> amber dot, breathing glow (context compaction)
+ *   6. idle            -> dim green dot, no glow
  */
 
 export type SessionVisualStatus =
@@ -57,8 +57,8 @@ const DOT_COLOR: Record<SessionVisualStatus, string> = {
   idle: "bg-cc-success/60",
 };
 
-/** Maps visual status to whether the dot should pulse */
-const SHOULD_PULSE: Record<SessionVisualStatus, boolean> = {
+/** Maps visual status to whether the dot should have a breathing glow */
+const SHOULD_GLOW: Record<SessionVisualStatus, boolean> = {
   archived: false,
   permission: true,
   disconnected: false,
@@ -67,13 +67,16 @@ const SHOULD_PULSE: Record<SessionVisualStatus, boolean> = {
   idle: false,
 };
 
-/** Maps visual status to the pulse ring color class */
-const PULSE_COLOR: Record<SessionVisualStatus, string> = {
+/**
+ * Maps visual status to the RGB triplet for --glow-color.
+ * Only entries where SHOULD_GLOW is true need a value.
+ */
+const GLOW_RGB: Record<SessionVisualStatus, string> = {
   archived: "",
-  permission: "bg-cc-warning/40",
+  permission: "245, 158, 11",   // amber
   disconnected: "",
-  running: "bg-cc-success/40",
-  compacting: "bg-cc-warning/40",
+  running: "34, 197, 94",       // green
+  compacting: "245, 158, 11",   // amber
   idle: "",
 };
 
@@ -90,9 +93,16 @@ const STATUS_LABEL: Record<SessionVisualStatus, string> = {
 export function SessionStatusDot(props: SessionStatusDotProps) {
   const visualStatus = deriveSessionStatus(props);
   const dotColor = DOT_COLOR[visualStatus];
-  const showPulse = SHOULD_PULSE[visualStatus];
-  const pulseColor = PULSE_COLOR[visualStatus];
+  const showGlow = SHOULD_GLOW[visualStatus];
+  const glowRgb = GLOW_RGB[visualStatus];
   const label = STATUS_LABEL[visualStatus];
+
+  const glowStyle: React.CSSProperties | undefined = showGlow
+    ? {
+        ["--glow-color" as string]: glowRgb,
+        animation: "glow-breathe 2s ease-in-out infinite",
+      }
+    : undefined;
 
   return (
     <div className="relative shrink-0 mt-[7px]" title={label} aria-label={label}>
@@ -100,13 +110,8 @@ export function SessionStatusDot(props: SessionStatusDotProps) {
         className={`block w-2 h-2 rounded-full ${dotColor}`}
         data-testid="session-status-dot"
         data-status={visualStatus}
+        style={glowStyle}
       />
-      {showPulse && (
-        <span
-          className={`absolute inset-0 w-2 h-2 rounded-full ${pulseColor} animate-[pulse-ring_1.5s_ease-out_infinite]`}
-          data-testid="session-status-pulse"
-        />
-      )}
     </div>
   );
 }

@@ -8,12 +8,12 @@ import { deriveSessionStatus, SessionStatusDot, type SessionStatusDotProps } fro
  * Tests for the SessionStatusDot component and its deriveSessionStatus helper.
  *
  * The status priority (highest to lowest) is:
- *   1. archived       -> gray dot, no pulse
- *   2. permission      -> amber dot, pulsing
- *   3. disconnected    -> red dot, no pulse
- *   4. running         -> green dot, pulsing
- *   5. compacting      -> amber dot, pulsing
- *   6. idle            -> dim green dot, no pulse
+ *   1. archived       -> gray dot, no glow
+ *   2. permission      -> amber dot, breathing glow
+ *   3. disconnected    -> red dot, no glow
+ *   4. running         -> green dot, breathing glow
+ *   5. compacting      -> amber dot, breathing glow
+ *   6. idle            -> dim green dot, no glow
  */
 
 function makeProps(overrides: Partial<SessionStatusDotProps> = {}): SessionStatusDotProps {
@@ -123,33 +123,54 @@ describe("SessionStatusDot component", () => {
     expect(dot).toHaveAttribute("data-status", "running");
   });
 
-  it("renders pulse element for running status", () => {
+  it("applies breathing glow animation for running status", () => {
+    // Running status should have glow-breathe animation and green --glow-color
     render(<SessionStatusDot {...makeProps({ status: "running" })} />);
-    expect(screen.getByTestId("session-status-pulse")).toBeInTheDocument();
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("34, 197, 94");
   });
 
-  it("renders pulse element for permission status", () => {
+  it("applies breathing glow animation for permission status", () => {
+    // Permission status should have glow-breathe animation and amber --glow-color
     render(<SessionStatusDot {...makeProps({ permCount: 1 })} />);
-    expect(screen.getByTestId("session-status-pulse")).toBeInTheDocument();
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("245, 158, 11");
   });
 
-  it("renders pulse element for compacting status", () => {
+  it("applies breathing glow animation for compacting status", () => {
+    // Compacting status should have glow-breathe animation and amber --glow-color
     render(<SessionStatusDot {...makeProps({ status: "compacting" })} />);
-    expect(screen.getByTestId("session-status-pulse")).toBeInTheDocument();
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("245, 158, 11");
   });
 
-  it("does NOT render pulse for idle status", () => {
+  it("does NOT apply glow animation for idle status", () => {
+    // Idle sessions should have no animation or glow
     render(<SessionStatusDot {...makeProps()} />);
-    expect(screen.queryByTestId("session-status-pulse")).not.toBeInTheDocument();
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("");
   });
 
-  it("does NOT render pulse for archived status", () => {
+  it("does NOT apply glow animation for archived status", () => {
+    // Archived sessions should have no animation or glow
     render(<SessionStatusDot {...makeProps({ archived: true })} />);
-    expect(screen.queryByTestId("session-status-pulse")).not.toBeInTheDocument();
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("");
   });
 
-  it("does NOT render pulse for disconnected status", () => {
+  it("does NOT apply glow animation for disconnected status", () => {
+    // Disconnected sessions should have no animation or glow
     render(<SessionStatusDot {...makeProps({ isConnected: false, sdkState: "exited" })} />);
+    const dot = screen.getByTestId("session-status-dot");
+    expect(dot.style.animation).toBe("");
+  });
+
+  it("does not render a separate pulse ring element", () => {
+    // The old pulse ring overlay span has been removed; glow is now on the dot itself
+    render(<SessionStatusDot {...makeProps({ status: "running" })} />);
     expect(screen.queryByTestId("session-status-pulse")).not.toBeInTheDocument();
   });
 
