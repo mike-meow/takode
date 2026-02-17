@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { Lightbox } from "./Lightbox.js";
 
 export function MessageBubble({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   if (message.role === "system") {
@@ -40,33 +41,51 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
   }
 
   if (message.role === "user") {
-    return (
-      <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-        <div className="max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
-          {message.images && message.images.length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-2">
-              {message.images.map((img, i) => (
-                <img
-                  key={i}
-                  src={`data:${img.media_type};base64,${img.data}`}
-                  alt="attachment"
-                  className="max-w-[150px] sm:max-w-[200px] max-h-[120px] sm:max-h-[150px] rounded-lg object-cover"
-                />
-              ))}
-            </div>
-          )}
-          <pre className="text-[13px] sm:text-[14px] whitespace-pre-wrap break-words font-sans-ui leading-relaxed">
-            {message.content}
-          </pre>
-        </div>
-      </div>
-    );
+    return <UserMessage message={message} />;
   }
 
   // Assistant message
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
       <AssistantMessage message={message} sessionId={sessionId} />
+    </div>
+  );
+}
+
+function UserMessage({ message }: { message: ChatMessage }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  return (
+    <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
+        {message.images && message.images.length > 0 && (
+          <div className="flex gap-2 flex-wrap mb-2">
+            {message.images.map((img, i) => {
+              const src = `data:${img.media_type};base64,${img.data}`;
+              return (
+                <img
+                  key={i}
+                  src={src}
+                  alt="attachment"
+                  className="max-w-[150px] sm:max-w-[200px] max-h-[120px] sm:max-h-[150px] rounded-lg object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
+                  onClick={() => setLightboxSrc(src)}
+                  data-testid="image-thumbnail"
+                />
+              );
+            })}
+          </div>
+        )}
+        <pre className="text-[13px] sm:text-[14px] whitespace-pre-wrap break-words font-sans-ui leading-relaxed">
+          {message.content}
+        </pre>
+      </div>
+      {lightboxSrc && (
+        <Lightbox
+          src={lightboxSrc}
+          alt="attachment"
+          onClose={() => setLightboxSrc(null)}
+        />
+      )}
     </div>
   );
 }

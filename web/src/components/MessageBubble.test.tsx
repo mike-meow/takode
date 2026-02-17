@@ -135,6 +135,59 @@ describe("MessageBubble - user messages", () => {
     const images = container.querySelectorAll("img");
     expect(images.length).toBe(0);
   });
+
+  it("opens lightbox when clicking an image thumbnail", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Check this",
+      images: [{ media_type: "image/png", data: "abc123base64" }],
+    });
+    render(<MessageBubble message={msg} />);
+
+    // Click the thumbnail image
+    const thumbnail = screen.getByTestId("image-thumbnail");
+    fireEvent.click(thumbnail);
+
+    // The lightbox should now be open with the full-size image
+    const lightboxImage = screen.getByTestId("lightbox-image");
+    expect(lightboxImage).toBeTruthy();
+    expect(lightboxImage.getAttribute("src")).toBe("data:image/png;base64,abc123base64");
+  });
+
+  it("closes lightbox when clicking the backdrop", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Check this",
+      images: [{ media_type: "image/png", data: "abc123base64" }],
+    });
+    render(<MessageBubble message={msg} />);
+
+    // Open the lightbox
+    const thumbnail = screen.getByTestId("image-thumbnail");
+    fireEvent.click(thumbnail);
+    expect(screen.getByTestId("lightbox-backdrop")).toBeTruthy();
+
+    // Close by clicking backdrop
+    fireEvent.click(screen.getByTestId("lightbox-backdrop"));
+    expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
+  });
+
+  it("closes lightbox when pressing Escape", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Check this",
+      images: [{ media_type: "image/png", data: "abc123base64" }],
+    });
+    render(<MessageBubble message={msg} />);
+
+    // Open the lightbox
+    fireEvent.click(screen.getByTestId("image-thumbnail"));
+    expect(screen.getByTestId("lightbox-backdrop")).toBeTruthy();
+
+    // Close with Escape
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
+  });
 });
 
 // ─── Assistant messages ──────────────────────────────────────────────────────

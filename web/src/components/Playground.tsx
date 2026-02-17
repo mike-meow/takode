@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { PermissionBanner } from "./PermissionBanner.js";
 import { MessageBubble } from "./MessageBubble.js";
+import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { useStore } from "../store.js";
@@ -714,6 +715,18 @@ export function Playground() {
             </Card>
             <Card label="Error — generic">
               <MessageBubble message={MSG_ERROR_GENERIC} />
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Image Lightbox ──────────────────────────────── */}
+        <Section title="Image Lightbox" description="Click any image thumbnail to open a full-size lightbox overlay (Escape or click backdrop to close)">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="User message with clickable image">
+              <MessageBubble message={MSG_USER_IMAGE} />
+            </Card>
+            <Card label="Standalone lightbox trigger">
+              <PlaygroundLightboxDemo />
             </Card>
           </div>
         </Section>
@@ -1584,6 +1597,44 @@ function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Inline Lightbox Demo ───────────────────────────────────────────────────
+
+function PlaygroundLightboxDemo() {
+  const [open, setOpen] = useState(false);
+  // A small gradient placeholder image — enough to demonstrate the lightbox
+  const demoSrc =
+    "data:image/svg+xml;base64," +
+    btoa(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">' +
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#ec4899"/>' +
+        "</linearGradient></defs>" +
+        '<rect width="800" height="600" fill="url(#g)"/>' +
+        '<text x="400" y="300" text-anchor="middle" fill="white" font-size="32" font-family="sans-serif">Full-size preview</text>' +
+        "</svg>",
+    );
+
+  return (
+    <div>
+      <p className="text-xs text-cc-muted mb-2">Click the image below to open the lightbox:</p>
+      <img
+        src={demoSrc}
+        alt="Lightbox demo"
+        className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-zoom-in hover:opacity-80 transition-opacity border border-cc-border"
+        onClick={() => setOpen(true)}
+        data-testid="playground-lightbox-trigger"
+      />
+      {open && (
+        <Lightbox
+          src={demoSrc}
+          alt="Lightbox demo"
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   );
