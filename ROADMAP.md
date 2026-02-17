@@ -17,16 +17,15 @@ _Nothing currently in progress._
 
 ## Planned
 
-- [ ] **Show permission denial in chat stream** — When the user denies a permission request, there is no visual record in the chat stream. The permission banner just disappears with no trace. Add a rejection event to the message history (similar to how the Claude Code CLI shows it) so the user can see what was denied and when.
 - [ ] **Fix "CLI disconnected" banner on new session startup** — New sessions briefly show a "CLI disconnected" banner with a "Reconnect" button while the CLI process is still starting up. The browser WebSocket connects before the CLI has connected back. Should show a "Starting session..." loading state instead.
 - [ ] **Fix restoring archived worktree sessions** — Restoring an archived worktree session reuses whatever worktree path was in the session metadata without checking if it still exists or is claimed by another session. This causes the restored session to share a worktree with an active session. Should either create a fresh worktree or warn the user.
 - [ ] **Session branching (fork at earlier conversation point)** — Investigate adding the ability to branch/fork a session at an earlier point in the conversation, creating a new session that starts from that point. Both the Claude Code CLI and the VS Code extension already support this. This is a foundational capability that other features (like plan-approval-with-compaction) could build on top of.
 - [ ] **Diff view: show total additions/deletions** — The diff view currently lists changed files but doesn't show aggregate stats. Add a summary line with total additions and deletions (e.g. "+120 -45") similar to the GitHub PR UI, both per-file and as a total across all changed files.
-- [ ] **Collapsible question panel** — The `AskUserQuestion` panel takes up too much vertical space, blocking the conversation stream. Add a collapse button that minimizes it back into the in-chat question chip (the same view shown after a question is answered, but in an unanswered state). Clicking the chip expands the full panel again. Ideally, the in-chat chip itself should also be interactable — users could answer directly from it without expanding, for simple single-choice questions.
 
 ## To Verify
 
 - [ ] **Pause generation timer during user waits** — Timer should pause (showing "Waiting..." with amber dot) when a permission request, plan approval, or question appears, and resume (back to "Generating..." with pulsing dot) after the user responds. Verify with a session that triggers a permission prompt: the elapsed time should freeze while waiting. Test with multiple simultaneous permission requests — timer should stay paused until all are resolved.
+- [ ] **Show permission denial in chat stream** — When you deny a permission request, a compact "Denied: ToolName — details" chip should appear inline in the chat stream with a red circle-slash icon. Verify by denying a Bash or Edit permission and checking the chat. Also verify it persists after page reload (it's stored in server history). Test with both Claude Code and Codex sessions if possible.
 
 ## Ideas
 

@@ -309,6 +309,22 @@ const MSG_ERROR_GENERIC: ChatMessage = {
   variant: "error",
 };
 
+const MSG_DENIED_BASH: ChatMessage = {
+  id: "denial-bash-1",
+  role: "system",
+  content: "Denied: Bash \u2014 rm -rf /tmp/important-data",
+  timestamp: Date.now() - 18000,
+  variant: "denied",
+};
+
+const MSG_DENIED_EDIT: ChatMessage = {
+  id: "denial-edit-1",
+  role: "system",
+  content: "Denied: Edit \u2014 /Users/stan/Dev/project/src/config.ts",
+  timestamp: Date.now() - 17000,
+  variant: "denied",
+};
+
 // Tool result with error
 const MSG_TOOL_ERROR: ChatMessage = {
   id: "msg-7",
@@ -669,7 +685,7 @@ export function Playground() {
         </Section>
 
         {/* ─── AskUserQuestion ──────────────────────────────── */}
-        <Section title="AskUserQuestion" description="Interactive questions with selectable options">
+        <Section title="AskUserQuestion" description="Interactive questions with selectable options. Click the minimize (—) button to collapse into a compact chip, then click the chip to expand again.">
           <div className="space-y-4">
             <Card label="Single question">
               <PermissionBanner permission={PERM_ASK_SINGLE} sessionId={MOCK_SESSION_ID} />
@@ -715,6 +731,12 @@ export function Playground() {
             </Card>
             <Card label="Error — generic">
               <MessageBubble message={MSG_ERROR_GENERIC} />
+            </Card>
+            <Card label="Denied — Bash command">
+              <MessageBubble message={MSG_DENIED_BASH} />
+            </Card>
+            <Card label="Denied — Edit file">
+              <MessageBubble message={MSG_DENIED_EDIT} />
             </Card>
           </div>
         </Section>

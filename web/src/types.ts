@@ -24,8 +24,8 @@ export interface ChatMessage {
   isStreaming?: boolean;
   model?: string;
   stopReason?: string | null;
-  /** For system messages: "error" renders prominently, default renders as subtle divider */
-  variant?: "error" | "info";
+  /** For system messages: "error" renders prominently, "denied" shows a compact denial chip, default renders as subtle divider */
+  variant?: "error" | "info" | "denied";
 }
 
 export interface TaskItem {

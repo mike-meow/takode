@@ -32,6 +32,20 @@ import type { SessionStore } from "./session-store.js";
 import type { CodexAdapter } from "./codex-adapter.js";
 import type { RecorderManager } from "./recorder.js";
 
+// ─── Denial summary helper ───────────────────────────────────────────────────
+
+/** Build a concise human-readable summary for a denied permission. */
+function getDenialSummary(toolName: string, input: Record<string, unknown>): string {
+  if (toolName === "Bash" && typeof input.command === "string") {
+    const cmd = input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
+    return `Denied: Bash \u2014 ${cmd}`;
+  }
+  if (typeof input.file_path === "string") {
+    return `Denied: ${toolName} \u2014 ${input.file_path}`;
+  }
+  return `Denied: ${toolName}`;
+}
+
 // ─── WebSocket data tags ──────────────────────────────────────────────────────
 
 interface CLISocketData {
@@ -1131,7 +1145,21 @@ export class WsBridge {
         this.persistSession(session);
       }
       if (msg.type === "permission_response") {
+        const pending = session.pendingPermissions.get(msg.request_id);
         session.pendingPermissions.delete(msg.request_id);
+        // Record denial in history for Codex sessions too
+        if (msg.behavior === "deny" && pending) {
+          const deniedMsg: BrowserIncomingMessage = {
+            type: "permission_denied",
+            id: `denial-${msg.request_id}`,
+            tool_name: pending.tool_name,
+            tool_use_id: pending.tool_use_id,
+            summary: getDenialSummary(pending.tool_name, pending.input),
+            timestamp: Date.now(),
+          };
+          session.messageHistory.push(deniedMsg);
+          this.broadcastToBrowsers(session, deniedMsg);
+        }
         this.persistSession(session);
       }
 
@@ -1385,6 +1413,18 @@ export class WsBridge {
         },
       });
       this.sendToCLI(session, ndjson);
+
+      // Broadcast denial record to all browsers and persist in history
+      const deniedMsg: BrowserIncomingMessage = {
+        type: "permission_denied",
+        id: `denial-${msg.request_id}`,
+        tool_name: pending?.tool_name || "unknown",
+        tool_use_id: pending?.tool_use_id || "",
+        summary: getDenialSummary(pending?.tool_name || "unknown", pending?.input || {}),
+        timestamp: Date.now(),
+      };
+      session.messageHistory.push(deniedMsg);
+      this.broadcastToBrowsers(session, deniedMsg);
     }
     this.persistSession(session);
   }
@@ -1533,7 +1573,8 @@ export class WsBridge {
       || msg.type === "result"
       || msg.type === "user_message"
       || msg.type === "error"
-      || msg.type === "tool_result_preview";
+      || msg.type === "tool_result_preview"
+      || msg.type === "permission_denied";
   }
 
   private sequenceEvent(
