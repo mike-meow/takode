@@ -423,6 +423,139 @@ describe("AskUserQuestionDisplay", () => {
   });
 });
 
+// ─── Collapse / Expand behavior ─────────────────────────────────────────────
+
+describe("Collapse and expand behavior", () => {
+  it("clicking minimize on AskUser banner hides full panel and shows collapsed chip", () => {
+    const perm = makePermission({
+      tool_name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            header: "Pick one",
+            question: "Which color?",
+            options: [
+              { label: "Red", description: "A warm color" },
+              { label: "Blue", description: "A cool color" },
+            ],
+          },
+        ],
+      },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Full panel is visible
+    expect(screen.getByText("Question")).toBeTruthy();
+    expect(screen.getByText("Which color?")).toBeTruthy();
+
+    // Click the minimize button
+    fireEvent.click(screen.getByTitle("Minimize question"));
+
+    // Full panel should be gone — "Question" label disappears
+    expect(screen.queryByText("Question")).toBeNull();
+    // Collapsed chip shows the question preview
+    expect(screen.getByTitle("Expand question")).toBeTruthy();
+  });
+
+  it("collapsed chip shows the first question's preview text", () => {
+    const perm = makePermission({
+      tool_name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            header: "Step 1",
+            question: "What language do you prefer?",
+            options: [{ label: "TypeScript" }, { label: "Python" }],
+          },
+        ],
+      },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Minimize
+    fireEvent.click(screen.getByTitle("Minimize question"));
+
+    // Preview text from the first question is visible in the chip
+    expect(screen.getByText("What language do you prefer?")).toBeTruthy();
+  });
+
+  it("clicking the collapsed chip re-expands to the full panel", () => {
+    const perm = makePermission({
+      tool_name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            header: "Config",
+            question: "Enable strict mode?",
+            options: [{ label: "Yes" }, { label: "No" }],
+          },
+        ],
+      },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Minimize first
+    fireEvent.click(screen.getByTitle("Minimize question"));
+    expect(screen.queryByText("Question")).toBeNull();
+
+    // Click the collapsed chip to expand
+    fireEvent.click(screen.getByTitle("Expand question"));
+
+    // Full panel re-appears
+    expect(screen.getByText("Question")).toBeTruthy();
+    expect(screen.getByText("Enable strict mode?")).toBeTruthy();
+    expect(screen.getByText("Yes")).toBeTruthy();
+    expect(screen.getByText("No")).toBeTruthy();
+  });
+
+  it("minimize button does NOT appear for non-AskUser permissions", () => {
+    // Bash tool permission — should not have a minimize button
+    render(
+      <PermissionBanner
+        permission={makePermission({
+          tool_name: "Bash",
+          input: { command: "npm test" },
+        })}
+        sessionId="s1"
+      />,
+    );
+
+    expect(screen.queryByTitle("Minimize question")).toBeNull();
+  });
+
+  it("shows 'N questions' count badge in collapsed view for multi-question inputs", () => {
+    const perm = makePermission({
+      tool_name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            header: "Q1",
+            question: "First question?",
+            options: [{ label: "A" }],
+          },
+          {
+            header: "Q2",
+            question: "Second question?",
+            options: [{ label: "B" }],
+          },
+          {
+            header: "Q3",
+            question: "Third question?",
+            options: [{ label: "C" }],
+          },
+        ],
+      },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Minimize
+    fireEvent.click(screen.getByTitle("Minimize question"));
+
+    // Count badge should show "3 questions"
+    expect(screen.getByText("3 questions")).toBeTruthy();
+  });
+});
+
 // ─── ExitPlanModeDisplay ─────────────────────────────────────────────────────
 
 describe("ExitPlanModeDisplay", () => {

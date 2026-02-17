@@ -26,6 +26,7 @@ _Nothing currently in progress._
 
 - [ ] **Pause generation timer during user waits** — Timer should pause (showing "Waiting..." with amber dot) when a permission request, plan approval, or question appears, and resume (back to "Generating..." with pulsing dot) after the user responds. Verify with a session that triggers a permission prompt: the elapsed time should freeze while waiting. Test with multiple simultaneous permission requests — timer should stay paused until all are resolved.
 - [ ] **Show permission denial in chat stream** — When you deny a permission request, a compact "Denied: ToolName — details" chip should appear inline in the chat stream with a red circle-slash icon. Verify by denying a Bash or Edit permission and checking the chat. Also verify it persists after page reload (it's stored in server history). Test with both Claude Code and Codex sessions if possible.
+- [ ] **Collapsible question panel** — AskUserQuestion panels now have a minimize button (—) in the header. Click it to collapse into a compact chip showing the question preview. Click the chip to expand back. Verify by triggering a question from an agent, collapsing it, and re-expanding. Check that multi-question panels show a "N questions" count badge when collapsed.
 
 ## Ideas
 

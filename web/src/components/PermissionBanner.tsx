@@ -31,6 +31,7 @@ export function PermissionBanner({
   sessionId: string;
 }) {
   const [loading, setLoading] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
 
   function handleAllow(updatedInput?: Record<string, unknown>, updatedPermissions?: PermissionUpdate[]) {
@@ -58,6 +59,60 @@ export function PermissionBanner({
 
   const isAskUser = permission.tool_name === "AskUserQuestion";
   const suggestions = permission.permission_suggestions;
+
+  // Extract first question info for collapsed preview
+  const questions = isAskUser && Array.isArray(permission.input?.questions)
+    ? (permission.input.questions as Record<string, unknown>[])
+    : [];
+  const firstQuestion = questions[0];
+  const previewHeader = firstQuestion && typeof firstQuestion.header === "string" ? firstQuestion.header : "";
+  const previewText = firstQuestion && typeof firstQuestion.question === "string"
+    ? firstQuestion.question
+    : "Question from assistant";
+
+  // Collapsed AskUser chip — compact single-line view
+  if (isAskUser && collapsed) {
+    return (
+      <div className="px-2 sm:px-4 py-2 border-b border-cc-border animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="max-w-3xl mx-auto">
+          <button
+            onClick={() => setCollapsed(false)}
+            title="Expand question"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-cc-primary/20 bg-cc-primary/5 hover:bg-cc-primary/10 transition-colors cursor-pointer text-left"
+          >
+            {/* Question icon */}
+            <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-primary/10 border border-cc-primary/20">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-cc-primary">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </div>
+
+            {/* Header badge */}
+            {previewHeader && (
+              <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary shrink-0">
+                {previewHeader}
+              </span>
+            )}
+
+            {/* Question preview text */}
+            <span className="text-xs text-cc-fg truncate flex-1">{previewText}</span>
+
+            {/* Question count badge if multiple questions */}
+            {questions.length > 1 && (
+              <span className="text-[10px] text-cc-muted shrink-0">
+                {questions.length} questions
+              </span>
+            )}
+
+            {/* Expand chevron */}
+            <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 5l3 3 3-3" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-2 sm:px-4 py-3 border-b border-cc-border animate-[fadeSlideIn_0.2s_ease-out]">
@@ -88,6 +143,17 @@ export function PermissionBanner({
               </span>
               {!isAskUser && (
                 <span className="text-[11px] text-cc-muted font-mono-code">{permission.tool_name}</span>
+              )}
+              {isAskUser && (
+                <button
+                  onClick={() => setCollapsed(true)}
+                  className="ml-auto p-1 rounded hover:bg-cc-hover transition-colors cursor-pointer text-cc-muted hover:text-cc-fg"
+                  title="Minimize question"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M3 7h8" />
+                  </svg>
+                </button>
               )}
             </div>
 
