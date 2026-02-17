@@ -119,6 +119,12 @@ Each entry captures:
 
 **Code**: `web/server/recorder.ts` (recorder + manager), `web/server/replay.ts` (load & filter utilities).
 
+## Fork Policy: Git Worktree as Primary Workflow
+
+This is a fork of [The-Vibe-Company/companion](https://github.com/The-Vibe-Company/companion). Upstream has switched to Docker container-based session isolation. This fork keeps the container code working but intentionally maintains **git worktree as the primary workflow**. Containers add too much friction for certain applications that need direct access to host resources (files, network services, GPU, etc.).
+
+When syncing with upstream: fast-forward `main` to `upstream/main`, then rebase the `jiayi` branch on top. Do not remove upstream container code — just don't extend it.
+
 ## Browser Exploration
 
 Always use `agent-browser` CLI command to explore the browser. Never use playwright or other browser automation libraries.
