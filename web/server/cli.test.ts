@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 describe("CLI help output", () => {
   it("lists daemon and foreground commands", () => {
     const cliPath = fileURLToPath(new URL("../bin/cli.ts", import.meta.url));
-    const result = spawnSync("bun", [cliPath, "--help"], { encoding: "utf-8" });
+    // Use process.execPath instead of "bun" so the test works even when
+    // bun is not on the default PATH (e.g. installed in ~/.bun/bin).
+    const result = spawnSync(process.execPath, [cliPath, "--help"], { encoding: "utf-8" });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("serve       Start the server in foreground");
