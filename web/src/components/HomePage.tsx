@@ -599,7 +599,7 @@ export function HomePage() {
                     onClick={() => updateMode("agent")}
                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer select-none ${
                       mode === "agent"
-                        ? "bg-cc-card text-cc-fg shadow-sm"
+                        ? "bg-cc-primary/15 text-cc-primary"
                         : "text-cc-muted hover:text-cc-fg"
                     }`}
                     title="Agent mode: Claude executes tools directly (Shift+Tab to toggle)"

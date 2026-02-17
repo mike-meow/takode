@@ -516,7 +516,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       !isConnected
                         ? "opacity-30 cursor-not-allowed text-cc-muted"
                         : !isPlan
-                        ? "bg-cc-card text-cc-fg shadow-sm cursor-pointer"
+                        ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
                         : "text-cc-muted hover:text-cc-fg cursor-pointer"
                     }`}
                     title="Agent mode: Claude executes tools directly (Shift+Tab to toggle)"
