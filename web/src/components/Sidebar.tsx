@@ -593,6 +593,16 @@ export function Sidebar() {
                 handleStartRename(contextMenu.sessionId, name);
               },
             },
+            ...(() => {
+              const cliId = sdkSessions.find((s) => s.sessionId === contextMenu.sessionId)?.cliSessionId;
+              if (!cliId) return [];
+              return [{
+                label: "Copy CLI Session ID",
+                onClick: () => {
+                  navigator.clipboard.writeText(cliId).catch(console.error);
+                },
+              }];
+            })(),
             {
               label: "Archive",
               onClick: () => {
@@ -614,6 +624,7 @@ export function Sidebar() {
             sessionName={sessionNames.get(hoveredSession.sessionId)}
             sessionPreview={sessionPreviews.get(hoveredSession.sessionId)}
             sessionState={sessions.get(hoveredSession.sessionId)}
+            cliSessionId={sdkSessions.find((sdk) => sdk.sessionId === hoveredSession.sessionId)?.cliSessionId}
             anchorRect={hoveredSession.rect}
             onMouseEnter={handleHoverCardEnter}
             onMouseLeave={handleHoverCardLeave}

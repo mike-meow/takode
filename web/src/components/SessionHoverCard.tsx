@@ -8,6 +8,8 @@ interface SessionHoverCardProps {
   sessionName: string | undefined;
   sessionPreview: string | undefined;
   sessionState: SessionState | undefined;
+  /** The CLI's internal session ID, used for `claude --resume` */
+  cliSessionId?: string;
   anchorRect: DOMRect;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -24,6 +26,7 @@ export function SessionHoverCard({
   sessionName,
   sessionPreview,
   sessionState,
+  cliSessionId,
   anchorRect,
   onMouseEnter,
   onMouseLeave,
@@ -200,6 +203,18 @@ export function SessionHoverCard({
                   <span>{Math.round(contextPercent)}% context</span>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* CLI Session ID — for `claude --resume` */}
+        {cliSessionId && (
+          <div className="px-4 py-2 border-t border-cc-border/50">
+            <div className="flex items-center gap-1.5 text-[11px] text-cc-muted">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-50">
+                <path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9zM5.243 5.15a.5.5 0 00-.736.676l2.35 2.56-2.35 2.56a.5.5 0 00.736.676l2.5-2.722a.5.5 0 000-.676l-2.5-2.074zM8.5 11a.5.5 0 000 1h3a.5.5 0 000-1h-3z" />
+              </svg>
+              <span className="font-mono text-[10px] truncate" title={cliSessionId}>{cliSessionId}</span>
             </div>
           </div>
         )}

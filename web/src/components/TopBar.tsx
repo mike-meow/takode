@@ -1,4 +1,4 @@
-import { useState, useMemo, useSyncExternalStore } from "react";
+import { useState, useMemo, useCallback, useSyncExternalStore } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
@@ -27,6 +27,20 @@ export function TopBar() {
   const activeTab = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const [claudeMdOpen, setClaudeMdOpen] = useState(false);
+  const [copiedCliId, setCopiedCliId] = useState(false);
+
+  const cliSessionId = useStore((s) => {
+    if (!currentSessionId) return null;
+    return s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cliSessionId ?? null;
+  });
+
+  const handleCopyCliSessionId = useCallback(() => {
+    if (!cliSessionId) return;
+    navigator.clipboard.writeText(cliSessionId).then(() => {
+      setCopiedCliId(true);
+      setTimeout(() => setCopiedCliId(false), 1500);
+    }).catch(console.error);
+  }, [cliSessionId]);
   const changedFilesCount = useStore((s) => {
     if (!currentSessionId) return 0;
     const cwd =
@@ -89,6 +103,25 @@ export function TopBar() {
                 )}
                 {sessionName}
               </span>
+            )}
+            {/* Copy CLI Session ID button */}
+            {cliSessionId && (
+              <button
+                onClick={handleCopyCliSessionId}
+                className="flex items-center justify-center w-5 h-5 rounded text-cc-muted/50 hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer relative"
+                title={`Copy CLI Session ID: ${cliSessionId}`}
+              >
+                {copiedCliId ? (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 text-cc-success">
+                    <path d="M3 8.5l3.5 3.5 6.5-8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3 h-3">
+                    <rect x="5.5" y="5.5" width="7" height="8" rx="1" />
+                    <path d="M3.5 10.5V3a1 1 0 011-1h5.5" />
+                  </svg>
+                )}
+              </button>
             )}
             {!isConnected && (
               <button

@@ -47,6 +47,8 @@ export interface SdkSessionInfo {
   permissionMode?: string;
   cwd: string;
   createdAt: number;
+  /** The CLI's internal session ID (from system.init), used for `claude --resume` */
+  cliSessionId?: string;
   archived?: boolean;
   containerId?: string;
   containerName?: string;
