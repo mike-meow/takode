@@ -306,9 +306,11 @@ export function createRoutes(
         }
       }
 
+      // Always spawn with bypassPermissions — the frontend is the source of truth
+      // for permission mode and will send set_permission_mode via WebSocket after connecting.
       const session = launcher.launch({
         model: body.model,
-        permissionMode: body.permissionMode || "bypassPermissions",
+        permissionMode: "bypassPermissions",
         cwd,
         claudeBinary: body.claudeBinary,
         codexBinary: body.codexBinary,
@@ -644,9 +646,11 @@ export function createRoutes(
         // --- Step: Launch CLI ---
         await emitProgress(stream, "launching_cli", "Launching Claude Code...", "in_progress");
 
+        // Always spawn with bypassPermissions — the frontend is the source of truth
+        // for permission mode and will send set_permission_mode via WebSocket after connecting.
         const session = launcher.launch({
           model: body.model,
-          permissionMode: body.permissionMode,
+          permissionMode: "bypassPermissions",
           cwd,
           claudeBinary: body.claudeBinary,
           codexBinary: body.codexBinary,

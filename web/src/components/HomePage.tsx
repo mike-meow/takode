@@ -309,14 +309,12 @@ export function HomePage() {
 
       // Create session with progress streaming
       const branchName = selectedBranch.trim() || undefined;
-      // For Claude Code, resolve the UI mode + askPermission to the actual CLI mode
-      const effectivePermissionMode = backend === "claude"
-        ? resolveClaudeCliMode(mode, askPermission)
-        : mode;
+      // For Codex, pass the mode directly; for Claude, the frontend will set the
+      // permission mode via WebSocket after connecting (server always spawns with bypassPermissions).
       const result = await createSessionStream(
         {
           model,
-          permissionMode: effectivePermissionMode,
+          permissionMode: backend === "codex" ? mode : undefined,
           cwd: cwd || undefined,
           envSlug: selectedEnv || undefined,
           branch: branchName,
@@ -354,8 +352,11 @@ export function HomePage() {
       // Wait for WebSocket connection
       await waitForConnection(sessionId);
 
-      // Send askPermission to server so it can use it during plan approval auto-switch
+      // Frontend is the source of truth for permission mode — send it via WebSocket
+      // before the first user message so the CLI is in the right mode from the start.
       if (backend === "claude") {
+        const cliMode = resolveClaudeCliMode(mode, askPermission);
+        sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
         sendToSession(sessionId, { type: "set_ask_permission", askPermission });
       }
 
