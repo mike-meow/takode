@@ -397,6 +397,8 @@ function handleParsedMessage(
 
     case "permission_request": {
       store.addPermission(sessionId, data.request);
+      // Pause generation timer while waiting for user input
+      store.pauseStreamingTimer(sessionId);
       if (!document.hasFocus() && store.notificationDesktop) {
         const req = data.request;
         sendBrowserNotification(
@@ -422,6 +424,18 @@ function handleParsedMessage(
 
     case "permission_cancelled": {
       store.removePermission(sessionId, data.request_id);
+      break;
+    }
+
+    case "permission_denied": {
+      const denialMsg: ChatMessage = {
+        id: data.id,
+        role: "system",
+        content: data.summary,
+        timestamp: data.timestamp,
+        variant: "denied",
+      };
+      store.appendMessage(sessionId, denialMsg);
       break;
     }
 
@@ -575,6 +589,14 @@ function handleParsedMessage(
             content: histMsg.summary || "Conversation compacted",
             timestamp: histMsg.timestamp,
             variant: "info",
+          });
+        } else if (histMsg.type === "permission_denied") {
+          chatMessages.push({
+            id: histMsg.id,
+            role: "system",
+            content: histMsg.summary,
+            timestamp: histMsg.timestamp,
+            variant: "denied",
           });
         } else if (histMsg.type === "tool_result_preview") {
           for (const preview of histMsg.previews) {

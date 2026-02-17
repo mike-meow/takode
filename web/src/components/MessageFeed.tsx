@@ -349,6 +349,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
+  const streamingPausedDuration = useStore((s) => s.streamingPausedDuration.get(sessionId) ?? 0);
+  const streamingPauseStartedAt = useStore((s) => s.streamingPauseStartedAt.get(sessionId));
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -382,17 +384,21 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     });
   }, []);
 
-  // Tick elapsed time every second while generating
+  // Tick elapsed time every second while generating (subtracting any paused duration)
   useEffect(() => {
     if (!streamingStartedAt && sessionStatus !== "running") {
       setElapsed(0);
       return;
     }
     const start = streamingStartedAt || Date.now();
-    setElapsed(Date.now() - start);
-    const interval = setInterval(() => setElapsed(Date.now() - start), 1000);
+    const calcElapsed = () => {
+      const pauseOffset = streamingPausedDuration + (streamingPauseStartedAt ? Date.now() - streamingPauseStartedAt : 0);
+      return Math.max(0, Date.now() - start - pauseOffset);
+    };
+    setElapsed(calcElapsed());
+    const interval = setInterval(() => setElapsed(calcElapsed()), 1000);
     return () => clearInterval(interval);
-  }, [streamingStartedAt, sessionStatus]);
+  }, [streamingStartedAt, sessionStatus, streamingPausedDuration, streamingPauseStartedAt]);
 
   function handleScroll() {
     const el = containerRef.current;
@@ -485,8 +491,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           {/* Generation stats bar */}
           {sessionStatus === "running" && elapsed > 0 && (
             <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-primary animate-pulse" />
-              <span>Generating...</span>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${streamingPauseStartedAt ? 'bg-amber-400' : 'bg-cc-primary animate-pulse'}`} />
+              <span>{streamingPauseStartedAt ? 'Waiting...' : 'Generating...'}</span>
               <span className="text-cc-muted/60">(</span>
               <span>{formatElapsed(elapsed)}</span>
               {(streamingOutputTokens ?? 0) > 0 && (

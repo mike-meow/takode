@@ -17,7 +17,6 @@ _Nothing currently in progress._
 
 ## Planned
 
-- [ ] **Pause generation timer during user waits** — The "Generating... (Xm Xs)" timer keeps counting even when the agent is blocked waiting for user input (permission requests, plan approval, questions). The timer should pause whenever the session enters a waiting-for-user state and resume only when the agent is actively generating again, so it reflects actual generation time.
 - [ ] **Show permission denial in chat stream** — When the user denies a permission request, there is no visual record in the chat stream. The permission banner just disappears with no trace. Add a rejection event to the message history (similar to how the Claude Code CLI shows it) so the user can see what was denied and when.
 - [ ] **Fix "CLI disconnected" banner on new session startup** — New sessions briefly show a "CLI disconnected" banner with a "Reconnect" button while the CLI process is still starting up. The browser WebSocket connects before the CLI has connected back. Should show a "Starting session..." loading state instead.
 - [ ] **Fix restoring archived worktree sessions** — Restoring an archived worktree session reuses whatever worktree path was in the session metadata without checking if it still exists or is claimed by another session. This causes the restored session to share a worktree with an active session. Should either create a fresh worktree or warn the user.
@@ -27,7 +26,7 @@ _Nothing currently in progress._
 
 ## To Verify
 
-_Nothing to verify._
+- [ ] **Pause generation timer during user waits** — Timer should pause (showing "Waiting..." with amber dot) when a permission request, plan approval, or question appears, and resume (back to "Generating..." with pulsing dot) after the user responds. Verify with a session that triggers a permission prompt: the elapsed time should freeze while waiting. Test with multiple simultaneous permission requests — timer should stay paused until all are resolved.
 
 ## Ideas
 

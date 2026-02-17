@@ -19,6 +19,10 @@ interface AppState {
   streamingStartedAt: Map<string, number>;
   streamingOutputTokens: Map<string, number>;
 
+  // Streaming timer pause tracking (paused during user-wait states like permissions)
+  streamingPausedDuration: Map<string, number>;  // accumulated pause ms
+  streamingPauseStartedAt: Map<string, number>;  // when current pause began
+
   // Pending permissions per session (outer key = sessionId, inner key = request_id)
   pendingPermissions: Map<string, Map<string, PermissionRequest>>;
 
@@ -114,6 +118,10 @@ interface AppState {
   // Permission actions
   addPermission: (sessionId: string, perm: PermissionRequest) => void;
   removePermission: (sessionId: string, requestId: string) => void;
+
+  // Streaming timer pause actions
+  pauseStreamingTimer: (sessionId: string) => void;
+  resumeStreamingTimer: (sessionId: string) => void;
 
   // Task actions
   addTask: (sessionId: string, task: TaskItem) => void;
@@ -236,6 +244,8 @@ export const useStore = create<AppState>((set) => ({
   streaming: new Map(),
   streamingStartedAt: new Map(),
   streamingOutputTokens: new Map(),
+  streamingPausedDuration: new Map(),
+  streamingPauseStartedAt: new Map(),
   pendingPermissions: new Map(),
   connectionStatus: new Map(),
   cliConnected: new Map(),
@@ -366,6 +376,10 @@ export const useStore = create<AppState>((set) => ({
       streamingStartedAt.delete(sessionId);
       const streamingOutputTokens = new Map(s.streamingOutputTokens);
       streamingOutputTokens.delete(sessionId);
+      const streamingPausedDuration = new Map(s.streamingPausedDuration);
+      streamingPausedDuration.delete(sessionId);
+      const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+      streamingPauseStartedAt.delete(sessionId);
       const connectionStatus = new Map(s.connectionStatus);
       connectionStatus.delete(sessionId);
       const cliConnected = new Map(s.cliConnected);
@@ -408,6 +422,8 @@ export const useStore = create<AppState>((set) => ({
         streaming,
         streamingStartedAt,
         streamingOutputTokens,
+        streamingPausedDuration,
+        streamingPauseStartedAt,
         connectionStatus,
         cliConnected,
         sessionStatus,
@@ -492,6 +508,12 @@ export const useStore = create<AppState>((set) => ({
       if (stats === null) {
         streamingStartedAt.delete(sessionId);
         streamingOutputTokens.delete(sessionId);
+        // Also clear pause tracking when generation ends
+        const streamingPausedDuration = new Map(s.streamingPausedDuration);
+        const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+        streamingPausedDuration.delete(sessionId);
+        streamingPauseStartedAt.delete(sessionId);
+        return { streamingStartedAt, streamingOutputTokens, streamingPausedDuration, streamingPauseStartedAt };
       } else {
         if (stats.startedAt !== undefined) streamingStartedAt.set(sessionId, stats.startedAt);
         if (stats.outputTokens !== undefined) streamingOutputTokens.set(sessionId, stats.outputTokens);
@@ -516,8 +538,40 @@ export const useStore = create<AppState>((set) => ({
         const updated = new Map(sessionPerms);
         updated.delete(requestId);
         pendingPermissions.set(sessionId, updated);
+
+        // Resume streaming timer when no more pending permissions
+        if (updated.size === 0 && s.streamingPauseStartedAt.has(sessionId)) {
+          const pauseStart = s.streamingPauseStartedAt.get(sessionId)!;
+          const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+          const streamingPausedDuration = new Map(s.streamingPausedDuration);
+          streamingPauseStartedAt.delete(sessionId);
+          const prev = streamingPausedDuration.get(sessionId) || 0;
+          streamingPausedDuration.set(sessionId, prev + (Date.now() - pauseStart));
+          return { pendingPermissions, streamingPauseStartedAt, streamingPausedDuration };
+        }
       }
       return { pendingPermissions };
+    }),
+
+  pauseStreamingTimer: (sessionId) =>
+    set((s) => {
+      // Only pause if timer is running and not already paused
+      if (!s.streamingStartedAt.has(sessionId) || s.streamingPauseStartedAt.has(sessionId)) return s;
+      const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+      streamingPauseStartedAt.set(sessionId, Date.now());
+      return { streamingPauseStartedAt };
+    }),
+
+  resumeStreamingTimer: (sessionId) =>
+    set((s) => {
+      const pauseStart = s.streamingPauseStartedAt.get(sessionId);
+      if (!pauseStart) return s;  // not paused
+      const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+      const streamingPausedDuration = new Map(s.streamingPausedDuration);
+      streamingPauseStartedAt.delete(sessionId);
+      const prev = streamingPausedDuration.get(sessionId) || 0;
+      streamingPausedDuration.set(sessionId, prev + (Date.now() - pauseStart));
+      return { streamingPauseStartedAt, streamingPausedDuration };
     }),
 
   addTask: (sessionId, task) =>
@@ -717,6 +771,8 @@ export const useStore = create<AppState>((set) => ({
       streaming: new Map(),
       streamingStartedAt: new Map(),
       streamingOutputTokens: new Map(),
+      streamingPausedDuration: new Map(),
+      streamingPauseStartedAt: new Map(),
       pendingPermissions: new Map(),
       connectionStatus: new Map(),
       cliConnected: new Map(),

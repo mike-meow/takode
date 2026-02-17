@@ -27,6 +27,8 @@ vi.mock("../store.js", () => ({
       streaming: mockStoreValues.streaming ?? new Map(),
       streamingStartedAt: mockStoreValues.streamingStartedAt ?? new Map(),
       streamingOutputTokens: mockStoreValues.streamingOutputTokens ?? new Map(),
+      streamingPausedDuration: mockStoreValues.streamingPausedDuration ?? new Map(),
+      streamingPauseStartedAt: mockStoreValues.streamingPauseStartedAt ?? new Map(),
       sessionStatus: mockStoreValues.sessionStatus ?? new Map(),
       toolProgress: mockStoreValues.toolProgress ?? new Map(),
     };
@@ -80,6 +82,8 @@ function resetStore() {
   mockStoreValues.streaming = new Map();
   mockStoreValues.streamingStartedAt = new Map();
   mockStoreValues.streamingOutputTokens = new Map();
+  mockStoreValues.streamingPausedDuration = new Map();
+  mockStoreValues.streamingPauseStartedAt = new Map();
   mockStoreValues.sessionStatus = new Map();
 }
 
