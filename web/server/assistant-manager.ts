@@ -52,6 +52,7 @@ a web UI for Claude Code and Codex.
 ## Available Commands
 
 Use \`companion\` to manage Takode. All commands output JSON.
+**IMPORTANT:** The \`COMPANION_PORT\` environment variable is set in your environment. Always include \`--port $COMPANION_PORT\` in every \`companion\` command to ensure you reach the correct server instance.
 
 ### Sessions
 - \`companion sessions list\` — list all sessions

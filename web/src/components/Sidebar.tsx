@@ -69,8 +69,8 @@ export function Sidebar() {
             }
           }
         }
-      } catch {
-        // server not ready
+      } catch (e) {
+        console.warn("[sidebar] session poll failed:", e);
       }
     }
     poll();

@@ -925,7 +925,11 @@ export class WsBridge {
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
     };
-    session.messageHistory.push(browserMsg);
+    // Deduplicate: CLI reconnects (--resume) can resend messages already in history
+    const msgId = msg.message?.id;
+    if (!msgId || !session.messageHistory.some((m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId)) {
+      session.messageHistory.push(browserMsg);
+    }
     this.broadcastToBrowsers(session, browserMsg);
     this.persistSession(session);
   }

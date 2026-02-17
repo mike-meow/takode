@@ -688,6 +688,7 @@ describe("POST /api/sessions/:id/kill", () => {
 
 describe("POST /api/sessions/:id/relaunch", () => {
   it("returns ok when session is relaunched", async () => {
+    launcher.getSession.mockReturnValue({ sessionId: "s1", state: "exited", cwd: "/test" });
     launcher.relaunch.mockResolvedValue({ ok: true });
 
     const res = await app.request("/api/sessions/s1/relaunch", { method: "POST" });
@@ -699,6 +700,7 @@ describe("POST /api/sessions/:id/relaunch", () => {
   });
 
   it("returns 503 with error when container is missing", async () => {
+    launcher.getSession.mockReturnValue({ sessionId: "s1", state: "exited", cwd: "/test", containerId: "abc" });
     launcher.relaunch.mockResolvedValue({
       ok: false,
       error: 'Container "companion-gone" was removed externally. Please create a new session.',
@@ -712,7 +714,7 @@ describe("POST /api/sessions/:id/relaunch", () => {
   });
 
   it("returns 404 when session not found via relaunch", async () => {
-    launcher.relaunch.mockResolvedValue({ ok: false, error: "Session not found" });
+    launcher.getSession.mockReturnValue(undefined);
 
     const res = await app.request("/api/sessions/nonexistent/relaunch", { method: "POST" });
 

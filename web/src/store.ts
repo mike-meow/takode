@@ -461,8 +461,15 @@ export const useStore = create<AppState>((set) => ({
 
   setMessages: (sessionId, msgs) =>
     set((s) => {
+      // Deduplicate by message ID (server may send duplicates on CLI reconnect)
+      const seen = new Set<string>();
+      const deduped = msgs.filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
       const messages = new Map(s.messages);
-      messages.set(sessionId, msgs);
+      messages.set(sessionId, deduped);
       return { messages };
     }),
 

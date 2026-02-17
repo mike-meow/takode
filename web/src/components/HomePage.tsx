@@ -3,7 +3,6 @@ import { useStore } from "../store.js";
 import { api, createSessionStream, type CompanionEnv, type GitRepoInfo, type GitBranchInfo, type BackendInfo } from "../api.js";
 import { connectSession, waitForConnection, sendToSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
-import { generateUniqueSessionName } from "../utils/names.js";
 import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
 import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, resolveClaudeCliMode, type ModelOption } from "../utils/backends.js";
@@ -329,10 +328,8 @@ export function HomePage() {
       );
       const sessionId = result.sessionId;
 
-      // Assign a random session name
-      const existingNames = new Set(useStore.getState().sessionNames.values());
-      const sessionName = generateUniqueSessionName(existingNames);
-      useStore.getState().setSessionName(sessionId, sessionName);
+      // Session name is now generated server-side (in routes.ts) so all creation
+      // paths (browser, CLI, API) get names. The sidebar poll hydrates it.
 
       // Save cwd to recent dirs
       if (cwd) addRecentDir(cwd);

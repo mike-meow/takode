@@ -23,6 +23,7 @@ import { hasContainerCodexAuth } from "./codex-container-auth.js";
 import { DEFAULT_OPENROUTER_MODEL, getSettings, updateSettings } from "./settings-manager.js";
 import { getUsageLimits } from "./usage-limits.js";
 import type { AssistantManager } from "./assistant-manager.js";
+import { generateUniqueSessionName } from "../src/utils/names.js";
 
 const ROUTES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = dirname(ROUTES_DIR);
@@ -308,8 +309,11 @@ export function createRoutes(
 
       // Always spawn with bypassPermissions — the frontend is the source of truth
       // for permission mode and will send set_permission_mode via WebSocket after connecting.
+      // For Codex, default to gpt-5.3-codex if no model provided (Codex requires explicit model).
+      // For Claude, undefined is fine — the CLI uses its own configured default.
+      const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
       const session = launcher.launch({
-        model: body.model,
+        model,
         permissionMode: "bypassPermissions",
         cwd,
         claudeBinary: body.claudeBinary,
@@ -344,6 +348,11 @@ export function createRoutes(
           createdAt: Date.now(),
         });
       }
+
+      // Generate a session name so all creation paths (browser, CLI, API) get names
+      const existingNames = new Set(Object.values(sessionNames.getAllNames()));
+      const generatedName = generateUniqueSessionName(existingNames);
+      sessionNames.setName(session.sessionId, generatedName);
 
       return c.json(session);
     } catch (e: unknown) {
@@ -648,8 +657,9 @@ export function createRoutes(
 
         // Always spawn with bypassPermissions — the frontend is the source of truth
         // for permission mode and will send set_permission_mode via WebSocket after connecting.
+        const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
         const session = launcher.launch({
-          model: body.model,
+          model,
           permissionMode: "bypassPermissions",
           cwd,
           claudeBinary: body.claudeBinary,
@@ -684,6 +694,11 @@ export function createRoutes(
           });
         }
 
+        // Generate a session name so all creation paths (browser, CLI, API) get names
+        const existingNames = new Set(Object.values(sessionNames.getAllNames()));
+        const generatedName = generateUniqueSessionName(existingNames);
+        sessionNames.setName(session.sessionId, generatedName);
+
         await emitProgress(stream, "launching_cli", "Session started", "done");
 
         // --- Done ---
@@ -712,17 +727,22 @@ export function createRoutes(
     const bridgeStates = wsBridge.getAllSessions();
     const bridgeMap = new Map(bridgeStates.map((s) => [s.session_id, s]));
     const enriched = sessions.map((s) => {
-      const bridge = bridgeMap.get(s.sessionId);
-      return {
-        ...s,
-        name: names[s.sessionId] ?? s.name,
-        gitBranch: bridge?.git_branch || "",
-        gitAhead: bridge?.git_ahead || 0,
-        gitBehind: bridge?.git_behind || 0,
-        totalLinesAdded: bridge?.total_lines_added || 0,
-        totalLinesRemoved: bridge?.total_lines_removed || 0,
-        lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
-      };
+      try {
+        const bridge = bridgeMap.get(s.sessionId);
+        return {
+          ...s,
+          name: names[s.sessionId] ?? s.name,
+          gitBranch: bridge?.git_branch || "",
+          gitAhead: bridge?.git_ahead || 0,
+          gitBehind: bridge?.git_behind || 0,
+          totalLinesAdded: bridge?.total_lines_added || 0,
+          totalLinesRemoved: bridge?.total_lines_removed || 0,
+          lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
+        };
+      } catch (e) {
+        console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
+        return { ...s, name: names[s.sessionId] ?? s.name };
+      }
     });
     return c.json(enriched);
   });
@@ -760,6 +780,40 @@ export function createRoutes(
 
   api.post("/sessions/:id/relaunch", async (c) => {
     const id = c.req.param("id");
+    const info = launcher.getSession(id);
+    if (!info) return c.json({ error: "Session not found" }, 404);
+
+    // Worktree sessions: validate the worktree still exists and isn't used by another session
+    if (info.isWorktree && info.repoRoot && info.branch) {
+      const cwdExists = existsSync(info.cwd);
+      const usedByOther = worktreeTracker.isWorktreeInUse(info.cwd, id);
+
+      if (!cwdExists || usedByOther) {
+        // Recreate the worktree at a new unique path
+        const wt = gitUtils.ensureWorktree(info.repoRoot, info.branch, { forceNew: true });
+        info.cwd = wt.worktreePath;
+        info.actualBranch = wt.actualBranch;
+        worktreeTracker.addMapping({
+          sessionId: id,
+          repoRoot: info.repoRoot,
+          branch: info.branch,
+          actualBranch: wt.actualBranch,
+          worktreePath: wt.worktreePath,
+          createdAt: Date.now(),
+        });
+      } else if (!worktreeTracker.getBySession(id)) {
+        // Re-register this session with the tracker (e.g., mapping was lost during archive)
+        worktreeTracker.addMapping({
+          sessionId: id,
+          repoRoot: info.repoRoot,
+          branch: info.branch,
+          actualBranch: info.actualBranch || info.branch,
+          worktreePath: info.cwd,
+          createdAt: Date.now(),
+        });
+      }
+    }
+
     const result = await launcher.relaunch(id);
     if (!result.ok) {
       const status = result.error?.includes("not found") || result.error?.includes("Session not found") ? 404 : 503;
