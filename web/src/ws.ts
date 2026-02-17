@@ -249,7 +249,8 @@ function handleParsedMessage(
       }
       const existingSession = store.sessions.get(sessionId);
       store.addSession(data.session);
-      store.setCliConnected(sessionId, true);
+      // Do NOT set cliConnected here — session_init is just a state snapshot.
+      // CLI connection status comes from explicit cli_connected/cli_disconnected messages.
       if (!existingSession) {
         store.setSessionStatus(sessionId, "idle");
       }

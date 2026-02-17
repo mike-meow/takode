@@ -227,7 +227,9 @@ describe("disconnectSession", () => {
 // handleMessage: session_init
 // ===========================================================================
 describe("handleMessage: session_init", () => {
-  it("adds session to store, sets CLI connected, generates name", () => {
+  it("adds session to store, generates name, but does not set CLI connected", () => {
+    // session_init is just a state snapshot — CLI connection status comes from
+    // explicit cli_connected/cli_disconnected messages, not from session_init.
     wsModule.connectSession("s1");
     const session = makeSession("s1");
 
@@ -236,7 +238,7 @@ describe("handleMessage: session_init", () => {
     const state = useStore.getState();
     expect(state.sessions.has("s1")).toBe(true);
     expect(state.sessions.get("s1")!.model).toBe("claude-opus-4-20250514");
-    expect(state.cliConnected.get("s1")).toBe(true);
+    expect(state.cliConnected.get("s1")).toBeUndefined();
     expect(state.sessionStatus.get("s1")).toBe("idle");
     expect(state.sessionNames.get("s1")).toBe("Test Session");
   });
@@ -637,6 +639,10 @@ describe("handleMessage: cli_disconnected/connected", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
+    // session_init does not set cliConnected — only explicit messages do
+    expect(useStore.getState().cliConnected.get("s1")).toBeUndefined();
+
+    fireMessage({ type: "cli_connected" });
     expect(useStore.getState().cliConnected.get("s1")).toBe(true);
 
     fireMessage({ type: "cli_disconnected" });

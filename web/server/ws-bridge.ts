@@ -716,6 +716,8 @@ export class WsBridge {
         console.log(`[ws-bridge] Browser connected but backend is dead for session ${sessionId}, requesting relaunch`);
         this.onCLIRelaunchNeeded(sessionId);
       }
+    } else {
+      this.sendToBrowser(ws, { type: "cli_connected" });
     }
   }
 
