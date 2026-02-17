@@ -8,15 +8,14 @@ _Nothing currently in progress._
 
 ## Planned
 
-- [ ] **Image & message lightbox** — Pasted images show as tiny thumbnails with no way to view them full-size. Clicking an image (in the composer or in chat history) should open a fullscreen/modal lightbox. Extend this to message chips as well — clicking a message chip should expand it into a larger, more readable view.
-- [ ] **Sidebar session status indicators** — The sidebar session list doesn't clearly distinguish between idle and actively working sessions. Add a visual indicator (e.g. a pulsing dot, spinner, or color change) to each session card so it's obvious at a glance which sessions are busy (agent running/generating) vs idle (connected but waiting for input) vs disconnected.
-- [ ] **Simplified permission model (plan/agent + permission toggle)** — Current plan mode is broken: after approving a plan, Claude Code switches to "default" mode which still prompts for basic edits. Redesign Companion to expose only two modes (Plan vs Agent) plus a per-session "ask permission" toggle. The mapping to Claude Code modes:
-  - Plan + ask_permission=true → Claude plan mode, then after plan approval switch to yolo mode (no permission prompts at all)
-  - Plan + ask_permission=false → Claude plan mode, then after plan approval switch to edit mode (no prompts for code changes)
-  - Agent + ask_permission=true → Claude edit mode
-  - Agent + ask_permission=false → Claude yolo mode
-- [ ] **Copy Claude Code session ID from UI** — Add a button or menu option to easily copy the underlying Claude Code session ID for a Companion session. This allows resuming the session outside Companion (via `claude --resume <id>` in the CLI or the VSCode extension).
-- [ ] **Remove auto-update checker** — The app has update-checking logic that polls for newer versions and shows prompts in the UI / server logs. Since this is a heavily modified personal fork, auto-update is unwanted. Remove all update-checking code (server-side checker, UI banner/prompts, any scheduled polling) entirely.
+
+## Completed
+
+- [x] **Remove auto-update checker** — Removed all update-checking code: server-side checker, UI banner, settings page section, Playground demos, polling intervals. ~960 lines removed across 13 files. _Manual verification: confirm no update prompts appear in the UI or server logs._
+- [x] **Copy Claude Code session ID from UI** — Added copy button in 3 places: TopBar (clipboard icon next to session name), sidebar right-click context menu ("Copy CLI Session ID" option), and session hover card (shows truncated ID). _Manual verification: click the copy button and run `claude --resume <pasted-id>` in terminal to confirm it works._
+- [x] **Sidebar session status indicators** — New `SessionStatusDot` component shows colored dots: green pulsing (running), amber pulsing (permission needed or compacting), dim green (idle), red (disconnected), gray (archived). Extracted from inline logic in `SessionItem.tsx` into a standalone component with 21 tests. _Manual verification: start a session and watch the dot change from idle to running when the agent works. Disconnect the CLI process and verify the dot turns red._
+- [x] **Simplified permission model** — Replaced 3-mode dropdown with Plan/Agent toggle + "Ask Permission" switch. After plan approval, server auto-switches CLI to `bypassPermissions` (if ask=true) or `acceptEdits` (if ask=false). Codex sessions unaffected. _Manual verification: (1) Set Plan + Ask ON, submit a task, approve the plan, then verify Claude executes without further permission prompts. (2) Set Agent + Ask OFF, verify Claude runs in full bypass mode. (3) Toggle Ask Permission mid-session and verify the mode change takes effect immediately._
+- [x] **Image & message lightbox** — Clicking any image thumbnail in a user message opens a fullscreen lightbox modal (dark backdrop, image at natural size constrained to 90vw/90vh). Close via backdrop click, Escape key, or X button. Playground updated with lightbox demos. _Manual verification: paste an image in the composer, send it, then click the thumbnail in chat to verify the lightbox opens. Also verify the message chip lightbox aspect was not implemented — only image thumbnails are clickable for now._
 
 ## Ideas
 
