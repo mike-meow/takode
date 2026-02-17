@@ -4,6 +4,7 @@ import { sendToSession } from "../ws.js";
 import { api } from "../api.js";
 import { CLAUDE_MODES, CODEX_MODES, getNextMode, resolveClaudeCliMode, deriveUiMode } from "../utils/backends.js";
 import type { ModeOption } from "../utils/backends.js";
+import { Lightbox } from "./Lightbox.js";
 
 let idCounter = 0;
 
@@ -34,6 +35,7 @@ interface CommandItem {
 export function Composer({ sessionId }: { sessionId: string }) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
@@ -293,24 +295,35 @@ export function Composer({ sessionId }: { sessionId: string }) {
         {/* Image thumbnails */}
         {images.length > 0 && (
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            {images.map((img, i) => (
-              <div key={i} className="relative group">
-                <img
-                  src={`data:${img.mediaType};base64,${img.base64}`}
-                  alt={img.name}
-                  className="w-12 h-12 rounded-lg object-cover border border-cc-border"
-                />
-                <button
-                  onClick={() => removeImage(i)}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-cc-error text-white flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
-                    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
-                  </svg>
-                </button>
-              </div>
-            ))}
+            {images.map((img, i) => {
+              const src = `data:${img.mediaType};base64,${img.base64}`;
+              return (
+                <div key={i} className="relative group">
+                  <img
+                    src={src}
+                    alt={img.name}
+                    className="w-24 h-24 rounded-lg object-cover border border-cc-border cursor-zoom-in hover:opacity-80 transition-opacity"
+                    onClick={() => setLightboxSrc(src)}
+                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-cc-error text-white flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+                      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
+        )}
+        {lightboxSrc && (
+          <Lightbox
+            src={lightboxSrc}
+            alt="attachment"
+            onClose={() => setLightboxSrc(null)}
+          />
         )}
 
         {/* Hidden file input */}
