@@ -787,6 +787,7 @@ When asked to port/sync commits from this worktree to the main repository at \`$
 3. **Cherry-pick clean commits to main.** Once the worktree branch is cleanly rebased with your new commits on top, cherry-pick only your new commits into the main repo using \`git -C ${repoRoot} cherry-pick <commit-hash>\`. Cherry-pick one at a time in chronological order.
 4. **Handle unexpected conflicts.** If cherry-pick still conflicts (it shouldn't after a clean rebase), tell the user the conflicting files and ask how to proceed. Do not force-resolve or abort without asking.
 5. **Verify after porting.** Run \`git -C ${repoRoot} log --oneline -5\` to confirm the commits landed correctly.
+6. **Reset worktree to stay in sync.** After porting is complete, reset this worktree branch to match the main repo's branch: \`git reset --hard <main-repo-branch>\`. This keeps the worktree in sync and avoids divergence for future work.
 ${MARKER_END}`;
 
     const claudeDir = join(worktreePath, ".claude");
