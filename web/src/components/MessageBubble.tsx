@@ -26,7 +26,7 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
     }
     if (message.variant === "denied") {
       return (
-        <div className="flex items-center gap-1.5 py-0.5 pl-9 text-xs text-red-400/80 font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="-my-1 sm:-my-2 flex items-center gap-1.5 pl-9 text-xs text-red-400/80 font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
           <svg className="w-3 h-3 text-red-400/60 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="8" cy="8" r="6.5" />
             <line x1="4" y1="12" x2="12" y2="4" />
@@ -39,7 +39,7 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
       const answers = message.metadata?.answers;
       if (answers?.length) {
         return (
-          <div className="flex items-start gap-1.5 py-0.5 pl-9 text-xs font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
+          <div className="-my-1 sm:-my-2 flex items-start gap-1.5 pl-9 text-xs font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
             <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <circle cx="8" cy="8" r="6.5" />
               <path d="M5.5 8.5l2 2 3.5-4" />
@@ -57,7 +57,7 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
         );
       }
       return (
-        <div className="flex items-center gap-1.5 py-0.5 pl-9 text-xs text-green-400/80 font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="-my-1 sm:-my-2 flex items-center gap-1.5 pl-9 text-xs text-green-400/80 font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
           <svg className="w-3 h-3 text-green-400/60 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="8" cy="8" r="6.5" />
             <path d="M5.5 8.5l2 2 3.5-4" />

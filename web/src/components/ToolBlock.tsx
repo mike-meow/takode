@@ -65,10 +65,8 @@ export function ToolBlock({
   toolUseId: string;
   sessionId?: string;
 }) {
-  // ExitPlanMode and AskUserQuestion default to expanded so users see the
-  // plan content / question before the permission banner below
-  const defaultOpen = name === "ExitPlanMode" || name === "AskUserQuestion";
-  const [open, setOpen] = useState(defaultOpen);
+  // ExitPlanMode defaults to expanded so users see the plan content
+  const [open, setOpen] = useState(name === "ExitPlanMode");
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
