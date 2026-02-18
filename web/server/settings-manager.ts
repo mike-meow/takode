@@ -6,6 +6,7 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 export const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
 
@@ -14,6 +15,8 @@ export interface CompanionSettings {
   openrouterModel: string;
   /** Display name for this server instance */
   serverName: string;
+  /** Stable unique identifier for this server instance (auto-generated UUID) */
+  serverId: string;
   updatedAt: number;
 }
 
@@ -25,6 +28,7 @@ let settings: CompanionSettings = {
   openrouterApiKey: "",
   openrouterModel: DEFAULT_OPENROUTER_MODEL,
   serverName: "",
+  serverId: "",
   updatedAt: 0,
 };
 
@@ -36,6 +40,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
         ? raw.openrouterModel
         : DEFAULT_OPENROUTER_MODEL,
     serverName: typeof raw?.serverName === "string" ? raw.serverName : "",
+    serverId: typeof raw?.serverId === "string" ? raw.serverId : "",
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -86,6 +91,15 @@ export function setServerName(name: string): void {
   ensureLoaded();
   settings = { ...settings, serverName: name.trim(), updatedAt: Date.now() };
   persist();
+}
+
+export function getServerId(): string {
+  ensureLoaded();
+  if (!settings.serverId) {
+    settings = { ...settings, serverId: randomUUID(), updatedAt: Date.now() };
+    persist();
+  }
+  return settings.serverId;
 }
 
 export function _resetForTest(customPath?: string): void {

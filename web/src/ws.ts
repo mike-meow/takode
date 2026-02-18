@@ -2,6 +2,7 @@ import { useStore } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, TaskItem, SdkSessionInfo, McpServerConfig } from "./types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound } from "./utils/notification-sound.js";
+import { scopedGetItem, scopedSetItem } from "./utils/scoped-storage.js";
 
 const sockets = new Map<string, WebSocket>();
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -175,7 +176,7 @@ function getLastSeq(sessionId: string): number {
   const cached = lastSeqBySession.get(sessionId);
   if (typeof cached === "number") return cached;
   try {
-    const raw = localStorage.getItem(getLastSeqStorageKey(sessionId));
+    const raw = scopedGetItem(getLastSeqStorageKey(sessionId));
     const parsed = raw ? Number(raw) : 0;
     const normalized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
     lastSeqBySession.set(sessionId, normalized);
@@ -189,7 +190,7 @@ function setLastSeq(sessionId: string, seq: number): void {
   const normalized = Math.max(0, Math.floor(seq));
   lastSeqBySession.set(sessionId, normalized);
   try {
-    localStorage.setItem(getLastSeqStorageKey(sessionId), String(normalized));
+    scopedSetItem(getLastSeqStorageKey(sessionId), String(normalized));
   } catch {
     // ignore storage errors
   }

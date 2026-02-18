@@ -7,6 +7,7 @@ import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
 import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, resolveClaudeCliMode, type ModelOption } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
+import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
 import { Lightbox } from "./Lightbox.js";
@@ -36,7 +37,7 @@ let idCounter = 0;
 
 function getSavedBranches(): Record<string, string> {
   try {
-    return JSON.parse(localStorage.getItem("cc-branch") || "{}");
+    return JSON.parse(scopedGetItem("cc-branch") || "{}");
   } catch {
     return {};
   }
@@ -50,18 +51,18 @@ function saveBranch(repoRoot: string, branchName: string) {
   if (keys.length > 20) {
     delete map[keys[0]];
   }
-  localStorage.setItem("cc-branch", JSON.stringify(map));
+  scopedSetItem("cc-branch", JSON.stringify(map));
 }
 
 export function HomePage() {
   const [text, setText] = useState("");
   const [backend, setBackend] = useState<BackendType>(() =>
-    (localStorage.getItem("cc-backend") as BackendType) || "claude",
+    (scopedGetItem("cc-backend") as BackendType) || "claude",
   );
   const [backends, setBackends] = useState<BackendInfo[]>([]);
   const [model, setModel] = useState(() => {
-    const b = (localStorage.getItem("cc-backend") as BackendType) || "claude";
-    const saved = localStorage.getItem(`cc-model-${b}`);
+    const b = (scopedGetItem("cc-backend") as BackendType) || "claude";
+    const saved = scopedGetItem(`cc-model-${b}`);
     if (saved) {
       const statics = getModelsForBackend(b);
       // Accept if in static list, or optimistically for codex (dynamic models load later)
@@ -70,8 +71,8 @@ export function HomePage() {
     return getDefaultModel(b);
   });
   const [mode, setMode] = useState(() => {
-    const saved = localStorage.getItem("cc-mode");
-    const b = (localStorage.getItem("cc-backend") as BackendType) || "claude";
+    const saved = scopedGetItem("cc-mode");
+    const b = (scopedGetItem("cc-backend") as BackendType) || "claude";
     const modes = getModesForBackend(b);
     if (saved && modes.some((m) => m.value === saved)) return saved;
     return getDefaultMode(b);
@@ -83,10 +84,10 @@ export function HomePage() {
   const [error, setError] = useState("");
   const [dynamicModels, setDynamicModels] = useState<ModelOption[] | null>(null);
   const [codexInternetAccess, setCodexInternetAccess] = useState(() =>
-    localStorage.getItem("cc-codex-internet-access") === "1",
+    scopedGetItem("cc-codex-internet-access") === "1",
   );
   const [askPermission, setAskPermission] = useState(() => {
-    const stored = localStorage.getItem("cc-ask-permission");
+    const stored = scopedGetItem("cc-ask-permission");
     return stored !== null ? stored === "true" : true;
   });
 
@@ -95,7 +96,7 @@ export function HomePage() {
 
   // Environment state
   const [envs, setEnvs] = useState<CompanionEnv[]>([]);
-  const [selectedEnv, setSelectedEnv] = useState(() => localStorage.getItem("cc-selected-env") || "");
+  const [selectedEnv, setSelectedEnv] = useState(() => scopedGetItem("cc-selected-env") || "");
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
   const [showEnvManager, setShowEnvManager] = useState(false);
 
@@ -109,7 +110,7 @@ export function HomePage() {
   // Git branch state
   const [gitRepoInfo, setGitRepoInfo] = useState<GitRepoInfo | null>(null);
   const [useWorktree, setUseWorktree] = useState(
-    () => localStorage.getItem("cc-worktree") === "true",
+    () => scopedGetItem("cc-worktree") === "true",
   );
   const [selectedBranch, setSelectedBranch] = useState("");
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
@@ -153,16 +154,16 @@ export function HomePage() {
 
   function updateMode(value: string) {
     setMode(value);
-    localStorage.setItem("cc-mode", value);
+    scopedSetItem("cc-mode", value);
   }
 
   // When backend changes, restore saved model or fall back to default
   function switchBackend(newBackend: BackendType) {
     setBackend(newBackend);
-    localStorage.setItem("cc-backend", newBackend);
+    scopedSetItem("cc-backend", newBackend);
     setDynamicModels(null);
 
-    const savedModel = localStorage.getItem(`cc-model-${newBackend}`);
+    const savedModel = scopedGetItem(`cc-model-${newBackend}`);
     const statics = getModelsForBackend(newBackend);
     if (savedModel && (statics.some((m) => m.value === savedModel) || newBackend === "codex")) {
       setModel(savedModel);
@@ -186,7 +187,7 @@ export function HomePage() {
         // If current model isn't in the list, switch to first and persist
         if (!options.some((m) => m.value === model)) {
           setModel(options[0].value);
-          localStorage.setItem(`cc-model-${backend}`, options[0].value);
+          scopedSetItem(`cc-model-${backend}`, options[0].value);
         }
       }
     }).catch(() => {
@@ -614,7 +615,7 @@ export function HomePage() {
                   onClick={() => {
                     const next = !askPermission;
                     setAskPermission(next);
-                    localStorage.setItem("cc-ask-permission", String(next));
+                    scopedSetItem("cc-ask-permission", String(next));
                   }}
                   className="flex items-center gap-1 px-1.5 py-1 rounded-md text-xs transition-colors cursor-pointer select-none"
                   title={askPermission ? "Permissions: will ask before tool use" : "Permissions: auto-approving tool use"}
@@ -705,7 +706,7 @@ export function HomePage() {
               onClick={() => {
                 const next = !codexInternetAccess;
                 setCodexInternetAccess(next);
-                localStorage.setItem("cc-codex-internet-access", next ? "1" : "0");
+                scopedSetItem("cc-codex-internet-access", next ? "1" : "0");
               }}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
                 codexInternetAccess
@@ -895,7 +896,7 @@ export function HomePage() {
           {/* Worktree toggle (only when cwd is a git repo) */}
           {gitRepoInfo && (
             <button
-              onClick={() => { const next = !useWorktree; setUseWorktree(next); localStorage.setItem("cc-worktree", String(next)); }}
+              onClick={() => { const next = !useWorktree; setUseWorktree(next); scopedSetItem("cc-worktree", String(next)); }}
               className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
                 useWorktree
                   ? "bg-cc-primary/15 text-cc-primary font-medium"
@@ -936,7 +937,7 @@ export function HomePage() {
                 <button
                   onClick={() => {
                     setSelectedEnv("");
-                    localStorage.setItem("cc-selected-env", "");
+                    scopedSetItem("cc-selected-env", "");
                     setShowEnvDropdown(false);
                   }}
                   className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
@@ -950,7 +951,7 @@ export function HomePage() {
                     key={env.slug}
                     onClick={() => {
                       setSelectedEnv(env.slug);
-                      localStorage.setItem("cc-selected-env", env.slug);
+                      scopedSetItem("cc-selected-env", env.slug);
                       setShowEnvDropdown(false);
                     }}
                     className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-1 ${
@@ -995,7 +996,7 @@ export function HomePage() {
                 {MODELS.map((m) => (
                   <button
                     key={m.value}
-                    onClick={() => { setModel(m.value); localStorage.setItem(`cc-model-${backend}`, m.value); setShowModelDropdown(false); }}
+                    onClick={() => { setModel(m.value); scopedSetItem(`cc-model-${backend}`, m.value); setShowModelDropdown(false); }}
                     className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2 ${
                       m.value === model ? "text-cc-primary font-medium" : "text-cc-fg"
                     }`}

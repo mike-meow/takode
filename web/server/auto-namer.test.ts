@@ -17,6 +17,7 @@ beforeEach(() => {
     openrouterApiKey: "or-key",
     openrouterModel: "openrouter/free",
     serverName: "",
+    serverId: "",
     updatedAt: 0,
   });
 });
@@ -40,6 +41,7 @@ describe("generateSessionTitle", () => {
       openrouterApiKey: "",
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "",
       updatedAt: 0,
     });
 
@@ -70,6 +72,7 @@ describe("generateSessionTitle", () => {
       openrouterApiKey: "or-key",
       openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
+      serverId: "",
       updatedAt: 0,
     });
     mockFetch.mockResolvedValueOnce({
@@ -141,6 +144,7 @@ describe("generateSessionTitle", () => {
       openrouterApiKey: "or-key",
       openrouterModel: "",
       serverName: "",
+      serverId: "",
       updatedAt: 0,
     });
     mockFetch.mockResolvedValueOnce({

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview } from "./types.js";
 import type { PRStatusResponse, CreationProgressEvent } from "./api.js";
+import { scopedGetItem, scopedSetItem, scopedRemoveItem } from "./utils/scoped-storage.js";
 
 interface AppState {
   // Sessions
@@ -198,7 +199,7 @@ interface AppState {
 function getInitialSessionNames(): Map<string, string> {
   if (typeof window === "undefined") return new Map();
   try {
-    return new Map(JSON.parse(localStorage.getItem("cc-session-names") || "[]"));
+    return new Map(JSON.parse(scopedGetItem("cc-session-names") || "[]"));
   } catch {
     return new Map();
   }
@@ -206,7 +207,7 @@ function getInitialSessionNames(): Map<string, string> {
 
 function getInitialSessionId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("cc-current-session") || null;
+  return scopedGetItem("cc-current-session") || null;
 }
 
 function getInitialDarkMode(): boolean {
@@ -242,13 +243,13 @@ function getInitialZoomLevel(): number {
 
 function getInitialAssistantSessionId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("cc-assistant-session-id") || null;
+  return scopedGetItem("cc-assistant-session-id") || null;
 }
 
 function getInitialCollapsedProjects(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    return new Set(JSON.parse(localStorage.getItem("cc-collapsed-projects") || "[]"));
+    return new Set(JSON.parse(scopedGetItem("cc-collapsed-projects") || "[]"));
   } catch {
     return new Set();
   }
@@ -353,24 +354,24 @@ export const useStore = create<AppState>((set) => ({
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
   newSession: () => {
-    localStorage.removeItem("cc-current-session");
+    scopedRemoveItem("cc-current-session");
     set((s) => ({ currentSessionId: null, homeResetKey: s.homeResetKey + 1 }));
   },
 
   setCurrentSession: (id) => {
     if (id) {
-      localStorage.setItem("cc-current-session", id);
+      scopedSetItem("cc-current-session", id);
     } else {
-      localStorage.removeItem("cc-current-session");
+      scopedRemoveItem("cc-current-session");
     }
     set({ currentSessionId: id });
   },
 
   setAssistantSessionId: (id) => {
     if (id) {
-      localStorage.setItem("cc-assistant-session-id", id);
+      scopedSetItem("cc-assistant-session-id", id);
     } else {
-      localStorage.removeItem("cc-assistant-session-id");
+      scopedRemoveItem("cc-assistant-session-id");
     }
     set({ assistantSessionId: id });
   },
@@ -442,9 +443,9 @@ export const useStore = create<AppState>((set) => ({
       toolResults.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
-      localStorage.setItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
+      scopedSetItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
       if (s.currentSessionId === sessionId) {
-        localStorage.removeItem("cc-current-session");
+        scopedRemoveItem("cc-current-session");
       }
       return {
         sessions,
@@ -660,7 +661,7 @@ export const useStore = create<AppState>((set) => ({
     set((s) => {
       const sessionNames = new Map(s.sessionNames);
       sessionNames.set(sessionId, name);
-      localStorage.setItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
+      scopedSetItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
       return { sessionNames };
     }),
 
@@ -741,7 +742,7 @@ export const useStore = create<AppState>((set) => ({
       } else {
         collapsedProjects.add(projectKey);
       }
-      localStorage.setItem("cc-collapsed-projects", JSON.stringify(Array.from(collapsedProjects)));
+      scopedSetItem("cc-collapsed-projects", JSON.stringify(Array.from(collapsedProjects)));
       return { collapsedProjects };
     }),
 

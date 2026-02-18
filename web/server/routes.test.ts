@@ -55,16 +55,19 @@ vi.mock("./settings-manager.js", () => ({
     openrouterApiKey: "",
     openrouterModel: "openrouter/free",
     serverName: "",
+    serverId: "",
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
     openrouterApiKey: patch.openrouterApiKey ?? "",
     openrouterModel: patch.openrouterModel ?? "openrouter/free",
     serverName: "",
+    serverId: "",
     updatedAt: Date.now(),
   })),
   getServerName: vi.fn(() => ""),
   setServerName: vi.fn(),
+  getServerId: vi.fn(() => "test-server-id"),
 }));
 
 const mockGetUsageLimits = vi.hoisted(() => vi.fn());
@@ -945,6 +948,7 @@ describe("GET /api/settings", () => {
       openrouterApiKey: "or-secret",
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "",
       updatedAt: 123,
     });
 
@@ -956,6 +960,7 @@ describe("GET /api/settings", () => {
       openrouterApiKeyConfigured: true,
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "test-server-id",
     });
   });
 
@@ -964,6 +969,7 @@ describe("GET /api/settings", () => {
       openrouterApiKey: "",
       openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
+      serverId: "",
       updatedAt: 123,
     });
 
@@ -975,6 +981,7 @@ describe("GET /api/settings", () => {
       openrouterApiKeyConfigured: false,
       openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
+      serverId: "test-server-id",
     });
   });
 
@@ -984,6 +991,7 @@ describe("GET /api/settings", () => {
       openrouterApiKey: "",
       openrouterModel: "openrouter/free",
       serverName: "My Frontend",
+      serverId: "",
       updatedAt: 0,
     });
 
@@ -1002,6 +1010,7 @@ describe("PUT /api/settings", () => {
       openrouterApiKey: "new-key",
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "",
       updatedAt: 456,
     });
 
@@ -1021,6 +1030,7 @@ describe("PUT /api/settings", () => {
       openrouterApiKeyConfigured: true,
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "test-server-id",
     });
   });
 
@@ -1029,6 +1039,7 @@ describe("PUT /api/settings", () => {
       openrouterApiKey: "trimmed-key",
       openrouterModel: "openrouter/free",
       serverName: "",
+      serverId: "",
       updatedAt: 789,
     });
 
@@ -1050,6 +1061,7 @@ describe("PUT /api/settings", () => {
       openrouterApiKey: "existing-key",
       openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
+      serverId: "",
       updatedAt: 999,
     });
 
@@ -1071,6 +1083,7 @@ describe("PUT /api/settings", () => {
       openrouterApiKey: "",
       openrouterModel: "openrouter/free",
       serverName: "My Backend",
+      serverId: "",
       updatedAt: Date.now(),
     });
     vi.mocked(settingsManager.getServerName).mockReturnValue("My Backend");

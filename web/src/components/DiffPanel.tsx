@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 
 /** Count additions and deletions from a unified diff string */
 function countDiffStats(diff: string): { additions: number; deletions: number } {
@@ -21,7 +22,7 @@ interface FileStats {
 
 function getSavedDiffBases(): Record<string, string> {
   try {
-    return JSON.parse(localStorage.getItem("cc-diff-base") || "{}");
+    return JSON.parse(scopedGetItem("cc-diff-base") || "{}");
   } catch {
     return {};
   }
@@ -37,7 +38,7 @@ function saveDiffBase(cwd: string, branch: string | null) {
   } else {
     delete map[cwd];
   }
-  localStorage.setItem("cc-diff-base", JSON.stringify(map));
+  scopedSetItem("cc-diff-base", JSON.stringify(map));
 }
 
 export function DiffPanel({ sessionId }: { sessionId: string }) {

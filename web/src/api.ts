@@ -292,6 +292,7 @@ export interface AppSettings {
   openrouterApiKeyConfigured: boolean;
   openrouterModel: string;
   serverName: string;
+  serverId: string;
 }
 
 export interface GitHubPRInfo {

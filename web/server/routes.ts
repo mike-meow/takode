@@ -20,7 +20,7 @@ import { containerManager, ContainerManager, type ContainerConfig, type Containe
 import type { CreationStepId } from "./session-types.js";
 import { hasContainerClaudeAuth } from "./claude-container-auth.js";
 import { hasContainerCodexAuth } from "./codex-container-auth.js";
-import { DEFAULT_OPENROUTER_MODEL, getSettings, updateSettings, getServerName, setServerName } from "./settings-manager.js";
+import { DEFAULT_OPENROUTER_MODEL, getSettings, updateSettings, getServerName, setServerName, getServerId } from "./settings-manager.js";
 import { getUsageLimits } from "./usage-limits.js";
 import type { AssistantManager } from "./assistant-manager.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
@@ -1328,6 +1328,7 @@ export function createRoutes(
       openrouterApiKeyConfigured: !!settings.openrouterApiKey.trim(),
       openrouterModel: settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
       serverName: getServerName(),
+      serverId: getServerId(),
     });
   });
 
@@ -1365,6 +1366,7 @@ export function createRoutes(
       openrouterApiKeyConfigured: !!settings.openrouterApiKey.trim(),
       openrouterModel: settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
       serverName: getServerName(),
+      serverId: getServerId(),
     });
   });
 

@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { connectSession, connectAllSessions, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateHome, parseHash } from "../utils/routing.js";
+import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
 import { ContextMenu } from "./ContextMenu.js";
@@ -100,10 +101,27 @@ export function Sidebar() {
     });
   }, []);
 
-  // Fetch server name on mount
+  // Fetch server settings (name + ID) on mount
   useEffect(() => {
     api.getSettings().then((s) => {
       if (s.serverName) setServerName(s.serverName);
+      if (s.serverId) {
+        const migrated = bootstrapServerId(s.serverId);
+        if (migrated) {
+          // First visit to this server — re-read store state from now-scoped keys
+          const store = useStore.getState();
+          const sessionId = scopedGetItem("cc-current-session");
+          store.setCurrentSession(sessionId);
+          const namesRaw = scopedGetItem("cc-session-names");
+          if (namesRaw) {
+            try {
+              for (const [id, name] of JSON.parse(namesRaw)) {
+                store.setSessionName(id, name);
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      }
     }).catch(() => {});
   }, []);
 

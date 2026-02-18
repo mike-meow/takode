@@ -6,6 +6,7 @@ import {
   updateSettings,
   getServerName,
   setServerName,
+  getServerId,
   _resetForTest,
   DEFAULT_OPENROUTER_MODEL,
 } from "./settings-manager.js";
@@ -30,6 +31,7 @@ describe("settings-manager", () => {
       openrouterApiKey: "",
       openrouterModel: DEFAULT_OPENROUTER_MODEL,
       serverName: "",
+      serverId: "",
       updatedAt: 0,
     });
   });
@@ -62,6 +64,7 @@ describe("settings-manager", () => {
       openrouterApiKey: "existing",
       openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
+      serverId: "",
       updatedAt: 123,
     });
   });
@@ -102,6 +105,7 @@ describe("settings-manager", () => {
       openrouterApiKey: "",
       openrouterModel: DEFAULT_OPENROUTER_MODEL,
       serverName: "",
+      serverId: "",
       updatedAt: 0,
     });
   });
@@ -150,5 +154,58 @@ describe("server name", () => {
     _resetForTest(settingsPath);
 
     expect(getServerName()).toBe("Saved Name");
+  });
+});
+
+describe("server ID", () => {
+  it("getServerId auto-generates a UUID when missing", () => {
+    // When no serverId exists in the settings file, getServerId should
+    // auto-generate one (a non-empty UUID string) and persist it.
+    const id = getServerId();
+    expect(id).toBeTruthy();
+    expect(typeof id).toBe("string");
+  });
+
+  it("getServerId returns the same ID on subsequent calls", () => {
+    // The server ID is stable — calling getServerId multiple times
+    // must always return the same value within a session.
+    const first = getServerId();
+    const second = getServerId();
+    expect(first).toBe(second);
+  });
+
+  it("getServerId persists to disk", () => {
+    // After auto-generation, the serverId must be written to the
+    // settings.json file so it survives server restarts.
+    const id = getServerId();
+    const saved = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(saved.serverId).toBe(id);
+  });
+
+  it("getServerId preserves existing serverId from disk", () => {
+    // If a settings file already contains a serverId, getServerId
+    // should return that value rather than generating a new one.
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        openrouterApiKey: "",
+        openrouterModel: DEFAULT_OPENROUTER_MODEL,
+        serverName: "",
+        serverId: "my-custom-server-id",
+        updatedAt: 0,
+      }),
+      "utf-8",
+    );
+    _resetForTest(settingsPath);
+
+    expect(getServerId()).toBe("my-custom-server-id");
+  });
+
+  it("server name changes do not affect serverId", () => {
+    // Updating the server display name must not alter the stable
+    // server ID — they are independent fields.
+    const id = getServerId();
+    setServerName("New Name");
+    expect(getServerId()).toBe(id);
   });
 });
