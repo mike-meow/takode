@@ -18,6 +18,8 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [saved, setSaved] = useState(false);
   const darkMode = useStore((s) => s.darkMode);
   const toggleDarkMode = useStore((s) => s.toggleDarkMode);
+  const zoomLevel = useStore((s) => s.zoomLevel);
+  const setZoomLevel = useStore((s) => s.setZoomLevel);
   const notificationSound = useStore((s) => s.notificationSound);
   const toggleNotificationSound = useStore((s) => s.toggleNotificationSound);
   const notificationDesktop = useStore((s) => s.notificationDesktop);
@@ -197,6 +199,36 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
             <span>Theme</span>
             <span className="text-xs text-cc-muted">{darkMode ? "Dark" : "Light"}</span>
           </button>
+          <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg">
+            <span>Zoom</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setZoomLevel(zoomLevel - 0.1)}
+                disabled={zoomLevel <= 0.2}
+                className="w-6 h-6 flex items-center justify-center rounded text-xs font-medium hover:bg-cc-active transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                −
+              </button>
+              <input
+                type="text"
+                value={Math.round(zoomLevel * 100) + "%"}
+                onChange={(e) => {
+                  const num = parseInt(e.target.value.replace(/[^0-9]/g, ""), 10);
+                  if (!isNaN(num)) setZoomLevel(num / 100);
+                }}
+                className="w-12 text-center text-xs text-cc-muted bg-transparent border border-cc-border rounded px-1 py-0.5 focus:outline-none focus:border-cc-primary/60"
+              />
+              <button
+                type="button"
+                onClick={() => setZoomLevel(zoomLevel + 0.1)}
+                disabled={zoomLevel >= 4.0}
+                className="w-6 h-6 flex items-center justify-center rounded text-xs font-medium hover:bg-cc-active transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                +
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="mt-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3">

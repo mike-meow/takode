@@ -82,6 +82,7 @@ interface AppState {
 
   // UI
   darkMode: boolean;
+  zoomLevel: number;
   notificationSound: boolean;
   notificationDesktop: boolean;
   sidebarOpen: boolean;
@@ -93,6 +94,7 @@ interface AppState {
   // Actions
   setDarkMode: (v: boolean) => void;
   toggleDarkMode: () => void;
+  setZoomLevel: (v: number) => void;
   setNotificationSound: (v: boolean) => void;
   toggleNotificationSound: () => void;
   setNotificationDesktop: (v: boolean) => void;
@@ -224,6 +226,16 @@ function getInitialNotificationDesktop(): boolean {
   return false;
 }
 
+function getInitialZoomLevel(): number {
+  if (typeof window === "undefined") return 0.9;
+  const stored = localStorage.getItem("cc-zoom-level");
+  if (stored !== null) {
+    const val = parseFloat(stored);
+    if (!isNaN(val) && val >= 0.2 && val <= 4.0) return val;
+  }
+  return 0.9;
+}
+
 function getInitialAssistantSessionId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("cc-assistant-session-id") || null;
@@ -271,6 +283,7 @@ export const useStore = create<AppState>((set) => ({
   sessionCreating: false,
   sessionCreatingBackend: null,
   darkMode: getInitialDarkMode(),
+  zoomLevel: getInitialZoomLevel(),
   notificationSound: getInitialNotificationSound(),
   notificationDesktop: getInitialNotificationDesktop(),
   sidebarOpen: typeof window !== "undefined" ? window.innerWidth >= 768 : true,
@@ -306,6 +319,11 @@ export const useStore = create<AppState>((set) => ({
       localStorage.setItem("cc-dark-mode", String(next));
       return { darkMode: next };
     }),
+  setZoomLevel: (v) => {
+    const clamped = Math.round(Math.max(0.2, Math.min(4.0, v)) * 100) / 100;
+    localStorage.setItem("cc-zoom-level", String(clamped));
+    set({ zoomLevel: clamped });
+  },
   setNotificationSound: (v) => {
     localStorage.setItem("cc-notification-sound", String(v));
     set({ notificationSound: v });

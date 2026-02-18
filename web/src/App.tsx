@@ -25,6 +25,7 @@ function useHash() {
 
 export default function App() {
   const darkMode = useStore((s) => s.darkMode);
+  const zoomLevel = useStore((s) => s.zoomLevel);
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const taskPanelOpen = useStore((s) => s.taskPanelOpen);
@@ -50,6 +51,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  useEffect(() => {
+    document.documentElement.style.overflow = "hidden";
+  }, []);
 
   // Capture the localStorage-restored session ID during render (before any effects run)
   // so the mount logic can use it even if the hash-sync branch would clear it.
@@ -85,7 +90,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-[100dvh] flex font-sans-ui bg-cc-bg text-cc-fg antialiased">
+    <div className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased" style={{ zoom: zoomLevel, width: `${100 / zoomLevel}vw`, height: `${100 / zoomLevel}dvh` }}>
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
