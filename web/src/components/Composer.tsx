@@ -33,8 +33,23 @@ interface CommandItem {
 }
 
 export function Composer({ sessionId }: { sessionId: string }) {
-  const [text, setText] = useState("");
-  const [images, setImages] = useState<ImageAttachment[]>([]);
+  const draft = useStore((s) => s.composerDrafts.get(sessionId));
+  const text = draft?.text ?? "";
+  const images = draft?.images ?? [];
+  const setText = useCallback((t: string | ((prev: string) => string)) => {
+    const store = useStore.getState();
+    const current = store.composerDrafts.get(sessionId);
+    const prevText = current?.text ?? "";
+    const newText = typeof t === "function" ? t(prevText) : t;
+    store.setComposerDraft(sessionId, { text: newText, images: current?.images ?? [] });
+  }, [sessionId]);
+  const setImages = useCallback((updater: ImageAttachment[] | ((prev: ImageAttachment[]) => ImageAttachment[])) => {
+    const store = useStore.getState();
+    const current = store.composerDrafts.get(sessionId);
+    const prevImages = current?.images ?? [];
+    const newImages = typeof updater === "function" ? updater(prevImages) : updater;
+    store.setComposerDraft(sessionId, { text: current?.text ?? "", images: newImages });
+  }, [sessionId]);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
@@ -153,8 +168,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       timestamp: Date.now(),
     });
 
-    setText("");
-    setImages([]);
+    useStore.getState().clearComposerDraft(sessionId);
     setSlashMenuOpen(false);
 
     if (textareaRef.current) {

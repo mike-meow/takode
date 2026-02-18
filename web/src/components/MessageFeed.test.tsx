@@ -20,8 +20,8 @@ vi.mock("remark-gfm", () => ({
 // Build a mock for the store that returns configurable values per session
 const mockStoreValues: Record<string, unknown> = {};
 
-vi.mock("../store.js", () => ({
-  useStore: (selector: (state: Record<string, unknown>) => unknown) => {
+vi.mock("../store.js", () => {
+  const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       messages: mockStoreValues.messages ?? new Map(),
       streaming: mockStoreValues.streaming ?? new Map(),
@@ -32,10 +32,16 @@ vi.mock("../store.js", () => ({
       sessionStatus: mockStoreValues.sessionStatus ?? new Map(),
       toolProgress: mockStoreValues.toolProgress ?? new Map(),
       toolResults: mockStoreValues.toolResults ?? new Map(),
+      feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
     };
     return selector(state);
-  },
-}));
+  };
+  useStore.getState = () => ({
+    feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
+    setFeedVisibleCount: vi.fn(),
+  });
+  return { useStore };
+});
 
 import { MessageFeed } from "./MessageFeed.js";
 

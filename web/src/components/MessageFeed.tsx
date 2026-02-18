@@ -482,14 +482,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const isNearBottom = useRef(true);
   const loadingMore = useRef(false);
   const [elapsed, setElapsed] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
+  const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
 
   const grouped = useMemo(() => groupMessages(messages), [messages]);
-
-  // Reset visible count when switching sessions
-  useEffect(() => {
-    setVisibleCount(FEED_PAGE_SIZE);
-  }, [sessionId]);
 
   const totalEntries = grouped.length;
   const hasMore = totalEntries > visibleCount;
@@ -500,7 +495,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     loadingMore.current = true;
     const el = containerRef.current;
     const prevHeight = el?.scrollHeight ?? 0;
-    setVisibleCount((c) => c + FEED_PAGE_SIZE);
+    const current = useStore.getState().feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE;
+    useStore.getState().setFeedVisibleCount(sessionId, current + FEED_PAGE_SIZE);
     // Preserve scroll position after DOM updates
     requestAnimationFrame(() => {
       if (el) {
@@ -509,7 +505,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       }
       loadingMore.current = false;
     });
-  }, []);
+  }, [sessionId]);
 
   // Auto-load older messages when scrolling near the top
   useEffect(() => {

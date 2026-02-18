@@ -29,9 +29,19 @@ const mockSetPreviousPermissionMode = vi.fn();
 const mockSetSessionPreview = vi.fn();
 const mockSetAskPermission = vi.fn();
 
-vi.mock("../store.js", () => {
-  // Create a mock store function that acts like zustand's useStore
-  const useStore = (selector: (state: Record<string, unknown>) => unknown) => {
+// Shared listener set for mock store reactivity
+const mockStoreListeners = new Set<() => void>();
+function notifyMockStore() { mockStoreListeners.forEach((l) => l()); }
+
+vi.mock("../store.js", async () => {
+  const React = await import("react");
+  // Create a mock store function that acts like zustand's useStore with subscribe support
+  const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
+    const [, forceUpdate] = React.useReducer((c: number) => c + 1, 0);
+    React.useEffect(() => {
+      mockStoreListeners.add(forceUpdate);
+      return () => { mockStoreListeners.delete(forceUpdate); };
+    }, []);
     return selector(mockStoreState);
   };
   // Add getState for imperative access (used by Composer for appendMessage)
@@ -101,11 +111,20 @@ function setupMockStore(overrides: {
     sessionStatus: sessionStatusMap,
     previousPermissionMode: previousPermissionModeMap,
     askPermission: askPermissionMap,
+    composerDrafts: new Map(),
     appendMessage: mockAppendMessage,
     updateSession: mockUpdateSession,
     setPreviousPermissionMode: mockSetPreviousPermissionMode,
     setSessionPreview: mockSetSessionPreview,
     setAskPermission: mockSetAskPermission,
+    setComposerDraft: vi.fn((sessionId: string, draft: { text: string; images: unknown[] }) => {
+      (mockStoreState.composerDrafts as Map<string, unknown>).set(sessionId, draft);
+      notifyMockStore();
+    }),
+    clearComposerDraft: vi.fn((sessionId: string) => {
+      (mockStoreState.composerDrafts as Map<string, unknown>).delete(sessionId);
+      notifyMockStore();
+    }),
   };
 }
 

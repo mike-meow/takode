@@ -193,6 +193,15 @@ interface AppState {
   setCliEverConnected: (sessionId: string) => void;
   setSessionStatus: (sessionId: string, status: "idle" | "running" | "compacting" | null) => void;
 
+  // Per-session feed visible count (persists across session switches)
+  feedVisibleCount: Map<string, number>;
+  setFeedVisibleCount: (sessionId: string, count: number) => void;
+
+  // Per-session composer drafts (text + images persist across session switches)
+  composerDrafts: Map<string, { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }>;
+  setComposerDraft: (sessionId: string, draft: { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }) => void;
+  clearComposerDraft: (sessionId: string) => void;
+
   // Diff panel actions
   setActiveTab: (tab: "chat" | "diff") => void;
   setDiffPanelSelectedFile: (sessionId: string, filePath: string | null) => void;
@@ -346,6 +355,8 @@ export const useStore = create<AppState>((set) => ({
   homeResetKey: 0,
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
+  feedVisibleCount: new Map(),
+  composerDrafts: new Map(),
   terminalOpen: false,
   terminalCwd: null,
   terminalId: null,
@@ -482,6 +493,10 @@ export const useStore = create<AppState>((set) => ({
       toolResults.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
+      const feedVisibleCount = new Map(s.feedVisibleCount);
+      feedVisibleCount.delete(sessionId);
+      const composerDrafts = new Map(s.composerDrafts);
+      composerDrafts.delete(sessionId);
       const sessionLastViewed = new Map(s.sessionLastViewed);
       sessionLastViewed.delete(sessionId);
       const sessionUnreadCount = new Map(s.sessionUnreadCount);
@@ -519,6 +534,8 @@ export const useStore = create<AppState>((set) => ({
         toolProgress,
         toolResults,
         prStatus,
+        feedVisibleCount,
+        composerDrafts,
         sessionLastViewed,
         sessionUnreadCount,
         sessionAttention,
@@ -938,6 +955,27 @@ export const useStore = create<AppState>((set) => ({
       return { diffPanelSelectedFile };
     }),
 
+  setFeedVisibleCount: (sessionId, count) =>
+    set((s) => {
+      const feedVisibleCount = new Map(s.feedVisibleCount);
+      feedVisibleCount.set(sessionId, count);
+      return { feedVisibleCount };
+    }),
+
+  setComposerDraft: (sessionId, draft) =>
+    set((s) => {
+      const composerDrafts = new Map(s.composerDrafts);
+      composerDrafts.set(sessionId, draft);
+      return { composerDrafts };
+    }),
+
+  clearComposerDraft: (sessionId) =>
+    set((s) => {
+      const composerDrafts = new Map(s.composerDrafts);
+      composerDrafts.delete(sessionId);
+      return { composerDrafts };
+    }),
+
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   setTerminalCwd: (cwd) => set({ terminalCwd: cwd }),
   setTerminalId: (id) => set({ terminalId: id }),
@@ -977,6 +1015,8 @@ export const useStore = create<AppState>((set) => ({
       sessionOrder: new Map(),
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),
+      feedVisibleCount: new Map(),
+      composerDrafts: new Map(),
       terminalOpen: false,
       terminalCwd: null,
       terminalId: null,
