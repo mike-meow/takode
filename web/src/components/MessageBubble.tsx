@@ -35,6 +35,17 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
         </div>
       );
     }
+    if (message.variant === "approved") {
+      return (
+        <div className="flex items-center gap-1.5 py-1.5 pl-9 text-xs text-green-400/80 font-mono-code animate-[fadeSlideIn_0.2s_ease-out]">
+          <svg className="w-3.5 h-3.5 text-green-400/60 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="8" cy="8" r="6.5" />
+            <path d="M5.5 8.5l2 2 3.5-4" />
+          </svg>
+          <span>{message.content}</span>
+        </div>
+      );
+    }
     // Expandable compact marker
     if (message.id.startsWith("compact-boundary-")) {
       return <CompactMarker message={message} />;

@@ -250,7 +250,8 @@ export type BrowserIncomingMessageBase =
   | { type: "compact_marker"; timestamp: number; id?: string; summary?: string; trigger?: string; preTokens?: number }
   | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
-  | { type: "permission_denied"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number };
+  | { type: "permission_denied"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number }
+  | { type: "permission_approved"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

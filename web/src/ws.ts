@@ -474,6 +474,18 @@ function handleParsedMessage(
       break;
     }
 
+    case "permission_approved": {
+      const approvedMsg: ChatMessage = {
+        id: data.id,
+        role: "system",
+        content: data.summary,
+        timestamp: data.timestamp,
+        variant: "approved",
+      };
+      store.appendMessage(sessionId, approvedMsg);
+      break;
+    }
+
     case "tool_progress": {
       store.setToolProgress(sessionId, data.tool_use_id, {
         toolName: data.tool_name,
@@ -632,6 +644,14 @@ function handleParsedMessage(
             content: histMsg.summary,
             timestamp: histMsg.timestamp,
             variant: "denied",
+          });
+        } else if (histMsg.type === "permission_approved") {
+          chatMessages.push({
+            id: histMsg.id,
+            role: "system",
+            content: histMsg.summary,
+            timestamp: histMsg.timestamp,
+            variant: "approved",
           });
         } else if (histMsg.type === "tool_result_preview") {
           for (const preview of histMsg.previews) {

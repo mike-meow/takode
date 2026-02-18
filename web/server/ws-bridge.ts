@@ -46,6 +46,19 @@ function getDenialSummary(toolName: string, input: Record<string, unknown>): str
   return `Denied: ${toolName}`;
 }
 
+/** Build a concise human-readable summary for an approved permission. */
+function getApprovalSummary(toolName: string, input: Record<string, unknown>): string {
+  if (toolName === "ExitPlanMode") return "Plan approved";
+  if (toolName === "Bash" && typeof input.command === "string") {
+    const cmd = input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
+    return `Approved: Bash \u2014 ${cmd}`;
+  }
+  if (typeof input.file_path === "string") {
+    return `Approved: ${toolName} \u2014 ${input.file_path}`;
+  }
+  return `Approved: ${toolName}`;
+}
+
 // ─── WebSocket data tags ──────────────────────────────────────────────────────
 
 interface CLISocketData {
@@ -1153,7 +1166,18 @@ export class WsBridge {
       if (msg.type === "permission_response") {
         const pending = session.pendingPermissions.get(msg.request_id);
         session.pendingPermissions.delete(msg.request_id);
-        // Record denial in history for Codex sessions too
+        if (msg.behavior === "allow" && pending) {
+          const approvedMsg: BrowserIncomingMessage = {
+            type: "permission_approved",
+            id: `approval-${msg.request_id}`,
+            tool_name: pending.tool_name,
+            tool_use_id: pending.tool_use_id,
+            summary: getApprovalSummary(pending.tool_name, pending.input),
+            timestamp: Date.now(),
+          };
+          session.messageHistory.push(approvedMsg);
+          this.broadcastToBrowsers(session, approvedMsg);
+        }
         if (msg.behavior === "deny" && pending) {
           const deniedMsg: BrowserIncomingMessage = {
             type: "permission_denied",
@@ -1394,6 +1418,20 @@ export class WsBridge {
         },
       });
       this.sendToCLI(session, ndjson);
+
+      // Broadcast approval record to all browsers and persist in history
+      if (pending) {
+        const approvedMsg: BrowserIncomingMessage = {
+          type: "permission_approved",
+          id: `approval-${msg.request_id}`,
+          tool_name: pending.tool_name,
+          tool_use_id: pending.tool_use_id,
+          summary: getApprovalSummary(pending.tool_name, pending.input),
+          timestamp: Date.now(),
+        };
+        session.messageHistory.push(approvedMsg);
+        this.broadcastToBrowsers(session, approvedMsg);
+      }
 
       // Auto-switch mode after ExitPlanMode approval.
       // When a plan is approved, transition to the appropriate execution mode
