@@ -776,10 +776,16 @@ export function Playground() {
         </Section>
 
         {/* ─── Copy Features ──────────────────────────────── */}
-        <Section title="Copy Features" description="Copy-to-clipboard for code blocks (hover to reveal copy icon) and assistant messages (hover for copy menu with Markdown/Rich Text/Plain Text options)">
+        <Section title="Copy Features" description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus assistant message copy menu (Markdown/Rich Text/Plain Text)">
           <div className="space-y-4 max-w-3xl">
-            <Card label="Code block — hover to reveal copy button">
+            <Card label="Code block in markdown — hover to reveal copy button">
               <MarkdownContent text={"Here is some code:\n\n```typescript\nconst greeting = \"Hello, world!\";\nconsole.log(greeting);\n```\n\nAnd a block without a language tag:\n\n```\nnpm install\nnpm run build\n```"} />
+            </Card>
+            <Card label="Terminal tool — hover command block to copy (without $ prefix)">
+              <ToolBlock name="Bash" input={{ command: "git status && npm run lint", description: "Check git status and lint" }} toolUseId="copy-tb-1" />
+            </Card>
+            <Card label="Grep tool — hover pattern to copy">
+              <ToolBlock name="Grep" input={{ pattern: "useEffect\\(.*\\[\\]", path: "src/", glob: "*.tsx" }} toolUseId="copy-tb-2" />
             </Card>
             <Card label="Assistant message — hover for copy menu">
               <MessageBubble message={MSG_ASSISTANT} />

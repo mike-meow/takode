@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, type ComponentProps, type ReactNode } from "react";
+import { useRef, useCallback, type ComponentProps, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CodeCopyButton } from "./CodeCopyButton.js";
 
 export function MarkdownContent({ text, size = "default" }: { text: string; size?: "default" | "sm" }) {
   const sizeClass = size === "sm"
@@ -98,15 +99,7 @@ export function MarkdownContent({ text, size = "default" }: { text: string; size
 
 function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
   const codeRef = useRef<HTMLElement>(null);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    const text = codeRef.current?.textContent ?? "";
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(console.error);
-  }, []);
+  const getText = useCallback(() => codeRef.current?.textContent ?? "", []);
 
   return (
     <div className="group/code my-2 rounded-lg overflow-hidden border border-cc-border relative">
@@ -115,37 +108,16 @@ function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
           <span className="text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">
             {lang}
           </span>
-          <CopyButton copied={copied} onClick={handleCopy} />
+          <CodeCopyButton getText={getText} />
         </div>
       ) : (
         <div className="absolute top-1.5 right-1.5 z-10">
-          <CopyButton copied={copied} onClick={handleCopy} />
+          <CodeCopyButton getText={getText} />
         </div>
       )}
       <pre className="px-2 sm:px-3 py-2 sm:py-2.5 bg-cc-code-bg text-cc-code-fg text-[12px] sm:text-[13px] font-mono-code leading-relaxed overflow-x-auto">
         <code ref={codeRef}>{children}</code>
       </pre>
     </div>
-  );
-}
-
-function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="opacity-0 group-hover/code:opacity-100 transition-opacity p-1 rounded hover:bg-white/10 cursor-pointer"
-      title={copied ? "Copied!" : "Copy code"}
-    >
-      {copied ? (
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-success">
-          <path d="M3 8.5l3.5 3.5 6.5-8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3.5 h-3.5 text-cc-muted hover:text-cc-code-fg">
-          <rect x="5.5" y="5.5" width="7" height="8" rx="1" />
-          <path d="M3.5 10.5V3a1 1 0 011-1h5.5" />
-        </svg>
-      )}
-    </button>
   );
 }

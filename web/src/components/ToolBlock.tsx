@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { CodeCopyButton } from "./CodeCopyButton.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 
@@ -155,15 +156,20 @@ function ToolResultSection({ toolUseId, sessionId }: { toolUseId: string; sessio
           {loading ? "Loading..." : `Show full result (${formatBytes(preview.total_size)})`}
         </button>
       )}
-      <pre className={`text-[11px] font-mono-code whitespace-pre-wrap leading-relaxed rounded-lg px-2.5 py-2 ${
-        fullContent === null ? "max-h-40" : "max-h-96"
-      } overflow-y-auto ${
-        preview.is_error
-          ? "bg-cc-error/5 border border-cc-error/20 text-cc-error"
-          : "bg-cc-code-bg text-cc-muted"
-      }`}>
-        {showExpandButton ? "..." : ""}{displayContent}
-      </pre>
+      <div className="group/code relative rounded-lg overflow-hidden">
+        <div className="absolute top-1.5 right-1.5 z-10">
+          <CodeCopyButton text={displayContent} />
+        </div>
+        <pre className={`text-[11px] font-mono-code whitespace-pre-wrap leading-relaxed rounded-lg px-2.5 py-2 ${
+          fullContent === null ? "max-h-40" : "max-h-96"
+        } overflow-y-auto ${
+          preview.is_error
+            ? "bg-cc-error/5 border border-cc-error/20 text-cc-error"
+            : "bg-cc-code-bg text-cc-muted"
+        }`}>
+          {showExpandButton ? "..." : ""}{displayContent}
+        </pre>
+      </div>
     </div>
   );
 }
@@ -214,15 +220,21 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
 // ─── Per-tool detail components ─────────────────────────────────────────────
 
 function BashDetail({ input }: { input: Record<string, unknown> }) {
+  const command = String(input.command || "");
   return (
     <div className="space-y-1.5">
       {!!input.description && (
         <div className="text-[11px] text-cc-muted italic">{String(input.description)}</div>
       )}
-      <pre className="px-3 py-2 rounded-lg bg-cc-code-bg text-cc-code-fg text-[12px] font-mono-code leading-relaxed overflow-x-auto">
-        <span className="text-cc-muted select-none">$ </span>
-        {String(input.command || "")}
-      </pre>
+      <div className="group/code relative rounded-lg overflow-hidden">
+        <div className="absolute top-1.5 right-1.5 z-10">
+          <CodeCopyButton text={command} />
+        </div>
+        <pre className="px-3 py-2 rounded-lg bg-cc-code-bg text-cc-code-fg text-[12px] font-mono-code leading-relaxed overflow-x-auto">
+          <span className="text-cc-muted select-none">$ </span>
+          {command}
+        </pre>
+      </div>
       {!!input.timeout && (
         <div className="text-[10px] text-cc-muted">timeout: {String(input.timeout)}ms</div>
       )}
@@ -286,11 +298,17 @@ function GlobDetail({ input }: { input: Record<string, unknown> }) {
 }
 
 function GrepDetail({ input }: { input: Record<string, unknown> }) {
+  const pattern = String(input.pattern || "");
   return (
     <div className="space-y-1">
-      <pre className="px-2 py-1.5 rounded bg-cc-code-bg text-cc-code-fg text-[12px] font-mono-code overflow-x-auto">
-        {String(input.pattern || "")}
-      </pre>
+      <div className="group/code relative rounded overflow-hidden">
+        <div className="absolute top-1 right-1 z-10">
+          <CodeCopyButton text={pattern} />
+        </div>
+        <pre className="px-2 py-1.5 rounded bg-cc-code-bg text-cc-code-fg text-[12px] font-mono-code overflow-x-auto">
+          {pattern}
+        </pre>
+      </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-cc-muted">
         {!!input.path && (
           <span>path: <span className="font-mono-code">{String(input.path)}</span></span>
@@ -407,9 +425,14 @@ function NotebookEditDetail({ input }: { input: Record<string, unknown> }) {
         {input.cell_number != null && <span>cell: {String(input.cell_number)}</span>}
       </div>
       {!!input.new_source && (
-        <pre className="px-2 py-1.5 rounded bg-cc-code-bg text-cc-code-fg text-[11px] font-mono-code leading-relaxed max-h-40 overflow-y-auto">
-          {String(input.new_source)}
-        </pre>
+        <div className="group/code relative rounded overflow-hidden">
+          <div className="absolute top-1 right-1 z-10">
+            <CodeCopyButton text={String(input.new_source)} />
+          </div>
+          <pre className="px-2 py-1.5 rounded bg-cc-code-bg text-cc-code-fg text-[11px] font-mono-code leading-relaxed max-h-40 overflow-y-auto">
+            {String(input.new_source)}
+          </pre>
+        </div>
       )}
     </div>
   );
