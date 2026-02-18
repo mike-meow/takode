@@ -2,6 +2,7 @@ import type { SessionItem as SessionItemType } from "../utils/project-grouping.j
 import type { SessionState } from "../../server/session-types.js";
 import { useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { shortenHome } from "../utils/path-display.js";
 
 interface SessionHoverCardProps {
   session: SessionItemType;
@@ -136,6 +137,16 @@ export function SessionHoverCard({
               </>
             )}
           </div>
+          {s.cwd && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/50">
+                <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+              </svg>
+              <span className="text-[11px] text-cc-muted font-mono-code truncate" title={s.cwd}>
+                {shortenHome(s.cwd)}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Preview section — preview is stored truncated at 80 chars */}
