@@ -37,6 +37,7 @@ const SCOPED_KEYS = [
   "cc-diff-base",
   "cc-recent-dirs",
   "cc-session-last-viewed",
+  "cc-session-attention",
   "cc-session-order",
 ];
 

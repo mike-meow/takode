@@ -127,12 +127,20 @@ export function Sidebar() {
     }).catch(() => {});
   }, []);
 
-  // Update document.title when serverName or attention count changes
+  // Update document.title when serverName, attention, or permission counts change
   useEffect(() => {
-    const totalAttention = Array.from(sessionAttention.values()).filter((a) => a !== null).length;
+    // Count sessions needing user attention: unread results + pending permissions
+    const attentionIds = new Set<string>();
+    for (const [id, a] of sessionAttention) {
+      if (a !== null) attentionIds.add(id);
+    }
+    for (const [id, perms] of pendingPermissions) {
+      if (perms.size > 0) attentionIds.add(id);
+    }
+    const totalAttention = attentionIds.size;
     const base = serverName ? `${serverName} — Takode` : "Takode";
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
-  }, [serverName, sessionAttention]);
+  }, [serverName, sessionAttention, pendingPermissions]);
 
   // Focus server name input when entering edit mode
   useEffect(() => {

@@ -273,6 +273,21 @@ function getInitialSessionLastViewed(): Map<string, number> {
   }
 }
 
+function persistSessionAttention(m: Map<string, "action" | "error" | "review" | null>) {
+  // Only persist non-null entries to keep storage compact
+  const entries = Array.from(m.entries()).filter(([, v]) => v !== null);
+  scopedSetItem("cc-session-attention", JSON.stringify(entries));
+}
+
+function getInitialSessionAttention(): Map<string, "action" | "error" | "review" | null> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    return new Map(JSON.parse(scopedGetItem("cc-session-attention") || "[]"));
+  } catch {
+    return new Map();
+  }
+}
+
 function getInitialSessionOrder(): Map<string, string[]> {
   if (typeof window === "undefined") return new Map();
   try {
@@ -320,7 +335,7 @@ export const useStore = create<AppState>((set) => ({
   toolResults: new Map(),
   sessionLastViewed: getInitialSessionLastViewed(),
   sessionUnreadCount: new Map(),
-  sessionAttention: new Map(),
+  sessionAttention: getInitialSessionAttention(),
   sessionOrder: getInitialSessionOrder(),
   collapsedProjects: getInitialCollapsedProjects(),
   creationProgress: null,
@@ -491,6 +506,7 @@ export const useStore = create<AppState>((set) => ({
       sessionAttention.delete(sessionId);
       scopedSetItem("cc-session-names", JSON.stringify(Array.from(sessionNames.entries())));
       scopedSetItem("cc-session-last-viewed", JSON.stringify(Array.from(sessionLastViewed.entries())));
+      persistSessionAttention(sessionAttention);
       if (s.currentSessionId === sessionId) {
         scopedRemoveItem("cc-current-session");
       }
@@ -793,6 +809,7 @@ export const useStore = create<AppState>((set) => ({
       const sessionAttention = new Map(s.sessionAttention);
       sessionAttention.set(sessionId, null);
       scopedSetItem("cc-session-last-viewed", JSON.stringify(Array.from(sessionLastViewed.entries())));
+      persistSessionAttention(sessionAttention);
       return { sessionLastViewed, sessionUnreadCount, sessionAttention };
     }),
 
@@ -816,6 +833,7 @@ export const useStore = create<AppState>((set) => ({
         sessionAttention.set(sessionId, newAttention);
       }
 
+      persistSessionAttention(sessionAttention);
       return { sessionUnreadCount, sessionAttention };
     }),
 
@@ -826,6 +844,7 @@ export const useStore = create<AppState>((set) => ({
       const sessionUnreadCount = new Map(s.sessionUnreadCount);
       const current = sessionUnreadCount.get(sessionId) || 0;
       sessionUnreadCount.set(sessionId, Math.max(1, current));
+      persistSessionAttention(sessionAttention);
       return { sessionAttention, sessionUnreadCount };
     }),
 
@@ -841,6 +860,7 @@ export const useStore = create<AppState>((set) => ({
         sessionAttention.set(sdk.sessionId, null);
       }
       scopedSetItem("cc-session-last-viewed", JSON.stringify(Array.from(sessionLastViewed.entries())));
+      persistSessionAttention(sessionAttention);
       return { sessionLastViewed, sessionUnreadCount, sessionAttention };
     }),
 
@@ -850,6 +870,7 @@ export const useStore = create<AppState>((set) => ({
       sessionAttention.set(sessionId, null);
       const sessionUnreadCount = new Map(s.sessionUnreadCount);
       sessionUnreadCount.set(sessionId, 0);
+      persistSessionAttention(sessionAttention);
       return { sessionAttention, sessionUnreadCount };
     }),
 
