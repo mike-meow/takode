@@ -1,6 +1,7 @@
 import { useRef, type RefObject } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
+import { cwdRelativeToRoot, shortenHome } from "../utils/path-display.js";
 
 interface SessionItemProps {
   session: SessionItemType;
@@ -171,6 +172,18 @@ export function SessionItem({
             {sessionPreview && !isEditing && (
               <div className="mt-0.5 text-[10.5px] text-cc-muted/60 leading-tight truncate">
                 {sessionPreview}
+              </div>
+            )}
+
+            {/* Row 2.5: Working directory (only when cwd differs from project root) */}
+            {s.cwd && s.repoRoot && s.cwd !== s.repoRoot && (
+              <div className="flex items-center gap-1 mt-0.5 text-[10px] text-cc-muted/60 font-mono-code leading-tight truncate">
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                  <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+                </svg>
+                <span className="truncate" title={s.cwd}>
+                  {cwdRelativeToRoot(s.cwd, s.repoRoot) || shortenHome(s.cwd)}
+                </span>
               </div>
             )}
 

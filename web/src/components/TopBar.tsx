@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { parseHash } from "../utils/routing.js";
+import { shortenHome } from "../utils/path-display.js";
 
 export function TopBar() {
   const hash = useSyncExternalStore(
@@ -90,20 +91,27 @@ export function TopBar() {
         {currentSessionId && (
           <div className="flex items-center gap-1.5">
             <span
-              className={`w-1.5 h-1.5 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                 isConnected ? "bg-cc-success" : "bg-cc-muted opacity-40"
               }`}
             />
-            {sessionName && (
-              <span className="text-[11px] font-medium text-cc-fg max-w-[9rem] sm:max-w-none truncate flex items-center gap-1" title={sessionName}>
-                {isAssistant && (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary shrink-0">
-                    <path d="M8 0l1.5 5.2L14.8 4 9.8 6.5 14 11l-5.2-1.5L8 16l-1-6.5L1.2 11l5-4.5L1.2 4l5.3 1.2z" />
-                  </svg>
-                )}
-                {sessionName}
-              </span>
-            )}
+            <div className="min-w-0">
+              {sessionName && (
+                <span className="text-[11px] font-medium text-cc-fg max-w-[9rem] sm:max-w-none truncate flex items-center gap-1" title={sessionName}>
+                  {isAssistant && (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary shrink-0">
+                      <path d="M8 0l1.5 5.2L14.8 4 9.8 6.5 14 11l-5.2-1.5L8 16l-1-6.5L1.2 11l5-4.5L1.2 4l5.3 1.2z" />
+                    </svg>
+                  )}
+                  {sessionName}
+                </span>
+              )}
+              {cwd && (
+                <span className="text-[10px] text-cc-muted font-mono-code truncate block max-w-[12rem] sm:max-w-[20rem]" title={cwd}>
+                  {shortenHome(cwd)}
+                </span>
+              )}
+            </div>
             {/* Copy CLI Session ID button */}
             {cliSessionId && (
               <button
