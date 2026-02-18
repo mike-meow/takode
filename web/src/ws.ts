@@ -967,3 +967,22 @@ if (typeof document !== "undefined") {
     }
   });
 }
+
+// ── Page unload: close all WebSockets so the browser tears down TCP connections ──
+// Without this, Safari reuses stale keep-alive connections after a dev server
+// restart, causing the reloaded page to hang indefinitely. Closing WebSockets
+// on beforeunload forces Safari to open fresh TCP connections on the next load.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    for (const [sessionId, ws] of sockets) {
+      const hb = heartbeatIntervals.get(sessionId);
+      if (hb) clearInterval(hb);
+      heartbeatIntervals.delete(sessionId);
+      const timer = reconnectTimers.get(sessionId);
+      if (timer) clearTimeout(timer);
+      reconnectTimers.delete(sessionId);
+      ws.close();
+    }
+    sockets.clear();
+  });
+}
