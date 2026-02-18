@@ -26,6 +26,8 @@ export interface ChatMessage {
   stopReason?: string | null;
   /** For system messages: "error" renders prominently, "denied" shows a compact denial chip, "approved" shows a green approval chip, default renders as subtle divider */
   variant?: "error" | "info" | "denied" | "approved";
+  /** Extra structured data for rich rendering (e.g. AskUserQuestion answers) */
+  metadata?: { answers?: { question: string; answer: string }[] };
 }
 
 export interface TaskItem {

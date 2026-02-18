@@ -481,6 +481,7 @@ function handleParsedMessage(
         content: data.summary,
         timestamp: data.timestamp,
         variant: "approved",
+        ...(data.answers?.length ? { metadata: { answers: data.answers } } : {}),
       };
       store.appendMessage(sessionId, approvedMsg);
       break;
@@ -652,6 +653,7 @@ function handleParsedMessage(
             content: histMsg.summary,
             timestamp: histMsg.timestamp,
             variant: "approved",
+            ...(histMsg.answers?.length ? { metadata: { answers: histMsg.answers } } : {}),
           });
         } else if (histMsg.type === "tool_result_preview") {
           for (const preview of histMsg.previews) {

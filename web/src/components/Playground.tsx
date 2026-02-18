@@ -341,6 +341,20 @@ const MSG_APPROVED_PLAN: ChatMessage = {
   variant: "approved",
 };
 
+const MSG_APPROVED_ASK: ChatMessage = {
+  id: "approval-ask-1",
+  role: "system",
+  content: "Approved: AskUserQuestion",
+  timestamp: Date.now() - 15500,
+  variant: "approved",
+  metadata: {
+    answers: [
+      { question: "Which library should we use for date formatting?", answer: "date-fns (Recommended)" },
+      { question: "Should we add unit tests?", answer: "Yes, with full coverage" },
+    ],
+  },
+};
+
 // Tool result with error
 const MSG_TOOL_ERROR: ChatMessage = {
   id: "msg-7",
@@ -763,6 +777,9 @@ export function Playground() {
             </Card>
             <Card label="Approved — Plan">
               <MessageBubble message={MSG_APPROVED_PLAN} />
+            </Card>
+            <Card label="Approved — AskUserQuestion with answers">
+              <MessageBubble message={MSG_APPROVED_ASK} />
             </Card>
           </div>
         </Section>

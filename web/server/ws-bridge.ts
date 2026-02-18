@@ -59,6 +59,26 @@ function getApprovalSummary(toolName: string, input: Record<string, unknown>): s
   return `Approved: ${toolName}`;
 }
 
+/** Extract structured Q&A pairs from an AskUserQuestion approval. */
+function extractAskUserAnswers(
+  originalInput: Record<string, unknown>,
+  updatedInput?: Record<string, unknown>,
+): { question: string; answer: string }[] | undefined {
+  const answers = updatedInput?.answers as Record<string, string> | undefined;
+  const questions = Array.isArray(originalInput.questions) ? originalInput.questions as Record<string, unknown>[] : [];
+  if (!answers || !questions.length) return undefined;
+
+  const pairs: { question: string; answer: string }[] = [];
+  for (const q of questions) {
+    const questionText = typeof q.question === "string" ? q.question : "";
+    const answer = questionText ? answers[questionText] : undefined;
+    if (questionText && answer) {
+      pairs.push({ question: questionText, answer });
+    }
+  }
+  return pairs.length ? pairs : undefined;
+}
+
 // ─── WebSocket data tags ──────────────────────────────────────────────────────
 
 interface CLISocketData {
@@ -1167,6 +1187,9 @@ export class WsBridge {
         const pending = session.pendingPermissions.get(msg.request_id);
         session.pendingPermissions.delete(msg.request_id);
         if (msg.behavior === "allow" && pending) {
+          const answers = pending.tool_name === "AskUserQuestion"
+            ? extractAskUserAnswers(pending.input, msg.updated_input)
+            : undefined;
           const approvedMsg: BrowserIncomingMessage = {
             type: "permission_approved",
             id: `approval-${msg.request_id}`,
@@ -1174,6 +1197,7 @@ export class WsBridge {
             tool_use_id: pending.tool_use_id,
             summary: getApprovalSummary(pending.tool_name, pending.input),
             timestamp: Date.now(),
+            ...(answers ? { answers } : {}),
           };
           session.messageHistory.push(approvedMsg);
           this.broadcastToBrowsers(session, approvedMsg);
@@ -1421,6 +1445,9 @@ export class WsBridge {
 
       // Broadcast approval record to all browsers and persist in history
       if (pending) {
+        const answers = pending.tool_name === "AskUserQuestion"
+          ? extractAskUserAnswers(pending.input, msg.updated_input)
+          : undefined;
         const approvedMsg: BrowserIncomingMessage = {
           type: "permission_approved",
           id: `approval-${msg.request_id}`,
@@ -1428,6 +1455,7 @@ export class WsBridge {
           tool_use_id: pending.tool_use_id,
           summary: getApprovalSummary(pending.tool_name, pending.input),
           timestamp: Date.now(),
+          ...(answers ? { answers } : {}),
         };
         session.messageHistory.push(approvedMsg);
         this.broadcastToBrowsers(session, approvedMsg);

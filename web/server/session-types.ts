@@ -251,7 +251,7 @@ export type BrowserIncomingMessageBase =
   | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
   | { type: "permission_denied"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number }
-  | { type: "permission_approved"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number };
+  | { type: "permission_approved"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number; answers?: { question: string; answer: string }[] };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 
