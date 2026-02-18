@@ -84,7 +84,7 @@ function makeSession(id: string): SessionState {
     git_branch: "main",
     is_worktree: false,
     is_containerized: false,
-    repo_root: "/repo",
+    repo_root: "/home/user",
     git_ahead: 0,
     git_behind: 0,
     total_lines_added: 0,
@@ -363,7 +363,7 @@ describe("handleMessage: assistant", () => {
     expect(state.sessionStatus.get("s1")).toBe("running");
   });
 
-  it("tracks changed files using session cwd for relative tool paths", () => {
+  it("tracks changed files using session cwd for resolving relative tool paths", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
@@ -392,7 +392,7 @@ describe("handleMessage: assistant", () => {
     expect(changed?.has("/home/user/web/server/index.ts")).toBe(true);
   });
 
-  it("ignores changed files outside the session cwd", () => {
+  it("ignores changed files outside the repo root", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
@@ -421,7 +421,7 @@ describe("handleMessage: assistant", () => {
     expect(changed).toBeUndefined();
   });
 
-  it("tracks changed files with absolute paths when inside cwd", () => {
+  it("tracks changed files with absolute paths when inside repo root", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 

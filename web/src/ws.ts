@@ -119,15 +119,18 @@ function extractTasksFromBlocks(sessionId: string, blocks: ContentBlock[]) {
 
 function extractChangedFilesFromBlocks(sessionId: string, blocks: ContentBlock[]) {
   const store = useStore.getState();
+  const session = store.sessions.get(sessionId);
   const sessionCwd =
-    store.sessions.get(sessionId)?.cwd ||
+    session?.cwd ||
     store.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd;
+  // Use repo root as scope so files outside session cwd (e.g. repo-root CLAUDE.md) are tracked
+  const scope = session?.repo_root || sessionCwd;
   for (const block of blocks) {
     if (block.type !== "tool_use") continue;
     const { name, input } = block;
     if ((name === "Edit" || name === "Write") && typeof input.file_path === "string") {
       const resolvedPath = resolveSessionFilePath(input.file_path, sessionCwd);
-      if (isPathInSessionScope(resolvedPath, sessionCwd)) {
+      if (isPathInSessionScope(resolvedPath, scope)) {
         store.addChangedFile(sessionId, resolvedPath);
       }
     }

@@ -49,6 +49,8 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const changedFilesSet = useStore((s) => s.changedFiles.get(sessionId));
 
   const cwd = session?.cwd || sdkSession?.cwd;
+  // Use git repo root as scope so files outside session cwd are visible in diff panel
+  const repoRoot = session?.repo_root || cwd;
 
   const [diffContent, setDiffContent] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);
@@ -74,13 +76,13 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const changedFiles = useMemo(() => changedFilesSet ?? new Set<string>(), [changedFilesSet]);
 
   const relativeChangedFiles = useMemo(() => {
-    if (!changedFiles.size || !cwd) return [];
-    const cwdPrefix = `${cwd}/`;
+    if (!changedFiles.size || !repoRoot) return [];
+    const rootPrefix = `${repoRoot}/`;
     return [...changedFiles]
-      .filter((fp) => fp === cwd || fp.startsWith(cwdPrefix))
-      .map((fp) => ({ abs: fp, rel: fp.startsWith(cwd + "/") ? fp.slice(cwd.length + 1) : fp }))
+      .filter((fp) => fp === repoRoot || fp.startsWith(rootPrefix))
+      .map((fp) => ({ abs: fp, rel: fp.startsWith(repoRoot + "/") ? fp.slice(repoRoot.length + 1) : fp }))
       .sort((a, b) => a.rel.localeCompare(b.rel));
-  }, [changedFiles, cwd]);
+  }, [changedFiles, repoRoot]);
 
   // Eagerly fetch default branch and branch list (once per cwd)
   useEffect(() => {
