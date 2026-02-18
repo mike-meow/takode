@@ -7,12 +7,14 @@ import "@testing-library/jest-dom";
 const mockApi = {
   getFileDiff: vi.fn().mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" }),
   listBranches: vi.fn().mockResolvedValue([]),
+  getRepoInfo: vi.fn().mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false }),
 };
 
 vi.mock("../api.js", () => ({
   api: {
     getFileDiff: (...args: unknown[]) => mockApi.getFileDiff(...args),
     listBranches: (...args: unknown[]) => mockApi.listBranches(...args),
+    getRepoInfo: (...args: unknown[]) => mockApi.getRepoInfo(...args),
   },
 }));
 
@@ -52,6 +54,7 @@ beforeEach(() => {
   // Reset to default empty diff (clearAllMocks doesn't reset implementations)
   mockApi.getFileDiff.mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
   mockApi.listBranches.mockResolvedValue([]);
+  mockApi.getRepoInfo.mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false });
   localStorage.clear();
   resetStore();
 });

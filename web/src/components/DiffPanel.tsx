@@ -64,9 +64,9 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     if (!cwd) return null;
     return getSavedDiffBases()[cwd] || null;
   });
-  // The server-resolved default branch name (from first API response)
+  // The server-resolved default branch name (eagerly fetched via getRepoInfo)
   const [resolvedDefault, setResolvedDefault] = useState<string | null>(null);
-  // Available branches for the dropdown (fetched lazily)
+  // Available branches for the dropdown
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const branchesFetched = useRef(false);
 
@@ -81,10 +81,13 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       .sort((a, b) => a.rel.localeCompare(b.rel));
   }, [changedFiles, cwd]);
 
-  // Fetch branch list lazily (once per cwd)
+  // Eagerly fetch default branch and branch list (once per cwd)
   useEffect(() => {
     if (!cwd || branchesFetched.current) return;
     branchesFetched.current = true;
+    api.getRepoInfo(cwd).then((info) => {
+      if (info?.defaultBranch) setResolvedDefault(info.defaultBranch);
+    }).catch(() => {});
     api.listBranches(cwd).then((branches) => {
       setAvailableBranches(branches.map((b) => b.name));
     }).catch(() => {});
@@ -203,6 +206,22 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     return selectedFile.startsWith(cwd + "/") ? selectedFile.slice(cwd.length + 1) : selectedFile;
   }, [selectedFile, cwd]);
 
+  const branchSelector = (
+    <select
+      value={baseBranch || ""}
+      onChange={(e) => handleBaseBranchChange(e.target.value || null)}
+      className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[180px]"
+      title="Base branch for diff comparison"
+    >
+      <option value="">
+        {resolvedDefault ? `vs ${resolvedDefault} (default)` : "vs default branch"}
+      </option>
+      {availableBranches.map((b) => (
+        <option key={b} value={b}>vs {b}</option>
+      ))}
+    </select>
+  );
+
   if (!cwd) {
     return (
       <div className="flex-1 flex items-center justify-center h-full">
@@ -221,9 +240,10 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         </div>
         <div className="text-center">
           <p className="text-sm text-cc-fg font-medium mb-1">No changes yet</p>
-          <p className="text-xs text-cc-muted leading-relaxed">
+          <p className="text-xs text-cc-muted leading-relaxed mb-3">
             File changes from Edit and Write tool calls will appear here.
           </p>
+          {branchSelector}
         </div>
       </div>
     );
@@ -330,19 +350,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
                 <span className="text-red-400">-{fileStats.get(selectedFile)!.deletions}</span>
               </span>
             )}
-            <select
-              value={baseBranch || ""}
-              onChange={(e) => handleBaseBranchChange(e.target.value || null)}
-              className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors shrink-0 hidden sm:block max-w-[180px]"
-              title="Base branch for diff comparison"
-            >
-              <option value="">
-                {resolvedDefault ? `vs ${resolvedDefault} (default)` : "vs default branch"}
-              </option>
-              {availableBranches.map((b) => (
-                <option key={b} value={b}>vs {b}</option>
-              ))}
-            </select>
+            <span className="shrink-0 hidden sm:block">{branchSelector}</span>
           </div>
         )}
 
