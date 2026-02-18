@@ -352,9 +352,10 @@ describe("MessageBubble - content block grouping", () => {
 
     // When grouped, there should be a count badge showing "3"
     expect(screen.getByText("3")).toBeTruthy();
-    // The label should appear once (grouped)
+    // The group header label plus each expanded child renders the tool name.
+    // 1 (group header) + 3 (children, since group defaults to open) = 4 total.
     const labels = screen.getAllByText("Read File");
-    expect(labels.length).toBe(1);
+    expect(labels.length).toBe(4);
   });
 
   it("does not group different tool types together", () => {

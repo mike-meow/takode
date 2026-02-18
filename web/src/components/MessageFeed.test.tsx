@@ -316,8 +316,10 @@ describe("MessageFeed - tool-only message detection", () => {
     // When grouped at message level, both should appear under a single "Read File" group
     // with a count badge showing "2"
     expect(screen.getByText("2")).toBeTruthy();
+    // The group header label plus each expanded child renders the tool name.
+    // 1 (group header) + 2 (children, since group defaults to open) = 3 total.
     const labels = screen.getAllByText("Read File");
-    expect(labels.length).toBe(1);
+    expect(labels.length).toBe(3);
   });
 
   it("does not group different tool types across messages", () => {
