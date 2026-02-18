@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import type { ChatMessage, ContentBlock } from "../types.js";
-import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { Lightbox } from "./Lightbox.js";
 
@@ -275,16 +275,10 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
       </button>
 
       {open && (
-        <div className="border-t border-cc-border px-3 py-1.5">
-          {items.map((item, i) => {
-            const preview = getPreview(item.name, item.input);
-            return (
-              <div key={item.id || i} className="flex items-center gap-2 py-1 text-xs text-cc-muted font-mono-code truncate">
-                <span className="w-1 h-1 rounded-full bg-cc-muted/40 shrink-0" />
-                <span className="truncate">{preview || JSON.stringify(item.input).slice(0, 80)}</span>
-              </div>
-            );
-          })}
+        <div className="border-t border-cc-border px-3 py-2 flex flex-col gap-1.5">
+          {items.map((item, i) => (
+            <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+          ))}
         </div>
       )}
     </div>
