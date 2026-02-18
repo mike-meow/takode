@@ -139,6 +139,8 @@ interface Session {
   toolResults: Map<string, { content: string; is_error: boolean; timestamp: number }>;
   /** Set after compact_boundary; the next user text message is the summary */
   awaitingCompactSummary?: boolean;
+  /** Accumulates content blocks for assistant messages with the same ID (parallel tool calls) */
+  assistantAccumulator: Map<string, { contentBlockIds: Set<string> }>;
 }
 
 type GitSessionKey = "git_branch" | "is_worktree" | "is_containerized" | "repo_root" | "git_ahead" | "git_behind";
@@ -357,6 +359,7 @@ export class WsBridge {
           Array.isArray(p.processedClientMessageIds) ? p.processedClientMessageIds : [],
         ),
         toolResults: new Map(Array.isArray(p.toolResults) ? p.toolResults : []),
+        assistantAccumulator: new Map(),
       };
       session.state.backend_type = session.backendType;
       // Resolve git info for restored sessions (may have been persisted without it)
@@ -459,6 +462,7 @@ export class WsBridge {
         processedClientMessageIds: [],
         processedClientMessageIdSet: new Set(),
         toolResults: new Map(),
+        assistantAccumulator: new Map(),
       };
       this.sessions.set(sessionId, session);
     } else if (backendType) {
@@ -712,6 +716,7 @@ export class WsBridge {
       this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
     }
     session.pendingPermissions.clear();
+    session.assistantAccumulator.clear();
   }
 
   // ── Browser WebSocket handlers ──────────────────────────────────────────
@@ -959,18 +964,86 @@ export class WsBridge {
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
-    const browserMsg: BrowserIncomingMessage = {
-      type: "assistant",
-      message: msg.message,
-      parent_tool_use_id: msg.parent_tool_use_id,
-      timestamp: Date.now(),
-    };
-    // Deduplicate: CLI reconnects (--resume) can resend messages already in history
     const msgId = msg.message?.id;
-    if (!msgId || !session.messageHistory.some((m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId)) {
+
+    // No ID — forward as-is (defensive)
+    if (!msgId) {
+      const browserMsg: BrowserIncomingMessage = {
+        type: "assistant",
+        message: msg.message,
+        parent_tool_use_id: msg.parent_tool_use_id,
+        timestamp: Date.now(),
+      };
       session.messageHistory.push(browserMsg);
+      this.broadcastToBrowsers(session, browserMsg);
+      this.persistSession(session);
+      return;
     }
-    this.broadcastToBrowsers(session, browserMsg);
+
+    const acc = session.assistantAccumulator.get(msgId);
+
+    if (!acc) {
+      // First occurrence of this message ID.
+      // Check if it's a CLI reconnect resending a completed message.
+      const alreadyInHistory = session.messageHistory.some(
+        (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
+      );
+      if (alreadyInHistory) {
+        // Already fully accumulated from a previous connection — skip
+        return;
+      }
+
+      const browserMsg: BrowserIncomingMessage = {
+        type: "assistant",
+        message: { ...msg.message, content: [...msg.message.content] },
+        parent_tool_use_id: msg.parent_tool_use_id,
+        timestamp: Date.now(),
+      };
+
+      // Track content block IDs to avoid duplicates
+      const contentBlockIds = new Set<string>();
+      for (const block of msg.message.content) {
+        if (block.type === "tool_use" && block.id) {
+          contentBlockIds.add(block.id);
+        }
+      }
+
+      session.assistantAccumulator.set(msgId, { contentBlockIds });
+      session.messageHistory.push(browserMsg);
+      this.broadcastToBrowsers(session, browserMsg);
+    } else {
+      // Subsequent occurrence — merge new content blocks into the history entry
+      const historyEntry = session.messageHistory.findLast(
+        (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
+      ) as { type: "assistant"; message: CLIAssistantMessage["message"] } | undefined;
+
+      if (!historyEntry) return; // shouldn't happen
+
+      for (const block of msg.message.content) {
+        if (block.type === "tool_use" && block.id) {
+          if (acc.contentBlockIds.has(block.id)) continue;
+          acc.contentBlockIds.add(block.id);
+        }
+        historyEntry.message.content.push(block);
+      }
+
+      // Update stop_reason and usage from the latest message
+      if (msg.message.stop_reason) {
+        historyEntry.message.stop_reason = msg.message.stop_reason;
+      }
+      if (msg.message.usage) {
+        historyEntry.message.usage = msg.message.usage;
+      }
+
+      // Re-broadcast the full accumulated message
+      this.broadcastToBrowsers(session, historyEntry as BrowserIncomingMessage);
+    }
+
+    // Clean up accumulator when message is complete
+    if (msg.message.stop_reason) {
+      session.assistantAccumulator.delete(msgId);
+    }
+
     this.persistSession(session);
   }
 

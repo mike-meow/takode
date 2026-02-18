@@ -292,7 +292,18 @@ function handleParsedMessage(
         model: msg.model,
         stopReason: msg.stop_reason,
       };
-      store.appendMessage(sessionId, chatMsg);
+      // Server accumulates content blocks for same-ID messages (parallel tool calls).
+      // If this ID already exists, update rather than append.
+      const existingMsgs = store.messages.get(sessionId) || [];
+      if (msg.id && existingMsgs.some((m) => m.id === msg.id)) {
+        store.updateMessage(sessionId, msg.id, {
+          content: textContent,
+          contentBlocks: msg.content,
+          stopReason: msg.stop_reason,
+        });
+      } else {
+        store.appendMessage(sessionId, chatMsg);
+      }
       store.setStreaming(sessionId, null);
       // Clear progress only for completed tools (tool_result blocks), not all tools.
       // Blanket clear would cause flickering during concurrent tool execution.
