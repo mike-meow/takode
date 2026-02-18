@@ -189,7 +189,23 @@ export class AssistantManager {
 
   // ── Lifecycle ───────────────────────────────────────────────────────
 
+  /** Remove any exited assistant sessions from the launcher to prevent zombie sidebar entries */
+  private cleanupStaleAssistantSessions(): void {
+    for (const session of this.launcher.listSessions()) {
+      if (
+        session.cwd === ASSISTANT_DIR &&
+        session.state === "exited" &&
+        session.sessionId !== this.config.sessionId
+      ) {
+        console.log("[assistant] Cleaning up stale session:", session.sessionId);
+        this.launcher.removeSession(session.sessionId);
+      }
+    }
+  }
+
   async start(): Promise<SdkSessionInfo | null> {
+    this.cleanupStaleAssistantSessions();
+
     if (this.config.sessionId && this.launcher.isAlive(this.config.sessionId)) {
       console.log("[assistant] Already running:", this.config.sessionId);
       return this.launcher.getSession(this.config.sessionId) ?? null;
@@ -337,6 +353,9 @@ export class AssistantManager {
     // If relaunch failed, start fresh
     console.log("[assistant] Relaunch failed, starting fresh session...");
     this.config.contextRestorations++;
+    if (this.config.sessionId) {
+      this.launcher.removeSession(this.config.sessionId);
+    }
     this.config.sessionId = null;
     this.config.cliSessionId = null;
     this.saveConfig();
