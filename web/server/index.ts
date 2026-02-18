@@ -138,6 +138,7 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const server = Bun.serve<SocketData>({
+  hostname: process.env.COMPANION_HOST || "localhost",
   port,
   async fetch(req, server) {
     const url = new URL(req.url);
