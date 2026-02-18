@@ -263,6 +263,29 @@ function FeedEntries({ entries, sessionId }: { entries: FeedEntry[]; sessionId: 
   );
 }
 
+/** Extract readable text from a Task tool_result string.
+ *  The CLI sends the result as JSON.stringify'd content blocks:
+ *    [{"type":"text","text":"..."}, {"type":"text","text":"agentId: ..."}]
+ *  We parse the JSON array and pull out just the main text, skipping
+ *  metadata blocks (agentId, usage). Falls back to the raw string. */
+function parseSubagentResultText(raw: string): string {
+  try {
+    const blocks = JSON.parse(raw);
+    if (!Array.isArray(blocks)) return raw;
+    const texts: string[] = [];
+    for (const b of blocks) {
+      if (b?.type === "text" && typeof b.text === "string") {
+        // Skip metadata blocks (agentId, usage)
+        if (/^agentId:|^<usage>/i.test(b.text.trim())) continue;
+        texts.push(b.text);
+      }
+    }
+    return texts.length > 0 ? texts.join("\n") : raw;
+  } catch {
+    return raw;
+  }
+}
+
 function SubagentContainer({ group, sessionId }: { group: SubagentGroup; sessionId: string }) {
   const [open, setOpen] = useState(true);
   const label = group.description || "Subagent";
@@ -290,14 +313,20 @@ function SubagentContainer({ group, sessionId }: { group: SubagentGroup; session
     return "";
   }, [lastEntry]);
 
-  // When collapsed, prefer showing result preview over lastPreview
+  // Parse result text from JSON content blocks
+  const parsedResultPreview = useMemo(() => {
+    if (!resultPreview?.content) return null;
+    return parseSubagentResultText(resultPreview.content);
+  }, [resultPreview]);
+
+  // When collapsed, prefer showing parsed result over lastPreview
   const collapsedPreview = useMemo(() => {
-    if (resultPreview?.content) {
-      const text = resultPreview.content.trim();
+    if (parsedResultPreview) {
+      const text = parsedResultPreview.trim();
       return text.length > 120 ? text.slice(0, 120) + "..." : text;
     }
     return lastPreview;
-  }, [resultPreview, lastPreview]);
+  }, [parsedResultPreview, lastPreview]);
 
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
@@ -333,7 +362,12 @@ function SubagentContainer({ group, sessionId }: { group: SubagentGroup; session
           <div className="space-y-3 pb-2">
             <FeedEntries entries={group.children} sessionId={sessionId} />
             {resultPreview && (
-              <SubagentResult preview={resultPreview} sessionId={sessionId} toolUseId={group.taskToolUseId} />
+              <SubagentResult
+                preview={resultPreview}
+                parsedText={parsedResultPreview}
+                sessionId={sessionId}
+                toolUseId={group.taskToolUseId}
+              />
             )}
           </div>
         )}
@@ -342,12 +376,18 @@ function SubagentContainer({ group, sessionId }: { group: SubagentGroup; session
   );
 }
 
-function SubagentResult({ preview, sessionId, toolUseId }: { preview: { content: string; is_truncated: boolean }; sessionId: string; toolUseId: string }) {
+function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
+  preview: { content: string; is_truncated: boolean };
+  parsedText: string | null;
+  sessionId: string;
+  toolUseId: string;
+}) {
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
-  const displayText = fullContent ?? preview.content;
+  const displayText = fullContent
+    ? parseSubagentResultText(fullContent)
+    : (parsedText ?? preview.content);
   const needsExpand = preview.is_truncated && !fullContent;
 
   const fetchFull = async () => {
@@ -355,7 +395,6 @@ function SubagentResult({ preview, sessionId, toolUseId }: { preview: { content:
     try {
       const result = await api.getToolResult(sessionId, toolUseId);
       setFullContent(result.content);
-      setExpanded(true);
     } catch {
       setFullContent("[Failed to load full result]");
     } finally {
@@ -371,7 +410,7 @@ function SubagentResult({ preview, sessionId, toolUseId }: { preview: { content:
         </svg>
         <span className="text-[11px] font-medium text-cc-muted">Result</span>
       </div>
-      <div className={`text-sm ${expanded || !needsExpand ? "max-h-96" : "max-h-24"} overflow-y-auto`}>
+      <div className={`text-sm ${fullContent ? "max-h-96" : "max-h-48"} overflow-y-auto`}>
         <MarkdownContent text={displayText} />
       </div>
       {needsExpand && (

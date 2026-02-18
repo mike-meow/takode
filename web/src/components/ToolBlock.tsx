@@ -100,7 +100,7 @@ export function ToolBlock({
           <div className="mt-2">
             <ToolDetail name={name} input={input} />
           </div>
-          {sessionId && <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} />}
+          {sessionId && name !== "Task" && <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} />}
         </div>
       )}
     </div>
