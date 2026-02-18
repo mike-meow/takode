@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { Lightbox } from "./Lightbox.js";
+import { getMessageMarkdown, getMessagePlainText, copyRichText } from "../utils/copy-utils.js";
 
 export function MessageBubble({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   if (message.role === "system") {
@@ -172,24 +173,26 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
 
 function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   const blocks = message.contentBlocks || [];
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
 
   if (blocks.length === 0 && message.content) {
     return (
-      <div className="flex items-start gap-3">
+      <div className="group/msg relative flex items-start gap-3">
         <AssistantAvatar />
-        <div className="flex-1 min-w-0">
+        <div ref={contentRef} className="flex-1 min-w-0">
           <MarkdownContent text={message.content} />
         </div>
+        <CopyMessageButton message={message} contentRef={contentRef} />
       </div>
     );
   }
 
   return (
-    <div className="flex items-start gap-3">
+    <div className="group/msg relative flex items-start gap-3">
       <AssistantAvatar />
-      <div className="flex-1 min-w-0 space-y-3">
+      <div ref={contentRef} className="flex-1 min-w-0 space-y-3">
         {grouped.map((group, i) => {
           if (group.kind === "content") {
             return <ContentBlockRenderer key={i} block={group.block} />;
@@ -203,6 +206,7 @@ function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessio
           return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
         })}
       </div>
+      <CopyMessageButton message={message} contentRef={contentRef} />
     </div>
   );
 }
@@ -213,6 +217,103 @@ function AssistantAvatar() {
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary">
         <circle cx="8" cy="8" r="3" />
       </svg>
+    </div>
+  );
+}
+
+function CopyMessageButton({ message, contentRef }: { message: ChatMessage; contentRef: React.RefObject<HTMLDivElement | null> }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          btnRef.current && !btnRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const showFeedback = useCallback((label: string) => {
+    setCopied(label);
+    setTimeout(() => setCopied(null), 1500);
+    setOpen(false);
+  }, []);
+
+  const handleCopyMarkdown = useCallback(() => {
+    const md = getMessageMarkdown(message);
+    navigator.clipboard.writeText(md).then(() => showFeedback("Markdown")).catch(console.error);
+  }, [message, showFeedback]);
+
+  const handleCopyPlainText = useCallback(() => {
+    const text = getMessagePlainText(message);
+    navigator.clipboard.writeText(text).then(() => showFeedback("Plain text")).catch(console.error);
+  }, [message, showFeedback]);
+
+  const handleCopyRichText = useCallback(() => {
+    const html = contentRef.current?.innerHTML ?? "";
+    const plain = getMessagePlainText(message);
+    copyRichText(html, plain).then(() => showFeedback("Rich text")).catch(console.error);
+  }, [message, contentRef, showFeedback]);
+
+  return (
+    <div className="absolute top-0 right-0 shrink-0">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen(!open)}
+        className={`p-1 rounded hover:bg-cc-hover transition-all cursor-pointer ${
+          open || copied ? "opacity-100" : "opacity-0 group-hover/msg:opacity-100"
+        }`}
+        title="Copy message"
+      >
+        {copied ? (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-success">
+            <path d="M3 8.5l3.5 3.5 6.5-8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3.5 h-3.5 text-cc-muted hover:text-cc-fg">
+            <rect x="5.5" y="5.5" width="7" height="8" rx="1" />
+            <path d="M3.5 10.5V3a1 1 0 011-1h5.5" />
+          </svg>
+        )}
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-cc-card border border-cc-border rounded-lg shadow-lg py-1 overflow-hidden"
+        >
+          <button
+            onClick={handleCopyMarkdown}
+            className="w-full px-3 py-1.5 text-left text-[12px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          >
+            Copy as Markdown
+          </button>
+          <button
+            onClick={handleCopyRichText}
+            className="w-full px-3 py-1.5 text-left text-[12px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          >
+            Copy as Rich Text
+          </button>
+          <button
+            onClick={handleCopyPlainText}
+            className="w-full px-3 py-1.5 text-left text-[12px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          >
+            Copy as Plain Text
+          </button>
+        </div>
+      )}
     </div>
   );
 }

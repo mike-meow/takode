@@ -775,6 +775,18 @@ export function Playground() {
           </div>
         </Section>
 
+        {/* ─── Copy Features ──────────────────────────────── */}
+        <Section title="Copy Features" description="Copy-to-clipboard for code blocks (hover to reveal copy icon) and assistant messages (hover for copy menu with Markdown/Rich Text/Plain Text options)">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Code block — hover to reveal copy button">
+              <MarkdownContent text={"Here is some code:\n\n```typescript\nconst greeting = \"Hello, world!\";\nconsole.log(greeting);\n```\n\nAnd a block without a language tag:\n\n```\nnpm install\nnpm run build\n```"} />
+            </Card>
+            <Card label="Assistant message — hover for copy menu">
+              <MessageBubble message={MSG_ASSISTANT} />
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Image Lightbox ──────────────────────────────── */}
         <Section title="Image Lightbox" description="Click any image thumbnail to open a full-size lightbox overlay (Escape or click backdrop to close)">
           <div className="space-y-4 max-w-3xl">
