@@ -190,7 +190,7 @@ function groupMessages(messages: ChatMessage[]): FeedEntry[] {
 // ─── Components ──────────────────────────────────────────────────────────────
 
 function ToolMessageGroup({ group, sessionId }: { group: ToolMsgGroup; sessionId: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const iconType = getToolIcon(group.toolName);
   const label = getToolLabel(group.toolName);
   const count = group.items.length;
@@ -262,7 +262,7 @@ function FeedEntries({ entries, sessionId }: { entries: FeedEntry[]; sessionId: 
 }
 
 function SubagentContainer({ group, sessionId }: { group: SubagentGroup; sessionId: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const label = group.description || "Subagent";
   const agentType = group.agentType;
   const childCount = group.children.length;
