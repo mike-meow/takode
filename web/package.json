@@ -38,6 +38,9 @@
     "test:codex-contract": "vitest run server/codex-protocol-*.test.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "croner": "^10.0.1",
     "diff": "^8.0.3",
     "hono": "^4.7.0",
