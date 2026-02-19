@@ -34,14 +34,15 @@ function CollapseAllToggle({ sessionId }: { sessionId: string }) {
   const collapsibleTurnIds = useStore((s) => s.collapsibleTurnIds.get(sessionId));
   const collapsedSet = useStore((s) => s.collapsedTurns.get(sessionId));
 
-  if (!collapsibleTurnIds || collapsibleTurnIds.length === 0) return null;
-
-  const allCollapsed = collapsibleTurnIds.every((id) => collapsedSet?.has(id));
+  const hasTurns = collapsibleTurnIds && collapsibleTurnIds.length > 0;
+  const allCollapsed = hasTurns && collapsibleTurnIds.every((id) => collapsedSet?.has(id));
 
   return (
     <button
-      onClick={() => useStore.getState().setAllTurnsCollapsed(sessionId, !allCollapsed, collapsibleTurnIds)}
-      className="flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer select-none"
+      onClick={() => hasTurns && useStore.getState().setAllTurnsCollapsed(sessionId, !allCollapsed, collapsibleTurnIds)}
+      className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] transition-colors select-none ${
+        hasTurns ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer" : "text-cc-muted/40 cursor-default"
+      }`}
       title={allCollapsed ? "Expand all turns" : "Collapse all turns"}
     >
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
