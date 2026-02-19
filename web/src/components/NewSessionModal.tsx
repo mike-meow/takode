@@ -241,17 +241,24 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     store.clearCreation();
     store.setSessionCreating(true, backend as "claude" | "codex");
 
-    try {
-      if (currentSessionId) {
-        disconnectSession(currentSessionId);
-      }
+    if (currentSessionId) {
+      disconnectSession(currentSessionId);
+    }
 
-      const branchName = selectedBranch.trim() || undefined;
+    // Close modal immediately — session creation continues in the background.
+    // The SessionLaunchOverlay (in App.tsx) shows progress from creationProgress,
+    // so the user still sees feedback for long operations (worktree, container).
+    onClose();
+
+    const branchName = selectedBranch.trim() || undefined;
+    const cwdSnapshot = cwd;
+
+    try {
       const result = await createSessionStream(
         {
           model,
           permissionMode: backend === "codex" ? mode : undefined,
-          cwd: cwd || undefined,
+          cwd: cwdSnapshot || undefined,
           envSlug: selectedEnv || undefined,
           branch: branchName,
           createBranch: branchName && isNewBranch ? true : undefined,
@@ -267,20 +274,14 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       );
       const sessionId = result.sessionId;
 
-      if (cwd) addRecentDir(cwd);
+      if (cwdSnapshot) addRecentDir(cwdSnapshot);
 
       navigateToSession(sessionId, true);
       connectSession(sessionId);
-
-      // Close modal immediately — WebSocket connection proceeds in the
-      // background and the chat view handles connection state independently.
       useStore.getState().clearCreation();
-      onClose();
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
-      setError(errMsg);
       useStore.getState().setCreationError(errMsg);
-      setSending(false);
     }
   }
 
