@@ -359,6 +359,35 @@ describe("CLI handlers", () => {
     expect(state.repo_root).toBe("/Users/stan/Dev/myproject");
   });
 
+  it("handleCLIMessage: markWorktree pre-populates repo_root for correct sidebar grouping", () => {
+    // markWorktree sets is_worktree, repo_root, and cwd before CLI connects
+    bridge.markWorktree("s1", "/home/user/companion", "/home/user/.companion/worktrees/companion/jiayi-wt-1234");
+
+    const state = bridge.getSession("s1")!.state;
+    expect(state.is_worktree).toBe(true);
+    expect(state.repo_root).toBe("/home/user/companion");
+    expect(state.cwd).toBe("/home/user/.companion/worktrees/companion/jiayi-wt-1234");
+
+    // After CLI connects, resolveGitInfo runs and should preserve the worktree info
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
+      if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
+      if (cmd.includes("--git-common-dir")) return "/home/user/companion/.git\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      throw new Error("unknown git cmd");
+    });
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/home/user/.companion/worktrees/companion/jiayi-wt-1234" }));
+
+    const stateAfter = bridge.getSession("s1")!.state;
+    // repo_root should still point to the parent repo, not the worktree
+    expect(stateAfter.repo_root).toBe("/home/user/companion");
+    expect(stateAfter.is_worktree).toBe(true);
+    expect(stateAfter.git_branch).toBe("jiayi-wt-1234");
+  });
+
   it("handleCLIMessage: system.init resolves git info via execSync", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/test-branch\n";

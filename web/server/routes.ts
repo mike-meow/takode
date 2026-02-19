@@ -334,8 +334,10 @@ export function createRoutes(
         wsBridge.markContainerized(session.sessionId, cwd);
       }
 
-      // Track the worktree mapping
+      // Track the worktree mapping and pre-populate session state
+      // so the browser gets correct sidebar grouping immediately
       if (worktreeInfo) {
+        wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd);
         worktreeTracker.addMapping({
           sessionId: session.sessionId,
           repoRoot: worktreeInfo.repoRoot,
@@ -697,8 +699,10 @@ export function createRoutes(
           wsBridge.markContainerized(session.sessionId, cwd);
         }
 
-        // Track worktree mapping
+        // Track worktree mapping and pre-populate session state
+        // so the browser gets correct sidebar grouping immediately
         if (worktreeInfo) {
+          wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd);
           worktreeTracker.addMapping({
             sessionId: session.sessionId,
             repoRoot: worktreeInfo.repoRoot,
@@ -819,6 +823,7 @@ export function createRoutes(
         const wt = gitUtils.ensureWorktree(info.repoRoot, info.branch, { forceNew: true });
         info.cwd = wt.worktreePath;
         info.actualBranch = wt.actualBranch;
+        wsBridge.markWorktree(id, info.repoRoot, wt.worktreePath);
         worktreeTracker.addMapping({
           sessionId: id,
           repoRoot: info.repoRoot,

@@ -302,6 +302,18 @@ export class WsBridge {
     session.state.cwd = hostCwd;
   }
 
+  /**
+   * Pre-populate a session with worktree info so the browser gets the correct
+   * repo_root for sidebar grouping immediately, before the CLI connects.
+   * Call this right after launcher.launch() for worktree sessions.
+   */
+  markWorktree(sessionId: string, repoRoot: string, worktreeCwd: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    session.state.is_worktree = true;
+    session.state.repo_root = repoRoot;
+    session.state.cwd = worktreeCwd;
+  }
+
   /** Send periodic pings to all browser sockets to prevent Bun's idle timeout from closing them. */
   startHeartbeat(): void {
     if (this.heartbeatInterval) return;
