@@ -249,6 +249,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     // The SessionLaunchOverlay (in App.tsx) shows progress from creationProgress,
     // so the user still sees feedback for long operations (worktree, container).
     onClose();
+    setSending(false);
 
     const branchName = selectedBranch.trim() || undefined;
     const cwdSnapshot = cwd;
