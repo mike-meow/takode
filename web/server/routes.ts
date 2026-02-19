@@ -728,6 +728,11 @@ export function createRoutes(
           });
         }
 
+        // Set cwd early so slash command cache lookup works before CLI sends system/init.
+        // For worktree/container sessions markWorktree/markContainerized already set cwd,
+        // so setInitialCwd only fills it for plain sessions and pre-fills slash commands.
+        wsBridge.setInitialCwd(session.sessionId, cwd);
+
         // Set initial askPermission state on the session for Claude backends
         if (backend !== "codex") {
           wsBridge.setInitialAskPermission(session.sessionId, askPermission);

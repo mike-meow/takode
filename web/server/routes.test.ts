@@ -116,6 +116,7 @@ function createMockBridge() {
     getCodexRateLimits: vi.fn(() => null),
     markContainerized: vi.fn(),
     markWorktree: vi.fn(),
+    setInitialCwd: vi.fn(),
     setInitialAskPermission: vi.fn(),
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),

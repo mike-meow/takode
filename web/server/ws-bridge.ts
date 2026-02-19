@@ -337,6 +337,60 @@ export class WsBridge {
     session.state.cwd = worktreeCwd;
   }
 
+  /**
+   * Set cwd on a session at creation time so the slash command cache lookup
+   * works before the CLI sends system/init (which only arrives after the first
+   * user message). Also pre-fills slash commands from the per-project cache.
+   */
+  setInitialCwd(sessionId: string, cwd: string): void {
+    const session = this.getOrCreateSession(sessionId);
+    if (cwd && !session.state.cwd) {
+      session.state.cwd = cwd;
+    }
+    this.prefillSlashCommands(session);
+  }
+
+  /** Fill slash_commands/skills from the per-project cache if not yet populated. */
+  private prefillSlashCommands(session: Session): void {
+    if (session.state.slash_commands?.length && session.state.skills?.length) return;
+    const projectKey = session.state.repo_root || session.state.cwd;
+    const cached = projectKey ? this.slashCommandCache.get(projectKey) : undefined;
+    if (cached) {
+      if (!session.state.slash_commands?.length) session.state.slash_commands = cached.slash_commands;
+      if (!session.state.skills?.length) session.state.skills = cached.skills;
+    }
+  }
+
+  /**
+   * When the slash command cache is populated for a project, push the commands
+   * to all other sessions with the same project key that still have empty
+   * slash_commands/skills, so already-connected browsers get them immediately.
+   */
+  private backfillSlashCommands(projectKey: string, sourceSessionId: string): void {
+    const cached = this.slashCommandCache.get(projectKey);
+    if (!cached) return;
+    for (const [id, session] of this.sessions) {
+      if (id === sourceSessionId) continue;
+      const key = session.state.repo_root || session.state.cwd;
+      if (key !== projectKey) continue;
+      let changed = false;
+      if (!session.state.slash_commands?.length && cached.slash_commands.length) {
+        session.state.slash_commands = cached.slash_commands;
+        changed = true;
+      }
+      if (!session.state.skills?.length && cached.skills.length) {
+        session.state.skills = cached.skills;
+        changed = true;
+      }
+      if (changed && session.browserSockets.size > 0) {
+        this.broadcastToBrowsers(session, {
+          type: "session_update",
+          session: session.state,
+        });
+      }
+    }
+  }
+
   /** Send periodic pings to all browser sockets to prevent Bun's idle timeout from closing them. */
   startHeartbeat(): void {
     if (this.heartbeatInterval) return;
@@ -808,19 +862,10 @@ export class WsBridge {
     // Send current session state as snapshot (includes nextEventSeq for stale seq detection).
     // If slash_commands/skills haven't arrived yet (CLI sends them only after the first
     // user message), fill from the per-project cache so autocomplete works immediately.
-    let snapshotState = session.state;
-    if (!snapshotState.slash_commands?.length || !snapshotState.skills?.length) {
-      const projectKey = session.state.repo_root || session.state.cwd;
-      const cached = projectKey ? this.slashCommandCache.get(projectKey) : undefined;
-      if (cached) {
-        snapshotState = { ...snapshotState };
-        if (!snapshotState.slash_commands?.length) snapshotState.slash_commands = cached.slash_commands;
-        if (!snapshotState.skills?.length) snapshotState.skills = cached.skills;
-      }
-    }
+    this.prefillSlashCommands(session);
     const snapshot: BrowserIncomingMessage = {
       type: "session_init",
-      session: snapshotState,
+      session: session.state,
       nextEventSeq: session.nextEventSeq,
     };
     this.sendToBrowser(ws, snapshot);
@@ -1001,6 +1046,8 @@ export class WsBridge {
           slash_commands: msg.slash_commands ?? [],
           skills: msg.skills ?? [],
         });
+        // Push to other sessions in the same project that don't have commands yet
+        this.backfillSlashCommands(projectKey, session.id);
       }
 
       // Resolve and publish git info
