@@ -26,6 +26,7 @@ interface MockStoreState {
   diffPanelSelectedFile: Map<string, string>;
   changedFiles: Map<string, Set<string>>;
   setDiffPanelSelectedFile: ReturnType<typeof vi.fn>;
+  setDiffFileStats: ReturnType<typeof vi.fn>;
 }
 
 let storeState: MockStoreState;
@@ -37,13 +38,16 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     diffPanelSelectedFile: new Map(),
     changedFiles: new Map(),
     setDiffPanelSelectedFile: vi.fn(),
+    setDiffFileStats: vi.fn(),
     ...overrides,
   };
 }
 
-vi.mock("../store.js", () => ({
-  useStore: (selector: (s: MockStoreState) => unknown) => selector(storeState),
-}));
+vi.mock("../store.js", () => {
+  const useStoreFn = (selector: (s: MockStoreState) => unknown) => selector(storeState);
+  useStoreFn.getState = () => storeState;
+  return { useStore: useStoreFn };
+});
 
 import { DiffPanel } from "./DiffPanel.js";
 

@@ -7,6 +7,13 @@ vi.mock("./utils/names.js", () => ({
   generateUniqueSessionName: vi.fn(() => "Test Session"),
 }));
 
+// Mock the API module so PostHog doesn't break in jsdom
+vi.mock("./api.js", () => ({
+  api: {
+    getDiffStats: vi.fn().mockResolvedValue({ stats: {} }),
+  },
+}));
+
 let wsModule: typeof import("./ws.js");
 let useStore: typeof import("./store.js").useStore;
 

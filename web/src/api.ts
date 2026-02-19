@@ -489,6 +489,11 @@ export const api = {
     if (base) url += `&base=${encodeURIComponent(base)}`;
     return get<{ path: string; diff: string; baseBranch?: string }>(url);
   },
+  getDiffStats: (files: string[], repoRoot: string, base?: string) =>
+    post<{ stats: Record<string, { additions: number; deletions: number }>; baseBranch?: string }>(
+      "/fs/diff-stats",
+      { files, repoRoot, base: base || undefined },
+    ),
   getClaudeMdFiles: (cwd: string) =>
     get<{ cwd: string; files: { path: string; content: string }[] }>(
       `/fs/claude-md?cwd=${encodeURIComponent(cwd)}`,

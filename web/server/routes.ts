@@ -1241,6 +1241,53 @@ export function createRoutes(
     }
   });
 
+  /**
+   * Bulk diff stats — returns per-file additions/deletions for a list of files
+   * in a single `git diff --numstat` call. Much cheaper than fetching full diffs.
+   */
+  api.post("/fs/diff-stats", async (c) => {
+    const body = await c.req.json<{ files: string[]; base?: string; repoRoot: string }>();
+    if (!body?.files?.length || !body.repoRoot) {
+      return c.json({ error: "files[] and repoRoot required" }, 400);
+    }
+    const repoRoot = resolve(body.repoRoot);
+    try {
+      const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", {
+        cwd: repoRoot, encoding: "utf-8", timeout: 5000,
+      }).trim();
+      const defaultBranch = gitUtils.resolveDefaultBranch(repoRoot, currentBranch);
+      const effectiveBase = body.base || defaultBranch;
+      const diffBase = resolveDiffBase(repoRoot, effectiveBase);
+
+      // git diff --numstat returns: "additions\tdeletions\tfilepath" per line
+      const rootPrefix = `${repoRoot}/`;
+      const relFiles = body.files.map((f) =>
+        f.startsWith(rootPrefix) ? f.slice(rootPrefix.length) : f,
+      );
+      const fileArgs = relFiles.map((f) => `"${f}"`).join(" ");
+      const raw = execCaptureStdout(
+        `git diff --numstat ${diffBase} -- ${fileArgs}`,
+        { cwd: repoRoot, encoding: "utf-8", timeout: 10000 },
+      );
+
+      const stats: Record<string, { additions: number; deletions: number }> = {};
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        const [add, del, file] = line.split("\t");
+        if (file) {
+          const absPath = `${repoRoot}/${file}`;
+          stats[absPath] = {
+            additions: add === "-" ? 0 : parseInt(add, 10) || 0,
+            deletions: del === "-" ? 0 : parseInt(del, 10) || 0,
+          };
+        }
+      }
+      return c.json({ stats, baseBranch: effectiveBase });
+    } catch {
+      return c.json({ stats: {} });
+    }
+  });
+
   /** Find CLAUDE.md files for a project (root + .claude/) */
   api.get("/fs/claude-md", async (c) => {
     const cwd = c.req.query("cwd");

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
+import { invalidateDiffStatsCache } from "../ws.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 
@@ -20,25 +21,34 @@ interface FileStats {
   deletions: number;
 }
 
-function getSavedDiffBases(): Record<string, string> {
+function getSavedSessionDiffBases(): Record<string, string> {
   try {
-    return JSON.parse(scopedGetItem("cc-diff-base") || "{}");
+    return JSON.parse(scopedGetItem("cc-diff-base-session") || "{}");
   } catch {
     return {};
   }
 }
 
-function saveDiffBase(cwd: string, branch: string | null) {
-  const map = getSavedDiffBases();
-  if (branch) {
-    map[cwd] = branch;
-    // Cap at 20 entries
-    const keys = Object.keys(map);
-    if (keys.length > 20) delete map[keys[0]];
-  } else {
-    delete map[cwd];
+/** Legacy per-CWD lookup (for backwards compat / migration) */
+function getLegacySavedDiffBase(cwd: string): string | null {
+  try {
+    const map = JSON.parse(scopedGetItem("cc-diff-base") || "{}");
+    return map[cwd] || null;
+  } catch {
+    return null;
   }
-  scopedSetItem("cc-diff-base", JSON.stringify(map));
+}
+
+function saveDiffBase(sessionId: string, branch: string | null) {
+  const map = getSavedSessionDiffBases();
+  if (branch) {
+    map[sessionId] = branch;
+    const keys = Object.keys(map);
+    if (keys.length > 50) delete map[keys[0]];
+  } else {
+    delete map[sessionId];
+  }
+  scopedSetItem("cc-diff-base-session", JSON.stringify(map));
 }
 
 export function DiffPanel({ sessionId }: { sessionId: string }) {
@@ -67,9 +77,12 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const fetchedFilesRef = useRef<Set<string>>(new Set());
 
   // Base branch for diff comparison (null = server default)
+  // Persisted per sessionId; falls back to legacy per-CWD key for migration
   const [baseBranch, setBaseBranch] = useState<string | null>(() => {
-    if (!cwd) return null;
-    return getSavedDiffBases()[cwd] || null;
+    const saved = getSavedSessionDiffBases()[sessionId];
+    if (saved) return saved;
+    if (cwd) return getLegacySavedDiffBase(cwd);
+    return null;
   });
   // The server-resolved default branch name (eagerly fetched via getRepoInfo)
   const [resolvedDefault, setResolvedDefault] = useState<string | null>(null);
@@ -112,11 +125,14 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
   const handleBaseBranchChange = useCallback((value: string | null) => {
     setBaseBranch(value);
-    if (cwd) saveDiffBase(cwd, value);
+    saveDiffBase(sessionId, value);
     // Invalidate all cached stats so they re-fetch with new base
     fetchedFilesRef.current.clear();
     setFileStats(new Map());
-  }, [cwd]);
+    // Also invalidate the eager diff stats cache in ws.ts and store
+    invalidateDiffStatsCache(sessionId);
+    useStore.getState().setDiffFileStats(sessionId, new Map());
+  }, [sessionId]);
 
   // Fetch diff stats for all changed files (in parallel)
   useEffect(() => {
@@ -160,6 +176,11 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     }
     return { additions, deletions };
   }, [fileStats]);
+
+  // Sync fileStats to store so TopBar badge can filter out +0/-0 files
+  useEffect(() => {
+    useStore.getState().setDiffFileStats(sessionId, fileStats);
+  }, [fileStats, sessionId]);
 
   // Auto-select first changed file if none selected
   useEffect(() => {

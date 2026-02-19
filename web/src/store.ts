@@ -46,6 +46,8 @@ interface AppState {
 
   // Files changed by the agent per session (Edit/Write tool calls)
   changedFiles: Map<string, Set<string>>;
+  // Per-file diff stats for each session (used to filter out +0/-0 files in badge count)
+  diffFileStats: Map<string, Map<string, { additions: number; deletions: number }>>;
 
   // Session display names
   sessionNames: Map<string, string>;
@@ -148,6 +150,7 @@ interface AppState {
   // Changed files actions
   addChangedFile: (sessionId: string, filePath: string) => void;
   clearChangedFiles: (sessionId: string) => void;
+  setDiffFileStats: (sessionId: string, stats: Map<string, { additions: number; deletions: number }>) => void;
 
   // Session name actions
   setSessionName: (sessionId: string, name: string) => void;
@@ -342,6 +345,7 @@ export const useStore = create<AppState>((set) => ({
   askPermission: new Map(),
   sessionTasks: new Map(),
   changedFiles: new Map(),
+  diffFileStats: new Map(),
   sessionNames: getInitialSessionNames(),
   recentlyRenamed: new Set(),
   sessionPreviews: new Map(),
@@ -496,6 +500,8 @@ export const useStore = create<AppState>((set) => ({
       sessionTasks.delete(sessionId);
       const changedFiles = new Map(s.changedFiles);
       changedFiles.delete(sessionId);
+      const diffFileStats = new Map(s.diffFileStats);
+      diffFileStats.delete(sessionId);
       const sessionNames = new Map(s.sessionNames);
       sessionNames.delete(sessionId);
       const recentlyRenamed = new Set(s.recentlyRenamed);
@@ -551,6 +557,7 @@ export const useStore = create<AppState>((set) => ({
         pendingPermissions,
         sessionTasks,
         changedFiles,
+        diffFileStats,
         sessionNames,
         recentlyRenamed,
         sessionPreviews,
@@ -750,6 +757,13 @@ export const useStore = create<AppState>((set) => ({
       const changedFiles = new Map(s.changedFiles);
       changedFiles.delete(sessionId);
       return { changedFiles };
+    }),
+
+  setDiffFileStats: (sessionId, stats) =>
+    set((s) => {
+      const diffFileStats = new Map(s.diffFileStats);
+      diffFileStats.set(sessionId, stats);
+      return { diffFileStats };
     }),
 
   setSessionName: (sessionId, name) =>
@@ -1068,6 +1082,7 @@ export const useStore = create<AppState>((set) => ({
       askPermission: new Map(),
       sessionTasks: new Map(),
       changedFiles: new Map(),
+      diffFileStats: new Map(),
       sessionNames: new Map(),
       recentlyRenamed: new Set(),
       sessionPreviews: new Map(),

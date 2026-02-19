@@ -55,7 +55,14 @@ export function TopBar() {
       ? session.repo_root
       : sessionCwd;
     const prefix = `${scope}/`;
-    return [...files].filter((fp) => fp === scope || fp.startsWith(prefix)).length;
+    const scopedFiles = [...files].filter((fp) => fp === scope || fp.startsWith(prefix));
+    // Filter out files with +0/-0 diff stats (no actual changes vs base branch)
+    const stats = s.diffFileStats.get(currentSessionId);
+    if (!stats || stats.size === 0) return scopedFiles.length;
+    return scopedFiles.filter((fp) => {
+      const st = stats.get(fp);
+      return !st || st.additions > 0 || st.deletions > 0;
+    }).length;
   });
 
   const cwd = useStore((s) => {
@@ -212,7 +219,7 @@ export function TopBar() {
             >
               Diffs
               {changedFilesCount > 0 && (
-                <span className="text-[9px] bg-cc-warning text-white rounded-full w-4 h-4 flex items-center justify-center font-semibold leading-none">
+                <span className="text-[9px] bg-cc-muted/20 text-cc-fg rounded-full min-w-[16px] h-4 flex items-center justify-center font-semibold leading-none px-1">
                   {changedFilesCount}
                 </span>
               )}

@@ -36,6 +36,7 @@ const SCOPED_KEYS = [
   "cc-worktree",
   "cc-branch",
   "cc-diff-base",
+  "cc-diff-base-session",
   "cc-recent-dirs",
   "cc-session-last-viewed",
   "cc-session-attention",

@@ -24,6 +24,7 @@ interface MockStoreState {
   pendingPermissions: Map<string, Map<string, unknown>>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionNames: Map<string, string>;
+  diffFileStats: Map<string, Map<string, { additions: number; deletions: number }>>;
 }
 
 let storeState: MockStoreState;
@@ -45,6 +46,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     pendingPermissions: new Map(),
     sessionAttention: new Map(),
     sessionNames: new Map(),
+    diffFileStats: new Map(),
     ...overrides,
   };
 }

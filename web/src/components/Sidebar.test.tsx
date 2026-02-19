@@ -64,6 +64,7 @@ interface MockStoreState {
   clearRecentlyRenamed: ReturnType<typeof vi.fn>;
   setSdkSessions: ReturnType<typeof vi.fn>;
   closeTerminal: ReturnType<typeof vi.fn>;
+  setShowNewSessionModal: ReturnType<typeof vi.fn>;
   markSessionViewed: ReturnType<typeof vi.fn>;
   markAllSessionsViewed: ReturnType<typeof vi.fn>;
   markSessionUnread: ReturnType<typeof vi.fn>;

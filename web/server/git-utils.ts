@@ -141,6 +141,14 @@ function findClosestParentBranch(repoRoot: string, currentBranch: string): strin
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
+  // Prefer name-based match for worktree branches (e.g. "jiayi-wt-4719" → "jiayi").
+  // This avoids the ambiguity when multiple branches are at the same commit distance.
+  const wtMatch = currentBranch.match(/^(.+)-wt-\d+$/);
+  if (wtMatch) {
+    const parentName = wtMatch[1];
+    if (candidates.includes(parentName)) return parentName;
+  }
+
   // Multiple candidates: pick the one closest to HEAD (fewest commits ahead)
   let bestBranch = candidates[0];
   let bestCount = Infinity;
