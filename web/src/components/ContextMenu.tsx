@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface ContextMenuItem {
   label: string;
@@ -45,7 +46,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     }
   }, [x, y]);
 
-  return (
+  // Portal to document.body so the menu escapes overflow-hidden ancestors
+  // and the CSS transform containing block on the root layout div.
+  return createPortal(
     <div
       ref={menuRef}
       className="fixed z-50 min-w-[140px] bg-cc-card border border-cc-border rounded-lg shadow-lg py-1 overflow-hidden"
@@ -63,6 +66,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
