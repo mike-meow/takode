@@ -405,28 +405,15 @@ export function Sidebar() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleNewSession}
-            className="flex-1 py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-            New Session
-          </button>
-          {Array.from(sessionAttention.values()).some((a) => a !== null) && (
-            <button
-              onClick={() => useStore.getState().markAllSessionsViewed()}
-              className="shrink-0 p-2 rounded-[10px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-              title="Mark all as read"
-            >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-                <path d="M1.5 8l4.5 4.5L14.5 3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-        </div>
+        <button
+          onClick={handleNewSession}
+          className="w-full py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+          New Session
+        </button>
 
       </div>
 

@@ -323,13 +323,16 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — transparent click-away */}
       <div
-        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 z-50"
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
-        {/* Modal card */}
-        <div className="bg-cc-card border border-cc-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {/* Popover card — anchored near the top-left, next to sidebar */}
+        <div
+          className="absolute left-[272px] top-2 bg-cc-card border border-cc-border rounded-2xl shadow-2xl w-[400px] max-w-[calc(100vw-2rem)] max-md:left-2 max-md:right-2 max-md:w-auto overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-cc-border">
             <h2 className="text-sm font-semibold text-cc-fg">New Session</h2>
@@ -392,7 +395,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                     </svg>
                   </button>
                   {showModeDropdown && (
-                    <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                    <div className="absolute left-0 top-full mt-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
                       {MODES.map((m) => (
                         <button
                           key={m.value}
@@ -533,7 +536,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                     </svg>
                   </button>
                   {showBranchDropdown && (
-                    <div className="absolute left-0 bottom-full mb-1 w-72 max-w-[calc(100vw-2rem)] bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 overflow-hidden">
+                    <div className="absolute left-0 top-full mt-1 w-72 max-w-[calc(100vw-2rem)] bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 overflow-hidden">
                       <div className="px-2 py-2 border-b border-cc-border">
                         <input
                           type="text"
@@ -712,7 +715,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                   </svg>
                 </button>
                 {showEnvDropdown && (
-                  <div className="absolute left-0 bottom-full mb-1 w-56 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                  <div className="absolute left-0 top-full mt-1 w-56 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
                     <button
                       onClick={() => {
                         setSelectedEnv("");
@@ -771,7 +774,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                   </svg>
                 </button>
                 {showModelDropdown && (
-                  <div className="absolute left-0 bottom-full mb-1 w-48 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1">
+                  <div className="absolute left-0 top-full mt-1 w-48 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1">
                     {MODELS.map((m) => (
                       <button
                         key={m.value}
