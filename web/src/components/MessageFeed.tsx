@@ -760,9 +760,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       .map((t) => t.id),
     [visibleTurns],
   );
-  const collapsedSet = useStore((s) => s.collapsedTurns.get(sessionId));
-  // Derive allCollapsed from actual state (no separate boolean that can desync)
-  const allCollapsed = collapsibleTurnIds.length > 0 && collapsibleTurnIds.every((id) => collapsedSet?.has(id));
+
+  // Sync collapsible turn IDs to the store so the Composer can render the global toggle
+  useEffect(() => {
+    useStore.getState().setCollapsibleTurnIds(sessionId, collapsibleTurnIds);
+  }, [sessionId, collapsibleTurnIds]);
 
   const handleLoadMore = useCallback(() => {
     if (loadingMore.current) return;
@@ -855,33 +857,6 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         className="h-full overflow-y-auto px-3 sm:px-4 py-4 sm:py-6"
       >
         <div className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
-          {/* Global collapse toggle — only shown when there are 2+ collapsible turns */}
-          {collapsibleTurnIds.length >= 2 && (
-            <div className="flex justify-end -mb-2">
-              <button
-                onClick={() => useStore.getState().setAllTurnsCollapsed(sessionId, !allCollapsed, collapsibleTurnIds)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                title={allCollapsed ? "Expand all turns" : "Collapse all turns"}
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                  {allCollapsed ? (
-                    /* expand icon: arrows pointing outward */
-                    <>
-                      <path d="M4 6l4-4 4 4" />
-                      <path d="M4 10l4 4 4-4" />
-                    </>
-                  ) : (
-                    /* collapse icon: arrows pointing inward */
-                    <>
-                      <path d="M4 2l4 4 4-4" />
-                      <path d="M4 14l4-4 4 4" />
-                    </>
-                  )}
-                </svg>
-                <span>{allCollapsed ? "Expand all" : "Collapse all"}</span>
-              </button>
-            </div>
-          )}
           {hasMore && (
             <div ref={sentinelRef} className="flex justify-center pb-2">
               <span className="flex items-center gap-1.5 text-xs text-cc-muted">

@@ -209,8 +209,10 @@ interface AppState {
   // Turn collapse state (collapsible agent activity sections)
   // Uses stable turn IDs (user message IDs or synthetic keys) instead of positional indices
   collapsedTurns: Map<string, Set<string>>;
+  collapsibleTurnIds: Map<string, string[]>;
   toggleTurnCollapsed: (sessionId: string, turnId: string) => void;
   setAllTurnsCollapsed: (sessionId: string, collapsed: boolean, turnIds: string[]) => void;
+  setCollapsibleTurnIds: (sessionId: string, turnIds: string[]) => void;
 
   // Diff panel actions
   setActiveTab: (tab: "chat" | "diff") => void;
@@ -369,6 +371,7 @@ export const useStore = create<AppState>((set) => ({
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
   collapsedTurns: new Map(),
+  collapsibleTurnIds: new Map(),
   terminalOpen: false,
   terminalCwd: null,
   terminalId: null,
@@ -517,6 +520,8 @@ export const useStore = create<AppState>((set) => ({
       composerDrafts.delete(sessionId);
       const collapsedTurns = new Map(s.collapsedTurns);
       collapsedTurns.delete(sessionId);
+      const collapsibleTurnIds = new Map(s.collapsibleTurnIds);
+      collapsibleTurnIds.delete(sessionId);
       const sessionLastViewed = new Map(s.sessionLastViewed);
       sessionLastViewed.delete(sessionId);
       const sessionUnreadCount = new Map(s.sessionUnreadCount);
@@ -558,6 +563,7 @@ export const useStore = create<AppState>((set) => ({
         feedScrollPosition,
         composerDrafts,
         collapsedTurns,
+        collapsibleTurnIds,
         sessionLastViewed,
         sessionUnreadCount,
         sessionAttention,
@@ -1029,6 +1035,13 @@ export const useStore = create<AppState>((set) => ({
       return { collapsedTurns };
     }),
 
+  setCollapsibleTurnIds: (sessionId, turnIds) =>
+    set((s) => {
+      const collapsibleTurnIds = new Map(s.collapsibleTurnIds);
+      collapsibleTurnIds.set(sessionId, turnIds);
+      return { collapsibleTurnIds };
+    }),
+
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   setTerminalCwd: (cwd) => set({ terminalCwd: cwd }),
   setTerminalId: (id) => set({ terminalId: id }),
@@ -1072,6 +1085,7 @@ export const useStore = create<AppState>((set) => ({
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
       collapsedTurns: new Map(),
+      collapsibleTurnIds: new Map(),
       terminalOpen: false,
       terminalCwd: null,
       terminalId: null,

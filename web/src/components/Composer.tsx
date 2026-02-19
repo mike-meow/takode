@@ -30,6 +30,38 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
+function CollapseAllToggle({ sessionId }: { sessionId: string }) {
+  const collapsibleTurnIds = useStore((s) => s.collapsibleTurnIds.get(sessionId));
+  const collapsedSet = useStore((s) => s.collapsedTurns.get(sessionId));
+
+  if (!collapsibleTurnIds || collapsibleTurnIds.length < 2) return null;
+
+  const allCollapsed = collapsibleTurnIds.every((id) => collapsedSet?.has(id));
+
+  return (
+    <button
+      onClick={() => useStore.getState().setAllTurnsCollapsed(sessionId, !allCollapsed, collapsibleTurnIds)}
+      className="flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer select-none"
+      title={allCollapsed ? "Expand all turns" : "Collapse all turns"}
+    >
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+        {allCollapsed ? (
+          <>
+            <path d="M4 6l4-4 4 4" />
+            <path d="M4 10l4 4 4-4" />
+          </>
+        ) : (
+          <>
+            <path d="M4 2l4 4 4-4" />
+            <path d="M4 14l4-4 4 4" />
+          </>
+        )}
+      </svg>
+      <span>{allCollapsed ? "Expand" : "Collapse"}</span>
+    </button>
+  );
+}
+
 export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
   const text = draft?.text ?? "";
@@ -539,6 +571,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 </button>
               </div>
             )}
+
+            {/* Center: collapse toggle */}
+            <CollapseAllToggle sessionId={sessionId} />
 
             {/* Right: image + send/stop */}
             <div className="flex items-center gap-1">

@@ -125,6 +125,9 @@ function setupMockStore(overrides: {
       (mockStoreState.composerDrafts as Map<string, unknown>).delete(sessionId);
       notifyMockStore();
     }),
+    collapsibleTurnIds: new Map(),
+    collapsedTurns: new Map(),
+    setAllTurnsCollapsed: vi.fn(),
   };
 }
 

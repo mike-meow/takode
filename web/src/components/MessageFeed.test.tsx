@@ -45,6 +45,7 @@ vi.mock("../store.js", () => {
     feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
     setFeedScrollPosition: vi.fn(),
     setAllTurnsCollapsed: vi.fn(),
+    setCollapsibleTurnIds: vi.fn(),
   });
   return { useStore };
 });
