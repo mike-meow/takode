@@ -123,8 +123,10 @@ describe("DiffPanel", () => {
     expect(select).toBeTruthy();
   });
 
-  it("shows 'No changes' when diff is empty for selected file", async () => {
-    mockApi.getFileDiff.mockResolvedValueOnce({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
+  it("hides files with zero changes once stats are loaded", async () => {
+    // Files that were touched by tool calls but have no actual diff against the base branch
+    // should be filtered out of the sidebar once their stats are fetched.
+    mockApi.getFileDiff.mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
 
     resetStore({
       changedFiles: new Map([["s1", new Set(["/repo/file.ts"])]]),
@@ -133,8 +135,10 @@ describe("DiffPanel", () => {
 
     render(<DiffPanel sessionId="s1" />);
 
+    // After stats load (empty diff → +0/-0), the file is removed from visible list,
+    // falling through to the empty state.
     await waitFor(() => {
-      expect(screen.getByText("No changes")).toBeInTheDocument();
+      expect(screen.getByText("No changes yet")).toBeInTheDocument();
     });
   });
 

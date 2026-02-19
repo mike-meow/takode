@@ -88,6 +88,16 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       .sort((a, b) => a.rel.localeCompare(b.rel));
   }, [changedFiles, repoRoot]);
 
+  // Filter out files with zero changes once stats are loaded
+  const visibleChangedFiles = useMemo(() => {
+    if (fileStats.size === 0) return relativeChangedFiles;
+    return relativeChangedFiles.filter((f) => {
+      const stats = fileStats.get(f.abs);
+      // Keep the file if stats haven't loaded yet, or if it has actual changes
+      return !stats || stats.additions > 0 || stats.deletions > 0;
+    });
+  }, [relativeChangedFiles, fileStats]);
+
   // Eagerly fetch default branch and branch list (once per cwd)
   useEffect(() => {
     if (!cwd || branchesFetched.current) return;
@@ -153,17 +163,17 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
   // Auto-select first changed file if none selected
   useEffect(() => {
-    if (!selectedFile && relativeChangedFiles.length > 0) {
-      setSelectedFile(sessionId, relativeChangedFiles[0].abs);
+    if (!selectedFile && visibleChangedFiles.length > 0) {
+      setSelectedFile(sessionId, visibleChangedFiles[0].abs);
     }
-  }, [selectedFile, relativeChangedFiles, sessionId, setSelectedFile]);
+  }, [selectedFile, visibleChangedFiles, sessionId, setSelectedFile]);
 
   // If the selected file falls out of scope, clear or reselect.
   useEffect(() => {
     if (!selectedFile) return;
-    if (relativeChangedFiles.some((f) => f.abs === selectedFile)) return;
-    setSelectedFile(sessionId, relativeChangedFiles[0]?.abs ?? null);
-  }, [selectedFile, relativeChangedFiles, sessionId, setSelectedFile]);
+    if (visibleChangedFiles.some((f) => f.abs === selectedFile)) return;
+    setSelectedFile(sessionId, visibleChangedFiles[0]?.abs ?? null);
+  }, [selectedFile, visibleChangedFiles, sessionId, setSelectedFile]);
 
   // Fetch diff when selected file or base branch changes
   useEffect(() => {
@@ -237,7 +247,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     );
   }
 
-  if (relativeChangedFiles.length === 0) {
+  if (visibleChangedFiles.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 select-none px-6">
         <div className="w-14 h-14 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
@@ -279,7 +289,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-cc-warning" />
-              <span>Changed ({relativeChangedFiles.length})</span>
+              <span>Changed ({visibleChangedFiles.length})</span>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -290,16 +300,19 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
               </svg>
             </button>
           </div>
-          {(totalStats.additions > 0 || totalStats.deletions > 0) && (
-            <div className="flex items-center gap-2 text-[11px] font-normal pl-4">
-              <span className="text-green-500">+{totalStats.additions}</span>
-              <span className="text-red-400">-{totalStats.deletions}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-[11px] font-normal pl-4">
+            {(totalStats.additions > 0 || totalStats.deletions > 0) && (
+              <>
+                <span className="text-green-500">+{totalStats.additions}</span>
+                <span className="text-red-400">-{totalStats.deletions}</span>
+              </>
+            )}
+          </div>
+          <div className="pl-4">{branchSelector}</div>
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
-          {relativeChangedFiles.map(({ abs, rel }) => (
+          {visibleChangedFiles.map(({ abs, rel }) => (
             <button
               key={abs}
               onClick={() => handleFileSelect(abs)}
@@ -357,7 +370,6 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
                 <span className="text-red-400">-{fileStats.get(selectedFile)!.deletions}</span>
               </span>
             )}
-            <span className="shrink-0 hidden sm:block">{branchSelector}</span>
           </div>
         )}
 
