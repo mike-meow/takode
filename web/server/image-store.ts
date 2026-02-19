@@ -55,6 +55,7 @@ export class ImageStore {
     // Generate thumbnail — fall back gracefully if sharp can't process
     try {
       await sharp(buffer)
+        .rotate()
         .resize({ width: THUMB_MAX_DIM, height: THUMB_MAX_DIM, fit: "inside" })
         .jpeg({ quality: THUMB_QUALITY })
         .toFile(thumbPath);
