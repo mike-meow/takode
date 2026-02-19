@@ -1686,6 +1686,9 @@ export class WsBridge {
       // and waits for new user input (matches Claude Code vanilla behavior)
       if (pending?.tool_name === "ExitPlanMode") {
         this.handleInterrupt(session);
+        // Immediately tell browsers the session is idle — the CLI may take
+        // time to acknowledge the interrupt and send a result message.
+        this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
         console.log(`[ws-bridge] ExitPlanMode denied for session ${session.id}, sending interrupt`);
       }
 
