@@ -359,11 +359,11 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                       onClick={() => b.available && switchBackend(b.id as BackendType)}
                       disabled={!b.available}
                       title={b.available ? b.name : `${b.name} CLI not found in PATH`}
-                      className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors ${
+                      className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
                         !b.available
                           ? "text-cc-muted/40 cursor-not-allowed"
                           : backend === b.id
-                            ? "bg-cc-card text-cc-fg font-medium shadow-sm cursor-pointer"
+                            ? "bg-cc-primary/15 text-cc-primary font-medium cursor-pointer"
                             : "text-cc-muted hover:text-cc-fg cursor-pointer"
                       }`}
                     >

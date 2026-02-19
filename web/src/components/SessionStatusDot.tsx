@@ -8,7 +8,7 @@
  *   4. running            -> green dot, breathing glow (agent actively working)
  *   5. compacting         -> amber dot, breathing glow (context compaction)
  *   6. completed_unread   -> blue dot, no glow (agent finished, user hasn't checked)
- *   7. idle               -> dim green dot, no glow
+ *   7. idle               -> gray dot, no glow
  */
 
 export type SessionVisualStatus =
@@ -61,7 +61,7 @@ const DOT_COLOR: Record<SessionVisualStatus, string> = {
   running: "bg-cc-success",
   compacting: "bg-cc-warning",
   completed_unread: "bg-blue-500",
-  idle: "bg-cc-success/60",
+  idle: "bg-cc-muted/40",
 };
 
 /** Maps visual status to whether the dot should have a breathing glow */
