@@ -1,6 +1,9 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  define: {
+    __BUILD_TIME__: JSON.stringify("2026-01-01T00:00:00.000Z"),
+  },
   test: {
     globals: true,
     environment: "node",

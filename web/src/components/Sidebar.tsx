@@ -594,6 +594,16 @@ export function Sidebar() {
           </svg>
           <span>Settings</span>
         </button>
+        <div className="text-[10px] text-cc-muted text-center pt-1 select-none" title={__BUILD_TIME__}>
+          {`Built ${new Date(__BUILD_TIME__).toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "America/Los_Angeles",
+          })} PT`}
+        </div>
       </div>
       {/* Context menu */}
       {contextMenu && (
