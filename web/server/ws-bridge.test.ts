@@ -3549,3 +3549,52 @@ describe("permission broadcasts include request_id", () => {
     expect(denied.tool_name).toBe("Bash");
   });
 });
+
+// ─── status_change broadcast on user_message ─────────────────────────────────
+
+describe("status_change: running on user_message", () => {
+  let cli: ReturnType<typeof makeCliSocket>;
+  let browser: ReturnType<typeof makeBrowserSocket>;
+
+  beforeEach(() => {
+    cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+  });
+
+  it("broadcasts status_change: running when user sends a message", () => {
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Hello",
+    }));
+
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const statusChange = calls.find((m: any) => m.type === "status_change");
+    expect(statusChange).toBeDefined();
+    expect(statusChange.status).toBe("running");
+  });
+
+  it("deriveSessionStatus returns 'running' when last history is user_message", () => {
+    // Send a user message so it becomes the last history entry
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Hello",
+    }));
+    browser.send.mockClear();
+
+    // Reconnect a new browser — state_snapshot should report "running"
+    const browser2 = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser2, "s1");
+    bridge.handleBrowserMessage(browser2, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+
+    const calls = browser2.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const snapshot = calls.find((m: any) => m.type === "state_snapshot");
+    expect(snapshot).toBeDefined();
+    expect(snapshot.sessionStatus).toBe("running");
+  });
+});

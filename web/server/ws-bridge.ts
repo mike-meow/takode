@@ -1259,6 +1259,7 @@ export class WsBridge {
           timestamp: ts,
           id: `user-${ts}-${this.userMsgCounter++}`,
         });
+        this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
         this.persistSession(session);
       }
       if (msg.type === "permission_response") {
@@ -1496,6 +1497,9 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+    // Notify all browsers immediately so the UI shows "Thinking" without
+    // waiting for the CLI's first assistant response.
+    this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
     this.persistSession(session);
   }
 
@@ -1729,9 +1733,10 @@ export class WsBridge {
     if (session.state.is_compacting) return "compacting";
     const hasBackend = !!(session.cliSocket || session.codexAdapter);
     if (!hasBackend) return null;
-    // If last history message is assistant (no result after it), session is running
+    // If last history message is assistant or user_message (no result after it),
+    // the session is running — either the CLI is generating or processing the request.
     const last = session.messageHistory[session.messageHistory.length - 1];
-    if (last?.type === "assistant") return "running";
+    if (last?.type === "assistant" || last?.type === "user_message") return "running";
     return "idle";
   }
 
