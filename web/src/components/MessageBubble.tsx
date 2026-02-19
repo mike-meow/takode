@@ -109,8 +109,7 @@ function UserMessage({ message, sessionId }: { message: ChatMessage; sessionId?:
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isCodex = useStore((s) => s.sessions.get(sessionId ?? "")?.backend_type === "codex");
-  const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId ?? ""));
-  const canRevert = !isCodex && sessionStatus === "idle" && !!sessionId;
+  const canRevert = !isCodex && !!sessionId;
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const { clientX, clientY } = e.touches[0];

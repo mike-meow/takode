@@ -905,9 +905,6 @@ export function createRoutes(
     if (!info) return c.json({ error: "Session not found" }, 404);
     if (!info.cliSessionId) return c.json({ error: "No CLI session to resume" }, 400);
     if (info.backendType === "codex") return c.json({ error: "Revert not supported for Codex" }, 400);
-    if (info.state === "starting" || info.state === "connected") {
-      return c.json({ error: "Cannot revert while session is running" }, 409);
-    }
 
     const session = wsBridge.getOrCreateSession(id);
 

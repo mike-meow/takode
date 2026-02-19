@@ -2356,19 +2356,6 @@ describe("POST /api/sessions/:id/revert", () => {
     expect(json.error).toContain("Codex");
   });
 
-  // Returns 409 when the session CLI is actively running (would corrupt state).
-  it("returns 409 while session is running", async () => {
-    setupRevertSession({ state: "connected" });
-
-    const res = await app.request("/api/sessions/session-1/revert", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: "user-msg-2" }),
-    });
-
-    expect(res.status).toBe(409);
-  });
-
   // Returns 400 when the session has no CLI session ID to resume.
   it("returns 400 when no cliSessionId", async () => {
     setupRevertSession({ cliSessionId: undefined as any });
