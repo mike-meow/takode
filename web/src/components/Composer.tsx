@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
 import { api } from "../api.js";
 import { CLAUDE_MODES, CODEX_MODES, getNextMode, resolveClaudeCliMode, deriveUiMode } from "../utils/backends.js";
+import { isTouchDevice } from "../utils/mobile.js";
 import type { ModeOption } from "../utils/backends.js";
 import { Lightbox } from "./Lightbox.js";
 
@@ -253,7 +254,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-    textareaRef.current?.focus();
+    if (isTouchDevice()) {
+      textareaRef.current?.blur();
+    } else {
+      textareaRef.current?.focus();
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -292,6 +297,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (isTouchDevice()) return; // mobile: let Enter insert newline
       e.preventDefault();
       handleSend();
     }

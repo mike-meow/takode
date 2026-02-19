@@ -8,6 +8,7 @@ import { navigateToSession } from "../utils/routing.js";
 import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
+import { isTouchDevice } from "../utils/mobile.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
 import { Lightbox } from "./Lightbox.js";
@@ -322,6 +323,7 @@ export function HomePage() {
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (isTouchDevice()) return; // mobile: let Enter insert newline
       e.preventDefault();
       handleSend();
     }
