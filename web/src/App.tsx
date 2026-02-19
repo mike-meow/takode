@@ -106,7 +106,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased" style={zoomLevel !== 1 ? { transform: `scale(${zoomLevel})`, transformOrigin: 'top left', width: `${100 / zoomLevel}%`, height: `${100 / zoomLevel}%` } : undefined}>
+    <div className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left', width: `${100 / zoomLevel}%`, height: `${100 / zoomLevel}%` }}>
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
