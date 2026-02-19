@@ -543,7 +543,7 @@ describe("MessageFeed - collapsed turns", () => {
     const sid = "test-system-visible";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Do something" }),
-      makeMessage({ id: "s1", role: "system", content: "Conversation compacted" }),
+      makeMessage({ id: "compact-boundary-test", role: "system", content: "Conversation compacted", variant: "info" }),
       makeMessage({ id: "a1", role: "assistant", content: "Done" }),
       makeMessage({ id: "u2", role: "user", content: "Next" }),
     ]);
@@ -551,10 +551,39 @@ describe("MessageFeed - collapsed turns", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    // System message should remain visible even though the turn is collapsed
+    // Compact marker should remain visible even though the turn is collapsed
     expect(screen.getByText("Conversation compacted")).toBeTruthy();
     // Agent message should be hidden
     expect(screen.queryByText("Done")).toBeNull();
+  });
+
+  it("renders compact markers in chronological position when turn is expanded", () => {
+    // Compact markers should appear at their original position in the message flow,
+    // not grouped before or after agent entries
+    const sid = "test-compact-position";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Start" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Working on it" }),
+      makeMessage({ id: "compact-boundary-pos", role: "system", content: "Conversation compacted", variant: "info" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Done after compaction" }),
+      makeMessage({ id: "u2", role: "user", content: "Next" }),
+    ]);
+
+    const { container } = render(<MessageFeed sessionId={sid} />);
+
+    // All messages should be visible in the expanded turn
+    expect(screen.getByText("Working on it")).toBeTruthy();
+    expect(screen.getByText("Conversation compacted")).toBeTruthy();
+    expect(screen.getByText("Done after compaction")).toBeTruthy();
+
+    // Verify chronological order: "Working on it" should appear before
+    // "Conversation compacted" which should appear before "Done after compaction"
+    const allText = container.textContent || "";
+    const posWorking = allText.indexOf("Working on it");
+    const posCompact = allText.indexOf("Conversation compacted");
+    const posDone = allText.indexOf("Done after compaction");
+    expect(posWorking).toBeLessThan(posCompact);
+    expect(posCompact).toBeLessThan(posDone);
   });
 
   it("shows collapsed summary with correct text preview", () => {

@@ -1893,7 +1893,11 @@ export class WsBridge {
       || msg.type === "user_message"
       || msg.type === "error"
       || msg.type === "tool_result_preview"
-      || msg.type === "permission_denied";
+      || msg.type === "permission_denied"
+      || msg.type === "permission_approved"
+      || msg.type === "compact_boundary"
+      || msg.type === "compact_summary"
+      || msg.type === "compact_marker";
   }
 
   private sequenceEvent(

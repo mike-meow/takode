@@ -275,6 +275,7 @@ interface TurnStats {
 interface Turn {
   id: string;                      // Stable ID for collapse state (user msg ID or synthetic)
   userEntry: FeedEntry | null;
+  allEntries: FeedEntry[];         // All entries in original order (for expanded rendering)
   agentEntries: FeedEntry[];       // Non-system agent activity (collapsible)
   systemEntries: FeedEntry[];      // System messages (always visible, never collapsed)
   stats: TurnStats;
@@ -363,6 +364,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   return {
     id,
     userEntry,
+    allEntries: entries,
     agentEntries,
     systemEntries,
     stats: {
@@ -548,29 +550,32 @@ function TurnEntries({ turns, sessionId }: { turns: Turn[]; sessionId: string })
             {turn.userEntry && (
               <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} />
             )}
-            {/* System messages are always visible (compact markers, errors, etc.) */}
-            {turn.systemEntries.length > 0 && (
-              <FeedEntries entries={turn.systemEntries} sessionId={sessionId} />
-            )}
-            {/* Agent activity: collapsed summary or full entries with collapse bar */}
-            {turn.agentEntries.length > 0 && (
-              isCollapsed ? (
-                <CollapsedTurnSummary
-                  stats={turn.stats}
-                  onClick={() => toggleTurn(sessionId, turn.id)}
-                />
-              ) : (
-                <>
-                  {/* Per-turn collapse bar (only for non-last turns with enough content) */}
-                  {turn.stats.messageCount > 1 && (
-                    <TurnCollapseBar
-                      stats={turn.stats}
-                      onClick={() => toggleTurn(sessionId, turn.id)}
-                    />
-                  )}
-                  <FeedEntries entries={turn.agentEntries} sessionId={sessionId} />
-                </>
-              )
+            {isCollapsed ? (
+              <>
+                {/* System messages always visible in collapsed mode */}
+                {turn.systemEntries.length > 0 && (
+                  <FeedEntries entries={turn.systemEntries} sessionId={sessionId} />
+                )}
+                {/* Collapsed summary for agent activity */}
+                {turn.agentEntries.length > 0 && (
+                  <CollapsedTurnSummary
+                    stats={turn.stats}
+                    onClick={() => toggleTurn(sessionId, turn.id)}
+                  />
+                )}
+              </>
+            ) : turn.allEntries.length > 0 && (
+              <>
+                {/* Per-turn collapse bar (only for turns with enough content) */}
+                {turn.stats.messageCount > 1 && (
+                  <TurnCollapseBar
+                    stats={turn.stats}
+                    onClick={() => toggleTurn(sessionId, turn.id)}
+                  />
+                )}
+                {/* Render all entries interleaved in original chronological order */}
+                <FeedEntries entries={turn.allEntries} sessionId={sessionId} />
+              </>
             )}
           </div>
         );
