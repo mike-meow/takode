@@ -112,12 +112,13 @@ function UserMessage({ message, sessionId }: { message: ChatMessage; sessionId?:
   const canRevert = !isCodex && !!sessionId;
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (ctxMenu) return; // Menu already open — don't start a new long-press
     const { clientX, clientY } = e.touches[0];
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
       setCtxMenu({ x: clientX, y: clientY });
     }, 500);
-  }, []);
+  }, [ctxMenu]);
 
   const cancelLongPress = useCallback(() => {
     if (longPressTimer.current) {

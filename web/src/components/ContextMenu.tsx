@@ -66,7 +66,6 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return createPortal(
     <div
       ref={menuRef}
-      onTouchStart={(e) => e.stopPropagation()}
       className="fixed z-50 min-w-[140px] bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-hidden"
       style={{ left: x, top: y }}
     >
