@@ -796,8 +796,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const [elapsed, setElapsed] = useState(0);
   const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
 
-  // Save scroll position to store on unmount (so it can be restored on re-mount)
-  useEffect(() => {
+  // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
+  // in the layout phase — BEFORE the new component's effects try to restore,
+  // avoiding the race where useEffect cleanup runs too late.
+  useLayoutEffect(() => {
     return () => {
       const el = containerRef.current;
       if (el) {
@@ -808,21 +810,6 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         });
       }
     };
-  }, [sessionId]);
-
-  // Restore saved scroll position on mount (runs before browser paint)
-  useLayoutEffect(() => {
-    const pos = useStore.getState().feedScrollPosition.get(sessionId);
-    if (!pos || pos.isAtBottom) return;
-
-    const el = containerRef.current;
-    if (!el) return;
-
-    if (el.scrollHeight === pos.scrollHeight) {
-      el.scrollTop = pos.scrollTop;
-    } else if (pos.scrollHeight > 0) {
-      el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
-    }
   }, [sessionId]);
 
   const grouped = useMemo(() => groupMessages(messages), [messages]);
@@ -905,11 +892,31 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     setShowScrollButton(!nearBottom);
   }
 
+  // Auto-scroll: on initial render, restore saved scroll position or jump to
+  // bottom. On subsequent renders (streaming), smooth-scroll if near bottom.
   useEffect(() => {
-    if (isNearBottom.current) {
-      bottomRef.current?.scrollIntoView({ behavior: isInitialRender.current ? "instant" : "smooth" });
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
+      const pos = useStore.getState().feedScrollPosition.get(sessionId);
+      if (pos && !pos.isAtBottom) {
+        const el = containerRef.current;
+        if (el) {
+          if (el.scrollHeight === pos.scrollHeight) {
+            el.scrollTop = pos.scrollTop;
+          } else if (pos.scrollHeight > 0) {
+            el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
+          }
+          isNearBottom.current = false;
+          setShowScrollButton(true);
+        }
+      } else {
+        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      }
+      return;
     }
-    isInitialRender.current = false;
+    if (isNearBottom.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages.length, streamingText]);
 
   const scrollToBottom = useCallback(() => {
