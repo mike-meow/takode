@@ -122,7 +122,8 @@ export function Sidebar() {
       if (perms.size > 0) attentionIds.add(id);
     }
     const totalAttention = attentionIds.size;
-    const base = serverName ? `${serverName} — Takode` : "Takode";
+    const suffix = import.meta.env.DEV ? "[DEV] Takode" : "Takode";
+    const base = serverName ? `${serverName} — ${suffix}` : suffix;
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
   }, [serverName, sessionAttention, pendingPermissions]);
 
