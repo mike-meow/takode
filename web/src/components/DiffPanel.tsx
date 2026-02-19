@@ -3,7 +3,6 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { invalidateDiffStatsCache } from "../ws.js";
 import { DiffViewer } from "./DiffViewer.js";
-import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 
 /** Count additions and deletions from a unified diff string */
 function countDiffStats(diff: string): { additions: number; deletions: number } {
@@ -19,36 +18,6 @@ function countDiffStats(diff: string): { additions: number; deletions: number } 
 interface FileStats {
   additions: number;
   deletions: number;
-}
-
-function getSavedSessionDiffBases(): Record<string, string> {
-  try {
-    return JSON.parse(scopedGetItem("cc-diff-base-session") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-/** Legacy per-CWD lookup (for backwards compat / migration) */
-function getLegacySavedDiffBase(cwd: string): string | null {
-  try {
-    const map = JSON.parse(scopedGetItem("cc-diff-base") || "{}");
-    return map[cwd] || null;
-  } catch {
-    return null;
-  }
-}
-
-function saveDiffBase(sessionId: string, branch: string | null) {
-  const map = getSavedSessionDiffBases();
-  if (branch) {
-    map[sessionId] = branch;
-    const keys = Object.keys(map);
-    if (keys.length > 50) delete map[keys[0]];
-  } else {
-    delete map[sessionId];
-  }
-  scopedSetItem("cc-diff-base-session", JSON.stringify(map));
 }
 
 export function DiffPanel({ sessionId }: { sessionId: string }) {
@@ -76,16 +45,20 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   // Track which set of files we've already fetched stats for
   const fetchedFilesRef = useRef<Set<string>>(new Set());
 
-  // Base branch for diff comparison (null = server default)
-  // Persisted per sessionId; falls back to legacy per-CWD key for migration
-  const [baseBranch, setBaseBranch] = useState<string | null>(() => {
-    const saved = getSavedSessionDiffBases()[sessionId];
-    if (saved) return saved;
-    if (cwd) return getLegacySavedDiffBase(cwd);
-    return null;
-  });
-  // The server-resolved default branch name (eagerly fetched via getRepoInfo)
-  const [resolvedDefault, setResolvedDefault] = useState<string | null>(null);
+  // Base branch for diff comparison — server-authoritative, synced across devices.
+  // session.diff_base_branch = user override ("" = use default), session.git_default_branch = auto-resolved.
+  const serverBaseBranch = session?.diff_base_branch || null;
+  const [baseBranch, setBaseBranch] = useState<string | null>(serverBaseBranch);
+
+  // Sync from server state (handles cross-browser updates)
+  useEffect(() => {
+    setBaseBranch(serverBaseBranch);
+  }, [serverBaseBranch]);
+
+  // The resolved default branch: prefer server session state, fall back to API for old sessions
+  const serverDefaultBranch = session?.git_default_branch || null;
+  const [fallbackDefault, setFallbackDefault] = useState<string | null>(null);
+  const resolvedDefault = serverDefaultBranch || fallbackDefault;
   // Available branches for the dropdown
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const branchesFetched = useRef(false);
@@ -111,21 +84,24 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     });
   }, [relativeChangedFiles, fileStats]);
 
-  // Eagerly fetch default branch and branch list (once per cwd)
+  // Fetch branch list for dropdown (once per cwd).
+  // Also fetch default branch from API as fallback for sessions created before git_default_branch existed.
   useEffect(() => {
     if (!cwd || branchesFetched.current) return;
     branchesFetched.current = true;
-    api.getRepoInfo(cwd).then((info) => {
-      if (info?.defaultBranch) setResolvedDefault(info.defaultBranch);
-    }).catch(() => {});
+    if (!serverDefaultBranch) {
+      api.getRepoInfo(cwd).then((info) => {
+        if (info?.defaultBranch) setFallbackDefault(info.defaultBranch);
+      }).catch(() => {});
+    }
     api.listBranches(cwd).then((branches) => {
       setAvailableBranches(branches.map((b) => b.name));
     }).catch(() => {});
-  }, [cwd]);
+  }, [cwd, serverDefaultBranch]);
 
   const handleBaseBranchChange = useCallback((value: string | null) => {
-    setBaseBranch(value);
-    saveDiffBase(sessionId, value);
+    setBaseBranch(value); // optimistic update
+    api.setDiffBase(sessionId, value || "").catch(() => {});
     // Invalidate all cached stats so they re-fetch with new base
     fetchedFilesRef.current.clear();
     setFileStats(new Map());
@@ -145,10 +121,6 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     const base = baseBranch || undefined;
     const promises = newFiles.map(({ abs }) =>
       api.getFileDiff(abs, base).then((res) => {
-        // Capture the server-resolved default branch from first response
-        if (res.baseBranch && !resolvedDefault) {
-          setResolvedDefault(res.baseBranch);
-        }
         return { abs, stats: countDiffStats(res.diff) };
       }).catch(() => ({ abs, stats: { additions: 0, deletions: 0 } })),
     );
@@ -164,7 +136,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       });
     });
     return () => { cancelled = true; };
-  }, [relativeChangedFiles, baseBranch, resolvedDefault]);
+  }, [relativeChangedFiles, baseBranch]);
 
   // Aggregate totals across all files
   const totalStats = useMemo(() => {
@@ -210,7 +182,6 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       .then((res) => {
         if (!cancelled) {
           setDiffContent(res.diff);
-          if (res.baseBranch) setResolvedDefault(res.baseBranch);
           // Update stats from the fetched diff (may already exist but ensures freshness)
           setFileStats((prev) => {
             const next = new Map(prev);

@@ -8,6 +8,7 @@ const mockApi = {
   getFileDiff: vi.fn().mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" }),
   listBranches: vi.fn().mockResolvedValue([]),
   getRepoInfo: vi.fn().mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false }),
+  setDiffBase: vi.fn().mockResolvedValue({ ok: true }),
 };
 
 vi.mock("../api.js", () => ({
@@ -15,13 +16,14 @@ vi.mock("../api.js", () => ({
     getFileDiff: (...args: unknown[]) => mockApi.getFileDiff(...args),
     listBranches: (...args: unknown[]) => mockApi.listBranches(...args),
     getRepoInfo: (...args: unknown[]) => mockApi.getRepoInfo(...args),
+    setDiffBase: (...args: unknown[]) => mockApi.setDiffBase(...args),
   },
 }));
 
 // ─── Store mock ─────────────────────────────────────────────────────────────
 
 interface MockStoreState {
-  sessions: Map<string, { cwd?: string; repo_root?: string }>;
+  sessions: Map<string, { cwd?: string; repo_root?: string; git_default_branch?: string; diff_base_branch?: string }>;
   sdkSessions: { sessionId: string; cwd?: string }[];
   diffPanelSelectedFile: Map<string, string>;
   changedFiles: Map<string, Set<string>>;
@@ -168,9 +170,7 @@ describe("DiffPanel", () => {
   });
 
   it("passes user-selected base branch to API calls", async () => {
-    // When a base branch is saved in localStorage, it should be passed to getFileDiff.
-    localStorage.setItem("cc-diff-base", JSON.stringify({ "/repo": "develop" }));
-
+    // When diff_base_branch is set in server session state, it should be passed to getFileDiff.
     const diffOutput = `diff --git a/src/app.ts b/src/app.ts
 --- a/src/app.ts
 +++ b/src/app.ts
@@ -180,6 +180,7 @@ describe("DiffPanel", () => {
     mockApi.getFileDiff.mockResolvedValue({ path: "/repo/src/app.ts", diff: diffOutput, baseBranch: "develop" });
 
     resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "develop" }]]),
       changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
       diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
     });

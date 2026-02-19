@@ -50,12 +50,8 @@ async function fetchDiffStatsForSession(sessionId: string) {
     ? session.repo_root
     : sessionCwd;
 
-  // Read user's saved base branch for this session (if any)
-  let baseBranch: string | undefined;
-  try {
-    const saved = JSON.parse(scopedGetItem("cc-diff-base-session") || "{}");
-    baseBranch = saved[sessionId] || undefined;
-  } catch { /* ignore */ }
+  // Read base branch from server session state (authoritative, synced across devices)
+  const baseBranch = session?.diff_base_branch || session?.git_default_branch || undefined;
 
   // Only fetch stats for files we haven't fetched yet
   const alreadyFetched = diffStatsFetchedFiles.get(sessionId) || new Set();

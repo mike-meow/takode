@@ -166,6 +166,8 @@ function makeDefaultState(sessionId: string, backendType: BackendType = "claude"
     context_used_percent: 0,
     is_compacting: false,
     git_branch: "",
+    git_default_branch: "",
+    diff_base_branch: "",
     is_worktree: false,
     is_containerized: false,
     repo_root: "",
@@ -330,11 +332,24 @@ export class WsBridge {
    * repo_root for sidebar grouping immediately, before the CLI connects.
    * Call this right after launcher.launch() for worktree sessions.
    */
-  markWorktree(sessionId: string, repoRoot: string, worktreeCwd: string): void {
+  markWorktree(sessionId: string, repoRoot: string, worktreeCwd: string, defaultBranch?: string): void {
     const session = this.getOrCreateSession(sessionId);
     session.state.is_worktree = true;
     session.state.repo_root = repoRoot;
     session.state.cwd = worktreeCwd;
+    if (defaultBranch) session.state.git_default_branch = defaultBranch;
+  }
+
+  setDiffBaseBranch(sessionId: string, branch: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.state.diff_base_branch = branch;
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { diff_base_branch: branch },
+    });
+    this.persistSession(session);
+    return true;
   }
 
   /**

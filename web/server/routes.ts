@@ -104,7 +104,7 @@ export function createRoutes(
 
       let cwd = body.cwd;
       const isAssistantMode = body.assistantMode === true;
-      let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string } | undefined;
+      let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
 
       // Assistant mode: override cwd and ensure workspace exists
       if (isAssistantMode) {
@@ -134,6 +134,7 @@ export function createRoutes(
             branch: body.branch,
             actualBranch: result.actualBranch,
             worktreePath: result.worktreePath,
+            defaultBranch: repoInfo.defaultBranch,
           };
         }
       } else if (body.branch && cwd) {
@@ -344,7 +345,7 @@ export function createRoutes(
       // Track the worktree mapping and pre-populate session state
       // so the browser gets correct sidebar grouping immediately
       if (worktreeInfo) {
-        wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd);
+        wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd, worktreeInfo.defaultBranch);
         worktreeTracker.addMapping({
           sessionId: session.sessionId,
           repoRoot: worktreeInfo.repoRoot,
@@ -423,7 +424,7 @@ export function createRoutes(
 
         let cwd = body.cwd;
         const isAssistantMode = body.assistantMode === true;
-        let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string } | undefined;
+        let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
 
         // Assistant mode: override cwd and ensure workspace exists
         if (isAssistantMode) {
@@ -458,6 +459,7 @@ export function createRoutes(
               branch: body.branch,
               actualBranch: result.actualBranch,
               worktreePath: result.worktreePath,
+              defaultBranch: repoInfo.defaultBranch,
             };
           }
           await emitProgress(stream, "creating_worktree", "Worktree ready", "done");
@@ -717,7 +719,7 @@ export function createRoutes(
         // Track worktree mapping and pre-populate session state
         // so the browser gets correct sidebar grouping immediately
         if (worktreeInfo) {
-          wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd);
+          wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd, worktreeInfo.defaultBranch);
           worktreeTracker.addMapping({
             sessionId: session.sessionId,
             repoRoot: worktreeInfo.repoRoot,
@@ -819,6 +821,16 @@ export function createRoutes(
     sessionNames.setName(id, body.name.trim());
     wsBridge.broadcastSessionUpdate(id, { name: body.name.trim() });
     return c.json({ ok: true, name: body.name.trim() });
+  });
+
+  api.patch("/sessions/:id/diff-base", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const branch = typeof body.branch === "string" ? body.branch : "";
+    if (!wsBridge.setDiffBaseBranch(id, branch)) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    return c.json({ ok: true, diff_base_branch: branch });
   });
 
   api.post("/sessions/:id/kill", async (c) => {

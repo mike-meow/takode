@@ -359,14 +359,15 @@ describe("CLI handlers", () => {
     expect(state.repo_root).toBe("/Users/stan/Dev/myproject");
   });
 
-  it("handleCLIMessage: markWorktree pre-populates repo_root for correct sidebar grouping", () => {
-    // markWorktree sets is_worktree, repo_root, and cwd before CLI connects
-    bridge.markWorktree("s1", "/home/user/companion", "/home/user/.companion/worktrees/companion/jiayi-wt-1234");
+  it("handleCLIMessage: markWorktree pre-populates repo_root and git_default_branch", () => {
+    // markWorktree sets is_worktree, repo_root, cwd, and git_default_branch before CLI connects
+    bridge.markWorktree("s1", "/home/user/companion", "/home/user/.companion/worktrees/companion/jiayi-wt-1234", "jiayi");
 
     const state = bridge.getSession("s1")!.state;
     expect(state.is_worktree).toBe(true);
     expect(state.repo_root).toBe("/home/user/companion");
     expect(state.cwd).toBe("/home/user/.companion/worktrees/companion/jiayi-wt-1234");
+    expect(state.git_default_branch).toBe("jiayi");
 
     // After CLI connects, resolveGitInfo runs and should preserve the worktree info
     mockExecSync.mockImplementation((cmd: string) => {
@@ -386,6 +387,33 @@ describe("CLI handlers", () => {
     expect(stateAfter.repo_root).toBe("/home/user/companion");
     expect(stateAfter.is_worktree).toBe(true);
     expect(stateAfter.git_branch).toBe("jiayi-wt-1234");
+  });
+
+  it("setDiffBaseBranch updates session state and broadcasts to browsers", () => {
+    // Create a session with a browser connected
+    bridge.markWorktree("s1", "/home/user/companion", "/tmp/wt", "jiayi");
+    const browserWs = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browserWs, "s1");
+
+    // Set diff base branch
+    const result = bridge.setDiffBaseBranch("s1", "feature-branch");
+    expect(result).toBe(true);
+
+    const state = bridge.getSession("s1")!.state;
+    expect(state.diff_base_branch).toBe("feature-branch");
+
+    // Verify broadcast was sent to the browser
+    const calls = (browserWs.send as ReturnType<typeof vi.fn>).mock.calls;
+    const lastMsg = JSON.parse(calls[calls.length - 1][0]);
+    expect(lastMsg.type).toBe("session_update");
+    expect(lastMsg.session.diff_base_branch).toBe("feature-branch");
+
+    // Clearing the override (empty string)
+    bridge.setDiffBaseBranch("s1", "");
+    expect(bridge.getSession("s1")!.state.diff_base_branch).toBe("");
+
+    // Non-existent session returns false
+    expect(bridge.setDiffBaseBranch("nonexistent", "main")).toBe(false);
   });
 
   it("handleCLIMessage: system.init resolves git info via execSync", () => {

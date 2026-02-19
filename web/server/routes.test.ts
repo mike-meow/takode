@@ -117,6 +117,7 @@ function createMockBridge() {
     markContainerized: vi.fn(),
     markWorktree: vi.fn(),
     setInitialCwd: vi.fn(),
+    setDiffBaseBranch: vi.fn(() => true),
     setInitialAskPermission: vi.fn(),
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),
@@ -1329,6 +1330,64 @@ describe("PATCH /api/sessions/:id/name", () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ─── Diff Base Branch ────────────────────────────────────────────────────────
+
+describe("PATCH /api/sessions/:id/diff-base", () => {
+  it("sets the diff base branch and returns ok", async () => {
+    const res = await app.request("/api/sessions/s1/diff-base", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "feature-branch" }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true, diff_base_branch: "feature-branch" });
+    expect(bridge.setDiffBaseBranch).toHaveBeenCalledWith("s1", "feature-branch");
+  });
+
+  it("clears the diff base branch when empty string", async () => {
+    const res = await app.request("/api/sessions/s1/diff-base", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "" }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true, diff_base_branch: "" });
+    expect(bridge.setDiffBaseBranch).toHaveBeenCalledWith("s1", "");
+  });
+
+  it("returns 404 when session not found", async () => {
+    bridge.setDiffBaseBranch.mockReturnValue(false);
+
+    const res = await app.request("/api/sessions/nonexistent/diff-base", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "main" }),
+    });
+
+    expect(res.status).toBe(404);
+    const json = await res.json();
+    expect(json).toEqual({ error: "Session not found" });
+
+    // Reset mock
+    bridge.setDiffBaseBranch.mockReturnValue(true);
+  });
+
+  it("defaults to empty string when branch is not a string", async () => {
+    const res = await app.request("/api/sessions/s1/diff-base", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setDiffBaseBranch).toHaveBeenCalledWith("s1", "");
   });
 });
 

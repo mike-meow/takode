@@ -376,6 +376,12 @@ export const api = {
       { name },
     ),
 
+  setDiffBase: (sessionId: string, branch: string) =>
+    patch<{ ok: boolean; diff_base_branch: string }>(
+      `/sessions/${encodeURIComponent(sessionId)}/diff-base`,
+      { branch },
+    ),
+
   listDirs: (path?: string) =>
     get<DirListResult>(
       `/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
