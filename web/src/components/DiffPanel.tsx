@@ -49,8 +49,12 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const changedFilesSet = useStore((s) => s.changedFiles.get(sessionId));
 
   const cwd = session?.cwd || sdkSession?.cwd;
-  // Use git repo root as scope so files outside session cwd are visible in diff panel
-  const repoRoot = session?.repo_root || cwd;
+  // Use git repo root as scope so files outside session cwd are visible in diff panel.
+  // For worktrees, repo_root points to the main repo (not the worktree directory), so fall
+  // back to cwd when repo_root isn't an ancestor of cwd.
+  const repoRoot = (session?.repo_root && cwd?.startsWith(session.repo_root + "/"))
+    ? session.repo_root
+    : cwd;
 
   const [diffContent, setDiffContent] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);

@@ -449,6 +449,80 @@ describe("handleMessage: assistant", () => {
     const changed = useStore.getState().changedFiles.get("s1");
     expect(changed?.has("/home/user/README.md")).toBe(true);
   });
+
+  it("tracks changed files in worktree sessions where repo_root is the main repo", () => {
+    // In a worktree, repo_root points to the main repo (e.g. /home/user/companion)
+    // but the session cwd is the worktree directory (e.g. /home/user/.worktrees/wt-1).
+    // Files edited in the worktree should still be tracked.
+    const worktreeSession = {
+      ...makeSession("s1"),
+      cwd: "/home/user/.worktrees/wt-1",
+      repo_root: "/home/user/companion",
+      is_worktree: true,
+    };
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: worktreeSession });
+
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-wt-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-wt-1",
+            name: "Edit",
+            input: { file_path: "web/src/index.ts" },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    const changed = useStore.getState().changedFiles.get("s1");
+    expect(changed?.has("/home/user/.worktrees/wt-1/web/src/index.ts")).toBe(true);
+  });
+
+  it("tracks changed files when cwd is a subdirectory of repo_root", () => {
+    // When cwd is a subdirectory of repo_root, repo_root should be used as the scope
+    // so files at the repo root level (e.g. CLAUDE.md) are tracked.
+    const subSession = {
+      ...makeSession("s1"),
+      cwd: "/home/user/monorepo/packages/app",
+      repo_root: "/home/user/monorepo",
+    };
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: subSession });
+
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-sub-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-sub-1",
+            name: "Write",
+            input: { file_path: "/home/user/monorepo/CLAUDE.md" },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    const changed = useStore.getState().changedFiles.get("s1");
+    expect(changed?.has("/home/user/monorepo/CLAUDE.md")).toBe(true);
+  });
 });
 
 // ===========================================================================

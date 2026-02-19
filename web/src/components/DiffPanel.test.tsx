@@ -21,7 +21,7 @@ vi.mock("../api.js", () => ({
 // ─── Store mock ─────────────────────────────────────────────────────────────
 
 interface MockStoreState {
-  sessions: Map<string, { cwd?: string }>;
+  sessions: Map<string, { cwd?: string; repo_root?: string }>;
   sdkSessions: { sessionId: string; cwd?: string }[];
   diffPanelSelectedFile: Map<string, string>;
   changedFiles: Map<string, Set<string>>;
@@ -181,5 +181,37 @@ describe("DiffPanel", () => {
     await waitFor(() => {
       expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "develop");
     });
+  });
+
+  it("displays changed files in worktree sessions where repo_root differs from cwd", () => {
+    // In a worktree, repo_root points to the main repo (e.g. /main/companion) but
+    // the session cwd is the worktree directory. Files under the worktree should appear.
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/home/user/.worktrees/wt-1", repo_root: "/home/user/companion" }]]),
+      changedFiles: new Map([
+        ["s1", new Set(["/home/user/.worktrees/wt-1/web/src/app.ts", "/home/user/.worktrees/wt-1/web/src/utils.ts"])],
+      ]),
+    });
+
+    render(<DiffPanel sessionId="s1" />);
+    expect(screen.getByText("Changed (2)")).toBeInTheDocument();
+    expect(screen.getByText("web/src/app.ts")).toBeInTheDocument();
+    expect(screen.getByText("web/src/utils.ts")).toBeInTheDocument();
+  });
+
+  it("uses repo_root as scope when cwd is a subdirectory of repo_root", () => {
+    // When cwd is a subdirectory of repo_root, files at the repo root level
+    // (e.g. CLAUDE.md) should still be visible in the diff panel.
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo/packages/app", repo_root: "/repo" }]]),
+      changedFiles: new Map([
+        ["s1", new Set(["/repo/CLAUDE.md", "/repo/packages/app/src/index.ts"])],
+      ]),
+    });
+
+    render(<DiffPanel sessionId="s1" />);
+    expect(screen.getByText("Changed (2)")).toBeInTheDocument();
+    expect(screen.getByText("CLAUDE.md")).toBeInTheDocument();
+    expect(screen.getByText("packages/app/src/index.ts")).toBeInTheDocument();
   });
 });

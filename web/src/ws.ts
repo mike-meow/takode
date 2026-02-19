@@ -123,8 +123,12 @@ function extractChangedFilesFromBlocks(sessionId: string, blocks: ContentBlock[]
   const sessionCwd =
     session?.cwd ||
     store.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd;
-  // Use repo root as scope so files outside session cwd (e.g. repo-root CLAUDE.md) are tracked
-  const scope = session?.repo_root || sessionCwd;
+  // Use repo root as scope so files outside session cwd (e.g. repo-root CLAUDE.md) are tracked.
+  // For worktrees, repo_root points to the main repo (not the worktree directory), so fall
+  // back to cwd when repo_root isn't an ancestor of cwd.
+  const scope = (session?.repo_root && sessionCwd?.startsWith(session.repo_root + "/"))
+    ? session.repo_root
+    : sessionCwd;
   for (const block of blocks) {
     if (block.type !== "tool_use") continue;
     const { name, input } = block;

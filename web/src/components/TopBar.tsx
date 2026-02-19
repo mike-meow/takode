@@ -43,14 +43,19 @@ export function TopBar() {
   }, [cliSessionId]);
   const changedFilesCount = useStore((s) => {
     if (!currentSessionId) return 0;
-    const cwd =
-      s.sessions.get(currentSessionId)?.cwd ||
+    const session = s.sessions.get(currentSessionId);
+    const sessionCwd =
+      session?.cwd ||
       s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cwd;
     const files = s.changedFiles.get(currentSessionId);
     if (!files) return 0;
-    if (!cwd) return files.size;
-    const prefix = `${cwd}/`;
-    return [...files].filter((fp) => fp === cwd || fp.startsWith(prefix)).length;
+    if (!sessionCwd) return files.size;
+    // Use repo_root only when it's an ancestor of cwd (worktrees have a different root)
+    const scope = (session?.repo_root && sessionCwd.startsWith(session.repo_root + "/"))
+      ? session.repo_root
+      : sessionCwd;
+    const prefix = `${scope}/`;
+    return [...files].filter((fp) => fp === scope || fp.startsWith(prefix)).length;
   });
 
   const cwd = useStore((s) => {
