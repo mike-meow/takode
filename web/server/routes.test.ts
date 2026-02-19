@@ -116,6 +116,7 @@ function createMockBridge() {
     getCodexRateLimits: vi.fn(() => null),
     markContainerized: vi.fn(),
     markWorktree: vi.fn(),
+    setInitialAskPermission: vi.fn(),
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),
     persistSessionSync: vi.fn(),
@@ -1684,6 +1685,83 @@ describe("POST /api/sessions/create with backend", () => {
     expect(launcher.launch).toHaveBeenCalledWith(
       expect.objectContaining({ backendType: "claude" }),
     );
+  });
+});
+
+// ─── Permission mode resolution from askPermission ───────────────────────────
+
+describe("POST /api/sessions/create permission mode resolution", () => {
+  it("launches Claude session with 'plan' permission mode when askPermission is true", async () => {
+    // When Ask=True, Claude sessions should launch with permissionMode "plan"
+    // so CLI starts in a guarded mode from the beginning (no race window).
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", askPermission: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "plan" }),
+    );
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true);
+  });
+
+  it("launches Claude session with 'bypassPermissions' when askPermission is false", async () => {
+    // When Ask=False, Claude sessions should launch with permissionMode "bypassPermissions"
+    // for full auto-approval from CLI startup.
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", askPermission: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "bypassPermissions" }),
+    );
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false);
+  });
+
+  it("defaults to 'plan' permission mode when askPermission is omitted", async () => {
+    // When askPermission is not provided, default to secure (plan mode).
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "plan" }),
+    );
+  });
+
+  it("uses 'suggest' permission mode for codex sessions regardless of askPermission", async () => {
+    // Codex sessions always use "suggest" mode; askPermission is irrelevant.
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", askPermission: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "suggest" }),
+    );
+    // Should NOT set askPermission for codex sessions
+    expect(bridge.setInitialAskPermission).not.toHaveBeenCalled();
+  });
+
+  it("does not call setInitialAskPermission for codex sessions", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", askPermission: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setInitialAskPermission).not.toHaveBeenCalled();
   });
 });
 

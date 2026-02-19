@@ -5,7 +5,7 @@ import { connectSession, waitForConnection, sendToSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
 import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
-import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, resolveClaudeCliMode, type ModelOption } from "../utils/backends.js";
+import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { EnvManager } from "./EnvManager.js";
@@ -259,6 +259,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
           backend,
           codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
           assistantMode: assistantMode || undefined,
+          askPermission: backend !== "codex" ? askPermission : undefined,
         },
         (progress) => {
           useStore.getState().addCreationProgress(progress);
@@ -273,12 +274,8 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
       await waitForConnection(sessionId);
 
-      // Set initial permission mode before user types first message
-      if (backend === "claude") {
-        const cliMode = resolveClaudeCliMode(mode, askPermission);
-        sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
-        sendToSession(sessionId, { type: "set_ask_permission", askPermission });
-      }
+      // Permission mode is now set at session creation time via routes.ts,
+      // so no need to send set_permission_mode/set_ask_permission here.
 
       useStore.getState().clearCreation();
       onClose();
@@ -443,19 +440,19 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                       setAskPermission(next);
                       scopedSetItem("cc-ask-permission", String(next));
                     }}
-                    className="flex items-center gap-1 px-1.5 py-1 rounded-md text-xs transition-colors cursor-pointer select-none"
+                    className="flex items-center justify-center w-7 h-7 rounded-md transition-colors cursor-pointer select-none hover:bg-cc-hover"
                     title={askPermission ? "Permissions: will ask before tool use" : "Permissions: auto-approving tool use"}
                   >
-                    <span className={`relative inline-flex h-[14px] w-[24px] items-center rounded-full transition-colors ${
-                      askPermission ? "bg-cc-primary" : "bg-cc-border"
-                    }`}>
-                      <span className={`inline-block h-[10px] w-[10px] rounded-full bg-white transition-transform ${
-                        askPermission ? "translate-x-[12px]" : "translate-x-[2px]"
-                      }`} />
-                    </span>
-                    <span className={`${askPermission ? "text-cc-fg" : "text-cc-muted"}`}>
-                      Ask
-                    </span>
+                    {askPermission ? (
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               )}

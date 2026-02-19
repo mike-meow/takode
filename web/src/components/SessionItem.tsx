@@ -185,6 +185,22 @@ export function SessionItem({
                     alt={backendAlt}
                     className="w-3.5 h-3.5 shrink-0 object-contain"
                   />
+                  {/* Shield icon: ask permission status (Claude only) */}
+                  {s.backendType !== "codex" && s.askPermission === true && (
+                    <span title="Permissions: asking before tool use">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-primary">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  )}
+                  {s.backendType !== "codex" && s.askPermission === false && (
+                    <span title="Permissions: auto-approving tool use">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3 h-3 shrink-0 text-cc-muted/50">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      </svg>
+                    </span>
+                  )}
                   {s.isContainerized && (
                     <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-blue-400 bg-blue-500/10">
                       Docker

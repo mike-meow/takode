@@ -37,6 +37,7 @@ export function Sidebar() {
   const collapsedProjects = useStore((s) => s.collapsedProjects);
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
   const sessionAttention = useStore((s) => s.sessionAttention);
+  const askPermissionMap = useStore((s) => s.askPermission);
   const sessionOrder = useStore((s) => s.sessionOrder);
   const reorderMode = useStore((s) => s.reorderMode);
   const setReorderMode = useStore((s) => s.setReorderMode);
@@ -331,6 +332,7 @@ export function Sidebar() {
       cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
       cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
       isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
+      askPermission: askPermissionMap?.get(id),
     };
   }).sort((a, b) => b.createdAt - a.createdAt);
 

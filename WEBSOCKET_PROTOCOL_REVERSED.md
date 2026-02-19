@@ -991,6 +991,25 @@ When the context window fills up:
 2. After compaction: `{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":N}}`
 3. Then: `{"type":"system","subtype":"status","status":null}` (compacting ended)
 
+### Permission Mode Locking
+
+The `--permission-mode` flag is a **CLI launch-time argument** — it cannot be changed after the process starts via `set_permission_mode` in all cases (e.g., switching from `bypassPermissions` to a guarded mode may not be honored by the CLI). The Companion server resolves the initial permission mode at session creation based on the user's Ask permission preference:
+
+| Ask Toggle | UI Mode | CLI `--permission-mode` |
+|-----------|---------|------------------------|
+| true      | plan    | `plan`                 |
+| true      | agent   | `plan` (initial launch) |
+| false     | any     | `bypassPermissions`    |
+
+**Dynamic `set_permission_mode` still works** for switching between `plan` and `acceptEdits` within the same Ask level (e.g., toggling Plan/Agent mode). However, changing the Ask toggle itself (which changes the security level) triggers a **CLI restart** via `--resume` to apply the new `--permission-mode` flag from startup.
+
+**Restart flow:**
+1. Browser sends `set_ask_permission` message
+2. Server resolves new CLI permission mode
+3. Server kills the running CLI process
+4. Server relaunches with `--resume <session-id> --permission-mode <new-mode>`
+5. Conversation history is preserved via CLI's built-in resume mechanism
+
 ### Result Triggers
 
 | Result Subtype | Trigger |

@@ -93,6 +93,25 @@ wsBridge.onCLIRelaunchNeededCallback(async (sessionId) => {
   }
 });
 
+// Restart CLI when ask permission mode changes (updates launcher state + relaunches)
+wsBridge.onPermissionModeChangedCallback(async (sessionId, newMode) => {
+  if (relaunchingSet.has(sessionId)) return;
+  const info = launcher.getSession(sessionId);
+  if (!info || info.archived) return;
+  // Update the launcher's stored permission mode before relaunching
+  info.permissionMode = newMode;
+  relaunchingSet.add(sessionId);
+  console.log(`[server] Relaunching CLI for session ${sessionId} with permission mode: ${newMode}`);
+  try {
+    const result = await launcher.relaunch(sessionId);
+    if (!result.ok && result.error) {
+      wsBridge.broadcastToSession(sessionId, { type: "error", message: result.error });
+    }
+  } finally {
+    setTimeout(() => relaunchingSet.delete(sessionId), 5000);
+  }
+});
+
 // Auto-generate session title after first turn completes
 wsBridge.onFirstTurnCompletedCallback(async (sessionId, firstUserMessage) => {
   // Don't overwrite a name that was already set (manual rename, prior auto-name, or assistant)

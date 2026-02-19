@@ -320,12 +320,13 @@ describe("Composer mode toggle", () => {
 // ─── Ask Permission toggle ──────────────────────────────────────────────────
 
 describe("Composer ask permission toggle", () => {
-  it("renders ask permission toggle for Claude sessions", () => {
+  it("renders ask permission shield icon for Claude sessions", () => {
     setupMockStore({ session: { permissionMode: "acceptEdits" } });
     render(<Composer sessionId="s1" />);
 
-    // The toggle should show "Ask" text
-    expect(screen.getByText("Ask")).toBeTruthy();
+    // The toggle should render a shield button with a title indicating permission mode
+    const shieldButton = screen.getByTitle(/Permissions:/);
+    expect(shieldButton).toBeTruthy();
   });
 });
 

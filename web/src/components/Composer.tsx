@@ -346,10 +346,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
   function toggleAskPermission() {
     if (!isConnected || isCodex) return;
     const newValue = !askPermission;
-    // Server will broadcast the updated askPermission and permissionMode to all browsers
+    const action = newValue ? "enable permission prompts" : "disable permission prompts";
+    if (!window.confirm(
+      `This will ${action} and restart the CLI session.\n\nAny in-progress operation (tool calls, file edits, etc.) will be interrupted.\nYour conversation history will be preserved.\n\nContinue?`
+    )) return;
+    // Server handles permission mode resolution and CLI restart
     sendToSession(sessionId, { type: "set_ask_permission", askPermission: newValue });
-    const cliMode = resolveClaudeCliMode(uiMode, newValue);
-    sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
   }
 
   function cycleMode() {
@@ -599,28 +601,29 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   </button>
                 </div>
 
-                {/* Ask Permission toggle */}
+                {/* Ask Permission toggle (shield icon) */}
                 <button
                   onClick={toggleAskPermission}
                   disabled={!isConnected}
-                  className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] transition-colors select-none ${
+                  className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
                     !isConnected
                       ? "opacity-30 cursor-not-allowed text-cc-muted"
-                      : "cursor-pointer"
+                      : "cursor-pointer hover:bg-cc-hover"
                   }`}
-                  title={askPermission ? "Permissions: asking before tool use" : "Permissions: auto-approving tool use"}
+                  title={askPermission
+                    ? "Permissions: asking before tool use (click to change — requires CLI restart)"
+                    : "Permissions: auto-approving tool use (click to change — requires CLI restart)"}
                 >
-                  {/* Toggle track */}
-                  <span className={`relative inline-flex h-[14px] w-[24px] items-center rounded-full transition-colors ${
-                    askPermission ? "bg-cc-primary" : "bg-cc-border"
-                  }`}>
-                    <span className={`inline-block h-[10px] w-[10px] rounded-full bg-white transition-transform ${
-                      askPermission ? "translate-x-[12px]" : "translate-x-[2px]"
-                    }`} />
-                  </span>
-                  <span className={`${askPermission ? "text-cc-fg" : "text-cc-muted"}`}>
-                    Ask
-                  </span>
+                  {askPermission ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                    </svg>
+                  )}
                 </button>
               </div>
             )}

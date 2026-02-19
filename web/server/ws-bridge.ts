@@ -257,6 +257,7 @@ export class WsBridge {
   private imageStore: ImageStore | null = null;
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private onCLIRelaunchNeeded: ((sessionId: string) => void) | null = null;
+  private onPermissionModeChanged: ((sessionId: string, newMode: string) => void) | null = null;
   private onFirstTurnCompleted: ((sessionId: string, firstUserMessage: string) => void) | null = null;
   private autoNamingAttempted = new Set<string>();
   private userMsgCounter = 0;
@@ -281,6 +282,11 @@ export class WsBridge {
     this.onCLIRelaunchNeeded = cb;
   }
 
+  /** Register a callback for when askPermission changes and CLI needs restart with new mode. */
+  onPermissionModeChangedCallback(cb: (sessionId: string, newMode: string) => void): void {
+    this.onPermissionModeChanged = cb;
+  }
+
   /** Register a callback for when a session completes its first turn. */
   onFirstTurnCompletedCallback(cb: (sessionId: string, firstUserMessage: string) => void): void {
     this.onFirstTurnCompleted = cb;
@@ -300,6 +306,17 @@ export class WsBridge {
     const session = this.getOrCreateSession(sessionId);
     session.state.is_containerized = true;
     session.state.cwd = hostCwd;
+  }
+
+  /**
+   * Set initial askPermission state on a session at creation time.
+   * This ensures the browser receives the correct initial state via state_snapshot.
+   */
+  setInitialAskPermission(sessionId: string, askPermission: boolean): void {
+    const session = this.getOrCreateSession(sessionId);
+    session.state.askPermission = askPermission;
+    session.state.uiMode = "plan"; // New sessions default to plan mode
+    this.persistSession(session);
   }
 
   /**
@@ -1759,11 +1776,17 @@ export class WsBridge {
 
   private handleSetAskPermission(session: Session, askPermission: boolean) {
     session.state.askPermission = askPermission;
+    // Resolve the new CLI permission mode based on current UI mode + new ask state
+    const uiMode = session.state.uiMode ?? "agent";
+    const newMode = uiMode === "plan" ? "plan" : (askPermission ? "acceptEdits" : "bypassPermissions");
+    session.state.permissionMode = newMode;
     this.broadcastToBrowsers(session, {
       type: "session_update",
-      session: { askPermission },
+      session: { askPermission, permissionMode: newMode, uiMode },
     });
     this.persistSession(session);
+    // Trigger CLI restart with the new permission mode
+    this.onPermissionModeChanged?.(session.id, newMode);
   }
 
   // ── Control response handling ─────────────────────────────────────────

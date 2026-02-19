@@ -98,6 +98,7 @@ export interface CreateSessionOpts {
   backend?: "claude" | "codex";
   container?: ContainerCreateOpts;
   assistantMode?: boolean;
+  askPermission?: boolean;
 }
 
 export interface BackendInfo {

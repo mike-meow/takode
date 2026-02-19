@@ -22,6 +22,7 @@ export interface SessionItem {
   cronJobId?: string;
   cronJobName?: string;
   isWorktree?: boolean;
+  askPermission?: boolean;
 }
 
 export interface ProjectGroup {

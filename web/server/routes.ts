@@ -303,14 +303,17 @@ export function createRoutes(
         }
       }
 
-      // Always spawn with bypassPermissions — the frontend is the source of truth
-      // for permission mode and will send set_permission_mode via WebSocket after connecting.
+      // Resolve initial permission mode from askPermission for Claude sessions.
       // For Codex, default to gpt-5.3-codex if no model provided (Codex requires explicit model).
       // For Claude, undefined is fine — the CLI uses its own configured default.
+      const askPermission = body.askPermission !== false;
+      const initialPermissionMode = backend === "codex"
+        ? (body.permissionMode || "suggest")
+        : (askPermission ? "plan" : "bypassPermissions");
       const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
       const session = launcher.launch({
         model,
-        permissionMode: "bypassPermissions",
+        permissionMode: initialPermissionMode,
         cwd,
         claudeBinary: body.claudeBinary,
         codexBinary: body.codexBinary,
@@ -346,6 +349,11 @@ export function createRoutes(
           worktreePath: worktreeInfo.worktreePath,
           createdAt: Date.now(),
         });
+      }
+
+      // Set initial askPermission state on the session for Claude backends
+      if (backend !== "codex") {
+        wsBridge.setInitialAskPermission(session.sessionId, askPermission);
       }
 
       // Mark as assistant session if in assistant mode
@@ -671,12 +679,15 @@ export function createRoutes(
         // --- Step: Launch CLI ---
         await emitProgress(stream, "launching_cli", "Launching Claude Code...", "in_progress");
 
-        // Always spawn with bypassPermissions — the frontend is the source of truth
-        // for permission mode and will send set_permission_mode via WebSocket after connecting.
+        // Resolve initial permission mode from askPermission for Claude sessions.
+        const askPermission = body.askPermission !== false;
+        const initialPermissionMode = backend === "codex"
+          ? (body.permissionMode || "suggest")
+          : (askPermission ? "plan" : "bypassPermissions");
         const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
         const session = launcher.launch({
           model,
-          permissionMode: "bypassPermissions",
+          permissionMode: initialPermissionMode,
           cwd,
           claudeBinary: body.claudeBinary,
           codexBinary: body.codexBinary,
@@ -711,6 +722,11 @@ export function createRoutes(
             worktreePath: worktreeInfo.worktreePath,
             createdAt: Date.now(),
           });
+        }
+
+        // Set initial askPermission state on the session for Claude backends
+        if (backend !== "codex") {
+          wsBridge.setInitialAskPermission(session.sessionId, askPermission);
         }
 
         // Mark as assistant session if in assistant mode
