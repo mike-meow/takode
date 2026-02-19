@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useStore } from "../store.js";
 import { api, createSessionStream, type CompanionEnv, type GitRepoInfo, type GitBranchInfo, type BackendInfo } from "../api.js";
-import { connectSession, waitForConnection, sendToSession } from "../ws.js";
+import { connectSession, sendToSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
 import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
@@ -272,11 +272,8 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       navigateToSession(sessionId, true);
       connectSession(sessionId);
 
-      await waitForConnection(sessionId);
-
-      // Permission mode is now set at session creation time via routes.ts,
-      // so no need to send set_permission_mode/set_ask_permission here.
-
+      // Close modal immediately — WebSocket connection proceeds in the
+      // background and the chat view handles connection state independently.
       useStore.getState().clearCreation();
       onClose();
     } catch (e: unknown) {

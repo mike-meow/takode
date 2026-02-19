@@ -261,6 +261,10 @@ export class WsBridge {
   private onFirstTurnCompleted: ((sessionId: string, firstUserMessage: string) => void) | null = null;
   private autoNamingAttempted = new Set<string>();
   private userMsgCounter = 0;
+  /** Per-project cache of slash commands & skills so new sessions get them
+   *  before the CLI sends system/init (which only arrives after the first
+   *  user message). Key is repo_root || cwd. */
+  private slashCommandCache = new Map<string, { slash_commands: string[]; skills: string[] }>();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
@@ -794,10 +798,22 @@ export class WsBridge {
     // Refresh git state on browser connect so branch changes made mid-session are reflected.
     this.refreshGitInfo(session, { notifyPoller: true });
 
-    // Send current session state as snapshot (includes nextEventSeq for stale seq detection)
+    // Send current session state as snapshot (includes nextEventSeq for stale seq detection).
+    // If slash_commands/skills haven't arrived yet (CLI sends them only after the first
+    // user message), fill from the per-project cache so autocomplete works immediately.
+    let snapshotState = session.state;
+    if (!snapshotState.slash_commands?.length || !snapshotState.skills?.length) {
+      const projectKey = session.state.repo_root || session.state.cwd;
+      const cached = projectKey ? this.slashCommandCache.get(projectKey) : undefined;
+      if (cached) {
+        snapshotState = { ...snapshotState };
+        if (!snapshotState.slash_commands?.length) snapshotState.slash_commands = cached.slash_commands;
+        if (!snapshotState.skills?.length) snapshotState.skills = cached.skills;
+      }
+    }
     const snapshot: BrowserIncomingMessage = {
       type: "session_init",
-      session: session.state,
+      session: snapshotState,
       nextEventSeq: session.nextEventSeq,
     };
     this.sendToBrowser(ws, snapshot);
@@ -970,6 +986,15 @@ export class WsBridge {
       session.state.agents = msg.agents ?? [];
       session.state.slash_commands = msg.slash_commands ?? [];
       session.state.skills = msg.skills ?? [];
+
+      // Cache slash commands per project so new sessions get them immediately
+      const projectKey = session.state.repo_root || session.state.cwd;
+      if (projectKey && (msg.slash_commands?.length || msg.skills?.length)) {
+        this.slashCommandCache.set(projectKey, {
+          slash_commands: msg.slash_commands ?? [],
+          skills: msg.skills ?? [],
+        });
+      }
 
       // Resolve and publish git info
       this.refreshGitInfo(session, { notifyPoller: true });
