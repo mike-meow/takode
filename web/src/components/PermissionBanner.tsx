@@ -89,21 +89,22 @@ export function PlanReviewOverlay({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 border-t border-cc-border bg-cc-card animate-[fadeSlideIn_0.2s_ease-out]">
-      {/* Header */}
-      <div className="shrink-0 px-4 py-2.5 border-b border-cc-border/50 flex items-center gap-2.5">
+      {/* Header — entire bar is clickable to minimize */}
+      <div
+        onClick={onCollapse}
+        className="shrink-0 px-4 py-2.5 border-b border-cc-border/50 flex items-center gap-2.5 cursor-pointer hover:bg-cc-hover/50 transition-colors"
+        role="button"
+        title="Minimize plan"
+      >
         <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-cc-primary/10 border border-cc-primary/20">
           <PlanIcon className="w-4 h-4" />
         </div>
         <span className="text-xs font-semibold text-cc-primary">Plan</span>
-        <button
-          onClick={onCollapse}
-          className="ml-auto p-1.5 rounded-md hover:bg-cc-hover transition-colors cursor-pointer text-cc-muted hover:text-cc-fg"
-          title="Minimize plan"
-        >
+        <span className="ml-auto p-1.5 rounded-md text-cc-muted">
           <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 7l-3-3-3 3" />
+            <path d="M2 2l8 8M10 2l-8 8" />
           </svg>
-        </button>
+        </span>
       </div>
 
       {/* Scrollable plan body */}
@@ -168,6 +169,13 @@ export function PlanReviewOverlay({
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
             Deny
+          </button>
+
+          <button
+            onClick={onCollapse}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer ml-auto"
+          >
+            Minimize
           </button>
         </div>
       </div>
