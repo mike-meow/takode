@@ -752,10 +752,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const hasMore = totalTurns > visibleCount;
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
 
-  // Collapsible turn IDs: all except the last turn (active edge) that have agent content
+  // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
+  // Stats and text preview recompute as new messages stream in.
   const collapsibleTurnIds = useMemo(() =>
     visibleTurns
-      .slice(0, -1)
       .filter((t) => t.agentEntries.length > 0)
       .map((t) => t.id),
     [visibleTurns],
