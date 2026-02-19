@@ -51,6 +51,8 @@ interface MockStoreState {
   collapsedProjects: Set<string>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionOrder: Map<string, string[]>;
+  reorderMode: boolean;
+  setReorderMode: ReturnType<typeof vi.fn>;
   serverName: string;
   setServerName: ReturnType<typeof vi.fn>;
   setCurrentSession: ReturnType<typeof vi.fn>;
@@ -69,6 +71,7 @@ interface MockStoreState {
   markAllSessionsViewed: ReturnType<typeof vi.fn>;
   markSessionUnread: ReturnType<typeof vi.fn>;
   clearSessionAttention: ReturnType<typeof vi.fn>;
+  setShowNewSessionModal: ReturnType<typeof vi.fn>;
 }
 
 function makeSession(id: string, overrides: Partial<SessionState> = {}): SessionState {
@@ -126,6 +129,8 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     collapsedProjects: new Set(),
     sessionAttention: new Map(),
     sessionOrder: new Map(),
+    reorderMode: false,
+    setReorderMode: vi.fn(),
     serverName: "",
     setServerName: vi.fn(),
     setCurrentSession: vi.fn(),
@@ -394,7 +399,7 @@ describe("Sidebar", () => {
     const mobilePermissionBadge = screen.getAllByText("1").find((node) =>
       node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"),
     )!;
-    expect(mobilePermissionBadge).toHaveClass("right-14");
+    expect(mobilePermissionBadge).toHaveClass("right-8");
     expect(mobilePermissionBadge).toHaveClass("sm:right-2");
     expect(mobilePermissionBadge).toHaveClass("sm:group-hover:opacity-0");
   });

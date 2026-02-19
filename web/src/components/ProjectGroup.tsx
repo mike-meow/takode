@@ -127,11 +127,12 @@ export function ProjectGroup({
   if (group.permCount > 0) summaryParts.push(`${group.permCount} waiting`);
   if (group.unreadCount > 0) summaryParts.push(`${group.unreadCount} unread`);
 
-  // Drag-and-drop: require a minimum distance before starting a drag to avoid
-  // interfering with clicks
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  );
+  const reorderMode = useStore((s) => s.reorderMode);
+
+  // Drag-and-drop: only enable when in reorder mode. Require a minimum distance
+  // before starting a drag to avoid interfering with clicks.
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const sensors = useSensors(...(reorderMode ? [pointerSensor] : []));
 
   const sessionIds = group.sessions.map((s) => s.id);
 
@@ -207,6 +208,7 @@ export function ProjectGroup({
                       <div
                         ref={setNodeRef}
                         style={style}
+                        {...(reorderMode ? { ...listeners, ...attributes } : {})}
                       >
                         <SessionItem
                           session={s}
@@ -235,7 +237,7 @@ export function ProjectGroup({
                           onCancelArchive={onCancelArchive}
                           attention={attention}
                           hasUnread={!!attention}
-                          dragHandleProps={{ ...listeners, ...attributes }}
+                          reorderMode={reorderMode}
                         />
                       </div>
                     )}

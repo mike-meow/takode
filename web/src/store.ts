@@ -100,6 +100,7 @@ interface AppState {
   notificationSound: boolean;
   notificationDesktop: boolean;
   sidebarOpen: boolean;
+  reorderMode: boolean;
   taskPanelOpen: boolean;
   homeResetKey: number;
   showNewSessionModal: boolean;
@@ -115,6 +116,7 @@ interface AppState {
   setNotificationDesktop: (v: boolean) => void;
   toggleNotificationDesktop: () => void;
   setSidebarOpen: (v: boolean) => void;
+  setReorderMode: (v: boolean) => void;
   setTaskPanelOpen: (open: boolean) => void;
   setShowNewSessionModal: (open: boolean) => void;
   newSession: () => void;
@@ -369,6 +371,7 @@ export const useStore = create<AppState>((set) => ({
   notificationSound: getInitialNotificationSound(),
   notificationDesktop: getInitialNotificationDesktop(),
   sidebarOpen: typeof window !== "undefined" ? window.innerWidth >= 768 : true,
+  reorderMode: false,
   taskPanelOpen: typeof window !== "undefined" ? window.innerWidth >= 1024 : false,
   homeResetKey: 0,
   showNewSessionModal: false,
@@ -433,6 +436,7 @@ export const useStore = create<AppState>((set) => ({
       return { notificationDesktop: next };
     }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
+  setReorderMode: (v) => set({ reorderMode: v }),
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
   setShowNewSessionModal: (open) => set({ showNewSessionModal: open }),
   newSession: () => {

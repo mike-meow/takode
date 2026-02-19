@@ -38,6 +38,8 @@ export function Sidebar() {
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
   const sessionAttention = useStore((s) => s.sessionAttention);
   const sessionOrder = useStore((s) => s.sessionOrder);
+  const reorderMode = useStore((s) => s.reorderMode);
+  const setReorderMode = useStore((s) => s.setReorderMode);
   const serverName = useStore((s) => s.serverName);
   const setServerName = useStore((s) => s.setServerName);
   const route = parseHash(hash);
@@ -419,6 +421,22 @@ export function Sidebar() {
 
       {/* Session list */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
+        {/* Reorder mode toggle */}
+        {activeSessions.length > 1 && (
+          <div className="px-2 pb-1.5 flex items-center justify-end">
+            <button
+              onClick={() => setReorderMode(!reorderMode)}
+              className={`text-[10px] font-medium px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                reorderMode
+                  ? "bg-cc-primary/10 text-cc-primary"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              }`}
+            >
+              {reorderMode ? "Done" : "Reorder"}
+            </button>
+          </div>
+        )}
+
         {activeSessions.length === 0 && cronSessions.length === 0 && archivedSessions.length === 0 ? (
           <p className="px-3 py-8 text-xs text-cc-muted text-center leading-relaxed">
             No sessions yet.
