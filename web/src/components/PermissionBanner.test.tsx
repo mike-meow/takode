@@ -572,7 +572,7 @@ describe("ExitPlanModeDisplay", () => {
     });
     render(<PermissionBanner permission={perm} sessionId="s1" />);
 
-    // Plan header (banner label + sub-header)
+    // Plan header label
     expect(screen.getAllByText("Plan").length).toBeGreaterThanOrEqual(1);
     // Markdown content rendered via mock
     expect(screen.getByTestId("markdown")).toBeTruthy();

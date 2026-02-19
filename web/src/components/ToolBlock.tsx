@@ -66,8 +66,7 @@ export function ToolBlock({
   toolUseId: string;
   sessionId?: string;
 }) {
-  // ExitPlanMode defaults to expanded so users see the plan content
-  const [open, setOpen] = useState(name === "ExitPlanMode");
+  const [open, setOpen] = useState(false);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
@@ -460,13 +459,8 @@ function ExitPlanModeDetail({ input }: { input: Record<string, unknown> }) {
   return (
     <div className="space-y-2">
       {plan && (
-        <div className="rounded-lg border border-cc-border overflow-hidden">
-          <div className="px-2.5 py-1.5 bg-cc-code-bg/10 border-b border-cc-border text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">
-            Plan
-          </div>
-          <div className="px-3 py-2.5 max-h-64 overflow-y-auto">
-            <MarkdownContent text={plan} size="sm" />
-          </div>
+        <div className="max-h-96 overflow-y-auto">
+          <MarkdownContent text={plan} size="sm" />
         </div>
       )}
       {allowedPrompts.length > 0 && (

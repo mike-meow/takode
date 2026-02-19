@@ -130,18 +130,18 @@ export function PermissionBanner({
           <button
             onClick={() => setCollapsed(false)}
             title="Expand plan"
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-cc-warning/20 bg-cc-warning/5 hover:bg-cc-warning/10 transition-colors cursor-pointer text-left"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-cc-primary/20 bg-cc-primary/5 hover:bg-cc-primary/10 transition-colors cursor-pointer text-left"
           >
             {/* Plan icon */}
-            <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-warning/10 border border-cc-warning/20">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-warning">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-primary/10 border border-cc-primary/20">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary">
                 <rect x="3" y="2" width="10" height="12" rx="1" />
                 <path d="M6 5h4M6 8h4M6 11h2" />
               </svg>
             </div>
 
             {/* "Plan" badge */}
-            <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-warning/10 text-cc-warning shrink-0">
+            <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary shrink-0">
               Plan
             </span>
 
@@ -164,13 +164,18 @@ export function PermissionBanner({
         <div className="flex items-start gap-2 sm:gap-3">
           {/* Icon */}
           <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-            isAskUser
+            isAskUser || isExitPlanMode
               ? "bg-cc-primary/10 border border-cc-primary/20"
               : "bg-cc-warning/10 border border-cc-warning/20"
           }`}>
             {isAskUser ? (
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-cc-primary">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            ) : isExitPlanMode ? (
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-cc-primary">
+                <rect x="3" y="2" width="10" height="12" rx="1" />
+                <path d="M6 5h4M6 8h4M6 11h2" />
               </svg>
             ) : (
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-cc-warning">
@@ -182,7 +187,7 @@ export function PermissionBanner({
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1.5">
-              <span className={`text-xs font-semibold ${isAskUser ? "text-cc-primary" : "text-cc-warning"}`}>
+              <span className={`text-xs font-semibold ${isAskUser || isExitPlanMode ? "text-cc-primary" : "text-cc-warning"}`}>
                 {isAskUser ? "Question" : isExitPlanMode ? "Plan" : "Permission Request"}
               </span>
               {!isAskUser && !isExitPlanMode && (
@@ -194,8 +199,8 @@ export function PermissionBanner({
                   className="ml-auto p-1 rounded hover:bg-cc-hover transition-colors cursor-pointer text-cc-muted hover:text-cc-fg"
                   title={isAskUser ? "Minimize question" : "Minimize plan"}
                 >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M3 7h8" />
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 7l-3-3-3 3" />
                   </svg>
                 </button>
               )}
@@ -539,56 +544,13 @@ function GrepDisplay({ input }: { input: Record<string, unknown> }) {
 function ExitPlanModeDisplay({ input }: { input: Record<string, unknown> }) {
   const plan = typeof input.plan === "string" ? input.plan : "";
   const allowedPrompts = Array.isArray(input.allowedPrompts) ? input.allowedPrompts : [];
-  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {plan && (
-        <>
-        <div className="rounded-lg border border-cc-border overflow-hidden">
-          <div className="px-2.5 py-1.5 bg-cc-code-bg/10 border-b border-cc-border text-[10px] text-cc-muted font-mono-code uppercase tracking-wider flex items-center justify-between">
-            <span>Plan</span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-0.5 -m-0.5"
-              title="Expand plan"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                <path d="M2 2h4.5M2 2v4.5M2 2l5 5M14 14h-4.5M14 14v-4.5M14 14l-5-5" />
-              </svg>
-            </button>
-          </div>
-          <div className="px-3 py-2.5 max-h-64 overflow-y-auto">
-            <MarkdownContent text={plan} size="sm" />
-          </div>
+        <div className="max-h-[50vh] overflow-y-auto pr-1">
+          <MarkdownContent text={plan} size="sm" />
         </div>
-
-        {/* Expanded overlay */}
-        {expanded && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-[fadeIn_0.15s_ease-out]"
-            onClick={(e) => { if (e.target === e.currentTarget) setExpanded(false); }}
-          >
-            <div className="bg-cc-bg rounded-xl border border-cc-border shadow-2xl w-[90vw] max-w-4xl max-h-[85vh] flex flex-col animate-[fadeSlideIn_0.15s_ease-out]">
-              <div className="px-4 py-3 border-b border-cc-border flex items-center justify-between shrink-0">
-                <span className="text-xs font-semibold text-cc-fg uppercase tracking-wider">Plan</span>
-                <button
-                  onClick={() => setExpanded(false)}
-                  className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer p-1 -m-1"
-                  title="Close"
-                >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                    <path d="M4 4l8 8M12 4l-8 8" />
-                  </svg>
-                </button>
-              </div>
-              <div className="px-6 py-4 overflow-y-auto flex-1">
-                <MarkdownContent text={plan} />
-              </div>
-            </div>
-          </div>
-        )}
-        </>
       )}
       {allowedPrompts.length > 0 && (
         <div className="space-y-1">
