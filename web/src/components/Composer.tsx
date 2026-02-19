@@ -34,7 +34,7 @@ function CollapseAllToggle({ sessionId }: { sessionId: string }) {
   const collapsibleTurnIds = useStore((s) => s.collapsibleTurnIds.get(sessionId));
   const collapsedSet = useStore((s) => s.collapsedTurns.get(sessionId));
 
-  if (!collapsibleTurnIds || collapsibleTurnIds.length < 2) return null;
+  if (!collapsibleTurnIds || collapsibleTurnIds.length === 0) return null;
 
   const allCollapsed = collapsibleTurnIds.every((id) => collapsedSet?.has(id));
 

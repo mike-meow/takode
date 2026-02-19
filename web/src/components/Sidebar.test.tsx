@@ -71,7 +71,6 @@ interface MockStoreState {
   markAllSessionsViewed: ReturnType<typeof vi.fn>;
   markSessionUnread: ReturnType<typeof vi.fn>;
   clearSessionAttention: ReturnType<typeof vi.fn>;
-  setShowNewSessionModal: ReturnType<typeof vi.fn>;
 }
 
 function makeSession(id: string, overrides: Partial<SessionState> = {}): SessionState {
