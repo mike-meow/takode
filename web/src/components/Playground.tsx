@@ -349,6 +349,22 @@ const MSG_APPROVED_ASK: ChatMessage = {
   },
 };
 
+const MSG_APPROVED_ASK_LONG: ChatMessage = {
+  id: "approval-ask-long-1",
+  role: "system",
+  content: "Approved: AskUserQuestion",
+  timestamp: Date.now() - 15400,
+  variant: "approved",
+  metadata: {
+    answers: [
+      {
+        question: "For the server-authoritative model: should the server broadcast user messages to all connected browsers, or should each browser optimistically insert its own message and only receive echoes from other browsers? The broadcast method ensures consistency but adds a round-trip delay, while the optimistic method preserves instant local feedback. Given localhost latency is imperceptible, which do you prefer?",
+        answer: "All browsers (Recommended)",
+      },
+    ],
+  },
+};
+
 // Tool result with error
 const MSG_TOOL_ERROR: ChatMessage = {
   id: "msg-7",
@@ -771,6 +787,9 @@ export function Playground() {
             </Card>
             <Card label="Approved — AskUserQuestion with answers">
               <MessageBubble message={MSG_APPROVED_ASK} />
+            </Card>
+            <Card label="Approved — AskUserQuestion with long text">
+              <MessageBubble message={MSG_APPROVED_ASK_LONG} />
             </Card>
           </div>
         </Section>

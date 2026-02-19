@@ -43,14 +43,14 @@ export function MessageBubble({ message, sessionId }: { message: ChatMessage; se
       if (answers?.length) {
         return (
           <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-            <div className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs font-mono-code">
+            <div className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs font-mono-code max-w-[85%]">
               <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="8" cy="8" r="6.5" />
                 <path d="M5.5 8.5l2 2 3.5-4" />
               </svg>
               <div className="min-w-0">
                 {answers.map((a, i) => (
-                  <div key={i} className="text-cc-muted truncate">
+                  <div key={i} className="text-cc-muted">
                     <span className="text-cc-fg/70">{a.question}</span>
                     <span className="text-cc-muted/60"> → </span>
                     <span className="text-green-400/80">{a.answer}</span>
