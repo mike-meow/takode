@@ -41,10 +41,16 @@ interface SubagentGroup {
   children: FeedEntry[];
 }
 
+interface SubagentBatch {
+  kind: "subagent_batch";
+  subagents: SubagentGroup[];
+}
+
 type FeedEntry =
   | { kind: "message"; msg: ChatMessage }
   | ToolMsgGroup
-  | SubagentGroup;
+  | SubagentGroup
+  | SubagentBatch;
 
 /**
  * Get the dominant tool name if this message is "tool-only"
@@ -215,7 +221,46 @@ function groupMessages(messages: ChatMessage[]): FeedEntry[] {
     });
   }
 
-  return entries;
+  return batchSubagents(entries);
+}
+
+/** Group consecutive SubagentGroup entries into SubagentBatch wrappers.
+ *  Also absorbs a preceding Task ToolMsgGroup when its items all correspond
+ *  to the subagents in the batch (the info is redundant). */
+function batchSubagents(entries: FeedEntry[]): FeedEntry[] {
+  const result: FeedEntry[] = [];
+  let i = 0;
+
+  while (i < entries.length) {
+    // Collect a run of consecutive subagent entries
+    if (entries[i].kind === "subagent") {
+      const batch: SubagentGroup[] = [];
+      while (i < entries.length && entries[i].kind === "subagent") {
+        batch.push(entries[i] as SubagentGroup);
+        i++;
+      }
+
+      if (batch.length >= 2) {
+        // Absorb a preceding Task ToolMsgGroup if it only contains items for these subagents
+        const prev = result[result.length - 1];
+        if (prev?.kind === "tool_msg_group" && prev.toolName === "Task") {
+          const batchIds = new Set(batch.map((sg) => sg.taskToolUseId));
+          if (prev.items.every((item) => batchIds.has(item.id))) {
+            result.pop();
+          }
+        }
+        result.push({ kind: "subagent_batch", subagents: batch });
+      } else {
+        // Single subagent — no batch wrapper needed
+        result.push(batch[0]);
+      }
+    } else {
+      result.push(entries[i]);
+      i++;
+    }
+  }
+
+  return result;
 }
 
 // ─── Turn grouping (collapsible agent activity) ─────────────────────────────
@@ -267,6 +312,15 @@ function countEntryStats(entries: FeedEntry[]): { messages: number; tools: numbe
       tools += childStats.tools;
       subagents += childStats.subagents;
       if (childStats.lastText) lastText = childStats.lastText;
+    } else if (entry.kind === "subagent_batch") {
+      for (const sg of entry.subagents) {
+        subagents++;
+        const childStats = countEntryStats(sg.children);
+        messages += childStats.messages;
+        tools += childStats.tools;
+        subagents += childStats.subagents;
+        if (childStats.lastText) lastText = childStats.lastText;
+      }
     }
   }
 
@@ -282,6 +336,7 @@ function isSystemEntry(entry: FeedEntry): boolean {
 function getEntryId(entry: FeedEntry): string {
   if (entry.kind === "message") return entry.msg.id;
   if (entry.kind === "tool_msg_group") return entry.firstId;
+  if (entry.kind === "subagent_batch") return entry.subagents[0]?.taskToolUseId || "batch";
   return entry.taskToolUseId;
 }
 
@@ -415,6 +470,9 @@ function FeedEntries({ entries, sessionId }: { entries: FeedEntry[]; sessionId: 
         if (entry.kind === "subagent") {
           return <SubagentContainer key={entry.taskToolUseId} group={entry} sessionId={sessionId} />;
         }
+        if (entry.kind === "subagent_batch") {
+          return <SubagentBatchContainer key={entry.subagents[0]?.taskToolUseId || i} batch={entry} sessionId={sessionId} />;
+        }
         return <MessageBubble key={entry.msg.id} message={entry.msg} sessionId={sessionId} />;
       })}
     </>
@@ -544,7 +602,19 @@ function parseSubagentResultText(raw: string): string {
   }
 }
 
-function SubagentContainer({ group, sessionId }: { group: SubagentGroup; sessionId: string }) {
+function SubagentBatchContainer({ batch, sessionId }: { batch: SubagentBatch; sessionId: string }) {
+  return (
+    <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="ml-9 border-l-2 border-cc-primary/20 pl-4 space-y-1">
+        {batch.subagents.map((sg) => (
+          <SubagentContainer key={sg.taskToolUseId} group={sg} sessionId={sessionId} inBatch />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubagentContainer({ group, sessionId, inBatch }: { group: SubagentGroup; sessionId: string; inBatch?: boolean }) {
   const [open, setOpen] = useState(true);
   const label = group.description || "Subagent";
   const agentType = group.agentType;
@@ -587,8 +657,8 @@ function SubagentContainer({ group, sessionId }: { group: SubagentGroup; session
   }, [parsedResultPreview, lastPreview]);
 
   return (
-    <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-      <div className="ml-9 border-l-2 border-cc-primary/20 pl-4">
+    <div className={inBatch ? "" : "animate-[fadeSlideIn_0.2s_ease-out]"}>
+      <div className={inBatch ? "" : "ml-9 border-l-2 border-cc-primary/20 pl-4"}>
         <button
           onClick={() => setOpen(!open)}
           className="w-full flex items-center gap-2 py-1.5 text-left cursor-pointer mb-1"
