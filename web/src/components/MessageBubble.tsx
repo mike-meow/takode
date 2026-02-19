@@ -146,44 +146,49 @@ function UserMessage({ message, sessionId }: { message: ChatMessage; sessionId?:
   }, [sessionId, message.id]);
 
   return (
-    <div
-      className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out] select-none sm:select-text"
-      onContextMenu={handleContextMenu}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={cancelLongPress}
-      onTouchCancel={cancelLongPress}
-    >
-      <div className="max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
-        {message.images && message.images.length > 0 && sessionId && (
-          <div className="flex gap-2 flex-wrap mb-2">
-            {message.images.map((img) => {
-              const thumbSrc = `/api/images/${sessionId}/${img.imageId}/thumb`;
-              const fullSrc = `/api/images/${sessionId}/${img.imageId}/full`;
-              return (
-                <img
-                  key={img.imageId}
-                  src={thumbSrc}
-                  alt="attachment"
-                  className="max-w-[150px] sm:max-w-[200px] max-h-[120px] sm:max-h-[150px] rounded-lg object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
-                  onClick={() => setLightboxSrc(fullSrc)}
-                  loading="lazy"
-                  data-testid="image-thumbnail"
-                />
-              );
-            })}
-          </div>
+    <>
+      <div
+        className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out] select-none sm:select-text"
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={cancelLongPress}
+        onTouchCancel={cancelLongPress}
+      >
+        <div className="max-w-[85%] sm:max-w-[80%] px-3 sm:px-4 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
+          {message.images && message.images.length > 0 && sessionId && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {message.images.map((img) => {
+                const thumbSrc = `/api/images/${sessionId}/${img.imageId}/thumb`;
+                const fullSrc = `/api/images/${sessionId}/${img.imageId}/full`;
+                return (
+                  <img
+                    key={img.imageId}
+                    src={thumbSrc}
+                    alt="attachment"
+                    className="max-w-[150px] sm:max-w-[200px] max-h-[120px] sm:max-h-[150px] rounded-lg object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
+                    onClick={() => setLightboxSrc(fullSrc)}
+                    loading="lazy"
+                    data-testid="image-thumbnail"
+                  />
+                );
+              })}
+            </div>
+          )}
+          <pre className="text-[13px] sm:text-[14px] whitespace-pre-wrap break-words font-sans-ui leading-relaxed">
+            {message.content}
+          </pre>
+        </div>
+        {lightboxSrc && (
+          <Lightbox
+            src={lightboxSrc}
+            alt="attachment"
+            onClose={() => setLightboxSrc(null)}
+          />
         )}
-        <pre className="text-[13px] sm:text-[14px] whitespace-pre-wrap break-words font-sans-ui leading-relaxed">
-          {message.content}
-        </pre>
       </div>
-      {lightboxSrc && (
-        <Lightbox
-          src={lightboxSrc}
-          alt="attachment"
-          onClose={() => setLightboxSrc(null)}
-        />
-      )}
+      {/* Render ContextMenu as a Fragment sibling — NOT inside the touch-handled
+          div — so React portal event bubbling doesn't reach the touch handlers.
+          This mirrors how Sidebar renders its ContextMenu at the <aside> root. */}
       {ctxMenu && (
         <ContextMenu
           x={ctxMenu.x}
@@ -204,7 +209,7 @@ function UserMessage({ message, sessionId }: { message: ChatMessage; sessionId?:
           onClose={() => setCtxMenu(null)}
         />
       )}
-    </div>
+    </>
   );
 }
 
