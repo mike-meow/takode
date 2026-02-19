@@ -782,6 +782,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const loadingMore = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
@@ -890,8 +891,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   function handleScroll() {
     const el = containerRef.current;
     if (!el) return;
-    isNearBottom.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    isNearBottom.current = nearBottom;
+    setShowScrollButton(!nearBottom);
   }
 
   useEffect(() => {
@@ -899,6 +901,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages.length, streamingText]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   if (messages.length === 0 && !streamingText) {
     return (
@@ -1001,6 +1007,20 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           <div ref={bottomRef} />
         </div>
       </div>
+
+      {/* Scroll-to-bottom FAB */}
+      {showScrollButton && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-3 right-3 z-10 w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+          title="Scroll to bottom"
+          aria-label="Scroll to bottom"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+            <path d="M8 3v10M4 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
