@@ -117,17 +117,17 @@ export function TopBar() {
         {!sidebarOpen && (statusSummary.running > 0 || statusSummary.waiting > 0 || statusSummary.unread > 0) && (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex items-center gap-1.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+            className="flex items-center gap-1 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
             title="Open sidebar"
           >
             {statusSummary.running > 0 && (
-              <span className="text-cc-success">{statusSummary.running} running</span>
+              <span className="text-cc-success flex items-center gap-0.5">{statusSummary.running}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" /></span>
             )}
             {statusSummary.waiting > 0 && (
-              <span className="text-cc-warning">{statusSummary.waiting} waiting</span>
+              <span className="text-cc-warning flex items-center gap-0.5">{statusSummary.waiting}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" /></span>
             )}
             {statusSummary.unread > 0 && (
-              <span className="text-blue-500">{statusSummary.unread} unread</span>
+              <span className="text-blue-500 flex items-center gap-0.5">{statusSummary.unread}<span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" /></span>
             )}
           </button>
         )}
