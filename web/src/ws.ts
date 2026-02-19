@@ -571,6 +571,20 @@ function handleParsedMessage(
       break;
     }
 
+    case "user_message": {
+      // Server-authoritative: user messages are broadcast by the server to all
+      // browsers. The browser never adds user messages to the store locally.
+      const userMsg: ChatMessage = {
+        id: data.id || nextId(),
+        role: "user",
+        content: data.content,
+        timestamp: data.timestamp || Date.now(),
+      };
+      store.appendMessage(sessionId, userMsg);
+      store.setSessionPreview(sessionId, data.content.slice(0, 80));
+      break;
+    }
+
     case "status_change": {
       if (data.status === "compacting") {
         store.setSessionStatus(sessionId, "compacting");

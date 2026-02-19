@@ -6,8 +6,6 @@ import { CLAUDE_MODES, CODEX_MODES, getNextMode, resolveClaudeCliMode, deriveUiM
 import type { ModeOption } from "../utils/backends.js";
 import { Lightbox } from "./Lightbox.js";
 
-let idCounter = 0;
-
 interface ImageAttachment {
   name: string;
   base64: string;
@@ -161,15 +159,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
     if (!sent) return; // WebSocket not open — keep draft so user can retry
 
-    useStore.getState().setSessionPreview(sessionId, msg.slice(0, 80));
-    useStore.getState().appendMessage(sessionId, {
-      id: `user-${Date.now()}-${++idCounter}`,
-      role: "user",
-      content: msg,
-      images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
-      timestamp: Date.now(),
-    });
-
+    // User message will appear in the feed when the server broadcasts it back
+    // (server-authoritative model — browsers never add user messages locally)
     useStore.getState().clearComposerDraft(sessionId);
     setSlashMenuOpen(false);
 

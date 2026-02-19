@@ -31,8 +31,6 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: stri
   });
 }
 
-let idCounter = 0;
-
 // ─── Branch persistence helpers ─────────────────────────────────────────────
 
 function getSavedBranches(): Record<string, string> {
@@ -411,16 +409,8 @@ export function HomePage() {
         images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
       });
 
-      useStore.getState().setSessionPreview(sessionId, msg.slice(0, 80));
-
-      // Add user message to store
-      useStore.getState().appendMessage(sessionId, {
-        id: `user-${Date.now()}-${++idCounter}`,
-        role: "user",
-        content: msg,
-        images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
-        timestamp: Date.now(),
-      });
+      // User message will appear in the feed when the server broadcasts it back
+      // (server-authoritative model — browsers never add user messages locally)
 
       // Clear progress on success
       useStore.getState().clearCreation();

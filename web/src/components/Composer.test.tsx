@@ -44,7 +44,7 @@ vi.mock("../store.js", async () => {
     }, []);
     return selector(mockStoreState);
   };
-  // Add getState for imperative access (used by Composer for appendMessage)
+  // Add getState for imperative access (used by Composer for clearComposerDraft etc.)
   useStore.getState = () => mockStoreState;
   return { useStore };
 });

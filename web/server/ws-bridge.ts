@@ -1253,12 +1253,15 @@ export class WsBridge {
       // Store user messages in history for replay with stable ID for dedup on reconnect
       if (msg.type === "user_message") {
         const ts = Date.now();
-        session.messageHistory.push({
+        const userHistoryEntry: BrowserIncomingMessage = {
           type: "user_message",
           content: msg.content,
           timestamp: ts,
           id: `user-${ts}-${this.userMsgCounter++}`,
-        });
+        };
+        session.messageHistory.push(userHistoryEntry);
+        // Broadcast user message to all browsers (server-authoritative)
+        this.broadcastToBrowsers(session, userHistoryEntry);
         this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
         this.persistSession(session);
       }
@@ -1467,12 +1470,16 @@ export class WsBridge {
   ) {
     // Store user message in history for replay with stable ID for dedup on reconnect
     const ts = Date.now();
-    session.messageHistory.push({
+    const userHistoryEntry: BrowserIncomingMessage = {
       type: "user_message",
       content: msg.content,
       timestamp: ts,
       id: `user-${ts}-${this.userMsgCounter++}`,
-    });
+    };
+    session.messageHistory.push(userHistoryEntry);
+    // Broadcast user message to all browsers (server-authoritative: browsers
+    // never add user messages locally, they render only what the server sends)
+    this.broadcastToBrowsers(session, userHistoryEntry);
 
     // Build content: if images are present, use content block array; otherwise plain string
     let content: string | unknown[];

@@ -3567,16 +3567,52 @@ describe("status_change: running on user_message", () => {
     browser.send.mockClear();
   });
 
-  it("broadcasts status_change: running when user sends a message", () => {
+  it("broadcasts user_message and status_change: running when user sends a message", () => {
     bridge.handleBrowserMessage(browser, JSON.stringify({
       type: "user_message",
       content: "Hello",
     }));
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+
+    // Server-authoritative: the user_message is broadcast back to the sender
+    const userMsg = calls.find((m: any) => m.type === "user_message");
+    expect(userMsg).toBeDefined();
+    expect(userMsg.content).toBe("Hello");
+    expect(userMsg.id).toMatch(/^user-/);
+    expect(userMsg.timestamp).toEqual(expect.any(Number));
+
     const statusChange = calls.find((m: any) => m.type === "status_change");
     expect(statusChange).toBeDefined();
     expect(statusChange.status).toBe("running");
+  });
+
+  it("broadcasts user_message to all connected browsers", () => {
+    // Connect a second browser to the same session
+    const browser2 = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser2, "s1");
+    bridge.handleBrowserMessage(browser2, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+    browser2.send.mockClear();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Hello from browser 1",
+    }));
+
+    // Both browsers should receive the user_message broadcast
+    const browser1Calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const browser2Calls = browser2.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+
+    const b1UserMsg = browser1Calls.find((m: any) => m.type === "user_message");
+    const b2UserMsg = browser2Calls.find((m: any) => m.type === "user_message");
+
+    expect(b1UserMsg).toBeDefined();
+    expect(b2UserMsg).toBeDefined();
+    expect(b1UserMsg.content).toBe("Hello from browser 1");
+    expect(b2UserMsg.content).toBe("Hello from browser 1");
+    // Same server-assigned ID
+    expect(b1UserMsg.id).toBe(b2UserMsg.id);
   });
 
   it("deriveSessionStatus returns 'running' when last history is user_message", () => {
