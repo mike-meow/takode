@@ -393,7 +393,7 @@ describe("Sidebar", () => {
     const mobilePermissionBadge = screen.getAllByText("1").find((node) =>
       node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"),
     )!;
-    expect(mobilePermissionBadge).toHaveClass("right-8");
+    expect(mobilePermissionBadge).toHaveClass("right-14");
     expect(mobilePermissionBadge).toHaveClass("sm:right-2");
     expect(mobilePermissionBadge).toHaveClass("sm:group-hover:opacity-0");
   });

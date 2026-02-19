@@ -207,8 +207,6 @@ export function ProjectGroup({
                       <div
                         ref={setNodeRef}
                         style={style}
-                        {...attributes}
-                        {...listeners}
                       >
                         <SessionItem
                           session={s}
@@ -237,6 +235,7 @@ export function ProjectGroup({
                           onCancelArchive={onCancelArchive}
                           attention={attention}
                           hasUnread={!!attention}
+                          dragHandleProps={{ ...listeners, ...attributes }}
                         />
                       </div>
                     )}

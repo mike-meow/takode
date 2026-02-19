@@ -67,6 +67,24 @@ export function TopBar() {
     );
   });
 
+  const pendingPermissions = useStore((s) => s.pendingPermissions);
+  const sessionAttention = useStore((s) => s.sessionAttention);
+
+  // Aggregate session status counts (shown when sidebar is hidden)
+  const statusSummary = useMemo(() => {
+    let running = 0, waiting = 0, unread = 0;
+    for (const st of sessionStatus.values()) {
+      if (st === "running") running++;
+    }
+    for (const perms of pendingPermissions.values()) {
+      waiting += perms.size;
+    }
+    for (const attn of sessionAttention.values()) {
+      if (attn) unread++;
+    }
+    return { running, waiting, unread };
+  }, [sessionStatus, pendingPermissions, sessionAttention]);
+
   const isConnected = currentSessionId ? (cliConnected.get(currentSessionId) ?? false) : false;
   const status = currentSessionId ? (sessionStatus.get(currentSessionId) ?? null) : null;
   const sessionName = currentSessionId
@@ -87,6 +105,25 @@ export function TopBar() {
             <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
           </svg>
         </button>
+
+        {/* Session status summary — visible when sidebar is hidden */}
+        {!sidebarOpen && (statusSummary.running > 0 || statusSummary.waiting > 0 || statusSummary.unread > 0) && (
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex items-center gap-1.5 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+            title="Open sidebar"
+          >
+            {statusSummary.running > 0 && (
+              <span className="text-cc-success">{statusSummary.running} running</span>
+            )}
+            {statusSummary.waiting > 0 && (
+              <span className="text-cc-warning">{statusSummary.waiting} waiting</span>
+            )}
+            {statusSummary.unread > 0 && (
+              <span className="text-blue-500">{statusSummary.unread} unread</span>
+            )}
+          </button>
+        )}
 
         {/* Connection status */}
         {currentSessionId && (

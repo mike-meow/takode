@@ -30,6 +30,7 @@ interface SessionItemProps {
   onCancelArchive?: () => void;
   attention?: "action" | "error" | "review" | null;
   hasUnread?: boolean;
+  dragHandleProps?: Record<string, unknown>;
 }
 
 export function SessionItem({
@@ -60,6 +61,7 @@ export function SessionItem({
   onCancelArchive,
   attention,
   hasUnread,
+  dragHandleProps,
 }: SessionItemProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const shortId = s.id.slice(0, 8);
@@ -109,6 +111,22 @@ export function SessionItem({
         />
 
         <div className="flex items-start gap-2">
+          {/* Drag handle — desktop only, hover-to-show */}
+          {dragHandleProps && (
+            <div
+              {...dragHandleProps}
+              className="hidden sm:flex items-center justify-center shrink-0 w-3 -ml-1 self-stretch opacity-0 group-hover:opacity-40 hover:!opacity-70 cursor-grab active:cursor-grabbing touch-none select-none"
+              title="Drag to reorder"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+                <circle cx="5.5" cy="3.5" r="1.2"/><circle cx="10.5" cy="3.5" r="1.2"/>
+                <circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/>
+                <circle cx="5.5" cy="12.5" r="1.2"/><circle cx="10.5" cy="12.5" r="1.2"/>
+              </svg>
+            </div>
+          )}
+
           {/* Status indicator dot */}
           <SessionStatusDot
             archived={!!archived}
@@ -252,16 +270,29 @@ export function SessionItem({
         </div>
       )}
 
-      {/* Permission badge */}
+      {/* Permission badge — shifted further right on mobile to make room for overflow button */}
       {!archived && permCount > 0 && (
-        <span className="absolute right-8 sm:right-2 top-1/2 -translate-y-1/2 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-cc-warning text-white text-[10px] font-bold leading-none px-1 sm:group-hover:opacity-0 transition-opacity pointer-events-none">
+        <span className="absolute right-14 sm:right-2 top-1/2 -translate-y-1/2 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-cc-warning text-white text-[10px] font-bold leading-none px-1 sm:group-hover:opacity-0 transition-opacity pointer-events-none">
           {permCount}
         </span>
       )}
 
       {/* Attention badge (shown when session needs review and no permission badge is displayed) */}
       {!archived && attention === "review" && permCount === 0 && (
-        <span className="absolute right-8 sm:right-2 top-1/2 -translate-y-1/2 min-w-[6px] h-[6px] rounded-full bg-blue-500 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
+        <span className="absolute right-14 sm:right-2 top-1/2 -translate-y-1/2 min-w-[6px] h-[6px] rounded-full bg-blue-500 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
+      )}
+
+      {/* Mobile overflow menu button */}
+      {!archived && onCtxMenu && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onCtxMenu(e, s.id); }}
+          className="absolute right-8 top-1/2 -translate-y-1/2 p-1 rounded-md sm:hidden text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+          title="More actions"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+            <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+          </svg>
+        </button>
       )}
 
       {/* Action buttons */}
