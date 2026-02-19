@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useSyncExternalStore } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
+import { writeClipboardText } from "../utils/copy-utils.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
 import { parseHash } from "../utils/routing.js";
@@ -37,7 +38,7 @@ export function TopBar() {
 
   const handleCopyCliSessionId = useCallback(() => {
     if (!cliSessionId) return;
-    navigator.clipboard.writeText(cliSessionId).then(() => {
+    writeClipboardText(cliSessionId).then(() => {
       setCopiedCliId(true);
       setTimeout(() => setCopiedCliId(false), 1500);
     }).catch(console.error);

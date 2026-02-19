@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { writeClipboardText } from "../utils/copy-utils.js";
 
 /**
  * A small copy-to-clipboard button for code blocks. Renders a clipboard icon
@@ -12,7 +13,7 @@ export function CodeCopyButton({ text, getText }: { text?: string; getText?: () 
 
   const handleCopy = useCallback(() => {
     const content = getText ? getText() : (text ?? "");
-    navigator.clipboard.writeText(content).then(() => {
+    writeClipboardText(content).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(console.error);

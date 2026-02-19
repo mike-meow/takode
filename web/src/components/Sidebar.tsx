@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
+import { writeClipboardText } from "../utils/copy-utils.js";
 import { connectSession, connectAllSessions, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
@@ -624,7 +625,7 @@ export function Sidebar() {
               return [{
                 label: "Copy CLI Session ID",
                 onClick: () => {
-                  navigator.clipboard.writeText(cliId).catch(console.error);
+                  writeClipboardText(cliId).catch(console.error);
                 },
               }];
             })(),

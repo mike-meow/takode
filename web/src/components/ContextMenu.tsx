@@ -104,7 +104,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
                 if (item.confirm) {
                   setConfirmingItem(item);
                 } else {
-                  item.onClick();
+                  try { item.onClick(); } catch (e) { console.error("Menu action error:", e); }
                   onClose();
                 }
               }}

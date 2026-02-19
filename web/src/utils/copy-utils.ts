@@ -59,18 +59,43 @@ function stripMarkdown(md: string): string {
 }
 
 /**
+ * Write text to clipboard with fallback for non-secure contexts (HTTP).
+ * navigator.clipboard is undefined on iOS Safari over HTTP — falls back
+ * to a temporary textarea + execCommand("copy").
+ */
+export function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  // Legacy fallback: create a temporary textarea, select, and copy
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  ta.style.top = "-9999px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand("copy");
+  } finally {
+    document.body.removeChild(ta);
+  }
+  return Promise.resolve();
+}
+
+/**
  * Copy rich text (HTML) to clipboard using the Clipboard API.
  * Falls back to plain text if the ClipboardItem API is unavailable.
  */
 export async function copyRichText(html: string, plainText: string): Promise<void> {
-  if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
     const item = new ClipboardItem({
       "text/html": new Blob([html], { type: "text/html" }),
       "text/plain": new Blob([plainText], { type: "text/plain" }),
     });
     await navigator.clipboard.write([item]);
   } else {
-    // Fallback: copy as plain text
-    await navigator.clipboard.writeText(plainText);
+    await writeClipboardText(plainText);
   }
 }

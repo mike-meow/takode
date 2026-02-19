@@ -4,7 +4,7 @@ import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { Lightbox } from "./Lightbox.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
-import { getMessageMarkdown, getMessagePlainText, copyRichText } from "../utils/copy-utils.js";
+import { getMessageMarkdown, getMessagePlainText, copyRichText, writeClipboardText } from "../utils/copy-utils.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 
@@ -156,9 +156,10 @@ function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessa
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    writeClipboardText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(console.error);
   }, [message.content]);
 
   const handleRevert = useCallback(async () => {
@@ -334,12 +335,12 @@ function CopyMessageButton({ message, contentRef }: { message: ChatMessage; cont
 
   const handleCopyMarkdown = useCallback(() => {
     const md = getMessageMarkdown(message);
-    navigator.clipboard.writeText(md).then(() => showFeedback("Markdown")).catch(console.error);
+    writeClipboardText(md).then(() => showFeedback("Markdown")).catch(console.error);
   }, [message, showFeedback]);
 
   const handleCopyPlainText = useCallback(() => {
     const text = getMessagePlainText(message);
-    navigator.clipboard.writeText(text).then(() => showFeedback("Plain text")).catch(console.error);
+    writeClipboardText(text).then(() => showFeedback("Plain text")).catch(console.error);
   }, [message, showFeedback]);
 
   const handleCopyRichText = useCallback(() => {
