@@ -791,9 +791,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
-  // Track whether the component has completed its initial mount — used to
-  // skip smooth scroll animation on session switch (instant instead).
-  const hasMounted = useRef(false);
+  // Tracks the first render — used to scroll instantly on session switch
+  // instead of smooth-scrolling. Cleared inside the auto-scroll effect itself
+  // (not a separate effect) to avoid React's same-render effect batching.
+  const isInitialRender = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const loadingMore = useRef(false);
   const [elapsed, setElapsed] = useState(0);
@@ -827,12 +828,6 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
     }
   }, [sessionId]);
-
-  // After the initial mount + scroll restore, mark as mounted so subsequent
-  // auto-scrolls use smooth animation instead of instant.
-  useEffect(() => {
-    hasMounted.current = true;
-  }, []);
 
   const grouped = useMemo(() => groupMessages(messages), [messages]);
   const turns = useMemo(() => groupIntoTurns(grouped), [grouped]);
@@ -916,8 +911,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     if (isNearBottom.current) {
-      bottomRef.current?.scrollIntoView({ behavior: hasMounted.current ? "smooth" : "instant" });
+      bottomRef.current?.scrollIntoView({ behavior: isInitialRender.current ? "instant" : "smooth" });
     }
+    isInitialRender.current = false;
   }, [messages.length, streamingText]);
 
   const scrollToBottom = useCallback(() => {
