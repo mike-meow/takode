@@ -110,10 +110,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [showAskConfirm, setShowAskConfirm] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const askConfirmRef = useRef<HTMLDivElement>(null);
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
 
@@ -197,6 +199,18 @@ export function Composer({ sessionId }: { sessionId: string }) {
     document.addEventListener("pointerdown", handleClick);
     return () => document.removeEventListener("pointerdown", handleClick);
   }, []);
+
+  // Close ask-permission confirm popover on outside click
+  useEffect(() => {
+    if (!showAskConfirm) return;
+    function handlePointerDown(e: PointerEvent) {
+      if (askConfirmRef.current && !askConfirmRef.current.contains(e.target as Node)) {
+        setShowAskConfirm(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [showAskConfirm]);
 
   const selectCommand = useCallback((cmd: CommandItem) => {
     setText(`/${cmd.name} `);
@@ -345,13 +359,13 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   function toggleAskPermission() {
     if (!isConnected || isCodex) return;
+    setShowAskConfirm(true);
+  }
+
+  function confirmAskPermissionChange() {
     const newValue = !askPermission;
-    const action = newValue ? "enable permission prompts" : "disable permission prompts";
-    if (!window.confirm(
-      `This will ${action} and restart the CLI session.\n\nAny in-progress operation (tool calls, file edits, etc.) will be interrupted.\nYour conversation history will be preserved.\n\nContinue?`
-    )) return;
-    // Server handles permission mode resolution and CLI restart
     sendToSession(sessionId, { type: "set_ask_permission", askPermission: newValue });
+    setShowAskConfirm(false);
   }
 
   function cycleMode() {
@@ -601,30 +615,56 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   </button>
                 </div>
 
-                {/* Ask Permission toggle (shield icon) */}
-                <button
-                  onClick={toggleAskPermission}
-                  disabled={!isConnected}
-                  className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
-                    !isConnected
-                      ? "opacity-30 cursor-not-allowed text-cc-muted"
-                      : "cursor-pointer hover:bg-cc-hover"
-                  }`}
-                  title={askPermission
-                    ? "Permissions: asking before tool use (click to change — requires CLI restart)"
-                    : "Permissions: auto-approving tool use (click to change — requires CLI restart)"}
-                >
-                  {askPermission ? (
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
-                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
-                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                    </svg>
+                {/* Ask Permission toggle (shield icon) + confirmation popover */}
+                <div className="relative" ref={askConfirmRef}>
+                  <button
+                    onClick={toggleAskPermission}
+                    disabled={!isConnected}
+                    className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
+                      !isConnected
+                        ? "opacity-30 cursor-not-allowed text-cc-muted"
+                        : "cursor-pointer hover:bg-cc-hover"
+                    }`}
+                    title={askPermission
+                      ? "Permissions: asking before tool use (click to change)"
+                      : "Permissions: auto-approving tool use (click to change)"}
+                  >
+                    {askPermission ? (
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      </svg>
+                    )}
+                  </button>
+                  {showAskConfirm && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 p-3">
+                      <p className="text-xs text-cc-fg mb-1 font-medium">
+                        {askPermission ? "Disable permission prompts?" : "Enable permission prompts?"}
+                      </p>
+                      <p className="text-[11px] text-cc-muted mb-3 leading-relaxed">
+                        This will restart the CLI session. Any in-progress operation will be interrupted. Your conversation will be preserved.
+                      </p>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setShowAskConfirm(false)}
+                          className="px-2.5 py-1 text-[11px] rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={confirmAskPermissionChange}
+                          className="px-2.5 py-1 text-[11px] rounded-md bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 transition-colors cursor-pointer font-medium"
+                        >
+                          Restart
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
               </div>
             )}
 
