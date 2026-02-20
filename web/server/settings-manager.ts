@@ -27,6 +27,8 @@ export interface CompanionSettings {
   claudeBinary: string;
   /** Custom Codex CLI binary path or command (empty = auto-detect "codex") */
   codexBinary: string;
+  /** Max number of live CLI processes to keep alive (0 = unlimited) */
+  maxKeepAlive: number;
   updatedAt: number;
 }
 
@@ -46,6 +48,7 @@ let settings: CompanionSettings = {
   pushoverBaseUrl: "",
   claudeBinary: "",
   codexBinary: "",
+  maxKeepAlive: 0,
   updatedAt: 0,
 };
 
@@ -60,6 +63,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     pushoverBaseUrl: typeof raw?.pushoverBaseUrl === "string" ? raw.pushoverBaseUrl : "",
     claudeBinary: typeof raw?.claudeBinary === "string" ? raw.claudeBinary : "",
     codexBinary: typeof raw?.codexBinary === "string" ? raw.codexBinary : "",
+    maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -89,7 +93,7 @@ export function getSettings(): CompanionSettings {
 
 export function updateSettings(
   patch: Partial<Pick<CompanionSettings,
-    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary"
+    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive"
   >>,
 ): CompanionSettings {
   ensureLoaded();

@@ -33,6 +33,12 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [claudeTesting, setClaudeTesting] = useState(false);
   const [codexTesting, setCodexTesting] = useState(false);
 
+  // Session lifecycle state
+  const [maxKeepAlive, setMaxKeepAlive] = useState(0);
+  const [lifecycleSaving, setLifecycleSaving] = useState(false);
+  const [lifecycleSaved, setLifecycleSaved] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState("");
+
   // Pushover state
   const [poUserKey, setPoUserKey] = useState("");
   const [poApiToken, setPoApiToken] = useState("");
@@ -52,6 +58,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
       .then((s) => {
         setClaudeBin(s.claudeBinary || "");
         setCodexBin(s.codexBinary || "");
+        setMaxKeepAlive(s.maxKeepAlive || 0);
         setPoConfigured(s.pushoverConfigured);
         setPoEnabled(s.pushoverEnabled);
         setPoDelay(s.pushoverDelaySeconds);
@@ -140,6 +147,23 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
     } finally {
       setTesting(false);
       setTimeout(() => setResult(null), 5000);
+    }
+  }
+
+  async function onSaveLifecycle(e: React.FormEvent) {
+    e.preventDefault();
+    setLifecycleSaving(true);
+    setLifecycleError("");
+    setLifecycleSaved(false);
+    try {
+      const res = await api.updateSettings({ maxKeepAlive });
+      setMaxKeepAlive(res.maxKeepAlive || 0);
+      setLifecycleSaved(true);
+      setTimeout(() => setLifecycleSaved(false), 1800);
+    } catch (err: unknown) {
+      setLifecycleError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLifecycleSaving(false);
     }
   }
 
@@ -313,6 +337,64 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
               }`}
             >
               {binSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </form>
+
+        <form
+          onSubmit={onSaveLifecycle}
+          className="mt-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-4"
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-cc-fg">Session Lifecycle</h2>
+            <p className="mt-1 text-xs text-cc-muted">
+              Limit how many CLI processes stay alive. Oldest idle sessions are
+              killed first when the limit is exceeded. Busy sessions are never killed.
+              Killed sessions can be relaunched from the sidebar context menu.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5" htmlFor="max-keep-alive">
+              Max Keep-Alive
+            </label>
+            <input
+              id="max-keep-alive"
+              type="number"
+              min={0}
+              step={1}
+              value={maxKeepAlive}
+              onChange={(e) => setMaxKeepAlive(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+              className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+            />
+            <p className="mt-1.5 text-xs text-cc-muted">
+              Maximum number of live CLI processes. Set to 0 for unlimited.
+            </p>
+          </div>
+
+          {lifecycleError && (
+            <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+              {lifecycleError}
+            </div>
+          )}
+
+          {lifecycleSaved && (
+            <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+              Session lifecycle settings saved.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={lifecycleSaving || loading}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                lifecycleSaving || loading
+                  ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                  : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+              }`}
+            >
+              {lifecycleSaving ? "Saving..." : "Save"}
             </button>
           </div>
         </form>

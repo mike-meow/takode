@@ -35,6 +35,7 @@ import type { SessionStore } from "./session-store.js";
 import type { CodexAdapter } from "./codex-adapter.js";
 import type { RecorderManager } from "./recorder.js";
 import type { ImageStore } from "./image-store.js";
+import type { CliLauncher } from "./cli-launcher.js";
 
 // ─── Denial summary helper ───────────────────────────────────────────────────
 
@@ -294,6 +295,7 @@ export class WsBridge {
   private recorder: RecorderManager | null = null;
   private imageStore: ImageStore | null = null;
   private pushoverNotifier: PushoverNotifier | null = null;
+  private launcher: CliLauncher | null = null;
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private onCLIRelaunchNeeded: ((sessionId: string) => void) | null = null;
   private onPermissionModeChanged: ((sessionId: string, newMode: string) => void) | null = null;
@@ -480,6 +482,18 @@ export class WsBridge {
 
   setPushoverNotifier(notifier: PushoverNotifier): void {
     this.pushoverNotifier = notifier;
+  }
+
+  /** Attach the CLI launcher for activity tracking. */
+  setLauncher(launcher: CliLauncher): void {
+    this.launcher = launcher;
+  }
+
+  /** Check if a session is actively generating or has pending permission requests. */
+  isSessionBusy(sessionId: string): boolean {
+    const s = this.sessions.get(sessionId);
+    if (!s) return false;
+    return s.isGenerating || s.pendingPermissions.size > 0;
   }
 
   /** Restore sessions from disk (call once at startup). */
@@ -812,6 +826,9 @@ export class WsBridge {
 
     // Forward translated messages to browsers
     adapter.onBrowserMessage((msg) => {
+      // Track Codex CLI activity for idle management
+      this.launcher?.touchActivity(session.id);
+
       if (msg.type === "session_init") {
         session.state = { ...session.state, ...msg.session, backend_type: "codex" };
         this.refreshGitInfo(session, { notifyPoller: true });
@@ -937,6 +954,9 @@ export class WsBridge {
 
     // Record raw incoming CLI message before any parsing
     this.recorder?.record(sessionId, "in", data, "cli", session.backendType, session.state.cwd);
+
+    // Track CLI activity for idle management
+    this.launcher?.touchActivity(sessionId);
 
     // NDJSON: split on newlines, parse each line
     const lines = data.split("\n").filter((l) => l.trim());
@@ -1714,6 +1734,17 @@ export class WsBridge {
         return;
       }
       this.rememberClientMessage(session, msg.client_msg_id);
+    }
+
+    // Track user activity for idle management
+    if (this.launcher) {
+      const activityTypes: ReadonlySet<string> = new Set([
+        "user_message", "permission_response", "interrupt",
+        "set_model", "set_permission_mode",
+      ]);
+      if (activityTypes.has(msg.type)) {
+        this.launcher.touchActivity(session.id);
+      }
     }
 
     // For Codex sessions, delegate entirely to the adapter

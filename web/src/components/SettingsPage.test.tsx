@@ -68,6 +68,7 @@ beforeEach(() => {
     pushoverBaseUrl: "",
     claudeBinary: "",
     codexBinary: "",
+    maxKeepAlive: 0,
   });
   mockApi.updateSettings.mockResolvedValue({
     serverName: "",
@@ -78,6 +79,7 @@ beforeEach(() => {
     pushoverBaseUrl: "",
     claudeBinary: "",
     codexBinary: "",
+    maxKeepAlive: 0,
   });
   mockApi.getNamerLogs.mockResolvedValue([]);
 });

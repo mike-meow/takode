@@ -28,6 +28,7 @@ import { PRPoller } from "./pr-poller.js";
 import { RecorderManager } from "./recorder.js";
 import { CronScheduler } from "./cron-scheduler.js";
 import { ImageStore } from "./image-store.js";
+import { IdleManager } from "./idle-manager.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -74,6 +75,7 @@ wsBridge.setStore(sessionStore);
 wsBridge.setRecorder(recorder);
 wsBridge.setImageStore(imageStore);
 wsBridge.setPushoverNotifier(pushoverNotifier);
+wsBridge.setLauncher(launcher);
 launcher.setStore(sessionStore);
 launcher.setRecorder(recorder);
 launcher.restoreFromDisk();
@@ -303,9 +305,14 @@ if (process.env.NODE_ENV !== "production") {
 // ── Cron scheduler ──────────────────────────────────────────────────────────
 cronScheduler.startAll();
 
+// ── Idle session manager — enforce maxKeepAlive ─────────────────────────────
+const idleManager = new IdleManager(launcher, wsBridge, getSettings);
+idleManager.start();
+
 // ── Graceful shutdown — persist container state ──────────────────────────────
 function gracefulShutdown() {
   console.log("[server] Persisting container state before shutdown...");
+  idleManager.stop();
   containerManager.persistState(CONTAINER_STATE_PATH);
   pushoverNotifier.destroy();
   process.exit(0);

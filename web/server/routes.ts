@@ -1604,6 +1604,7 @@ export function createRoutes(
       pushoverBaseUrl: settings.pushoverBaseUrl,
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
+      maxKeepAlive: settings.maxKeepAlive,
     });
   });
 
@@ -1633,12 +1634,16 @@ export function createRoutes(
     if (body.codexBinary !== undefined && typeof body.codexBinary !== "string") {
       return c.json({ error: "codexBinary must be a string" }, 400);
     }
+    if (body.maxKeepAlive !== undefined && (typeof body.maxKeepAlive !== "number" || body.maxKeepAlive < 0 || !Number.isInteger(body.maxKeepAlive))) {
+      return c.json({ error: "maxKeepAlive must be a non-negative integer" }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
       "serverName",
       "pushoverUserKey", "pushoverApiToken", "pushoverDelaySeconds", "pushoverEnabled", "pushoverBaseUrl",
       "claudeBinary", "codexBinary",
+      "maxKeepAlive",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -1677,6 +1682,10 @@ export function createRoutes(
         typeof body.codexBinary === "string"
           ? body.codexBinary.trim()
           : undefined,
+      maxKeepAlive:
+        typeof body.maxKeepAlive === "number"
+          ? body.maxKeepAlive
+          : undefined,
     });
 
     return c.json({
@@ -1688,6 +1697,7 @@ export function createRoutes(
       pushoverBaseUrl: settings.pushoverBaseUrl,
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
+      maxKeepAlive: settings.maxKeepAlive,
     });
   });
 

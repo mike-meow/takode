@@ -37,6 +37,7 @@ describe("settings-manager", () => {
       pushoverBaseUrl: "",
       claudeBinary: "",
       codexBinary: "",
+      maxKeepAlive: 0,
       updatedAt: 0,
     });
   });
@@ -106,6 +107,7 @@ describe("settings-manager", () => {
       pushoverBaseUrl: "",
       claudeBinary: "",
       codexBinary: "",
+      maxKeepAlive: 0,
       updatedAt: 0,
     });
   });
@@ -218,6 +220,7 @@ describe("CLI binary settings", () => {
   it("defaults to empty strings", () => {
     expect(getSettings().claudeBinary).toBe("");
     expect(getSettings().codexBinary).toBe("");
+    expect(getSettings().maxKeepAlive).toBe(0);
   });
 
   it("updates and persists claudeBinary", () => {
@@ -244,6 +247,36 @@ describe("CLI binary settings", () => {
     );
     _resetForTest(settingsPath);
     expect(getSettings().claudeBinary).toBe("/custom/claude");
+  });
+});
+
+describe("maxKeepAlive settings", () => {
+  it("updates and persists maxKeepAlive", () => {
+    const updated = updateSettings({ maxKeepAlive: 5 });
+    expect(updated.maxKeepAlive).toBe(5);
+
+    const saved = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(saved.maxKeepAlive).toBe(5);
+  });
+
+  it("normalizes negative maxKeepAlive to 0", () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ maxKeepAlive: -3, updatedAt: 0 }),
+      "utf-8",
+    );
+    _resetForTest(settingsPath);
+    expect(getSettings().maxKeepAlive).toBe(0);
+  });
+
+  it("normalizes non-integer maxKeepAlive to floor", () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ maxKeepAlive: 3.7, updatedAt: 0 }),
+      "utf-8",
+    );
+    _resetForTest(settingsPath);
+    expect(getSettings().maxKeepAlive).toBe(3);
   });
 });
 

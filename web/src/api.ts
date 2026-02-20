@@ -209,6 +209,7 @@ export interface AppSettings {
   pushoverBaseUrl: string;
   claudeBinary: string;
   codexBinary: string;
+  maxKeepAlive: number;
 }
 
 export interface GitHubPRInfo {
@@ -468,6 +469,7 @@ export const api = {
     pushoverUserKey?: string; pushoverApiToken?: string; pushoverDelaySeconds?: number;
     pushoverEnabled?: boolean; pushoverBaseUrl?: string;
     claudeBinary?: string; codexBinary?: string;
+    maxKeepAlive?: number;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),
