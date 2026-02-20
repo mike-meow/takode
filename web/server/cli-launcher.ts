@@ -807,6 +807,13 @@ When asked to port/sync commits from this worktree to the main repository at \`$
 5. **Verify after porting.** Run \`git -C ${repoRoot} log --oneline -5\` to confirm the commits landed correctly.
 6. **Reset worktree to stay in sync.** After porting is complete, reset this worktree branch to match the main repo's branch: \`git reset --hard <main-repo-branch>\`. This keeps the worktree in sync and avoids divergence for future work.
 7. **Run tests post-merge.** After resetting, run the project's unit tests in the worktree to verify nothing broke from merging with main. If tests fail: (a) if the fix is straightforward, fix it in the worktree, commit, and re-sync following steps 1–6 above; (b) otherwise, explain the failures to the user and ask how to proceed.
+
+### Completion Checklist
+
+Do NOT report the sync as complete until ALL of the following are true:
+- [ ] Main repo log shows the cherry-picked commits
+- [ ] Worktree has been reset to match the main repo branch
+- [ ] Tests have been run **after the reset** AND passed (or failures reported to user)
 ${MARKER_END}`;
 
     const claudeDir = join(worktreePath, ".claude");
