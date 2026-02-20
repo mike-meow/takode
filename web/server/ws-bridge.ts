@@ -1298,8 +1298,42 @@ export class WsBridge {
     });
   }
 
+  // Tools that are auto-approved in acceptEdits mode (everything except Bash).
+  // In bypassPermissions mode ALL tools are auto-approved.
+  private static readonly ACCEPT_EDITS_AUTO_APPROVE = new Set([
+    "Edit", "Write", "Read", "MultiEdit", "NotebookEdit",
+    "Glob", "Grep", "WebFetch", "WebSearch",
+    "TodoWrite", "Task", "Skill",
+  ]);
+
   private handleControlRequest(session: Session, msg: CLIControlRequestMessage) {
     if (msg.request.subtype === "can_use_tool") {
+      const mode = session.state.permissionMode;
+      const toolName = msg.request.tool_name;
+
+      // Server-side auto-approval based on permission mode.
+      // The CLI may not honor runtime set_permission_mode for out-of-project
+      // files, so the server acts as the enforcement layer.
+      const autoApprove =
+        mode === "bypassPermissions" ||
+        (mode === "acceptEdits" && toolName !== "Bash" && WsBridge.ACCEPT_EDITS_AUTO_APPROVE.has(toolName));
+
+      if (autoApprove) {
+        const ndjson = JSON.stringify({
+          type: "control_response",
+          response: {
+            subtype: "success",
+            request_id: msg.request_id,
+            response: {
+              behavior: "allow",
+              updatedInput: msg.request.input,
+            },
+          },
+        });
+        this.sendToCLI(session, ndjson);
+        return;
+      }
+
       const perm: PermissionRequest = {
         request_id: msg.request_id,
         tool_name: msg.request.tool_name,
