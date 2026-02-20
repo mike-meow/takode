@@ -33,7 +33,7 @@
     "start": "NODE_ENV=production bun server/index.ts",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --silent --reporter=verbose",
     "test:watch": "vitest",
     "test:codex-contract": "vitest run server/codex-protocol-*.test.ts"
   },
