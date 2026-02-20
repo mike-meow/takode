@@ -270,6 +270,7 @@ export interface NamerLogIndexEntry {
   parsed: { action: string; title?: string } | null;
   currentName: string | null;
   durationMs: number;
+  promptLength: number;
 }
 
 export interface NamerLogEntry extends NamerLogIndexEntry {

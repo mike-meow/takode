@@ -297,7 +297,7 @@ export class WsBridge {
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private onCLIRelaunchNeeded: ((sessionId: string) => void) | null = null;
   private onPermissionModeChanged: ((sessionId: string, newMode: string) => void) | null = null;
-  private onUserMessage: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[]) => void) | null = null;
+  private onUserMessage: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void) | null = null;
   private userMsgCounter = 0;
   /** Per-project cache of slash commands & skills so new sessions get them
    *  before the CLI sends system/init (which only arrives after the first
@@ -330,7 +330,7 @@ export class WsBridge {
   }
 
   /** Register a callback for when a user message is received (for auto-naming). */
-  onUserMessageCallback(cb: (sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[]) => void): void {
+  onUserMessageCallback(cb: (sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void): void {
     this.onUserMessage = cb;
   }
 
@@ -1745,7 +1745,7 @@ export class WsBridge {
 
         // Trigger auto-naming evaluation (async, fire-and-forget)
         if (this.onUserMessage) {
-          this.onUserMessage(session.id, [...session.messageHistory]);
+          this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd);
         }
       }
       if (msg.type === "permission_response") {
@@ -2042,7 +2042,7 @@ export class WsBridge {
 
     // Trigger auto-naming evaluation (async, fire-and-forget)
     if (this.onUserMessage) {
-      this.onUserMessage(session.id, [...session.messageHistory]);
+      this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd);
     }
   }
 
@@ -2327,25 +2327,6 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.broadcastToBrowsers(session, { type: "session_name_update", name });
-  }
-
-  // ─── Manual rename tracking (for auto-namer to use stricter threshold) ─────
-
-  private manuallyNamedSessions = new Set<string>();
-
-  /** Mark a session as manually named by the user. */
-  markManuallyNamed(sessionId: string): void {
-    this.manuallyNamedSessions.add(sessionId);
-  }
-
-  /** Check if a session was manually named. */
-  isManuallyNamed(sessionId: string): boolean {
-    return this.manuallyNamedSessions.has(sessionId);
-  }
-
-  /** Clear the manually-named flag (e.g. after auto-namer takes over). */
-  clearManuallyNamed(sessionId: string): void {
-    this.manuallyNamedSessions.delete(sessionId);
   }
 
   /** Derive current session status from explicit runtime state. */

@@ -129,6 +129,9 @@ export function NamerDebugPanel() {
                       {actionLabel(entry.parsed)}
                     </span>
                     <span className="text-cc-muted shrink-0">{formatDuration(entry.durationMs)}</span>
+                    <span className="text-cc-muted shrink-0 font-mono text-[10px]" title={`Prompt: ${entry.promptLength} chars`}>
+                      {entry.promptLength > 1000 ? `${(entry.promptLength / 1000).toFixed(1)}k` : entry.promptLength}ch
+                    </span>
                     <span className="text-cc-muted shrink-0 font-mono text-[10px] w-16 truncate" title={entry.sessionId}>
                       {entry.sessionId.slice(0, 8)}
                     </span>

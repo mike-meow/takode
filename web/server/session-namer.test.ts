@@ -240,18 +240,42 @@ describe("formatToolCall", () => {
   it("formats unknown tool with no string inputs as bare name", () => {
     expect(formatToolCall("CustomTool", { count: 5 })).toBe("[CustomTool]");
   });
+
+  // ─── cwd-relative path tests ─────────────────────────────────────────────
+
+  it("uses cwd-relative path when cwd is provided and path is under it", () => {
+    // When the file is inside the session's cwd, strip the cwd prefix
+    expect(formatToolCall("Read", { file_path: "/home/user/project/web/server/foo.ts" }, "/home/user/project")).toBe(
+      "[Read: web/server/foo.ts]",
+    );
+  });
+
+  it("falls back to home-shortened path when file is outside cwd", () => {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    // File outside the cwd falls back to ~/... shortening
+    expect(formatToolCall("Read", { file_path: `${home}/other/file.ts` }, "/home/user/project")).toBe(
+      "[Read: ~/other/file.ts]",
+    );
+  });
+
+  it("uses cwd-relative path for Grep path parameter", () => {
+    expect(formatToolCall("Grep", { pattern: "foo", path: "/proj/web/server" }, "/proj")).toBe(
+      '[Grep: "foo" in web/server]',
+    );
+  });
 });
 
 // ─── buildConversationBlock ────────────────────────────────────────────────
 
 describe("buildConversationBlock", () => {
-  it("formats a single user message", () => {
+  it("formats a single user message with [User] header", () => {
     const history: BrowserIncomingMessage[] = [userMsg("Fix the auth bug")];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    | User: Fix the auth bug");
+    expect(block).toContain("    [User]");
+    expect(block).toContain("    | Fix the auth bug");
   });
 
-  it("includes tool calls after user message", () => {
+  it("includes tool calls under [Assistant] header", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
@@ -261,7 +285,10 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    | User: Fix the auth bug");
+    expect(block).toContain("    [User]");
+    expect(block).toContain("    | Fix the auth bug");
+    expect(block).toContain("    [Assistant]");
+    expect(block).toContain("    | I'll fix that.");
     expect(block).toContain("    | [Read: /src/auth.ts]");
     expect(block).toContain("    | [Edit: /src/auth.ts]");
   });
@@ -278,9 +305,8 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    // Both user messages present
-    expect(block).toContain("    | User: Fix the auth bug");
-    expect(block).toContain("    | User: Now add dark mode");
+    expect(block).toContain("    | Fix the auth bug");
+    expect(block).toContain("    | Now add dark mode");
   });
 
   it("truncates long user messages", () => {
@@ -310,7 +336,7 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("Message 9");
   });
 
-  it("uses indentation prefix on all content lines", () => {
+  it("uses indentation prefix on content lines and headers without prefix", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Hello"),
       assistantMsg([
@@ -320,7 +346,8 @@ describe("buildConversationBlock", () => {
     const block = buildConversationBlock(history);
     const contentLines = block.split("\n").filter((l) => l.trim() !== "");
     for (const line of contentLines) {
-      expect(line).toMatch(/^ {4}\| /);
+      // Headers like "    [User]" or content like "    | text"
+      expect(line).toMatch(/^ {4}(\[|[|] )/);
     }
   });
 
@@ -334,6 +361,20 @@ describe("buildConversationBlock", () => {
     };
     const block = buildConversationBlock([msgWithImages]);
     expect(block).toContain("Fix this CSS [2 images attached]");
+  });
+
+  it("includes assistant text responses in turns", () => {
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Fix the login bug"),
+      assistantMsg([
+        { type: "text", text: "I'll investigate the authentication flow and fix the issue." },
+        { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/auth.ts" } },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    expect(block).toContain("    [Assistant]");
+    expect(block).toContain("    | I'll investigate the authentication flow");
+    expect(block).toContain("    | [Read: ");
   });
 
   it("does not annotate messages without images", () => {
@@ -368,30 +409,20 @@ describe("buildFirstTurnPrompt", () => {
 
 describe("buildUpdatePrompt", () => {
   it("includes current title in indented block", () => {
-    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")], false);
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")]);
     expect(prompt).toContain('    | "Fix Auth Bug"');
   });
 
   it("includes all three action options", () => {
-    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue")], false);
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue")]);
     expect(prompt).toContain("NO_CHANGE");
     expect(prompt).toContain("REVISE:");
     expect(prompt).toContain("NEW:");
   });
 
-  it("adds manual-rename note when isManuallyNamed is true", () => {
-    const prompt = buildUpdatePrompt("My Custom Name", [userMsg("Do something")], true);
-    expect(prompt).toContain("title was set by the user");
-  });
-
-  it("does not add manual-rename note when isManuallyNamed is false", () => {
-    const prompt = buildUpdatePrompt("Auto Name", [userMsg("Do something")], false);
-    expect(prompt).not.toContain("title was set by the user");
-  });
-
   it("includes conversation history with indentation", () => {
-    const prompt = buildUpdatePrompt("Auth Fix", [userMsg("Fix the login"), userMsg("Also handle tokens")], false);
-    expect(prompt).toContain("    | User: Fix the login");
-    expect(prompt).toContain("    | User: Also handle tokens");
+    const prompt = buildUpdatePrompt("Auth Fix", [userMsg("Fix the login"), userMsg("Also handle tokens")]);
+    expect(prompt).toContain("    | Fix the login");
+    expect(prompt).toContain("    | Also handle tokens");
   });
 });

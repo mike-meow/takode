@@ -33,8 +33,9 @@ const MAX_USER_MSG_CHARS = 1_000;
 /** Max user turns (user message + agent activity) included in history. */
 const MAX_TURNS = 6;
 
-/** Timeout for the `claude -p` subprocess. */
-const TIMEOUT_MS = 15_000;
+/** Timeout for the `claude -p` subprocess. The `claude` CLI boot alone
+ *  can take 5-10s, so this needs headroom beyond just API latency. */
+const TIMEOUT_MS = 30_000;
 
 /** Max title length accepted from the model. */
 const MAX_TITLE_CHARS = 100;
@@ -54,6 +55,9 @@ const MAX_DESCRIPTION_CHARS = 200;
 /** Max characters for generic tool input values. */
 const MAX_GENERIC_INPUT_CHARS = 200;
 
+/** Max characters of assistant text included per turn. */
+const MAX_ASSISTANT_TEXT_CHARS = 300;
+
 /** Max characters of stderr to log on subprocess failure. */
 const MAX_STDERR_LOG_CHARS = 200;
 
@@ -61,18 +65,18 @@ const MAX_STDERR_LOG_CHARS = 200;
  * Format a single tool_use block into a one-line textual representation.
  * Shows the tool name + key identifying parameter, truncated.
  */
-function formatToolCall(name: string, input: Record<string, unknown>): string {
+function formatToolCall(name: string, input: Record<string, unknown>, cwd?: string): string {
   switch (name) {
     case "Read":
-      return `[Read: ${truncPath(str(input.file_path))}]`;
+      return `[Read: ${truncPath(str(input.file_path), cwd)}]`;
     case "Edit":
-      return `[Edit: ${truncPath(str(input.file_path))}]`;
+      return `[Edit: ${truncPath(str(input.file_path), cwd)}]`;
     case "Write":
-      return `[Write: ${truncPath(str(input.file_path))}]`;
+      return `[Write: ${truncPath(str(input.file_path), cwd)}]`;
     case "Bash":
       return `[Bash: ${trunc(str(input.command), MAX_BASH_CMD_CHARS)}]`;
     case "Grep":
-      return `[Grep: "${trunc(str(input.pattern), MAX_PATTERN_CHARS)}"${input.path ? ` in ${truncPath(str(input.path))}` : ""}]`;
+      return `[Grep: "${trunc(str(input.pattern), MAX_PATTERN_CHARS)}"${input.path ? ` in ${truncPath(str(input.path), cwd)}` : ""}]`;
     case "Glob":
       return `[Glob: ${trunc(str(input.pattern), MAX_PATTERN_CHARS)}]`;
     case "Task": {
@@ -97,7 +101,7 @@ function formatToolCall(name: string, input: Record<string, unknown>): string {
     case "WebFetch":
       return `[WebFetch: ${trunc(str(input.url), MAX_PATTERN_CHARS)}]`;
     case "NotebookEdit":
-      return `[NotebookEdit: ${truncPath(str(input.notebook_path))}]`;
+      return `[NotebookEdit: ${truncPath(str(input.notebook_path), cwd)}]`;
     default:
       // Generic fallback: show tool name + first string-valued input key
       for (const [k, v] of Object.entries(input)) {
@@ -115,8 +119,12 @@ function trunc(s: string, maxLen: number): string {
   return s.slice(0, maxLen) + "...";
 }
 
-/** Truncate a file path: shorten home dir and cap length. */
-function truncPath(p: string): string {
+/** Make a file path relative to cwd if possible, else shorten home dir. */
+function truncPath(p: string, cwd?: string): string {
+  // Prefer cwd-relative path (e.g. "web/server/foo.ts" instead of full absolute)
+  if (cwd && p.startsWith(cwd + "/")) {
+    return trunc(p.slice(cwd.length + 1), MAX_PATH_CHARS);
+  }
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const shortened = home && p.startsWith(home) ? "~" + p.slice(home.length) : p;
   return trunc(shortened, MAX_PATH_CHARS);
@@ -130,11 +138,11 @@ function str(v: unknown): string {
 /**
  * Extract tool calls from an assistant message's content blocks.
  */
-function extractToolCalls(content: ContentBlock[]): string[] {
+function extractToolCalls(content: ContentBlock[], cwd?: string): string[] {
   const lines: string[] = [];
   for (const block of content) {
     if (block.type === "tool_use") {
-      lines.push(formatToolCall(block.name, block.input));
+      lines.push(formatToolCall(block.name, block.input, cwd));
     }
   }
   return lines;
@@ -145,15 +153,16 @@ function extractToolCalls(content: ContentBlock[]): string[] {
  * Groups messages into turns: user message → agent tool calls → next user message.
  * Only includes the last MAX_TURNS user messages.
  */
-function buildConversationBlock(history: BrowserIncomingMessage[]): string {
+function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string): string {
   // Collect turns: each turn starts with a user_message
   const turns: Array<{
     userContent: string;
     imageCount: number;
+    assistantText: string;
     toolCalls: string[];
   }> = [];
 
-  let currentTurn: { userContent: string; imageCount: number; toolCalls: string[] } | null = null;
+  let currentTurn: { userContent: string; imageCount: number; assistantText: string; toolCalls: string[] } | null = null;
 
   for (const msg of history) {
     if (msg.type === "user_message") {
@@ -163,13 +172,22 @@ function buildConversationBlock(history: BrowserIncomingMessage[]): string {
       currentTurn = {
         userContent: typeof msg.content === "string" ? msg.content : "",
         imageCount: Array.isArray(images) ? images.length : 0,
+        assistantText: "",
         toolCalls: [],
       };
     } else if (msg.type === "assistant" && currentTurn) {
-      // Extract tool calls from assistant message
       const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
       if (Array.isArray(content)) {
-        currentTurn.toolCalls.push(...extractToolCalls(content));
+        // Extract text blocks (assistant's prose)
+        for (const block of content) {
+          if (block.type === "text" && block.text) {
+            if (currentTurn.assistantText.length < MAX_ASSISTANT_TEXT_CHARS) {
+              currentTurn.assistantText += (currentTurn.assistantText ? " " : "") + block.text;
+            }
+          }
+        }
+        // Extract tool calls
+        currentTurn.toolCalls.push(...extractToolCalls(content, cwd));
       }
     }
     // Skip all other message types (result, stream_event, tool_progress, etc.)
@@ -179,24 +197,30 @@ function buildConversationBlock(history: BrowserIncomingMessage[]): string {
   // Take only the last MAX_TURNS
   const recentTurns = turns.slice(-MAX_TURNS);
 
-  // Format with indentation
+  // Format with indentation: [User]/[Assistant] headers are unindented,
+  // content lines use the INDENT prefix for prompt-injection protection.
   const lines: string[] = [];
   for (const turn of recentTurns) {
     const truncatedMsg = trunc(turn.userContent.trim(), MAX_USER_MSG_CHARS);
     const imageNote = turn.imageCount > 0
       ? ` [${turn.imageCount} image${turn.imageCount > 1 ? "s" : ""} attached]`
       : "";
-    lines.push(`${INDENT}User: ${truncatedMsg}${imageNote}`);
 
-    // Add tool calls (no blank line between them — compact)
-    if (turn.toolCalls.length > 0) {
-      lines.push(`${INDENT}`);
+    lines.push("");
+    lines.push("    [User]");
+    lines.push(`${INDENT}${truncatedMsg}${imageNote}`);
+
+    // Add assistant section if there's any text or tool calls
+    if (turn.assistantText || turn.toolCalls.length > 0) {
+      lines.push("");
+      lines.push("    [Assistant]");
+      if (turn.assistantText) {
+        lines.push(`${INDENT}${trunc(turn.assistantText.trim(), MAX_ASSISTANT_TEXT_CHARS)}`);
+      }
       for (const tc of turn.toolCalls) {
         lines.push(`${INDENT}${tc}`);
       }
     }
-
-    lines.push(`${INDENT}`);
   }
 
   return lines.join("\n");
@@ -204,8 +228,8 @@ function buildConversationBlock(history: BrowserIncomingMessage[]): string {
 
 // ─── Prompt templates ────────────────────────────────────────────────────────
 
-function buildFirstTurnPrompt(history: BrowserIncomingMessage[]): string {
-  const conversation = buildConversationBlock(history);
+function buildFirstTurnPrompt(history: BrowserIncomingMessage[], cwd?: string): string {
+  const conversation = buildConversationBlock(history, cwd);
   return `Generate a concise 3-5 word title for this coding session.
 Start with an imperative verb (e.g. "fix auth bug", "add dark mode", "refactor API routes").
 Output ONLY the title, nothing else.
@@ -218,17 +242,14 @@ ${conversation}`;
 function buildUpdatePrompt(
   currentName: string,
   history: BrowserIncomingMessage[],
-  isManuallyNamed: boolean,
+  cwd?: string,
 ): string {
-  const conversation = buildConversationBlock(history);
-  const manualNote = isManuallyNamed
-    ? "\nNote: the current title was set by the user. Only change it if the task has clearly shifted.\n"
-    : "";
+  const conversation = buildConversationBlock(history, cwd);
 
   return `The current title is:
 
 ${INDENT}"${currentName}"
-${manualNote}
+
 Based on the conversation below, choose one action:
 
 - NO_CHANGE — the current title is still accurate
@@ -373,6 +394,7 @@ export interface NamerLogEntry {
   sessionId: string;
   timestamp: number;
   prompt: string;
+  promptLength: number;
   rawResponse: string | null;
   parsed: NamingResult | null;
   currentName: string | null;   // name at time of call (null for first-turn)
@@ -385,8 +407,8 @@ const MAX_LOG_ENTRIES = 200;
 let logIdCounter = 0;
 const namerLog: NamerLogEntry[] = [];
 
-function addLogEntry(entry: Omit<NamerLogEntry, "id">): NamerLogEntry {
-  const full = { ...entry, id: ++logIdCounter };
+function addLogEntry(entry: Omit<NamerLogEntry, "id" | "promptLength">): NamerLogEntry {
+  const full = { ...entry, id: ++logIdCounter, promptLength: entry.prompt.length };
   namerLog.push(full);
   if (namerLog.length > MAX_LOG_ENTRIES) {
     namerLog.splice(0, namerLog.length - MAX_LOG_ENTRIES);
@@ -412,12 +434,14 @@ export function getNamerLogEntry(id: number): NamerLogEntry | undefined {
  * Generate a session name for the first turn.
  * @param sessionId - Session ID (for logging)
  * @param history - The message history (should contain at least one user_message)
+ * @param cwd - Session working directory (for relative paths in prompt)
  */
 export async function generateFirstName(
   sessionId: string,
   history: BrowserIncomingMessage[],
+  cwd?: string,
 ): Promise<NamingResult | null> {
-  const prompt = buildFirstTurnPrompt(history);
+  const prompt = buildFirstTurnPrompt(history, cwd);
   const start = Date.now();
   const raw = await callHaiku(prompt);
   const parsed = raw ? parseResponse(raw, true) : null;
@@ -438,15 +462,15 @@ export async function generateFirstName(
  * @param sessionId - Session ID (for logging)
  * @param currentName - The current session title
  * @param history - The full message history
- * @param isManuallyNamed - Whether the current name was set by the user
+ * @param cwd - Session working directory (for relative paths in prompt)
  */
 export async function evaluateSessionName(
   sessionId: string,
   currentName: string,
   history: BrowserIncomingMessage[],
-  isManuallyNamed: boolean,
+  cwd?: string,
 ): Promise<NamingResult | null> {
-  const prompt = buildUpdatePrompt(currentName, history, isManuallyNamed);
+  const prompt = buildUpdatePrompt(currentName, history, cwd);
   const start = Date.now();
   const raw = await callHaiku(prompt);
   const parsed = raw ? parseResponse(raw, false) : null;

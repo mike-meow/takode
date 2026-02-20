@@ -133,9 +133,12 @@ wsBridge.onPermissionModeChangedCallback(async (sessionId, newMode) => {
 
 // Track which sessions have had at least one auto-naming evaluation
 const autoNamingEvaluated = new Set<string>();
+// Track the history index at which the current name was derived, so subsequent
+// evaluations only show the model events that happened *since* the name was set.
+const nameSetAtHistoryIndex = new Map<string, number>();
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
-wsBridge.onUserMessageCallback(async (sessionId, history) => {
+wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
   const currentName = sessionNames.getName(sessionId);
   const isRandomName = currentName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentName);
   const isFirstEvaluation = !autoNamingEvaluated.has(sessionId);
@@ -144,42 +147,43 @@ wsBridge.onUserMessageCallback(async (sessionId, history) => {
     // First user message: generate initial name
     autoNamingEvaluated.add(sessionId);
     console.log(`[session-namer] Generating initial name for session ${sessionId}...`);
-    const result = await generateFirstName(sessionId, history);
+    const result = await generateFirstName(sessionId, history, cwd);
     if (!result || result.action !== "name") return;
-    // Don't overwrite if user manually renamed while we were generating
+    // Don't overwrite if user renamed while we were generating
     const freshName = sessionNames.getName(sessionId);
     if (freshName && !isRandomName) return;
     sessionNames.setName(sessionId, result.title);
+    nameSetAtHistoryIndex.set(sessionId, history.length);
     wsBridge.broadcastNameUpdate(sessionId, result.title);
     console.log(`[session-namer] Named session ${sessionId}: "${result.title}"`);
   } else {
-    // Subsequent messages: evaluate whether to rename
+    // Subsequent messages: evaluate whether to rename.
+    // Only show events since the name was last set (the model already knows the title).
     if (!currentName || isRandomName) return; // no real name yet, skip
-    const isManuallyNamed = wsBridge.isManuallyNamed(sessionId);
-    console.log(`[session-namer] Evaluating session ${sessionId} (current: "${currentName}")...`);
-    const result = await evaluateSessionName(sessionId, currentName, history, isManuallyNamed);
+    const startIndex = nameSetAtHistoryIndex.get(sessionId) ?? 0;
+    const relevantHistory = history.slice(startIndex);
+    console.log(`[session-namer] Evaluating session ${sessionId} (current: "${currentName}", history: ${relevantHistory.length}/${history.length} msgs)...`);
+    const result = await evaluateSessionName(sessionId, currentName, relevantHistory, cwd);
     if (!result) return;
 
     switch (result.action) {
       case "no_change":
         break;
       case "revise": {
-        // Same task, better wording — update in place
         const freshName = sessionNames.getName(sessionId);
-        if (freshName !== currentName) return; // user renamed while we were evaluating
+        if (freshName !== currentName) return; // name changed while we were evaluating
         sessionNames.setName(sessionId, result.title);
+        nameSetAtHistoryIndex.set(sessionId, history.length);
         wsBridge.broadcastNameUpdate(sessionId, result.title);
-        wsBridge.clearManuallyNamed(sessionId);
         console.log(`[session-namer] Revised session ${sessionId}: "${currentName}" → "${result.title}"`);
         break;
       }
       case "new": {
-        // New task — update name
         const freshName = sessionNames.getName(sessionId);
         if (freshName !== currentName) return;
         sessionNames.setName(sessionId, result.title);
+        nameSetAtHistoryIndex.set(sessionId, history.length);
         wsBridge.broadcastNameUpdate(sessionId, result.title);
-        wsBridge.clearManuallyNamed(sessionId);
         console.log(`[session-namer] New task in session ${sessionId}: "${currentName}" → "${result.title}"`);
         break;
       }
