@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
@@ -64,6 +64,61 @@ export function formatDuration(seconds: number): string {
   return `${mins}m${secs}s`;
 }
 
+/** Live duration badge — shows a counting timer while the tool runs,
+ *  then switches to the server-reported ground-truth duration on completion. */
+function ToolDurationBadge({ toolUseId, sessionId }: { toolUseId: string; sessionId: string }) {
+  // Final duration from server (tool_result_preview)
+  const finalDuration = useStore((s) =>
+    s.toolResults.get(sessionId)?.get(toolUseId)?.duration_seconds
+  );
+  // Server start timestamp (from tool_start_times on the assistant message)
+  const startTimestamp = useStore((s) =>
+    s.toolStartTimestamps.get(sessionId)?.get(toolUseId)
+  );
+
+  const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // If we have the final duration, no need for a live timer
+    if (finalDuration != null) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setLiveSeconds(null);
+      return;
+    }
+
+    // If we have a start timestamp but no final duration, run a live timer
+    if (startTimestamp != null) {
+      const tick = () => {
+        const elapsed = Math.round((Date.now() - startTimestamp) / 100) / 10;
+        setLiveSeconds(elapsed);
+      };
+      tick();
+      intervalRef.current = setInterval(tick, 100);
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }
+  }, [finalDuration, startTimestamp]);
+
+  // Show final duration (static) or live timer
+  const displaySeconds = finalDuration ?? liveSeconds;
+  if (displaySeconds == null) return null;
+
+  const isLive = finalDuration == null;
+  return (
+    <span className={`text-[10px] tabular-nums shrink-0 ${isLive ? "text-cc-primary" : "text-cc-muted"}`}>
+      {formatDuration(displaySeconds)}
+    </span>
+  );
+}
+
 export function ToolBlock({
   name,
   input,
@@ -81,11 +136,6 @@ export function ToolBlock({
 
   // Extract the most useful preview
   const preview = getPreview(name, input);
-
-  // Look up duration from tool result preview
-  const duration = useStore((s) =>
-    sessionId ? s.toolResults.get(sessionId)?.get(toolUseId)?.duration_seconds : undefined
-  );
 
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
@@ -107,11 +157,7 @@ export function ToolBlock({
             {preview}
           </span>
         )}
-        {duration != null && (
-          <span className="text-[10px] text-cc-muted tabular-nums shrink-0">
-            {formatDuration(duration)}
-          </span>
-        )}
+        {sessionId && <ToolDurationBadge toolUseId={toolUseId} sessionId={sessionId} />}
       </button>
 
       {open && (

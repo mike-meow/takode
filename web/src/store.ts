@@ -72,6 +72,9 @@ interface AppState {
   // Tool results (session → tool_use_id → truncated preview)
   toolResults: Map<string, Map<string, ToolResultPreview>>;
 
+  // Tool start timestamps from server (session → tool_use_id → server Date.now())
+  toolStartTimestamps: Map<string, Map<string, number>>;
+
   // Attention tracking (inbox-style unread state)
   sessionLastViewed: Map<string, number>;
   sessionUnreadCount: Map<string, number>;
@@ -184,6 +187,9 @@ interface AppState {
 
   // Tool result actions
   setToolResult: (sessionId: string, toolUseId: string, preview: ToolResultPreview) => void;
+
+  // Tool start timestamp actions
+  setToolStartTimestamps: (sessionId: string, timestamps: Record<string, number>) => void;
 
   // Attention tracking actions
   markSessionViewed: (sessionId: string) => void;
@@ -367,6 +373,7 @@ export const useStore = create<AppState>((set) => ({
   mcpServers: new Map(),
   toolProgress: new Map(),
   toolResults: new Map(),
+  toolStartTimestamps: new Map(),
   sessionLastViewed: getInitialSessionLastViewed(),
   sessionUnreadCount: new Map(),
   sessionAttention: getInitialSessionAttention(),
@@ -533,6 +540,8 @@ export const useStore = create<AppState>((set) => ({
       toolProgress.delete(sessionId);
       const toolResults = new Map(s.toolResults);
       toolResults.delete(sessionId);
+      const toolStartTimestamps = new Map(s.toolStartTimestamps);
+      toolStartTimestamps.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
       const feedVisibleCount = new Map(s.feedVisibleCount);
@@ -582,6 +591,7 @@ export const useStore = create<AppState>((set) => ({
         mcpServers,
         toolProgress,
         toolResults,
+        toolStartTimestamps,
         prStatus,
         feedVisibleCount,
         feedScrollPosition,
@@ -929,6 +939,17 @@ export const useStore = create<AppState>((set) => ({
       return { toolResults };
     }),
 
+  setToolStartTimestamps: (sessionId, timestamps) =>
+    set((s) => {
+      const toolStartTimestamps = new Map(s.toolStartTimestamps);
+      const sessionTimestamps = new Map(toolStartTimestamps.get(sessionId) || []);
+      for (const [toolUseId, ts] of Object.entries(timestamps)) {
+        sessionTimestamps.set(toolUseId, ts);
+      }
+      toolStartTimestamps.set(sessionId, sessionTimestamps);
+      return { toolStartTimestamps };
+    }),
+
   markSessionViewed: (sessionId) =>
     set((s) => {
       const sessionLastViewed = new Map(s.sessionLastViewed);
@@ -1177,6 +1198,7 @@ export const useStore = create<AppState>((set) => ({
       mcpServers: new Map(),
       toolProgress: new Map(),
       toolResults: new Map(),
+  toolStartTimestamps: new Map(),
       prStatus: new Map(),
       sessionLastViewed: new Map(),
       sessionUnreadCount: new Map(),

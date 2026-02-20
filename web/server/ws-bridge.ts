@@ -1208,25 +1208,28 @@ export class WsBridge {
         return;
       }
 
-      const browserMsg: BrowserIncomingMessage = {
-        type: "assistant",
-        message: { ...msg.message, content: [...msg.message.content] },
-        parent_tool_use_id: msg.parent_tool_use_id,
-        timestamp: Date.now(),
-        uuid: msg.uuid,
-      };
-
       // Track content block IDs to avoid duplicates, and record start times for tool calls
       const contentBlockIds = new Set<string>();
       const now = Date.now();
+      const toolStartTimesMap: Record<string, number> = {};
       for (const block of msg.message.content) {
         if (block.type === "tool_use" && block.id) {
           contentBlockIds.add(block.id);
           if (!session.toolStartTimes.has(block.id)) {
             session.toolStartTimes.set(block.id, now);
           }
+          toolStartTimesMap[block.id] = session.toolStartTimes.get(block.id)!;
         }
       }
+
+      const browserMsg: BrowserIncomingMessage = {
+        type: "assistant",
+        message: { ...msg.message, content: [...msg.message.content] },
+        parent_tool_use_id: msg.parent_tool_use_id,
+        timestamp: Date.now(),
+        uuid: msg.uuid,
+        ...(Object.keys(toolStartTimesMap).length > 0 ? { tool_start_times: toolStartTimesMap } : {}),
+      };
 
       session.assistantAccumulator.set(msgId, { contentBlockIds });
       session.messageHistory.push(browserMsg);
@@ -1258,8 +1261,20 @@ export class WsBridge {
         historyEntry.message.usage = msg.message.usage;
       }
 
-      // Re-broadcast the full accumulated message
-      this.broadcastToBrowsers(session, historyEntry as BrowserIncomingMessage);
+      // Collect tool start times for all tool_use blocks in the accumulated message
+      const allToolStartTimes: Record<string, number> = {};
+      for (const block of historyEntry.message.content) {
+        if (block.type === "tool_use" && block.id && session.toolStartTimes.has(block.id)) {
+          allToolStartTimes[block.id] = session.toolStartTimes.get(block.id)!;
+        }
+      }
+
+      // Re-broadcast the full accumulated message with tool start times
+      const rebroadcast: BrowserIncomingMessage = {
+        ...(historyEntry as BrowserIncomingMessage),
+        ...(Object.keys(allToolStartTimes).length > 0 ? { tool_start_times: allToolStartTimes } : {}),
+      };
+      this.broadcastToBrowsers(session, rebroadcast);
     }
 
     // Clean up accumulator when message is complete

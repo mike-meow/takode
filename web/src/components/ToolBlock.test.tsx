@@ -392,11 +392,11 @@ describe("formatDuration", () => {
 describe("ToolBlock duration display", () => {
   afterEach(() => {
     // Clean up store state
-    useStore.setState({ toolResults: new Map() });
+    useStore.setState({ toolResults: new Map(), toolStartTimestamps: new Map() });
   });
 
-  it("shows duration badge when tool result has duration_seconds", () => {
-    // Set up mock tool result with duration
+  it("shows final duration badge when tool result has duration_seconds", () => {
+    // Set up mock tool result with duration (completed tool)
     const toolResults = new Map();
     const sessionResults = new Map();
     sessionResults.set("tu-dur-1", {
@@ -419,11 +419,41 @@ describe("ToolBlock duration display", () => {
       />
     );
 
+    // Should show the server-reported ground-truth duration
     expect(screen.getByText("5.2s")).toBeTruthy();
+    // Final duration uses muted color, not primary
+    const badge = screen.getByText("5.2s");
+    expect(badge.className).toContain("text-cc-muted");
   });
 
-  it("does not show duration badge when duration_seconds is absent", () => {
-    // Set up mock tool result WITHOUT duration
+  it("shows live timer when start timestamp exists but no final duration", () => {
+    // Set up a start timestamp 3 seconds ago (simulating a running tool)
+    const toolStartTimestamps = new Map();
+    const sessionTimestamps = new Map();
+    sessionTimestamps.set("tu-live", Date.now() - 3000);
+    toolStartTimestamps.set("test-session", sessionTimestamps);
+    useStore.setState({ toolStartTimestamps });
+
+    render(
+      <ToolBlock
+        name="Bash"
+        input={{ command: "npm test" }}
+        toolUseId="tu-live"
+        sessionId="test-session"
+      />
+    );
+
+    // Should show a live timer badge with primary color (indicating in-progress)
+    const badge = document.querySelector(".tabular-nums");
+    expect(badge).toBeTruthy();
+    expect(badge!.className).toContain("text-cc-primary");
+    // The displayed value should be approximately 3 seconds
+    const text = badge!.textContent!;
+    expect(text).toMatch(/\d+\.\ds/);
+  });
+
+  it("does not show duration badge when neither duration nor start timestamp exists", () => {
+    // Tool result without duration and no start timestamp (pre-feature data)
     const toolResults = new Map();
     const sessionResults = new Map();
     sessionResults.set("tu-no-dur", {

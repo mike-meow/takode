@@ -33,6 +33,7 @@ vi.mock("../store.js", () => {
       sessions: mockStoreValues.sessions ?? new Map(),
       toolProgress: mockStoreValues.toolProgress ?? new Map(),
       toolResults: mockStoreValues.toolResults ?? new Map(),
+      toolStartTimestamps: mockStoreValues.toolStartTimestamps ?? new Map(),
       feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       collapsedTurns: mockStoreValues.collapsedTurns ?? new Map(),

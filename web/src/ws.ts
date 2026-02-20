@@ -453,6 +453,11 @@ function handleParsedMessage(
       }
       store.setSessionStatus(sessionId, "running");
 
+      // Store server-provided tool start timestamps for live duration display
+      if (data.tool_start_times && typeof data.tool_start_times === "object") {
+        store.setToolStartTimestamps(sessionId, data.tool_start_times as Record<string, number>);
+      }
+
       // Start timer if not already started (for non-streaming tool calls)
       if (!store.streamingStartedAt.has(sessionId)) {
         store.setStreamingStats(sessionId, { startedAt: Date.now() });
@@ -828,6 +833,11 @@ function handleParsedMessage(
           if (msg.content?.length) {
             extractTasksFromBlocks(sessionId, msg.content);
             extractChangedFilesFromBlocks(sessionId, msg.content);
+          }
+          // Restore tool start timestamps for in-flight tools on reconnect
+          const histToolStartTimes = (histMsg as Record<string, unknown>).tool_start_times as Record<string, number> | undefined;
+          if (histToolStartTimes) {
+            store.setToolStartTimestamps(sessionId, histToolStartTimes);
           }
         } else if (histMsg.type === "compact_marker") {
           chatMessages.push({

@@ -4049,4 +4049,72 @@ describe("Tool call duration tracking", () => {
     expect(previewMsg).toBeDefined();
     expect(typeof previewMsg.previews[0].duration_seconds).toBe("number");
   });
+
+  it("includes tool_start_times in assistant broadcasts for tool_use blocks", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+
+    // Send assistant message with tool_use blocks
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-1", type: "message", role: "assistant", model: "claude",
+        content: [
+          { type: "tool_use", id: "tu-a", name: "Bash", input: { command: "ls" } },
+          { type: "tool_use", id: "tu-b", name: "Read", input: { file_path: "x.ts" } },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "u2",
+      session_id: "cli-123",
+    }));
+
+    // Find the assistant broadcast
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const assistantMsg = calls.find((m: any) => m.type === "assistant");
+    expect(assistantMsg).toBeDefined();
+    // tool_start_times should be present with timestamps for both tool_use blocks
+    expect(assistantMsg.tool_start_times).toBeDefined();
+    expect(typeof assistantMsg.tool_start_times["tu-a"]).toBe("number");
+    expect(typeof assistantMsg.tool_start_times["tu-b"]).toBe("number");
+  });
+
+  it("does not include tool_start_times when assistant message has no tool_use blocks", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+
+    // Send assistant message with only text (no tool_use)
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-1", type: "message", role: "assistant", model: "claude",
+        content: [{ type: "text", text: "Hello" }],
+        stop_reason: null,
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "u2",
+      session_id: "cli-123",
+    }));
+
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const assistantMsg = calls.find((m: any) => m.type === "assistant");
+    expect(assistantMsg).toBeDefined();
+    // tool_start_times should NOT be present
+    expect(assistantMsg.tool_start_times).toBeUndefined();
+  });
 });
