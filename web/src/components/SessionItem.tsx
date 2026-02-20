@@ -234,7 +234,20 @@ export function SessionItem({
                     )}
                     <span className="truncate">{s.gitBranch}</span>
                     {s.isWorktree && (
-                      <span className="text-[9px] bg-cc-primary/10 text-cc-primary px-1 rounded shrink-0">wt</span>
+                      <span
+                        className={`text-[9px] px-1 rounded shrink-0 ${
+                          archived && s.worktreeExists === false
+                            ? "bg-cc-muted/10 text-cc-muted"
+                            : "bg-cc-primary/10 text-cc-primary"
+                        }`}
+                        title={
+                          archived && s.worktreeExists !== undefined
+                            ? s.worktreeExists
+                              ? s.worktreeDirty ? "Worktree preserved (uncommitted changes)" : "Worktree preserved"
+                              : "Worktree deleted"
+                            : undefined
+                        }
+                      >wt</span>
                     )}
                   </>
                 )}

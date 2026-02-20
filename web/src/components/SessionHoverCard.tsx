@@ -194,6 +194,25 @@ export function SessionHoverCard({
                 )}
               </div>
             )}
+            {/* Worktree liveness status for archived worktree sessions */}
+            {s.archived && s.isWorktree && s.worktreeExists !== undefined && (
+              <div className={`flex items-center gap-1.5 mt-1 text-[11px] ${
+                s.worktreeExists
+                  ? s.worktreeDirty ? "text-amber-500" : "text-green-500"
+                  : "text-cc-muted"
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  s.worktreeExists
+                    ? s.worktreeDirty ? "bg-amber-500" : "bg-green-500"
+                    : "bg-cc-muted/50"
+                }`} />
+                {s.worktreeExists
+                  ? s.worktreeDirty
+                    ? "Worktree preserved (uncommitted changes)"
+                    : "Worktree preserved"
+                  : "Worktree deleted"}
+              </div>
+            )}
           </div>
         )}
 

@@ -77,6 +77,10 @@ export interface SdkSessionInfo {
   isWorktree?: boolean;
   /** The original repo root path (for worktree sessions) */
   repoRoot?: string;
+  /** Whether the worktree directory still exists on disk (archived worktree sessions only) */
+  worktreeExists?: boolean;
+  /** Whether the worktree has uncommitted changes (archived worktree sessions only) */
+  worktreeDirty?: boolean;
   /** Whether this is an assistant-mode session */
   isAssistant?: boolean;
   /** Server-authoritative attention state */

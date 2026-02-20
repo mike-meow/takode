@@ -352,6 +352,8 @@ export function Sidebar() {
       cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
       cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
       isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
+      worktreeExists: sdkInfo?.worktreeExists,
+      worktreeDirty: sdkInfo?.worktreeDirty,
       askPermission: askPermissionMap?.get(id),
       idleKilled: cliDisconnectReason.get(id) === "idle_limit",
     };

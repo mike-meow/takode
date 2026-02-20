@@ -667,6 +667,32 @@ describe("GET /api/sessions", () => {
       totalLinesRemoved: 0,
     });
   });
+
+  it("includes worktreeExists/worktreeDirty for archived worktree sessions", async () => {
+    // Archived worktree session whose worktree still exists and is dirty
+    const sessions = [
+      { sessionId: "s1", state: "exited", cwd: "/wt/repo-wt-1234", isWorktree: true, archived: true },
+      { sessionId: "s2", state: "running", cwd: "/wt/repo-wt-5678", isWorktree: true, archived: false },
+    ];
+    launcher.listSessions.mockReturnValue(sessions);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/wt/repo-wt-1234");
+    vi.mocked(gitUtils.isWorktreeDirty).mockReturnValue(true);
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // s1: archived worktree with existing dirty worktree
+    expect(json[0]).toMatchObject({
+      sessionId: "s1",
+      worktreeExists: true,
+      worktreeDirty: true,
+    });
+    // s2: non-archived worktree — no worktree status fields
+    expect(json[1].worktreeExists).toBeUndefined();
+    expect(json[1].worktreeDirty).toBeUndefined();
+  });
 });
 
 describe("GET /api/sessions/:id", () => {

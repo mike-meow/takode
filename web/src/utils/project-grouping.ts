@@ -22,6 +22,8 @@ export interface SessionItem {
   cronJobId?: string;
   cronJobName?: string;
   isWorktree?: boolean;
+  worktreeExists?: boolean;
+  worktreeDirty?: boolean;
   askPermission?: boolean;
   idleKilled?: boolean;
 }

@@ -799,6 +799,11 @@ export function createRoutes(
           lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
           cliConnected: wsBridge.isCliConnected(s.sessionId),
           ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
+          // Worktree liveness status for archived worktree sessions
+          ...(s.isWorktree && s.archived ? {
+            worktreeExists: existsSync(s.cwd),
+            worktreeDirty: existsSync(s.cwd) ? gitUtils.isWorktreeDirty(s.cwd) : undefined,
+          } : {}),
         };
       } catch (e) {
         console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
