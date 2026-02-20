@@ -18,6 +18,7 @@ import { SessionCreationProgress } from "./SessionCreationProgress.js";
 import { SessionLaunchOverlay } from "./SessionLaunchOverlay.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import type { CreationProgressEvent } from "../types.js";
+import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 
@@ -862,14 +863,14 @@ export function Playground() {
           <div className="space-y-4 max-w-3xl">
             <Card label="Single tool running">
               <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-primary animate-pulse" />
+                <YarnBallDot className="text-cc-primary animate-pulse" />
                 <span>Terminal</span>
                 <span className="text-cc-muted/60">8s</span>
               </div>
             </Card>
             <Card label="Multiple tools running">
               <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-primary animate-pulse" />
+                <YarnBallDot className="text-cc-primary animate-pulse" />
                 <span>Search Content</span>
                 <span className="text-cc-muted/60">3s</span>
                 <span className="text-cc-muted/40">&middot;</span>
@@ -1014,7 +1015,7 @@ export function Playground() {
             </Card>
             <Card label="Running / Thinking">
               <div className="flex items-center gap-2 px-3 py-2 bg-cc-card border border-cc-border rounded-lg">
-                <span className="w-2 h-2 rounded-full bg-cc-primary animate-[pulse-dot_1.5s_ease-in-out_infinite]" />
+                <YarnBallDot className="text-cc-primary animate-[pulse-dot_1.5s_ease-in-out_infinite]" />
                 <span className="text-xs text-cc-fg font-medium">Thinking</span>
               </div>
             </Card>
@@ -1091,9 +1092,7 @@ export function Playground() {
                         </svg>
                       </div>
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
-                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                          <path d="M3 2l11 6-11 6V9.5l7-1.5-7-1.5V2z" />
-                        </svg>
+                        <CatPawAvatar className="w-4 h-4" />
                       </div>
                     </div>
                   </div>
@@ -1129,9 +1128,7 @@ export function Playground() {
                         </svg>
                       </div>
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                          <path d="M3 2l11 6-11 6V9.5l7-1.5-7-1.5V2z" />
-                        </svg>
+                        <CatPawAvatar className="w-4 h-4" />
                       </div>
                     </div>
                   </div>
@@ -1201,10 +1198,8 @@ export function Playground() {
           <div className="space-y-4 max-w-3xl">
             <Card label="Streaming with cursor">
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-primary">
-                    <path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
+                <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5 -ml-0.5">
+                  <CatPawLeft className="w-3 h-3 text-cc-primary animate-[paw-walk_0.8s_ease-in-out_infinite]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <pre className="font-serif-assistant text-[15px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
@@ -1216,7 +1211,7 @@ export function Playground() {
             </Card>
             <Card label="Generation stats bar">
               <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-primary animate-pulse" />
+                <YarnBallDot className="text-cc-primary animate-pulse" />
                 <span>Generating...</span>
                 <span className="text-cc-muted/60">(</span>
                 <span>12s</span>
@@ -1423,6 +1418,101 @@ export function Playground() {
             </Card>
           </div>
         </Section>
+
+        {/* ─── Cat Theme Elements ──────────────────────────────── */}
+        <Section title="Cat Theme Elements" description="Cat-themed UI icons and animations used throughout Takode">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Paw Trail (down-facing, land-from-above stamp)">
+              <div className="flex flex-col items-start gap-1 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center -translate-x-1 rotate-[160deg]">
+                    <CatPawLeft className="w-3 h-3 text-cc-primary" />
+                  </div>
+                  <span className="text-xs text-cc-muted">Left paw — toes down-left (160deg)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center translate-x-1 rotate-[200deg]">
+                    <CatPawRight className="w-3 h-3 text-cc-primary" />
+                  </div>
+                  <span className="text-xs text-cc-muted">Right paw — toes down-right (200deg)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center -translate-x-1 rotate-[160deg]">
+                    <CatPawLeft className="w-3 h-3 text-cc-primary animate-[paw-walk_0.8s_ease-in-out_infinite]" />
+                  </div>
+                  <span className="text-xs text-cc-muted">Walking (streaming)</span>
+                </div>
+              </div>
+            </Card>
+            <Card label="Yarn Ball Status Dot (sidebar sessions)">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-success" style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }} />
+                  <span className="text-xs text-cc-muted">Running</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-warning" style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }} />
+                  <span className="text-xs text-cc-muted">Permission</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-error" />
+                  <span className="text-xs text-cc-muted">Disconnected</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-muted/40" />
+                  <span className="text-xs text-cc-muted">Idle</span>
+                </div>
+              </div>
+            </Card>
+            <Card label="Yarn Ball Status Dots">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-primary animate-pulse" />
+                  <span className="text-xs text-cc-muted">Running</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-warning animate-pulse" />
+                  <span className="text-xs text-cc-muted">Compacting</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-success" />
+                  <span className="text-xs text-cc-muted">Active</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-blue-500" />
+                  <span className="text-xs text-cc-muted">Unread</span>
+                </div>
+              </div>
+            </Card>
+            <Card label="Yarn Ball Spinner">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <YarnBallSpinner className="w-3 h-3 text-cc-primary" />
+                <YarnBallSpinner className="w-4 h-4 text-cc-muted" />
+                <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
+                <span className="text-xs text-cc-muted">Various sizes</span>
+              </div>
+            </Card>
+            <Card label="Sleeping Cat (empty state)">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <SleepingCat className="w-28 h-20" />
+                <SleepingCat className="w-20 h-14" />
+              </div>
+            </Card>
+            <Card label="Paw Approval (button morph)">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 text-white cursor-pointer">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path d="M3 8.5l3.5 3.5 6.5-7" /></svg>
+                  Allow
+                </button>
+                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 text-white animate-[paw-approve_400ms_ease-out_forwards]">
+                  <CatPawAvatar className="w-3.5 h-3.5" />
+                  Approved
+                </button>
+                <span className="text-xs text-cc-muted">Button morphs on approval</span>
+              </div>
+            </Card>
+          </div>
+        </Section>
       </div>
     </div>
   );
@@ -1468,7 +1558,7 @@ function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: Too
     return (
       <div className="flex items-start gap-3">
         <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary"><circle cx="8" cy="8" r="3" /></svg>
+          <CatPawAvatar className="w-3 h-3 text-cc-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
@@ -1501,7 +1591,7 @@ function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: Too
   return (
     <div className="flex items-start gap-3">
       <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary"><circle cx="8" cy="8" r="3" /></svg>
+        <CatPawAvatar className="w-3 h-3 text-cc-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">

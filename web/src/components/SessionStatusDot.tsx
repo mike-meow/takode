@@ -1,15 +1,17 @@
 /**
- * SessionStatusDot — a small colored indicator showing the current state of a session.
+ * SessionStatusDot — a small yarn-ball indicator showing the current state of a session.
  *
  * Status priority (highest to lowest):
- *   1. archived          -> gray dot, no glow
- *   2. permission         -> amber dot, breathing glow (needs user action)
- *   3. disconnected       -> red dot, no glow
- *   4. running            -> green dot, breathing glow (agent actively working)
- *   5. compacting         -> green dot, breathing glow (context compaction)
- *   6. completed_unread   -> blue dot, no glow (agent finished, user hasn't checked)
- *   7. idle               -> gray dot, no glow
+ *   1. archived          -> gray yarn ball, no glow
+ *   2. permission         -> amber yarn ball, breathing glow (needs user action)
+ *   3. disconnected       -> red yarn ball, no glow
+ *   4. running            -> green yarn ball, breathing glow (agent actively working)
+ *   5. compacting         -> green yarn ball, breathing glow (context compaction)
+ *   6. completed_unread   -> blue yarn ball, no glow (agent finished, user hasn't checked)
+ *   7. idle               -> gray yarn ball, no glow
  */
+
+import { YarnBallDot } from "./CatIcons.js";
 
 export type SessionVisualStatus =
   | "archived"
@@ -53,15 +55,15 @@ export function deriveSessionStatus(props: SessionStatusDotProps): SessionVisual
   return "idle";
 }
 
-/** Maps visual status to the dot's background color class */
+/** Maps visual status to the yarn ball's text color class (used with fill=currentColor) */
 const DOT_COLOR: Record<SessionVisualStatus, string> = {
-  archived: "bg-cc-muted/40",
-  permission: "bg-cc-warning",
-  disconnected: "bg-cc-error",
-  running: "bg-cc-success",
-  compacting: "bg-cc-success",
-  completed_unread: "bg-blue-500",
-  idle: "bg-cc-muted/40",
+  archived: "text-cc-muted/40",
+  permission: "text-cc-warning",
+  disconnected: "text-cc-error",
+  running: "text-cc-success",
+  compacting: "text-cc-success",
+  completed_unread: "text-blue-500",
+  idle: "text-cc-muted/40",
 };
 
 /** Maps visual status to whether the dot should have a breathing glow */
@@ -76,15 +78,15 @@ const SHOULD_GLOW: Record<SessionVisualStatus, boolean> = {
 };
 
 /**
- * Maps visual status to the RGB triplet for --glow-color.
+ * Maps visual status to the CSS color for drop-shadow glow.
  * Only entries where SHOULD_GLOW is true need a value.
  */
-const GLOW_RGB: Record<SessionVisualStatus, string> = {
+const GLOW_COLOR: Record<SessionVisualStatus, string> = {
   archived: "",
-  permission: "245, 158, 11",   // amber
+  permission: "rgba(245, 158, 11, 0.6)",   // amber
   disconnected: "",
-  running: "34, 197, 94",       // green
-  compacting: "34, 197, 94",    // green (same as running — not amber, which implies user action)
+  running: "rgba(34, 197, 94, 0.6)",       // green
+  compacting: "rgba(34, 197, 94, 0.6)",    // green
   completed_unread: "",
   idle: "",
 };
@@ -104,23 +106,21 @@ export function SessionStatusDot(props: SessionStatusDotProps) {
   const visualStatus = deriveSessionStatus(props);
   const dotColor = DOT_COLOR[visualStatus];
   const showGlow = SHOULD_GLOW[visualStatus];
-  const glowRgb = GLOW_RGB[visualStatus];
+  const glowColor = GLOW_COLOR[visualStatus];
   const label = STATUS_LABEL[visualStatus];
 
+  // Use CSS filter drop-shadow for glow — follows the circular shape of the yarn ball
   const glowStyle: React.CSSProperties | undefined = showGlow
     ? {
-        ["--glow-color" as string]: glowRgb,
-        animation: "glow-breathe 2s ease-in-out infinite",
+        ["--glow-color" as string]: glowColor,
+        animation: "yarn-glow-breathe 2s ease-in-out infinite",
       }
     : undefined;
 
   return (
-    <div className="relative shrink-0 mt-[7px]" title={label} aria-label={label}>
-      <span
-        className={`block w-2 h-2 rounded-full ${dotColor}`}
-        data-testid="session-status-dot"
-        data-status={visualStatus}
-        style={glowStyle}
+    <div className="relative shrink-0 mt-[7px]" title={label} aria-label={label} data-testid="session-status-dot" data-status={visualStatus} style={glowStyle}>
+      <YarnBallDot
+        className={`block w-2.5 h-2.5 ${dotColor}`}
       />
     </div>
   );

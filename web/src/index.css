@@ -142,6 +142,46 @@
   animation: companion-sparkle 3s ease-in-out infinite;
 }
 
+/* Paw approval — button morphs into a paw stamp on press */
+@keyframes paw-approve {
+  0%   { transform: scale(1); opacity: 1; }
+  25%  { transform: scale(1.35) rotate(-6deg); opacity: 1; }
+  50%  { transform: scale(1.25) rotate(0deg); opacity: 1; }
+  75%  { transform: scale(1.25) rotate(2deg); opacity: 0.7; }
+  100% { transform: scale(1.15) rotate(0deg); opacity: 0; }
+}
+
+/* Send button — satisfying press-down-and-bounce on send */
+@keyframes paw-press {
+  0%   { transform: scale(1); }
+  20%  { transform: scale(0.8) rotate(-4deg); }
+  50%  { transform: scale(1.25) rotate(3deg); }
+  75%  { transform: scale(1.05) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* Paw trail: land-from-above stamp when scrolling into view */
+@keyframes paw-place {
+  0%   { transform: translateY(-8px) scale(0.7) rotate(-10deg); opacity: 0; }
+  50%  { transform: translateY(2px) scaleX(1.08) scaleY(0.92) rotate(2deg); opacity: 1; }
+  75%  { transform: translateY(-1px) scale(1) rotate(-1deg); opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Paw trail: walking rhythm during active streaming */
+@keyframes paw-walk {
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  25%      { transform: translateY(-2px) rotate(-8deg) scale(1.05); }
+  50%      { transform: translateY(1px) rotate(0deg) scale(0.95); }
+  75%      { transform: translateY(-2px) rotate(8deg) scale(1.05); }
+}
+
+/* Yarn ball glow — uses drop-shadow to follow shape instead of box-shadow */
+@keyframes yarn-glow-breathe {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 0 4px var(--glow-color, transparent)); }
+}
+
 /* Dark mode overrides */
 .dark {
   --color-cc-bg: #2b2a27;

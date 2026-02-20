@@ -9,6 +9,7 @@ import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
 import { ContextMenu } from "./ContextMenu.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
+
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 export function Sidebar() {

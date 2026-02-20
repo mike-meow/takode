@@ -161,28 +161,28 @@ describe("SessionStatusDot component", () => {
   });
 
   it("applies breathing glow animation for running status", () => {
-    // Running status should have glow-breathe animation and green --glow-color
+    // Running status should have yarn-glow-breathe animation (drop-shadow based)
     render(<SessionStatusDot {...makeProps({ status: "running" })} />);
     const dot = screen.getByTestId("session-status-dot");
-    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
-    expect(dot.style.getPropertyValue("--glow-color")).toBe("34, 197, 94");
+    expect(dot.style.animation).toBe("yarn-glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("rgba(34, 197, 94, 0.6)");
   });
 
   it("applies breathing glow animation for permission status", () => {
-    // Permission status should have glow-breathe animation and amber --glow-color
+    // Permission status should have yarn-glow-breathe animation and amber --glow-color
     render(<SessionStatusDot {...makeProps({ permCount: 1 })} />);
     const dot = screen.getByTestId("session-status-dot");
-    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
-    expect(dot.style.getPropertyValue("--glow-color")).toBe("245, 158, 11");
+    expect(dot.style.animation).toBe("yarn-glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("rgba(245, 158, 11, 0.6)");
   });
 
   it("applies breathing glow animation for compacting status", () => {
-    // Compacting status should have glow-breathe animation and green --glow-color
+    // Compacting status should have yarn-glow-breathe animation and green --glow-color
     // (same as running — amber is reserved for "needs user action")
     render(<SessionStatusDot {...makeProps({ status: "compacting" })} />);
     const dot = screen.getByTestId("session-status-dot");
-    expect(dot.style.animation).toBe("glow-breathe 2s ease-in-out infinite");
-    expect(dot.style.getPropertyValue("--glow-color")).toBe("34, 197, 94");
+    expect(dot.style.animation).toBe("yarn-glow-breathe 2s ease-in-out infinite");
+    expect(dot.style.getPropertyValue("--glow-color")).toBe("rgba(34, 197, 94, 0.6)");
   });
 
   it("does NOT apply glow animation for idle status", () => {
@@ -235,22 +235,26 @@ describe("SessionStatusDot component", () => {
   it("applies the correct CSS color class for disconnected state (red)", () => {
     render(<SessionStatusDot {...makeProps({ isConnected: false, sdkState: "exited" })} />);
     const dot = screen.getByTestId("session-status-dot");
-    expect(dot.className).toContain("bg-cc-error");
+    // Color is on the child YarnBallDot SVG, not the wrapper div
+    const yarnBall = dot.querySelector("svg")!;
+    expect(yarnBall.className.baseVal).toContain("text-cc-error");
   });
 
   it("applies the correct CSS color class for running state (green)", () => {
     render(<SessionStatusDot {...makeProps({ status: "running" })} />);
     const dot = screen.getByTestId("session-status-dot");
-    expect(dot.className).toContain("bg-cc-success");
+    const yarnBall = dot.querySelector("svg")!;
+    expect(yarnBall.className.baseVal).toContain("text-cc-success");
     // Should be solid green, not the dim variant
-    expect(dot.className).not.toContain("bg-cc-success/60");
+    expect(yarnBall.className.baseVal).not.toContain("text-cc-success/60");
   });
 
-  it("renders blue dot for completed_unread state with correct title", () => {
+  it("renders yarn ball indicator for completed_unread state with correct title", () => {
     render(<SessionStatusDot {...makeProps({ hasUnread: true })} />);
     const dot = screen.getByTestId("session-status-dot");
     expect(dot).toHaveAttribute("data-status", "completed_unread");
-    expect(dot.className).toContain("bg-blue-500");
+    const yarnBall = dot.querySelector("svg")!;
+    expect(yarnBall.className.baseVal).toContain("text-blue-500");
     expect(dot.style.animation).toBe(""); // no glow
     expect(screen.getByTitle("Completed — needs review")).toBeInTheDocument();
   });

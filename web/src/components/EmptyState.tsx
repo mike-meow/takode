@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "../store.js";
 import { navigateToMostRecentSession } from "../utils/routing.js";
+import { SleepingCat } from "./CatIcons.js";
 
 export function EmptyState() {
   const serverName = useStore((s) => s.serverName);
@@ -16,7 +17,7 @@ export function EmptyState() {
 
   return (
     <div className="flex-1 h-full flex flex-col items-center justify-center px-4">
-      <img src="/logo.svg" alt="Takode" className="w-20 h-20 mb-4 opacity-60" />
+      <SleepingCat className="w-32 h-24 mb-4" />
       <h1 className="text-lg font-semibold text-cc-fg mb-1">
         {serverName || "Takode"}
       </h1>

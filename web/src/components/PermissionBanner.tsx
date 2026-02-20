@@ -5,6 +5,7 @@ import { sendToSession } from "../ws.js";
 import type { PermissionRequest } from "../types.js";
 import type { PermissionUpdate } from "../../server/session-types.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { CatPawAvatar } from "./CatIcons.js";
 
 /** Human-readable label for a permission suggestion */
 function suggestionLabel(s: PermissionUpdate): string {
@@ -54,6 +55,7 @@ export function PlanReviewOverlay({
   onCollapse: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [stamping, setStamping] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
 
   const planText = typeof permission.input?.plan === "string" ? permission.input.plan : "";
@@ -64,6 +66,7 @@ export function PlanReviewOverlay({
 
   function handleAllow(updatedInput?: Record<string, unknown>, updatedPermissions?: PermissionUpdate[]) {
     setLoading(true);
+    setStamping(true);
     sendToSession(sessionId, {
       type: "permission_response",
       request_id: permission.request_id,
@@ -71,7 +74,9 @@ export function PlanReviewOverlay({
       updated_input: updatedInput,
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    removePermission(sessionId, permission.request_id);
+    setTimeout(() => {
+      removePermission(sessionId, permission.request_id);
+    }, 350);
   }
 
   function handleDeny() {
@@ -137,15 +142,19 @@ export function PlanReviewOverlay({
           <button
             onClick={() => handleAllow()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer"
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer ${stamping ? "animate-[paw-approve_400ms_ease-out_forwards]" : ""}`}
           >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-              <path d="M3 8.5l3.5 3.5 6.5-7" />
-            </svg>
-            Allow
+            {stamping ? (
+              <CatPawAvatar className="w-4 h-4" />
+            ) : (
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                <path d="M3 8.5l3.5 3.5 6.5-7" />
+              </svg>
+            )}
+            {stamping ? "Approved" : "Allow"}
           </button>
 
-          {suggestions?.map((suggestion, i) => (
+          {!stamping && suggestions?.map((suggestion, i) => (
             <button
               key={i}
               onClick={() => handleAllow(undefined, [suggestion])}
@@ -160,23 +169,27 @@ export function PlanReviewOverlay({
             </button>
           ))}
 
-          <button
-            onClick={handleDeny}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-            Deny
-          </button>
+          {!stamping && (
+            <button
+              onClick={handleDeny}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+              Deny
+            </button>
+          )}
 
-          <button
-            onClick={onCollapse}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer ml-auto"
-          >
-            Minimize
-          </button>
+          {!stamping && (
+            <button
+              onClick={onCollapse}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer ml-auto"
+            >
+              Minimize
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -195,19 +208,23 @@ export function PlanCollapsedChip({
   onExpand: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [stamping, setStamping] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
   const planPreview = getPlanPreview(permission);
   const suggestions = permission.permission_suggestions;
 
   function handleAllow(updatedPermissions?: PermissionUpdate[]) {
     setLoading(true);
+    setStamping(true);
     sendToSession(sessionId, {
       type: "permission_response",
       request_id: permission.request_id,
       behavior: "allow",
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    removePermission(sessionId, permission.request_id);
+    setTimeout(() => {
+      removePermission(sessionId, permission.request_id);
+    }, 350);
   }
 
   function handleDeny() {
@@ -244,8 +261,8 @@ export function PlanCollapsedChip({
         </button>
 
         {/* Inline action buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {suggestions?.map((suggestion, i) => (
+        <div className="shrink-0 flex items-center gap-1.5">
+          {!stamping && suggestions?.map((suggestion, i) => (
             <button
               key={i}
               onClick={() => handleAllow([suggestion])}
@@ -262,25 +279,31 @@ export function PlanCollapsedChip({
           <button
             onClick={() => handleAllow()}
             disabled={loading}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer"
+            className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer ${stamping ? "animate-[paw-approve_400ms_ease-out_forwards]" : ""}`}
             title="Accept plan"
           >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
-              <path d="M3 8.5l3.5 3.5 6.5-7" />
-            </svg>
-            Allow
+            {stamping ? (
+              <CatPawAvatar className="w-3.5 h-3.5" />
+            ) : (
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
+                <path d="M3 8.5l3.5 3.5 6.5-7" />
+              </svg>
+            )}
+            {stamping ? "Approved" : "Allow"}
           </button>
-          <button
-            onClick={handleDeny}
-            disabled={loading}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
-            title="Reject plan"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-            Deny
-          </button>
+          {!stamping && (
+            <button
+              onClick={handleDeny}
+              disabled={loading}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
+              title="Reject plan"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+              Deny
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -298,11 +321,13 @@ export function PermissionBanner({
   sessionId: string;
 }) {
   const [loading, setLoading] = useState(false);
+  const [stamping, setStamping] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
 
   function handleAllow(updatedInput?: Record<string, unknown>, updatedPermissions?: PermissionUpdate[]) {
     setLoading(true);
+    setStamping(true);
     sendToSession(sessionId, {
       type: "permission_response",
       request_id: permission.request_id,
@@ -310,7 +335,9 @@ export function PermissionBanner({
       updated_input: updatedInput,
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    removePermission(sessionId, permission.request_id);
+    setTimeout(() => {
+      removePermission(sessionId, permission.request_id);
+    }, 350);
   }
 
   function handleDeny() {
@@ -440,16 +467,20 @@ export function PermissionBanner({
                 <button
                   onClick={() => handleAllow()}
                   disabled={loading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer ${stamping ? "animate-[paw-approve_400ms_ease-out_forwards]" : ""}`}
                 >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                    <path d="M3 8.5l3.5 3.5 6.5-7" />
-                  </svg>
-                  Allow
+                  {stamping ? (
+                    <CatPawAvatar className="w-3.5 h-3.5" />
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                      <path d="M3 8.5l3.5 3.5 6.5-7" />
+                    </svg>
+                  )}
+                  {stamping ? "Approved" : "Allow"}
                 </button>
 
                 {/* Permission suggestion buttons — only when CLI provides them */}
-                {suggestions?.map((suggestion, i) => (
+                {!stamping && suggestions?.map((suggestion, i) => (
                   <button
                     key={i}
                     onClick={() => handleAllow(undefined, [suggestion])}
@@ -464,16 +495,18 @@ export function PermissionBanner({
                   </button>
                 ))}
 
-                <button
-                  onClick={handleDeny}
-                  disabled={loading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                    <path d="M4 4l8 8M12 4l-8 8" />
-                  </svg>
-                  Deny
-                </button>
+                {!stamping && (
+                  <button
+                    onClick={handleDeny}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                      <path d="M4 4l8 8M12 4l-8 8" />
+                    </svg>
+                    Deny
+                  </button>
+                )}
               </div>
             )}
           </div>

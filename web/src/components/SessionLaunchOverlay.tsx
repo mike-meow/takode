@@ -1,4 +1,5 @@
 import type { CreationProgressEvent } from "../api.js";
+import { YarnBallSpinner } from "./CatIcons.js";
 
 interface Props {
   steps: CreationProgressEvent[];
@@ -55,6 +56,8 @@ export function SessionLaunchOverlay({ steps, error, backend, onCancel }: Props)
                 strokeLinecap="round"
                 className="text-cc-primary/40"
               />
+              <path d="M20 35 Q50 55 80 35" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-cc-primary/20" fill="none" />
+              <path d="M20 65 Q50 45 80 65" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-cc-primary/20" fill="none" />
             </svg>
           </div>
         )}
@@ -82,7 +85,7 @@ export function SessionLaunchOverlay({ steps, error, backend, onCancel }: Props)
             {/* Icon */}
             <div className="w-5 h-5 flex items-center justify-center shrink-0">
               {step.status === "in_progress" && (
-                <span className="w-4 h-4 border-2 border-cc-primary/30 border-t-cc-primary rounded-full animate-spin" />
+                <YarnBallSpinner className="w-4 h-4 text-cc-primary" />
               )}
               {step.status === "done" && (
                 <div className="w-5 h-5 rounded-full bg-cc-success/15 flex items-center justify-center">

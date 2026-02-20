@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api.js";
+import { YarnBallSpinner } from "./CatIcons.js";
 
 interface ClaudeMdFile {
   path: string;
@@ -155,7 +156,7 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
         <div className="flex-1 flex min-h-0">
           {loading ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="w-5 h-5 border-2 border-cc-primary border-t-transparent rounded-full animate-spin" />
+              <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
             </div>
           ) : (
             <>

@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { invalidateDiffStatsCache } from "../ws.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { YarnBallSpinner } from "./CatIcons.js";
 
 /** Count additions and deletions from a unified diff string */
 function countDiffStats(diff: string): { additions: number; deletions: number } {
@@ -370,7 +371,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         <div className="flex-1 overflow-auto">
           {diffLoading ? (
             <div className="h-full flex items-center justify-center">
-              <div className="w-5 h-5 border-2 border-cc-primary border-t-transparent rounded-full animate-spin" />
+              <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
             </div>
           ) : selectedFile ? (
             <div className="p-4">

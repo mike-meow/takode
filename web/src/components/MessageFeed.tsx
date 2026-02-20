@@ -5,6 +5,8 @@ import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { api } from "../api.js";
 import type { ChatMessage, ContentBlock } from "../types.js";
+import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
+import { PawTrailAvatar, PawCounterContext } from "./PawTrail.js";
 
 const FEED_PAGE_SIZE = 100;
 
@@ -422,7 +424,7 @@ function ToolMessageGroup({ group, sessionId }: { group: ToolMsgGroup; sessionId
     return (
       <div className="animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="flex items-start gap-3">
-          <AssistantAvatar />
+          <PawTrailAvatar />
           <div className="flex-1 min-w-0">
             <ToolBlock name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
           </div>
@@ -435,7 +437,7 @@ function ToolMessageGroup({ group, sessionId }: { group: ToolMsgGroup; sessionId
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
       <div className="flex items-start gap-3">
-        <AssistantAvatar />
+        <PawTrailAvatar />
         <div className="flex-1 min-w-0">
           <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
             <button
@@ -759,15 +761,6 @@ function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
   );
 }
 
-function AssistantAvatar() {
-  return (
-    <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary">
-        <circle cx="8" cy="8" r="3" />
-      </svg>
-    </div>
-  );
-}
 
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
@@ -780,6 +773,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const streamingPauseStartedAt = useStore((s) => s.streamingPauseStartedAt.get(sessionId));
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
+  const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -926,12 +920,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   if (messages.length === 0 && !streamingText) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
-        <div className="w-14 h-14 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-cc-muted">
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg>
-        </div>
+        <SleepingCat className="w-20 h-14" />
         <div className="text-center">
           <p className="text-sm text-cc-fg font-medium mb-1">Start a conversation</p>
           <p className="text-xs text-cc-muted leading-relaxed">
@@ -949,14 +938,12 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         onScroll={handleScroll}
         className="h-full overflow-y-auto px-3 sm:px-4 py-4 sm:py-6"
       >
+        <PawCounterContext.Provider value={pawCounter}>
         <div className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
           {hasMore && (
             <div ref={sentinelRef} className="flex justify-center pb-2">
               <span className="flex items-center gap-1.5 text-xs text-cc-muted">
-                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
+                <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
                 Loading older messages...
               </span>
             </div>
@@ -966,7 +953,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           {/* Tool progress indicator */}
           {toolProgress && toolProgress.size > 0 && !streamingText && (
             <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-primary animate-pulse" />
+              <YarnBallDot className="text-cc-primary animate-pulse" />
               {Array.from(toolProgress.values()).map((p, i) => (
                 <span key={i} className="flex items-center gap-1">
                   {i > 0 && <span className="text-cc-muted/40">·</span>}
@@ -981,11 +968,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           {streamingText && (
             <div className="animate-[fadeSlideIn_0.2s_ease-out]">
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-primary">
-                    <path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </div>
+                <PawTrailAvatar isStreaming />
                 <div className="flex-1 min-w-0">
                   <pre className="font-serif-assistant text-[15px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
                     {streamingText}
@@ -999,7 +982,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           {/* Generation stats bar */}
           {sessionStatus === "running" && elapsed > 0 && (
             <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${streamingPauseStartedAt ? 'bg-amber-400' : 'bg-cc-primary animate-pulse'}`} />
+              <YarnBallDot className={streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse'} />
               <span>{streamingPauseStartedAt ? 'Waiting...' : 'Generating...'}</span>
               <span className="text-cc-muted/60">(</span>
               <span>{formatElapsed(elapsed)}</span>
@@ -1016,13 +999,14 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           {/* Compacting indicator */}
           {sessionStatus === "compacting" && (
             <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning animate-pulse" />
+              <YarnBallDot className="text-cc-warning animate-pulse" />
               <span>Compacting conversation...</span>
             </div>
           )}
 
           <div ref={bottomRef} />
         </div>
+        </PawCounterContext.Provider>
       </div>
 
       {/* Scroll-to-bottom FAB */}

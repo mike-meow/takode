@@ -264,6 +264,7 @@ describe("GenericDisplay", () => {
 
 describe("Allow and Deny buttons", () => {
   it("Allow button calls sendToSession with correct permission_response", () => {
+    vi.useFakeTimers();
     const perm = makePermission({ request_id: "req-42" });
     render(<PermissionBanner permission={perm} sessionId="s1" />);
 
@@ -275,7 +276,11 @@ describe("Allow and Deny buttons", () => {
       behavior: "allow",
       updated_input: undefined,
     });
+    // removePermission is delayed by 350ms for the paw stamp animation
+    expect(mockRemovePermission).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(350);
     expect(mockRemovePermission).toHaveBeenCalledWith("s1", "req-42");
+    vi.useRealTimers();
   });
 
   it("Deny button calls sendToSession with deny behavior", () => {

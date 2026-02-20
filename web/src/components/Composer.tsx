@@ -6,6 +6,7 @@ import { CLAUDE_MODES, CODEX_MODES, getNextMode, resolveClaudeCliMode, deriveUiM
 import { isTouchDevice } from "../utils/mobile.js";
 import type { ModeOption } from "../utils/backends.js";
 import { Lightbox } from "./Lightbox.js";
+import { CatPawAvatar } from "./CatIcons.js";
 
 interface ImageAttachment {
   name: string;
@@ -112,6 +113,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
+  const [sendPressing, setSendPressing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -285,6 +287,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
     } else {
       textareaRef.current?.focus();
     }
+
+    setSendPressing(true);
+    setTimeout(() => setSendPressing(false), 400);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -752,12 +757,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   canSend
                     ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
                     : "bg-cc-hover text-cc-muted cursor-not-allowed"
-                }`}
+                } ${sendPressing ? "animate-[paw-press_400ms_ease-out]" : ""}`}
                 title="Send message"
               >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                  <path d="M3 2l11 6-11 6V9.5l7-1.5-7-1.5V2z" />
-                </svg>
+                <CatPawAvatar className="w-4 h-4" />
               </button>
             </div>
           </div>

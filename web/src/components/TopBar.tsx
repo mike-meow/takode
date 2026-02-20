@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
+import { YarnBallDot } from "./CatIcons.js";
 import { parseHash } from "../utils/routing.js";
 import { shortenHome } from "../utils/path-display.js";
 
@@ -196,13 +197,13 @@ export function TopBar() {
             title="Open sidebar"
           >
             {statusSummary.running > 0 && (
-              <span className="text-cc-success flex items-center gap-0.5">{statusSummary.running}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" /></span>
+              <span className="text-cc-success flex items-center gap-0.5">{statusSummary.running}<YarnBallDot className="text-cc-success" /></span>
             )}
             {statusSummary.waiting > 0 && (
-              <span className="text-cc-warning flex items-center gap-0.5">{statusSummary.waiting}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" /></span>
+              <span className="text-cc-warning flex items-center gap-0.5">{statusSummary.waiting}<YarnBallDot className="text-cc-warning" /></span>
             )}
             {statusSummary.unread > 0 && (
-              <span className="text-blue-500 flex items-center gap-0.5">{statusSummary.unread}<span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" /></span>
+              <span className="text-blue-500 flex items-center gap-0.5">{statusSummary.unread}<YarnBallDot className="text-blue-500" /></span>
             )}
           </button>
         )}
@@ -220,7 +221,7 @@ export function TopBar() {
 
           {status === "running" && (
             <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-cc-primary animate-[pulse-dot_1s_ease-in-out_infinite]" />
+              <YarnBallDot className="text-cc-primary animate-[pulse-dot_1s_ease-in-out_infinite]" />
               <span className="text-cc-primary font-medium">Thinking</span>
             </div>
           )}

@@ -7,6 +7,7 @@ import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { getMessageMarkdown, getMessagePlainText, copyRichText, writeClipboardText } from "../utils/copy-utils.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
+import { PawTrailAvatar } from "./PawTrail.js";
 
 export function MessageBubble({ message, sessionId }: { message: ChatMessage; sessionId?: string }) {
   if (message.role === "system") {
@@ -279,7 +280,7 @@ function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessio
   if (blocks.length === 0 && message.content) {
     return (
       <div className="group/msg relative flex items-start gap-3">
-        <AssistantAvatar />
+        <PawTrailAvatar />
         <div ref={contentRef} className="flex-1 min-w-0 pr-6 sm:pr-0">
           <MarkdownContent text={message.content} />
         </div>
@@ -290,7 +291,7 @@ function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessio
 
   return (
     <div className="group/msg relative flex items-start gap-3">
-      <AssistantAvatar />
+      <PawTrailAvatar />
       <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6 sm:pr-0">
         {grouped.map((group, i) => {
           if (group.kind === "content") {
@@ -310,15 +311,6 @@ function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessio
   );
 }
 
-function AssistantAvatar() {
-  return (
-    <div className="w-6 h-6 rounded-full bg-cc-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary">
-        <circle cx="8" cy="8" r="3" />
-      </svg>
-    </div>
-  );
-}
 
 /** Copy button for assistant messages.
  *  Uses the ContextMenu component (proven to work on iOS Safari)

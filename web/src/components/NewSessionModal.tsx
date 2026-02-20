@@ -10,6 +10,7 @@ import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
+import { YarnBallSpinner } from "./CatIcons.js";
 
 // ─── Branch persistence helpers ─────────────────────────────────────────────
 
@@ -828,7 +829,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                       >
                         {pulling ? (
                           <>
-                            <span className="w-3 h-3 border-2 border-cc-primary/30 border-t-cc-primary rounded-full animate-spin" />
+                            <YarnBallSpinner className="w-3 h-3 text-cc-primary" />
                             Pulling...
                           </>
                         ) : (
@@ -861,7 +862,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
             >
               {sending ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <YarnBallSpinner className="w-4 h-4 text-white" />
                   Creating...
                 </>
               ) : (
