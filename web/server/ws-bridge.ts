@@ -216,6 +216,20 @@ function resolveGitInfo(state: SessionState): void {
       }
     } catch { /* ignore */ }
 
+    // Backfill git_default_branch for worktrees created before this field existed.
+    // Derive from branch name pattern: "jiayi-wt-7680" → "jiayi".
+    if (state.is_worktree && !state.git_default_branch && state.git_branch) {
+      const wtMatch = state.git_branch.match(/^(.+)-wt-\d+$/);
+      if (wtMatch) {
+        try {
+          execSync(`git rev-parse --verify refs/heads/${wtMatch[1]} 2>/dev/null`, {
+            cwd: state.cwd, encoding: "utf-8", timeout: 3000,
+          });
+          state.git_default_branch = wtMatch[1];
+        } catch { /* parent branch doesn't exist locally */ }
+      }
+    }
+
     try {
       // For worktrees, compare against the parent branch (e.g. "jiayi" for "jiayi-wt-7680")
       // instead of @{upstream} (remote tracking branch) which is less meaningful.
