@@ -1484,6 +1484,22 @@ export function Playground() {
                 </div>
               </div>
             </Card>
+            <Card label="Yarn Ball Rolling (back-and-forth)">
+              <div className="flex items-center gap-6 px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-success yarn-ball-roll" style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }} />
+                  <span className="text-xs text-cc-muted">Running</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-warning yarn-ball-roll" style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }} />
+                  <span className="text-xs text-cc-muted">Compacting</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <YarnBallDot className="text-cc-muted/40" />
+                  <span className="text-xs text-cc-muted">Static (idle)</span>
+                </div>
+              </div>
+            </Card>
             <Card label="Yarn Ball Spinner">
               <div className="flex items-center gap-6 px-4 py-3">
                 <YarnBallSpinner className="w-3 h-3 text-cc-primary" />

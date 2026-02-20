@@ -258,4 +258,34 @@ describe("SessionStatusDot component", () => {
     expect(dot.style.animation).toBe(""); // no glow
     expect(screen.getByTitle("Completed — needs review")).toBeInTheDocument();
   });
+
+  it("applies yarn-ball-roll CSS class for running status", () => {
+    // Running sessions should have the rolling animation class on the yarn ball SVG.
+    render(<SessionStatusDot {...makeProps({ status: "running" })} />);
+    const dot = screen.getByTestId("session-status-dot");
+    const svg = dot.querySelector("svg")!;
+    expect(svg.className.baseVal).toContain("yarn-ball-roll");
+  });
+
+  it("applies yarn-ball-roll CSS class for compacting status", () => {
+    // Compacting also shows rolling since the agent is actively working.
+    render(<SessionStatusDot {...makeProps({ status: "compacting" })} />);
+    const dot = screen.getByTestId("session-status-dot");
+    const svg = dot.querySelector("svg")!;
+    expect(svg.className.baseVal).toContain("yarn-ball-roll");
+  });
+
+  it("does NOT apply yarn-ball-roll for idle status", () => {
+    render(<SessionStatusDot {...makeProps()} />);
+    const dot = screen.getByTestId("session-status-dot");
+    const svg = dot.querySelector("svg")!;
+    expect(svg.className.baseVal).not.toContain("yarn-ball-roll");
+  });
+
+  it("does NOT apply yarn-ball-roll for disconnected status", () => {
+    render(<SessionStatusDot {...makeProps({ isConnected: false, sdkState: "exited" })} />);
+    const dot = screen.getByTestId("session-status-dot");
+    const svg = dot.querySelector("svg")!;
+    expect(svg.className.baseVal).not.toContain("yarn-ball-roll");
+  });
 });

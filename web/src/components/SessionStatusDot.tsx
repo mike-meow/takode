@@ -117,10 +117,12 @@ export function SessionStatusDot(props: SessionStatusDotProps) {
       }
     : undefined;
 
+  const shouldRoll = visualStatus === "running" || visualStatus === "compacting";
+
   return (
     <div className="relative shrink-0 mt-[7px]" title={label} aria-label={label} data-testid="session-status-dot" data-status={visualStatus} style={glowStyle}>
       <YarnBallDot
-        className={`block w-2.5 h-2.5 ${dotColor}`}
+        className={`block w-2.5 h-2.5 ${dotColor} ${shouldRoll ? "yarn-ball-roll" : ""}`}
       />
     </div>
   );

@@ -182,6 +182,16 @@
   50% { filter: drop-shadow(0 0 4px var(--glow-color, transparent)); }
 }
 
+/* Yarn ball rolling — rocks ±10° with synchronized horizontal translation
+   to simulate a ball rolling back and forth on a surface. */
+@keyframes yarn-ball-roll {
+  0%, 100% { transform: translateX(0.6px)  rotate(10deg); }
+  50%      { transform: translateX(-0.6px) rotate(-10deg); }
+}
+.yarn-ball-roll {
+  animation: yarn-ball-roll 2s ease-in-out infinite;
+}
+
 /* Dark mode overrides */
 .dark {
   --color-cc-bg: #2b2a27;
