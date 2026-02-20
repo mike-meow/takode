@@ -1040,10 +1040,14 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // Auto-scroll for streaming text (Footer height changes) and within-turn
   // message additions (turns.length unchanged but content grew). Throttled
   // to 200ms to avoid layout thrashing on iOS Safari.
-  // Uses the native scroller element for reliable bottom detection.
+  // Double-checks actual scroll position to avoid fighting user scroll.
   const lastScrollTime = useRef(0);
   useEffect(() => {
-    if (!isNearBottom.current || !scrollerEl) return;
+    if (!scrollerEl) return;
+    // Check actual scroll position — don't rely solely on isNearBottom ref
+    // which can be stale after rapid touch gestures on mobile
+    const distFromBottom = scrollerEl.scrollHeight - scrollerEl.scrollTop - scrollerEl.clientHeight;
+    if (distFromBottom > 80) return;
     const now = Date.now();
     if (now - lastScrollTime.current >= 200) {
       lastScrollTime.current = now;
@@ -1122,15 +1126,14 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         <Virtuoso<Turn, FeedContext>
           ref={virtuosoRef}
           scrollerRef={handleScrollerRef}
-          style={{ height: '100%' }}
+          style={{ height: '100%', overscrollBehavior: 'contain' }}
           data={visibleTurns}
           context={feedContext}
           computeItemKey={computeItemKey}
           defaultItemHeight={150}
           firstItemIndex={firstItemIndex}
           initialTopMostItemIndex={firstItemIndex + visibleTurns.length - 1}
-          alignToBottom
-          atBottomThreshold={120}
+          atBottomThreshold={40}
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomChange}
           startReached={handleStartReached}
