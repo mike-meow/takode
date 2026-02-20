@@ -649,6 +649,16 @@ export function Sidebar() {
               }];
             })(),
             ...(() => {
+              const sdk = sdkSessions.find((s) => s.sessionId === contextMenu.sessionId);
+              if (!sdk || sdk.state === "exited") return [];
+              return [{
+                label: "Relaunch",
+                onClick: () => {
+                  api.relaunchSession(contextMenu.sessionId).catch(console.error);
+                },
+              }];
+            })(),
+            ...(() => {
               const attention = sessionAttention.get(contextMenu.sessionId);
               if (attention) {
                 return [{

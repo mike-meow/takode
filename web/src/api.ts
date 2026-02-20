@@ -207,6 +207,8 @@ export interface AppSettings {
   pushoverEnabled: boolean;
   pushoverDelaySeconds: number;
   pushoverBaseUrl: string;
+  claudeBinary: string;
+  codexBinary: string;
 }
 
 export interface GitHubPRInfo {
@@ -465,7 +467,10 @@ export const api = {
     serverName?: string;
     pushoverUserKey?: string; pushoverApiToken?: string; pushoverDelaySeconds?: number;
     pushoverEnabled?: boolean; pushoverBaseUrl?: string;
+    claudeBinary?: string; codexBinary?: string;
   }) => put<AppSettings>("/settings", data),
+  testBinary: (binary: string) =>
+    post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),
   testPushover: () => post<{ ok: boolean }>("/pushover/test"),
 
   // Git operations

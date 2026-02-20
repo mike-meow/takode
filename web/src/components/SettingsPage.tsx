@@ -22,6 +22,17 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const setNotificationDesktop = useStore((s) => s.setNotificationDesktop);
   const notificationApiAvailable = typeof Notification !== "undefined";
 
+  // CLI binary state
+  const [claudeBin, setClaudeBin] = useState("");
+  const [codexBin, setCodexBin] = useState("");
+  const [binSaving, setBinSaving] = useState(false);
+  const [binSaved, setBinSaved] = useState(false);
+  const [binError, setBinError] = useState("");
+  const [claudeTest, setClaudeTest] = useState<{ ok: boolean; resolvedPath?: string; version?: string; error?: string } | null>(null);
+  const [codexTest, setCodexTest] = useState<{ ok: boolean; resolvedPath?: string; version?: string; error?: string } | null>(null);
+  const [claudeTesting, setClaudeTesting] = useState(false);
+  const [codexTesting, setCodexTesting] = useState(false);
+
   // Pushover state
   const [poUserKey, setPoUserKey] = useState("");
   const [poApiToken, setPoApiToken] = useState("");
@@ -39,6 +50,8 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
     api
       .getSettings()
       .then((s) => {
+        setClaudeBin(s.claudeBinary || "");
+        setCodexBin(s.codexBinary || "");
         setPoConfigured(s.pushoverConfigured);
         setPoEnabled(s.pushoverEnabled);
         setPoDelay(s.pushoverDelaySeconds);
@@ -89,6 +102,44 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
     } finally {
       setPoTesting(false);
       setTimeout(() => setPoTestResult(null), 3000);
+    }
+  }
+
+  async function onSaveBinaries(e: React.FormEvent) {
+    e.preventDefault();
+    setBinSaving(true);
+    setBinError("");
+    setBinSaved(false);
+    try {
+      const res = await api.updateSettings({
+        claudeBinary: claudeBin.trim(),
+        codexBinary: codexBin.trim(),
+      });
+      setClaudeBin(res.claudeBinary || "");
+      setCodexBin(res.codexBinary || "");
+      setBinSaved(true);
+      setTimeout(() => setBinSaved(false), 1800);
+    } catch (err: unknown) {
+      setBinError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBinSaving(false);
+    }
+  }
+
+  async function onTestBinary(which: "claude" | "codex") {
+    const binary = which === "claude" ? (claudeBin.trim() || "claude") : (codexBin.trim() || "codex");
+    const setTesting = which === "claude" ? setClaudeTesting : setCodexTesting;
+    const setResult = which === "claude" ? setClaudeTest : setCodexTest;
+    setTesting(true);
+    setResult(null);
+    try {
+      const res = await api.testBinary(binary);
+      setResult(res);
+    } catch (err: unknown) {
+      setResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTesting(false);
+      setTimeout(() => setResult(null), 5000);
     }
   }
 
@@ -156,6 +207,115 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
             </button>
           )}
         </div>
+
+        <form
+          onSubmit={onSaveBinaries}
+          className="mt-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-4"
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-cc-fg">CLI Binaries</h2>
+            <p className="mt-1 text-xs text-cc-muted">
+              Custom path or command for backend CLIs. Leave empty to auto-detect from PATH.
+              New sessions use this immediately; existing sessions pick it up on relaunch.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5" htmlFor="claude-binary">
+              Claude Code
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="claude-binary"
+                type="text"
+                value={claudeBin}
+                onChange={(e) => setClaudeBin(e.target.value)}
+                placeholder="claude (auto-detect)"
+                className="flex-1 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/60 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => onTestBinary("claude")}
+                disabled={claudeTesting}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  claudeTesting
+                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                    : "bg-cc-hover text-cc-fg hover:bg-cc-active cursor-pointer"
+                }`}
+              >
+                {claudeTesting ? "Testing..." : "Test"}
+              </button>
+            </div>
+            {claudeTest && (
+              <p className={`mt-1.5 text-xs ${claudeTest.ok ? "text-cc-success" : "text-cc-error"}`}>
+                {claudeTest.ok
+                  ? `${claudeTest.resolvedPath} — ${claudeTest.version}`
+                  : claudeTest.error}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5" htmlFor="codex-binary">
+              Codex
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="codex-binary"
+                type="text"
+                value={codexBin}
+                onChange={(e) => setCodexBin(e.target.value)}
+                placeholder="codex (auto-detect)"
+                className="flex-1 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/60 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => onTestBinary("codex")}
+                disabled={codexTesting}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  codexTesting
+                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                    : "bg-cc-hover text-cc-fg hover:bg-cc-active cursor-pointer"
+                }`}
+              >
+                {codexTesting ? "Testing..." : "Test"}
+              </button>
+            </div>
+            {codexTest && (
+              <p className={`mt-1.5 text-xs ${codexTest.ok ? "text-cc-success" : "text-cc-error"}`}>
+                {codexTest.ok
+                  ? `${codexTest.resolvedPath} — ${codexTest.version}`
+                  : codexTest.error}
+              </p>
+            )}
+          </div>
+
+          {binError && (
+            <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+              {binError}
+            </div>
+          )}
+
+          {binSaved && (
+            <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+              Binary settings saved.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={binSaving || loading}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                binSaving || loading
+                  ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                  : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+              }`}
+            >
+              {binSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </form>
 
         <form
           onSubmit={onSavePushover}

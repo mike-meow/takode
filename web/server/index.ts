@@ -66,6 +66,9 @@ const pushoverNotifier = new PushoverNotifier({
   getLastReadAt: (id) => wsBridge.getSessionAttentionState(id)?.lastReadAt ?? 0,
 });
 
+// ── Wire settings getter so relaunch picks up custom binary settings ────────
+launcher.setSettingsGetter(getSettings);
+
 // ── Restore persisted sessions from disk ────────────────────────────────────
 wsBridge.setStore(sessionStore);
 wsBridge.setRecorder(recorder);

@@ -35,6 +35,8 @@ describe("settings-manager", () => {
       pushoverDelaySeconds: 30,
       pushoverEnabled: true,
       pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       updatedAt: 0,
     });
   });
@@ -102,6 +104,8 @@ describe("settings-manager", () => {
       pushoverDelaySeconds: 30,
       pushoverEnabled: true,
       pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       updatedAt: 0,
     });
   });
@@ -207,6 +211,39 @@ describe("server ID", () => {
     const id = getServerId();
     setServerName("New Name");
     expect(getServerId()).toBe(id);
+  });
+});
+
+describe("CLI binary settings", () => {
+  it("defaults to empty strings", () => {
+    expect(getSettings().claudeBinary).toBe("");
+    expect(getSettings().codexBinary).toBe("");
+  });
+
+  it("updates and persists claudeBinary", () => {
+    const updated = updateSettings({ claudeBinary: "/usr/local/bin/claude" });
+    expect(updated.claudeBinary).toBe("/usr/local/bin/claude");
+
+    const saved = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(saved.claudeBinary).toBe("/usr/local/bin/claude");
+  });
+
+  it("updates and persists codexBinary", () => {
+    const updated = updateSettings({ codexBinary: "/opt/codex/bin/codex" });
+    expect(updated.codexBinary).toBe("/opt/codex/bin/codex");
+
+    const saved = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(saved.codexBinary).toBe("/opt/codex/bin/codex");
+  });
+
+  it("loads claudeBinary from existing settings file", () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ claudeBinary: "/custom/claude", updatedAt: 0 }),
+      "utf-8",
+    );
+    _resetForTest(settingsPath);
+    expect(getSettings().claudeBinary).toBe("/custom/claude");
   });
 });
 

@@ -23,6 +23,10 @@ export interface CompanionSettings {
   pushoverEnabled: boolean;
   /** External base URL for deep links in push notifications */
   pushoverBaseUrl: string;
+  /** Custom Claude Code CLI binary path or command (empty = auto-detect "claude") */
+  claudeBinary: string;
+  /** Custom Codex CLI binary path or command (empty = auto-detect "codex") */
+  codexBinary: string;
   updatedAt: number;
 }
 
@@ -40,6 +44,8 @@ let settings: CompanionSettings = {
   pushoverDelaySeconds: 30,
   pushoverEnabled: true,
   pushoverBaseUrl: "",
+  claudeBinary: "",
+  codexBinary: "",
   updatedAt: 0,
 };
 
@@ -52,6 +58,8 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     pushoverDelaySeconds: typeof raw?.pushoverDelaySeconds === "number" && raw.pushoverDelaySeconds >= 5 ? raw.pushoverDelaySeconds : 30,
     pushoverEnabled: typeof raw?.pushoverEnabled === "boolean" ? raw.pushoverEnabled : true,
     pushoverBaseUrl: typeof raw?.pushoverBaseUrl === "string" ? raw.pushoverBaseUrl : "",
+    claudeBinary: typeof raw?.claudeBinary === "string" ? raw.claudeBinary : "",
+    codexBinary: typeof raw?.codexBinary === "string" ? raw.codexBinary : "",
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -81,7 +89,7 @@ export function getSettings(): CompanionSettings {
 
 export function updateSettings(
   patch: Partial<Pick<CompanionSettings,
-    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl"
+    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary"
   >>,
 ): CompanionSettings {
   ensureLoaded();

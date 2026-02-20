@@ -54,6 +54,7 @@ vi.mock("./settings-manager.js", () => ({
     serverName: "",
     serverId: "",
     pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+    claudeBinary: "", codexBinary: "",
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -64,6 +65,8 @@ vi.mock("./settings-manager.js", () => ({
     pushoverDelaySeconds: patch.pushoverDelaySeconds ?? 30,
     pushoverEnabled: patch.pushoverEnabled ?? true,
     pushoverBaseUrl: patch.pushoverBaseUrl ?? "",
+    claudeBinary: patch.claudeBinary ?? "",
+    codexBinary: patch.codexBinary ?? "",
     updatedAt: Date.now(),
   })),
   getServerName: vi.fn(() => ""),
@@ -979,6 +982,7 @@ describe("GET /api/settings", () => {
       serverName: "",
       serverId: "",
       pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "http://localhost:3456",
+      claudeBinary: "", codexBinary: "",
       updatedAt: 123,
     });
 
@@ -993,6 +997,8 @@ describe("GET /api/settings", () => {
       pushoverEnabled: true,
       pushoverDelaySeconds: 60,
       pushoverBaseUrl: "http://localhost:3456",
+      claudeBinary: "",
+      codexBinary: "",
     });
   });
 
@@ -1001,6 +1007,7 @@ describe("GET /api/settings", () => {
       serverName: "",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "", codexBinary: "",
       updatedAt: 123,
     });
 
@@ -1015,6 +1022,8 @@ describe("GET /api/settings", () => {
       pushoverEnabled: true,
       pushoverDelaySeconds: 30,
       pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
     });
   });
 
@@ -1024,6 +1033,7 @@ describe("GET /api/settings", () => {
       serverName: "My Frontend",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "", codexBinary: "",
       updatedAt: 0,
     });
 
@@ -1042,6 +1052,7 @@ describe("PUT /api/settings", () => {
       serverName: "",
       serverId: "",
       pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "", codexBinary: "",
       updatedAt: 456,
     });
 
@@ -1058,6 +1069,8 @@ describe("PUT /api/settings", () => {
       pushoverDelaySeconds: 60,
       pushoverEnabled: undefined,
       pushoverBaseUrl: undefined,
+      claudeBinary: undefined,
+      codexBinary: undefined,
     });
     const json = await res.json();
     expect(json).toEqual({
@@ -1067,6 +1080,8 @@ describe("PUT /api/settings", () => {
       pushoverEnabled: true,
       pushoverDelaySeconds: 60,
       pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
     });
   });
 
@@ -1075,6 +1090,7 @@ describe("PUT /api/settings", () => {
       serverName: "",
       serverId: "",
       pushoverUserKey: "trimmed", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "", codexBinary: "",
       updatedAt: 789,
     });
 
@@ -1091,6 +1107,8 @@ describe("PUT /api/settings", () => {
       pushoverDelaySeconds: undefined,
       pushoverEnabled: undefined,
       pushoverBaseUrl: undefined,
+      claudeBinary: undefined,
+      codexBinary: undefined,
     });
   });
 
@@ -1099,6 +1117,7 @@ describe("PUT /api/settings", () => {
       serverName: "My Backend",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "", codexBinary: "",
       updatedAt: Date.now(),
     });
     vi.mocked(settingsManager.getServerName).mockReturnValue("My Backend");
@@ -1180,7 +1199,55 @@ describe("PUT /api/settings", () => {
       pushoverDelaySeconds: undefined,
       pushoverEnabled: false,
       pushoverBaseUrl: undefined,
+      claudeBinary: undefined,
+      codexBinary: undefined,
     });
+  });
+
+  it("updates claudeBinary setting", async () => {
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      serverName: "", serverId: "",
+      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      claudeBinary: "/usr/local/bin/claude", codexBinary: "",
+      updatedAt: Date.now(),
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claudeBinary: "/usr/local/bin/claude" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ claudeBinary: "/usr/local/bin/claude" }),
+    );
+    const json = await res.json();
+    expect(json.claudeBinary).toBe("/usr/local/bin/claude");
+  });
+
+  it("returns 400 for non-string claudeBinary", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claudeBinary: 123 }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "claudeBinary must be a string" });
+  });
+
+  it("returns 400 for non-string codexBinary", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codexBinary: true }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "codexBinary must be a string" });
   });
 });
 

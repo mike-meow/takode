@@ -318,12 +318,13 @@ export function createRoutes(
         ? (body.permissionMode || "suggest")
         : (askPermission ? "plan" : "bypassPermissions");
       const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+      const binarySettings = getSettings();
       const session = launcher.launch({
         model,
         permissionMode: initialPermissionMode,
         cwd,
-        claudeBinary: body.claudeBinary,
-        codexBinary: body.codexBinary,
+        claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
+        codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
         codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
         codexSandbox: backend === "codex" && body.codexInternetAccess === true
           ? "danger-full-access"
@@ -693,12 +694,13 @@ export function createRoutes(
           ? (body.permissionMode || "suggest")
           : (askPermission ? "plan" : "bypassPermissions");
         const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+        const streamBinarySettings = getSettings();
         const session = launcher.launch({
           model,
           permissionMode: initialPermissionMode,
           cwd,
-          claudeBinary: body.claudeBinary,
-          codexBinary: body.codexBinary,
+          claudeBinary: body.claudeBinary || streamBinarySettings.claudeBinary || undefined,
+          codexBinary: body.codexBinary || streamBinarySettings.codexBinary || undefined,
           codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
           codexSandbox: backend === "codex" && body.codexInternetAccess === true
             ? "danger-full-access"
@@ -1120,10 +1122,11 @@ export function createRoutes(
   // ─── Available backends ─────────────────────────────────────
 
   api.get("/backends", (c) => {
+    const s = getSettings();
     const backends: Array<{ id: string; name: string; available: boolean }> = [];
 
-    backends.push({ id: "claude", name: "Claude Code", available: resolveBinary("claude") !== null });
-    backends.push({ id: "codex", name: "Codex", available: resolveBinary("codex") !== null });
+    backends.push({ id: "claude", name: "Claude Code", available: resolveBinary(s.claudeBinary || "claude") !== null });
+    backends.push({ id: "codex", name: "Codex", available: resolveBinary(s.codexBinary || "codex") !== null });
 
     return c.json(backends);
   });
@@ -1599,6 +1602,8 @@ export function createRoutes(
       pushoverEnabled: settings.pushoverEnabled,
       pushoverDelaySeconds: settings.pushoverDelaySeconds,
       pushoverBaseUrl: settings.pushoverBaseUrl,
+      claudeBinary: settings.claudeBinary,
+      codexBinary: settings.codexBinary,
     });
   });
 
@@ -1622,11 +1627,18 @@ export function createRoutes(
     if (body.pushoverBaseUrl !== undefined && typeof body.pushoverBaseUrl !== "string") {
       return c.json({ error: "pushoverBaseUrl must be a string" }, 400);
     }
+    if (body.claudeBinary !== undefined && typeof body.claudeBinary !== "string") {
+      return c.json({ error: "claudeBinary must be a string" }, 400);
+    }
+    if (body.codexBinary !== undefined && typeof body.codexBinary !== "string") {
+      return c.json({ error: "codexBinary must be a string" }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
       "serverName",
       "pushoverUserKey", "pushoverApiToken", "pushoverDelaySeconds", "pushoverEnabled", "pushoverBaseUrl",
+      "claudeBinary", "codexBinary",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -1657,6 +1669,14 @@ export function createRoutes(
         typeof body.pushoverBaseUrl === "string"
           ? body.pushoverBaseUrl.trim()
           : undefined,
+      claudeBinary:
+        typeof body.claudeBinary === "string"
+          ? body.claudeBinary.trim()
+          : undefined,
+      codexBinary:
+        typeof body.codexBinary === "string"
+          ? body.codexBinary.trim()
+          : undefined,
     });
 
     return c.json({
@@ -1666,7 +1686,36 @@ export function createRoutes(
       pushoverEnabled: settings.pushoverEnabled,
       pushoverDelaySeconds: settings.pushoverDelaySeconds,
       pushoverBaseUrl: settings.pushoverBaseUrl,
+      claudeBinary: settings.claudeBinary,
+      codexBinary: settings.codexBinary,
     });
+  });
+
+  // ─── Binary test ──────────────────────────────────────────────────
+
+  api.post("/settings/test-binary", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const binary = typeof body.binary === "string" ? body.binary.trim() : "";
+    if (!binary) {
+      return c.json({ ok: false, error: "binary is required" }, 400);
+    }
+
+    const resolved = resolveBinary(binary);
+    if (!resolved) {
+      return c.json({ ok: false, error: `"${binary}" not found in PATH` }, 400);
+    }
+
+    try {
+      const version = execSync(`${resolved} --version`, {
+        encoding: "utf-8",
+        timeout: 5_000,
+        env: process.env,
+      }).trim();
+      return c.json({ ok: true, resolvedPath: resolved, version });
+    } catch {
+      // Binary exists but --version failed — still report it as found
+      return c.json({ ok: true, resolvedPath: resolved, version: "(version unknown)" });
+    }
   });
 
   // ─── Pushover test ──────────────────────────────────────────────────

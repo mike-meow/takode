@@ -143,6 +143,7 @@ export class CliLauncher {
   private recorder: RecorderManager | null = null;
   private onCodexAdapter: ((sessionId: string, adapter: CodexAdapter) => void) | null = null;
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
+  private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
 
   constructor(port: number) {
     this.port = port;
@@ -171,6 +172,11 @@ export class CliLauncher {
   /** Attach a recorder for raw message capture. */
   setRecorder(recorder: RecorderManager): void {
     this.recorder = recorder;
+  }
+
+  /** Attach a settings getter so relaunch() can read current binary settings. */
+  setSettingsGetter(fn: () => { claudeBinary: string; codexBinary: string }): void {
+    this.settingsGetter = fn;
   }
 
   /** Persist launcher state to disk. */
@@ -341,12 +347,14 @@ export class CliLauncher {
     info.state = "starting";
 
     const runtimeEnv = this.sessionEnvs.get(sessionId);
+    const binSettings = this.settingsGetter?.() ?? { claudeBinary: "", codexBinary: "" };
 
     if (info.backendType === "codex") {
       this.spawnCodex(sessionId, info, {
         model: info.model,
         permissionMode: info.permissionMode,
         cwd: info.cwd,
+        codexBinary: binSettings.codexBinary || undefined,
         codexSandbox: info.codexSandbox,
         codexInternetAccess: info.codexInternetAccess,
         containerId: info.containerId,
@@ -359,6 +367,7 @@ export class CliLauncher {
         model: info.model,
         permissionMode: info.permissionMode,
         cwd: info.cwd,
+        claudeBinary: binSettings.claudeBinary || undefined,
         resumeSessionId: info.cliSessionId,
         containerId: info.containerId,
         containerName: info.containerName,
