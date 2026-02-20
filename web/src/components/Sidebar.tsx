@@ -346,7 +346,7 @@ export function Sidebar() {
       createdAt: sdkInfo?.createdAt ?? 0,
       archived: sdkInfo?.archived ?? false,
       backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
-      repoRoot: bridgeState?.repo_root || "",
+      repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
       permCount: pendingPermissions.get(id)?.size ?? 0,
       cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
       cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,

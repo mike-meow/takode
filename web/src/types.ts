@@ -75,6 +75,8 @@ export interface SdkSessionInfo {
   cliConnected?: boolean;
   /** Whether this session uses a git worktree */
   isWorktree?: boolean;
+  /** The original repo root path (for worktree sessions) */
+  repoRoot?: string;
   /** Whether this is an assistant-mode session */
   isAssistant?: boolean;
   /** Server-authoritative attention state */

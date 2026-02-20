@@ -1036,11 +1036,75 @@ export function createRoutes(
     return c.json({ ok: true, worktree: worktreeResult });
   });
 
-  api.post("/sessions/:id/unarchive", (c) => {
+  api.post("/sessions/:id/unarchive", async (c) => {
     const id = c.req.param("id");
+    const info = launcher.getSession(id);
+    if (!info) return c.json({ error: "Session not found" }, 404);
+
     launcher.setArchived(id, false);
     sessionStore.setArchived(id, false);
-    return c.json({ ok: true });
+
+    // For worktree sessions: recreate the worktree if it was deleted during archiving
+    let worktreeRecreated = false;
+    if (info.isWorktree && info.repoRoot && info.branch) {
+      const cwdExists = existsSync(info.cwd);
+      if (!cwdExists) {
+        try {
+          const repoInfo = gitUtils.getRepoInfo(info.repoRoot);
+          if (repoInfo) {
+            const result = gitUtils.ensureWorktree(repoInfo.repoRoot, info.branch, {
+              baseBranch: repoInfo.defaultBranch,
+              createBranch: false,
+              forceNew: true,
+            });
+
+            // Update session metadata with the new worktree path
+            launcher.updateWorktree(id, {
+              cwd: result.worktreePath,
+              actualBranch: result.actualBranch,
+            });
+
+            // Re-register in worktree tracker
+            worktreeTracker.addMapping({
+              sessionId: id,
+              repoRoot: info.repoRoot,
+              branch: info.branch,
+              actualBranch: result.actualBranch,
+              worktreePath: result.worktreePath,
+              createdAt: Date.now(),
+            });
+
+            // Update bridge state so browsers get correct grouping and cwd
+            wsBridge.markWorktree(id, info.repoRoot, result.worktreePath, repoInfo.defaultBranch);
+
+            worktreeRecreated = true;
+            console.log(`[routes] Recreated worktree for unarchived session ${id}: ${result.worktreePath} (branch: ${result.actualBranch})`);
+          }
+        } catch (e) {
+          console.error(`[routes] Failed to recreate worktree for session ${id}:`, e);
+          return c.json({
+            ok: false,
+            error: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
+          }, 500);
+        }
+      } else {
+        // Worktree still exists — re-register tracker and bridge state
+        worktreeTracker.addMapping({
+          sessionId: id,
+          repoRoot: info.repoRoot,
+          branch: info.branch,
+          actualBranch: info.actualBranch || info.branch,
+          worktreePath: info.cwd,
+          createdAt: Date.now(),
+        });
+        wsBridge.markWorktree(id, info.repoRoot, info.cwd);
+      }
+    }
+
+    // Auto-relaunch the CLI so the session is immediately usable
+    const relaunchResult = await launcher.relaunch(id);
+
+    return c.json({ ok: true, worktreeRecreated, relaunch: relaunchResult });
   });
 
   // ─── Recording Management ──────────────────────────────────

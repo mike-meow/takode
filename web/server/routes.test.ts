@@ -107,6 +107,7 @@ function createMockLauncher() {
     listSessions: vi.fn(() => []),
     getSession: vi.fn(),
     setArchived: vi.fn(),
+    updateWorktree: vi.fn(),
     removeSession: vi.fn(),
   } as any;
 }
@@ -833,14 +834,28 @@ describe("POST /api/sessions/:id/archive", () => {
 });
 
 describe("POST /api/sessions/:id/unarchive", () => {
-  it("unarchives the session", async () => {
+  it("unarchives a non-worktree session and auto-relaunches", async () => {
+    // Non-worktree session: no worktree recreation needed
+    launcher.getSession.mockReturnValue({ sessionId: "s1", state: "exited", cwd: "/test" });
+
     const res = await app.request("/api/sessions/s1/unarchive", { method: "POST" });
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ ok: true });
+    expect(json.ok).toBe(true);
+    expect(json.worktreeRecreated).toBe(false);
+    expect(json.relaunch).toEqual({ ok: true });
     expect(launcher.setArchived).toHaveBeenCalledWith("s1", false);
     expect(sessionStore.setArchived).toHaveBeenCalledWith("s1", false);
+    expect(launcher.relaunch).toHaveBeenCalledWith("s1");
+  });
+
+  it("returns 404 when session not found", async () => {
+    launcher.getSession.mockReturnValue(undefined);
+
+    const res = await app.request("/api/sessions/unknown/unarchive", { method: "POST" });
+
+    expect(res.status).toBe(404);
   });
 });
 

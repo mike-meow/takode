@@ -985,6 +985,19 @@ ${MARKER_END}`;
   }
 
   /**
+   * Update worktree-related fields on a session (e.g. after recreating a
+   * worktree for an unarchived session).
+   */
+  updateWorktree(sessionId: string, updates: { cwd: string; actualBranch: string }): void {
+    const info = this.sessions.get(sessionId);
+    if (info) {
+      info.cwd = updates.cwd;
+      info.actualBranch = updates.actualBranch;
+      this.persistState();
+    }
+  }
+
+  /**
    * Set the archived flag on a session.
    */
   setArchived(sessionId: string, archived: boolean): void {
