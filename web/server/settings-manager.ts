@@ -95,9 +95,13 @@ export function updateSettings(
   >>,
 ): CompanionSettings {
   ensureLoaded();
+  // Filter out undefined values so they don't overwrite existing settings
+  const defined = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  );
   settings = {
     ...settings,
-    ...patch,
+    ...defined,
     openrouterModel: (patch.openrouterModel && patch.openrouterModel.trim()) || settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
     updatedAt: Date.now(),
   };

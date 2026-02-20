@@ -94,6 +94,15 @@ describe("settings-manager", () => {
     expect(updated.openrouterModel).toBe("openai/gpt-4o-mini");
   });
 
+  it("ignores undefined patch values without overwriting existing fields", () => {
+    // Simulates saving Pushover-only fields — openrouterApiKey arrives as undefined
+    updateSettings({ openrouterApiKey: "or-key" });
+    const updated = updateSettings({ pushoverUserKey: "po-user" } as Parameters<typeof updateSettings>[0]);
+
+    expect(updated.openrouterApiKey).toBe("or-key");
+    expect(updated.pushoverUserKey).toBe("po-user");
+  });
+
   it("uses default model when empty model is provided", () => {
     const updated = updateSettings({ openrouterModel: "" });
     expect(updated.openrouterModel).toBe(DEFAULT_OPENROUTER_MODEL);
