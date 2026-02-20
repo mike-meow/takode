@@ -20,7 +20,6 @@ import { containerManager } from "./container-manager.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { TerminalManager } from "./terminal-manager.js";
-import { generateSessionTitle } from "./auto-namer.js";
 import { generateFirstName, evaluateSessionName } from "./session-namer.js";
 import * as sessionNames from "./session-names.js";
 import { getSettings, getServerName } from "./settings-manager.js";
@@ -127,23 +126,6 @@ wsBridge.onPermissionModeChangedCallback(async (sessionId, newMode) => {
     }
   } finally {
     setTimeout(() => relaunchingSet.delete(sessionId), 5000);
-  }
-});
-
-// Auto-generate session title after first turn completes (OpenRouter fallback)
-wsBridge.onFirstTurnCompletedCallback(async (sessionId, firstUserMessage) => {
-  // Don't overwrite a name that was already set (manual rename, prior auto-name, or assistant)
-  if (sessionNames.getName(sessionId)) return;
-  if (!getSettings().openrouterApiKey.trim()) return;
-  const info = launcher.getSession(sessionId);
-  const model = info?.model || "claude-sonnet-4-5-20250929";
-  console.log(`[server] Auto-naming session ${sessionId} via OpenRouter with model ${model}...`);
-  const title = await generateSessionTitle(firstUserMessage, model);
-  // Re-check: a manual rename may have occurred while we were generating
-  if (title && !sessionNames.getName(sessionId)) {
-    console.log(`[server] Auto-named session ${sessionId}: "${title}"`);
-    sessionNames.setName(sessionId, title);
-    wsBridge.broadcastNameUpdate(sessionId, title);
   }
 });
 

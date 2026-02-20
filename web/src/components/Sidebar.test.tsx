@@ -20,7 +20,7 @@ const mockApi = {
   deleteSession: vi.fn().mockResolvedValue({}),
   archiveSession: vi.fn().mockResolvedValue({}),
   unarchiveSession: vi.fn().mockResolvedValue({}),
-  getSettings: vi.fn().mockResolvedValue({ openrouterApiKeyConfigured: false, openrouterModel: "openrouter/free", serverName: "" }),
+  getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
 };
 
 vi.mock("../api.js", () => ({

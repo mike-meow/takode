@@ -201,8 +201,6 @@ export interface UsageLimits {
 }
 
 export interface AppSettings {
-  openrouterApiKeyConfigured: boolean;
-  openrouterModel: string;
   serverName: string;
   serverId: string;
   pushoverConfigured: boolean;
@@ -450,7 +448,7 @@ export const api = {
   // Settings
   getSettings: () => get<AppSettings>("/settings"),
   updateSettings: (data: {
-    openrouterApiKey?: string; openrouterModel?: string; serverName?: string;
+    serverName?: string;
     pushoverUserKey?: string; pushoverApiToken?: string; pushoverDelaySeconds?: number;
     pushoverEnabled?: boolean; pushoverBaseUrl?: string;
   }) => put<AppSettings>("/settings", data),

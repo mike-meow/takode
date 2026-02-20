@@ -50,18 +50,13 @@ vi.mock("./session-names.js", () => ({
 }));
 
 vi.mock("./settings-manager.js", () => ({
-  DEFAULT_OPENROUTER_MODEL: "openrouter/free",
   getSettings: vi.fn(() => ({
-    openrouterApiKey: "",
-    openrouterModel: "openrouter/free",
     serverName: "",
     serverId: "",
     pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
-    openrouterApiKey: patch.openrouterApiKey ?? "",
-    openrouterModel: patch.openrouterModel ?? "openrouter/free",
     serverName: "",
     serverId: "",
     pushoverUserKey: patch.pushoverUserKey ?? "",
@@ -976,13 +971,11 @@ describe("GET /api/health", () => {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 describe("GET /api/settings", () => {
-  it("returns settings status without exposing the key", async () => {
+  it("returns settings with pushover status", async () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
-      openrouterApiKey: "or-secret",
-      openrouterModel: "openrouter/free",
       serverName: "",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "http://localhost:3456",
       updatedAt: 123,
     });
 
@@ -991,21 +984,17 @@ describe("GET /api/settings", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({
-      openrouterApiKeyConfigured: true,
-      openrouterModel: "openrouter/free",
       serverName: "",
       serverId: "test-server-id",
-      pushoverConfigured: false,
+      pushoverConfigured: true,
       pushoverEnabled: true,
-      pushoverDelaySeconds: 30,
-      pushoverBaseUrl: "",
+      pushoverDelaySeconds: 60,
+      pushoverBaseUrl: "http://localhost:3456",
     });
   });
 
-  it("reports key as not configured when empty", async () => {
+  it("reports pushover as not configured when keys are empty", async () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
-      openrouterApiKey: "",
-      openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
@@ -1017,8 +1006,6 @@ describe("GET /api/settings", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({
-      openrouterApiKeyConfigured: false,
-      openrouterModel: "openai/gpt-4o-mini",
       serverName: "",
       serverId: "test-server-id",
       pushoverConfigured: false,
@@ -1031,8 +1018,6 @@ describe("GET /api/settings", () => {
   it("includes serverName when configured", async () => {
     vi.mocked(settingsManager.getServerName).mockReturnValue("My Frontend");
     vi.mocked(settingsManager.getSettings).mockReturnValue({
-      openrouterApiKey: "",
-      openrouterModel: "openrouter/free",
       serverName: "My Frontend",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
@@ -1049,94 +1034,56 @@ describe("GET /api/settings", () => {
 });
 
 describe("PUT /api/settings", () => {
-  it("updates settings", async () => {
+  it("updates pushover settings", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      openrouterApiKey: "new-key",
-      openrouterModel: "openrouter/free",
       serverName: "",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "",
       updatedAt: 456,
     });
 
     const res = await app.request("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openrouterApiKey: "new-key" }),
+      body: JSON.stringify({ pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60 }),
     });
 
     expect(res.status).toBe(200);
     expect(settingsManager.updateSettings).toHaveBeenCalledWith({
-      openrouterApiKey: "new-key",
-      openrouterModel: undefined,
-      pushoverUserKey: undefined,
-      pushoverApiToken: undefined,
-      pushoverDelaySeconds: undefined,
+      pushoverUserKey: "u123",
+      pushoverApiToken: "t456",
+      pushoverDelaySeconds: 60,
       pushoverEnabled: undefined,
       pushoverBaseUrl: undefined,
     });
     const json = await res.json();
     expect(json).toEqual({
-      openrouterApiKeyConfigured: true,
-      openrouterModel: "openrouter/free",
       serverName: "",
       serverId: "test-server-id",
-      pushoverConfigured: false,
+      pushoverConfigured: true,
       pushoverEnabled: true,
-      pushoverDelaySeconds: 30,
+      pushoverDelaySeconds: 60,
       pushoverBaseUrl: "",
     });
   });
 
-  it("trims key and falls back to default model for blank value", async () => {
+  it("trims pushover keys", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      openrouterApiKey: "trimmed-key",
-      openrouterModel: "openrouter/free",
       serverName: "",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
+      pushoverUserKey: "trimmed", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
       updatedAt: 789,
     });
 
     const res = await app.request("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openrouterApiKey: "  trimmed-key  ", openrouterModel: "   " }),
+      body: JSON.stringify({ pushoverUserKey: "  trimmed  " }),
     });
 
     expect(res.status).toBe(200);
     expect(settingsManager.updateSettings).toHaveBeenCalledWith({
-      openrouterApiKey: "trimmed-key",
-      openrouterModel: "openrouter/free",
-      pushoverUserKey: undefined,
-      pushoverApiToken: undefined,
-      pushoverDelaySeconds: undefined,
-      pushoverEnabled: undefined,
-      pushoverBaseUrl: undefined,
-    });
-  });
-
-  it("updates only model without overriding key", async () => {
-    vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      openrouterApiKey: "existing-key",
-      openrouterModel: "openai/gpt-4o-mini",
-      serverName: "",
-      serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      updatedAt: 999,
-    });
-
-    const res = await app.request("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openrouterModel: "openai/gpt-4o-mini" }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(settingsManager.updateSettings).toHaveBeenCalledWith({
-      openrouterApiKey: undefined,
-      openrouterModel: "openai/gpt-4o-mini",
-      pushoverUserKey: undefined,
+      pushoverUserKey: "trimmed",
       pushoverApiToken: undefined,
       pushoverDelaySeconds: undefined,
       pushoverEnabled: undefined,
@@ -1146,8 +1093,6 @@ describe("PUT /api/settings", () => {
 
   it("persists serverName via setServerName when provided", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      openrouterApiKey: "",
-      openrouterModel: "openrouter/free",
       serverName: "My Backend",
       serverId: "",
       pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
@@ -1181,28 +1126,28 @@ describe("PUT /api/settings", () => {
     expect(json).toEqual({ error: "serverName must be a string" });
   });
 
-  it("returns 400 for non-string model", async () => {
+  it("returns 400 for non-string pushoverUserKey", async () => {
     const res = await app.request("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openrouterApiKey: "new-key", openrouterModel: 123 }),
+      body: JSON.stringify({ pushoverUserKey: 123 }),
     });
 
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json).toEqual({ error: "openrouterModel must be a string" });
+    expect(json).toEqual({ error: "pushoverUserKey must be a string" });
   });
 
-  it("returns 400 for non-string key", async () => {
+  it("returns 400 for invalid pushoverDelaySeconds", async () => {
     const res = await app.request("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openrouterApiKey: 123 }),
+      body: JSON.stringify({ pushoverDelaySeconds: 2 }),
     });
 
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json).toEqual({ error: "openrouterApiKey must be a string" });
+    expect(json).toEqual({ error: "pushoverDelaySeconds must be a number between 5 and 300" });
   });
 
   it("returns 400 when no settings fields are provided", async () => {
@@ -1215,6 +1160,24 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json).toEqual({ error: "At least one settings field is required" });
+  });
+
+  it("ignores unknown fields like openrouterApiKey", async () => {
+    // OpenRouter fields were removed — they should not cause errors but are ignored
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ openrouterApiKey: "some-key", pushoverEnabled: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith({
+      pushoverUserKey: undefined,
+      pushoverApiToken: undefined,
+      pushoverDelaySeconds: undefined,
+      pushoverEnabled: false,
+      pushoverBaseUrl: undefined,
+    });
   });
 });
 

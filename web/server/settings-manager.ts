@@ -8,11 +8,7 @@ import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-export const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
-
 export interface CompanionSettings {
-  openrouterApiKey: string;
-  openrouterModel: string;
   /** Display name for this server instance */
   serverName: string;
   /** Stable unique identifier for this server instance (auto-generated UUID) */
@@ -35,8 +31,6 @@ const DEFAULT_PATH = join(homedir(), ".companion", "settings.json");
 let loaded = false;
 let filePath = DEFAULT_PATH;
 let settings: CompanionSettings = {
-  openrouterApiKey: "",
-  openrouterModel: DEFAULT_OPENROUTER_MODEL,
   serverName: "",
   serverId: "",
   pushoverUserKey: "",
@@ -49,11 +43,6 @@ let settings: CompanionSettings = {
 
 function normalize(raw: Partial<CompanionSettings> | null | undefined): CompanionSettings {
   return {
-    openrouterApiKey: typeof raw?.openrouterApiKey === "string" ? raw.openrouterApiKey : "",
-    openrouterModel:
-      typeof raw?.openrouterModel === "string" && raw.openrouterModel.trim()
-        ? raw.openrouterModel
-        : DEFAULT_OPENROUTER_MODEL,
     serverName: typeof raw?.serverName === "string" ? raw.serverName : "",
     serverId: typeof raw?.serverId === "string" ? raw.serverId : "",
     pushoverUserKey: typeof raw?.pushoverUserKey === "string" ? raw.pushoverUserKey : "",
@@ -90,7 +79,6 @@ export function getSettings(): CompanionSettings {
 
 export function updateSettings(
   patch: Partial<Pick<CompanionSettings,
-    "openrouterApiKey" | "openrouterModel" |
     "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl"
   >>,
 ): CompanionSettings {
@@ -102,7 +90,6 @@ export function updateSettings(
   settings = {
     ...settings,
     ...defined,
-    openrouterModel: (patch.openrouterModel && patch.openrouterModel.trim()) || settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
     updatedAt: Date.now(),
   };
   persist();

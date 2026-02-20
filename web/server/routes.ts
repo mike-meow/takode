@@ -21,7 +21,7 @@ import { containerManager, ContainerManager, type ContainerConfig, type Containe
 import type { CreationStepId } from "./session-types.js";
 import { hasContainerClaudeAuth } from "./claude-container-auth.js";
 import { hasContainerCodexAuth } from "./codex-container-auth.js";
-import { DEFAULT_OPENROUTER_MODEL, getSettings, updateSettings, getServerName, setServerName, getServerId } from "./settings-manager.js";
+import { getSettings, updateSettings, getServerName, setServerName, getServerId } from "./settings-manager.js";
 import { getUsageLimits } from "./usage-limits.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
@@ -1572,8 +1572,6 @@ export function createRoutes(
   api.get("/settings", (c) => {
     const settings = getSettings();
     return c.json({
-      openrouterApiKeyConfigured: !!settings.openrouterApiKey.trim(),
-      openrouterModel: settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
       serverName: getServerName(),
       serverId: getServerId(),
       pushoverConfigured: !!(settings.pushoverUserKey.trim() && settings.pushoverApiToken.trim()),
@@ -1585,12 +1583,6 @@ export function createRoutes(
 
   api.put("/settings", async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    if (body.openrouterApiKey !== undefined && typeof body.openrouterApiKey !== "string") {
-      return c.json({ error: "openrouterApiKey must be a string" }, 400);
-    }
-    if (body.openrouterModel !== undefined && typeof body.openrouterModel !== "string") {
-      return c.json({ error: "openrouterModel must be a string" }, 400);
-    }
     if (body.serverName !== undefined && typeof body.serverName !== "string") {
       return c.json({ error: "serverName must be a string" }, 400);
     }
@@ -1612,7 +1604,7 @@ export function createRoutes(
 
     // Check that at least one known field is present
     const knownFields = [
-      "openrouterApiKey", "openrouterModel", "serverName",
+      "serverName",
       "pushoverUserKey", "pushoverApiToken", "pushoverDelaySeconds", "pushoverEnabled", "pushoverBaseUrl",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
@@ -1624,14 +1616,6 @@ export function createRoutes(
     }
 
     const settings = updateSettings({
-      openrouterApiKey:
-        typeof body.openrouterApiKey === "string"
-          ? body.openrouterApiKey.trim()
-          : undefined,
-      openrouterModel:
-        typeof body.openrouterModel === "string"
-          ? (body.openrouterModel.trim() || DEFAULT_OPENROUTER_MODEL)
-          : undefined,
       pushoverUserKey:
         typeof body.pushoverUserKey === "string"
           ? body.pushoverUserKey.trim()
@@ -1655,8 +1639,6 @@ export function createRoutes(
     });
 
     return c.json({
-      openrouterApiKeyConfigured: !!settings.openrouterApiKey.trim(),
-      openrouterModel: settings.openrouterModel || DEFAULT_OPENROUTER_MODEL,
       serverName: getServerName(),
       serverId: getServerId(),
       pushoverConfigured: !!(settings.pushoverUserKey.trim() && settings.pushoverApiToken.trim()),

@@ -229,7 +229,7 @@ describe("updateEnv", () => {
 // ===========================================================================
 describe("settings", () => {
   it("sends GET to /api/settings", async () => {
-    const settings = { openrouterApiKeyConfigured: true, openrouterModel: "openrouter/free" };
+    const settings = { serverName: "", serverId: "test-id" };
     mockFetch.mockResolvedValueOnce(mockResponse(settings));
 
     const result = await api.getSettings();
@@ -240,15 +240,15 @@ describe("settings", () => {
   });
 
   it("sends PUT to /api/settings", async () => {
-    const settings = { openrouterApiKeyConfigured: true, openrouterModel: "openrouter/free" };
+    const settings = { serverName: "test", serverId: "test-id" };
     mockFetch.mockResolvedValueOnce(mockResponse(settings));
 
-    await api.updateSettings({ openrouterApiKey: "or-key" });
+    await api.updateSettings({ serverName: "test" });
 
     const [url, opts] = mockFetch.mock.calls[0];
     expect(url).toBe("/api/settings");
     expect(opts.method).toBe("PUT");
-    expect(JSON.parse(opts.body)).toEqual({ openrouterApiKey: "or-key" });
+    expect(JSON.parse(opts.body)).toEqual({ serverName: "test" });
   });
 });
 
