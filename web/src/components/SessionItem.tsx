@@ -149,7 +149,7 @@ export function SessionItem({
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            {/* Row 1: Name + Backend pill */}
+            {/* Row 1: Name only — full width for title */}
             <div className="flex items-center gap-1.5">
               {isEditing ? (
                 <input
@@ -172,68 +172,70 @@ export function SessionItem({
                   className="text-[13px] font-medium flex-1 min-w-0 text-cc-fg bg-transparent border border-cc-border rounded px-1 py-0 outline-none focus:border-cc-primary/50"
                 />
               ) : (
-                <>
-                  <span
-                    className={`text-[13px] truncate text-cc-fg leading-snug ${
-                      attention ? "font-semibold" : "font-medium"
-                    } ${isRecentlyRenamed ? "animate-name-appear" : ""}`}
-                    onAnimationEnd={() => onClearRecentlyRenamed(s.id)}
-                  >
-                    {label}
-                  </span>
-                  <img
-                    src={backendLogo}
-                    alt={backendAlt}
-                    className="w-3.5 h-3.5 shrink-0 object-contain"
-                  />
-                  {/* Shield icon: ask permission status (Claude only) */}
-                  {s.backendType !== "codex" && s.askPermission === true && (
-                    <span title="Permissions: asking before tool use">
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-primary">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
-                  )}
-                  {s.backendType !== "codex" && s.askPermission === false && (
-                    <span title="Permissions: auto-approving tool use">
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3 h-3 shrink-0 text-cc-muted/50">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      </svg>
-                    </span>
-                  )}
-                  {s.isContainerized && (
-                    <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-blue-400 bg-blue-500/10">
-                      Docker
-                    </span>
-                  )}
-                  {s.cronJobId && (
-                    <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-violet-500 bg-violet-500/10">
-                      Cron
-                    </span>
-                  )}
-                </>
+                <span
+                  className={`text-[13px] truncate text-cc-fg leading-snug ${
+                    attention ? "font-semibold" : "font-medium"
+                  } ${isRecentlyRenamed ? "animate-name-appear" : ""}`}
+                  onAnimationEnd={() => onClearRecentlyRenamed(s.id)}
+                >
+                  {label}
+                </span>
               )}
             </div>
 
             {/* Row 2: Preview — active task (if newer) or last user message */}
             {!isEditing && <SessionPreviewRow sessionId={s.id} userPreview={sessionPreview} />}
 
-            {/* Row 3: Branch (directory already shown in group header) */}
-            {s.gitBranch && (
-              <div className="flex items-center gap-1 mt-0.5 text-[10.5px] text-cc-muted leading-tight truncate">
-                {s.isWorktree ? (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
-                    <path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v5.256a2.25 2.25 0 101.5 0V5.372zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zm7.5-9.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V7A2.5 2.5 0 0110 9.5H6a1 1 0 000 2h4a2.5 2.5 0 012.5 2.5v.628a2.25 2.25 0 11-1.5 0V14a1 1 0 00-1-1H6a2.5 2.5 0 01-2.5-2.5V10a2.5 2.5 0 012.5-2.5h4a1 1 0 001-1V5.372a2.25 2.25 0 01-1.5-2.122z" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
-                    <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
-                  </svg>
+            {/* Row 3: Metadata — backend, permissions, branch, badges */}
+            {!isEditing && (
+              <div className="flex items-center gap-1 mt-0.5 text-[10.5px] text-cc-muted leading-tight">
+                <img
+                  src={backendLogo}
+                  alt={backendAlt}
+                  className="w-3 h-3 shrink-0 object-contain opacity-60"
+                />
+                {/* Shield icon: ask permission status (Claude only) */}
+                {s.backendType !== "codex" && s.askPermission === true && (
+                  <span title="Permissions: asking before tool use">
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 text-cc-primary">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
                 )}
-                <span className="truncate">{s.gitBranch}</span>
-                {s.isWorktree && (
-                  <span className="text-[9px] bg-cc-primary/10 text-cc-primary px-1 rounded shrink-0">wt</span>
+                {s.backendType !== "codex" && s.askPermission === false && (
+                  <span title="Permissions: auto-approving tool use">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-2.5 h-2.5 shrink-0 text-cc-muted/50">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                    </svg>
+                  </span>
+                )}
+                {s.isContainerized && (
+                  <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-blue-400 bg-blue-500/10">
+                    Docker
+                  </span>
+                )}
+                {s.cronJobId && (
+                  <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-violet-500 bg-violet-500/10">
+                    Cron
+                  </span>
+                )}
+                {s.gitBranch && (
+                  <>
+                    {s.isWorktree ? (
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                        <path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v5.256a2.25 2.25 0 101.5 0V5.372zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zm7.5-9.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V7A2.5 2.5 0 0110 9.5H6a1 1 0 000 2h4a2.5 2.5 0 012.5 2.5v.628a2.25 2.25 0 11-1.5 0V14a1 1 0 00-1-1H6a2.5 2.5 0 01-2.5-2.5V10a2.5 2.5 0 012.5-2.5h4a1 1 0 001-1V5.372a2.25 2.25 0 01-1.5-2.122z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                        <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
+                      </svg>
+                    )}
+                    <span className="truncate">{s.gitBranch}</span>
+                    {s.isWorktree && (
+                      <span className="text-[9px] bg-cc-primary/10 text-cc-primary px-1 rounded shrink-0">wt</span>
+                    )}
+                  </>
                 )}
               </div>
             )}
