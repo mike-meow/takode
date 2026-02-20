@@ -16,6 +16,7 @@ import * as envManager from "./env-manager.js";
 import * as cronStore from "./cron-store.js";
 import * as gitUtils from "./git-utils.js";
 import * as sessionNames from "./session-names.js";
+import { getNamerLogIndex, getNamerLogEntry } from "./session-namer.js";
 import { containerManager, ContainerManager, type ContainerConfig, type ContainerInfo } from "./container-manager.js";
 import type { CreationStepId } from "./session-types.js";
 import { hasContainerClaudeAuth } from "./claude-container-auth.js";
@@ -820,6 +821,7 @@ export function createRoutes(
     const session = launcher.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
     sessionNames.setName(id, body.name.trim());
+    wsBridge.markManuallyNamed(id);
     wsBridge.broadcastSessionUpdate(id, { name: body.name.trim() });
     return c.json({ ok: true, name: body.name.trim() });
   });
@@ -2079,6 +2081,20 @@ export function createRoutes(
     }
     return { cleaned: result.removed, path: mapping.worktreePath };
   }
+
+  // ─── Session Namer Debug Logs ─────────────────────────────────────
+
+  api.get("/namer-logs", (c) => {
+    return c.json(getNamerLogIndex());
+  });
+
+  api.get("/namer-logs/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    if (Number.isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const entry = getNamerLogEntry(id);
+    if (!entry) return c.json({ error: "Not found" }, 404);
+    return c.json(entry);
+  });
 
   return api;
 }

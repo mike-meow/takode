@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useStore } from "../store.js";
+import { NamerDebugPanel } from "./NamerDebugPanel.js";
 
 import { navigateToSession, navigateToMostRecentSession } from "../utils/routing.js";
 
@@ -445,6 +446,10 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
           >
             Open Environments Page
           </button>
+        </div>
+
+        <div className="mt-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5">
+          <NamerDebugPanel />
         </div>
       </div>
     </div>

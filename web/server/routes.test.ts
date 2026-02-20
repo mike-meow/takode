@@ -128,6 +128,7 @@ function createMockBridge() {
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),
     persistSessionSync: vi.fn(),
+    markManuallyNamed: vi.fn(),
   } as any;
 }
 

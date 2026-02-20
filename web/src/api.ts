@@ -263,6 +263,22 @@ export interface CronJobExecution {
   costUsd?: number;
 }
 
+// ─── Namer Log Types ────────────────────────────────────────────────────────
+
+export interface NamerLogIndexEntry {
+  id: number;
+  sessionId: string;
+  timestamp: number;
+  parsed: { action: string; title?: string } | null;
+  currentName: string | null;
+  durationMs: number;
+}
+
+export interface NamerLogEntry extends NamerLogIndexEntry {
+  prompt: string;
+  rawResponse: string | null;
+}
+
 // ─── SSE Session Creation ────────────────────────────────────────────────────
 
 export interface CreationProgressEvent {
@@ -556,4 +572,10 @@ export const api = {
   // Cross-session messaging
   sendSessionMessage: (sessionId: string, content: string) =>
     post<{ ok: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/message`, { content }),
+
+  // Namer debug logs
+  getNamerLogs: () =>
+    get<NamerLogIndexEntry[]>("/namer-logs"),
+  getNamerLogEntry: (id: number) =>
+    get<NamerLogEntry>(`/namer-logs/${id}`),
 };

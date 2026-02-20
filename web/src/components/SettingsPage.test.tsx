@@ -32,12 +32,16 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
 const mockApi = {
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  getNamerLogs: vi.fn(),
+  getNamerLogEntry: vi.fn(),
 };
 
 vi.mock("../api.js", () => ({
   api: {
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
     updateSettings: (...args: unknown[]) => mockApi.updateSettings(...args),
+    getNamerLogs: (...args: unknown[]) => mockApi.getNamerLogs(...args),
+    getNamerLogEntry: (...args: unknown[]) => mockApi.getNamerLogEntry(...args),
   },
 }));
 
@@ -63,6 +67,7 @@ beforeEach(() => {
     openrouterModel: "openrouter/free",
     serverName: "",
   });
+  mockApi.getNamerLogs.mockResolvedValue([]);
 });
 
 describe("SettingsPage", () => {
