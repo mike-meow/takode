@@ -877,6 +877,8 @@ export class WsBridge {
     }
     session.pendingPermissions.clear();
     session.assistantAccumulator.clear();
+    // Flush cleared permissions to disk so they don't survive a server restart
+    this.persistSession(session);
   }
 
   // ── Browser WebSocket handlers ──────────────────────────────────────────
@@ -1596,6 +1598,32 @@ export class WsBridge {
     const lastAckSeq = Number.isFinite(lastSeq) ? Math.max(0, Math.floor(lastSeq)) : 0;
     data.lastAckSeq = lastAckSeq;
 
+    // Clean up stale pendingPermissions that were already resolved in
+    // messageHistory. This handles the case where the server crashed before
+    // the debounced persist flushed the removal.
+    const resolvedIds = new Set<string>();
+    for (const msg of session.messageHistory) {
+      if (msg.type === "permission_approved" || msg.type === "permission_denied") {
+        const rec = msg as Record<string, unknown>;
+        // request_id may be a direct field, or embedded in id as "approval-{rid}" / "denial-{rid}"
+        const rid = rec.request_id as string | undefined;
+        if (rid) {
+          resolvedIds.add(rid);
+        } else if (typeof rec.id === "string") {
+          const m = (rec.id as string).match(/^(?:approval|denial)-(.+)$/);
+          if (m) resolvedIds.add(m[1]);
+        }
+      }
+    }
+    let cleanedStale = false;
+    for (const reqId of session.pendingPermissions.keys()) {
+      if (resolvedIds.has(reqId)) {
+        session.pendingPermissions.delete(reqId);
+        cleanedStale = true;
+      }
+    }
+    if (cleanedStale) this.persistSession(session);
+
     // Fresh connection (no prior state) — send full history + pending permissions.
     // This is the single source of truth for initial state delivery (previously
     // also done in handleBrowserOpen, causing double delivery).
@@ -2042,6 +2070,7 @@ export class WsBridge {
       || msg.type === "user_message"
       || msg.type === "error"
       || msg.type === "tool_result_preview"
+      || msg.type === "permission_request"
       || msg.type === "permission_denied"
       || msg.type === "permission_approved"
       || msg.type === "compact_boundary"

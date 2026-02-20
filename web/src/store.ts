@@ -712,15 +712,30 @@ export const useStore = create<AppState>((set) => ({
         updated.delete(requestId);
         pendingPermissions.set(sessionId, updated);
 
-        // Resume streaming timer when no more pending permissions
-        if (updated.size === 0 && s.streamingPauseStartedAt.has(sessionId)) {
-          const pauseStart = s.streamingPauseStartedAt.get(sessionId)!;
-          const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
-          const streamingPausedDuration = new Map(s.streamingPausedDuration);
-          streamingPauseStartedAt.delete(sessionId);
-          const prev = streamingPausedDuration.get(sessionId) || 0;
-          streamingPausedDuration.set(sessionId, prev + (Date.now() - pauseStart));
-          return { pendingPermissions, streamingPauseStartedAt, streamingPausedDuration };
+        if (updated.size === 0) {
+          // Clear "action" attention when all permissions are resolved — the user
+          // no longer needs to act on this session for permission approvals.
+          const result: Record<string, unknown> = { pendingPermissions };
+          if (s.sessionAttention.get(sessionId) === "action") {
+            const sessionAttention = new Map(s.sessionAttention);
+            sessionAttention.set(sessionId, null);
+            persistSessionAttention(sessionAttention);
+            result.sessionAttention = sessionAttention;
+          }
+
+          // Resume streaming timer when no more pending permissions
+          if (s.streamingPauseStartedAt.has(sessionId)) {
+            const pauseStart = s.streamingPauseStartedAt.get(sessionId)!;
+            const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
+            const streamingPausedDuration = new Map(s.streamingPausedDuration);
+            streamingPauseStartedAt.delete(sessionId);
+            const prev = streamingPausedDuration.get(sessionId) || 0;
+            streamingPausedDuration.set(sessionId, prev + (Date.now() - pauseStart));
+            result.streamingPauseStartedAt = streamingPauseStartedAt;
+            result.streamingPausedDuration = streamingPausedDuration;
+          }
+
+          return result;
         }
       }
       return { pendingPermissions };
@@ -730,6 +745,14 @@ export const useStore = create<AppState>((set) => ({
     set((s) => {
       const pendingPermissions = new Map(s.pendingPermissions);
       pendingPermissions.delete(sessionId);
+      const result: Record<string, unknown> = { pendingPermissions };
+      // Clear "action" attention when all permissions are cleared
+      if (s.sessionAttention.get(sessionId) === "action") {
+        const sessionAttention = new Map(s.sessionAttention);
+        sessionAttention.set(sessionId, null);
+        persistSessionAttention(sessionAttention);
+        result.sessionAttention = sessionAttention;
+      }
       // Also resume streaming timer if paused
       if (s.streamingPauseStartedAt.has(sessionId)) {
         const pauseStart = s.streamingPauseStartedAt.get(sessionId)!;
@@ -738,9 +761,10 @@ export const useStore = create<AppState>((set) => ({
         streamingPauseStartedAt.delete(sessionId);
         const prev = streamingPausedDuration.get(sessionId) || 0;
         streamingPausedDuration.set(sessionId, prev + (Date.now() - pauseStart));
-        return { pendingPermissions, streamingPauseStartedAt, streamingPausedDuration };
+        result.streamingPauseStartedAt = streamingPauseStartedAt;
+        result.streamingPausedDuration = streamingPausedDuration;
       }
-      return { pendingPermissions };
+      return result;
     }),
 
   pauseStreamingTimer: (sessionId) =>

@@ -794,6 +794,11 @@ function handleParsedMessage(
     }
 
     case "message_history": {
+      // Clear stale pending permissions — the server will re-send any that
+      // are actually still pending as permission_request messages immediately
+      // after message_history. This prevents stale banners from surviving
+      // reconnects or server restarts.
+      store.clearPermissions(sessionId);
       const chatMessages: ChatMessage[] = [];
       for (let i = 0; i < data.messages.length; i++) {
         const histMsg = data.messages[i];

@@ -117,19 +117,20 @@ export function Sidebar() {
 
   // Update document.title when serverName, attention, or permission counts change
   useEffect(() => {
-    // Count sessions needing user attention: unread results + pending permissions
+    // Only count attention for sessions that actually exist and are not archived
+    const activeSessionIds = new Set(sdkSessions.filter(s => !s.archived).map(s => s.sessionId));
     const attentionIds = new Set<string>();
     for (const [id, a] of sessionAttention) {
-      if (a !== null) attentionIds.add(id);
+      if (a !== null && activeSessionIds.has(id)) attentionIds.add(id);
     }
     for (const [id, perms] of pendingPermissions) {
-      if (perms.size > 0) attentionIds.add(id);
+      if (perms.size > 0 && activeSessionIds.has(id)) attentionIds.add(id);
     }
     const totalAttention = attentionIds.size;
     const suffix = import.meta.env.DEV ? "[DEV] Takode" : "Takode";
     const base = serverName ? `${serverName} — ${suffix}` : suffix;
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
-  }, [serverName, sessionAttention, pendingPermissions]);
+  }, [serverName, sessionAttention, pendingPermissions, sdkSessions]);
 
   // Focus server name input when entering edit mode
   useEffect(() => {
