@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip } from "./PermissionBanner.js";
+import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip, PermissionsCollapsedChip } from "./PermissionBanner.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
@@ -734,6 +734,22 @@ export function Playground() {
             <PermissionBanner permission={PERM_GENERIC} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_DYNAMIC} sessionId={MOCK_SESSION_ID} />
           </div>
+        </Section>
+
+        {/* ─── Collapsed Permissions Chip ──────────────────────── */}
+        <Section title="Collapsed Permissions Chip" description="Compact chip shown when pending approvals are minimized. Click to expand.">
+          <Card label="Multiple tools pending">
+            <PermissionsCollapsedChip
+              permissions={[PERM_BASH, PERM_EDIT, PERM_WRITE]}
+              onExpand={() => {}}
+            />
+          </Card>
+          <Card label="Single tool pending">
+            <PermissionsCollapsedChip
+              permissions={[PERM_BASH]}
+              onExpand={() => {}}
+            />
+          </Card>
         </Section>
 
         {/* ─── Real Chat Stack ──────────────────────────────── */}

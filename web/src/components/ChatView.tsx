@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { MessageFeed } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
-import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip } from "./PermissionBanner.js";
+import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip, PermissionsCollapsedChip } from "./PermissionBanner.js";
 
 export function ChatView({ sessionId }: { sessionId: string }) {
   const sessionPerms = useStore((s) => s.pendingPermissions.get(sessionId));
@@ -30,6 +30,16 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   }, [planPermId]);
 
   const showPlanOverlay = planPerm && !planCollapsed;
+
+  // Permissions collapse state — auto-expand only when new permissions arrive
+  const [permsCollapsed, setPermsCollapsed] = useState(false);
+  const prevOtherPermsCount = useRef(0);
+  useEffect(() => {
+    if (otherPerms.length > prevOtherPermsCount.current) {
+      setPermsCollapsed(false);
+    }
+    prevOtherPermsCount.current = otherPerms.length;
+  }, [otherPerms.length]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -92,13 +102,39 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         </div>
       )}
 
-      {/* Non-plan permission banners */}
+      {/* Non-plan permission banners — collapsible */}
       {otherPerms.length > 0 && (
-        <div className="shrink-0 max-h-[60dvh] overflow-y-auto border-t border-cc-border bg-cc-card">
-          {otherPerms.map((p) => (
-            <PermissionBanner key={p.request_id} permission={p} sessionId={sessionId} />
-          ))}
-        </div>
+        permsCollapsed ? (
+          <PermissionsCollapsedChip
+            permissions={otherPerms}
+            onExpand={() => setPermsCollapsed(false)}
+          />
+        ) : (
+          <div className="shrink-0 max-h-[60dvh] overflow-y-auto border-t border-cc-border bg-cc-card">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-1.5 bg-cc-card border-b border-cc-border/50">
+              <div className="flex items-center gap-2">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-cc-warning">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <span className="text-[11px] font-medium text-cc-warning">
+                  {otherPerms.length} pending approval{otherPerms.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <button
+                onClick={() => setPermsCollapsed(true)}
+                className="p-1 rounded hover:bg-cc-hover transition-colors cursor-pointer text-cc-muted hover:text-cc-fg"
+                title="Minimize permissions"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 7l-3-3-3 3" />
+                </svg>
+              </button>
+            </div>
+            {otherPerms.map((p) => (
+              <PermissionBanner key={p.request_id} permission={p} sessionId={sessionId} />
+            ))}
+          </div>
+        )
       )}
 
       {/* Composer */}

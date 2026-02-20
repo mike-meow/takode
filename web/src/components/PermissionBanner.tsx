@@ -857,3 +857,46 @@ function GenericDisplay({
     </div>
   );
 }
+
+// ── PermissionsCollapsedChip — compact summary when permissions are minimized ──
+
+export function PermissionsCollapsedChip({
+  permissions,
+  onExpand,
+}: {
+  permissions: PermissionRequest[];
+  onExpand: () => void;
+}) {
+  const toolNames = permissions.map((p) => p.tool_name);
+  const uniqueTools = [...new Set(toolNames)];
+  const summary = uniqueTools.length <= 3
+    ? uniqueTools.join(", ")
+    : `${uniqueTools.slice(0, 2).join(", ")} +${uniqueTools.length - 2} more`;
+
+  return (
+    <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 sm:px-4 py-2 animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="max-w-3xl mx-auto">
+        <button
+          onClick={onExpand}
+          title="Expand pending approvals"
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-cc-warning/20 bg-cc-warning/5 hover:bg-cc-warning/10 transition-colors cursor-pointer text-left"
+        >
+          <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-warning/10 border border-cc-warning/20">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-cc-warning">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-warning/10 text-cc-warning shrink-0">
+            {permissions.length}
+          </span>
+          <span className="text-xs text-cc-fg truncate flex-1">
+            pending approval{permissions.length !== 1 ? "s" : ""}: {summary}
+          </span>
+          <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 5l3 3 3-3" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
