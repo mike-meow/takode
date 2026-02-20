@@ -15,6 +15,7 @@ import type {
   CLIToolUseSummaryMessage,
   CLIControlRequestMessage,
   CLIControlResponseMessage,
+  CLIControlCancelRequestMessage,
   CLIAuthStatusMessage,
   CLISystemCompactBoundaryMessage,
   CLIUserMessage,
@@ -1028,6 +1029,10 @@ export class WsBridge {
         this.handleControlResponse(session, msg);
         break;
 
+      case "control_cancel_request":
+        this.handleControlCancelRequest(session, msg);
+        break;
+
       case "user": {
         // Check if this is the compaction summary (text block following compact_boundary)
         if (session.awaitingCompactSummary) {
@@ -1335,6 +1340,20 @@ export class WsBridge {
     });
 
     session.isGenerating = false;
+
+    // Safety net: clear any stale pending permissions when a turn completes.
+    // A completed turn means the CLI has no outstanding tool calls, so any
+    // leftover pendingPermissions are stale (e.g. cancelled by hooks that the
+    // server missed, or race conditions during interrupts).
+    if (session.pendingPermissions.size > 0) {
+      for (const [reqId] of session.pendingPermissions) {
+        this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
+        this.pushoverNotifier?.cancelPermission(session.id, reqId);
+      }
+      console.log(`[ws-bridge] Cleared ${session.pendingPermissions.size} stale pending permission(s) on result for session ${session.id}`);
+      session.pendingPermissions.clear();
+    }
+
     const browserMsg: BrowserIncomingMessage = {
       type: "result",
       data: msg,
@@ -1474,6 +1493,19 @@ export class WsBridge {
         const detail = toolName + (perm.description ? `: ${perm.description}` : "");
         this.pushoverNotifier.scheduleNotification(session.id, eventType, detail, msg.request_id);
       }
+    }
+  }
+
+  /** CLI cancels a pending can_use_tool it previously sent (e.g. after interrupt or hook auto-approval). */
+  private handleControlCancelRequest(session: Session, msg: CLIControlCancelRequestMessage) {
+    const reqId = msg.request_id;
+    const pending = session.pendingPermissions.get(reqId);
+    if (pending) {
+      session.pendingPermissions.delete(reqId);
+      this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
+      this.pushoverNotifier?.cancelPermission(session.id, reqId);
+      this.persistSession(session);
+      console.log(`[ws-bridge] CLI cancelled pending permission ${reqId} (${pending.tool_name}) for session ${session.id}`);
     }
   }
 

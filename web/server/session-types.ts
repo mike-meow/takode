@@ -157,6 +157,12 @@ export interface CLIControlResponseMessage {
   };
 }
 
+/** CLI cancels a pending control_request it previously sent (e.g. after interrupt or hook auto-approval) */
+export interface CLIControlCancelRequestMessage {
+  type: "control_cancel_request";
+  request_id: string;
+}
+
 export interface CLIUserMessage {
   type: "user";
   message: {
@@ -180,6 +186,7 @@ export type CLIMessage =
   | CLIToolUseSummaryMessage
   | CLIControlRequestMessage
   | CLIControlResponseMessage
+  | CLIControlCancelRequestMessage
   | CLIKeepAliveMessage
   | CLIAuthStatusMessage
   | CLIUserMessage;
