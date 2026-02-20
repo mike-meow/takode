@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
@@ -593,9 +594,10 @@ function CollapsedTurnSummary({ stats, onClick }: { stats: TurnStats; onClick: (
 }
 
 /** Thin clickable bar to collapse an expanded turn's agent activity */
-function TurnCollapseBar({ stats, onClick }: { stats: TurnStats; onClick: () => void }) {
+function TurnCollapseBar({ stats, onClick, ref }: { stats: TurnStats; onClick: () => void; ref?: React.Ref<HTMLButtonElement> }) {
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className="w-full flex items-center gap-1.5 py-1 px-2 -mb-1 rounded hover:bg-cc-hover/40 transition-colors cursor-pointer text-[11px] text-cc-muted/50 hover:text-cc-muted font-mono-code"
       title="Collapse this turn"
@@ -611,6 +613,29 @@ function TurnCollapseBar({ stats, onClick }: { stats: TurnStats; onClick: () => 
         </>
       )}
     </button>
+  );
+}
+
+function TurnEntriesExpanded({ turn, sessionId, onCollapse }: { turn: Turn; sessionId: string; onCollapse: () => void }) {
+  const headerRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <>
+      {/* Per-turn collapse bar (only for turns with enough content) */}
+      {turn.stats.messageCount > 1 && (
+        <TurnCollapseBar
+          ref={headerRef}
+          stats={turn.stats}
+          onClick={onCollapse}
+        />
+      )}
+      {/* Render all entries interleaved in original chronological order */}
+      <FeedEntries entries={turn.allEntries} sessionId={sessionId} />
+      {/* Bottom collapse bar — appears when top bar scrolls out of view */}
+      {turn.stats.messageCount > 1 && (
+        <TurnCollapseFooter headerRef={headerRef} onCollapse={onCollapse} />
+      )}
+    </>
   );
 }
 
@@ -643,17 +668,11 @@ function TurnEntries({ turns, sessionId }: { turns: Turn[]; sessionId: string })
                 )}
               </>
             ) : turn.allEntries.length > 0 && (
-              <>
-                {/* Per-turn collapse bar (only for turns with enough content) */}
-                {turn.stats.messageCount > 1 && (
-                  <TurnCollapseBar
-                    stats={turn.stats}
-                    onClick={() => toggleTurn(sessionId, turn.id)}
-                  />
-                )}
-                {/* Render all entries interleaved in original chronological order */}
-                <FeedEntries entries={turn.allEntries} sessionId={sessionId} />
-              </>
+              <TurnEntriesExpanded
+                turn={turn}
+                sessionId={sessionId}
+                onCollapse={() => toggleTurn(sessionId, turn.id)}
+              />
             )}
           </div>
         );
@@ -703,6 +722,7 @@ function SubagentBatchContainer({ batch, sessionId }: { batch: SubagentBatch; se
 function SubagentContainer({ group, sessionId, inBatch }: { group: SubagentGroup; sessionId: string; inBatch?: boolean }) {
   const [open, setOpen] = useState(true);
   const [promptOpen, setPromptOpen] = useState(false);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const label = group.description || "Subagent";
   const agentType = group.agentType;
   const childCount = group.children.length;
@@ -748,6 +768,7 @@ function SubagentContainer({ group, sessionId, inBatch }: { group: SubagentGroup
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       {/* Header */}
       <button
+        ref={headerRef}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
       >
@@ -820,6 +841,8 @@ function SubagentContainer({ group, sessionId, inBatch }: { group: SubagentGroup
               toolUseId={group.taskToolUseId}
             />
           )}
+
+          <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
     </div>

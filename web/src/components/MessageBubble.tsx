@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback, memo } from "react";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { CollapseFooter } from "./CollapseFooter.js";
 import { Lightbox } from "./Lightbox.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { getMessageMarkdown, getMessagePlainText, copyRichText, writeClipboardText } from "../utils/copy-utils.js";
@@ -461,12 +462,14 @@ function ContentBlockRenderer({ block }: { block: ContentBlock }) {
 
 function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolGroupItem[]; sessionId?: string }) {
   const [open, setOpen] = useState(true);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button
+        ref={headerRef}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
       >
@@ -489,6 +492,7 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
           {items.map((item, i) => (
             <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
           ))}
+          <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
     </div>
@@ -497,10 +501,12 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
 
 function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden">
       <button
+        ref={headerRef}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs text-cc-muted hover:bg-cc-hover transition-colors cursor-pointer"
       >
@@ -519,6 +525,7 @@ function ThinkingBlock({ text }: { text: string }) {
           <pre className="text-xs text-cc-muted font-mono-code whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
             {text}
           </pre>
+          <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
     </div>

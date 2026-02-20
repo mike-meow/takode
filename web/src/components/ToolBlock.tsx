@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
+import { CollapseFooter } from "./CollapseFooter.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 
@@ -134,6 +135,7 @@ export function ToolBlock({
   sessionId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
@@ -143,6 +145,7 @@ export function ToolBlock({
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button
+        ref={headerRef}
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
       >
@@ -169,6 +172,7 @@ export function ToolBlock({
             <ToolDetail name={name} input={input} />
           </div>
           {sessionId && name !== "Task" && <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} />}
+          <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
     </div>
