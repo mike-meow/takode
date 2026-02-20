@@ -542,6 +542,45 @@ describe("MessageFeed - subagent grouping", () => {
     // The prompt text itself should NOT be visible until the toggle is clicked
     expect(screen.queryByText("Find all authentication middleware files")).toBeNull();
   });
+
+  it("does not render Task tool_use as ToolBlock in mixed message with text and Task", () => {
+    // When an assistant message has both text and Task tool_use blocks,
+    // the Task blocks should be filtered from MessageBubble rendering
+    // and only appear as SubagentContainer cards.
+    const sid = "test-mixed-task";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "I'll launch two agents in parallel.",
+        contentBlocks: [
+          { type: "text", text: "I'll launch two agents in parallel." },
+          {
+            type: "tool_use",
+            id: "task-mix-1",
+            name: "Task",
+            input: { description: "Count files", subagent_type: "Explore" },
+          },
+          {
+            type: "tool_use",
+            id: "task-mix-2",
+            name: "Task",
+            input: { description: "Check git activity", subagent_type: "Bash" },
+          },
+        ],
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    // The text should render in the MessageBubble
+    expect(screen.getByText("I'll launch two agents in parallel.")).toBeTruthy();
+    // SubagentContainer cards should appear with the descriptions
+    expect(screen.getByText("Count files")).toBeTruthy();
+    expect(screen.getByText("Check git activity")).toBeTruthy();
+    // No "Subagent" ToolBlock label should appear (that would mean duplicate rendering)
+    expect(screen.queryByText("Subagent")).toBeNull();
+  });
 });
 
 // ─── Turn grouping and collapse ─────────────────────────────────────────────

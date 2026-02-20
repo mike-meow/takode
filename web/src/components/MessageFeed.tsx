@@ -210,8 +210,16 @@ function buildEntries(
       continue;
     }
 
-    // Case B: Mixed message (text + Task tool_use) — push message, then SubagentGroups
-    result.push(entry);
+    // Case B: Mixed message (text + Task tool_use) — filter Task blocks from contentBlocks
+    // (they render as SubagentContainers instead), then push SubagentGroups
+    if (entry.kind === "message") {
+      const filteredBlocks = entry.msg.contentBlocks?.filter(
+        (b) => !(b.type === "tool_use" && b.name === "Task")
+      );
+      result.push({ kind: "message", msg: { ...entry.msg, contentBlocks: filteredBlocks } });
+    } else {
+      result.push(entry);
+    }
     for (const taskId of taskIds) {
       const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
       const children = childrenByParent.get(taskId);
