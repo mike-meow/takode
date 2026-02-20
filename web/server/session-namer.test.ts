@@ -135,8 +135,35 @@ describe("parseResponse", () => {
       });
     });
 
-    it("returns null for multi-line gibberish", () => {
-      expect(parseResponse("Here is my analysis:\nThe title should be...", false)).toBeNull();
+    it("parses NO_CHANGE even when model adds explanation on subsequent lines", () => {
+      // Model sometimes outputs "NO_CHANGE" then explains its reasoning — parser
+      // should extract the first line only
+      expect(parseResponse(
+        "NO_CHANGE\n\nThe current title accurately describes what's happening.",
+        false,
+      )).toEqual({ action: "no_change" });
+    });
+
+    it("parses REVISE with trailing explanation lines", () => {
+      expect(parseResponse(
+        "REVISE: Fix token refresh\n\nThe task narrowed to just the refresh flow.",
+        false,
+      )).toEqual({ action: "revise", title: "Fix token refresh" });
+    });
+
+    it("parses first-turn title even with trailing explanation", () => {
+      expect(parseResponse(
+        "Debug auth pipeline\n\nThis session focuses on authentication.",
+        true,
+      )).toEqual({ action: "name", title: "Debug auth pipeline" });
+    });
+
+    it("falls back to revise using first line for unstructured multi-line output", () => {
+      // First line is a bare title, subsequent lines are explanation
+      expect(parseResponse("Fix Auth Bug\nSome extra reasoning here", false)).toEqual({
+        action: "revise",
+        title: "Fix Auth Bug",
+      });
     });
   });
 });

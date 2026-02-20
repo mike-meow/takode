@@ -227,12 +227,17 @@ ${manualNote}
 Based on the conversation below, choose one action:
 
 - NO_CHANGE — the current title is still accurate
-- REVISE: <title> — same task, but a more accurate title
-  (e.g. fixing a typo, narrowing scope, better wording)
+- REVISE: <title> — same task, but a more accurate title (typo, narrower scope, better wording)
 - NEW: <title> — the user has moved to a fundamentally different task
 
-Output ONLY one of the above. Titles should be 3-5 words starting with an imperative verb
-(e.g. "fix auth bug", "add dark mode", "refactor API routes").
+Titles should be 3-5 words starting with an imperative verb.
+
+Output EXACTLY one line matching one of these formats. Do not explain your reasoning.
+
+Examples of valid outputs:
+  NO_CHANGE
+  REVISE: fix auth token refresh
+  NEW: add dark mode toggle
 
 Conversation:
 
@@ -319,33 +324,37 @@ function parseResponse(raw: string, isFirstTurn: boolean): NamingResult | null {
   const trimmed = raw.trim();
 
   if (isFirstTurn) {
-    const title = sanitizeTitle(trimmed);
+    // For first turn, take only the first line (model may add explanation)
+    const firstLine = trimmed.split("\n")[0].trim();
+    const title = sanitizeTitle(firstLine);
     return title ? { action: "name", title } : null;
   }
 
+  // Parse only the first line — the model sometimes adds explanations after
+  const firstLine = trimmed.split("\n")[0].trim();
+
   // Check NO_CHANGE
-  if (/^no.?change$/i.test(trimmed)) {
+  if (/^no.?change$/i.test(firstLine)) {
     return { action: "no_change" };
   }
 
   // Check REVISE: <title>
-  const reviseMatch = trimmed.match(/^revise:\s*(.+)$/i);
+  const reviseMatch = firstLine.match(/^revise:\s*(.+)$/i);
   if (reviseMatch) {
     const title = sanitizeTitle(reviseMatch[1]);
     return title ? { action: "revise", title } : null;
   }
 
   // Check NEW: <title>
-  const newMatch = trimmed.match(/^new:\s*(.+)$/i);
+  const newMatch = firstLine.match(/^new:\s*(.+)$/i);
   if (newMatch) {
     const title = sanitizeTitle(newMatch[1]);
     return title ? { action: "new", title } : null;
   }
 
-  // Fallback: if the model just output a title without a prefix (common for
-  // first-turn-like responses), treat as a revision
-  const fallbackTitle = sanitizeTitle(trimmed);
-  if (fallbackTitle && !trimmed.includes("\n")) {
+  // Fallback: if the model just output a bare title without a prefix, treat as a revision
+  const fallbackTitle = sanitizeTitle(firstLine);
+  if (fallbackTitle) {
     return { action: "revise", title: fallbackTitle };
   }
 
