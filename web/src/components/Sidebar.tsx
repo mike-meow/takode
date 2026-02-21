@@ -686,8 +686,10 @@ export function Sidebar() {
                 : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-              <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm2 1.5l3 2.5-3 2.5V4.5zM8.5 10h3v1h-3v-1z" />
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-4 h-4">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+              <path d="M4.5 7l2.5 2-2.5 2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M9 11h3" strokeLinecap="round" />
             </svg>
           </button>
           <button
@@ -705,8 +707,10 @@ export function Sidebar() {
                 : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-              <path d="M8 1a2 2 0 012 2v1h2a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2h2V3a2 2 0 012-2zm0 1.5a.5.5 0 00-.5.5v1h1V3a.5.5 0 00-.5-.5zM4 5.5a.5.5 0 00-.5.5v6a.5.5 0 00.5.5h8a.5.5 0 00.5-.5V6a.5.5 0 00-.5-.5H4z" />
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-4 h-4">
+              <path d="M2 5.5l6 3 6-3" strokeLinejoin="round" />
+              <path d="M2 8l6 3 6-3" strokeLinejoin="round" />
+              <path d="M2 10.5l6 3 6-3" strokeLinejoin="round" />
             </svg>
           </button>
           <button
