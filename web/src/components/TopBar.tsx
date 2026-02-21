@@ -5,7 +5,6 @@ import { writeClipboardText } from "../utils/copy-utils.js";
 import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { parseHash } from "../utils/routing.js";
-import { shortenHome } from "../utils/path-display.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
 
 export function TopBar() {
@@ -64,15 +63,6 @@ export function TopBar() {
       const st = stats.get(fp);
       return !st || st.additions > 0 || st.deletions > 0;
     }).length;
-  });
-
-  const cwd = useStore((s) => {
-    if (!currentSessionId) return null;
-    return (
-      s.sessions.get(currentSessionId)?.cwd ||
-      s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cwd ||
-      null
-    );
   });
 
   const pendingPermissions = useStore((s) => s.pendingPermissions);
@@ -135,31 +125,29 @@ export function TopBar() {
           </span>
         )}
 
-        {/* Current session status + title */}
+        {/* Current session status + title — clickable to open session info */}
         {currentSessionId && (
-          <div className="flex items-center gap-1.5">
-            <div className="[&>div]:mt-0">
-              <SessionStatusDot
-                permCount={currentPermCount}
-                isConnected={isConnected}
-                sdkState={currentSdkState}
-                status={status}
-                hasUnread={currentHasUnread}
-                idleKilled={currentSessionId ? cliDisconnectReason.get(currentSessionId) === "idle_limit" : false}
-              />
-            </div>
-            <div className="min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              onClick={() => setInfoOpen(!infoOpen)}
+              className="flex items-center gap-1.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <div className="[&>div]:mt-0 shrink-0">
+                <SessionStatusDot
+                  permCount={currentPermCount}
+                  isConnected={isConnected}
+                  sdkState={currentSdkState}
+                  status={status}
+                  hasUnread={currentHasUnread}
+                  idleKilled={currentSessionId ? cliDisconnectReason.get(currentSessionId) === "idle_limit" : false}
+                />
+              </div>
               {sessionName && (
-                <span className="text-[11px] font-medium text-cc-fg max-w-[9rem] sm:max-w-none truncate block" title={sessionName}>
+                <span className="text-[11px] font-medium text-cc-fg truncate" title={sessionName}>
                   {sessionName}
                 </span>
               )}
-              {cwd && (
-                <span className="text-[10px] text-cc-muted font-mono-code truncate block max-w-[12rem] sm:max-w-[20rem]" title={cwd}>
-                  {shortenHome(cwd)}
-                </span>
-              )}
-            </div>
+            </button>
             {/* Copy CLI Session ID button */}
             {cliSessionId && (
               <button
