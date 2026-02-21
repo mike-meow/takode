@@ -61,9 +61,21 @@ const MAX_ASSISTANT_TEXT_CHARS = 300;
 /** Max characters of stderr to log on subprocess failure. */
 const MAX_STDERR_LOG_CHARS = 200;
 
+/** Tools whose file paths are aggregated into per-turn file-set summaries
+ *  instead of emitting one line per call. */
+const FILE_OP_TOOLS = new Set(["Read", "Edit", "Write"]);
+
+/** Tools silently dropped from the namer prompt (no naming signal). */
+const DROPPED_TOOLS = new Set(["TodoWrite"]);
+
+/** Max inline file names shown in a file-set summary before "+N more". */
+const MAX_INLINE_FILES = 5;
+
 /**
- * Format a single tool_use block into a one-line textual representation.
+ * Format a single tool_use block into a textual representation.
  * Shows the tool name + key identifying parameter, truncated.
+ * File-op tools (Read/Edit/Write) and dropped tools (TodoWrite) are
+ * handled separately by buildConversationBlock and should not reach here.
  */
 function formatToolCall(name: string, input: Record<string, unknown>, cwd?: string): string {
   switch (name) {
@@ -91,10 +103,15 @@ function formatToolCall(name: string, input: Record<string, unknown>, cwd?: stri
       }
       return `[AskUserQuestion]`;
     }
-    case "TodoWrite": {
-      const todos = input.todos;
-      const count = Array.isArray(todos) ? todos.length : "?";
-      return `[TodoWrite: ${count} items]`;
+    case "ExitPlanMode": {
+      // Extract plan title from the plan content (markdown with # header)
+      const plan = str(input.plan);
+      if (plan) {
+        const firstLine = plan.split("\n").find((l) => l.trim().length > 0) || "";
+        const title = firstLine.replace(/^#+\s*/, "").trim();
+        if (title) return `[ExitPlanMode: "${trunc(title, MAX_DESCRIPTION_CHARS)}"]`;
+      }
+      return `[ExitPlanMode]`;
     }
     case "WebSearch":
       return `[WebSearch: "${trunc(str(input.query), MAX_PATTERN_CHARS)}"]`;
@@ -136,13 +153,53 @@ function str(v: unknown): string {
 }
 
 /**
- * Extract tool calls from an assistant message's content blocks.
+ * Categorize tool calls from an assistant message's content blocks.
+ * Returns non-file-op tool call lines plus file paths grouped by operation.
  */
-function extractToolCalls(content: ContentBlock[], cwd?: string): string[] {
-  const lines: string[] = [];
+function categorizeToolCalls(
+  content: ContentBlock[],
+  cwd?: string,
+): { toolLines: string[]; fileOps: Map<string, Set<string>> } {
+  const toolLines: string[] = [];
+  const fileOps = new Map<string, Set<string>>();
+
   for (const block of content) {
-    if (block.type === "tool_use") {
-      lines.push(formatToolCall(block.name, block.input, cwd));
+    if (block.type !== "tool_use") continue;
+    const name = block.name;
+
+    if (DROPPED_TOOLS.has(name)) continue;
+
+    if (FILE_OP_TOOLS.has(name)) {
+      const path = truncPath(str(block.input.file_path), cwd);
+      if (!fileOps.has(name)) fileOps.set(name, new Set());
+      fileOps.get(name)!.add(path);
+    } else {
+      toolLines.push(formatToolCall(name, block.input, cwd));
+    }
+  }
+
+  return { toolLines, fileOps };
+}
+
+/**
+ * Build summary lines for aggregated file operations.
+ * e.g. "[Files read: foo.ts, bar.ts, +3 more]"
+ */
+function buildFileOpSummaries(fileOps: Map<string, Set<string>>): string[] {
+  const labels: Record<string, string> = {
+    Read: "Files read",
+    Edit: "Files edited",
+    Write: "Files created",
+  };
+  const lines: string[] = [];
+  for (const [tool, paths] of fileOps) {
+    const label = labels[tool] || tool;
+    const arr = [...paths];
+    if (arr.length <= MAX_INLINE_FILES) {
+      lines.push(`[${label}: ${arr.join(", ")}]`);
+    } else {
+      const shown = arr.slice(0, MAX_INLINE_FILES).join(", ");
+      lines.push(`[${label}: ${shown}, +${arr.length - MAX_INLINE_FILES} more]`);
     }
   }
   return lines;
@@ -152,6 +209,9 @@ function extractToolCalls(content: ContentBlock[], cwd?: string): string[] {
  * Build the conversation section of the prompt from message history.
  * Groups messages into turns: user message → agent tool calls → next user message.
  * Only includes the last MAX_TURNS user messages.
+ *
+ * File-op tools (Read/Edit/Write) are aggregated into per-turn summaries.
+ * Subagent messages (parent_tool_use_id != null) are excluded.
  */
 function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string): string {
   // Collect turns: each turn starts with a user_message
@@ -160,9 +220,10 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string)
     imageCount: number;
     assistantText: string;
     toolCalls: string[];
+    fileOps: Map<string, Set<string>>;
   }> = [];
 
-  let currentTurn: { userContent: string; imageCount: number; assistantText: string; toolCalls: string[] } | null = null;
+  let currentTurn: (typeof turns)[number] | null = null;
 
   for (const msg of history) {
     if (msg.type === "user_message") {
@@ -174,8 +235,13 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string)
         imageCount: Array.isArray(images) ? images.length : 0,
         assistantText: "",
         toolCalls: [],
+        fileOps: new Map(),
       };
     } else if (msg.type === "assistant" && currentTurn) {
+      // Skip subagent messages — only main agent activity matters for naming
+      const parentId = (msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
+      if (parentId) continue;
+
       const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
       if (Array.isArray(content)) {
         // Extract text blocks (assistant's prose)
@@ -186,8 +252,14 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string)
             }
           }
         }
-        // Extract tool calls
-        currentTurn.toolCalls.push(...extractToolCalls(content, cwd));
+        // Categorize tool calls: file ops aggregated, others kept as lines
+        const { toolLines, fileOps } = categorizeToolCalls(content, cwd);
+        currentTurn.toolCalls.push(...toolLines);
+        // Merge file ops into turn-level aggregation
+        for (const [tool, paths] of fileOps) {
+          if (!currentTurn.fileOps.has(tool)) currentTurn.fileOps.set(tool, new Set());
+          for (const p of paths) currentTurn.fileOps.get(tool)!.add(p);
+        }
       }
     }
     // Skip all other message types (result, stream_event, tool_progress, etc.)
@@ -216,8 +288,11 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string)
       lines.push(`${INDENT}${ul}`);
     }
 
-    // Add assistant section if there's any text or tool calls
-    if (turn.assistantText || turn.toolCalls.length > 0) {
+    // Check if there's any assistant content to show
+    const fileOpSummaries = buildFileOpSummaries(turn.fileOps);
+    const hasContent = turn.assistantText || turn.toolCalls.length > 0 || fileOpSummaries.length > 0;
+
+    if (hasContent) {
       lines.push("");
       lines.push("    [Assistant]");
       if (turn.assistantText) {
@@ -227,8 +302,15 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string)
           lines.push(`${INDENT}${al}`);
         }
       }
+      // Emit non-file-op tool calls, indenting any embedded newlines
       for (const tc of turn.toolCalls) {
-        lines.push(`${INDENT}${tc}`);
+        for (const tcLine of tc.split("\n")) {
+          lines.push(`${INDENT}${tcLine}`);
+        }
+      }
+      // Append aggregated file-op summaries at the end
+      for (const summary of fileOpSummaries) {
+        lines.push(`${INDENT}${summary}`);
       }
     }
   }
@@ -406,6 +488,7 @@ export interface NamerLogEntry {
   id: number;
   sessionId: string;
   timestamp: number;
+  systemPrompt: string;
   prompt: string;
   promptLength: number;
   rawResponse: string | null;
@@ -420,8 +503,8 @@ const MAX_LOG_ENTRIES = 200;
 let logIdCounter = 0;
 const namerLog: NamerLogEntry[] = [];
 
-function addLogEntry(entry: Omit<NamerLogEntry, "id" | "promptLength">): NamerLogEntry {
-  const full = { ...entry, id: ++logIdCounter, promptLength: entry.prompt.length };
+function addLogEntry(entry: Omit<NamerLogEntry, "id" | "promptLength" | "systemPrompt">): NamerLogEntry {
+  const full = { ...entry, id: ++logIdCounter, promptLength: entry.prompt.length, systemPrompt: SYSTEM_PROMPT };
   namerLog.push(full);
   if (namerLog.length > MAX_LOG_ENTRIES) {
     namerLog.splice(0, namerLog.length - MAX_LOG_ENTRIES);
@@ -429,10 +512,10 @@ function addLogEntry(entry: Omit<NamerLogEntry, "id" | "promptLength">): NamerLo
   return full;
 }
 
-/** List all log entries (lightweight: no prompt/rawResponse). Newest first. */
-export function getNamerLogIndex(): Array<Omit<NamerLogEntry, "prompt" | "rawResponse">> {
+/** List all log entries (lightweight: no prompt/rawResponse/systemPrompt). Newest first. */
+export function getNamerLogIndex(): Array<Omit<NamerLogEntry, "prompt" | "rawResponse" | "systemPrompt">> {
   return namerLog
-    .map(({ prompt: _p, rawResponse: _r, ...rest }) => rest)
+    .map(({ prompt: _p, rawResponse: _r, systemPrompt: _s, ...rest }) => rest)
     .reverse();
 }
 
@@ -506,6 +589,9 @@ export const _testHelpers = {
   buildUpdatePrompt,
   buildConversationBlock,
   formatToolCall,
+  categorizeToolCalls,
+  buildFileOpSummaries,
   parseResponse,
   sanitizeTitle,
+  SYSTEM_PROMPT,
 };

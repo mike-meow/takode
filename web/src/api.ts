@@ -277,6 +277,7 @@ export interface NamerLogIndexEntry {
 }
 
 export interface NamerLogEntry extends NamerLogIndexEntry {
+  systemPrompt: string;
   prompt: string;
   rawResponse: string | null;
 }

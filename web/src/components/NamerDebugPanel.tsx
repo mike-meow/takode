@@ -144,6 +144,12 @@ export function NamerDebugPanel() {
                       ) : expandedEntry ? (
                         <>
                           <div>
+                            <span className="text-[10px] uppercase tracking-wider text-cc-muted font-medium">System Prompt</span>
+                            <pre className="mt-1 text-[11px] text-cc-fg bg-cc-hover rounded p-2 overflow-x-auto whitespace-pre max-h-[200px] overflow-y-auto font-mono">
+                              {expandedEntry.systemPrompt}
+                            </pre>
+                          </div>
+                          <div>
                             <span className="text-[10px] uppercase tracking-wider text-cc-muted font-medium">Prompt</span>
                             <pre className="mt-1 text-[11px] text-cc-fg bg-cc-hover rounded p-2 overflow-x-auto whitespace-pre max-h-[300px] overflow-y-auto font-mono">
                               {expandedEntry.prompt}

@@ -7,8 +7,11 @@ const {
   buildUpdatePrompt,
   buildConversationBlock,
   formatToolCall,
+  categorizeToolCalls,
+  buildFileOpSummaries,
   parseResponse,
   sanitizeTitle,
+  SYSTEM_PROMPT,
 } = _testHelpers;
 
 // ─── Helper to build a mock message history ────────────────────────────────
@@ -19,6 +22,7 @@ function userMsg(content: string, ts = Date.now()): BrowserIncomingMessage {
 
 function assistantMsg(
   contentBlocks: Array<{ type: "text"; text: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }>,
+  parentToolUseId: string | null = null,
 ): BrowserIncomingMessage {
   return {
     type: "assistant",
@@ -31,7 +35,7 @@ function assistantMsg(
       stop_reason: "end_turn",
       usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
     },
-    parent_tool_use_id: null,
+    parent_tool_use_id: parentToolUseId,
   } as unknown as BrowserIncomingMessage;
 }
 
@@ -227,8 +231,21 @@ describe("formatToolCall", () => {
     ).toBe('[AskUserQuestion: "Which approach should we use?"]');
   });
 
-  it("formats TodoWrite with item count", () => {
-    expect(formatToolCall("TodoWrite", { todos: [{}, {}, {}] })).toBe("[TodoWrite: 3 items]");
+  it("formats ExitPlanMode with plan title from markdown header", () => {
+    // ExitPlanMode input contains a markdown plan; extract the first heading as title
+    expect(formatToolCall("ExitPlanMode", {
+      plan: "# Revert Virtuoso, Fix Re-render Root Causes\n\n## Context\n\nLong conversations caused lag...",
+    })).toBe('[ExitPlanMode: "Revert Virtuoso, Fix Re-render Root Causes"]');
+  });
+
+  it("formats ExitPlanMode with plain text first line when no # prefix", () => {
+    expect(formatToolCall("ExitPlanMode", {
+      plan: "Fix the authentication flow\n\nDetails...",
+    })).toBe('[ExitPlanMode: "Fix the authentication flow"]');
+  });
+
+  it("formats ExitPlanMode with no plan content", () => {
+    expect(formatToolCall("ExitPlanMode", {})).toBe("[ExitPlanMode]");
   });
 
   it("formats unknown tool with first string input", () => {
@@ -275,7 +292,9 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("    | Fix the auth bug");
   });
 
-  it("includes tool calls under [Assistant] header", () => {
+  it("aggregates Read/Edit into file-set summaries under [Assistant] header", () => {
+    // Read/Edit/Write tool calls are aggregated into per-turn summaries
+    // instead of one line per call
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
@@ -289,19 +308,22 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("    | Fix the auth bug");
     expect(block).toContain("    [Assistant]");
     expect(block).toContain("    | I'll fix that.");
-    expect(block).toContain("    | [Read: /src/auth.ts]");
-    expect(block).toContain("    | [Edit: /src/auth.ts]");
+    // Individual [Read:] / [Edit:] lines are replaced by aggregated summaries
+    expect(block).toContain("    | [Files read: /src/auth.ts]");
+    expect(block).toContain("    | [Files edited: /src/auth.ts]");
+    expect(block).not.toContain("    | [Read:");
+    expect(block).not.toContain("    | [Edit:");
   });
 
   it("groups tool calls between user messages correctly", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
-        { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/auth.ts" } },
+        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo test" } },
       ]),
       userMsg("Now add dark mode"),
       assistantMsg([
-        { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/src/theme.ts" } },
+        { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "echo done" } },
       ]),
     ];
     const block = buildConversationBlock(history);
@@ -324,7 +346,7 @@ describe("buildConversationBlock", () => {
     for (let i = 0; i < 10; i++) {
       history.push(userMsg(`Message ${i}`));
       history.push(
-        assistantMsg([{ type: "tool_use", id: `tu-${i}`, name: "Read", input: { file_path: `/f${i}.ts` } }]),
+        assistantMsg([{ type: "tool_use", id: `tu-${i}`, name: "Bash", input: { command: `echo ${i}` } }]),
       );
     }
     const block = buildConversationBlock(history);
@@ -396,12 +418,183 @@ describe("buildConversationBlock", () => {
     const block = buildConversationBlock(history);
     expect(block).toContain("    [Assistant]");
     expect(block).toContain("    | I'll investigate the authentication flow");
-    expect(block).toContain("    | [Read: ");
+    expect(block).toContain("    | [Files read: /src/auth.ts]");
   });
 
   it("does not annotate messages without images", () => {
     const block = buildConversationBlock([userMsg("Hello")]);
     expect(block).not.toContain("image");
+  });
+
+  it("aggregates multiple Read/Edit/Write calls into file-set summaries per turn", () => {
+    // When multiple files are read/edited in a single turn, they should be
+    // aggregated into summary lines instead of one line per call
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Fix the bugs"),
+      assistantMsg([
+        { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/auth.ts" } },
+        { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/src/store.ts" } },
+        { type: "tool_use", id: "tu-3", name: "Read", input: { file_path: "/src/auth.ts" } }, // duplicate
+        { type: "tool_use", id: "tu-4", name: "Edit", input: { file_path: "/src/auth.ts" } },
+        { type: "tool_use", id: "tu-5", name: "Edit", input: { file_path: "/src/store.ts" } },
+        { type: "tool_use", id: "tu-6", name: "Edit", input: { file_path: "/src/utils.ts" } },
+        { type: "tool_use", id: "tu-7", name: "Bash", input: { command: "bun run test" } },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    // Reads deduplicated: auth.ts appears once
+    expect(block).toContain("[Files read: /src/auth.ts, /src/store.ts]");
+    expect(block).toContain("[Files edited: /src/auth.ts, /src/store.ts, /src/utils.ts]");
+    // Bash still appears as individual line
+    expect(block).toContain("[Bash: bun run test]");
+    // No individual Read/Edit lines
+    expect(block).not.toContain("    | [Read:");
+    expect(block).not.toContain("    | [Edit:");
+  });
+
+  it("shows +N more when file count exceeds MAX_INLINE_FILES", () => {
+    // Build a turn with more than 5 unique files read
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Read many files"),
+      assistantMsg(
+        Array.from({ length: 8 }, (_, i) => ({
+          type: "tool_use" as const,
+          id: `tu-${i}`,
+          name: "Read",
+          input: { file_path: `/src/file${i}.ts` },
+        })),
+      ),
+    ];
+    const block = buildConversationBlock(history);
+    expect(block).toContain("+3 more]");
+  });
+
+  it("drops TodoWrite calls from the prompt", () => {
+    // TodoWrite carries no naming signal and should be silently dropped
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Fix bugs"),
+      assistantMsg([
+        { type: "tool_use", id: "tu-1", name: "TodoWrite", input: { todos: [{}, {}, {}] } },
+        { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "bun run test" } },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    expect(block).not.toContain("TodoWrite");
+    expect(block).toContain("[Bash: bun run test]");
+  });
+
+  it("filters out subagent assistant messages (parent_tool_use_id != null)", () => {
+    // Subagent responses have parent_tool_use_id set and should not
+    // influence session naming
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Create a team"),
+      assistantMsg([
+        { type: "text", text: "I'll spawn agents." },
+        { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find code" } },
+      ]),
+      // Subagent response — should be filtered
+      assistantMsg([
+        { type: "text", text: "Subagent found the code in auth.ts." },
+        { type: "tool_use", id: "tu-sub", name: "Bash", input: { command: "grep -r auth" } },
+      ], "tu-1"),
+    ];
+    const block = buildConversationBlock(history);
+    expect(block).toContain("I'll spawn agents.");
+    expect(block).toContain('[Task: Explore');
+    // Subagent content should be absent
+    expect(block).not.toContain("Subagent found the code");
+    expect(block).not.toContain("grep -r auth");
+  });
+
+  it("indents multi-line tool call output with the | prefix on every line", () => {
+    // Tool calls that produce multi-line output (e.g. ExitPlanMode with a plan)
+    // should have each line properly indented
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Plan the work"),
+      assistantMsg([
+        { type: "tool_use", id: "tu-1", name: "CustomMultiLine", input: { data: "line1\nline2\nline3" } },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    // The generic fallback formats as [CustomMultiLine: data=line1\nline2\nline3]
+    // Each line should get the indent prefix
+    const contentLines = block.split("\n").filter((l) => l.includes("CustomMultiLine") || l.includes("line"));
+    for (const line of contentLines) {
+      if (line.trim()) {
+        expect(line).toMatch(/^ {4}\| /);
+      }
+    }
+  });
+});
+
+// ─── categorizeToolCalls ────────────────────────────────────────────────────
+
+describe("categorizeToolCalls", () => {
+  it("separates file-op tools from other tools", () => {
+    const content = [
+      { type: "tool_use" as const, id: "1", name: "Read", input: { file_path: "/a.ts" } },
+      { type: "tool_use" as const, id: "2", name: "Edit", input: { file_path: "/b.ts" } },
+      { type: "tool_use" as const, id: "3", name: "Bash", input: { command: "echo hi" } },
+      { type: "tool_use" as const, id: "4", name: "Write", input: { file_path: "/c.ts" } },
+    ];
+    const { toolLines, fileOps } = categorizeToolCalls(content);
+    // Bash should be in toolLines
+    expect(toolLines).toHaveLength(1);
+    expect(toolLines[0]).toContain("Bash");
+    // File ops should be aggregated
+    expect(fileOps.get("Read")?.has("/a.ts")).toBe(true);
+    expect(fileOps.get("Edit")?.has("/b.ts")).toBe(true);
+    expect(fileOps.get("Write")?.has("/c.ts")).toBe(true);
+  });
+
+  it("drops TodoWrite calls", () => {
+    const content = [
+      { type: "tool_use" as const, id: "1", name: "TodoWrite", input: { todos: [{}, {}] } },
+      { type: "tool_use" as const, id: "2", name: "Bash", input: { command: "test" } },
+    ];
+    const { toolLines, fileOps } = categorizeToolCalls(content);
+    expect(toolLines).toHaveLength(1);
+    expect(fileOps.size).toBe(0);
+  });
+
+  it("deduplicates file paths within the same tool", () => {
+    const content = [
+      { type: "tool_use" as const, id: "1", name: "Read", input: { file_path: "/a.ts" } },
+      { type: "tool_use" as const, id: "2", name: "Read", input: { file_path: "/a.ts" } },
+      { type: "tool_use" as const, id: "3", name: "Read", input: { file_path: "/b.ts" } },
+    ];
+    const { fileOps } = categorizeToolCalls(content);
+    expect(fileOps.get("Read")?.size).toBe(2);
+  });
+});
+
+// ─── buildFileOpSummaries ─────────────────────────────────────────────────
+
+describe("buildFileOpSummaries", () => {
+  it("formats file-op summaries with correct labels", () => {
+    const fileOps = new Map([
+      ["Read", new Set(["auth.ts", "store.ts"])],
+      ["Edit", new Set(["auth.ts"])],
+      ["Write", new Set(["new.ts"])],
+    ]);
+    const summaries = buildFileOpSummaries(fileOps);
+    expect(summaries).toContain("[Files read: auth.ts, store.ts]");
+    expect(summaries).toContain("[Files edited: auth.ts]");
+    expect(summaries).toContain("[Files created: new.ts]");
+  });
+
+  it("truncates with +N more when exceeding 5 files", () => {
+    const paths = new Set(Array.from({ length: 8 }, (_, i) => `file${i}.ts`));
+    const fileOps = new Map([["Read", paths]]);
+    const summaries = buildFileOpSummaries(fileOps);
+    expect(summaries[0]).toContain("+3 more]");
+    // First 5 should be shown
+    expect(summaries[0]).toContain("file0.ts");
+    expect(summaries[0]).toContain("file4.ts");
+  });
+
+  it("returns empty array for empty fileOps", () => {
+    expect(buildFileOpSummaries(new Map())).toEqual([]);
   });
 });
 
