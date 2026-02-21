@@ -175,6 +175,17 @@ function findLastUserMessageId(history: import("./session-types.js").BrowserInco
   return `unknown-${Date.now()}`;
 }
 
+/** Find the index of the last user_message in history.
+ *  Used to set nameSetAtHistoryIndex so subsequent evaluations include
+ *  the triggering user message (buildConversationBlock needs a user_message
+ *  to start a turn — without it, agent activity would be orphaned). */
+function findLastUserMessageIndex(history: import("./session-types.js").BrowserIncomingMessage[]): number {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].type === "user_message") return i;
+  }
+  return 0;
+}
+
 /** Apply a naming result: set name, broadcast, add task entry. Shared by both triggers. */
 function applyNamingResult(
   sessionId: string,
@@ -194,7 +205,7 @@ function applyNamingResult(
       const freshName = sessionNames.getName(sessionId);
       if (freshName !== previousName) return; // name changed while we were evaluating
       sessionNames.setName(sessionId, result.title);
-      nameSetAtHistoryIndex.set(sessionId, history.length);
+      nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
@@ -209,7 +220,7 @@ function applyNamingResult(
       const freshName = sessionNames.getName(sessionId);
       if (freshName !== previousName) return;
       sessionNames.setName(sessionId, result.title);
-      nameSetAtHistoryIndex.set(sessionId, history.length);
+      nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
@@ -252,7 +263,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       const freshName = sessionNames.getName(sessionId);
       if (freshName && !isRandomName) return;
       sessionNames.setName(sessionId, result.title);
-      nameSetAtHistoryIndex.set(sessionId, history.length);
+      nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
