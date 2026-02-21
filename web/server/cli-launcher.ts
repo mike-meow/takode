@@ -77,6 +77,8 @@ export interface SdkSessionInfo {
   cronJobName?: string;
   /** Set by idle manager before killing — lets the UI show a less alarming indicator */
   killedByIdleManager?: boolean;
+  /** Whether --resume has already been retried once after a fast exit */
+  resumeRetried?: boolean;
 
   // Worktree fields
   /** Whether this session uses a git worktree */
@@ -352,6 +354,13 @@ export class CliLauncher {
     info.state = "starting";
     info.killedByIdleManager = false;
 
+    console.log(`[cli-launcher] Relaunching session ${sessionId} (cliSessionId: ${info.cliSessionId || "none"}, state: ${info.state}, backendType: ${info.backendType || "claude"})`);
+    this.recorder?.recordServerEvent(sessionId, "cli_relaunch", {
+      cliSessionId: info.cliSessionId || null,
+      hasResume: !!info.cliSessionId,
+      backendType: info.backendType || "claude",
+    }, info.backendType || "claude", info.cwd);
+
     const runtimeEnv = this.sessionEnvs.get(sessionId);
     const binSettings = this.settingsGetter?.() ?? { claudeBinary: "", codexBinary: "" };
 
@@ -485,6 +494,9 @@ export class CliLauncher {
     // to restore the CLI's conversation context.
     if (options.resumeSessionId) {
       args.push("--resume", options.resumeSessionId);
+      console.log(`[cli-launcher] Passing --resume ${options.resumeSessionId}`);
+    } else {
+      console.warn(`[cli-launcher] No cliSessionId — starting fresh session`);
     }
     if (info.resumeAt) {
       args.push("--resume-session-at", info.resumeAt);
@@ -552,18 +564,37 @@ export class CliLauncher {
     // Monitor process exit
     const spawnedAt = Date.now();
     proc.exited.then((exitCode) => {
-      console.log(`[cli-launcher] Session ${sessionId} exited (code=${exitCode})`);
+      const uptime = Date.now() - spawnedAt;
+      console.log(`[cli-launcher] Session ${sessionId} exited (code=${exitCode}, uptime=${uptime}ms)`);
+      this.recorder?.recordServerEvent(sessionId, "cli_exit", {
+        exitCode, uptime, hadResume: !!options.resumeSessionId,
+      }, info.backendType || "claude", info.cwd);
+
+      // Guard against stale exits: if a new process was already spawned
+      // (e.g. relaunch timeout), this exit belongs to the old process.
+      if (this.processes.get(sessionId) !== proc) {
+        console.log(`[cli-launcher] Ignoring stale exit for session ${sessionId}`);
+        return;
+      }
+
       const session = this.sessions.get(sessionId);
       if (session) {
         session.state = "exited";
         session.exitCode = exitCode;
 
         // If the process exited almost immediately with --resume, the resume likely failed.
-        // Clear cliSessionId so the next relaunch starts fresh.
-        const uptime = Date.now() - spawnedAt;
         if (uptime < 5000 && options.resumeSessionId) {
-          console.error(`[cli-launcher] Session ${sessionId} exited immediately after --resume (${uptime}ms). Clearing cliSessionId for fresh start.`);
-          session.cliSessionId = undefined;
+          if (!session.resumeRetried) {
+            // First failure: retry once (the CLI might have been killed mid-write)
+            console.warn(`[cli-launcher] --resume failed (${uptime}ms), retrying once...`);
+            session.resumeRetried = true;
+            // Don't clear cliSessionId — relaunch will retry with --resume
+          } else {
+            // Second failure: give up and start fresh
+            console.error(`[cli-launcher] --resume failed twice. Clearing cliSessionId for fresh start.`);
+            session.cliSessionId = undefined;
+            session.resumeRetried = false;
+          }
         }
       }
       this.processes.delete(sessionId);

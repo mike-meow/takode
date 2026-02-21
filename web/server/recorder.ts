@@ -18,8 +18,8 @@ export interface RecordingHeader {
   cwd: string;
 }
 
-export type RecordingDirection = "in" | "out";
-export type RecordingChannel = "cli" | "browser";
+export type RecordingDirection = "in" | "out" | "internal";
+export type RecordingChannel = "cli" | "browser" | "server";
 
 export interface RecordingEntry {
   ts: number;
@@ -194,6 +194,29 @@ export class RecorderManager {
       this.recorders.set(sessionId, recorder);
     }
     recorder.record(dir, raw, channel);
+  }
+
+  /**
+   * Record a server-side event (e.g. generation state transition, relaunch decision).
+   * Written to the same JSONL file as protocol messages but with ch:"server" and dir:"internal".
+   */
+  recordServerEvent(
+    sessionId: string,
+    event: string,
+    data?: Record<string, unknown>,
+    backendType: BackendType = "claude",
+    cwd: string = "",
+  ): void {
+    if (!this.isRecording(sessionId)) return;
+
+    let recorder = this.recorders.get(sessionId);
+    if (!recorder) {
+      this.ensureDir();
+      recorder = new SessionRecorder(sessionId, backendType, cwd, this.recordingsDir);
+      this.recorders.set(sessionId, recorder);
+    }
+    const payload = JSON.stringify({ event, ...data });
+    recorder.record("internal", payload, "server");
   }
 
   stopRecording(sessionId: string): void {

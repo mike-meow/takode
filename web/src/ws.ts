@@ -542,6 +542,7 @@ function handleParsedMessage(
       store.clearStreamingState(sessionId);
       store.clearToolProgress(sessionId);
       store.setSessionStatus(sessionId, "idle");
+      store.setSessionStuck(sessionId, false);
       // Play notification sound if enabled and tab is not focused
       if (!document.hasFocus() && store.notificationSound) {
         playNotificationSound();
@@ -699,6 +700,13 @@ function handleParsedMessage(
       } else {
         store.setSessionStatus(sessionId, data.status);
       }
+      // Any status change clears stuck flag
+      store.setSessionStuck(sessionId, false);
+      break;
+    }
+
+    case "session_stuck": {
+      store.setSessionStuck(sessionId, true);
       break;
     }
 
@@ -721,6 +729,11 @@ function handleParsedMessage(
       if (data.sessionStatus !== "running") {
         store.clearStreamingState(sessionId);
         store.clearToolProgress(sessionId);
+        store.setSessionStuck(sessionId, false);
+      } else if (data.generationStartedAt && !store.streamingStartedAt.has(sessionId)) {
+        // Restore generation timer from server so switching sessions
+        // doesn't reset the "Purring..." counter.
+        store.setStreamingStats(sessionId, { startedAt: data.generationStartedAt });
       }
       // Sync server-authoritative attention state
       if (data.attentionReason !== undefined) {

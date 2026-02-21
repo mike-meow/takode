@@ -36,9 +36,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = process.env.__COMPANION_PACKAGE_ROOT || resolve(__dirname, "..");
 
 import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD, RESTART_EXIT_CODE } from "./constants.js";
+import { initServerLogger } from "./server-logger.js";
 
 const defaultPort = process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
 const port = Number(process.env.PORT) || defaultPort;
+
+// Initialize file-based logging before anything else logs
+initServerLogger(port);
+
 initWithPort(port);
 const sessionStore = new SessionStore(undefined, port);
 const wsBridge = new WsBridge();
@@ -383,6 +388,9 @@ const server = Bun.serve<SocketData>({
 
 // Start server→browser heartbeat to prevent idle timeout disconnections
 wsBridge.startHeartbeat();
+
+// Start watchdog to detect sessions stuck in "generating" state
+wsBridge.startStuckSessionWatchdog();
 
 console.log(`Server running on http://localhost:${server.port}`);
 console.log(`  CLI WebSocket:     ws://localhost:${server.port}/ws/cli/:sessionId`);

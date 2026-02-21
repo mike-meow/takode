@@ -34,6 +34,7 @@ export function ElapsedTimer({ sessionId }: { sessionId: string }) {
   const streamingPausedDuration = useStore((s) => s.streamingPausedDuration.get(sessionId) ?? 0);
   const streamingPauseStartedAt = useStore((s) => s.streamingPauseStartedAt.get(sessionId));
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
+  const isStuck = useStore((s) => s.sessionStuck.get(sessionId) ?? false);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -53,10 +54,17 @@ export function ElapsedTimer({ sessionId }: { sessionId: string }) {
 
   if (sessionStatus !== "running" || elapsed <= 0) return null;
 
+  const handleRelaunch = () => {
+    api.relaunchSession(sessionId).catch(() => {});
+  };
+
+  const label = isStuck ? 'Session may be stuck' : streamingPauseStartedAt ? 'Napping...' : 'Purring...';
+  const dotColor = isStuck ? 'text-amber-400' : streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse';
+
   return (
     <div className="shrink-0 flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code px-4 py-1">
-      <YarnBallDot className={streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse'} />
-      <span>{streamingPauseStartedAt ? 'Napping...' : 'Purring...'}</span>
+      <YarnBallDot className={dotColor} />
+      <span>{label}</span>
       <span className="text-cc-muted/60">(</span>
       <span>{formatElapsed(elapsed)}</span>
       {(streamingOutputTokens ?? 0) > 0 && (
@@ -66,6 +74,14 @@ export function ElapsedTimer({ sessionId }: { sessionId: string }) {
         </>
       )}
       <span className="text-cc-muted/60">)</span>
+      {isStuck && (
+        <button
+          onClick={handleRelaunch}
+          className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
+        >
+          Relaunch
+        </button>
+      )}
     </div>
   );
 }

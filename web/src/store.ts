@@ -37,6 +37,9 @@ interface AppState {
   // Session status
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
 
+  // Whether a session appears stuck (no CLI response for extended period)
+  sessionStuck: Map<string, boolean>;
+
   // Plan mode: stores previous permission mode per session so we can restore it
   previousPermissionMode: Map<string, string>;
 
@@ -228,6 +231,7 @@ interface AppState {
   setCliEverConnected: (sessionId: string) => void;
   setCliDisconnectReason: (sessionId: string, reason: "idle_limit" | null) => void;
   setSessionStatus: (sessionId: string, status: "idle" | "running" | "compacting" | "reverting" | null) => void;
+  setSessionStuck: (sessionId: string, stuck: boolean) => void;
 
   // Per-session feed visible count (persists across session switches)
   feedVisibleCount: Map<string, number>;
@@ -351,6 +355,7 @@ export const useStore = create<AppState>((set) => ({
   cliEverConnected: new Map(),
   cliDisconnectReason: new Map(),
   sessionStatus: new Map(),
+  sessionStuck: new Map(),
   previousPermissionMode: new Map(),
   askPermission: new Map(),
   sessionTasks: new Map(),
@@ -510,6 +515,8 @@ export const useStore = create<AppState>((set) => ({
       cliDisconnectReason.delete(sessionId);
       const sessionStatus = new Map(s.sessionStatus);
       sessionStatus.delete(sessionId);
+      const sessionStuck = new Map(s.sessionStuck);
+      sessionStuck.delete(sessionId);
       const previousPermissionMode = new Map(s.previousPermissionMode);
       previousPermissionMode.delete(sessionId);
       const askPermission = new Map(s.askPermission);
@@ -573,6 +580,7 @@ export const useStore = create<AppState>((set) => ({
         cliEverConnected,
         cliDisconnectReason,
         sessionStatus,
+        sessionStuck,
         previousPermissionMode,
         askPermission,
         pendingPermissions,
@@ -1073,6 +1081,17 @@ export const useStore = create<AppState>((set) => ({
       const sessionStatus = new Map(s.sessionStatus);
       sessionStatus.set(sessionId, status);
       return { sessionStatus };
+    }),
+
+  setSessionStuck: (sessionId, stuck) =>
+    set((s) => {
+      const sessionStuck = new Map(s.sessionStuck);
+      if (stuck) {
+        sessionStuck.set(sessionId, true);
+      } else {
+        sessionStuck.delete(sessionId);
+      }
+      return { sessionStuck };
     }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),

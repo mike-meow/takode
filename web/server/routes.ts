@@ -22,6 +22,7 @@ import type { CreationStepId } from "./session-types.js";
 import { hasContainerClaudeAuth } from "./claude-container-auth.js";
 import { hasContainerCodexAuth } from "./codex-container-auth.js";
 import { getSettings, updateSettings, getServerName, setServerName, getServerId } from "./settings-manager.js";
+import { getLogPath } from "./server-logger.js";
 import { getUsageLimits } from "./usage-limits.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
@@ -1686,6 +1687,7 @@ export function createRoutes(
       codexBinary: settings.codexBinary,
       maxKeepAlive: settings.maxKeepAlive,
       restartSupported: !!process.env.COMPANION_SUPERVISED,
+      logFile: getLogPath(),
     });
   });
 

@@ -1045,6 +1045,7 @@ describe("GET /api/settings", () => {
       codexBinary: "",
       maxKeepAlive: 0,
       restartSupported: expect.any(Boolean),
+      logFile: expect.any(Object), // null or string depending on logger init
     });
   });
 
@@ -1073,6 +1074,7 @@ describe("GET /api/settings", () => {
       codexBinary: "",
       maxKeepAlive: 0,
       restartSupported: expect.any(Boolean),
+      logFile: expect.any(Object), // null or string depending on logger init
     });
   });
 

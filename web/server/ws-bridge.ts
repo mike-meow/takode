@@ -155,6 +155,12 @@ interface Session {
   toolStartTimes: Map<string, number>;
   /** Whether the CLI is actively generating a response (transient, not persisted) */
   isGenerating: boolean;
+  /** When isGenerating became true (epoch ms), for stuck detection + timer restore */
+  generationStartedAt: number | null;
+  /** Last message received from CLI (epoch ms), for stuck detection */
+  lastCliMessageAt: number;
+  /** When stuck notification was sent (epoch ms), to avoid repeated notifications */
+  stuckNotifiedAt: number | null;
   /** Server-side activity preview (mirrors browser's sessionTaskPreview) */
   lastActivityPreview?: string;
   /** Epoch ms when the user last viewed this session (server-authoritative) */
@@ -467,6 +473,31 @@ export class WsBridge {
     }, 30_000);
   }
 
+  /** Periodically check for sessions stuck in "generating" state with no CLI activity. */
+  startStuckSessionWatchdog(): void {
+    const STUCK_THRESHOLD_MS = 120_000; // 2 minutes
+    const CHECK_INTERVAL_MS = 30_000;   // check every 30s
+
+    const timer = setInterval(() => {
+      for (const session of this.sessions.values()) {
+        if (!session.isGenerating || !session.generationStartedAt) continue;
+        if (session.stuckNotifiedAt) continue; // already notified
+
+        const elapsed = Date.now() - session.generationStartedAt;
+        if (elapsed < STUCK_THRESHOLD_MS) continue;
+
+        // If CLI sent a message after generation started, it's still active
+        if (session.lastCliMessageAt > session.generationStartedAt) continue;
+
+        session.stuckNotifiedAt = Date.now();
+        console.warn(`[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s, no CLI response)`);
+        this.recorder?.recordServerEvent(session.id, "stuck_detected", { elapsed }, session.backendType, session.state.cwd);
+        this.broadcastToBrowsers(session, { type: "session_stuck" } as BrowserIncomingMessage);
+      }
+    }, CHECK_INTERVAL_MS);
+    if (timer.unref) timer.unref();
+  }
+
   /** Push a message to all connected browsers for a session (public, for PRPoller etc.). */
   broadcastToSession(sessionId: string, msg: BrowserIncomingMessage): void {
     const session = this.sessions.get(sessionId);
@@ -534,6 +565,9 @@ export class WsBridge {
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
         isGenerating: false,
+        generationStartedAt: null,
+        lastCliMessageAt: 0,
+        stuckNotifiedAt: null,
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
         attentionReason: p.attentionReason ?? null,
         taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
@@ -662,6 +696,9 @@ export class WsBridge {
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
         isGenerating: false,
+        generationStartedAt: null,
+        lastCliMessageAt: 0,
+        stuckNotifiedAt: null,
         lastReadAt: 0,
         attentionReason: null,
         taskHistory: [],
@@ -860,7 +897,7 @@ export class WsBridge {
         session.messageHistory.push({ ...msg, timestamp: msg.timestamp || Date.now() });
         this.persistSession(session);
       } else if (msg.type === "result") {
-        session.isGenerating = false;
+        this.setGenerating(session, false, "codex_result");
         session.messageHistory.push(msg);
         this.persistSession(session);
         // Trigger auto-naming re-evaluation after Codex turn completion
@@ -913,7 +950,7 @@ export class WsBridge {
       }
       session.pendingPermissions.clear();
       session.codexAdapter = null;
-      session.isGenerating = false;
+      this.setGenerating(session, false, "codex_disconnect");
       this.persistSession(session);
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
       console.log(`[ws-bridge] Codex adapter disconnected for session ${sessionId}${idleKilled ? " (idle limit)" : ""}`);
@@ -976,8 +1013,9 @@ export class WsBridge {
     // Record raw incoming CLI message before any parsing
     this.recorder?.record(sessionId, "in", data, "cli", session.backendType, session.state.cwd);
 
-    // Track CLI activity for idle management
+    // Track CLI activity for idle management and stuck detection
     this.launcher?.touchActivity(sessionId);
+    session.lastCliMessageAt = Date.now();
 
     // NDJSON: split on newlines, parse each line
     const lines = data.split("\n").filter((l) => l.trim());
@@ -1000,13 +1038,16 @@ export class WsBridge {
 
     const wasGenerating = session.isGenerating;
     session.cliSocket = null;
-    session.isGenerating = false;
+    this.setGenerating(session, false, "cli_disconnect");
     const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
     console.log(`[ws-bridge] CLI disconnected for session ${sessionId}${idleKilled ? " (idle limit)" : ""}`);
     this.broadcastToBrowsers(session, {
       type: "cli_disconnected",
       ...(idleKilled ? { reason: "idle_limit" as const } : {}),
     });
+    // Immediately tell browsers to stop showing "Purring..." — without this,
+    // the browser stays in a stale "running" state until a full reconnect.
+    this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
     // Only set error attention on unexpected disconnects (mid-generation crash),
     // not on clean shutdown after a result message or idle kill
     if (wasGenerating && !idleKilled) {
@@ -1257,7 +1298,7 @@ export class WsBridge {
       session.state.is_compacting = msg.status === "compacting";
       // Compaction pauses generation; clear the flag so deriveSessionStatus is accurate
       if (msg.status === "compacting") {
-        session.isGenerating = false;
+        this.setGenerating(session, false, "compaction");
       }
 
       if (msg.permissionMode) {
@@ -1481,7 +1522,7 @@ export class WsBridge {
       },
     });
 
-    session.isGenerating = false;
+    this.setGenerating(session, false, "result");
 
     // Safety net: clear any stale pending permissions when a turn completes.
     // A completed turn means the CLI has no outstanding tool calls, so any
@@ -1804,7 +1845,7 @@ export class WsBridge {
         session.messageHistory.push(userHistoryEntry);
         // Broadcast user message to all browsers (server-authoritative)
         this.broadcastToBrowsers(session, userHistoryEntry);
-        session.isGenerating = true;
+        this.setGenerating(session, true, "user_message");
         this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
         this.persistSession(session);
 
@@ -2107,7 +2148,7 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
-    session.isGenerating = true;
+    this.setGenerating(session, true, "user_message");
     // Notify all browsers immediately so the UI shows "Thinking" without
     // waiting for the CLI's first assistant response.
     this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
@@ -2198,7 +2239,7 @@ export class WsBridge {
         // Immediately tell browsers the session is running — the CLI will
         // start executing the plan right away but its own status update
         // takes a round-trip to arrive.
-        session.isGenerating = true;
+        this.setGenerating(session, true, "exit_plan_mode");
         this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
         console.log(`[ws-bridge] ExitPlanMode approved for session ${session.id}, switching to ${postPlanMode} (askPermission=${askPerm})`);
       }
@@ -2427,6 +2468,24 @@ export class WsBridge {
     });
   }
 
+  /** Centralized generation state setter with logging and recording. */
+  private setGenerating(session: Session, generating: boolean, reason: string): void {
+    if (session.isGenerating === generating) return;
+    session.isGenerating = generating;
+    if (generating) {
+      session.generationStartedAt = Date.now();
+      session.stuckNotifiedAt = null;
+      console.log(`[ws-bridge] Generation started for session ${session.id} (${reason})`);
+      this.recorder?.recordServerEvent(session.id, "generation_started", { reason }, session.backendType, session.state.cwd);
+    } else {
+      const elapsed = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
+      session.generationStartedAt = null;
+      session.stuckNotifiedAt = null;
+      console.log(`[ws-bridge] Generation ended for session ${session.id} (${reason}, duration: ${elapsed}ms)`);
+      this.recorder?.recordServerEvent(session.id, "generation_ended", { reason, elapsed }, session.backendType, session.state.cwd);
+    }
+  }
+
   /** Derive current session status from explicit runtime state. */
   private deriveSessionStatus(session: Session): string | null {
     if (session.state.is_compacting) return "compacting";
@@ -2447,6 +2506,7 @@ export class WsBridge {
       askPermission: session.state.askPermission ?? true,
       lastReadAt: session.lastReadAt,
       attentionReason: session.attentionReason,
+      generationStartedAt: session.generationStartedAt ?? null,
     });
   }
 

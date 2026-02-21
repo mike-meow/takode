@@ -30,6 +30,7 @@ vi.mock("../store.js", () => {
       streamingPausedDuration: mockStoreValues.streamingPausedDuration ?? new Map(),
       streamingPauseStartedAt: mockStoreValues.streamingPauseStartedAt ?? new Map(),
       sessionStatus: mockStoreValues.sessionStatus ?? new Map(),
+      sessionStuck: mockStoreValues.sessionStuck ?? new Map(),
       sessions: mockStoreValues.sessions ?? new Map(),
       toolProgress: mockStoreValues.toolProgress ?? new Map(),
       toolResults: mockStoreValues.toolResults ?? new Map(),
