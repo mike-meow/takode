@@ -446,14 +446,23 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   // Extract the final assistant text message as the response entry.
   // This is always visible (even when activity is collapsed) so the user
   // can see the agent's answer without expanding intermediate tool calls.
+  // Prefer a text-only message (no tool_use blocks) so collapsed view
+  // doesn't render stray tool calls alongside the response.
   let responseEntry: FeedEntry | null = null;
+  let responseIdx = -1;
+  let fallbackIdx = -1;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
     if (e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trim()) {
-      responseEntry = e;
-      agentEntries.splice(i, 1);
-      break;
+      if (fallbackIdx === -1) fallbackIdx = i;
+      const hasToolUse = e.msg.contentBlocks?.some((b: { type: string }) => b.type === "tool_use");
+      if (!hasToolUse) { responseIdx = i; break; }
     }
+  }
+  const pickIdx = responseIdx !== -1 ? responseIdx : fallbackIdx;
+  if (pickIdx !== -1) {
+    responseEntry = agentEntries[pickIdx];
+    agentEntries.splice(pickIdx, 1);
   }
 
   // Stable ID: prefer user message ID, fall back to first agent entry ID, then synthetic
@@ -587,7 +596,7 @@ const CollapsedActivityBar = memo(function CollapsedActivityBar({ stats, onClick
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-cc-border/30 bg-cc-card/30 hover:bg-cc-hover/50 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code"
+      className="w-full flex items-center gap-1.5 py-1.5 px-3 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code"
     >
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
         <path d="M6 4l4 4-4 4" />
@@ -975,16 +984,19 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
                 {turn.systemEntries.length > 0 && (
                   <FeedEntries entries={turn.systemEntries} sessionId={sessionId} />
                 )}
-                {/* Collapsed activity summary bar */}
-                {turn.agentEntries.length > 0 && (
-                  <CollapsedActivityBar
-                    stats={turn.stats}
-                    onClick={() => toggleTurn(sessionId, turn.id, isLastTurn)}
-                  />
-                )}
-                {/* Final agent response — always visible */}
-                {turn.responseEntry && (
-                  <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} />
+                {/* Collapsed: activity bar + response wrapped in a shared card */}
+                {(turn.agentEntries.length > 0 || turn.responseEntry) && (
+                  <div className="rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
+                    {turn.agentEntries.length > 0 && (
+                      <CollapsedActivityBar
+                        stats={turn.stats}
+                        onClick={() => toggleTurn(sessionId, turn.id, isLastTurn)}
+                      />
+                    )}
+                    {turn.responseEntry && (
+                      <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} />
+                    )}
+                  </div>
                 )}
               </>
             )}
