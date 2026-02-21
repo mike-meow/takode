@@ -210,6 +210,7 @@ export interface AppSettings {
   claudeBinary: string;
   codexBinary: string;
   maxKeepAlive: number;
+  restartSupported: boolean;
 }
 
 export interface GitHubPRInfo {
@@ -462,6 +463,9 @@ export const api = {
     post<{ ok: boolean; tag: string }>("/docker/build-base"),
   getBaseImageStatus: () =>
     get<{ exists: boolean; tag: string }>("/docker/base-image"),
+
+  // Server control
+  restartServer: () => post<{ ok: boolean }>("/server/restart", {}),
 
   // Settings
   getSettings: () => get<AppSettings>("/settings"),

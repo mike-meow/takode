@@ -31,6 +31,7 @@
     "dev:vite": "vite",
     "build": "vite build",
     "start": "NODE_ENV=production bun server/index.ts",
+    "serve": "bun serve.ts",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --silent --reporter=verbose",

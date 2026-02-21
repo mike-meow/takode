@@ -35,7 +35,7 @@ import type { ServerWebSocket } from "bun";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = process.env.__COMPANION_PACKAGE_ROOT || resolve(__dirname, "..");
 
-import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD } from "./constants.js";
+import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD, RESTART_EXIT_CODE } from "./constants.js";
 
 const defaultPort = process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
 const port = Number(process.env.PORT) || defaultPort;
@@ -204,7 +204,7 @@ if (recorder.isGloballyEnabled()) {
 const app = new Hono();
 
 app.use("/api/*", cors());
-app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker, terminalManager, prPoller, recorder, cronScheduler, imageStore, pushoverNotifier));
+app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker, terminalManager, prPoller, recorder, cronScheduler, imageStore, pushoverNotifier, { requestRestart }));
 
 // In production, serve built frontend using absolute path (works when installed as npm package)
 if (process.env.NODE_ENV === "production") {
@@ -302,6 +302,11 @@ if (process.env.NODE_ENV !== "production") {
   console.log("Dev mode: frontend at http://localhost:5174");
 }
 
+if (!process.env.COMPANION_SUPERVISED) {
+  console.warn("[server] WARNING: Not started via 'make dev' or 'make serve' — the Restart Server button will not work.");
+  console.warn("[server]          Use 'make dev' (dev) or 'make serve' (prod) for restart support.");
+}
+
 // ── Cron scheduler ──────────────────────────────────────────────────────────
 cronScheduler.startAll();
 
@@ -309,14 +314,28 @@ cronScheduler.startAll();
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
 idleManager.start();
 
-// ── Graceful shutdown — persist container state ──────────────────────────────
-function gracefulShutdown() {
-  console.log("[server] Persisting container state before shutdown...");
+// ── Shutdown helpers ─────────────────────────────────────────────────────────
+function performShutdown() {
+  console.log("[server] Persisting state before shutdown...");
   idleManager.stop();
   containerManager.persistState(CONTAINER_STATE_PATH);
   pushoverNotifier.destroy();
+}
+
+function gracefulShutdown() {
+  performShutdown();
   process.exit(0);
 }
+
+function requestRestart() {
+  // Delay exit so the HTTP response can flush to the browser
+  setTimeout(() => {
+    console.log("[server] Restart requested, exiting with code 42...");
+    performShutdown();
+    process.exit(RESTART_EXIT_CODE);
+  }, 500);
+}
+
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
 

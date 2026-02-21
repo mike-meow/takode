@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api } from "../api.js";
+import { useEffect, useRef, useState } from "react";
+import { api, checkHealth } from "../api.js";
 import { useStore } from "../store.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 
@@ -52,6 +52,13 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [poTesting, setPoTesting] = useState(false);
   const [poTestResult, setPoTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
+  // Server restart state
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState("");
+  const [restartSupported, setRestartSupported] = useState(true);
+  const healthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const healthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     api
       .getSettings()
@@ -63,6 +70,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
         setPoEnabled(s.pushoverEnabled);
         setPoDelay(s.pushoverDelaySeconds);
         setPoBaseUrl(s.pushoverBaseUrl || "");
+        setRestartSupported(s.restartSupported);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -167,6 +175,43 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
     }
   }
 
+  async function onRestartServer() {
+    if (!confirm("Restart the server? All browser connections will briefly disconnect. Sessions will reconnect automatically.")) return;
+
+    setRestarting(true);
+    setRestartError("");
+    useStore.getState().setServerRestarting(true);
+
+    try {
+      await api.restartServer();
+    } catch {
+      // Network error is expected — the server is shutting down
+    }
+
+    // Poll for server to come back
+    healthPollRef.current = setInterval(async () => {
+      const healthy = await checkHealth();
+      if (healthy) {
+        if (healthPollRef.current) clearInterval(healthPollRef.current);
+        if (healthTimeoutRef.current) clearTimeout(healthTimeoutRef.current);
+        healthPollRef.current = null;
+        healthTimeoutRef.current = null;
+        useStore.getState().setServerRestarting(false);
+        setRestarting(false);
+      }
+    }, 2000);
+
+    // Timeout after 120s
+    healthTimeoutRef.current = setTimeout(() => {
+      if (healthPollRef.current) clearInterval(healthPollRef.current);
+      healthPollRef.current = null;
+      healthTimeoutRef.current = null;
+      useStore.getState().setServerRestarting(false);
+      setRestarting(false);
+      setRestartError("Server did not come back within 120 seconds. Check your terminal.");
+    }, 120_000);
+  }
+
   return (
     <div className={`${embedded ? "h-full" : "h-[100dvh]"} bg-cc-bg text-cc-fg font-sans-ui antialiased overflow-y-auto`}>
       <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
@@ -230,6 +275,41 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
               <span className="text-xs text-cc-muted">{notificationDesktop ? "On" : "Off"}</span>
             </button>
           )}
+        </div>
+
+        <div className="mt-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-cc-fg">Server</h2>
+            <p className="mt-1 text-xs text-cc-muted">
+              Restart the server process. Useful after pulling new code.
+              Sessions will reconnect automatically.
+            </p>
+          </div>
+
+          {!restartSupported && (
+            <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
+              Restart not available. Start the server with <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make dev</code> or <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make serve</code> to enable.
+            </div>
+          )}
+
+          {restartError && (
+            <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+              {restartError}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onRestartServer}
+            disabled={restarting || !restartSupported}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              restarting || !restartSupported
+                ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+            }`}
+          >
+            {restarting ? "Restarting..." : "Restart Server"}
+          </button>
         </div>
 
         <form

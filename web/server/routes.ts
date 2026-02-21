@@ -70,6 +70,7 @@ export function createRoutes(
   cronScheduler?: import("./cron-scheduler.js").CronScheduler,
   imageStore?: import("./image-store.js").ImageStore,
   pushoverNotifier?: import("./pushover.js").PushoverNotifier,
+  options?: { requestRestart?: () => void },
 ) {
   const api = new Hono();
 
@@ -1660,6 +1661,16 @@ export function createRoutes(
     return c.json({ exists, image: "the-companion:latest" });
   });
 
+  // ─── Server restart ───────────────────────────────────────────────
+
+  api.post("/server/restart", (c) => {
+    if (!options?.requestRestart) {
+      return c.json({ error: "Restart not supported in this mode" }, 503);
+    }
+    options.requestRestart();
+    return c.json({ ok: true });
+  });
+
   // ─── Settings (~/.companion/settings.json) ────────────────────────
 
   api.get("/settings", (c) => {
@@ -1674,6 +1685,7 @@ export function createRoutes(
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
       maxKeepAlive: settings.maxKeepAlive,
+      restartSupported: !!process.env.COMPANION_SUPERVISED,
     });
   });
 

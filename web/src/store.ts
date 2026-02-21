@@ -104,6 +104,10 @@ interface AppState {
   serverReachable: boolean;
   setServerReachable: (reachable: boolean) => void;
 
+  // Server restart state
+  serverRestarting: boolean;
+  setServerRestarting: (v: boolean) => void;
+
   // UI
   darkMode: boolean;
   zoomLevel: number;
@@ -364,6 +368,8 @@ export const useStore = create<AppState>((set) => ({
   setServerName: (name) => set({ serverName: name }),
   serverReachable: true,
   setServerReachable: (reachable) => set({ serverReachable: reachable }),
+  serverRestarting: false,
+  setServerRestarting: (v) => set({ serverRestarting: v }),
   darkMode: getInitialDarkMode(),
   zoomLevel: getInitialZoomLevel(),
   notificationSound: getInitialNotificationSound(),
