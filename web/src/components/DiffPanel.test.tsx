@@ -143,10 +143,9 @@ describe("DiffPanel", () => {
 
     render(<DiffPanel sessionId="s1" />);
 
-    // After stats load (empty diff → +0/-0), the file is removed from visible list,
-    // falling through to the empty state.
+    // After stats load (empty diff → +0/-0), the file is removed from the sidebar.
     await waitFor(() => {
-      expect(screen.getByText("No changes yet")).toBeInTheDocument();
+      expect(screen.getByText("Changed (0)")).toBeInTheDocument();
     });
   });
 

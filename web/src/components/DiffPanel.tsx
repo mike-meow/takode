@@ -5,6 +5,8 @@ import { invalidateDiffStatsCache } from "../ws.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { YarnBallSpinner } from "./CatIcons.js";
 
+const LINE_NUMBERS_KEY = "cc-diff-line-numbers";
+
 /** Count additions and deletions from a unified diff string */
 function countDiffStats(diff: string): { additions: number; deletions: number } {
   let additions = 0;
@@ -29,46 +31,52 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const changedFilesSet = useStore((s) => s.changedFiles.get(sessionId));
 
   const cwd = session?.cwd || sdkSession?.cwd;
-  // Use git repo root as scope so files outside session cwd are visible in diff panel.
-  // For worktrees, repo_root points to the main repo (not the worktree directory), so fall
-  // back to cwd when repo_root isn't an ancestor of cwd.
   const repoRoot = (session?.repo_root && cwd?.startsWith(session.repo_root + "/"))
     ? session.repo_root
     : cwd;
 
-  const [diffContent, setDiffContent] = useState<string>("");
-  const [diffLoading, setDiffLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 640 : true,
   );
-  // Per-file diff stats (abs path → { additions, deletions })
   const [fileStats, setFileStats] = useState<Map<string, FileStats>>(new Map());
-  // Track which set of files we've already fetched stats for
   const fetchedFilesRef = useRef<Set<string>>(new Set());
 
-  // Base branch for diff comparison — server-authoritative, synced across devices.
-  // session.diff_base_branch = user override ("" = use default), session.git_default_branch = auto-resolved.
+  // Multi-file diff state: all fetched diffs keyed by abs path
+  const [allDiffs, setAllDiffs] = useState<Map<string, string>>(new Map());
+  const [allDiffsLoading, setAllDiffsLoading] = useState(false);
+
+  // Line numbers toggle — persisted in localStorage, default based on screen width
+  const [showLineNumbers, setShowLineNumbers] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(LINE_NUMBERS_KEY);
+    if (stored !== null) return stored === "true";
+    return window.innerWidth >= 640;
+  });
+  const toggleLineNumbers = useCallback(() => {
+    setShowLineNumbers((prev) => {
+      const next = !prev;
+      localStorage.setItem(LINE_NUMBERS_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  // Base branch — server-authoritative
   const serverBaseBranch = session?.diff_base_branch || null;
   const [baseBranch, setBaseBranch] = useState<string | null>(serverBaseBranch);
 
-  // Sync from server state (handles cross-browser updates and initial WebSocket delivery)
   useEffect(() => {
     if (serverBaseBranch !== baseBranch) {
       setBaseBranch(serverBaseBranch);
-      // Clear cached file stats so they re-fetch with the new base
       fetchedFilesRef.current.clear();
       setFileStats(new Map());
+      setAllDiffs(new Map());
     }
-  }, [serverBaseBranch]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only react to server changes
+  }, [serverBaseBranch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The resolved default branch: prefer server session state, fall back to API for old sessions
   const serverDefaultBranch = session?.git_default_branch || null;
   const [fallbackDefault, setFallbackDefault] = useState<string | null>(null);
   const resolvedDefault = serverDefaultBranch || fallbackDefault;
-
-  // Effective branch for API calls: resolve "default" selection to actual branch name
   const effectiveBranch = baseBranch || resolvedDefault || null;
-  // Available branches for the dropdown
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const branchesFetched = useRef(false);
 
@@ -83,18 +91,15 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       .sort((a, b) => a.rel.localeCompare(b.rel));
   }, [changedFiles, repoRoot]);
 
-  // Filter out files with zero changes once stats are loaded
   const visibleChangedFiles = useMemo(() => {
     if (fileStats.size === 0) return relativeChangedFiles;
     return relativeChangedFiles.filter((f) => {
       const stats = fileStats.get(f.abs);
-      // Keep the file if stats haven't loaded yet, or if it has actual changes
       return !stats || stats.additions > 0 || stats.deletions > 0;
     });
   }, [relativeChangedFiles, fileStats]);
 
-  // Fetch branch list for dropdown (once per cwd).
-  // Also fetch default branch from API as fallback for sessions created before git_default_branch existed.
+  // Fetch branch list (once per cwd)
   useEffect(() => {
     if (!cwd || branchesFetched.current) return;
     branchesFetched.current = true;
@@ -109,28 +114,27 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   }, [cwd, serverDefaultBranch]);
 
   const handleBaseBranchChange = useCallback((value: string | null) => {
-    setBaseBranch(value); // optimistic update
+    setBaseBranch(value);
     api.setDiffBase(sessionId, value || "").catch(() => {});
-    // Invalidate all cached stats so they re-fetch with new base
     fetchedFilesRef.current.clear();
     setFileStats(new Map());
-    // Also invalidate the eager diff stats cache in ws.ts and store
+    setAllDiffs(new Map());
     invalidateDiffStatsCache(sessionId);
     useStore.getState().setDiffFileStats(sessionId, new Map());
   }, [sessionId]);
 
-  // Fetch diff stats for all changed files (in parallel)
+  // Fetch diffs for ALL changed files (stats + content in one pass)
   useEffect(() => {
     if (!effectiveBranch || relativeChangedFiles.length === 0) return;
-    // Only fetch stats for files we haven't fetched yet
     const newFiles = relativeChangedFiles.filter((f) => !fetchedFilesRef.current.has(f.abs));
     if (newFiles.length === 0) return;
 
     let cancelled = false;
+    setAllDiffsLoading(true);
     const promises = newFiles.map(({ abs }) =>
       api.getFileDiff(abs, effectiveBranch).then((res) => {
-        return { abs, stats: countDiffStats(res.diff) };
-      }).catch(() => ({ abs, stats: { additions: 0, deletions: 0 } })),
+        return { abs, diff: res.diff, stats: countDiffStats(res.diff) };
+      }).catch(() => ({ abs, diff: "", stats: { additions: 0, deletions: 0 } })),
     );
     Promise.all(promises).then((results) => {
       if (cancelled) return;
@@ -142,11 +146,19 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         }
         return next;
       });
+      setAllDiffs((prev) => {
+        const next = new Map(prev);
+        for (const { abs, diff } of results) {
+          next.set(abs, diff);
+        }
+        return next;
+      });
+      setAllDiffsLoading(false);
     });
     return () => { cancelled = true; };
   }, [relativeChangedFiles, effectiveBranch]);
 
-  // Aggregate totals across all files
+  // Aggregate totals
   const totalStats = useMemo(() => {
     let additions = 0;
     let deletions = 0;
@@ -157,75 +169,82 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     return { additions, deletions };
   }, [fileStats]);
 
-  // Sync fileStats to store so TopBar badge can filter out +0/-0 files
+  // Sync fileStats to store for TopBar badge
   useEffect(() => {
     useStore.getState().setDiffFileStats(sessionId, fileStats);
   }, [fileStats, sessionId]);
 
-  // Auto-select first changed file if none selected
+  // Auto-select first file
   useEffect(() => {
     if (!selectedFile && visibleChangedFiles.length > 0) {
       setSelectedFile(sessionId, visibleChangedFiles[0].abs);
     }
   }, [selectedFile, visibleChangedFiles, sessionId, setSelectedFile]);
 
-  // If the selected file falls out of scope, clear or reselect.
+  // Reselect if selected file falls out of scope
   useEffect(() => {
     if (!selectedFile) return;
     if (visibleChangedFiles.some((f) => f.abs === selectedFile)) return;
     setSelectedFile(sessionId, visibleChangedFiles[0]?.abs ?? null);
   }, [selectedFile, visibleChangedFiles, sessionId, setSelectedFile]);
 
-  // Fetch diff when selected file or base branch changes
-  useEffect(() => {
-    if (!selectedFile) {
-      setDiffContent("");
-      return;
-    }
-    if (!effectiveBranch) {
-      // Don't fetch until we have a resolved base branch
-      setDiffContent("");
-      return;
-    }
-    let cancelled = false;
-    setDiffLoading(true);
-    api
-      .getFileDiff(selectedFile, effectiveBranch)
-      .then((res) => {
-        if (!cancelled) {
-          setDiffContent(res.diff);
-          // Update stats from the fetched diff (may already exist but ensures freshness)
-          setFileStats((prev) => {
-            const next = new Map(prev);
-            next.set(selectedFile, countDiffStats(res.diff));
-            return next;
-          });
-          setDiffLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDiffContent("");
-          setDiffLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [selectedFile, effectiveBranch]);
+  // Refs for scroll-to-file
+  const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Suppress observer-driven selection while a programmatic scroll is in progress
+  const scrollingToFileRef = useRef(false);
 
+  // Scroll to file on sidebar click
   const handleFileSelect = useCallback(
     (path: string) => {
       setSelectedFile(sessionId, path);
       if (typeof window !== "undefined" && window.innerWidth < 640) {
         setSidebarOpen(false);
       }
+      // Scroll to the file's section
+      const el = fileRefs.current.get(path);
+      if (el) {
+        scrollingToFileRef.current = true;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Release the lock after the smooth scroll settles
+        setTimeout(() => { scrollingToFileRef.current = false; }, 600);
+      }
     },
     [sessionId, setSelectedFile],
   );
 
-  const selectedRelPath = useMemo(() => {
-    if (!selectedFile || !cwd) return selectedFile;
-    return selectedFile.startsWith(cwd + "/") ? selectedFile.slice(cwd.length + 1) : selectedFile;
-  }, [selectedFile, cwd]);
+  // IntersectionObserver: update selected file as user scrolls
+  useEffect(() => {
+    if (visibleChangedFiles.length === 0) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (scrollingToFileRef.current) return;
+        // Find the topmost visible file section
+        let topEntry: IntersectionObserverEntry | null = null;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            if (!topEntry || entry.boundingClientRect.top < topEntry.boundingClientRect.top) {
+              topEntry = entry;
+            }
+          }
+        }
+        if (topEntry) {
+          const abs = (topEntry.target as HTMLElement).dataset.filePath;
+          if (abs) setSelectedFile(sessionId, abs);
+        }
+      },
+      { root: container, rootMargin: "0px 0px -70% 0px", threshold: 0 },
+    );
+
+    for (const [, el] of fileRefs.current) {
+      observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [visibleChangedFiles, sessionId, setSelectedFile]);
 
   const branchSelector = (
     <select
@@ -247,25 +266,6 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     return (
       <div className="flex-1 flex items-center justify-center h-full">
         <p className="text-cc-muted text-sm">Waiting for session to initialize...</p>
-      </div>
-    );
-  }
-
-  if (visibleChangedFiles.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-4 select-none px-6">
-        <div className="w-14 h-14 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-7 h-7 text-cc-muted">
-            <path d="M12 3v18M3 12h18" strokeLinecap="round" />
-          </svg>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-cc-fg font-medium mb-1">No changes yet</p>
-          <p className="text-xs text-cc-muted leading-relaxed mb-3">
-            File changes from Edit and Write tool calls will appear here.
-          </p>
-          {branchSelector}
-        </div>
       </div>
     );
   }
@@ -346,62 +346,74 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
       {/* Diff area */}
       <div className="flex-1 min-w-0 h-full flex flex-col">
-        {/* Top bar */}
-        {selectedFile && (
-          <div className="shrink-0 flex items-center gap-2 sm:gap-2.5 px-2 sm:px-4 py-2.5 bg-cc-card border-b border-cc-border">
-            {!sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="flex items-center justify-center w-6 h-6 rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer shrink-0"
-                title="Show file list"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                  <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
-                </svg>
-              </button>
-            )}
-            <div className="flex-1 min-w-0">
-              <span className="text-cc-fg text-[13px] font-medium truncate block">
-                {selectedRelPath?.split("/").pop()}
-              </span>
-              <span className="text-cc-muted truncate text-[11px] hidden sm:block font-mono-code">
-                {selectedRelPath}
-              </span>
-            </div>
+        {/* Top bar — always visible with controls */}
+        <div className="shrink-0 flex items-center gap-2 sm:gap-2.5 px-2 sm:px-4 py-2 bg-cc-card border-b border-cc-border">
+          {!sidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex items-center justify-center w-6 h-6 rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer shrink-0"
+              title="Show file list"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+              </svg>
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
             {!sidebarOpen && branchSelector}
-            {selectedFile && fileStats.has(selectedFile) && (
-              <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1.5">
-                <span className="text-green-500">+{fileStats.get(selectedFile)!.additions}</span>
-                <span className="text-red-400">-{fileStats.get(selectedFile)!.deletions}</span>
-              </span>
-            )}
           </div>
-        )}
+          {(totalStats.additions > 0 || totalStats.deletions > 0) && (
+            <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1.5">
+              <span className="text-green-500">+{totalStats.additions}</span>
+              <span className="text-red-400">-{totalStats.deletions}</span>
+            </span>
+          )}
+          <button
+            onClick={toggleLineNumbers}
+            className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer shrink-0 ${
+              showLineNumbers ? "text-cc-fg bg-cc-hover" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+            }`}
+            title={showLineNumbers ? "Hide line numbers" : "Show line numbers"}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+              <path d="M3 3v10M7 3h6M7 8h6M7 13h4" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
 
-        {/* Diff content */}
-        <div className="flex-1 overflow-auto">
-          {diffLoading ? (
+        {/* Diff content — multi-file scrollable feed */}
+        <div className="flex-1 overflow-auto" ref={scrollContainerRef}>
+          {allDiffsLoading && visibleChangedFiles.length > 0 && allDiffs.size === 0 ? (
             <div className="h-full flex items-center justify-center">
               <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
             </div>
-          ) : selectedFile ? (
-            <div className="p-4">
-              <DiffViewer unifiedDiff={diffContent} fileName={selectedRelPath || undefined} mode="full" />
+          ) : visibleChangedFiles.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-1 select-none px-6">
+              <p className="text-sm text-cc-muted">No changes yet</p>
+              <p className="text-xs text-cc-muted/60">File changes from Edit and Write tool calls will appear here.</p>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center">
-              {!sidebarOpen && (
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
-                  </svg>
-                  Show file list
-                </button>
-              )}
-              <p className="text-cc-muted text-sm">Select a file to view changes</p>
+            <div className="p-4 flex flex-col gap-4">
+              {visibleChangedFiles.map(({ abs, rel }) => {
+                const diff = allDiffs.get(abs);
+                return (
+                  <div
+                    key={abs}
+                    data-file-path={abs}
+                    ref={(el) => {
+                      if (el) fileRefs.current.set(abs, el);
+                      else fileRefs.current.delete(abs);
+                    }}
+                  >
+                    <DiffViewer
+                      unifiedDiff={diff ?? ""}
+                      fileName={rel}
+                      mode="full"
+                      showLineNumbers={showLineNumbers}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

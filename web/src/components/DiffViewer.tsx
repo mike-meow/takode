@@ -12,6 +12,8 @@ export interface DiffViewerProps {
   fileName?: string;
   /** compact = inline in chat (capped height, no line numbers), full = panel (scrollable, line numbers) */
   mode?: "compact" | "full";
+  /** Explicit control over line numbers. When omitted, defaults to true for "full" mode, false for "compact". */
+  showLineNumbers?: boolean;
 }
 
 interface DiffLine {
@@ -222,9 +224,9 @@ function FileHeader({ fileName }: { fileName: string }) {
   );
 }
 
-export function DiffViewer({ oldText, newText, unifiedDiff, fileName, mode = "compact" }: DiffViewerProps) {
+export function DiffViewer({ oldText, newText, unifiedDiff, fileName, mode = "compact", showLineNumbers: showLineNumbersProp }: DiffViewerProps) {
   const isCompact = mode === "compact";
-  const showLineNumbers = !isCompact;
+  const showLineNumbers = showLineNumbersProp ?? !isCompact;
 
   const data = useMemo(() => {
     // Case 1: unified diff string provided (from git diff)
