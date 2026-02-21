@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
-import { MessageFeed } from "./MessageFeed.js";
+import { MessageFeed, ElapsedTimer } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
 import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip, PermissionsCollapsedChip } from "./PermissionBanner.js";
 
@@ -149,6 +149,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </div>
         )
       )}
+
+      {/* Streaming status — fixed above composer */}
+      <ElapsedTimer sessionId={sessionId} />
 
       {/* Composer */}
       <Composer sessionId={sessionId} />

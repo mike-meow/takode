@@ -27,7 +27,7 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
 
 // Self-contained timer component — its 1s tick only re-renders this element,
 // not the entire MessageFeed (which would force all images to re-layout).
-function ElapsedTimer({ sessionId }: { sessionId: string }) {
+export function ElapsedTimer({ sessionId }: { sessionId: string }) {
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
   const streamingPausedDuration = useStore((s) => s.streamingPausedDuration.get(sessionId) ?? 0);
@@ -53,9 +53,9 @@ function ElapsedTimer({ sessionId }: { sessionId: string }) {
   if (sessionStatus !== "running" || elapsed <= 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
+    <div className="shrink-0 flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code px-4 py-1">
       <YarnBallDot className={streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse'} />
-      <span>{streamingPauseStartedAt ? 'Waiting...' : 'Generating...'}</span>
+      <span>{streamingPauseStartedAt ? 'Napping...' : 'Purring...'}</span>
       <span className="text-cc-muted/60">(</span>
       <span>{formatElapsed(elapsed)}</span>
       {(streamingOutputTokens ?? 0) > 0 && (
@@ -910,9 +910,6 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
           </div>
         </div>
       )}
-
-      {/* Generation stats bar — extracted to avoid 1s timer re-rendering the full feed */}
-      <ElapsedTimer sessionId={sessionId} />
 
       {/* Compacting indicator */}
       {sessionStatus === "compacting" && (

@@ -53,7 +53,7 @@ vi.mock("../store.js", () => {
   return { useStore };
 });
 
-import { MessageFeed } from "./MessageFeed.js";
+import { MessageFeed, ElapsedTimer } from "./MessageFeed.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -122,15 +122,14 @@ beforeEach(() => {
 
 // ─── formatElapsed (tested via generation stats bar) ─────────────────────────
 
-describe("MessageFeed - formatElapsed via stats bar", () => {
+describe("ElapsedTimer - formatElapsed via stats bar", () => {
   it("formats seconds only (e.g. '5s') for short durations", () => {
     const sid = "test-elapsed-secs";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     // Set startedAt to 5 seconds ago
     setStoreStreamingStartedAt(sid, Date.now() - 5000);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
     // Should show "5s" (or close) in the stats bar
     expect(screen.getByText(/^\d+s$/)).toBeTruthy();
@@ -138,11 +137,10 @@ describe("MessageFeed - formatElapsed via stats bar", () => {
 
   it("formats minutes and seconds (e.g. '2m 30s') for longer durations", () => {
     const sid = "test-elapsed-mins";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     setStoreStreamingStartedAt(sid, Date.now() - 150_000); // 2m 30s ago
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
     expect(screen.getByText(/^\d+m \d+s$/)).toBeTruthy();
   });
@@ -150,15 +148,14 @@ describe("MessageFeed - formatElapsed via stats bar", () => {
 
 // ─── formatTokens (tested via generation stats bar) ──────────────────────────
 
-describe("MessageFeed - formatTokens via stats bar", () => {
+describe("ElapsedTimer - formatTokens via stats bar", () => {
   it("formats token count with 'k' suffix for values >= 1000", () => {
     const sid = "test-tokens-k";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     setStoreStreamingStartedAt(sid, Date.now() - 3000);
     setStoreStreamingOutputTokens(sid, 1500);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
     // Should display token count formatted as "1.5k"
     expect(screen.getByText(/1\.5k/)).toBeTruthy();
@@ -166,12 +163,11 @@ describe("MessageFeed - formatTokens via stats bar", () => {
 
   it("formats token count as plain number for values < 1000", () => {
     const sid = "test-tokens-plain";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     setStoreStreamingStartedAt(sid, Date.now() - 3000);
     setStoreStreamingOutputTokens(sid, 500);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
     expect(screen.getByText(/500/)).toBeTruthy();
   });
@@ -267,38 +263,35 @@ describe("MessageFeed - streaming text", () => {
 
 // ─── Generation stats bar ────────────────────────────────────────────────────
 
-describe("MessageFeed - generation stats bar", () => {
+describe("ElapsedTimer - generation stats bar", () => {
   it("renders stats bar when session is running", () => {
     const sid = "test-stats";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     setStoreStreamingStartedAt(sid, Date.now() - 10_000);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
-    expect(screen.getByText("Generating...")).toBeTruthy();
+    expect(screen.getByText("Purring...")).toBeTruthy();
   });
 
   it("does not render stats bar when session is idle", () => {
     const sid = "test-idle";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "idle");
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
-    expect(screen.queryByText("Generating...")).toBeNull();
+    expect(screen.queryByText("Purring...")).toBeNull();
   });
 
   it("shows output tokens in stats bar when available", () => {
     const sid = "test-tokens-stats";
-    setStoreMessages(sid, [makeMessage({ role: "user", content: "hi" })]);
     setStoreStatus(sid, "running");
     setStoreStreamingStartedAt(sid, Date.now() - 5000);
     setStoreStreamingOutputTokens(sid, 2500);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<ElapsedTimer sessionId={sid} />);
 
-    expect(screen.getByText("Generating...")).toBeTruthy();
+    expect(screen.getByText("Purring...")).toBeTruthy();
     // Should show "2.5k" token count
     expect(screen.getByText(/2\.5k/)).toBeTruthy();
   });

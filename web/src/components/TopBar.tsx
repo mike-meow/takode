@@ -222,13 +222,6 @@ export function TopBar() {
             <span className="text-cc-warning font-medium animate-pulse">Reverting...</span>
           )}
 
-          {status === "running" && (
-            <div className="flex items-center gap-1.5">
-              <YarnBallDot className="text-cc-primary animate-[pulse-dot_1s_ease-in-out_infinite]" />
-              <span className="text-cc-primary font-medium">Thinking</span>
-            </div>
-          )}
-
           {/* Chat / Editor tab toggle */}
           <div className="flex items-center bg-cc-hover rounded-lg p-0.5">
             <button
