@@ -169,10 +169,12 @@ function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessa
     if (!sessionId || !message.id) return;
     try {
       await api.revertToMessage(sessionId, message.id);
+      // Prefill the composer with the reverted message so the user can edit and resend
+      useStore.getState().setComposerDraft(sessionId, { text: message.content, images: [] });
     } catch (err) {
       console.error("Revert failed:", err);
     }
-  }, [sessionId, message.id]);
+  }, [sessionId, message.id, message.content]);
 
   const toggle = useCallback(() => {
     if (menuPos) {

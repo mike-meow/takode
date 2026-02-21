@@ -115,6 +115,24 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
+
+  // Track whether the current text change came from user typing (handleInput).
+  // When it did, handleInput already adjusted the textarea height synchronously,
+  // so the effect below can skip. For programmatic changes (draft restore on
+  // session switch, prefill from revert) the effect recalculates height.
+  const isUserInput = useRef(false);
+
+  useEffect(() => {
+    if (isUserInput.current) {
+      isUserInput.current = false;
+      return;
+    }
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+  }, [text]);
+
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
 
@@ -330,6 +348,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    isUserInput.current = true;
     setText(e.target.value);
     const ta = e.target;
     ta.style.height = "auto";
