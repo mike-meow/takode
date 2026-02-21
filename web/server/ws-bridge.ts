@@ -1643,6 +1643,15 @@ export class WsBridge {
   }
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {
+    // Dedup: CLI replays result messages on --resume. Skip if already in history
+    // to avoid re-triggering attention/notifications for old completions.
+    if (msg.uuid) {
+      const alreadyInHistory = session.messageHistory.some(
+        (m) => m.type === "result" && (m as { data?: { uuid?: string } }).data?.uuid === msg.uuid,
+      );
+      if (alreadyInHistory) return;
+    }
+
     // Update session cost/turns
     session.state.total_cost_usd = msg.total_cost_usd;
     session.state.num_turns = msg.num_turns;
