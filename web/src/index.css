@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Prevent horizontal overflow on mobile — no element should cause page-level horizontal scroll */
+html, body {
+  overflow-x: hidden;
+}
+
 @theme {
   /* Light Mode (default) */
   --color-cc-bg: #F5F5F0;
