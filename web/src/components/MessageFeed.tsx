@@ -1096,7 +1096,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           setShowScrollButton(true);
         }
       } else {
-        bottomRef.current?.scrollIntoView({ behavior: "instant" });
+        const el = containerRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
       }
       return;
     }
@@ -1104,13 +1105,15 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       const now = Date.now();
       if (now - lastScrollTime.current >= 200) {
         lastScrollTime.current = now;
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        const el = containerRef.current;
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       }
     }
   }, [messages.length, streamingText]);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = containerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
   // ─── Render ──────────────────────────────────────────────────────────────

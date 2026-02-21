@@ -16,6 +16,12 @@ if (typeof window !== "undefined") {
     }),
   });
 
+  // jsdom doesn't implement Element.scrollTo — polyfill as a no-op so
+  // components that call el.scrollTo() (e.g. MessageFeed auto-scroll) don't crash.
+  if (typeof Element.prototype.scrollTo !== "function") {
+    Element.prototype.scrollTo = function () {};
+  }
+
   // Node.js 22+ ships native localStorage that requires --localstorage-file.
   // Vitest may provide an invalid path, leaving a broken global that shadows
   // jsdom's working implementation. Polyfill when getItem is missing.

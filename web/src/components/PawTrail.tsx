@@ -22,8 +22,8 @@ export const PawCounterContext = createContext<React.MutableRefObject<PawCounter
 // on the feed container calls all registered update callbacks in one rAF.
 // Each callback writes directly to its own DOM refs — no React re-renders.
 
-/** Callback signature: receives the scroll container and current direction. */
-type PawUpdateFn = (scrollParent: HTMLElement, dirDown: boolean) => void;
+/** Callback signature: receives the cached parent rect and current direction. */
+type PawUpdateFn = (parentRect: DOMRect, dirDown: boolean) => void;
 
 export const PawScrollContext = createContext<{
   register: (fn: PawUpdateFn) => () => void;
@@ -49,7 +49,7 @@ export function PawScrollProvider({
     // Give the newly registered paw an immediate position update
     const el = scrollRef.current;
     if (el) {
-      requestAnimationFrame(() => fn(el, dirDown.current));
+      requestAnimationFrame(() => fn(el.getBoundingClientRect(), dirDown.current));
     }
     return () => { callbacks.current.delete(fn); };
   }, [scrollRef]);
@@ -71,8 +71,10 @@ export function PawScrollProvider({
         }
         lastScrollTop.current = currentScrollTop;
 
+        // Read parentRect ONCE per frame — avoid N redundant reads
+        const parentRect = scrollEl.getBoundingClientRect();
         for (const cb of callbacks.current) {
-          cb(scrollEl, dirDown.current);
+          cb(parentRect, dirDown.current);
         }
       });
     };
@@ -81,8 +83,9 @@ export function PawScrollProvider({
 
     // Initial position for all paws already registered
     requestAnimationFrame(() => {
+      const parentRect = scrollEl.getBoundingClientRect();
       for (const cb of callbacks.current) {
-        cb(scrollEl, dirDown.current);
+        cb(parentRect, dirDown.current);
       }
     });
 
@@ -141,14 +144,13 @@ export function PawTrailAvatar({
     // If no scroll context (tests, playground), fall back to dot state
     if (!scrollCtx) return;
 
-    const updateFn: PawUpdateFn = (scrollParent, dirDown) => {
+    const updateFn: PawUpdateFn = (parentRect, dirDown) => {
       const el = outerRef.current;
       const pawEl = pawRef.current;
       const dotEl = dotRef.current;
       if (!el || !pawEl || !dotEl) return;
 
       const elRect = el.getBoundingClientRect();
-      const parentRect = scrollParent.getBoundingClientRect();
       const elCenter = elRect.top + elRect.height / 2;
 
       const morphRange = 400;
@@ -179,12 +181,16 @@ export function PawTrailAvatar({
       const splayRotate = (isLeft ? -12 : 12) * splayAmount * dir;
       const splayOffsetX = (isLeft ? -5 : 5) * splayAmount * dir;
 
-      // Write directly to DOM — no React state, no re-renders
+      // Write directly to DOM — no React state, no re-renders.
+      // Use only transform/opacity/visibility (composite-friendly properties).
+      // NEVER toggle `display` here — it invalidates layout and forces
+      // synchronous relayout on every subsequent getBoundingClientRect() call,
+      // causing N forced relayouts per frame with N paws (layout thrashing).
       el.style.transform = `translateX(${splayOffsetX}px) rotate(${splayRotate}deg)`;
 
       pawEl.style.opacity = String(pawOpacity);
       pawEl.style.transform = `scale(${pawScale}) ${isLeft ? "" : "scaleX(-1) "}rotate(${pawRotation}deg)`;
-      pawEl.style.display = pawOpacity > 0.02 ? "" : "none";
+      pawEl.style.visibility = pawOpacity > 0.02 ? "" : "hidden";
 
       dotEl.style.opacity = String(dotOpacity);
       dotEl.style.transform = `scale(${dotScale})`;
