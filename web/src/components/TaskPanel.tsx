@@ -664,7 +664,7 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
             <div className="px-3 py-2">
               <div className="space-y-0.5">
                 {tasks.map((task) => (
-                  <TaskRow key={task.id} task={task} />
+                  <TaskRow key={task.id} task={task} sessionId={sessionId} />
                 ))}
               </div>
             </div>
@@ -675,7 +675,8 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
   );
 }
 
-function TaskRow({ task }: { task: TaskItem }) {
+function TaskRow({ task, sessionId }: { task: TaskItem; sessionId: string }) {
+  const isRunning = useStore((s) => s.sessionStatus.get(sessionId)) === "running";
   const isCompleted = task.status === "completed";
   const isInProgress = task.status === "in_progress";
 
@@ -688,7 +689,7 @@ function TaskRow({ task }: { task: TaskItem }) {
         <span className="shrink-0 flex items-center justify-center w-4 h-4 mt-px">
           {isInProgress ? (
             <svg
-              className="w-4 h-4 text-cc-primary animate-spin"
+              className={`w-4 h-4 text-cc-primary ${isRunning ? "animate-spin" : ""}`}
               viewBox="0 0 16 16"
               fill="none"
             >
