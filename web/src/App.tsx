@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useStore } from "./store.js";
 import { connectSession } from "./ws.js";
 import { checkHealth } from "./api.js";
@@ -121,6 +121,59 @@ export default function App() {
     // For other pages (settings, terminal, etc.), preserve currentSessionId
   }, [route]);
 
+  // Swipe-to-dismiss for mobile sidebar
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const swipeRef = useRef({ startX: 0, startY: 0, dx: 0, swiping: false });
+
+  const handleSidebarTouchStart = useCallback((e: React.TouchEvent) => {
+    if (window.innerWidth >= 768) return;
+    const t = e.touches[0];
+    swipeRef.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false };
+  }, []);
+
+  const handleSidebarTouchMove = useCallback((e: React.TouchEvent) => {
+    if (window.innerWidth >= 768) return;
+    const t = e.touches[0];
+    const dx = t.clientX - swipeRef.current.startX;
+    const dy = t.clientY - swipeRef.current.startY;
+    if (!swipeRef.current.swiping) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swipeRef.current.swiping = true;
+        if (sidebarRef.current) sidebarRef.current.style.transition = "none";
+      } else {
+        return;
+      }
+    }
+    swipeRef.current.dx = Math.min(0, dx);
+    if (sidebarRef.current) {
+      sidebarRef.current.style.transform = `translateX(${swipeRef.current.dx}px)`;
+    }
+  }, []);
+
+  const handleSidebarTouchEnd = useCallback(() => {
+    if (!swipeRef.current.swiping) return;
+    const el = sidebarRef.current;
+    const shouldClose = swipeRef.current.dx < -60;
+    swipeRef.current = { startX: 0, startY: 0, dx: 0, swiping: false };
+    if (el) {
+      el.style.transition = "transform 200ms ease-out";
+      if (shouldClose) {
+        el.style.transform = "translateX(-100%)";
+        setTimeout(() => {
+          el.style.transition = "";
+          el.style.transform = "";
+          useStore.getState().setSidebarOpen(false);
+        }, 200);
+      } else {
+        el.style.transform = "translateX(0)";
+        setTimeout(() => {
+          el.style.transition = "";
+          el.style.transform = "";
+        }, 200);
+      }
+    }
+  }, []);
+
   if (route.page === "playground") {
     return <Playground />;
   }
@@ -137,6 +190,10 @@ export default function App() {
 
       {/* Sidebar — overlay on mobile, inline on desktop */}
       <div
+        ref={sidebarRef}
+        onTouchStart={handleSidebarTouchStart}
+        onTouchMove={handleSidebarTouchMove}
+        onTouchEnd={handleSidebarTouchEnd}
         className={`
           fixed md:relative z-40 md:z-auto
           h-full shrink-0 transition-all duration-200

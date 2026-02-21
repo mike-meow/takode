@@ -574,6 +574,9 @@ export function Sidebar() {
           onClick={() => {
             useStore.getState().closeTerminal();
             window.location.hash = "#/environments";
+            if (window.innerWidth < 768) {
+              useStore.getState().setSidebarOpen(false);
+            }
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm transition-colors cursor-pointer ${
             isEnvironmentsPage
@@ -590,6 +593,9 @@ export function Sidebar() {
           onClick={() => {
             useStore.getState().closeTerminal();
             window.location.hash = "#/scheduled";
+            if (window.innerWidth < 768) {
+              useStore.getState().setSidebarOpen(false);
+            }
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm transition-colors cursor-pointer ${
             isScheduledPage
@@ -606,6 +612,9 @@ export function Sidebar() {
           onClick={() => {
             useStore.getState().closeTerminal();
             window.location.hash = "#/settings";
+            if (window.innerWidth < 768) {
+              useStore.getState().setSidebarOpen(false);
+            }
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm transition-colors cursor-pointer ${
             isSettingsPage
