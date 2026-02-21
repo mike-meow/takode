@@ -1133,8 +1133,8 @@ export function Playground() {
                         </svg>
                       </div>
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <path d="M14.5 1.5L1.5 7.5l4 1.5M14.5 1.5L6.5 14.5l-1-5.5M14.5 1.5L5.5 9" />
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
                         </svg>
                       </div>
                     </div>
@@ -1207,8 +1207,8 @@ export function Playground() {
                         </svg>
                       </div>
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <path d="M14.5 1.5L1.5 7.5l4 1.5M14.5 1.5L6.5 14.5l-1-5.5M14.5 1.5L5.5 9" />
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
                         </svg>
                       </div>
                     </div>
@@ -1267,8 +1267,8 @@ export function Playground() {
                         </svg>
                       </div>
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <path d="M14.5 1.5L1.5 7.5l4 1.5M14.5 1.5L6.5 14.5l-1-5.5M14.5 1.5L5.5 9" />
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
                         </svg>
                       </div>
                     </div>

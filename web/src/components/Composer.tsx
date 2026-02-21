@@ -10,8 +10,8 @@ import { CatPawAvatar } from "./CatIcons.js";
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M14.5 1.5L1.5 7.5l4 1.5M14.5 1.5L6.5 14.5l-1-5.5M14.5 1.5L5.5 9" />
+    <svg viewBox="0 0 16 16" fill="currentColor" className={className}>
+      <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
     </svg>
   );
 }
@@ -735,6 +735,34 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   <rect x="2" y="2" width="12" height="12" rx="2" />
                   <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                   <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!textareaRef.current) return;
+                  const ta = textareaRef.current;
+                  const start = ta.selectionStart;
+                  const end = ta.selectionEnd;
+                  const val = ta.value;
+                  const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype, "value"
+                  )?.set;
+                  setter?.call(ta, val.substring(0, start) + "\n" + val.substring(end));
+                  ta.dispatchEvent(new Event("input", { bubbles: true }));
+                  requestAnimationFrame(() => {
+                    ta.selectionStart = ta.selectionEnd = start + 1;
+                    ta.style.height = "auto";
+                    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+                  });
+                  ta.focus();
+                }}
+                className="flex sm:hidden items-center justify-center w-11 h-11 rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                title="Insert newline"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                  <path d="M12 3v6a2 2 0 0 1-2 2H4" />
+                  <path d="M6 9L3.5 11.5 6 14" />
                 </svg>
               </button>
 
