@@ -281,7 +281,7 @@ select {
   overflow-y: auto;
 }
 .diff-full {
-  overflow-y: auto;
+  overflow: auto;
 }
 .diff-empty {
   display: flex;
@@ -317,6 +317,7 @@ select {
 .diff-line {
   display: flex;
   min-height: 20px;
+  white-space: pre;
 }
 .diff-gutter {
   flex-shrink: 0;
@@ -336,9 +337,7 @@ select {
 }
 .diff-content {
   flex: 1;
-  min-width: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
   padding-right: 12px;
 }
 .diff-line-add {

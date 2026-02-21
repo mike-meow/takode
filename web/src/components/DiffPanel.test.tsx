@@ -67,22 +67,27 @@ beforeEach(() => {
 
 describe("DiffPanel", () => {
   it("shows empty state when no files changed", () => {
-    const { container } = render(<DiffPanel sessionId="s1" />);
+    render(<DiffPanel sessionId="s1" />);
     expect(screen.getByText("No changes yet")).toBeInTheDocument();
   });
 
-  it("displays changed files in sidebar", () => {
+  it("displays changed files in file picker dropdown", () => {
+    // Changed files should appear in the file picker dropdown and as DiffViewer sections in the feed.
     resetStore({
       changedFiles: new Map([["s1", new Set(["/repo/src/app.ts", "/repo/src/utils.ts"])]]),
     });
 
     const { container } = render(<DiffPanel sessionId="s1" />);
-    expect(screen.getByText("Changed (2)")).toBeInTheDocument();
-    expect(screen.getByText("src/app.ts")).toBeInTheDocument();
-    expect(screen.getByText("src/utils.ts")).toBeInTheDocument();
+    // File picker button shows count
+    const filePickerBtn = screen.getByTitle("Jump to file");
+    expect(filePickerBtn).toBeInTheDocument();
+    expect(filePickerBtn.textContent).toContain("2");
+    // Each file renders a DiffViewer section in the feed
+    expect(container.querySelectorAll("[data-file-path]")).toHaveLength(2);
   });
 
   it("hides changed files outside the session cwd", () => {
+    // Files outside the session cwd (e.g. plan files) should not appear in the diff panel.
     resetStore({
       changedFiles: new Map([
         ["s1", new Set(["/repo/src/app.ts", "/Users/stan/.claude/plans/plan.md"])],
@@ -90,9 +95,10 @@ describe("DiffPanel", () => {
     });
 
     const { container } = render(<DiffPanel sessionId="s1" />);
-    expect(screen.getByText("Changed (1)")).toBeInTheDocument();
-    expect(screen.getByText("src/app.ts")).toBeInTheDocument();
-    expect(screen.queryByText("/Users/stan/.claude/plans/plan.md")).not.toBeInTheDocument();
+    // Only 1 file (inside cwd) should be in the feed
+    expect(container.querySelectorAll("[data-file-path]")).toHaveLength(1);
+    expect(container.querySelector("[data-file-path='/repo/src/app.ts']")).toBeTruthy();
+    expect(container.querySelector("[data-file-path='/Users/stan/.claude/plans/plan.md']")).toBeNull();
   });
 
   it("fetches diff when a file is selected", async () => {
@@ -132,7 +138,7 @@ describe("DiffPanel", () => {
 
   it("hides files with zero changes once stats are loaded", async () => {
     // Files that were touched by tool calls but have no actual diff against the base branch
-    // should be filtered out of the sidebar once their stats are fetched.
+    // should be filtered out once their stats are fetched (empty diff → +0/-0).
     mockApi.getFileDiff.mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
 
     resetStore({
@@ -141,11 +147,11 @@ describe("DiffPanel", () => {
       diffPanelSelectedFile: new Map([["s1", "/repo/file.ts"]]),
     });
 
-    render(<DiffPanel sessionId="s1" />);
+    const { container } = render(<DiffPanel sessionId="s1" />);
 
-    // After stats load (empty diff → +0/-0), the file is removed from the sidebar.
+    // After stats load (empty diff → +0/-0), the file is removed from the visible list.
     await waitFor(() => {
-      expect(screen.getByText("Changed (0)")).toBeInTheDocument();
+      expect(container.querySelectorAll("[data-file-path]")).toHaveLength(0);
     });
   });
 
@@ -203,10 +209,11 @@ describe("DiffPanel", () => {
       ]),
     });
 
-    render(<DiffPanel sessionId="s1" />);
-    expect(screen.getByText("Changed (2)")).toBeInTheDocument();
-    expect(screen.getByText("web/src/app.ts")).toBeInTheDocument();
-    expect(screen.getByText("web/src/utils.ts")).toBeInTheDocument();
+    const { container } = render(<DiffPanel sessionId="s1" />);
+    // Both worktree files should be in the diff feed
+    expect(container.querySelectorAll("[data-file-path]")).toHaveLength(2);
+    expect(container.querySelector("[data-file-path='/home/user/.worktrees/wt-1/web/src/app.ts']")).toBeTruthy();
+    expect(container.querySelector("[data-file-path='/home/user/.worktrees/wt-1/web/src/utils.ts']")).toBeTruthy();
   });
 
   it("uses repo_root as scope when cwd is a subdirectory of repo_root", () => {
@@ -219,9 +226,10 @@ describe("DiffPanel", () => {
       ]),
     });
 
-    render(<DiffPanel sessionId="s1" />);
-    expect(screen.getByText("Changed (2)")).toBeInTheDocument();
-    expect(screen.getByText("CLAUDE.md")).toBeInTheDocument();
-    expect(screen.getByText("packages/app/src/index.ts")).toBeInTheDocument();
+    const { container } = render(<DiffPanel sessionId="s1" />);
+    // Both files (root-level and nested) should be in the diff feed
+    expect(container.querySelectorAll("[data-file-path]")).toHaveLength(2);
+    expect(container.querySelector("[data-file-path='/repo/CLAUDE.md']")).toBeTruthy();
+    expect(container.querySelector("[data-file-path='/repo/packages/app/src/index.ts']")).toBeTruthy();
   });
 });
