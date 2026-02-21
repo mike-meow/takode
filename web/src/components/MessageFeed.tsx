@@ -446,23 +446,14 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   // Extract the final assistant text message as the response entry.
   // This is always visible (even when activity is collapsed) so the user
   // can see the agent's answer without expanding intermediate tool calls.
-  // Prefer a text-only message (no tool_use blocks) so collapsed view
-  // doesn't render stray tool calls alongside the response.
   let responseEntry: FeedEntry | null = null;
-  let responseIdx = -1;
-  let fallbackIdx = -1;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
     if (e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trim()) {
-      if (fallbackIdx === -1) fallbackIdx = i;
-      const hasToolUse = e.msg.contentBlocks?.some((b: { type: string }) => b.type === "tool_use");
-      if (!hasToolUse) { responseIdx = i; break; }
+      responseEntry = e;
+      agentEntries.splice(i, 1);
+      break;
     }
-  }
-  const pickIdx = responseIdx !== -1 ? responseIdx : fallbackIdx;
-  if (pickIdx !== -1) {
-    responseEntry = agentEntries[pickIdx];
-    agentEntries.splice(pickIdx, 1);
   }
 
   // Stable ID: prefer user message ID, fall back to first agent entry ID, then synthetic
