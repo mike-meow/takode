@@ -29,6 +29,7 @@ import type {
   BackendType,
   McpServerDetail,
   McpServerConfig,
+  SessionTaskEntry,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
@@ -160,6 +161,8 @@ interface Session {
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason: "action" | "error" | "review" | null;
+  /** High-level task history recognized by the session auto-namer */
+  taskHistory: SessionTaskEntry[];
 }
 
 type GitSessionKey = "git_branch" | "is_worktree" | "is_containerized" | "repo_root" | "git_ahead" | "git_behind";
@@ -527,6 +530,7 @@ export class WsBridge {
         isGenerating: false,
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
         attentionReason: p.attentionReason ?? null,
+        taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
       };
       session.state.backend_type = session.backendType;
       // Resolve git info for restored sessions (may have been persisted without it)
@@ -556,6 +560,7 @@ export class WsBridge {
       toolResults: Array.from(session.toolResults.entries()),
       lastReadAt: session.lastReadAt,
       attentionReason: session.attentionReason,
+      taskHistory: session.taskHistory,
     });
   }
 
@@ -576,6 +581,7 @@ export class WsBridge {
       toolResults: Array.from(session.toolResults.entries()),
       lastReadAt: session.lastReadAt,
       attentionReason: session.attentionReason,
+      taskHistory: session.taskHistory,
     });
   }
 
@@ -652,6 +658,7 @@ export class WsBridge {
         isGenerating: false,
         lastReadAt: 0,
         attentionReason: null,
+        taskHistory: [],
       };
       this.sessions.set(sessionId, session);
     } else if (backendType) {
@@ -1993,6 +2000,14 @@ export class WsBridge {
       }
     }
 
+    // Send task history so the browser always has the full list on reconnect
+    if (session.taskHistory.length > 0) {
+      this.sendToBrowser(ws, {
+        type: "session_task_history",
+        tasks: session.taskHistory,
+      });
+    }
+
     // Always send authoritative state snapshot last — ensures transient state
     // (session status, CLI connection, permission mode) is correct regardless
     // of which events the browser may have missed.
@@ -2370,6 +2385,31 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.broadcastToBrowsers(session, { type: "session_name_update", name });
+  }
+
+  /** Add a task entry to the session's task history, persist, and broadcast. */
+  addTaskEntry(sessionId: string, entry: SessionTaskEntry): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    if (entry.action === "revise") {
+      // Revisions silently update the most recent entry's title
+      const last = session.taskHistory[session.taskHistory.length - 1];
+      if (last) {
+        last.title = entry.title;
+      }
+    } else {
+      session.taskHistory.push(entry);
+    }
+    this.broadcastTaskHistory(session);
+    this.persistSession(session);
+  }
+
+  /** Push the full task history to all connected browsers for a session. */
+  private broadcastTaskHistory(session: Session): void {
+    this.broadcastToBrowsers(session, {
+      type: "session_task_history",
+      tasks: session.taskHistory,
+    });
   }
 
   /** Derive current session status from explicit runtime state. */

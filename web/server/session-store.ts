@@ -6,6 +6,7 @@ import type {
   BrowserIncomingMessage,
   PermissionRequest,
   BufferedBrowserEvent,
+  SessionTaskEntry,
 } from "./session-types.js";
 
 // ─── Serializable session shape ─────────────────────────────────────────────
@@ -27,6 +28,8 @@ export interface PersistedSession {
   lastReadAt?: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason?: "action" | "error" | "review" | null;
+  /** High-level task history recognized by the session auto-namer */
+  taskHistory?: SessionTaskEntry[];
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────

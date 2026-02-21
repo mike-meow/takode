@@ -142,6 +142,15 @@ const autoNamingEvaluated = new Set<string>();
 // evaluations only show the model events that happened *since* the name was set.
 const nameSetAtHistoryIndex = new Map<string, number>();
 
+/** Find the ID of the last user_message in a history array (for task entry tracking). */
+function findLastUserMessageId(history: import("./session-types.js").BrowserIncomingMessage[]): string {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.type === "user_message" && msg.id) return msg.id;
+  }
+  return `unknown-${Date.now()}`;
+}
+
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
 wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
   const currentName = sessionNames.getName(sessionId);
@@ -160,6 +169,12 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
     sessionNames.setName(sessionId, result.title);
     nameSetAtHistoryIndex.set(sessionId, history.length);
     wsBridge.broadcastNameUpdate(sessionId, result.title);
+    wsBridge.addTaskEntry(sessionId, {
+      title: result.title,
+      action: "name",
+      timestamp: Date.now(),
+      triggerMessageId: findLastUserMessageId(history),
+    });
     console.log(`[session-namer] Named session ${sessionId}: "${result.title}"`);
   } else {
     // Subsequent messages: evaluate whether to rename.
@@ -180,6 +195,12 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
         sessionNames.setName(sessionId, result.title);
         nameSetAtHistoryIndex.set(sessionId, history.length);
         wsBridge.broadcastNameUpdate(sessionId, result.title);
+        wsBridge.addTaskEntry(sessionId, {
+          title: result.title,
+          action: "revise",
+          timestamp: Date.now(),
+          triggerMessageId: findLastUserMessageId(history),
+        });
         console.log(`[session-namer] Revised session ${sessionId}: "${currentName}" → "${result.title}"`);
         break;
       }
@@ -189,6 +210,12 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
         sessionNames.setName(sessionId, result.title);
         nameSetAtHistoryIndex.set(sessionId, history.length);
         wsBridge.broadcastNameUpdate(sessionId, result.title);
+        wsBridge.addTaskEntry(sessionId, {
+          title: result.title,
+          action: "new",
+          timestamp: Date.now(),
+          triggerMessageId: findLastUserMessageId(history),
+        });
         console.log(`[session-namer] New task in session ${sessionId}: "${currentName}" → "${result.title}"`);
         break;
       }

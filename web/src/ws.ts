@@ -784,6 +784,11 @@ function handleParsedMessage(
       break;
     }
 
+    case "session_task_history": {
+      store.setSessionTaskHistory(sessionId, data.tasks);
+      break;
+    }
+
     case "pr_status_update": {
       store.setPRStatus(sessionId, { available: data.available, pr: data.pr });
       break;

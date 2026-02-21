@@ -1,5 +1,5 @@
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
-import type { SessionState } from "../../server/session-types.js";
+import type { SessionState, SessionTaskEntry } from "../../server/session-types.js";
 import { useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { shortenHome } from "../utils/path-display.js";
@@ -8,6 +8,7 @@ interface SessionHoverCardProps {
   session: SessionItemType;
   sessionName: string | undefined;
   sessionPreview: string | undefined;
+  taskHistory: SessionTaskEntry[] | undefined;
   sessionState: SessionState | undefined;
   /** The CLI's internal session ID, used for `claude --resume` */
   cliSessionId?: string;
@@ -26,6 +27,7 @@ export function SessionHoverCard({
   session: s,
   sessionName,
   sessionPreview,
+  taskHistory,
   sessionState,
   cliSessionId,
   anchorRect,
@@ -149,14 +151,31 @@ export function SessionHoverCard({
           )}
         </div>
 
-        {/* Preview section — preview is stored truncated at 80 chars */}
-        {sessionPreview && (
+        {/* Task history + last message preview */}
+        {(taskHistory && taskHistory.length > 0) ? (
+          <div className="px-4 py-2 border-t border-cc-border/50 space-y-1.5">
+            {taskHistory.map((task, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
+                <span className="text-[12px] text-cc-fg leading-snug line-clamp-1">{task.title}</span>
+              </div>
+            ))}
+            {sessionPreview && (
+              <div className="pt-1 border-t border-cc-border/30">
+                <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Last message</span>
+                <p className="text-[11px] text-cc-muted leading-relaxed line-clamp-2 italic mt-0.5">
+                  {sessionPreview.length >= 80 ? `${sessionPreview}...` : sessionPreview}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : sessionPreview ? (
           <div className="px-4 py-2 border-t border-cc-border/50">
             <p className="text-[12px] text-cc-muted leading-relaxed line-clamp-3 italic">
               {sessionPreview.length >= 80 ? `${sessionPreview}...` : sessionPreview}
             </p>
           </div>
-        )}
+        ) : null}
 
         {/* Git section */}
         {(s.gitBranch || s.gitAhead > 0 || s.gitBehind > 0 || s.linesAdded > 0 || s.linesRemoved > 0) && (

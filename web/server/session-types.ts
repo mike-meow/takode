@@ -233,6 +233,15 @@ export type BrowserOutgoingMessage =
   | { type: "mcp_set_servers"; servers: Record<string, McpServerConfig>; client_msg_id?: string }
   | { type: "set_ask_permission"; askPermission: boolean; client_msg_id?: string };
 
+/** High-level task recognized by the session auto-namer. */
+export interface SessionTaskEntry {
+  title: string;
+  action: "name" | "revise" | "new";
+  timestamp: number;
+  /** ID of the user message that triggered this naming evaluation. */
+  triggerMessageId: string;
+}
+
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
   | { type: "session_init"; session: SessionState; nextEventSeq?: number }
@@ -254,6 +263,7 @@ export type BrowserIncomingMessageBase =
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_name_update"; name: string }
+  | { type: "session_task_history"; tasks: SessionTaskEntry[] }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
   | { type: "compact_boundary"; trigger?: string; preTokens?: number }

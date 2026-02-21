@@ -36,6 +36,7 @@ export function Sidebar() {
   const recentlyRenamed = useStore((s) => s.recentlyRenamed);
   const clearRecentlyRenamed = useStore((s) => s.clearRecentlyRenamed);
   const sessionPreviews = useStore((s) => s.sessionPreviews);
+  const sessionTaskHistory = useStore((s) => s.sessionTaskHistory);
   const pendingPermissions = useStore((s) => s.pendingPermissions);
   const collapsedProjects = useStore((s) => s.collapsedProjects);
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
@@ -708,6 +709,7 @@ export function Sidebar() {
             session={s}
             sessionName={sessionNames.get(hoveredSession.sessionId)}
             sessionPreview={sessionPreviews.get(hoveredSession.sessionId)}
+            taskHistory={sessionTaskHistory.get(hoveredSession.sessionId)}
             sessionState={sessions.get(hoveredSession.sessionId)}
             cliSessionId={sdkSessions.find((sdk) => sdk.sessionId === hoveredSession.sessionId)?.cliSessionId}
             anchorRect={hoveredSession.rect}

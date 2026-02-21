@@ -9,10 +9,11 @@ import type {
   McpServerConfig,
   CreationProgressEvent,
   ToolResultPreview,
+  SessionTaskEntry,
 } from "../server/session-types.js";
 import type { ImageRef } from "../server/image-store.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, ImageRef };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, ImageRef };
 
 export interface ChatMessage {
   id: string;

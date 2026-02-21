@@ -38,6 +38,8 @@ vi.mock("../store.js", () => {
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
       toggleTurnActivity: vi.fn(),
+      scrollToTurnId: mockStoreValues.scrollToTurnId ?? new Map(),
+      clearScrollToTurn: vi.fn(),
     };
     return selector(state);
   };
@@ -48,6 +50,8 @@ vi.mock("../store.js", () => {
     setFeedScrollPosition: vi.fn(),
     collapseAllTurnActivity: vi.fn(),
     setCollapsibleTurnIds: vi.fn(),
+    turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
+    toggleTurnActivity: vi.fn(),
   });
   return { useStore };
 });

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview, SessionTaskEntry } from "./types.js";
 import { api, type PRStatusResponse, type CreationProgressEvent } from "./api.js";
 import { scopedGetItem, scopedSetItem, scopedRemoveItem } from "./utils/scoped-storage.js";
 
@@ -59,6 +59,10 @@ interface AppState {
   // Last user message preview per session (truncated)
   sessionPreviews: Map<string, string>;
   sessionPreviewUpdatedAt: Map<string, number>;
+  // High-level task history recognized by the session auto-namer
+  sessionTaskHistory: Map<string, SessionTaskEntry[]>;
+  // Scroll-to-turn request per session (session → turn ID to scroll to)
+  scrollToTurnId: Map<string, string | null>;
   // Active task preview per session (from TodoWrite/TaskCreate/TaskUpdate in_progress items)
   sessionTaskPreview: Map<string, { text: string; updatedAt: number }>;
 
@@ -178,6 +182,11 @@ interface AppState {
   // Session preview actions
   setSessionPreview: (sessionId: string, preview: string) => void;
   setSessionTaskPreview: (sessionId: string, text: string | null) => void;
+
+  // Session task history actions
+  setSessionTaskHistory: (sessionId: string, tasks: SessionTaskEntry[]) => void;
+  requestScrollToTurn: (sessionId: string, turnId: string) => void;
+  clearScrollToTurn: (sessionId: string) => void;
 
   // PR status action
   setPRStatus: (sessionId: string, status: PRStatusResponse) => void;
@@ -351,6 +360,8 @@ export const useStore = create<AppState>((set) => ({
   recentlyRenamed: new Set(),
   sessionPreviews: new Map(),
   sessionPreviewUpdatedAt: new Map(),
+  sessionTaskHistory: new Map(),
+  scrollToTurnId: new Map(),
   sessionTaskPreview: new Map(),
   prStatus: new Map(),
   mcpServers: new Map(),
@@ -517,6 +528,10 @@ export const useStore = create<AppState>((set) => ({
       recentlyRenamed.delete(sessionId);
       const sessionPreviews = new Map(s.sessionPreviews);
       sessionPreviews.delete(sessionId);
+      const sessionTaskHistory = new Map(s.sessionTaskHistory);
+      sessionTaskHistory.delete(sessionId);
+      const scrollToTurnId = new Map(s.scrollToTurnId);
+      scrollToTurnId.delete(sessionId);
       const diffPanelSelectedFile = new Map(s.diffPanelSelectedFile);
       diffPanelSelectedFile.delete(sessionId);
       const mcpServers = new Map(s.mcpServers);
@@ -567,6 +582,8 @@ export const useStore = create<AppState>((set) => ({
         sessionNames,
         recentlyRenamed,
         sessionPreviews,
+        sessionTaskHistory,
+        scrollToTurnId,
         diffPanelSelectedFile,
         mcpServers,
         toolProgress,
@@ -867,6 +884,27 @@ export const useStore = create<AppState>((set) => ({
       return { sessionTaskPreview };
     }),
 
+  setSessionTaskHistory: (sessionId, tasks) =>
+    set((s) => {
+      const sessionTaskHistory = new Map(s.sessionTaskHistory);
+      sessionTaskHistory.set(sessionId, tasks);
+      return { sessionTaskHistory };
+    }),
+
+  requestScrollToTurn: (sessionId, turnId) =>
+    set((s) => {
+      const scrollToTurnId = new Map(s.scrollToTurnId);
+      scrollToTurnId.set(sessionId, turnId);
+      return { scrollToTurnId };
+    }),
+
+  clearScrollToTurn: (sessionId) =>
+    set((s) => {
+      const scrollToTurnId = new Map(s.scrollToTurnId);
+      scrollToTurnId.delete(sessionId);
+      return { scrollToTurnId };
+    }),
+
   setPRStatus: (sessionId, status) =>
     set((s) => {
       const prStatus = new Map(s.prStatus);
@@ -1141,6 +1179,8 @@ export const useStore = create<AppState>((set) => ({
       recentlyRenamed: new Set(),
       sessionPreviews: new Map(),
       sessionPreviewUpdatedAt: new Map(),
+      sessionTaskHistory: new Map(),
+      scrollToTurnId: new Map(),
       sessionTaskPreview: new Map(),
       mcpServers: new Map(),
       toolProgress: new Map(),

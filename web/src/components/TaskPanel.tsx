@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useStore } from "../store.js";
 import { api, type UsageLimits, type GitHubPRInfo } from "../api.js";
-import type { TaskItem } from "../types.js";
+import type { TaskItem, SessionTaskEntry } from "../types.js";
 import { McpSection } from "./McpPanel.js";
 import { ClaudeMdEditor } from "./ClaudeMdEditor.js";
 
@@ -564,6 +564,39 @@ function ClaudeMdCollapsible({ cwd }: { cwd: string }) {
 
 export { CodexRateLimitsSection, CodexTokenDetailsSection };
 
+function SessionTasksSection({ sessionId }: { sessionId: string }) {
+  const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
+  const requestScrollToTurn = useStore((s) => s.requestScrollToTurn);
+  const [collapsed, toggle] = usePersistedCollapse("cc-collapse-session-tasks");
+
+  if (!taskHistory || taskHistory.length === 0) return null;
+
+  return (
+    <>
+      <SectionHeader title="Session Tasks" collapsed={collapsed} onToggle={toggle} />
+      {!collapsed && (
+        <div className="px-3 py-2 space-y-0.5">
+          {taskHistory.map((task, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => requestScrollToTurn(sessionId, task.triggerMessageId)}
+              className="w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-left hover:bg-cc-hover transition-colors cursor-pointer group"
+            >
+              <span className="text-[11px] text-cc-muted/50 shrink-0 mt-px tabular-nums">{i + 1}.</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-[13px] text-cc-fg leading-snug line-clamp-2 group-hover:text-cc-primary transition-colors">
+                  {task.title}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function TaskPanel({ sessionId }: { sessionId: string }) {
   const tasks = useStore((s) => s.sessionTasks.get(sessionId) || EMPTY_TASKS);
   const session = useStore((s) => s.sessions.get(sessionId));
@@ -615,11 +648,14 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
         {/* CLAUDE.md files */}
         {cwd && <ClaudeMdCollapsible cwd={cwd} />}
 
+        {/* Session-level tasks recognized by the auto-namer */}
+        {showTasks && <SessionTasksSection sessionId={sessionId} />}
+
         {showTasks && (
           <>
-            {/* Task section header */}
+            {/* Agent to-do items header */}
             <div className="px-4 py-2.5 border-b border-cc-border flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-cc-fg">Tasks</span>
+              <span className="text-[12px] font-semibold text-cc-fg">Current To-Dos</span>
               {tasks.length > 0 && (
                 <span className="text-[11px] text-cc-muted tabular-nums">
                   {completedCount}/{tasks.length}

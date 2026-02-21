@@ -954,7 +954,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
         const isActivityExpanded = override !== undefined ? override : isLastTurn;
 
         return (
-          <div key={turn.id} className="turn-container space-y-3 sm:space-y-5" data-user-turn={turn.userEntry ? "true" : undefined}>
+          <div key={turn.id} data-turn-id={turn.id} className="turn-container space-y-3 sm:space-y-5" data-user-turn={turn.userEntry ? "true" : undefined}>
             {/* User message — always visible */}
             {turn.userEntry && (
               <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} />
@@ -1144,6 +1144,30 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     const el = containerRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
+
+  // Scroll-to-turn: triggered from the Session Tasks panel
+  const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
+  const clearScrollToTurn = useStore((s) => s.clearScrollToTurn);
+  useEffect(() => {
+    if (!scrollToTurnId) return;
+    clearScrollToTurn(sessionId);
+    const el = containerRef.current;
+    if (!el) return;
+    // Expand the target turn's activity if it's collapsed
+    const overrides = useStore.getState().turnActivityOverrides.get(sessionId);
+    const isExpanded = overrides?.get(scrollToTurnId);
+    if (isExpanded === false || isExpanded === undefined) {
+      // Force expand by toggling (isLastTurn=false so toggle sets true)
+      useStore.getState().toggleTurnActivity(sessionId, scrollToTurnId, false);
+    }
+    // Use requestAnimationFrame so uncollapse DOM update settles first
+    requestAnimationFrame(() => {
+      const target = el.querySelector(`[data-turn-id="${CSS.escape(scrollToTurnId)}"]`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }, [scrollToTurnId, sessionId, clearScrollToTurn]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
