@@ -144,6 +144,12 @@ function formatQuestDetail(q: QuestmasterTask): string {
       lines.push(`  [${items[i].checked ? "x" : " "}] ${i}: ${items[i].text}`);
     }
   }
+  if (q.images?.length) {
+    lines.push(`Images:      ${q.images.length} attached`);
+    for (const img of q.images) {
+      lines.push(`  ${img.filename} → ${img.path}`);
+    }
+  }
   if ("completedAt" in q) {
     lines.push(`Completed:   ${timeAgo((q as { completedAt: number }).completedAt)}`);
   }
@@ -261,7 +267,12 @@ async function cmdComplete(): Promise<void> {
   const itemsStr = option("items");
   if (!itemsStr) die("--items is required. Example: --items \"Tests pass,Typecheck passes\"");
 
-  const items = itemsStr.split(",").map((t) => ({ text: t.trim(), checked: false }));
+  const items = itemsStr
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((text) => ({ text, checked: false }));
+  if (items.length === 0) die("--items must contain at least one non-empty item");
 
   try {
     const quest = completeQuest(id, items);

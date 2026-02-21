@@ -6,6 +6,7 @@ import type {
   QuestmasterTask,
   QuestStatus,
   QuestVerificationItem,
+  QuestImage,
 } from "../types.js";
 
 // ─── Status config ──────────────────────────────────────────────────────────
@@ -237,6 +238,34 @@ export function QuestmasterPage() {
     }
   }
 
+  // ─── Image handling ──────────────────────────────────────────────
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleImageUpload(questId: string, files: FileList | File[]) {
+    setError("");
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) continue;
+      try {
+        await api.uploadQuestImage(questId, file);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
+    await refreshQuests();
+  }
+
+  async function handleRemoveImage(questId: string, imageId: string) {
+    setError("");
+    try {
+      await api.removeQuestImage(questId, imageId);
+      await refreshQuests();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // Active sessions for the assign picker (non-archived, non-exited)
   const activeSessions = sdkSessions.filter(
     (s) => s.state !== "exited" && !s.archived,
@@ -263,11 +292,49 @@ export function QuestmasterPage() {
       if (quest.tags?.length) {
         lines.push(`Tags: ${quest.tags.join(", ")}`);
       }
+      if (quest.images?.length) {
+        lines.push("");
+        lines.push(
+          `Reference images (${quest.images.length}): ${quest.images.map((img: QuestImage) => img.path).join(", ")}`,
+        );
+      }
       const draftText = lines.join("\n").trim();
+
+      // Fetch quest images as base64 for the composer so they get sent to the agent
+      const composerImages: Array<{
+        name: string;
+        base64: string;
+        mediaType: string;
+      }> = [];
+      if (quest.images?.length) {
+        for (const img of quest.images as QuestImage[]) {
+          try {
+            const res = await fetch(api.questImageUrl(img.id));
+            if (res.ok) {
+              const buf = await res.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              composerImages.push({
+                name: img.filename,
+                base64: btoa(binary),
+                mediaType: img.mimeType,
+              });
+            }
+          } catch {
+            // Skip failed image fetches
+          }
+        }
+      }
 
       useStore
         .getState()
-        .setComposerDraft(sessionId, { text: draftText, images: [] });
+        .setComposerDraft(sessionId, {
+          text: draftText,
+          images: composerImages,
+        });
       navigateToSession(sessionId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -573,6 +640,117 @@ export function QuestmasterPage() {
                           placeholder="Comma separated tags"
                           className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
                         />
+                      </div>
+
+                      {/* Images */}
+                      <div>
+                        <label className="block text-[11px] text-cc-muted mb-1.5">
+                          Images
+                        </label>
+                        {quest.images && quest.images.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {quest.images.map((img: QuestImage) => (
+                              <div
+                                key={img.id}
+                                className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
+                              >
+                                <img
+                                  src={api.questImageUrl(img.id)}
+                                  alt={img.filename}
+                                  className="w-24 h-24 object-cover cursor-pointer"
+                                  onClick={() =>
+                                    window.open(
+                                      api.questImageUrl(img.id),
+                                      "_blank",
+                                    )
+                                  }
+                                />
+                                <button
+                                  onClick={() =>
+                                    handleRemoveImage(quest.questId, img.id)
+                                  }
+                                  className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                >
+                                  <svg
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    stroke="white"
+                                    strokeWidth="2"
+                                    className="w-2.5 h-2.5"
+                                  >
+                                    <path
+                                      d="M4 4l8 8M12 4l-8 8"
+                                      strokeLinecap="round"
+                                    />
+                                  </svg>
+                                </button>
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {img.filename}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (e.dataTransfer.files.length > 0) {
+                              handleImageUpload(
+                                quest.questId,
+                                e.dataTransfer.files,
+                              );
+                            }
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <button
+                            onClick={() => imageInputRef.current?.click()}
+                            className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-cc-hover text-cc-muted hover:text-cc-fg border border-cc-border transition-colors cursor-pointer flex items-center gap-1.5"
+                          >
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              className="w-3 h-3"
+                            >
+                              <rect
+                                x="1.5"
+                                y="2.5"
+                                width="13"
+                                height="11"
+                                rx="2"
+                              />
+                              <circle cx="5" cy="6" r="1.5" />
+                              <path d="M1.5 11l3-3.5 2.5 2.5 2-1.5 5.5 4" />
+                            </svg>
+                            Add Image
+                          </button>
+                          <span className="text-[10px] text-cc-muted/50">
+                            or drag & drop
+                          </span>
+                          <input
+                            ref={imageInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files.length > 0) {
+                                handleImageUpload(
+                                  quest.questId,
+                                  e.target.files,
+                                );
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                        </div>
                       </div>
 
                       {/* Save patch + Assign buttons */}

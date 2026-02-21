@@ -11,6 +11,18 @@ export interface QuestVerificationItem {
   checked: boolean;
 }
 
+/** An image attached to a quest, stored on disk. */
+export interface QuestImage {
+  /** Unique image ID (used for filename) */
+  id: string;
+  /** Original filename from upload */
+  filename: string;
+  /** MIME type (image/png, image/jpeg, etc.) */
+  mimeType: string;
+  /** Absolute path on disk (~/.companion/questmaster/images/<id>.<ext>) */
+  path: string;
+}
+
 // ─── Base fields shared by all stages ────────────────────────────────────────
 
 interface QuestBase {
@@ -28,6 +40,8 @@ interface QuestBase {
   tags?: string[];
   /** Stable questId of parent task (for subtasks) */
   parentId?: string;
+  /** Attached images stored on disk */
+  images?: QuestImage[];
 }
 
 // ─── Progressive stage types (each extends the previous) ─────────────────────
@@ -80,6 +94,8 @@ export interface QuestCreateInput {
   status?: QuestStatus;
   tags?: string[];
   parentId?: string;
+  /** Pre-saved images to attach on creation */
+  images?: QuestImage[];
 }
 
 /** Same-stage edits (e.g., fixing a typo). Does NOT create a new version. */

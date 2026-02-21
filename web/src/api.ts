@@ -647,4 +647,23 @@ export const api = {
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/done`),
   checkQuestVerification: (id: string, index: number, checked: boolean) =>
     patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/${index}`, { checked }),
+
+  // Quest images
+  uploadQuestImage: async (questId: string, file: File): Promise<import("./types.js").QuestmasterTask> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/quests/${encodeURIComponent(questId)}/images`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+  },
+  removeQuestImage: (questId: string, imageId: string) =>
+    del<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(questId)}/images/${encodeURIComponent(imageId)}`),
+  /** URL for displaying a quest image in the browser */
+  questImageUrl: (imageId: string) => `${BASE}/quests/_images/${encodeURIComponent(imageId)}`,
 };

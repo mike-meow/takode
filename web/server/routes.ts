@@ -2425,6 +2425,35 @@ export function createRoutes(
 
   // ─── Questmaster (~/.companion/questmaster/) ──────────────────────
 
+  // ─── Quest image upload/serve ────────────────────────────────────
+  // Must be registered before parameterized /:questId routes.
+
+  api.post("/quests/_images", async (c) => {
+    try {
+      const body = await c.req.parseBody();
+      const file = body["file"];
+      if (!file || typeof file === "string") {
+        return c.json({ error: "file field is required (multipart)" }, 400);
+      }
+      const buf = Buffer.from(await file.arrayBuffer());
+      const image = questStore.saveQuestImage(file.name, buf, file.type);
+      return c.json(image, 201);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  api.get("/quests/_images/:imageId", (c) => {
+    const result = questStore.readQuestImageFile(c.req.param("imageId"));
+    if (!result) return c.json({ error: "Image not found" }, 404);
+    return new Response(new Uint8Array(result.data), {
+      headers: {
+        "Content-Type": result.mimeType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  });
+
   // Notification endpoint for the quest CLI tool — triggers browser refresh.
   // Must be registered before parameterized /:questId routes.
   api.post("/quests/_notify", (c) => {
@@ -2557,6 +2586,35 @@ export function createRoutes(
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  api.post("/quests/:questId/images", async (c) => {
+    try {
+      const body = await c.req.parseBody();
+      const file = body["file"];
+      if (!file || typeof file === "string") {
+        return c.json({ error: "file field is required (multipart)" }, 400);
+      }
+      const buf = Buffer.from(await file.arrayBuffer());
+      const image = questStore.saveQuestImage(file.name, buf, file.type);
+      const quest = questStore.addQuestImages(c.req.param("questId"), [image]);
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  api.delete("/quests/:questId/images/:imageId", (c) => {
+    try {
+      const quest = questStore.removeQuestImage(c.req.param("questId"), c.req.param("imageId"));
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }
   });
 

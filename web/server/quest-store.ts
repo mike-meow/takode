@@ -8,6 +8,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { extname } from "node:path";
+import { randomBytes } from "node:crypto";
 import type {
   QuestmasterTask,
   QuestStatus,
@@ -15,6 +17,7 @@ import type {
   QuestPatchInput,
   QuestTransitionInput,
   QuestVerificationItem,
+  QuestImage,
   QuestIdea,
   QuestRefined,
   QuestInProgress,
@@ -25,10 +28,15 @@ import type {
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 const QUESTMASTER_DIR = join(homedir(), ".companion", "questmaster");
+const IMAGES_DIR = join(QUESTMASTER_DIR, "images");
 const COUNTER_FILE = join(QUESTMASTER_DIR, "_quest_counter.json");
 
 function ensureDir(): void {
   mkdirSync(QUESTMASTER_DIR, { recursive: true });
+}
+
+function ensureImagesDir(): void {
+  mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
 function filePath(id: string): string {
@@ -42,6 +50,9 @@ function readCounter(): number {
   try {
     const raw = readFileSync(COUNTER_FILE, "utf-8");
     const data = JSON.parse(raw) as { next: number };
+    if (typeof data.next !== "number" || Number.isNaN(data.next) || data.next < 1) {
+      return 1;
+    }
     return data.next;
   } catch {
     return 1;
@@ -174,6 +185,7 @@ export function createQuest(input: QuestCreateInput): QuestmasterTask {
     createdAt: now,
     ...(input.tags?.length ? { tags: input.tags } : {}),
     ...(input.parentId ? { parentId: input.parentId } : {}),
+    ...(input.images?.length ? { images: input.images } : {}),
   };
 
   let quest: QuestmasterTask;
@@ -216,7 +228,7 @@ export function patchQuest(
   const updated = { ...current, createdAt: Date.now() } as QuestmasterTask;
   if (patch.title !== undefined) (updated as { title: string }).title = patch.title.trim();
   if (patch.description !== undefined) {
-    (updated as { description?: string }).description = patch.description;
+    (updated as { description?: string }).description = patch.description.trim();
   }
   if (patch.tags !== undefined) {
     (updated as { tags?: string[] }).tags = patch.tags;
@@ -252,6 +264,11 @@ export function transitionQuest(
   if (!current) return null;
 
   const targetStatus = input.status;
+
+  // Guard against no-op transitions (same status with no new fields)
+  if (targetStatus === current.status && !input.description && !input.sessionId && !input.verificationItems) {
+    return current;
+  }
   const now = Date.now();
   const newVersion = current.version + 1;
   const newId = nextVersionId(questId, current.version);
@@ -265,6 +282,7 @@ export function transitionQuest(
     createdAt: now,
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
+    ...(current.images?.length ? { images: current.images } : {}),
   };
 
   let quest: QuestmasterTask;
@@ -464,6 +482,96 @@ export function checkVerificationItem(
   (current as { createdAt: number }).createdAt = Date.now();
   writeQuest(current);
   return current;
+}
+
+// ─── Image management ────────────────────────────────────────────────────────
+
+const MIME_TO_EXT: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg",
+};
+
+/** Save an image to disk and return image metadata. */
+export function saveQuestImage(
+  filename: string,
+  data: Buffer,
+  mimeType: string,
+): QuestImage {
+  ensureImagesDir();
+  const id = randomBytes(8).toString("hex");
+  const ext = MIME_TO_EXT[mimeType] || extname(filename) || ".bin";
+  const diskName = `${id}${ext}`;
+  const diskPath = join(IMAGES_DIR, diskName);
+  writeFileSync(diskPath, data);
+  return { id, filename, mimeType, path: diskPath };
+}
+
+/** Add images to a quest (in-place patch, no new version). */
+export function addQuestImages(
+  questId: string,
+  images: QuestImage[],
+): QuestmasterTask | null {
+  const current = getQuest(questId);
+  if (!current) return null;
+
+  const existing = current.images ?? [];
+  (current as { images: QuestImage[] }).images = [...existing, ...images];
+  (current as { createdAt: number }).createdAt = Date.now();
+  writeQuest(current);
+  return current;
+}
+
+/** Remove an image from a quest and delete the file. */
+export function removeQuestImage(
+  questId: string,
+  imageId: string,
+): QuestmasterTask | null {
+  const current = getQuest(questId);
+  if (!current) return null;
+  if (!current.images?.length) return current;
+
+  const image = current.images.find((img) => img.id === imageId);
+  (current as { images: QuestImage[] }).images = current.images.filter(
+    (img) => img.id !== imageId,
+  );
+  (current as { createdAt: number }).createdAt = Date.now();
+  writeQuest(current);
+
+  // Delete the file
+  if (image) {
+    try {
+      unlinkSync(image.path);
+    } catch {
+      // File may already be deleted
+    }
+  }
+
+  return current;
+}
+
+/** Read an image file from disk. Returns null if not found. */
+export function readQuestImageFile(
+  imageId: string,
+): { data: Buffer; mimeType: string } | null {
+  ensureImagesDir();
+  try {
+    const files = readdirSync(IMAGES_DIR);
+    const file = files.find((f) => f.startsWith(imageId));
+    if (!file) return null;
+    const fullPath = join(IMAGES_DIR, file);
+    const data = readFileSync(fullPath) as Buffer;
+    // Derive MIME from extension
+    const ext = extname(file).toLowerCase();
+    const mimeType =
+      Object.entries(MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ??
+      "application/octet-stream";
+    return { data, mimeType };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────

@@ -16,13 +16,14 @@ import type {
   QuestmasterTask,
   QuestStatus,
   QuestVerificationItem,
+  QuestImage,
   QuestCreateInput,
   QuestPatchInput,
   QuestTransitionInput,
 } from "../server/quest-types.js";
 
 export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, ImageRef };
-export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
+export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestImage, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
 
 export interface ChatMessage {
   id: string;
