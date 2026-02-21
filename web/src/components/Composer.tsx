@@ -127,8 +127,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
-  const enterHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const enterHeldRef = useRef(false);
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
 
@@ -224,12 +222,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [showAskConfirm]);
-
-  useEffect(() => {
-    return () => {
-      if (enterHoldTimerRef.current) clearTimeout(enterHoldTimerRef.current);
-    };
-  }, []);
 
   const selectCommand = useCallback((cmd: CommandItem) => {
     setText(`/${cmd.name} `);
@@ -344,44 +336,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
-      if (isTouchDevice()) {
-        if (e.repeat) return;
-        e.preventDefault();
-        enterHeldRef.current = false;
-        enterHoldTimerRef.current = setTimeout(() => {
-          enterHeldRef.current = true;
-          // Hold threshold passed — insert newline at cursor
-          if (textareaRef.current) {
-            const ta = textareaRef.current;
-            const start = ta.selectionStart;
-            const end = ta.selectionEnd;
-            const val = ta.value;
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-              window.HTMLTextAreaElement.prototype, "value"
-            )?.set;
-            nativeInputValueSetter?.call(ta, val.substring(0, start) + "\n" + val.substring(end));
-            ta.dispatchEvent(new Event("input", { bubbles: true }));
-            requestAnimationFrame(() => {
-              ta.selectionStart = ta.selectionEnd = start + 1;
-            });
-          }
-        }, 300);
-        return;
-      }
       e.preventDefault();
       handleSend();
-    }
-  }
-
-  function handleKeyUp(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey && isTouchDevice()) {
-      if (enterHoldTimerRef.current) {
-        clearTimeout(enterHoldTimerRef.current);
-        enterHoldTimerRef.current = null;
-      }
-      if (!enterHeldRef.current) {
-        handleSend();
-      }
     }
   }
 
@@ -587,8 +543,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
             value={text}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
-            onKeyUp={handleKeyUp}
             onPaste={handlePaste}
+            enterKeyHint={isTouchDevice() ? "send" : undefined}
             placeholder={
               pendingAskUserPerm
                 ? "Type your answer..."
