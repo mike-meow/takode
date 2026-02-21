@@ -513,7 +513,7 @@ export function Sidebar() {
         {/* Toolbar: search + reorder */}
         {allSessionList.length > 0 && (
           <div className="px-2 pb-1.5 flex items-center gap-1">
-            <div className={`relative transition-all duration-200 ease-in-out ${searchFocused || searchQuery ? "flex-1" : "w-[120px] shrink-0"}`}>
+            <div className="relative flex-1 transition-all duration-200 ease-in-out">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-cc-muted pointer-events-none">
                 <circle cx="6.5" cy="6.5" r="4.5" />
                 <path d="M10 10l3.5 3.5" strokeLinecap="round" />
