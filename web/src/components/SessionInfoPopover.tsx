@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "../store.js";
 import { GitHubPRSection, McpCollapsible, ClaudeMdCollapsible } from "./TaskPanel.js";
 import { shortenHome } from "../utils/path-display.js";
@@ -22,6 +22,11 @@ export function SessionInfoPopover({
   const model = session?.model || "";
   const backendType = session?.backend_type || sdkSession?.backendType || "claude";
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll cwd to the right end so the last path segment is visible
+  const cwdScrollRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, []);
 
   // Stats
   const turns = session?.num_turns ?? 0;
@@ -104,9 +109,15 @@ export function SessionInfoPopover({
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/50">
                 <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
               </svg>
-              <span className="text-[11px] text-cc-muted font-mono-code truncate" title={cwd}>
-                {shortenHome(cwd)}
-              </span>
+              <div
+                ref={cwdScrollRef}
+                className="overflow-x-auto scrollbar-hide"
+                title={cwd}
+              >
+                <span className="text-[11px] text-cc-muted font-mono-code whitespace-nowrap">
+                  {shortenHome(cwd)}
+                </span>
+              </div>
             </div>
           )}
         </div>
