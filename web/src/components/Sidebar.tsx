@@ -69,10 +69,10 @@ export function Sidebar() {
           const store = useStore.getState();
           let batchedAttention: Map<string, "action" | "error" | "review" | null> | null = null;
           for (const s of list) {
-            if (s.name && (!store.sessionNames.has(s.sessionId) || /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(store.sessionNames.get(s.sessionId)!))) {
+            if (s.name) {
               const currentStoreName = store.sessionNames.get(s.sessionId);
-              const hadRandomName = !!currentStoreName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentStoreName);
               if (currentStoreName !== s.name) {
+                const hadRandomName = !!currentStoreName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentStoreName);
                 store.setSessionName(s.sessionId, s.name);
                 if (hadRandomName) {
                   store.markRecentlyRenamed(s.sessionId);

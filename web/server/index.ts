@@ -235,8 +235,11 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
 
   try {
     if (isFirstEvaluation) {
-      // First user message: generate initial name
       autoNamingEvaluated.add(sessionId);
+    }
+
+    if (isFirstEvaluation && (!currentName || isRandomName)) {
+      // First user message with no real name: generate initial name
       console.log(`[session-namer] Generating initial name for session ${sessionId}...`);
       const result = await generateFirstName(sessionId, history, cwd, { signal, isGenerating });
       if (signal.aborted) return;
@@ -257,10 +260,8 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd) => {
         wsBridge.mergeKeywords(sessionId, result.keywords);
       }
       console.log(`[session-namer] Named session ${sessionId}: "${result.title}"`);
-    } else {
-      // Subsequent messages: evaluate whether to rename.
-      // Only show events since the name was last set (the model already knows the title).
-      if (!currentName || isRandomName) return; // no real name yet, skip
+    } else if (currentName && !isRandomName) {
+      // Subsequent messages or server restart with existing name: evaluate whether to rename
       const startIndex = nameSetAtHistoryIndex.get(sessionId) ?? 0;
       const relevantHistory = history.slice(startIndex);
       console.log(`[session-namer] Evaluating session ${sessionId} (current: "${currentName}", history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`);
