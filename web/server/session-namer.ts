@@ -33,7 +33,7 @@ const INDENT = "    | ";
 
 /** Max characters per user message in the prompt. User messages are the most
  *  informative signal, so this is intentionally generous. */
-const MAX_USER_MSG_CHARS = 1_000;
+const MAX_USER_MSG_CHARS = 1_500;
 
 /** Max user turns (user message + agent activity) included in history. */
 const MAX_TURNS = 6;
@@ -60,8 +60,10 @@ const MAX_DESCRIPTION_CHARS = 200;
 /** Max characters for generic tool input values. */
 const MAX_GENERIC_INPUT_CHARS = 200;
 
-/** Max characters of assistant text included per turn. */
-const MAX_ASSISTANT_TEXT_CHARS = 300;
+/** Max characters of the final assistant response text per turn.
+ *  Higher than before since we no longer list individual tool calls — the
+ *  response text is now the only window into what the agent did. */
+const MAX_ASSISTANT_TEXT_CHARS = 500;
 
 /** Max characters of stderr to log on subprocess failure. */
 const MAX_STDERR_LOG_CHARS = 200;
@@ -212,10 +214,12 @@ function buildFileOpSummaries(fileOps: Map<string, Set<string>>): string[] {
 
 /**
  * Build the conversation section of the prompt from message history.
- * Groups messages into turns: user message → agent tool calls → next user message.
+ * Groups messages into turns: user message → agent activity → next user message.
  * Only includes the last MAX_TURNS user messages.
  *
- * File-op tools (Read/Edit/Write) are aggregated into per-turn summaries.
+ * Uses a "collapsed" format inspired by the UI's collapsed turn view:
+ * individual tool calls are replaced by compact stats (tool/agent counts),
+ * and only the agent's final response text is shown per turn.
  * Subagent messages (parent_tool_use_id != null) are excluded.
  */
 function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string, isGenerating?: boolean): string {
@@ -223,9 +227,10 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
   const turns: Array<{
     userContent: string;
     imageCount: number;
-    assistantText: string;
-    toolCalls: string[];
-    fileOps: Map<string, Set<string>>;
+    toolCount: number;
+    agentCount: number;
+    /** The last assistant message's text content — the "response" / conclusion */
+    lastResponseText: string;
   }> = [];
 
   let currentTurn: (typeof turns)[number] | null = null;
@@ -238,9 +243,9 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
       currentTurn = {
         userContent: typeof msg.content === "string" ? msg.content : "",
         imageCount: Array.isArray(images) ? images.length : 0,
-        assistantText: "",
-        toolCalls: [],
-        fileOps: new Map(),
+        toolCount: 0,
+        agentCount: 0,
+        lastResponseText: "",
       };
     } else if (msg.type === "assistant" && currentTurn) {
       // Skip subagent messages — only main agent activity matters for naming
@@ -249,21 +254,23 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
 
       const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
       if (Array.isArray(content)) {
-        // Extract text blocks (assistant's prose)
+        // Extract text and count tools
+        let msgText = "";
         for (const block of content) {
           if (block.type === "text" && block.text) {
-            if (currentTurn.assistantText.length < MAX_ASSISTANT_TEXT_CHARS) {
-              currentTurn.assistantText += (currentTurn.assistantText ? " " : "") + block.text;
+            msgText += (msgText ? " " : "") + block.text;
+          } else if (block.type === "tool_use") {
+            if (DROPPED_TOOLS.has(block.name)) continue;
+            if (block.name === "Task") {
+              currentTurn.agentCount++;
+            } else {
+              currentTurn.toolCount++;
             }
           }
         }
-        // Categorize tool calls: file ops aggregated, others kept as lines
-        const { toolLines, fileOps } = categorizeToolCalls(content, cwd);
-        currentTurn.toolCalls.push(...toolLines);
-        // Merge file ops into turn-level aggregation
-        for (const [tool, paths] of fileOps) {
-          if (!currentTurn.fileOps.has(tool)) currentTurn.fileOps.set(tool, new Set());
-          for (const p of paths) currentTurn.fileOps.get(tool)!.add(p);
+        // Keep updating — the last message with text is the "response"
+        if (msgText.trim()) {
+          currentTurn.lastResponseText = msgText.trim();
         }
       }
     }
@@ -274,9 +281,8 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
   // Take only the last MAX_TURNS
   const recentTurns = turns.slice(-MAX_TURNS);
 
-  // Format with indentation: [User]/[Assistant] headers are unindented,
+  // Format with indentation: [User]/[Agent] headers are unindented,
   // content lines use the INDENT prefix for prompt-injection protection.
-  // Multi-line content gets INDENT on every line (like Python textwrap.indent).
   const lines: string[] = [];
   for (const turn of recentTurns) {
     const truncatedMsg = trunc(turn.userContent.trim(), MAX_USER_MSG_CHARS);
@@ -286,36 +292,26 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
 
     lines.push("");
     lines.push("    [User]");
-    // Indent every line of multi-line user messages
     const userLines = truncatedMsg.split("\n");
     userLines[userLines.length - 1] += imageNote;
     for (const ul of userLines) {
       lines.push(`${INDENT}${ul}`);
     }
 
-    // Check if there's any assistant content to show
-    const fileOpSummaries = buildFileOpSummaries(turn.fileOps);
-    const hasContent = turn.assistantText || turn.toolCalls.length > 0 || fileOpSummaries.length > 0;
+    // Build compact stats (collapsed-style: "5 tools · 2 agents")
+    const statParts: string[] = [];
+    if (turn.toolCount > 0) statParts.push(`${turn.toolCount} tool${turn.toolCount !== 1 ? "s" : ""}`);
+    if (turn.agentCount > 0) statParts.push(`${turn.agentCount} agent${turn.agentCount !== 1 ? "s" : ""}`);
+    const statsStr = statParts.length > 0 ? ` ${statParts.join(" · ")}` : "";
 
-    if (hasContent) {
+    if (turn.lastResponseText || statsStr) {
       lines.push("");
-      lines.push("    [Assistant]");
-      if (turn.assistantText) {
-        // Indent every line of multi-line assistant text
-        const assistantLines = trunc(turn.assistantText.trim(), MAX_ASSISTANT_TEXT_CHARS).split("\n");
-        for (const al of assistantLines) {
-          lines.push(`${INDENT}${al}`);
+      lines.push(`    [Agent]${statsStr}`);
+      if (turn.lastResponseText) {
+        const responseLines = trunc(turn.lastResponseText, MAX_ASSISTANT_TEXT_CHARS).split("\n");
+        for (const rl of responseLines) {
+          lines.push(`${INDENT}${rl}`);
         }
-      }
-      // Emit non-file-op tool calls, indenting any embedded newlines
-      for (const tc of turn.toolCalls) {
-        for (const tcLine of tc.split("\n")) {
-          lines.push(`${INDENT}${tcLine}`);
-        }
-      }
-      // Append aggregated file-op summaries at the end
-      for (const summary of fileOpSummaries) {
-        lines.push(`${INDENT}${summary}`);
       }
     }
   }

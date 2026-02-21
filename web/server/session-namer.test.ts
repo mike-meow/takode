@@ -308,9 +308,8 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("    | Fix the auth bug");
   });
 
-  it("aggregates Read/Edit into file-set summaries under [Assistant] header", () => {
-    // Read/Edit/Write tool calls are aggregated into per-turn summaries
-    // instead of one line per call
+  it("shows collapsed-style tool count instead of individual tool calls", () => {
+    // Individual tool calls are replaced by a compact stats summary
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
@@ -320,18 +319,15 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    [User]");
-    expect(block).toContain("    | Fix the auth bug");
-    expect(block).toContain("    [Assistant]");
+    expect(block).toContain("    [Agent] 2 tools");
     expect(block).toContain("    | I'll fix that.");
-    // Individual [Read:] / [Edit:] lines are replaced by aggregated summaries
-    expect(block).toContain("    | [Files read: /src/auth.ts]");
-    expect(block).toContain("    | [Files edited: /src/auth.ts]");
-    expect(block).not.toContain("    | [Read:");
-    expect(block).not.toContain("    | [Edit:");
+    // No individual tool call lines
+    expect(block).not.toContain("[Read:");
+    expect(block).not.toContain("[Edit:");
+    expect(block).not.toContain("[Files ");
   });
 
-  it("groups tool calls between user messages correctly", () => {
+  it("groups tool calls between user messages into separate turns", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
@@ -345,19 +341,23 @@ describe("buildConversationBlock", () => {
     const block = buildConversationBlock(history);
     expect(block).toContain("    | Fix the auth bug");
     expect(block).toContain("    | Now add dark mode");
+    // Each turn shows its own tool count
+    const agentLines = block.split("\n").filter((l) => l.includes("[Agent]"));
+    expect(agentLines).toHaveLength(2);
+    for (const line of agentLines) {
+      expect(line).toContain("1 tool");
+    }
   });
 
-  it("truncates long user messages", () => {
+  it("truncates long user messages at 1500 chars", () => {
     const longMsg = "A".repeat(2000);
     const history: BrowserIncomingMessage[] = [userMsg(longMsg)];
     const block = buildConversationBlock(history);
-    // Should be truncated to MAX_USER_MSG_CHARS (1000) + "..."
-    expect(block).toContain("A".repeat(1000) + "...");
-    expect(block).not.toContain("A".repeat(1001));
+    expect(block).toContain("A".repeat(1500) + "...");
+    expect(block).not.toContain("A".repeat(1501));
   });
 
   it("limits to last 6 turns (MAX_TURNS)", () => {
-    // Create 10 user messages with tool calls
     const history: BrowserIncomingMessage[] = [];
     for (let i = 0; i < 10; i++) {
       history.push(userMsg(`Message ${i}`));
@@ -366,10 +366,8 @@ describe("buildConversationBlock", () => {
       );
     }
     const block = buildConversationBlock(history);
-    // First 4 messages should be excluded (only last 6 kept)
     expect(block).not.toContain("Message 0");
     expect(block).not.toContain("Message 3");
-    // Last 6 should be included
     expect(block).toContain("Message 4");
     expect(block).toContain("Message 9");
   });
@@ -384,7 +382,6 @@ describe("buildConversationBlock", () => {
     const block = buildConversationBlock(history);
     const contentLines = block.split("\n").filter((l) => l.trim() !== "");
     for (const line of contentLines) {
-      // Headers like "    [User]" or content like "    | text"
       expect(line).toMatch(/^ {4}(\[|[|] )/);
     }
   });
@@ -393,13 +390,12 @@ describe("buildConversationBlock", () => {
     const multiLineMsg = "First line of the message\nSecond line\nThird line";
     const history: BrowserIncomingMessage[] = [userMsg(multiLineMsg)];
     const block = buildConversationBlock(history);
-    // Every content line should have the "    | " prefix
     expect(block).toContain("    | First line of the message");
     expect(block).toContain("    | Second line");
     expect(block).toContain("    | Third line");
   });
 
-  it("indents every line of multi-line assistant text with the | prefix", () => {
+  it("indents every line of multi-line response text with the | prefix", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Help me"),
       assistantMsg([
@@ -423,18 +419,26 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("Fix this CSS [2 images attached]");
   });
 
-  it("includes assistant text responses in turns", () => {
+  it("shows only the last assistant text as the response (not intermediate text)", () => {
+    // Multiple assistant messages in a turn — only the last one with text
+    // is shown (like the collapsed turn view in the UI)
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the login bug"),
       assistantMsg([
-        { type: "text", text: "I'll investigate the authentication flow and fix the issue." },
+        { type: "text", text: "Let me investigate." },
         { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/auth.ts" } },
+      ]),
+      assistantMsg([
+        { type: "text", text: "Fixed the authentication flow. All tests pass." },
+        { type: "tool_use", id: "tu-2", name: "Edit", input: { file_path: "/src/auth.ts" } },
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    [Assistant]");
-    expect(block).toContain("    | I'll investigate the authentication flow");
-    expect(block).toContain("    | [Files read: /src/auth.ts]");
+    expect(block).toContain("    [Agent] 2 tools");
+    // Only the final response text is shown
+    expect(block).toContain("    | Fixed the authentication flow. All tests pass.");
+    // Intermediate text is NOT shown
+    expect(block).not.toContain("Let me investigate.");
   });
 
   it("does not annotate messages without images", () => {
@@ -442,15 +446,14 @@ describe("buildConversationBlock", () => {
     expect(block).not.toContain("image");
   });
 
-  it("aggregates multiple Read/Edit/Write calls into file-set summaries per turn", () => {
-    // When multiple files are read/edited in a single turn, they should be
-    // aggregated into summary lines instead of one line per call
+  it("counts all tool calls in a turn as a single stats number", () => {
+    // 7 tool_use blocks (3 Read + 3 Edit + 1 Bash) → "7 tools"
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the bugs"),
       assistantMsg([
         { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/auth.ts" } },
         { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/src/store.ts" } },
-        { type: "tool_use", id: "tu-3", name: "Read", input: { file_path: "/src/auth.ts" } }, // duplicate
+        { type: "tool_use", id: "tu-3", name: "Read", input: { file_path: "/src/auth.ts" } },
         { type: "tool_use", id: "tu-4", name: "Edit", input: { file_path: "/src/auth.ts" } },
         { type: "tool_use", id: "tu-5", name: "Edit", input: { file_path: "/src/store.ts" } },
         { type: "tool_use", id: "tu-6", name: "Edit", input: { file_path: "/src/utils.ts" } },
@@ -458,35 +461,14 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    // Reads deduplicated: auth.ts appears once
-    expect(block).toContain("[Files read: /src/auth.ts, /src/store.ts]");
-    expect(block).toContain("[Files edited: /src/auth.ts, /src/store.ts, /src/utils.ts]");
-    // Bash still appears as individual line
-    expect(block).toContain("[Bash: bun run test]");
-    // No individual Read/Edit lines
-    expect(block).not.toContain("    | [Read:");
-    expect(block).not.toContain("    | [Edit:");
+    expect(block).toContain("7 tools");
+    // No individual tool details
+    expect(block).not.toContain("[Bash:");
+    expect(block).not.toContain("[Files ");
   });
 
-  it("shows +N more when file count exceeds MAX_INLINE_FILES", () => {
-    // Build a turn with more than 5 unique files read
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Read many files"),
-      assistantMsg(
-        Array.from({ length: 8 }, (_, i) => ({
-          type: "tool_use" as const,
-          id: `tu-${i}`,
-          name: "Read",
-          input: { file_path: `/src/file${i}.ts` },
-        })),
-      ),
-    ];
-    const block = buildConversationBlock(history);
-    expect(block).toContain("+3 more]");
-  });
-
-  it("drops TodoWrite calls from the prompt", () => {
-    // TodoWrite carries no naming signal and should be silently dropped
+  it("excludes TodoWrite from tool count", () => {
+    // TodoWrite is dropped — only the Bash call counts
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix bugs"),
       assistantMsg([
@@ -495,13 +477,29 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
+    expect(block).toContain("1 tool");
     expect(block).not.toContain("TodoWrite");
-    expect(block).toContain("[Bash: bun run test]");
+  });
+
+  it("counts Task tool_use as agents, not tools", () => {
+    // Task spawns subagents — shown as agent count in stats
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Research the codebase"),
+      assistantMsg([
+        { type: "text", text: "I'll spawn agents to explore." },
+        { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find auth code" } },
+        { type: "tool_use", id: "tu-2", name: "Task", input: { subagent_type: "Explore", description: "Find routes" } },
+        { type: "tool_use", id: "tu-3", name: "Bash", input: { command: "echo test" } },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    expect(block).toContain("1 tool");
+    expect(block).toContain("2 agents");
+    // Separated by ·
+    expect(block).toContain("1 tool · 2 agents");
   });
 
   it("filters out subagent assistant messages (parent_tool_use_id != null)", () => {
-    // Subagent responses have parent_tool_use_id set and should not
-    // influence session naming
     const history: BrowserIncomingMessage[] = [
       userMsg("Create a team"),
       assistantMsg([
@@ -516,30 +514,16 @@ describe("buildConversationBlock", () => {
     ];
     const block = buildConversationBlock(history);
     expect(block).toContain("I'll spawn agents.");
-    expect(block).toContain('[Task: Explore');
+    expect(block).toContain("1 agent");
     // Subagent content should be absent
     expect(block).not.toContain("Subagent found the code");
-    expect(block).not.toContain("grep -r auth");
   });
 
-  it("indents multi-line tool call output with the | prefix on every line", () => {
-    // Tool calls that produce multi-line output (e.g. ExitPlanMode with a plan)
-    // should have each line properly indented
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Plan the work"),
-      assistantMsg([
-        { type: "tool_use", id: "tu-1", name: "CustomMultiLine", input: { data: "line1\nline2\nline3" } },
-      ]),
-    ];
+  it("omits [Agent] line when no tools and no response text", () => {
+    // User message with no agent activity — just the user message
+    const history: BrowserIncomingMessage[] = [userMsg("Fix the auth bug")];
     const block = buildConversationBlock(history);
-    // The generic fallback formats as [CustomMultiLine: data=line1\nline2\nline3]
-    // Each line should get the indent prefix
-    const contentLines = block.split("\n").filter((l) => l.includes("CustomMultiLine") || l.includes("line"));
-    for (const line of contentLines) {
-      if (line.trim()) {
-        expect(line).toMatch(/^ {4}\| /);
-      }
-    }
+    expect(block).not.toContain("[Agent]");
   });
 
   it("appends agent-working status when isGenerating is true", () => {
