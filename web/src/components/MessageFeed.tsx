@@ -1201,8 +1201,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   }, [scrollToTurnId, sessionId, clearScrollToTurn]);
 
   // Track which task outline chip should be highlighted based on scroll position.
-  // The container bottom (= top of composer) is the reference line: the last
-  // task-trigger turn whose top is above this line is the active task.
+  // The reference line is near the container top (with a small offset to avoid
+  // edge-triggering). The last task-trigger turn whose top has scrolled past
+  // this line is the active task — matching the chip-click behavior which
+  // scrolls the trigger to the top of the viewport.
   // Uses a scroll listener instead of IntersectionObserver so the callback
   // fires on every scroll frame, not just on intersection threshold crossings.
   const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
@@ -1218,10 +1220,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       const targets = el.querySelectorAll<HTMLElement>("[data-turn-id]");
       let activeTurnId: string | null = null;
       const containerRect = el.getBoundingClientRect();
+      const refLine = containerRect.top + 48;
       for (const target of targets) {
         if (!triggerIds.has(target.dataset.turnId!)) continue;
         const rect = target.getBoundingClientRect();
-        if (rect.top <= containerRect.bottom) {
+        if (rect.top <= refLine) {
           activeTurnId = target.dataset.turnId!;
         }
       }
