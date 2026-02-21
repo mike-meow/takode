@@ -41,6 +41,7 @@ const DEFAULT_BASE_DIR = join(homedir(), ".companion", "sessions");
 export class SessionStore {
   private dir: string;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pendingSaves = new Map<string, PersistedSession>();
 
   constructor(dir?: string, port?: number) {
     if (dir) {
@@ -61,8 +62,10 @@ export class SessionStore {
     const existing = this.debounceTimers.get(session.id);
     if (existing) clearTimeout(existing);
 
+    this.pendingSaves.set(session.id, session);
     const timer = setTimeout(() => {
       this.debounceTimers.delete(session.id);
+      this.pendingSaves.delete(session.id);
       this.saveSync(session);
     }, 150);
     this.debounceTimers.set(session.id, timer);
@@ -115,6 +118,18 @@ export class SessionStore {
     return true;
   }
 
+  /** Flush all pending debounced saves immediately. Call before shutdown. */
+  flushAll(): void {
+    for (const [, timer] of this.debounceTimers) {
+      clearTimeout(timer);
+    }
+    for (const [, session] of this.pendingSaves) {
+      this.saveSync(session);
+    }
+    this.debounceTimers.clear();
+    this.pendingSaves.clear();
+  }
+
   /** Remove a session file from disk. */
   remove(sessionId: string): void {
     const timer = this.debounceTimers.get(sessionId);
@@ -122,6 +137,7 @@ export class SessionStore {
       clearTimeout(timer);
       this.debounceTimers.delete(sessionId);
     }
+    this.pendingSaves.delete(sessionId);
     try {
       unlinkSync(this.filePath(sessionId));
     } catch {

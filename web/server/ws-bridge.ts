@@ -2156,7 +2156,12 @@ export class WsBridge {
           });
         }
       } else {
-        const missed = session.eventBuffer.filter((evt) => evt.seq > lastAckSeq);
+        // No gap — browser has local state. Only replay transient events
+        // (status_change, stream_event, tool_progress, etc.). History-backed
+        // events (assistant, result, compact_boundary, etc.) are already in
+        // the browser's local message store from before the disconnect.
+        const missed = session.eventBuffer
+          .filter((evt) => evt.seq > lastAckSeq && !this.isHistoryBackedEvent(evt.message));
         if (missed.length > 0) {
           this.sendToBrowser(ws, {
             type: "event_replay",

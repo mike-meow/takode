@@ -424,6 +424,7 @@ idleManager.start();
 function performShutdown() {
   console.log("[server] Persisting state before shutdown...");
   idleManager.stop();
+  sessionStore.flushAll();
   containerManager.persistState(CONTAINER_STATE_PATH);
   pushoverNotifier.destroy();
 }
