@@ -1449,12 +1449,22 @@ export class WsBridge {
       // Old messages are preserved for browser display; the marker visually separates
       // pre- and post-compaction segments. The next CLI "user" message with a text
       // block will contain the compaction summary.
-      const ts = Date.now();
+      const cliUuid = (msg as CLISystemCompactBoundaryMessage).uuid;
       const meta = (msg as CLISystemCompactBoundaryMessage).compact_metadata;
+
+      // Dedup: CLI replays compact_boundary on --resume. Skip if a marker with
+      // the same CLI uuid already exists in history (replay after server restart).
+      const alreadyExists = cliUuid && session.messageHistory.some(
+        (m) => m.type === "compact_marker" && (m as { cliUuid?: string }).cliUuid === cliUuid,
+      );
+      if (alreadyExists) return;
+
+      const ts = Date.now();
       session.messageHistory.push({
         type: "compact_marker" as const,
         timestamp: ts,
         id: `compact-boundary-${ts}`,
+        cliUuid,
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
       });

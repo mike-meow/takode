@@ -267,7 +267,7 @@ export type BrowserIncomingMessageBase =
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
   | { type: "compact_boundary"; trigger?: string; preTokens?: number }
-  | { type: "compact_marker"; timestamp: number; id?: string; summary?: string; trigger?: string; preTokens?: number }
+  | { type: "compact_marker"; timestamp: number; id?: string; cliUuid?: string; summary?: string; trigger?: string; preTokens?: number }
   | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
   | { type: "permission_denied"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number; request_id?: string }
