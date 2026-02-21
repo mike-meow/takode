@@ -1201,7 +1201,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   }, [scrollToTurnId, sessionId, clearScrollToTurn]);
 
   // Track which task outline chip should be highlighted based on scroll position.
-  // Observes turn elements matching sessionTaskHistory triggerMessageIds.
+  // The container bottom (= top of composer) is the reference line: the last
+  // task-trigger turn whose top is above this line is the active task.
+  // Uses a scroll listener instead of IntersectionObserver so the callback
+  // fires on every scroll frame, not just on intersection threshold crossings.
   const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
   const setActiveTaskTurnId = useStore((s) => s.setActiveTaskTurnId);
   useEffect(() => {
@@ -1209,35 +1212,37 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     if (!el || !taskHistory || taskHistory.length === 0) return;
 
     const triggerIds = new Set(taskHistory.map((t) => t.triggerMessageId));
-    const targets = Array.from(el.querySelectorAll<HTMLElement>("[data-turn-id]"))
-      .filter((node) => triggerIds.has(node.dataset.turnId!));
 
-    if (targets.length === 0) return;
-
-    // Find the last task turn whose top has entered the viewport.
-    // Uses the container bottom (= top of composer) as the threshold so
-    // the active task is the most recent one visible on screen.
-    const observer = new IntersectionObserver(
-      () => {
-        let activeTurnId: string | null = null;
-        const containerRect = el.getBoundingClientRect();
-        for (const target of targets) {
-          const rect = target.getBoundingClientRect();
-          if (rect.top <= containerRect.bottom) {
-            activeTurnId = target.dataset.turnId!;
-          }
+    let rafId = 0;
+    const recalc = () => {
+      const targets = el.querySelectorAll<HTMLElement>("[data-turn-id]");
+      let activeTurnId: string | null = null;
+      const containerRect = el.getBoundingClientRect();
+      for (const target of targets) {
+        if (!triggerIds.has(target.dataset.turnId!)) continue;
+        const rect = target.getBoundingClientRect();
+        if (rect.top <= containerRect.bottom) {
+          activeTurnId = target.dataset.turnId!;
         }
-        // If nothing visible yet, highlight the first task
-        if (!activeTurnId && targets.length > 0) {
-          activeTurnId = targets[0].dataset.turnId!;
-        }
-        setActiveTaskTurnId(sessionId, activeTurnId);
-      },
-      { root: el, threshold: [0, 0.1, 0.5, 1] },
-    );
+      }
+      if (!activeTurnId) {
+        const first = taskHistory[0];
+        if (first) activeTurnId = first.triggerMessageId;
+      }
+      setActiveTaskTurnId(sessionId, activeTurnId);
+    };
 
-    for (const target of targets) observer.observe(target);
-    return () => observer.disconnect();
+    const onScroll = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(recalc);
+    };
+
+    recalc();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(rafId);
+    };
   }, [taskHistory, sessionId, setActiveTaskTurnId, visibleTurns]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
