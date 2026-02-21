@@ -1214,18 +1214,32 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         </PawScrollProvider>
       </div>
 
-      {/* Navigation FABs — prev/next user message + scroll to bottom */}
+      {/* Navigation FABs — top, prev/next user message, bottom */}
       {showScrollButton && (
         <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1.5">
+          {/* Go to top */}
+          <button
+            onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+            className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+            title="Go to top"
+            aria-label="Go to top"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+              <path d="M4 8l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 12h8" strokeLinecap="round" />
+            </svg>
+          </button>
+          {/* Previous user message */}
           <button
             onClick={() => {
               const el = containerRef.current;
               if (!el) return;
+              const containerRect = el.getBoundingClientRect();
               const turns = el.querySelectorAll("[data-user-turn]");
-              const viewTop = el.scrollTop + 10;
               for (let i = turns.length - 1; i >= 0; i--) {
                 const t = turns[i] as HTMLElement;
-                if (t.offsetTop < viewTop) {
+                const tTop = t.getBoundingClientRect().top - containerRect.top;
+                if (tTop < -5) {
                   t.scrollIntoView({ block: "start", behavior: "smooth" });
                   return;
                 }
@@ -1240,20 +1254,21 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
               <path d="M8 3v10" strokeLinecap="round" />
             </svg>
           </button>
+          {/* Next user message */}
           <button
             onClick={() => {
               const el = containerRef.current;
               if (!el) return;
+              const containerRect = el.getBoundingClientRect();
               const turns = el.querySelectorAll("[data-user-turn]");
-              const viewTop = el.scrollTop + 10;
               for (let i = 0; i < turns.length; i++) {
                 const t = turns[i] as HTMLElement;
-                if (t.offsetTop > viewTop + el.clientHeight * 0.3) {
+                const tTop = t.getBoundingClientRect().top - containerRect.top;
+                if (tTop > el.clientHeight * 0.3) {
                   t.scrollIntoView({ block: "start", behavior: "smooth" });
                   return;
                 }
               }
-              // No next user message — scroll to bottom
               el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
             }}
             className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
@@ -1263,6 +1278,18 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
               <path d="M4 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M8 3v10" strokeLinecap="round" />
+            </svg>
+          </button>
+          {/* Go to bottom */}
+          <button
+            onClick={() => containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" })}
+            className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+            title="Go to bottom"
+            aria-label="Go to bottom"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+              <path d="M4 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 4h8" strokeLinecap="round" />
             </svg>
           </button>
         </div>
