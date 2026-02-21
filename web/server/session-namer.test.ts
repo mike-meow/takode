@@ -308,8 +308,8 @@ describe("buildConversationBlock", () => {
     expect(block).toContain("    | Fix the auth bug");
   });
 
-  it("shows collapsed-style tool count instead of individual tool calls", () => {
-    // Individual tool calls are replaced by a compact stats summary
+  it("shows activity summary and response instead of individual tool calls", () => {
+    // Tool calls are summarized as an activity line before the response
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
       assistantMsg([
@@ -319,7 +319,8 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    [Agent] 2 tools");
+    expect(block).toContain("    [Agent]");
+    expect(block).toContain("    | (used 2 tools)");
     expect(block).toContain("    | I'll fix that.");
     // No individual tool call lines
     expect(block).not.toContain("[Read:");
@@ -341,20 +342,20 @@ describe("buildConversationBlock", () => {
     const block = buildConversationBlock(history);
     expect(block).toContain("    | Fix the auth bug");
     expect(block).toContain("    | Now add dark mode");
-    // Each turn shows its own tool count
-    const agentLines = block.split("\n").filter((l) => l.includes("[Agent]"));
-    expect(agentLines).toHaveLength(2);
-    for (const line of agentLines) {
-      expect(line).toContain("1 tool");
+    // Each turn shows its own activity summary
+    const activityLines = block.split("\n").filter((l) => l.includes("(used"));
+    expect(activityLines).toHaveLength(2);
+    for (const line of activityLines) {
+      expect(line).toContain("(used 1 tool)");
     }
   });
 
-  it("truncates long user messages at 1500 chars", () => {
+  it("truncates long user messages at 1000 chars", () => {
     const longMsg = "A".repeat(2000);
     const history: BrowserIncomingMessage[] = [userMsg(longMsg)];
     const block = buildConversationBlock(history);
-    expect(block).toContain("A".repeat(1500) + "...");
-    expect(block).not.toContain("A".repeat(1501));
+    expect(block).toContain("A".repeat(1000) + "...");
+    expect(block).not.toContain("A".repeat(1001));
   });
 
   it("limits to last 6 turns (MAX_TURNS)", () => {
@@ -421,7 +422,7 @@ describe("buildConversationBlock", () => {
 
   it("shows only the last assistant text as the response (not intermediate text)", () => {
     // Multiple assistant messages in a turn — only the last one with text
-    // is shown (like the collapsed turn view in the UI)
+    // is shown as the agent's final response
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the login bug"),
       assistantMsg([
@@ -434,7 +435,7 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("    [Agent] 2 tools");
+    expect(block).toContain("    | (used 2 tools)");
     // Only the final response text is shown
     expect(block).toContain("    | Fixed the authentication flow. All tests pass.");
     // Intermediate text is NOT shown
@@ -446,8 +447,8 @@ describe("buildConversationBlock", () => {
     expect(block).not.toContain("image");
   });
 
-  it("counts all tool calls in a turn as a single stats number", () => {
-    // 7 tool_use blocks (3 Read + 3 Edit + 1 Bash) → "7 tools"
+  it("counts all tool calls in a turn as a single activity number", () => {
+    // 7 tool_use blocks (3 Read + 3 Edit + 1 Bash) → "(used 7 tools)"
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the bugs"),
       assistantMsg([
@@ -461,7 +462,7 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("7 tools");
+    expect(block).toContain("(used 7 tools)");
     // No individual tool details
     expect(block).not.toContain("[Bash:");
     expect(block).not.toContain("[Files ");
@@ -477,46 +478,46 @@ describe("buildConversationBlock", () => {
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("1 tool");
+    expect(block).toContain("(used 1 tool)");
     expect(block).not.toContain("TodoWrite");
   });
 
-  it("counts Task tool_use as agents, not tools", () => {
-    // Task spawns subagents — shown as agent count in stats
+  it("counts Task tool_use as sub-agents, not tools", () => {
+    // Task spawns sub-agents — shown separately from tools in activity
     const history: BrowserIncomingMessage[] = [
       userMsg("Research the codebase"),
       assistantMsg([
-        { type: "text", text: "I'll spawn agents to explore." },
+        { type: "text", text: "I'll spawn sub-agents to explore." },
         { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find auth code" } },
         { type: "tool_use", id: "tu-2", name: "Task", input: { subagent_type: "Explore", description: "Find routes" } },
         { type: "tool_use", id: "tu-3", name: "Bash", input: { command: "echo test" } },
       ]),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("1 tool");
-    expect(block).toContain("2 agents");
-    // Separated by ·
-    expect(block).toContain("1 tool · 2 agents");
+    expect(block).toContain("used 1 tool");
+    expect(block).toContain("spawned 2 sub-agents");
+    // Both in one activity line
+    expect(block).toContain("(used 1 tool, spawned 2 sub-agents)");
   });
 
-  it("filters out subagent assistant messages (parent_tool_use_id != null)", () => {
+  it("filters out sub-agent assistant messages (parent_tool_use_id != null)", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Create a team"),
       assistantMsg([
-        { type: "text", text: "I'll spawn agents." },
+        { type: "text", text: "I'll spawn sub-agents." },
         { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find code" } },
       ]),
-      // Subagent response — should be filtered
+      // Sub-agent response — should be filtered
       assistantMsg([
-        { type: "text", text: "Subagent found the code in auth.ts." },
+        { type: "text", text: "Sub-agent found the code in auth.ts." },
         { type: "tool_use", id: "tu-sub", name: "Bash", input: { command: "grep -r auth" } },
       ], "tu-1"),
     ];
     const block = buildConversationBlock(history);
-    expect(block).toContain("I'll spawn agents.");
-    expect(block).toContain("1 agent");
-    // Subagent content should be absent
-    expect(block).not.toContain("Subagent found the code");
+    expect(block).toContain("I'll spawn sub-agents.");
+    expect(block).toContain("spawned 1 sub-agent");
+    // Sub-agent content should be absent
+    expect(block).not.toContain("Sub-agent found the code");
   });
 
   it("omits [Agent] line when no tools and no response text", () => {

@@ -31,9 +31,8 @@ export interface NamerOptions {
 
 const INDENT = "    | ";
 
-/** Max characters per user message in the prompt. User messages are the most
- *  informative signal, so this is intentionally generous. */
-const MAX_USER_MSG_CHARS = 1_500;
+/** Max characters per user message in the prompt. */
+const MAX_USER_MSG_CHARS = 1_000;
 
 /** Max user turns (user message + agent activity) included in history. */
 const MAX_TURNS = 6;
@@ -60,10 +59,8 @@ const MAX_DESCRIPTION_CHARS = 200;
 /** Max characters for generic tool input values. */
 const MAX_GENERIC_INPUT_CHARS = 200;
 
-/** Max characters of the final assistant response text per turn.
- *  Higher than before since we no longer list individual tool calls — the
- *  response text is now the only window into what the agent did. */
-const MAX_ASSISTANT_TEXT_CHARS = 500;
+/** Max characters of the agent's final response text per turn. */
+const MAX_ASSISTANT_TEXT_CHARS = 1_000;
 
 /** Max characters of stderr to log on subprocess failure. */
 const MAX_STDERR_LOG_CHARS = 200;
@@ -217,9 +214,8 @@ function buildFileOpSummaries(fileOps: Map<string, Set<string>>): string[] {
  * Groups messages into turns: user message → agent activity → next user message.
  * Only includes the last MAX_TURNS user messages.
  *
- * Uses a "collapsed" format inspired by the UI's collapsed turn view:
- * individual tool calls are replaced by compact stats (tool/agent counts),
- * and only the agent's final response text is shown per turn.
+ * Each turn shows: what the user said, what the agent did (tool/sub-agent
+ * counts as an activity summary), and the agent's final response.
  * Subagent messages (parent_tool_use_id != null) are excluded.
  */
 function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string, isGenerating?: boolean): string {
@@ -228,8 +224,8 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
     userContent: string;
     imageCount: number;
     toolCount: number;
-    agentCount: number;
-    /** The last assistant message's text content — the "response" / conclusion */
+    subagentCount: number;
+    /** The last assistant message's text content — the agent's final response */
     lastResponseText: string;
   }> = [];
 
@@ -244,7 +240,7 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
         userContent: typeof msg.content === "string" ? msg.content : "",
         imageCount: Array.isArray(images) ? images.length : 0,
         toolCount: 0,
-        agentCount: 0,
+        subagentCount: 0,
         lastResponseText: "",
       };
     } else if (msg.type === "assistant" && currentTurn) {
@@ -262,7 +258,7 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
           } else if (block.type === "tool_use") {
             if (DROPPED_TOOLS.has(block.name)) continue;
             if (block.name === "Task") {
-              currentTurn.agentCount++;
+              currentTurn.subagentCount++;
             } else {
               currentTurn.toolCount++;
             }
@@ -298,15 +294,17 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
       lines.push(`${INDENT}${ul}`);
     }
 
-    // Build compact stats (collapsed-style: "5 tools · 2 agents")
-    const statParts: string[] = [];
-    if (turn.toolCount > 0) statParts.push(`${turn.toolCount} tool${turn.toolCount !== 1 ? "s" : ""}`);
-    if (turn.agentCount > 0) statParts.push(`${turn.agentCount} agent${turn.agentCount !== 1 ? "s" : ""}`);
-    const statsStr = statParts.length > 0 ? ` ${statParts.join(" · ")}` : "";
+    // Build activity description: what the agent did before responding
+    const activityParts: string[] = [];
+    if (turn.toolCount > 0) activityParts.push(`used ${turn.toolCount} tool${turn.toolCount !== 1 ? "s" : ""}`);
+    if (turn.subagentCount > 0) activityParts.push(`spawned ${turn.subagentCount} sub-agent${turn.subagentCount !== 1 ? "s" : ""}`);
 
-    if (turn.lastResponseText || statsStr) {
+    if (turn.lastResponseText || activityParts.length > 0) {
       lines.push("");
-      lines.push(`    [Agent]${statsStr}`);
+      lines.push("    [Agent]");
+      if (activityParts.length > 0) {
+        lines.push(`${INDENT}(${activityParts.join(", ")})`);
+      }
       if (turn.lastResponseText) {
         const responseLines = trunc(turn.lastResponseText, MAX_ASSISTANT_TEXT_CHARS).split("\n");
         for (const rl of responseLines) {
@@ -404,7 +402,7 @@ Keywords: jwt, middleware, express, session expiry
 \`\`\`
 
 ### NEW: <new title>
-Use ONLY when the user has abandoned the previous task and started a fundamentally different one (different feature, different area of the codebase, different goal). Switching files or refining approach within the same task is NOT a new task.
+Use when the user has completed or moved on from the previous task and started a fundamentally different one (different feature, different area of the codebase, different goal). Switching files or refining approach within the same task is NOT a new task.
 On the next line, add keywords.
 \`\`\`
 NEW: Add dark mode toggle
