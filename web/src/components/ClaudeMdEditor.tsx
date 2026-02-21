@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api.js";
 import { YarnBallSpinner } from "./CatIcons.js";
 
@@ -107,7 +108,8 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
     (f) => f.path === `${cwd}/.claude/CLAUDE.md`,
   );
 
-  return (
+  // Portal to document.body to escape any ancestor overflow/transform constraints
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -378,6 +380,7 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
