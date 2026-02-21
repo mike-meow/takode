@@ -627,7 +627,16 @@ export function getPreview(name: string, input: Record<string, unknown>): string
   }
   if (name === "Task" && input.description) return String(input.description);
   if (name === "TodoWrite" && Array.isArray(input.todos)) {
-    return `${input.todos.length} task${input.todos.length !== 1 ? "s" : ""}`;
+    const todos = input.todos as Array<{ content?: string; activeForm?: string; status?: string }>;
+    const completed = todos.filter((t) => t.status === "completed").length;
+    const inProgress = todos.find((t) => t.status === "in_progress");
+    const label = inProgress?.activeForm || inProgress?.content;
+    if (label) {
+      const remaining = todos.length - completed;
+      const short = label.length > 45 ? label.slice(0, 45) + "..." : label;
+      return `${short} (${remaining} left)`;
+    }
+    return `${completed}/${todos.length} done`;
   }
   if (name === "NotebookEdit" && input.notebook_path) {
     return String(input.notebook_path).split("/").pop() || "";
