@@ -227,6 +227,10 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
     subagentCount: number;
     /** The last assistant message's text content — the agent's final response */
     lastResponseText: string;
+    /** Whether this turn contains an ExitPlanMode call */
+    hasExitPlanMode: boolean;
+    /** Content from the last Write tool call (used to extract plan text) */
+    lastWriteContent: string;
   }> = [];
 
   let currentTurn: (typeof turns)[number] | null = null;
@@ -242,6 +246,8 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
         toolCount: 0,
         subagentCount: 0,
         lastResponseText: "",
+        hasExitPlanMode: false,
+        lastWriteContent: "",
       };
     } else if (msg.type === "assistant" && currentTurn) {
       // Skip subagent messages — only main agent activity matters for naming
@@ -257,9 +263,16 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
             msgText += (msgText ? " " : "") + block.text;
           } else if (block.type === "tool_use") {
             if (DROPPED_TOOLS.has(block.name)) continue;
-            if (block.name === "Task") {
+            if (block.name === "ExitPlanMode") {
+              currentTurn.hasExitPlanMode = true;
+              // Don't count as a tool — it's a plan approval signal
+            } else if (block.name === "Task") {
               currentTurn.subagentCount++;
             } else {
+              // Capture Write content — plan text lives here when ExitPlanMode follows
+              if (block.name === "Write" && typeof block.input?.content === "string") {
+                currentTurn.lastWriteContent = block.input.content;
+              }
               currentTurn.toolCount++;
             }
           }
@@ -273,6 +286,14 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
     // Skip all other message types (result, stream_event, tool_progress, etc.)
   }
   if (currentTurn) turns.push(currentTurn);
+
+  // For ExitPlanMode turns, prefer the Write content (the actual plan text)
+  // over the assistant's text blocks, which may just say "Here's my plan:"
+  for (const turn of turns) {
+    if (turn.hasExitPlanMode && turn.lastWriteContent) {
+      turn.lastResponseText = turn.lastWriteContent;
+    }
+  }
 
   // Take only the last MAX_TURNS
   const recentTurns = turns.slice(-MAX_TURNS);

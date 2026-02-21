@@ -316,6 +316,7 @@ export class WsBridge {
   private onPermissionModeChanged: ((sessionId: string, newMode: string) => void) | null = null;
   private onUserMessage: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string, wasGenerating: boolean) => void) | null = null;
   private onTurnCompleted: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void) | null = null;
+  private onAgentPaused: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void) | null = null;
   private userMsgCounter = 0;
   /** Per-project cache of slash commands & skills so new sessions get them
    *  before the CLI sends system/init (which only arrives after the first
@@ -358,6 +359,11 @@ export class WsBridge {
   /** Register a callback for when the agent finishes a turn (result message received, for auto-naming). */
   onTurnCompletedCallback(cb: (sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void): void {
     this.onTurnCompleted = cb;
+  }
+
+  /** Register a callback for when the agent pauses for user input (ExitPlanMode, for auto-naming). */
+  onAgentPausedCallback(cb: (sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void): void {
+    this.onAgentPaused = cb;
   }
 
   /** Register a callback for when git info is resolved and branch is known. */
@@ -1847,6 +1853,12 @@ export class WsBridge {
         const eventType = toolName === "AskUserQuestion" ? "question" as const : "permission" as const;
         const detail = toolName + (perm.description ? `: ${perm.description}` : "");
         this.pushoverNotifier.scheduleNotification(session.id, eventType, detail, msg.request_id);
+      }
+
+      // Trigger auto-naming when agent pauses for plan approval — the agent
+      // has done meaningful work and the plan provides rich naming context.
+      if (toolName === "ExitPlanMode" && this.onAgentPaused) {
+        this.onAgentPaused(session.id, [...session.messageHistory], session.state.cwd);
       }
     }
   }

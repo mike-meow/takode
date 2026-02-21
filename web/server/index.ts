@@ -279,6 +279,31 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
   }
 });
 
+// Re-evaluate session name when agent pauses for plan approval (ExitPlanMode).
+// The agent has done meaningful research/work to produce the plan, providing
+// rich context for naming — and it's a natural breakpoint before execution.
+wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
+  const currentName = sessionNames.getName(sessionId);
+  const isRandomName = currentName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentName);
+  if (!currentName || isRandomName) return;
+
+  const controller = beginNamerCall(sessionId);
+  const { signal } = controller;
+
+  try {
+    const startIndex = nameSetAtHistoryIndex.get(sessionId) ?? 0;
+    const relevantHistory = history.slice(startIndex);
+    const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
+    console.log(`[session-namer] Agent paused — evaluating session ${sessionId} (current: "${currentName}", history: ${relevantHistory.length}/${history.length} msgs)...`);
+    const result = await evaluateSessionName(sessionId, currentName, relevantHistory, cwd, { signal, isGenerating: true }, taskHistory);
+    if (signal.aborted) return;
+    if (!result) return;
+    applyNamingResult(sessionId, currentName, result, history);
+  } finally {
+    endNamerCall(sessionId, controller);
+  }
+});
+
 // Re-evaluate session name after agent completes a turn.
 // This lets Haiku refine the title based on what the agent actually did,
 // and improves the initial name after the first turn.

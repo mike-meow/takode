@@ -520,6 +520,46 @@ describe("buildConversationBlock", () => {
     expect(block).not.toContain("Sub-agent found the code");
   });
 
+  it("uses Write content as response text when ExitPlanMode is present", () => {
+    // When agent writes a plan file then calls ExitPlanMode, the plan text
+    // (from Write content) should be used as the response, not the brief
+    // assistant text that may just say "Here's my plan:"
+    const planText = "# Implementation Plan\n\n## Step 1: Add auth middleware\n## Step 2: Update routes";
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Add user authentication"),
+      assistantMsg([
+        { type: "text", text: "Let me explore the codebase first." },
+        { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/src/server.ts" } },
+      ]),
+      assistantMsg([
+        { type: "text", text: "Here's my plan:" },
+        { type: "tool_use", id: "tu-2", name: "Write", input: { file_path: "/tmp/plan.md", content: planText } },
+        { type: "tool_use", id: "tu-3", name: "ExitPlanMode", input: {} },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    // Plan text from Write content is shown, not "Here's my plan:"
+    expect(block).toContain("# Implementation Plan");
+    expect(block).toContain("## Step 1: Add auth middleware");
+    expect(block).not.toContain("Here's my plan:");
+    // ExitPlanMode is not counted as a tool; Read + Write = 2 tools
+    expect(block).toContain("(used 2 tools)");
+  });
+
+  it("falls back to assistant text when ExitPlanMode has no Write content", () => {
+    // Edge case: ExitPlanMode without a preceding Write (plan written earlier)
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Plan the refactor"),
+      assistantMsg([
+        { type: "text", text: "I've analyzed the code and written a plan for refactoring the auth module." },
+        { type: "tool_use", id: "tu-1", name: "ExitPlanMode", input: {} },
+      ]),
+    ];
+    const block = buildConversationBlock(history);
+    // Falls back to assistant text since no Write content available
+    expect(block).toContain("I've analyzed the code and written a plan for refactoring the auth module.");
+  });
+
   it("omits [Agent] line when no tools and no response text", () => {
     // User message with no agent activity — just the user message
     const history: BrowserIncomingMessage[] = [userMsg("Fix the auth bug")];
