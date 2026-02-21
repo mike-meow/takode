@@ -191,7 +191,6 @@ export function Sidebar() {
 
   function handleSelectSession(sessionId: string) {
     setContextMenu(null);
-    useStore.getState().closeTerminal();
     useStore.getState().markSessionViewed(sessionId);
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
     navigateToSession(sessionId);
@@ -202,7 +201,6 @@ export function Sidebar() {
   }
 
   function handleNewSession() {
-    useStore.getState().closeTerminal();
     useStore.getState().setShowNewSessionModal(true);
     if (window.innerWidth < 768) {
       useStore.getState().setSidebarOpen(false);
@@ -695,7 +693,6 @@ export function Sidebar() {
           <button
             title="Scheduled"
             onClick={() => {
-              useStore.getState().closeTerminal();
               window.location.hash = "#/scheduled";
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
@@ -714,7 +711,6 @@ export function Sidebar() {
           <button
             title="Quests"
             onClick={() => {
-              useStore.getState().closeTerminal();
               window.location.hash = "#/questmaster";
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
@@ -733,7 +729,6 @@ export function Sidebar() {
           <button
             title="Settings"
             onClick={() => {
-              useStore.getState().closeTerminal();
               window.location.hash = "#/settings";
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);

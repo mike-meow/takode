@@ -171,7 +171,8 @@ export class TerminalManager {
     if (!this.instance) return;
     this.instance.browserSockets.delete(ws);
 
-    // If no browsers remain, start a grace timer to kill the orphaned terminal
+    // If no browsers remain, start a grace timer to kill the orphaned terminal.
+    // 60s allows comfortable reconnection when navigating between views.
     if (this.instance.browserSockets.size === 0) {
       const id = this.instance.id;
       this.instance.orphanTimer = setTimeout(() => {
@@ -179,7 +180,7 @@ export class TerminalManager {
           console.log(`[terminal] No browsers connected, killing orphaned terminal ${id}`);
           this.kill();
         }
-      }, 5_000);
+      }, 60_000);
     }
   }
 }

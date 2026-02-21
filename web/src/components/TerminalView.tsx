@@ -32,7 +32,7 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
   const fitRef = useRef<FitAddon | null>(null);
   const darkMode = useStore((s) => s.darkMode);
 
-  // Main effect: create xterm + spawn PTY — only depends on cwd
+  // Main effect: create xterm + connect to PTY — only depends on cwd
   useEffect(() => {
     if (!terminalRef.current) return;
 
@@ -53,29 +53,41 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
     xtermRef.current = xterm;
     fitRef.current = fit;
 
-    // Spawn terminal on server then connect WebSocket
-    api
-      .spawnTerminal(cwd, xterm.cols, xterm.rows)
-      .then(({ terminalId }) => {
-        if (cancelled) return;
-        useStore.getState().setTerminalId(terminalId);
+    function wireUp(terminalId: string) {
+      if (cancelled) return;
+      useStore.getState().setTerminalId(terminalId);
 
-        connectTerminal(
-          terminalId,
-          (data) => xterm.write(data),
-          (exitCode) => {
-            xterm.writeln(`\r\n[Process exited with code ${exitCode}]`);
-          },
-          (errMsg) => {
-            xterm.writeln(`\r\n[${errMsg}]`);
-          },
-          () => {
-            // WebSocket is now open — send the actual fitted dimensions
-            // (ResizeObserver may have fired before the socket was ready)
-            fit.fit();
-            sendTerminalResize(xterm.cols, xterm.rows);
-          },
-        );
+      connectTerminal(
+        terminalId,
+        (data) => xterm.write(data),
+        (exitCode) => {
+          xterm.writeln(`\r\n[Process exited with code ${exitCode}]`);
+        },
+        (errMsg) => {
+          xterm.writeln(`\r\n[${errMsg}]`);
+        },
+        () => {
+          // WebSocket is now open — send the actual fitted dimensions
+          fit.fit();
+          sendTerminalResize(xterm.cols, xterm.rows);
+        },
+      );
+    }
+
+    // Try to reconnect to an existing terminal for this cwd, else spawn new
+    api
+      .getTerminal()
+      .then((info) => {
+        if (cancelled) return;
+        if (info.active && info.terminalId && info.cwd === cwd) {
+          // Reconnect to existing terminal
+          wireUp(info.terminalId);
+        } else {
+          // Spawn a new terminal
+          return api.spawnTerminal(cwd, xterm.cols, xterm.rows).then(({ terminalId }) => {
+            wireUp(terminalId);
+          });
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -97,11 +109,11 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
       cancelled = true;
       resizeObserver.disconnect();
       inputDisposable.dispose();
+      // Only disconnect the WebSocket — leave the server terminal alive
       disconnectTerminal();
       xterm.dispose();
       xtermRef.current = null;
       fitRef.current = null;
-      api.killTerminal().catch(() => {});
     };
   }, [cwd]);
 
