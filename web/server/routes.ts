@@ -1173,6 +1173,21 @@ export function createRoutes(
     // Truncate server-side message history
     session.messageHistory = session.messageHistory.slice(0, targetIdx);
 
+    // Truncate task history: keep only entries whose trigger message survived truncation
+    if (session.taskHistory?.length) {
+      const remainingUserMsgIds = new Set(
+        session.messageHistory
+          .filter((m) => m.type === "user_message")
+          .map((m) => (m as { id?: string }).id)
+          .filter((id): id is string => typeof id === "string"),
+      );
+      const prevCount = session.taskHistory.length;
+      session.taskHistory = session.taskHistory.filter((t) => remainingUserMsgIds.has(t.triggerMessageId));
+      if (session.taskHistory.length !== prevCount) {
+        wsBridge.broadcastToSession(id, { type: "session_task_history", tasks: session.taskHistory });
+      }
+    }
+
     // Clear orphaned permission dialogs
     session.pendingPermissions.clear();
     wsBridge.broadcastToSession(id, { type: "permissions_cleared" });
