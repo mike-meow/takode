@@ -985,7 +985,9 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
                       />
                     )}
                     {turn.responseEntry && (
-                      <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} />
+                      <div className="px-3 py-2.5">
+                        <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} />
+                      </div>
                     )}
                   </div>
                 )}
