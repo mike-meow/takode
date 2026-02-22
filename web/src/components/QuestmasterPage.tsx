@@ -13,6 +13,21 @@ import type {
   QuestImage,
 } from "../types.js";
 
+// ─── Image paste/upload helpers ────────────────────────────────────────────
+
+/** Handle paste events on a container: extract image files from clipboard. */
+function extractPastedImages(e: React.ClipboardEvent): File[] {
+  const items = e.clipboardData?.items;
+  if (!items) return [];
+  const files: File[] = [];
+  for (const item of Array.from(items)) {
+    if (!item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
 // ─── Status config ──────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<
@@ -129,8 +144,9 @@ export function QuestmasterPage() {
   const [newDescription, setNewDescription] = useState("");
   const [newTags, setNewTags] = useState("");
   const [creating, setCreating] = useState(false);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLTextAreaElement>(null);
   const newDescRef = useRef<HTMLTextAreaElement>(null);
+  const editTitleRef = useRef<HTMLTextAreaElement>(null);
   const editDescRef = useRef<HTMLTextAreaElement>(null);
 
   // Edit mode: null = read view, questId = editing that quest
@@ -138,6 +154,11 @@ export function QuestmasterPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
+
+  // Create form images (uploaded but not yet attached to a quest)
+  const [createImages, setCreateImages] = useState<QuestImage[]>([]);
+  const [uploadingCreateImage, setUploadingCreateImage] = useState(false);
+  const createFileInputRef = useRef<HTMLInputElement>(null);
 
   // Error state
   const [error, setError] = useState("");
@@ -188,8 +209,10 @@ export function QuestmasterPage() {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }
 
-  // Auto-resize on programmatic description changes (e.g. entering edit mode)
+  // Auto-resize on programmatic content changes (e.g. entering edit mode)
+  useEffect(() => { autoResize(titleInputRef.current); }, [newTitle]);
   useEffect(() => { autoResize(newDescRef.current); }, [newDescription]);
+  useEffect(() => { autoResize(editTitleRef.current); }, [editTitle]);
   useEffect(() => { autoResize(editDescRef.current); }, [editDescription]);
 
   const handleExpand = useCallback(
@@ -232,10 +255,12 @@ export function QuestmasterPage() {
         title,
         description: newDescription.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
+        images: createImages.length > 0 ? createImages : undefined,
       });
       setNewTitle("");
       setNewDescription("");
       setNewTags("");
+      setCreateImages([]);
       setShowCreateForm(false);
       await refreshQuests();
     } catch (e: unknown) {
@@ -300,7 +325,38 @@ export function QuestmasterPage() {
     }
   }
 
-  // ─── Image handling ──────────────────────────────────────────────
+  // ─── Image handling for create form ─────────────────────────────
+
+  /** Upload files via standalone endpoint (for create form, before quest exists). */
+  async function handleCreateImageUpload(files: FileList | File[]) {
+    setError("");
+    setUploadingCreateImage(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const image = await api.uploadStandaloneQuestImage(file);
+        setCreateImages((prev) => [...prev, image]);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingCreateImage(false);
+    }
+  }
+
+  function handleCreatePaste(e: React.ClipboardEvent) {
+    const files = extractPastedImages(e);
+    if (files.length > 0) {
+      e.preventDefault();
+      handleCreateImageUpload(files);
+    }
+  }
+
+  function removeCreateImage(imageId: string) {
+    setCreateImages((prev) => prev.filter((img) => img.id !== imageId));
+  }
+
+  // ─── Image handling for existing quests (edit mode) ────────────
 
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -325,6 +381,15 @@ export function QuestmasterPage() {
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Paste handler for the edit form — uploads and attaches to the quest. */
+  function handleEditPaste(questId: string, e: React.ClipboardEvent) {
+    const files = extractPastedImages(e);
+    if (files.length > 0) {
+      e.preventDefault();
+      handleImageUpload(questId, files);
     }
   }
 
@@ -370,25 +435,8 @@ export function QuestmasterPage() {
   ) {
     setAssignPickerForId(null);
 
-    // Build composer draft — structured to trigger quest skill and guide the agent workflow
-    const lines: string[] = [];
-    lines.push(`Use the quest skill to claim and work on quest ${quest.questId}.\n`);
-    lines.push(`Title: ${quest.title}`);
-    if ("description" in quest && quest.description) {
-      lines.push("---");
-      lines.push(`Body:\n${quest.description}`);
-    }
-    if (quest.tags?.length) {
-      lines.push("---");
-      lines.push(`Tags: ${quest.tags.join(", ")}`);
-    }
-    if (quest.images?.length) {
-      lines.push("---");
-      lines.push(
-        `Reference images (${quest.images.length}): ${quest.images.map((img: QuestImage) => img.path).join(", ")}`,
-      );
-    }
-    const draftText = lines.join("\n").trim();
+    // Simple claim command — the agent will get full quest details via `quest show`
+    const draftText = `/quest claim ${quest.questId}`;
 
     // Fetch quest images as base64 for the composer so they get sent to the agent
     const composerImages: Array<{
@@ -493,19 +541,29 @@ export function QuestmasterPage() {
 
         {/* Create form */}
         {showCreateForm && (
-          <div className="mb-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3">
+          <div
+            className="mb-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3"
+            onPaste={handleCreatePaste}
+          >
             <h2 className="text-sm font-semibold text-cc-fg">New Quest</h2>
-            <input
+            <textarea
               ref={titleInputRef}
-              type="text"
               value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
+              onChange={(e) => {
+                setNewTitle(e.target.value);
+                autoResize(e.target);
+              }}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && newTitle.trim()) handleCreate();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (newTitle.trim()) handleCreate();
+                }
                 if (e.key === "Escape") setShowCreateForm(false);
               }}
               placeholder="Quest title"
-              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
+              rows={1}
+              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-hidden"
+              style={{ minHeight: "36px" }}
             />
             <textarea
               ref={newDescRef}
@@ -526,6 +584,67 @@ export function QuestmasterPage() {
               placeholder="Tags (comma separated)"
               className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
             />
+
+            {/* Images section */}
+            <div>
+              {createImages.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {createImages.map((img) => (
+                    <div
+                      key={img.id}
+                      className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
+                    >
+                      <img
+                        src={api.questImageUrl(img.id)}
+                        alt={img.filename}
+                        className="w-16 h-16 object-cover cursor-zoom-in"
+                        onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
+                      />
+                      <button
+                        onClick={() => removeCreateImage(img.id)}
+                        className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-2 h-2">
+                          <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-0.5 py-px text-[8px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                        {img.filename}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => createFileInputRef.current?.click()}
+                  disabled={uploadingCreateImage}
+                  className="px-2 py-1 text-[11px] font-medium rounded-lg bg-cc-hover text-cc-muted hover:text-cc-fg border border-cc-border transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                    <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                    <circle cx="5" cy="6" r="1.5" />
+                    <path d="M1.5 11l3-3.5 2.5 2.5 2-1.5 5.5 4" />
+                  </svg>
+                  {uploadingCreateImage ? "Uploading..." : "Add Image"}
+                </button>
+                <span className="text-[10px] text-cc-muted/50">or paste</span>
+                <input
+                  ref={createFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      handleCreateImageUpload(e.target.files);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCreate}
@@ -539,7 +658,7 @@ export function QuestmasterPage() {
                 {creating ? "Creating..." : "Create"}
               </button>
               <button
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => { setShowCreateForm(false); setCreateImages([]); }}
                 className="px-3 py-2 text-xs font-medium text-cc-muted hover:text-cc-fg rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
@@ -738,17 +857,28 @@ export function QuestmasterPage() {
 
                   {/* Expanded detail */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 pt-1 border-t border-cc-border space-y-3">
+                    <div
+                      className="px-4 pb-4 pt-1 border-t border-cc-border space-y-3"
+                      onPaste={isEditing ? (e) => handleEditPaste(quest.questId, e) : undefined}
+                    >
                       {isEditing ? (
                         /* ─── Edit mode ─── */
                         <>
                           <div>
                             <label className="block text-[11px] text-cc-muted mb-1">Title</label>
-                            <input
-                              type="text"
+                            <textarea
+                              ref={editTitleRef}
                               value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
+                              onChange={(e) => {
+                                setEditTitle(e.target.value);
+                                autoResize(e.target);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.preventDefault();
+                              }}
+                              rows={1}
+                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50 resize-none overflow-hidden"
+                              style={{ minHeight: "36px" }}
                             />
                           </div>
                           <div>
@@ -1051,7 +1181,7 @@ export function QuestmasterPage() {
             onClick={() => setAssignPickerForId(null)}
           >
             <div
-              className="w-[min(360px,90vw)] max-h-[70vh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+              className="w-[min(480px,90vw)] max-h-[70vh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1076,7 +1206,7 @@ export function QuestmasterPage() {
                   No active sessions
                 </div>
               ) : (
-                <div className="overflow-y-auto p-1.5">
+                <div className="overflow-y-auto p-2 space-y-0.5">
                   {pickerSessions.map((s) => (
                     <PickerSessionChip
                       key={s.id}
