@@ -154,6 +154,12 @@ export function QuestmasterPage() {
   // Lightbox for image preview
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
+  // Version history toggle (questId → show history)
+  const [historyForId, setHistoryForId] = useState<string | null>(null);
+  function toggleHistory(questId: string) {
+    setHistoryForId(historyForId === questId ? null : questId);
+  }
+
   // Close assign modal on Escape
   useEffect(() => {
     if (!assignPickerForId) return;
@@ -928,23 +934,25 @@ export function QuestmasterPage() {
                             </div>
                           )}
 
-                          {/* Metadata: session, quest ID, version */}
-                          <div className="flex items-center gap-3 text-[10px] text-cc-muted/50 flex-wrap">
-                            <span>{quest.questId} v{quest.version}</span>
-                            {questSessionId && (
-                              isKnownSession ? (
-                                <a
-                                  href={`#/session/${questSessionId}`}
-                                  className="text-cc-primary hover:underline"
-                                >
-                                  {questSessionName}
-                                </a>
-                              ) : (
-                                <span>{questSessionId}</span>
-                              )
+                          {/* Metadata: quest ID + version history button */}
+                          <div className="flex items-center gap-2 text-[10px] text-cc-muted/50">
+                            <span>{quest.questId}</span>
+                            {quest.version > 1 ? (
+                              <button
+                                onClick={() => toggleHistory(quest.questId)}
+                                className="px-1.5 py-0.5 rounded bg-cc-hover text-cc-muted hover:text-cc-fg transition-colors cursor-pointer text-[10px]"
+                              >
+                                v{quest.version} — {historyForId === quest.questId ? "hide" : "show"} history
+                              </button>
+                            ) : (
+                              <span>v{quest.version}</span>
                             )}
-                            {quest.prevId && <span>prev: {quest.prevId}</span>}
                           </div>
+
+                          {/* Version history (lazy-loaded) */}
+                          {historyForId === quest.questId && (
+                            <QuestVersionHistory questId={quest.questId} />
+                          )}
 
                           {/* Action bar: Edit, Assign, Transitions, Delete */}
                           <div className="flex items-center gap-1.5 flex-wrap pt-1">
@@ -1221,5 +1229,67 @@ function PickerSessionChip({
         </div>
       </div>
     </button>
+  );
+}
+
+// ─── Version history (lazy-loaded) ──────────────────────────────────────────
+
+function QuestVersionHistory({ questId }: { questId: string }) {
+  const [history, setHistory] = useState<QuestmasterTask[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setErr("");
+    api.getQuestHistory(questId).then((h) => {
+      if (!active) return;
+      // API returns all versions; show oldest-first, exclude the current (last) version
+      const sorted = h.sort((a, b) => a.version - b.version);
+      setHistory(sorted.slice(0, -1));
+      setLoading(false);
+    }).catch((e) => {
+      if (!active) return;
+      setErr(e instanceof Error ? e.message : String(e));
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [questId]);
+
+  if (loading) {
+    return <div className="text-[10px] text-cc-muted py-1">Loading history...</div>;
+  }
+  if (err) {
+    return <div className="text-[10px] text-red-400 py-1">{err}</div>;
+  }
+  if (!history || history.length === 0) {
+    return <div className="text-[10px] text-cc-muted py-1">No previous versions.</div>;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {history.map((ver) => {
+        const cfg = STATUS_CONFIG[ver.status];
+        const description = "description" in ver ? ver.description : undefined;
+        return (
+          <div
+            key={ver.id}
+            className="px-3 py-2 rounded-lg bg-cc-input-bg border border-cc-border/50 text-xs"
+          >
+            <div className="flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+              <span className="text-cc-fg font-medium">v{ver.version}</span>
+              <span className={`text-[10px] ${cfg.text}`}>{cfg.label}</span>
+              <span className="text-[10px] text-cc-muted/50 ml-auto">{timeAgo(ver.createdAt)}</span>
+            </div>
+            <div className="mt-1 text-cc-fg">{ver.title}</div>
+            {description && (
+              <div className="mt-0.5 text-cc-muted whitespace-pre-wrap">{description}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
