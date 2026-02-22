@@ -214,11 +214,14 @@ export function QuestmasterPage() {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }
 
-  // Auto-resize on programmatic content changes (e.g. entering edit mode)
-  useEffect(() => { autoResize(titleInputRef.current); }, [newTitle]);
-  useEffect(() => { autoResize(newDescRef.current); }, [newDescription]);
-  useEffect(() => { autoResize(editTitleRef.current); }, [editTitle]);
-  useEffect(() => { autoResize(editDescRef.current); }, [editDescription]);
+  // Auto-resize on programmatic content changes (e.g. entering edit mode).
+  // We also include showCreateForm/editingId so that autoResize fires when
+  // the textarea first mounts with pre-existing content (the value deps alone
+  // won't re-trigger if the value hasn't changed since the form appeared).
+  useEffect(() => { autoResize(titleInputRef.current); }, [newTitle, showCreateForm]);
+  useEffect(() => { autoResize(newDescRef.current); }, [newDescription, showCreateForm]);
+  useEffect(() => { autoResize(editTitleRef.current); }, [editTitle, editingId]);
+  useEffect(() => { autoResize(editDescRef.current); }, [editDescription, editingId]);
 
   const handleExpand = useCallback(
     (quest: QuestmasterTask) => {
@@ -440,43 +443,16 @@ export function QuestmasterPage() {
   ) {
     setAssignPickerForId(null);
 
-    // Simple claim command — the agent will get full quest details via `quest show`
+    // Simple claim command — the agent will get full quest details via `quest show`.
+    // Images are NOT attached as base64; they appear in the quest details block
+    // that the chat feed renders when the session_quest_claimed message arrives.
     const draftText = `/quest claim ${quest.questId}`;
-
-    // Fetch quest images as base64 for the composer so they get sent to the agent
-    const composerImages: Array<{
-      name: string;
-      base64: string;
-      mediaType: string;
-    }> = [];
-    if (quest.images?.length) {
-      for (const img of quest.images as QuestImage[]) {
-        try {
-          const res = await fetch(api.questImageUrl(img.id));
-          if (res.ok) {
-            const buf = await res.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = "";
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            composerImages.push({
-              name: img.filename,
-              base64: btoa(binary),
-              mediaType: img.mimeType,
-            });
-          }
-        } catch {
-          // Skip failed image fetches
-        }
-      }
-    }
 
     useStore
       .getState()
       .setComposerDraft(sessionId, {
         text: draftText,
-        images: composerImages,
+        images: [],
       });
     navigateToSession(sessionId);
   }
