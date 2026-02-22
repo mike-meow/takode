@@ -3,6 +3,22 @@
 // Progressive types: each stage extends the previous, strictly adding fields.
 // Linked-list versioning: every status transition creates a new version object
 // linked to the previous. No data is ever lost.
+//
+// ─── Quest ownership model ───────────────────────────────────────────────────
+//
+// A session can own any number of quests across all statuses, but at most ONE
+// quest may be `in_progress` per session at a time. This invariant is enforced
+// by claimQuest() in quest-store.ts — attempting to claim a second quest while
+// one is already in_progress throws an error. The rationale:
+//
+//   - The UI and auto-namer show the active quest's metadata (title, ID).
+//     Multiple concurrent in_progress quests would create ambiguity about
+//     which one to display.
+//   - getActiveQuestForSession(sessionId) returns the single in_progress quest
+//     for a session, or null. It's used by the auto-namer to include quest
+//     context in naming prompts.
+//   - Quests in other states (done, needs_verification, refined, idea) are
+//     unaffected — a session can have any number of those.
 
 export type QuestStatus = "idea" | "refined" | "in_progress" | "needs_verification" | "done";
 
