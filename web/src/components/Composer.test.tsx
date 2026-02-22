@@ -7,6 +7,22 @@ import type { SessionState } from "../../server/session-types.js";
 // Polyfill scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn();
 
+// Polyfill matchMedia for jsdom — default to desktop (min-width: 640px matches)
+// so the Composer renders its full expanded view in tests
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: query === "(min-width: 640px)",
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 const mockSendToSession = vi.fn().mockReturnValue(true);
 
 // Build a controllable mock store state

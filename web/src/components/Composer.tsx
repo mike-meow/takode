@@ -137,11 +137,27 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
   const [sendPressing, setSendPressing] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
+
+  // Mobile detection via media query (matches Tailwind's sm: breakpoint)
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return !window.matchMedia("(min-width: 640px)").matches; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    let mql: MediaQueryList;
+    try { mql = window.matchMedia("(min-width: 640px)"); }
+    catch { return; }
+    const handler = (e: MediaQueryListEvent) => setIsMobile(!e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
 
   // Track whether the current text change came from user typing (handleInput).
   // When it did, handleInput already adjusted the textarea height synchronously,
@@ -494,10 +510,59 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isRunning = sessionStatus.get(sessionId) === "running";
   const canSend = text.trim().length > 0 && isConnected;
 
+  // Mobile collapsible composer
+  const isCollapsed = isMobile && !composerExpanded && !isRunning && !text.trim() && images.length === 0;
+
+  // Auto-collapse when conditions are met (after send completes, streaming stops)
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!isRunning && !text.trim() && images.length === 0) {
+      const timer = setTimeout(() => setComposerExpanded(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isMobile, isRunning, text, images.length]);
+
+  const expandComposer = useCallback(() => {
+    setComposerExpanded(true);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
   const imageSrcs = useMemo(
     () => images.map((img) => ({ src: `data:${img.mediaType};base64,${img.base64}`, name: img.name })),
     [images],
   );
+
+  if (isCollapsed) {
+    return (
+      <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 py-2">
+        <div className="max-w-3xl mx-auto">
+          <button
+            onClick={expandComposer}
+            className="w-full flex items-center gap-2 px-3 py-2.5 bg-cc-input-bg border border-cc-border rounded-[14px] cursor-text"
+          >
+            {/* Mode badge */}
+            <span className="flex items-center gap-1 text-[11px] font-medium text-cc-muted shrink-0">
+              {isPlan ? (
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                  <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                  <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+              )}
+              {isCodex ? modeLabel : isPlan ? "Plan" : "Agent"}
+            </span>
+            <span className="flex-1 text-sm text-cc-muted text-left truncate">Type a message...</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-muted shrink-0">
+              <path d="M11 1l-1 3.5L13.5 6 10 7l1 3.5L8 8.5 5 10.5 6 7 2.5 6l3.5-1.5L5 1l3 2.5z" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 sm:px-4 py-2 sm:py-3">
@@ -608,7 +673,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
           {/* Git branch + lines info */}
           {sessionData?.git_branch && (
-            <div className="hidden sm:flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted overflow-hidden">
+            <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted overflow-hidden">
               <span className="flex items-center gap-1 truncate min-w-0">
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-60">
                   <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
