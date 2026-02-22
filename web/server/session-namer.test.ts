@@ -691,6 +691,14 @@ describe("buildFirstTurnPrompt", () => {
     const prompt = buildFirstTurnPrompt([userMsg("Fix login bug")]);
     expect(prompt).toContain("Keywords:");
   });
+
+  it("instructs model to always generate a title (best-effort)", () => {
+    // Even with a very brief prompt like a quest claim command, the model
+    // should always attempt to generate a title rather than refuse
+    const prompt = buildFirstTurnPrompt([userMsg("/quest claim q-20")]);
+    expect(prompt).toContain("ALWAYS generate a title");
+    expect(prompt).toContain("Never refuse");
+  });
 });
 
 // ─── buildUpdatePrompt ─────────────────────────────────────────────────────
@@ -1016,5 +1024,11 @@ describe("buildUpdatePrompt with isUnnamed", () => {
     const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")], undefined, false, undefined, null, false);
     expect(prompt).toContain('The current session task is: "Fix Auth Bug"');
     expect(prompt).toContain("NO_CHANGE");
+  });
+
+  it("instructs model to always generate (best-effort) for unnamed sessions", () => {
+    const prompt = buildUpdatePrompt("Deep Reef", [userMsg("/quest claim q-20")], undefined, false, undefined, null, true);
+    expect(prompt).toContain("ALWAYS generate a title");
+    expect(prompt).toContain("Never refuse");
   });
 });

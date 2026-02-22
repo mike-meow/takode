@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { TerminalManager } from "./terminal-manager.js";
 import { generateFirstName, evaluateSessionName } from "./session-namer.js";
 import * as sessionNames from "./session-names.js";
+import { getActiveQuestForSession } from "./quest-store.js";
 import { getSettings, getServerName, initWithPort } from "./settings-manager.js";
 import { PushoverNotifier } from "./pushover.js";
 import { PRPoller } from "./pr-poller.js";
@@ -191,6 +192,13 @@ function isRandomSessionName(name: string | null | undefined): boolean {
   return !!name && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(name);
 }
 
+/** Look up the active quest for a session and map to the namer's expected shape. */
+function getClaimedQuestForNamer(sessionId: string): { id: string; title: string } | null {
+  const quest = getActiveQuestForSession(sessionId);
+  if (!quest) return null;
+  return { id: quest.questId, title: quest.title };
+}
+
 /** Apply a naming result: set name, broadcast, add task entry. Shared by all triggers. */
 function applyNamingResult(
   sessionId: string,
@@ -251,7 +259,7 @@ async function evaluateAndApply(
 ): Promise<void> {
   const currentName = sessionNames.getName(sessionId);
   const isRandomName = isRandomSessionName(currentName);
-  const claimedQuest = wsBridge.getSessionClaimedQuest(sessionId);
+  const claimedQuest = getClaimedQuestForNamer(sessionId);
   const startIndex = nameSetAtHistoryIndex.get(sessionId) ?? 0;
   const relevantHistory = isRandomName ? history : history.slice(startIndex);
   const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
@@ -295,7 +303,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       // If this fails (e.g. Haiku can't generate from a brief prompt), we give up.
       // Subsequent triggers (turn completed, agent paused, next user message) will
       // use the evaluate flow with isUnnamed=true to try again with richer context.
-      const claimedQuest = wsBridge.getSessionClaimedQuest(sessionId);
+      const claimedQuest = getClaimedQuestForNamer(sessionId);
       console.log(`[session-namer] Generating initial name for session ${sessionId}...`);
       const result = await generateFirstName(sessionId, history, cwd, { signal, isGenerating, claimedQuest });
       if (signal.aborted) return;

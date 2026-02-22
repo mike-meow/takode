@@ -467,6 +467,17 @@ export function transitionQuest(
   return quest;
 }
 
+/**
+ * Get the active (in_progress) quest for a session, if any.
+ * Returns null if the session has no in_progress quest.
+ */
+export function getActiveQuestForSession(sessionId: string): QuestmasterTask | null {
+  const all = listQuests();
+  return all.find(
+    (q) => q.status === "in_progress" && "sessionId" in q && (q as QuestInProgress).sessionId === sessionId,
+  ) ?? null;
+}
+
 /** Convenience: claim a quest (transition to in_progress). */
 export function claimQuest(
   questId: string,
@@ -497,6 +508,16 @@ export function claimQuest(
       : existingSessionId;
     throw new Error(
       `Quest ${questId} is already claimed by session ${ownerLabel}`,
+    );
+  }
+
+  // Enforce one in_progress quest per session: if this session already has
+  // another quest in_progress, reject the claim.
+  const existing = getActiveQuestForSession(sessionId);
+  if (existing && existing.questId !== questId) {
+    throw new Error(
+      `Session already has an active quest: ${existing.questId} "${existing.title}". ` +
+      `Complete or transition it before claiming another.`,
     );
   }
 

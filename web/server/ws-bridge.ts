@@ -2798,13 +2798,6 @@ export class WsBridge {
     return this.sessions.get(sessionId)?.taskHistory ?? [];
   }
 
-  /** Get the claimed quest for a session (for auto-namer context). */
-  getSessionClaimedQuest(sessionId: string): { id: string; title: string } | null {
-    const session = this.sessions.get(sessionId);
-    if (!session?.state.claimedQuestId || !session?.state.claimedQuestTitle) return null;
-    return { id: session.state.claimedQuestId, title: session.state.claimedQuestTitle };
-  }
-
   /** Centralized generation state setter with logging and recording. */
   private setGenerating(session: Session, generating: boolean, reason: string): void {
     if (session.isGenerating === generating) return;
