@@ -431,6 +431,33 @@ async function cmdDelete(): Promise<void> {
   }
 }
 
+async function cmdTags(): Promise<void> {
+  const quests = listQuests();
+  const tagCounts = new Map<string, number>();
+  for (const q of quests) {
+    if (q.tags) {
+      for (const tag of q.tags) {
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+      }
+    }
+  }
+
+  if (jsonOutput) {
+    out(Object.fromEntries(tagCounts));
+    return;
+  }
+
+  if (tagCounts.size === 0) {
+    console.log("No tags found.");
+    return;
+  }
+  // Sort by count desc, then alpha
+  const sorted = [...tagCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  for (const [tag, count] of sorted) {
+    console.log(`  ${tag} (${count})`);
+  }
+}
+
 // ─── Help ───────────────────────────────────────────────────────────────────
 
 function showHelp(): void {
@@ -442,6 +469,7 @@ Commands:
   list   [--status <s>] [--json]                         List quests
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history
+  tags   [--json]                                        List all existing tags with counts
   create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
   complete <id> --items "c1,c2" [--json]                 Submit for verification
@@ -466,6 +494,8 @@ async function main(): Promise<void> {
       return cmdShow();
     case "history":
       return cmdHistory();
+    case "tags":
+      return cmdTags();
     case "create":
       return cmdCreate();
     case "claim":

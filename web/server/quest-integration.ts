@@ -73,6 +73,7 @@ These are completely different systems. Do NOT confuse them.
 quest list   [--status <s>] [--json]                          List quests
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
+quest tags   [--json]                                         List all existing tags with counts
 quest create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> --items "c1,c2" [--json]                  Submit for verification
@@ -90,6 +91,12 @@ quest delete <id> [--json]                                    Delete quest
 3. Do the work (use TodoWrite to track your own sub-steps if needed)
 4. Submit for verification: \`quest complete q-N --items "Tests pass,Typecheck passes,Docs updated"\`
 5. The human reviews in the Companion UI and marks done
+
+## Tags
+
+**Always reuse existing tags.** Before creating or editing a quest, run \`quest tags\` to see what tags already exist. Only introduce a new tag when no existing tag fits. This keeps the tag space consistent and filterable.
+
+Every quest should have at least one tag. Common patterns: component/area (e.g. "questmaster", "ws-bridge", "ui"), type (e.g. "bugfix", "feature", "refactor"), or concern (e.g. "mobile", "performance").
 
 ## Images
 
@@ -114,13 +121,25 @@ idea → refined → in_progress → needs_verification → done
 
 **Never skip states or jump directly to \`done\`.** Before proposing any transition, consider:
 
-### idea → refined
-- Is the quest description clear and actionable?
-- Are acceptance criteria defined (what does "done" look like)?
+### idea → refined (MUST polish the quest)
+When transitioning from idea to refined, you **must** also clean up the quest:
+
+1. **Title**: Make it concise and to the point — aim for under 10 words. If the original title is a sentence or contains implementation details, shorten it to a clear summary.
+2. **Description**: Move any detail from the title into the description. Flesh out the description so it is clear and actionable. Define what "done" looks like.
+3. **Tags**: Run \`quest tags\` to see existing tags. Reuse existing tags when they fit. Only create a new tag when no existing tag is appropriate. Every quest should have at least one tag.
+4. Use \`quest edit <id> --title "..." --desc "..." --tags "t1,t2"\` to apply these changes.
+
+Example: If an idea has title "The quest tool should show existing tags so agents reuse them consistently" with no tags, you would:
+- Title → "Show existing tags in quest tool"
+- Description → the original long title + any additional context about why and how
+- Tags → check \`quest tags\`, reuse e.g. "questmaster" if it exists, or "tooling"
+
+Also check:
 - Are there open questions that need the human's input first?
 
-### refined → in_progress
+### refined → in_progress (also polish if needed)
 - Has the quest been claimed by a session (\`quest claim\`)?
+- If the title/description/tags still need cleanup (e.g. quest was created as refined directly), apply the same polishing rules as idea → refined.
 - Do you understand the full scope of work?
 - Are there dependencies or blockers to flag?
 
