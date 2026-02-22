@@ -170,6 +170,11 @@ export function QuestmasterPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
 
+  // Track the quest version when entering edit mode so we can detect remote
+  // changes and exit edit mode to prevent overwriting someone else's edits.
+  const editVersionRef = useRef<number>(0);
+  const [editStaleNotice, setEditStaleNotice] = useState(false);
+
   // Create form images (uploaded but not yet attached to a quest)
   const [createImages, setCreateImages] = useState<QuestImage[]>([]);
   const [uploadingCreateImage, setUploadingCreateImage] = useState(false);
@@ -206,10 +211,60 @@ export function QuestmasterPage() {
     return () => document.removeEventListener("keydown", handleKey);
   }, [assignPickerForId]);
 
-  // Load quests on mount
+  // Load quests on mount, poll periodically as a fallback for cases where
+  // no session WebSocket is open (the `quest_list_updated` broadcast only
+  // reaches browsers that have an active session WS connection), and refetch
+  // when the tab regains visibility so switching back always shows fresh data.
   useEffect(() => {
     refreshQuests();
+
+    // Poll every 5 seconds as a fallback — lightweight GET that only triggers
+    // a React re-render when the returned data differs (Zustand shallow check).
+    const interval = setInterval(() => {
+      refreshQuests();
+    }, 5_000);
+
+    // Refetch when the tab becomes visible again (e.g. user switches back)
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        refreshQuests();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Refetch on window focus (covers cases where visibilitychange doesn't fire,
+    // e.g. switching between windows on the same desktop)
+    function handleFocus() {
+      refreshQuests();
+    }
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
+
+  // If the quest being edited was remotely updated (version changed), exit
+  // edit mode and briefly show a stale-data notice so the user knows why.
+  useEffect(() => {
+    if (!editingId) return;
+    const storeQuest = quests.find((q) => q.questId === editingId);
+    if (!storeQuest) {
+      // Quest was deleted remotely — exit edit mode
+      setEditingId(null);
+      setEditStaleNotice(false);
+      return;
+    }
+    if (storeQuest.version > editVersionRef.current) {
+      setEditingId(null);
+      setEditStaleNotice(true);
+      // Auto-dismiss the stale notice after a few seconds
+      const timer = setTimeout(() => setEditStaleNotice(false), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [editingId, quests]);
 
   // Focus title input when create form opens
   useEffect(() => {
@@ -251,10 +306,13 @@ export function QuestmasterPage() {
     setEditTitle(quest.title);
     setEditDescription("description" in quest ? (quest.description ?? "") : "");
     setEditTags(quest.tags?.join(", ") ?? "");
+    editVersionRef.current = quest.version;
+    setEditStaleNotice(false);
   }
 
   function cancelEdit() {
     setEditingId(null);
+    setEditStaleNotice(false);
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────
@@ -801,6 +859,27 @@ export function QuestmasterPage() {
 
       {/* ─── Scrollable content ────────────────────────────────────────── */}
       <div className="max-w-5xl mx-auto px-4 sm:px-8 pb-6 sm:pb-10 pt-4">
+        {/* Stale edit notice — shown when a quest is remotely updated while being edited */}
+        {editStaleNotice && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 flex items-center justify-between">
+            <span>This quest was updated by another browser. Showing latest version.</span>
+            <button
+              onClick={() => setEditStaleNotice(false)}
+              className="text-amber-400 hover:text-amber-300 cursor-pointer ml-2"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-3 h-3"
+              >
+                <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Error banner */}
         {error && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center justify-between">
