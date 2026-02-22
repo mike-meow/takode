@@ -144,6 +144,19 @@ export function QuestmasterPage() {
   // Lightbox for image preview
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
+  // Close assign picker on outside click
+  const assignPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!assignPickerForId) return;
+    function handleClick(e: MouseEvent) {
+      if (assignPickerRef.current && !assignPickerRef.current.contains(e.target as Node)) {
+        setAssignPickerForId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [assignPickerForId]);
+
   // Load quests on mount
   useEffect(() => {
     refreshQuests();
@@ -597,7 +610,7 @@ export function QuestmasterPage() {
               return (
                 <div
                   key={quest.id}
-                  className={`border rounded-xl overflow-hidden transition-colors ${
+                  className={`border rounded-xl transition-colors ${
                     isExpanded
                       ? "bg-cc-card border-cc-primary/30"
                       : `bg-cc-card border-cc-border hover:border-cc-border/80 ${isCancelled ? "opacity-60" : ""}`
@@ -914,7 +927,7 @@ export function QuestmasterPage() {
 
                             {/* Assign to Session */}
                             {quest.status !== "done" && (
-                              <div className="relative">
+                              <div className="relative" ref={assignPickerForId === quest.questId ? assignPickerRef : undefined}>
                                 <button
                                   onClick={() =>
                                     setAssignPickerForId(
