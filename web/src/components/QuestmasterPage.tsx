@@ -139,6 +139,11 @@ export function QuestmasterPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
+  // Search & tag filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // Create form state
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -476,48 +481,215 @@ export function QuestmasterPage() {
     navigateToSession(sessionId);
   }
 
+  // ─── Derived tag list ─────────────────────────────────────────────────
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const q of quests) {
+      if (q.tags) for (const t of q.tags) tagSet.add(t);
+    }
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+  }, [quests]);
+
+  // Clean up stale selected tags when tags disappear from dataset
+  useEffect(() => {
+    if (selectedTags.size === 0) return;
+    const currentTagSet = new Set(allTags);
+    const hasStale = Array.from(selectedTags).some((t) => !currentTagSet.has(t));
+    if (hasStale) {
+      setSelectedTags(
+        (prev) => new Set(Array.from(prev).filter((t) => currentTagSet.has(t))),
+      );
+    }
+  }, [allTags, selectedTags]);
+
   // ─── Filtering ────────────────────────────────────────────────────────
 
-  const filtered =
-    filter === "all" ? quests : quests.filter((q) => q.status === filter);
+  // Layer 1: text search (case-insensitive on title + description)
+  const searchLower = searchQuery.trim().toLowerCase();
+  const afterSearch = searchLower
+    ? quests.filter((q) => {
+        if (q.title.toLowerCase().includes(searchLower)) return true;
+        if (q.description && q.description.toLowerCase().includes(searchLower))
+          return true;
+        return false;
+      })
+    : quests;
 
-  // Status counts for tab badges
-  const counts: Record<string, number> = { all: quests.length };
+  // Layer 2: tag filter (OR — quest matches if it has ANY selected tag)
+  const afterTags =
+    selectedTags.size === 0
+      ? afterSearch
+      : afterSearch.filter(
+          (q) => q.tags?.some((t) => selectedTags.has(t)) ?? false,
+        );
+
+  // Status counts (after search + tags, before status filter)
+  const counts: Record<string, number> = { all: afterTags.length };
   for (const s of ALL_STATUSES) {
-    counts[s] = quests.filter((q) => q.status === s).length;
+    counts[s] = afterTags.filter((q) => q.status === s).length;
   }
+
+  // Layer 3: status filter
+  const filtered =
+    filter === "all" ? afterTags : afterTags.filter((q) => q.status === filter);
 
   // ─── Render ───────────────────────────────────────────────────────────
 
   return (
     <div className="h-full bg-cc-bg overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-cc-fg">Quests</h1>
-            <p className="mt-1 text-sm text-cc-muted">
-              Track tasks from idea to completion. Sessions claim quests to work
-              on.
-            </p>
+      {/* ─── Sticky header ─────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 bg-cc-bg">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-4 sm:pt-6">
+          {/* Title row + New Quest button */}
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-semibold text-cc-fg">Quests</h1>
+              <p className="mt-0.5 text-xs sm:text-sm text-cc-muted hidden sm:block">
+                Track tasks from idea to completion. Sessions claim quests to work
+                on.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-3.5 h-3.5"
+              >
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+              <span className="hidden sm:inline">New Quest</span>
+            </button>
           </div>
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center gap-1.5 cursor-pointer"
-          >
+
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {FILTER_TABS.map((tab) => {
+              const isActive = filter === tab.value;
+              const count = counts[tab.value] ?? 0;
+              return (
+                <button
+                  key={tab.value}
+                  onClick={() => setFilter(tab.value)}
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium rounded-full transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
+                    isActive
+                      ? "bg-cc-primary/15 text-cc-primary border border-cc-primary/30"
+                      : "bg-cc-hover text-cc-muted hover:text-cc-fg border border-transparent"
+                  }`}
+                >
+                  {tab.value !== "all" && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`}
+                    />
+                  )}
+                  {tab.label}
+                  {count > 0 && (
+                    <span
+                      className={`text-[10px] ${isActive ? "text-cc-primary/70" : "text-cc-muted/60"}`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar */}
+          <div className="relative mt-2.5">
             <svg
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
-              className="w-3.5 h-3.5"
+              strokeWidth="1.5"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cc-muted pointer-events-none"
             >
-              <path d="M8 3v10M3 8h10" />
+              <circle cx="6.5" cy="6.5" r="4.5" />
+              <path d="M10 10l3.5 3.5" strokeLinecap="round" />
             </svg>
-            New Quest
-          </button>
-        </div>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  searchInputRef.current?.blur();
+                }
+              }}
+              placeholder="Search quests..."
+              className="w-full pl-9 pr-8 py-1.5 sm:py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cc-muted hover:text-cc-fg cursor-pointer"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className="w-3.5 h-3.5"
+                >
+                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+          </div>
 
+          {/* Tag filter pills */}
+          {allTags.length > 0 && (
+            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap mt-2">
+              {selectedTags.size > 0 && (
+                <button
+                  onClick={() => setSelectedTags(new Set())}
+                  className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer mr-0.5"
+                >
+                  Clear
+                </button>
+              )}
+              {allTags.map((tag) => {
+                const isSelected = selectedTags.has(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => {
+                      setSelectedTags((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(tag)) next.delete(tag);
+                        else next.add(tag);
+                        return next;
+                      });
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                      isSelected
+                        ? "bg-cc-primary/15 text-cc-primary border border-cc-primary/30"
+                        : "bg-cc-hover text-cc-muted hover:text-cc-fg border border-transparent"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {/* Bottom border separator */}
+        <div className="border-b border-cc-border/30 mt-3" />
+      </div>
+
+      {/* ─── Scrollable content ────────────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 pb-6 sm:pb-10 pt-4">
         {/* Error banner */}
         {error && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center justify-between">
@@ -667,39 +839,6 @@ export function QuestmasterPage() {
           </div>
         )}
 
-        {/* Filter tabs */}
-        <div className="mb-4 flex items-center gap-1 flex-wrap">
-          {FILTER_TABS.map((tab) => {
-            const isActive = filter === tab.value;
-            const count = counts[tab.value] ?? 0;
-            return (
-              <button
-                key={tab.value}
-                onClick={() => setFilter(tab.value)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  isActive
-                    ? "bg-cc-primary/15 text-cc-primary border border-cc-primary/30"
-                    : "bg-cc-hover text-cc-muted hover:text-cc-fg border border-transparent"
-                }`}
-              >
-                {tab.value !== "all" && (
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`}
-                  />
-                )}
-                {tab.label}
-                {count > 0 && (
-                  <span
-                    className={`text-[10px] ${isActive ? "text-cc-primary/70" : "text-cc-muted/60"}`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
         {/* Quest list */}
         <div className="space-y-2">
           {questsLoading && quests.length === 0 ? (
@@ -710,7 +849,9 @@ export function QuestmasterPage() {
             <div className="text-sm text-cc-muted text-center py-12">
               {quests.length === 0
                 ? "No quests yet. Create one to get started."
-                : "No quests match this filter."}
+                : searchQuery.trim() || selectedTags.size > 0
+                  ? "No quests match your search."
+                  : "No quests match this filter."}
             </div>
           ) : (
             (filter === "all" ? DISPLAY_ORDER : ALL_STATUSES)
