@@ -261,7 +261,7 @@ export function patchQuest(
   const current = getQuest(questId);
   if (!current) return null;
 
-  const updated = { ...current, createdAt: Date.now() } as QuestmasterTask;
+  const updated = { ...current, updatedAt: Date.now() } as QuestmasterTask;
   if (patch.title !== undefined) (updated as { title: string }).title = patch.title.trim();
   if (patch.description !== undefined) {
     (updated as { description?: string }).description = patch.description.trim();
@@ -623,7 +623,7 @@ export function checkVerificationItem(
   }
 
   items[index].checked = checked;
-  (current as { createdAt: number }).createdAt = Date.now();
+  (current as { updatedAt?: number }).updatedAt = Date.now();
   writeQuest(current);
   return current;
 }
@@ -663,7 +663,7 @@ export function addQuestImages(
 
   const existing = current.images ?? [];
   (current as { images: QuestImage[] }).images = [...existing, ...images];
-  (current as { createdAt: number }).createdAt = Date.now();
+  (current as { updatedAt?: number }).updatedAt = Date.now();
   writeQuest(current);
   return current;
 }
@@ -681,7 +681,7 @@ export function removeQuestImage(
   (current as { images: QuestImage[] }).images = current.images.filter(
     (img) => img.id !== imageId,
   );
-  (current as { createdAt: number }).createdAt = Date.now();
+  (current as { updatedAt?: number }).updatedAt = Date.now();
   writeQuest(current);
 
   // Delete the file

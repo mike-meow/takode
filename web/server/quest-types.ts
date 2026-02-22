@@ -58,8 +58,11 @@ interface QuestBase {
   /** Links to previous version: "q-1-v2" */
   prevId?: string;
   title: string;
-  /** When this version was created (also updated on in-place patches) */
+  /** When this version was created (stable — never mutated after creation) */
   createdAt: number;
+  /** Last in-place modification (checkbox toggle, patch, image change).
+   *  Only set by in-place mutations; absent on freshly created versions. */
+  updatedAt?: number;
   tags?: string[];
   /** Stable questId of parent task (for subtasks) */
   parentId?: string;

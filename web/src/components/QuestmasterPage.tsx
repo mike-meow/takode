@@ -1192,7 +1192,7 @@ export function QuestmasterPage() {
                           );
                         })()}
                         <span className="text-[10px] text-cc-muted/50">
-                          {timeAgo(quest.createdAt)}
+                          {timeAgo((quest as { updatedAt?: number }).updatedAt ?? quest.createdAt)}
                         </span>
                       </div>
                       {quest.tags && quest.tags.length > 0 && (
