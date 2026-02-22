@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { navigateToSession } from "../utils/routing.js";
 import { Lightbox } from "./Lightbox.js";
+import { SessionStatusDot } from "./SessionStatusDot.js";
 import type {
   QuestmasterTask,
   QuestStatus,
@@ -109,6 +110,11 @@ export function QuestmasterPage() {
   const refreshQuests = useStore((s) => s.refreshQuests);
   const sdkSessions = useStore((s) => s.sdkSessions);
   const sessionNames = useStore((s) => s.sessionNames);
+  const sessions = useStore((s) => s.sessions);
+  const cliConnected = useStore((s) => s.cliConnected);
+  const sessionStatus = useStore((s) => s.sessionStatus);
+  const cliDisconnectReason = useStore((s) => s.cliDisconnectReason);
+  const pendingPermissions = useStore((s) => s.pendingPermissions);
 
   const [filter, setFilter] = useState<QuestStatus | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -315,79 +321,72 @@ export function QuestmasterPage() {
     }
   }
 
-  // Active sessions for the assign picker (non-archived, non-exited)
-  const activeSessions = sdkSessions.filter(
-    (s) => s.state !== "exited" && !s.archived,
-  );
+  // Active sessions for the assign picker — same order as sidebar (newest first)
+  const activeSessions = sdkSessions
+    .filter((s) => s.state !== "exited" && !s.archived)
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   async function handleAssignToSession(
     quest: QuestmasterTask,
     sessionId: string,
   ) {
-    setError("");
-    try {
-      await api.claimQuest(quest.questId, sessionId);
-      await refreshQuests();
-      setAssignPickerForId(null);
+    setAssignPickerForId(null);
 
-      // Build composer draft
-      const lines: string[] = [];
-      lines.push("I have a quest for you:\n");
-      lines.push(`**${quest.title}** (${quest.questId})\n`);
-      if ("description" in quest && quest.description) {
-        lines.push(quest.description);
-        lines.push("");
-      }
-      if (quest.tags?.length) {
-        lines.push(`Tags: ${quest.tags.join(", ")}`);
-      }
-      if (quest.images?.length) {
-        lines.push("");
-        lines.push(
-          `Reference images (${quest.images.length}): ${quest.images.map((img: QuestImage) => img.path).join(", ")}`,
-        );
-      }
-      const draftText = lines.join("\n").trim();
+    // Build composer draft
+    const lines: string[] = [];
+    lines.push("I have a quest for you:\n");
+    lines.push(`**${quest.title}** (${quest.questId})\n`);
+    if ("description" in quest && quest.description) {
+      lines.push(quest.description);
+      lines.push("");
+    }
+    if (quest.tags?.length) {
+      lines.push(`Tags: ${quest.tags.join(", ")}`);
+    }
+    if (quest.images?.length) {
+      lines.push("");
+      lines.push(
+        `Reference images (${quest.images.length}): ${quest.images.map((img: QuestImage) => img.path).join(", ")}`,
+      );
+    }
+    const draftText = lines.join("\n").trim();
 
-      // Fetch quest images as base64 for the composer so they get sent to the agent
-      const composerImages: Array<{
-        name: string;
-        base64: string;
-        mediaType: string;
-      }> = [];
-      if (quest.images?.length) {
-        for (const img of quest.images as QuestImage[]) {
-          try {
-            const res = await fetch(api.questImageUrl(img.id));
-            if (res.ok) {
-              const buf = await res.arrayBuffer();
-              const bytes = new Uint8Array(buf);
-              let binary = "";
-              for (let i = 0; i < bytes.length; i++) {
-                binary += String.fromCharCode(bytes[i]);
-              }
-              composerImages.push({
-                name: img.filename,
-                base64: btoa(binary),
-                mediaType: img.mimeType,
-              });
+    // Fetch quest images as base64 for the composer so they get sent to the agent
+    const composerImages: Array<{
+      name: string;
+      base64: string;
+      mediaType: string;
+    }> = [];
+    if (quest.images?.length) {
+      for (const img of quest.images as QuestImage[]) {
+        try {
+          const res = await fetch(api.questImageUrl(img.id));
+          if (res.ok) {
+            const buf = await res.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]);
             }
-          } catch {
-            // Skip failed image fetches
+            composerImages.push({
+              name: img.filename,
+              base64: btoa(binary),
+              mediaType: img.mimeType,
+            });
           }
+        } catch {
+          // Skip failed image fetches
         }
       }
-
-      useStore
-        .getState()
-        .setComposerDraft(sessionId, {
-          text: draftText,
-          images: composerImages,
-        });
-      navigateToSession(sessionId);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
     }
+
+    useStore
+      .getState()
+      .setComposerDraft(sessionId, {
+        text: draftText,
+        images: composerImages,
+      });
+    navigateToSession(sessionId);
   }
 
   // ─── Filtering ────────────────────────────────────────────────────────
@@ -939,38 +938,56 @@ export function QuestmasterPage() {
                                   Assign
                                 </button>
 
-                                {/* Session picker dropdown */}
+                                {/* Session picker — sidebar-style chips */}
                                 {assignPickerForId === quest.questId && (
-                                  <div className="absolute z-10 top-full left-0 mt-1 w-64 bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-hidden">
+                                  <div className="absolute z-10 top-full left-0 mt-1 w-64 bg-cc-card border border-cc-border rounded-lg shadow-lg">
                                     {activeSessions.length === 0 ? (
                                       <div className="px-3 py-2 text-xs text-cc-muted">
                                         No active sessions
                                       </div>
                                     ) : (
-                                      <div className="max-h-48 overflow-y-auto">
+                                      <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
                                         {activeSessions.map((session) => {
                                           const name =
                                             sessionNames.get(session.sessionId) ||
                                             session.sessionId.slice(0, 8);
+                                          const bridgeState = sessions.get(session.sessionId);
+                                          const backendType = bridgeState?.backend_type || session.backendType || "claude";
+                                          const isConnected = cliConnected.get(session.sessionId) ?? session.cliConnected ?? false;
+                                          const status = sessionStatus.get(session.sessionId) ?? null;
+                                          const permCount = pendingPermissions.get(session.sessionId)?.size ?? 0;
+                                          const idleKilled = cliDisconnectReason.get(session.sessionId) === "idle_limit";
                                           return (
                                             <button
                                               key={session.sessionId}
                                               onClick={() =>
                                                 handleAssignToSession(quest, session.sessionId)
                                               }
-                                              className="w-full px-3 py-2 text-left text-xs text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
+                                              className="relative w-full pl-3.5 pr-3 py-2 text-left rounded-lg hover:bg-cc-hover transition-colors cursor-pointer"
                                             >
+                                              {/* Left accent border */}
                                               <span
-                                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                                  session.state === "connected"
-                                                    ? "bg-green-400"
-                                                    : "bg-zinc-400"
-                                                }`}
+                                                className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full ${
+                                                  backendType === "codex" ? "bg-blue-500" : "bg-[#D97757]"
+                                                } opacity-40`}
                                               />
-                                              <span className="truncate">{name}</span>
-                                              <span className="text-cc-muted/50 text-[10px] shrink-0">
-                                                {session.sessionId.slice(0, 8)}
-                                              </span>
+                                              <div className="flex items-center gap-2">
+                                                <SessionStatusDot
+                                                  permCount={permCount}
+                                                  isConnected={isConnected}
+                                                  sdkState={session.state}
+                                                  status={status}
+                                                  idleKilled={idleKilled}
+                                                />
+                                                <span className="text-[13px] font-medium text-cc-fg truncate flex-1">
+                                                  {name}
+                                                </span>
+                                                <img
+                                                  src={backendType === "codex" ? "/logo-codex.svg" : "/logo.svg"}
+                                                  alt={backendType === "codex" ? "Codex" : "Claude"}
+                                                  className="w-3 h-3 shrink-0 object-contain opacity-60"
+                                                />
+                                              </div>
                                             </button>
                                           );
                                         })}
