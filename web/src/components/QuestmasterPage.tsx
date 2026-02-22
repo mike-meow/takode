@@ -590,6 +590,9 @@ export function QuestmasterPage() {
                 : null;
               const description = "description" in quest ? quest.description : undefined;
               const questNotes = "notes" in quest ? (quest as { notes?: string }).notes : undefined;
+              const questSessionId = "sessionId" in quest ? (quest as { sessionId: string }).sessionId : null;
+              const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
+              const questSessionName = questSessionId ? (sessionNames.get(questSessionId) || (isKnownSession ? questSessionId.slice(0, 8) : questSessionId)) : null;
 
               return (
                 <div
@@ -623,16 +626,22 @@ export function QuestmasterPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {"sessionId" in quest && quest.sessionId && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.location.hash = `#/session/${quest.sessionId}`;
-                            }}
-                            className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors truncate max-w-[120px]"
-                          >
-                            {sessionNames.get((quest as { sessionId: string }).sessionId) || "session"}
-                          </span>
+                        {questSessionId && (
+                          isKnownSession ? (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.location.hash = `#/session/${questSessionId}`;
+                              }}
+                              className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors truncate max-w-[140px]"
+                            >
+                              {questSessionName}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-cc-muted/50 truncate max-w-[140px]">
+                              {questSessionId}
+                            </span>
+                          )
                         )}
                         {vProgress && (
                           <span className="text-[10px] text-cc-muted flex items-center gap-1">
@@ -878,13 +887,17 @@ export function QuestmasterPage() {
                           {/* Metadata: session, quest ID, version */}
                           <div className="flex items-center gap-3 text-[10px] text-cc-muted/50 flex-wrap">
                             <span>{quest.questId} v{quest.version}</span>
-                            {"sessionId" in quest && quest.sessionId && (
-                              <a
-                                href={`#/session/${quest.sessionId}`}
-                                className="text-cc-primary hover:underline"
-                              >
-                                {sessionNames.get((quest as { sessionId: string }).sessionId) || `session ${(quest as { sessionId: string }).sessionId.slice(0, 8)}`}
-                              </a>
+                            {questSessionId && (
+                              isKnownSession ? (
+                                <a
+                                  href={`#/session/${questSessionId}`}
+                                  className="text-cc-primary hover:underline"
+                                >
+                                  {questSessionName}
+                                </a>
+                              ) : (
+                                <span>{questSessionId}</span>
+                              )
                             )}
                             {quest.prevId && <span>prev: {quest.prevId}</span>}
                           </div>
