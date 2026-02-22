@@ -629,9 +629,9 @@ export function QuestmasterPage() {
                               e.stopPropagation();
                               window.location.hash = `#/session/${quest.sessionId}`;
                             }}
-                            className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors"
+                            className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors truncate max-w-[120px]"
                           >
-                            session
+                            {sessionNames.get((quest as { sessionId: string }).sessionId) || "session"}
                           </span>
                         )}
                         {vProgress && (
@@ -735,7 +735,7 @@ export function QuestmasterPage() {
                                     />
                                     <button
                                       onClick={() => handleRemoveImage(quest.questId, img.id)}
-                                      className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                      className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
                                     >
                                       <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-2.5 h-2.5">
                                         <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
@@ -883,7 +883,7 @@ export function QuestmasterPage() {
                                 href={`#/session/${quest.sessionId}`}
                                 className="text-cc-primary hover:underline"
                               >
-                                session {(quest as { sessionId: string }).sessionId.slice(0, 8)}
+                                {sessionNames.get((quest as { sessionId: string }).sessionId) || `session ${(quest as { sessionId: string }).sessionId.slice(0, 8)}`}
                               </a>
                             )}
                             {quest.prevId && <span>prev: {quest.prevId}</span>}
