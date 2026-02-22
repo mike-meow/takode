@@ -144,6 +144,16 @@ export function QuestmasterPage() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Status dropdown state
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Hashtag autocomplete state
+  const [hashtagQuery, setHashtagQuery] = useState("");
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
   // Create form state
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -462,7 +472,7 @@ export function QuestmasterPage() {
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     for (const q of quests) {
-      if (q.tags) for (const t of q.tags) tagSet.add(t);
+      if (q.tags) for (const t of q.tags) tagSet.add(t.toLowerCase());
     }
     return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
   }, [quests]);
@@ -479,10 +489,38 @@ export function QuestmasterPage() {
     }
   }, [allTags, selectedTags]);
 
+  // Close status dropdown on click-outside or Escape
+  useEffect(() => {
+    if (!statusDropdownOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setStatusDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [statusDropdownOpen]);
+
+  // Compute autocomplete matches for hashtag query
+  const autocompleteMatches = useMemo(() => {
+    if (!hashtagQuery) return [];
+    const q = hashtagQuery.toLowerCase();
+    return allTags.filter((t) => t.includes(q) && !selectedTags.has(t));
+  }, [hashtagQuery, allTags, selectedTags]);
+
   // ─── Filtering ────────────────────────────────────────────────────────
 
   // Layer 1: text search (case-insensitive on title + description)
-  const searchLower = searchQuery.trim().toLowerCase();
+  // Strip any trailing #hashtag token from the search text
+  const searchText = searchQuery.replace(/#[^\s]*$/, "").trim();
+  const searchLower = searchText.toLowerCase();
   const afterSearch = searchLower
     ? quests.filter((q) => {
         if (q.title.toLowerCase().includes(searchLower)) return true;
@@ -497,7 +535,7 @@ export function QuestmasterPage() {
     selectedTags.size === 0
       ? afterSearch
       : afterSearch.filter(
-          (q) => q.tags?.some((t) => selectedTags.has(t)) ?? false,
+          (q) => q.tags?.some((t) => selectedTags.has(t.toLowerCase())) ?? false,
         );
 
   // Status counts (after search + tags, before status filter)
@@ -543,122 +581,219 @@ export function QuestmasterPage() {
             </button>
           </div>
 
-          {/* Filter tabs */}
-          <div className="flex items-center gap-1 flex-wrap">
-            {FILTER_TABS.map((tab) => {
-              const isActive = filter === tab.value;
-              const count = counts[tab.value] ?? 0;
-              return (
-                <button
-                  key={tab.value}
-                  onClick={() => setFilter(tab.value)}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium rounded-full transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
-                    isActive
-                      ? "bg-cc-primary/15 text-cc-primary border border-cc-primary/30"
-                      : "bg-cc-hover text-cc-muted hover:text-cc-fg border border-transparent"
-                  }`}
-                >
-                  {tab.value !== "all" && (
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`}
-                    />
-                  )}
-                  {tab.label}
-                  {count > 0 && (
-                    <span
-                      className={`text-[10px] ${isActive ? "text-cc-primary/70" : "text-cc-muted/60"}`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Search bar */}
-          <div className="relative mt-2.5">
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cc-muted pointer-events-none"
-            >
-              <circle cx="6.5" cy="6.5" r="4.5" />
-              <path d="M10 10l3.5 3.5" strokeLinecap="round" />
-            </svg>
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setSearchQuery("");
-                  searchInputRef.current?.blur();
-                }
-              }}
-              placeholder="Search quests..."
-              className="w-full pl-9 pr-8 py-1.5 sm:py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 transition-colors"
-            />
-            {searchQuery && (
+          {/* Status dropdown + Search bar */}
+          <div className="flex items-center gap-2">
+            {/* Status filter dropdown */}
+            <div ref={statusDropdownRef} className="relative shrink-0">
               <button
-                onClick={() => {
-                  setSearchQuery("");
-                  searchInputRef.current?.focus();
-                }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cc-muted hover:text-cc-fg cursor-pointer"
+                onClick={() => setStatusDropdownOpen((v) => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-cc-hover border border-cc-border hover:border-cc-border text-cc-fg transition-colors cursor-pointer"
+              >
+                {filter !== "all" && (
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[filter].dot}`} />
+                )}
+                <span>{filter === "all" ? "All" : STATUS_CONFIG[filter].label}</span>
+                <span className="text-[10px] text-cc-muted">{counts[filter] ?? 0}</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3 text-cc-muted">
+                  <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {statusDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-44 bg-cc-card border border-cc-border rounded-lg shadow-xl z-30 py-1 overflow-hidden">
+                  {FILTER_TABS.map((tab) => {
+                    const isActive = filter === tab.value;
+                    const count = counts[tab.value] ?? 0;
+                    return (
+                      <button
+                        key={tab.value}
+                        onClick={() => { setFilter(tab.value); setStatusDropdownOpen(false); }}
+                        className={`w-full px-3 py-1.5 text-xs flex items-center gap-2 transition-colors cursor-pointer ${
+                          isActive
+                            ? "bg-cc-primary/10 text-cc-primary"
+                            : "text-cc-fg hover:bg-cc-hover"
+                        }`}
+                      >
+                        {tab.value !== "all" ? (
+                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`} />
+                        ) : (
+                          <span className="w-1.5" />
+                        )}
+                        <span className="flex-1 text-left">{tab.label}</span>
+                        <span className={`text-[10px] ${isActive ? "text-cc-primary/70" : "text-cc-muted"}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Unified search bar with hashtag chips */}
+            <div className="relative flex-1 min-w-0">
+              <div
+                onClick={() => searchInputRef.current?.focus()}
+                className={`flex items-center gap-1 px-2.5 py-1.5 bg-cc-input-bg border rounded-lg transition-colors cursor-text ${
+                  searchFocused ? "border-cc-primary/50" : "border-cc-border"
+                }`}
               >
                 <svg
                   viewBox="0 0 16 16"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.5"
-                  className="w-3.5 h-3.5"
+                  className="w-3.5 h-3.5 text-cc-muted shrink-0"
                 >
-                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                  <circle cx="6.5" cy="6.5" r="4.5" />
+                  <path d="M10 10l3.5 3.5" strokeLinecap="round" />
                 </svg>
-              </button>
-            )}
-          </div>
-
-          {/* Tag filter pills */}
-          {allTags.length > 0 && (
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap mt-2">
-              {selectedTags.size > 0 && (
-                <button
-                  onClick={() => setSelectedTags(new Set())}
-                  className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer mr-0.5"
-                >
-                  Clear
-                </button>
-              )}
-              {allTags.map((tag) => {
-                const isSelected = selectedTags.has(tag);
-                return (
-                  <button
+                {/* Selected tag chips */}
+                {Array.from(selectedTags).map((tag) => (
+                  <span
                     key={tag}
-                    onClick={() => {
-                      setSelectedTags((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(tag)) next.delete(tag);
-                        else next.add(tag);
-                        return next;
-                      });
-                    }}
-                    className={`text-[10px] px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-                      isSelected
-                        ? "bg-cc-primary/15 text-cc-primary border border-cc-primary/30"
-                        : "bg-cc-hover text-cc-muted hover:text-cc-fg border border-transparent"
-                    }`}
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-cc-primary/15 text-cc-primary shrink-0"
                   >
-                    {tag}
+                    #{tag}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTags((prev) => {
+                          const next = new Set(prev);
+                          next.delete(tag);
+                          return next;
+                        });
+                      }}
+                      className="hover:text-cc-fg cursor-pointer ml-0.5"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-2 h-2">
+                        <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </span>
+                ))}
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => {
+                    setSearchFocused(false);
+                    // Delay closing autocomplete to allow click on item
+                    setTimeout(() => { setHashtagQuery(""); setAutocompleteIndex(0); }, 150);
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    // Detect hashtag typing: find last # that starts a tag token
+                    const hashIdx = val.lastIndexOf("#");
+                    if (hashIdx >= 0) {
+                      const afterHash = val.slice(hashIdx + 1);
+                      // If there's no space after #, we're typing a tag
+                      if (!/\s/.test(afterHash)) {
+                        setHashtagQuery(afterHash);
+                        setAutocompleteIndex(0);
+                        setSearchQuery(val);
+                        return;
+                      }
+                    }
+                    setHashtagQuery("");
+                    setSearchQuery(val);
+                  }}
+                  onKeyDown={(e) => {
+                    // Autocomplete navigation
+                    if (hashtagQuery && autocompleteMatches.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setAutocompleteIndex((i) => Math.min(i + 1, autocompleteMatches.length - 1));
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setAutocompleteIndex((i) => Math.max(i - 1, 0));
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        const tag = autocompleteMatches[autocompleteIndex];
+                        if (tag) {
+                          setSelectedTags((prev) => new Set([...prev, tag]));
+                          // Remove #query from search text
+                          const hashIdx = searchQuery.lastIndexOf("#");
+                          setSearchQuery(hashIdx > 0 ? searchQuery.slice(0, hashIdx).trimEnd() : "");
+                          setHashtagQuery("");
+                          setAutocompleteIndex(0);
+                        }
+                        return;
+                      }
+                    }
+                    if (e.key === "Escape") {
+                      if (hashtagQuery) {
+                        setHashtagQuery("");
+                        setAutocompleteIndex(0);
+                      } else {
+                        setSearchQuery("");
+                        setSelectedTags(new Set());
+                        searchInputRef.current?.blur();
+                      }
+                    }
+                    // Backspace on empty input removes last tag
+                    if (e.key === "Backspace" && !searchQuery && selectedTags.size > 0) {
+                      const tags = Array.from(selectedTags);
+                      setSelectedTags(new Set(tags.slice(0, -1)));
+                    }
+                  }}
+                  placeholder={selectedTags.size > 0 ? "Type or #tag..." : "Search or #tag..."}
+                  className="flex-1 min-w-[60px] text-sm bg-transparent text-cc-fg placeholder:text-cc-muted focus:outline-none"
+                />
+                {(searchQuery || selectedTags.size > 0) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchQuery("");
+                      setSelectedTags(new Set());
+                      setHashtagQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                    className="text-cc-muted hover:text-cc-fg cursor-pointer shrink-0"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                      <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                    </svg>
                   </button>
-                );
-              })}
+                )}
+              </div>
+
+              {/* Hashtag autocomplete dropdown */}
+              {hashtagQuery && autocompleteMatches.length > 0 && searchFocused && (
+                <div
+                  ref={autocompleteRef}
+                  className="absolute top-full left-0 right-0 mt-1 bg-cc-card border border-cc-border rounded-lg shadow-xl z-30 py-1 max-h-48 overflow-y-auto"
+                >
+                  {autocompleteMatches.map((tag, i) => (
+                    <button
+                      key={tag}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent blur
+                        setSelectedTags((prev) => new Set([...prev, tag]));
+                        const hashIdx = searchQuery.lastIndexOf("#");
+                        setSearchQuery(hashIdx > 0 ? searchQuery.slice(0, hashIdx).trimEnd() : "");
+                        setHashtagQuery("");
+                        setAutocompleteIndex(0);
+                        searchInputRef.current?.focus();
+                      }}
+                      className={`w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 transition-colors cursor-pointer ${
+                        i === autocompleteIndex
+                          ? "bg-cc-primary/10 text-cc-primary"
+                          : "text-cc-fg hover:bg-cc-hover"
+                      }`}
+                    >
+                      <span className="text-cc-muted">#</span>
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
         {/* Bottom border separator */}
         <div className="border-b border-cc-border/30 mt-3" />
@@ -825,7 +960,7 @@ export function QuestmasterPage() {
             <div className="text-sm text-cc-muted text-center py-12">
               {quests.length === 0
                 ? "No quests yet. Create one to get started."
-                : searchQuery.trim() || selectedTags.size > 0
+                : searchText || selectedTags.size > 0
                   ? "No quests match your search."
                   : "No quests match this filter."}
             </div>
@@ -953,7 +1088,7 @@ export function QuestmasterPage() {
                               key={tag}
                               className="text-[10px] px-1.5 py-0.5 rounded-full bg-cc-hover text-cc-muted"
                             >
-                              {tag}
+                              {tag.toLowerCase()}
                             </span>
                           ))}
                         </div>
