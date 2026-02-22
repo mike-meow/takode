@@ -71,7 +71,7 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
   return (
     <button
       onClick={() => hasTurns && useStore.getState().collapseAllTurnActivity(sessionId, collapsibleTurnIds)}
-      className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] transition-colors select-none ${
+      className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
         hasTurns ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer" : "text-cc-muted/40 cursor-default"
       }`}
       title="Collapse all turns"
@@ -80,7 +80,6 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
         <path d="M4 2l4 4 4-4" />
         <path d="M4 14l4-4 4 4" />
       </svg>
-      <span>Collapse</span>
     </button>
   );
 }
@@ -635,38 +634,34 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </div>
             ) : (
               /* Claude Code sessions: Plan/Agent toggle + Ask Permission switch */
-              <div className="flex items-center gap-2">
-                {/* Plan / Agent toggle */}
-                <div className="flex items-center bg-cc-hover/50 rounded-lg p-0.5">
-                  <button
-                    onClick={() => selectMode("plan")}
-                    disabled={!isConnected}
-                    className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors select-none ${
-                      !isConnected
-                        ? "opacity-30 cursor-not-allowed text-cc-muted"
-                        : isPlan
-                        ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
-                        : "text-cc-muted hover:text-cc-fg cursor-pointer"
-                    }`}
-                    title="Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)"
-                  >
-                    Plan
-                  </button>
-                  <button
-                    onClick={() => selectMode("agent")}
-                    disabled={!isConnected}
-                    className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors select-none ${
-                      !isConnected
-                        ? "opacity-30 cursor-not-allowed text-cc-muted"
-                        : !isPlan
-                        ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
-                        : "text-cc-muted hover:text-cc-fg cursor-pointer"
-                    }`}
-                    title="Agent mode: Claude executes tools directly (Shift+Tab to toggle)"
-                  >
-                    Agent
-                  </button>
-                </div>
+              <div className="flex items-center gap-1">
+                {/* Plan / Agent single toggle */}
+                <button
+                  onClick={cycleMode}
+                  disabled={!isConnected}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors select-none ${
+                    !isConnected
+                      ? "opacity-30 cursor-not-allowed text-cc-muted"
+                      : isPlan
+                      ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                  }`}
+                  title={isPlan
+                    ? "Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)"
+                    : "Agent mode: Claude executes tools directly (Shift+Tab to toggle)"}
+                >
+                  {isPlan ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                    </svg>
+                  )}
+                  <span>{isPlan ? "Plan" : "Agent"}</span>
+                </button>
 
                 {/* Ask Permission toggle (shield icon) + confirmation popover */}
                 <div className="relative" ref={askConfirmRef}>

@@ -266,24 +266,22 @@ describe("Composer mode cycling", () => {
 // ─── Mode toggle buttons ────────────────────────────────────────────────────
 
 describe("Composer mode toggle", () => {
-  it("renders Plan and Agent toggle buttons for Claude sessions", () => {
-    // Start in acceptEdits (Agent mode)
+  it("renders mode toggle button for Claude sessions", () => {
+    // Start in acceptEdits (Agent mode) — single toggle shows "Agent"
     setupMockStore({ session: { permissionMode: "acceptEdits" } });
     render(<Composer sessionId="s1" />);
 
-    // Both Plan and Agent buttons should be visible
-    const planBtn = screen.getByTitle("Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)");
-    const agentBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
-    expect(planBtn).toBeTruthy();
-    expect(agentBtn).toBeTruthy();
+    const toggleBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
+    expect(toggleBtn).toBeTruthy();
   });
 
-  it("clicking Plan button sends set_permission_mode with plan", () => {
+  it("clicking mode toggle in agent mode sends set_permission_mode with plan", () => {
+    // Start in agent mode — clicking toggles to plan
     setupMockStore({ session: { permissionMode: "acceptEdits" } });
     render(<Composer sessionId="s1" />);
 
-    const planBtn = screen.getByTitle("Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)");
-    fireEvent.click(planBtn);
+    const toggleBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
+    fireEvent.click(toggleBtn);
 
     expect(mockSendToSession).toHaveBeenCalledWith("s1", {
       type: "set_permission_mode",
@@ -291,13 +289,13 @@ describe("Composer mode toggle", () => {
     });
   });
 
-  it("clicking Agent button sends set_permission_mode with acceptEdits when askPermission is true", () => {
-    // Start in plan mode
+  it("clicking mode toggle in plan mode sends set_permission_mode with acceptEdits when askPermission is true", () => {
+    // Start in plan mode — clicking toggles to agent
     setupMockStore({ session: { permissionMode: "plan" } });
     render(<Composer sessionId="s1" />);
 
-    const agentBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
-    fireEvent.click(agentBtn);
+    const toggleBtn = screen.getByTitle("Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)");
+    fireEvent.click(toggleBtn);
 
     // askPermission defaults to true → CLI mode should be acceptEdits
     expect(mockSendToSession).toHaveBeenCalledWith("s1", {
@@ -306,14 +304,12 @@ describe("Composer mode toggle", () => {
     });
   });
 
-  it("mode buttons are disabled when CLI is not connected", () => {
+  it("mode toggle is disabled when CLI is not connected", () => {
     setupMockStore({ isConnected: false, session: { permissionMode: "acceptEdits" } });
     render(<Composer sessionId="s1" />);
 
-    const planBtn = screen.getByTitle("Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)");
-    const agentBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
-    expect(planBtn.hasAttribute("disabled")).toBe(true);
-    expect(agentBtn.hasAttribute("disabled")).toBe(true);
+    const toggleBtn = screen.getByTitle("Agent mode: Claude executes tools directly (Shift+Tab to toggle)");
+    expect(toggleBtn.hasAttribute("disabled")).toBe(true);
   });
 });
 
