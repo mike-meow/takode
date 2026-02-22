@@ -110,8 +110,11 @@ export function QuestmasterPage() {
   const [newTags, setNewTags] = useState("");
   const [creating, setCreating] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const newDescRef = useRef<HTMLTextAreaElement>(null);
+  const editDescRef = useRef<HTMLTextAreaElement>(null);
 
-  // Edit state
+  // Edit mode: null = read view, questId = editing that quest
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
@@ -137,20 +140,39 @@ export function QuestmasterPage() {
     }
   }, [showCreateForm]);
 
-  // Set up edit state when expanding a quest
+  function autoResize(ta: HTMLTextAreaElement | null) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+  }
+
+  // Auto-resize on programmatic description changes (e.g. entering edit mode)
+  useEffect(() => { autoResize(newDescRef.current); }, [newDescription]);
+  useEffect(() => { autoResize(editDescRef.current); }, [editDescription]);
+
   const handleExpand = useCallback(
     (quest: QuestmasterTask) => {
       if (expandedId === quest.questId) {
         setExpandedId(null);
+        setEditingId(null);
         return;
       }
       setExpandedId(quest.questId);
-      setEditTitle(quest.title);
-      setEditDescription("description" in quest ? (quest.description ?? "") : "");
-      setEditTags(quest.tags?.join(", ") ?? "");
+      setEditingId(null);
     },
     [expandedId],
   );
+
+  function enterEditMode(quest: QuestmasterTask) {
+    setEditingId(quest.questId);
+    setEditTitle(quest.title);
+    setEditDescription("description" in quest ? (quest.description ?? "") : "");
+    setEditTags(quest.tags?.join(", ") ?? "");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
 
   // ─── Actions ──────────────────────────────────────────────────────────
 
@@ -193,6 +215,7 @@ export function QuestmasterPage() {
         description: editDescription.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
+      setEditingId(null);
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -202,10 +225,7 @@ export function QuestmasterPage() {
   async function handleTransition(questId: string, status: QuestStatus) {
     setError("");
     try {
-      await api.transitionQuest(questId, {
-        status,
-        description: editDescription.trim() || undefined,
-      });
+      await api.transitionQuest(questId, { status });
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -418,21 +438,26 @@ export function QuestmasterPage() {
                 if (e.key === "Escape") setShowCreateForm(false);
               }}
               placeholder="Quest title"
-              className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
+              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
             />
             <textarea
+              ref={newDescRef}
               value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
+              onChange={(e) => {
+                setNewDescription(e.target.value);
+                autoResize(e.target);
+              }}
               placeholder="Description (optional)"
-              rows={3}
-              className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-y"
+              rows={1}
+              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-y-auto"
+              style={{ minHeight: "36px", maxHeight: "200px" }}
             />
             <input
               type="text"
               value={newTags}
               onChange={(e) => setNewTags(e.target.value)}
               placeholder="Tags (comma separated)"
-              className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
+              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
             />
             <div className="flex items-center gap-2">
               <button
@@ -506,12 +531,15 @@ export function QuestmasterPage() {
               const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
               const cfg = STATUS_CONFIG[quest.status];
               const isExpanded = expandedId === quest.questId;
+              const isEditing = editingId === quest.questId;
               const hasVerification =
                 "verificationItems" in quest &&
                 quest.verificationItems?.length > 0;
               const vProgress = hasVerification
                 ? verificationProgress(quest.verificationItems)
                 : null;
+              const description = "description" in quest ? quest.description : undefined;
+              const questNotes = "notes" in quest ? (quest as { notes?: string }).notes : undefined;
 
               return (
                 <div
@@ -602,372 +630,330 @@ export function QuestmasterPage() {
                   {/* Expanded detail */}
                   {isExpanded && (
                     <div className="px-4 pb-4 pt-1 border-t border-cc-border space-y-3">
-                      {/* Editable title */}
-                      <div>
-                        <label className="block text-[11px] text-cc-muted mb-1">
-                          Title
-                        </label>
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
-                        />
-                      </div>
+                      {isEditing ? (
+                        /* ─── Edit mode ─── */
+                        <>
+                          <div>
+                            <label className="block text-[11px] text-cc-muted mb-1">Title</label>
+                            <input
+                              type="text"
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-cc-muted mb-1">Description</label>
+                            <textarea
+                              ref={editDescRef}
+                              value={editDescription}
+                              onChange={(e) => {
+                                setEditDescription(e.target.value);
+                                autoResize(e.target);
+                              }}
+                              placeholder="Add a description..."
+                              rows={1}
+                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-y-auto"
+                              style={{ minHeight: "36px", maxHeight: "200px" }}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-cc-muted mb-1">Tags</label>
+                            <input
+                              type="text"
+                              value={editTags}
+                              onChange={(e) => setEditTags(e.target.value)}
+                              placeholder="Comma separated tags"
+                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
+                            />
+                          </div>
 
-                      {/* Editable description */}
-                      <div>
-                        <label className="block text-[11px] text-cc-muted mb-1">
-                          Description
-                        </label>
-                        <textarea
-                          value={editDescription}
-                          onChange={(e) => setEditDescription(e.target.value)}
-                          placeholder="Add a description..."
-                          rows={4}
-                          className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-y"
-                        />
-                      </div>
-
-                      {/* Tags */}
-                      <div>
-                        <label className="block text-[11px] text-cc-muted mb-1">
-                          Tags
-                        </label>
-                        <input
-                          type="text"
-                          value={editTags}
-                          onChange={(e) => setEditTags(e.target.value)}
-                          placeholder="Comma separated tags"
-                          className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
-                        />
-                      </div>
-
-                      {/* Images */}
-                      <div>
-                        <label className="block text-[11px] text-cc-muted mb-1.5">
-                          Images
-                        </label>
-                        {quest.images && quest.images.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {quest.images.map((img: QuestImage) => (
-                              <div
-                                key={img.id}
-                                className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
-                              >
-                                <img
-                                  src={api.questImageUrl(img.id)}
-                                  alt={img.filename}
-                                  className="w-24 h-24 object-cover cursor-pointer"
-                                  onClick={() =>
-                                    window.open(
-                                      api.questImageUrl(img.id),
-                                      "_blank",
-                                    )
-                                  }
-                                />
-                                <button
-                                  onClick={() =>
-                                    handleRemoveImage(quest.questId, img.id)
-                                  }
-                                  className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                >
-                                  <svg
-                                    viewBox="0 0 16 16"
-                                    fill="none"
-                                    stroke="white"
-                                    strokeWidth="2"
-                                    className="w-2.5 h-2.5"
+                          {/* Images (always show upload in edit mode) */}
+                          <div>
+                            <label className="block text-[11px] text-cc-muted mb-1.5">Images</label>
+                            {quest.images && quest.images.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {quest.images.map((img: QuestImage) => (
+                                  <div
+                                    key={img.id}
+                                    className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
                                   >
-                                    <path
-                                      d="M4 4l8 8M12 4l-8 8"
-                                      strokeLinecap="round"
+                                    <img
+                                      src={api.questImageUrl(img.id)}
+                                      alt={img.filename}
+                                      className="w-24 h-24 object-cover cursor-pointer"
+                                      onClick={() => window.open(api.questImageUrl(img.id), "_blank")}
                                     />
-                                  </svg>
-                                </button>
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {img.filename}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (e.dataTransfer.files.length > 0) {
-                              handleImageUpload(
-                                quest.questId,
-                                e.dataTransfer.files,
-                              );
-                            }
-                          }}
-                          className="flex items-center gap-2"
-                        >
-                          <button
-                            onClick={() => imageInputRef.current?.click()}
-                            className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-cc-hover text-cc-muted hover:text-cc-fg border border-cc-border transition-colors cursor-pointer flex items-center gap-1.5"
-                          >
-                            <svg
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              className="w-3 h-3"
-                            >
-                              <rect
-                                x="1.5"
-                                y="2.5"
-                                width="13"
-                                height="11"
-                                rx="2"
-                              />
-                              <circle cx="5" cy="6" r="1.5" />
-                              <path d="M1.5 11l3-3.5 2.5 2.5 2-1.5 5.5 4" />
-                            </svg>
-                            Add Image
-                          </button>
-                          <span className="text-[10px] text-cc-muted/50">
-                            or drag & drop
-                          </span>
-                          <input
-                            ref={imageInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files.length > 0) {
-                                handleImageUpload(
-                                  quest.questId,
-                                  e.target.files,
-                                );
-                                e.target.value = "";
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Save patch + Assign buttons */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          onClick={() => handlePatch(quest.questId)}
-                          className="px-3 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg transition-colors cursor-pointer"
-                        >
-                          Save Changes
-                        </button>
-
-                        {/* Assign to Session */}
-                        {quest.status !== "done" && (
-                          <div className="relative">
-                            <button
-                              onClick={() =>
-                                setAssignPickerForId(
-                                  assignPickerForId === quest.questId
-                                    ? null
-                                    : quest.questId,
-                                )
-                              }
-                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer flex items-center gap-1.5"
-                            >
-                              <svg
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                className="w-3 h-3"
-                              >
-                                <path d="M8 8a3 3 0 100-6 3 3 0 000 6zm-5 6a5 5 0 0110 0H3z" />
-                              </svg>
-                              Assign to Session
-                            </button>
-
-                            {/* Session picker dropdown */}
-                            {assignPickerForId === quest.questId && (
-                              <div className="absolute z-10 top-full left-0 mt-1 w-64 bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-hidden">
-                                {activeSessions.length === 0 ? (
-                                  <div className="px-3 py-2 text-xs text-cc-muted">
-                                    No active sessions
+                                    <button
+                                      onClick={() => handleRemoveImage(quest.questId, img.id)}
+                                      className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    >
+                                      <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-2.5 h-2.5">
+                                        <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                                      </svg>
+                                    </button>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {img.filename}
+                                    </div>
                                   </div>
-                                ) : (
-                                  <div className="max-h-48 overflow-y-auto">
-                                    {activeSessions.map((session) => {
-                                      const name =
-                                        sessionNames.get(
-                                          session.sessionId,
-                                        ) ||
-                                        session.sessionId.slice(0, 8);
-                                      return (
-                                        <button
-                                          key={session.sessionId}
-                                          onClick={() =>
-                                            handleAssignToSession(
-                                              quest,
-                                              session.sessionId,
-                                            )
-                                          }
-                                          className="w-full px-3 py-2 text-left text-xs text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
-                                        >
-                                          <span
-                                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                              session.state === "connected"
-                                                ? "bg-green-400"
-                                                : "bg-zinc-400"
-                                            }`}
-                                          />
-                                          <span className="truncate">
-                                            {name}
-                                          </span>
-                                          <span className="text-cc-muted/50 text-[10px] shrink-0">
-                                            {session.sessionId.slice(0, 8)}
-                                          </span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                                ))}
                               </div>
                             )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Verification checklist */}
-                      {hasVerification && (
-                        <div>
-                          <label className="block text-[11px] text-cc-muted mb-1.5">
-                            Verification Checklist
-                          </label>
-                          <div className="space-y-1">
-                            {quest.verificationItems.map(
-                              (item: QuestVerificationItem, i: number) => (
-                                <label
-                                  key={i}
-                                  className="flex items-start gap-2 py-1 px-2 rounded-md hover:bg-cc-hover transition-colors cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={item.checked}
-                                    onChange={(e) =>
-                                      handleCheckVerification(
-                                        quest.questId,
-                                        i,
-                                        e.target.checked,
-                                      )
-                                    }
-                                    className="mt-0.5 accent-cc-primary cursor-pointer"
-                                  />
-                                  <span
-                                    className={`text-xs ${
-                                      item.checked
-                                        ? "text-cc-muted line-through"
-                                        : "text-cc-fg"
-                                    }`}
-                                  >
-                                    {item.text}
-                                  </span>
-                                </label>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Notes */}
-                      {"notes" in quest && (quest as { notes?: string }).notes && (
-                        <div>
-                          <label className="block text-[11px] text-cc-muted mb-1">
-                            Notes
-                          </label>
-                          <div className="px-3 py-2 text-xs text-cc-fg bg-cc-input-bg border border-cc-border rounded-lg whitespace-pre-wrap">
-                            {(quest as { notes: string }).notes}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Session link */}
-                      {"sessionId" in quest && quest.sessionId && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-cc-muted">Session:</span>
-                          <a
-                            href={`#/session/${quest.sessionId}`}
-                            className="text-cc-primary hover:underline"
-                          >
-                            {quest.sessionId}
-                          </a>
-                        </div>
-                      )}
-
-                      {/* Quest ID + version info */}
-                      <div className="flex items-center gap-3 text-[10px] text-cc-muted/50">
-                        <span>{quest.questId}</span>
-                        <span>v{quest.version}</span>
-                        {quest.prevId && <span>prev: {quest.prevId}</span>}
-                      </div>
-
-                      {/* Status transitions */}
-                      <div>
-                        <label className="block text-[11px] text-cc-muted mb-1.5">
-                          Transition to
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {ALL_STATUSES.filter(
-                            (s) => s !== quest.status,
-                          ).map((targetStatus) => {
-                            const tcfg = STATUS_CONFIG[targetStatus];
-                            return (
-                              <button
-                                key={targetStatus}
-                                onClick={() =>
-                                  handleTransition(quest.questId, targetStatus)
+                            <div
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (e.dataTransfer.files.length > 0) {
+                                  handleImageUpload(quest.questId, e.dataTransfer.files);
                                 }
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-lg transition-colors cursor-pointer ${tcfg.bg} ${tcfg.text} border ${tcfg.border} hover:opacity-80`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${tcfg.dot}`}
-                                />
-                                {tcfg.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Delete */}
-                      <div className="pt-2 border-t border-cc-border">
-                        {confirmDeleteId === quest.questId ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-red-400">
-                              Delete all versions?
-                            </span>
-                            <button
-                              onClick={() => handleDelete(quest.questId)}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-colors cursor-pointer"
+                              }}
+                              className="flex items-center gap-2"
                             >
-                              Confirm
+                              <button
+                                onClick={() => imageInputRef.current?.click()}
+                                className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-cc-hover text-cc-muted hover:text-cc-fg border border-cc-border transition-colors cursor-pointer flex items-center gap-1.5"
+                              >
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                                  <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                                  <circle cx="5" cy="6" r="1.5" />
+                                  <path d="M1.5 11l3-3.5 2.5 2.5 2-1.5 5.5 4" />
+                                </svg>
+                                Add Image
+                              </button>
+                              <span className="text-[10px] text-cc-muted/50">or drag & drop</span>
+                              <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files.length > 0) {
+                                    handleImageUpload(quest.questId, e.target.files);
+                                    e.target.value = "";
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Save / Cancel */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handlePatch(quest.questId)}
+                              className="px-3 py-1.5 text-xs font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg transition-colors cursor-pointer"
+                            >
+                              Save
                             </button>
                             <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="px-2.5 py-1 text-[11px] font-medium text-cc-muted hover:text-cc-fg rounded-lg transition-colors cursor-pointer"
+                              onClick={cancelEdit}
+                              className="px-3 py-1.5 text-xs font-medium text-cc-muted hover:text-cc-fg rounded-lg transition-colors cursor-pointer"
                             >
                               Cancel
                             </button>
                           </div>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              setConfirmDeleteId(quest.questId)
-                            }
-                            className="text-xs text-cc-muted hover:text-red-400 transition-colors cursor-pointer"
-                          >
-                            Delete quest
-                          </button>
-                        )}
-                      </div>
+                        </>
+                      ) : (
+                        /* ─── Read mode ─── */
+                        <>
+                          {/* Description */}
+                          {description && (
+                            <p className="text-sm text-cc-fg whitespace-pre-wrap">{description}</p>
+                          )}
+
+                          {/* Images (read-only thumbnails, only if images exist) */}
+                          {quest.images && quest.images.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {quest.images.map((img: QuestImage) => (
+                                <div
+                                  key={img.id}
+                                  className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
+                                >
+                                  <img
+                                    src={api.questImageUrl(img.id)}
+                                    alt={img.filename}
+                                    className="w-20 h-20 object-cover cursor-pointer"
+                                    onClick={() => window.open(api.questImageUrl(img.id), "_blank")}
+                                  />
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {img.filename}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Verification checklist */}
+                          {hasVerification && (
+                            <div>
+                              <label className="block text-[11px] text-cc-muted mb-1">
+                                Verification
+                              </label>
+                              <div className="space-y-0.5">
+                                {quest.verificationItems.map(
+                                  (item: QuestVerificationItem, i: number) => (
+                                    <label
+                                      key={i}
+                                      className="flex items-start gap-2 py-1 px-2 rounded-md hover:bg-cc-hover transition-colors cursor-pointer"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={item.checked}
+                                        onChange={(e) =>
+                                          handleCheckVerification(quest.questId, i, e.target.checked)
+                                        }
+                                        className="mt-0.5 accent-cc-primary cursor-pointer"
+                                      />
+                                      <span
+                                        className={`text-xs ${
+                                          item.checked ? "text-cc-muted line-through" : "text-cc-fg"
+                                        }`}
+                                      >
+                                        {item.text}
+                                      </span>
+                                    </label>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Notes */}
+                          {questNotes && (
+                            <div className="px-3 py-2 text-xs text-cc-fg bg-cc-input-bg border border-cc-border rounded-lg whitespace-pre-wrap">
+                              {questNotes}
+                            </div>
+                          )}
+
+                          {/* Metadata: session, quest ID, version */}
+                          <div className="flex items-center gap-3 text-[10px] text-cc-muted/50 flex-wrap">
+                            <span>{quest.questId} v{quest.version}</span>
+                            {"sessionId" in quest && quest.sessionId && (
+                              <a
+                                href={`#/session/${quest.sessionId}`}
+                                className="text-cc-primary hover:underline"
+                              >
+                                session {(quest as { sessionId: string }).sessionId.slice(0, 8)}
+                              </a>
+                            )}
+                            {quest.prevId && <span>prev: {quest.prevId}</span>}
+                          </div>
+
+                          {/* Action bar: Edit, Assign, Transitions, Delete */}
+                          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                            {/* Edit button */}
+                            <button
+                              onClick={() => enterEditMode(quest)}
+                              className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-cc-hover text-cc-muted hover:text-cc-fg border border-cc-border transition-colors cursor-pointer"
+                            >
+                              Edit
+                            </button>
+
+                            {/* Assign to Session */}
+                            {quest.status !== "done" && (
+                              <div className="relative">
+                                <button
+                                  onClick={() =>
+                                    setAssignPickerForId(
+                                      assignPickerForId === quest.questId ? null : quest.questId,
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                                >
+                                  Assign
+                                </button>
+
+                                {/* Session picker dropdown */}
+                                {assignPickerForId === quest.questId && (
+                                  <div className="absolute z-10 top-full left-0 mt-1 w-64 bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-hidden">
+                                    {activeSessions.length === 0 ? (
+                                      <div className="px-3 py-2 text-xs text-cc-muted">
+                                        No active sessions
+                                      </div>
+                                    ) : (
+                                      <div className="max-h-48 overflow-y-auto">
+                                        {activeSessions.map((session) => {
+                                          const name =
+                                            sessionNames.get(session.sessionId) ||
+                                            session.sessionId.slice(0, 8);
+                                          return (
+                                            <button
+                                              key={session.sessionId}
+                                              onClick={() =>
+                                                handleAssignToSession(quest, session.sessionId)
+                                              }
+                                              className="w-full px-3 py-2 text-left text-xs text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center gap-2"
+                                            >
+                                              <span
+                                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                  session.state === "connected"
+                                                    ? "bg-green-400"
+                                                    : "bg-zinc-400"
+                                                }`}
+                                              />
+                                              <span className="truncate">{name}</span>
+                                              <span className="text-cc-muted/50 text-[10px] shrink-0">
+                                                {session.sessionId.slice(0, 8)}
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Separator */}
+                            <span className="w-px h-4 bg-cc-border mx-0.5" />
+
+                            {/* Status transitions */}
+                            {ALL_STATUSES.filter((s) => s !== quest.status).map((targetStatus) => {
+                              const tcfg = STATUS_CONFIG[targetStatus];
+                              return (
+                                <button
+                                  key={targetStatus}
+                                  onClick={() => handleTransition(quest.questId, targetStatus)}
+                                  className={`flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-lg transition-colors cursor-pointer ${tcfg.bg} ${tcfg.text} border ${tcfg.border} hover:opacity-80`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${tcfg.dot}`} />
+                                  {tcfg.label}
+                                </button>
+                              );
+                            })}
+
+                            {/* Separator */}
+                            <span className="w-px h-4 bg-cc-border mx-0.5" />
+
+                            {/* Delete */}
+                            {confirmDeleteId === quest.questId ? (
+                              <>
+                                <button
+                                  onClick={() => handleDelete(quest.questId)}
+                                  className="px-2 py-1.5 text-[11px] font-medium rounded-lg bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 transition-colors cursor-pointer"
+                                >
+                                  Confirm Delete
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="px-2 py-1.5 text-[11px] font-medium text-cc-muted hover:text-cc-fg rounded-lg transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(quest.questId)}
+                                className="px-2 py-1.5 text-[11px] font-medium text-cc-muted hover:text-red-400 rounded-lg transition-colors cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
