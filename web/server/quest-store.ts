@@ -17,6 +17,7 @@ import type {
   QuestPatchInput,
   QuestTransitionInput,
   QuestVerificationItem,
+  QuestFeedbackEntry,
   QuestImage,
   QuestIdea,
   QuestRefined,
@@ -268,6 +269,9 @@ export function patchQuest(
   if (patch.tags !== undefined) {
     (updated as { tags?: string[] }).tags = patch.tags;
   }
+  if (patch.feedback !== undefined) {
+    (updated as { feedback?: QuestFeedbackEntry[] }).feedback = patch.feedback.length > 0 ? patch.feedback : undefined;
+  }
 
   writeQuest(updated);
   return updated;
@@ -307,6 +311,9 @@ export function transitionQuest(
   const now = Date.now();
   const newVersion = current.version + 1;
   const newId = nextVersionId(questId, current.version);
+
+  // Extract feedback thread from current version (may exist on needs_verification/done/in_progress)
+  const currentFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
 
   const base = {
     id: newId,
@@ -371,6 +378,7 @@ export function transitionQuest(
         description,
         sessionId,
         claimedAt: now,
+        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestInProgress;
       break;
     }
@@ -407,6 +415,7 @@ export function transitionQuest(
             ? (current as QuestInProgress).claimedAt
             : now,
         verificationItems,
+        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestNeedsVerification;
       break;
     }
@@ -445,6 +454,7 @@ export function transitionQuest(
         completedAt: now,
         ...(input.notes ? { notes: input.notes } : {}),
         ...(input.cancelled ? { cancelled: true } : {}),
+        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestDone;
       break;
     }
@@ -537,6 +547,7 @@ export function cancelQuest(
   const description =
     "description" in current ? current.description : undefined;
 
+  const cancelFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
   const quest: QuestDone = {
     id: newId,
     questId,
@@ -565,6 +576,7 @@ export function cancelQuest(
     completedAt: now,
     cancelled: true,
     ...(notes ? { notes } : {}),
+    ...(cancelFeedback?.length ? { feedback: cancelFeedback } : {}),
   } as QuestDone;
 
   writeQuest(quest);

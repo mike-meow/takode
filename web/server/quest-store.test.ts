@@ -675,3 +675,120 @@ describe("transition validation", () => {
     ).toBeNull();
   });
 });
+
+// ===========================================================================
+// Feedback thread
+// ===========================================================================
+describe("feedback", () => {
+  /** Helper: create a quest in needs_verification state */
+  function setupVerificationQuest() {
+    questStore.createQuest({ title: "Feedback test" });
+    questStore.transitionQuest("q-1", { status: "refined", description: "Ready" });
+    questStore.claimQuest("q-1", "sess-1");
+    questStore.completeQuest("q-1", [
+      { text: "Check A", checked: false },
+      { text: "Check B", checked: false },
+    ]);
+  }
+
+  it("sets feedback via patchQuest", () => {
+    setupVerificationQuest();
+    const entry = { author: "human" as const, text: "Layout off on mobile", ts: Date.now() };
+    const result = questStore.patchQuest("q-1", { feedback: [entry] });
+    expect(result).not.toBeNull();
+    const fb = (result as { feedback?: { author: string; text: string }[] }).feedback;
+    expect(fb).toHaveLength(1);
+    expect(fb![0].text).toBe("Layout off on mobile");
+    expect(fb![0].author).toBe("human");
+  });
+
+  it("clears feedback when set to empty array", () => {
+    setupVerificationQuest();
+    const entry = { author: "human" as const, text: "Some feedback", ts: Date.now() };
+    questStore.patchQuest("q-1", { feedback: [entry] });
+    const result = questStore.patchQuest("q-1", { feedback: [] });
+    // Empty array clears the field entirely
+    expect((result as { feedback?: unknown[] }).feedback).toBeUndefined();
+  });
+
+  it("carries forward feedback on needs_verification → in_progress transition", () => {
+    setupVerificationQuest();
+    const entry = { author: "human" as const, text: "Fix this", ts: Date.now() };
+    questStore.patchQuest("q-1", { feedback: [entry] });
+
+    // Transition back to in_progress (rework)
+    const result = questStore.transitionQuest("q-1", { status: "in_progress", sessionId: "sess-1" });
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("in_progress");
+    const fb = (result as { feedback?: { text: string }[] }).feedback;
+    expect(fb).toHaveLength(1);
+    expect(fb![0].text).toBe("Fix this");
+  });
+
+  it("carries forward feedback on in_progress → needs_verification transition", () => {
+    setupVerificationQuest();
+    const entry = { author: "human" as const, text: "Fix this", ts: Date.now() };
+    questStore.patchQuest("q-1", { feedback: [entry] });
+
+    // Rework cycle: back to in_progress
+    questStore.transitionQuest("q-1", { status: "in_progress", sessionId: "sess-1" });
+    // Agent submits again with new verification items — feedback thread persists
+    const result = questStore.transitionQuest("q-1", {
+      status: "needs_verification",
+      verificationItems: [{ text: "New check", checked: false }],
+    });
+    expect(result).not.toBeNull();
+    const fb = (result as { feedback?: { text: string }[] }).feedback;
+    expect(fb).toHaveLength(1);
+    expect(fb![0].text).toBe("Fix this");
+  });
+
+  it("carries forward feedback to done", () => {
+    setupVerificationQuest();
+    const entries = [
+      { author: "human" as const, text: "Fix this", ts: Date.now() },
+      { author: "agent" as const, text: "Fixed with flex-wrap", ts: Date.now() },
+    ];
+    questStore.patchQuest("q-1", { feedback: entries });
+
+    const result = questStore.transitionQuest("q-1", { status: "done", notes: "shipped" });
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("done");
+    const fb = (result as { feedback?: { author: string; text: string }[] }).feedback;
+    expect(fb).toHaveLength(2);
+    expect(fb![0].author).toBe("human");
+    expect(fb![1].author).toBe("agent");
+  });
+
+  it("accumulates multiple feedback entries", () => {
+    setupVerificationQuest();
+    // First entry
+    questStore.patchQuest("q-1", {
+      feedback: [{ author: "human" as const, text: "Issue 1", ts: Date.now() }],
+    });
+    // Append second entry (caller manages the array)
+    const current = questStore.getQuest("q-1");
+    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    questStore.patchQuest("q-1", {
+      feedback: [...existing, { author: "agent" as const, text: "Fixed issue 1", ts: Date.now() }],
+    });
+
+    const result = questStore.getQuest("q-1");
+    const fb = (result as { feedback?: { text: string }[] }).feedback;
+    expect(fb).toHaveLength(2);
+    expect(fb![0].text).toBe("Issue 1");
+    expect(fb![1].text).toBe("Fixed issue 1");
+  });
+
+  it("carries forward feedback through cancelQuest", () => {
+    setupVerificationQuest();
+    questStore.patchQuest("q-1", {
+      feedback: [{ author: "human" as const, text: "Nevermind", ts: Date.now() }],
+    });
+    const result = questStore.cancelQuest("q-1", "Not needed");
+    expect(result).not.toBeNull();
+    const fb = (result as { feedback?: { text: string }[] }).feedback;
+    expect(fb).toHaveLength(1);
+    expect(fb![0].text).toBe("Nevermind");
+  });
+});

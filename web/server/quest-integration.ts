@@ -81,6 +81,7 @@ quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cance
 quest transition <id> --status <s> [--desc "..."] [--json]    Change status
 quest edit   <id> [--title "..."] [--desc "..."] [--json]     Edit in place
 quest check  <id> <index> [--json]                            Toggle verification item
+quest feedback <id> --text "..." [--author agent|human] [--json]  Add feedback entry
 quest delete <id> [--json]                                    Delete quest
 \`\`\`
 
@@ -88,7 +89,7 @@ quest delete <id> [--json]                                    Delete quest
 
 When the user asks you to work on a quest — whether via the Companion "Assign" button or free-form text like "work on q-5" — follow this order:
 
-1. **Read**: \`quest show q-N\` — understand the full scope
+1. **Read**: \`quest show q-N\` — understand the full scope. If the quest has a **Feedback** section, read it carefully — these are review comments from the human that must be addressed.
 2. **Claim immediately**: \`quest claim q-N\` — always claim first, regardless of the quest's current status. This links it to your session. If this fails because another session already claimed it, **STOP and tell the user** — do not proceed.
 3. **Polish** (if title/description/tags need cleanup):
    - Ask the user clarifying questions if the quest is ambiguous or underspecified
@@ -146,7 +147,8 @@ idea → refined → in_progress → needs_verification → done
 ### in_progress → needs_verification
 - Is the implementation actually complete?
 - Run tests, typecheck, linting yourself first.
-- \`quest complete --items "..."\` — only include items requiring **human** verification. Keep each item to one short sentence.
+- **If reworking a quest with existing feedback**: before submitting, reply to the feedback thread explaining what you did. Use \`quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap, clarified error messages"\`. Be concise — summarize what changed, don't repeat the original feedback.
+- \`quest complete --items "..."\` — only include items requiring **human** verification. Update the checklist to reflect the new state (e.g. items that were previously failing may need re-verification). Keep each item to one short sentence.
 
 ### needs_verification → done
 - **Only the human marks quests as done.** Never transition to \`done\` yourself unless explicitly asked.
@@ -154,7 +156,7 @@ idea → refined → in_progress → needs_verification → done
 - Use \`--cancelled\` with \`--notes\` if abandoning rather than completing.
 
 ### needs_verification → in_progress (rework)
-- Human found issues. Re-read their feedback before resuming.
+- Human found issues and left feedback. Run \`quest show q-N\` and read the full feedback thread before resuming work. Address every point raised.
 `;
 
   writeFileSync(skillPath, content, "utf-8");

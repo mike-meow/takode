@@ -11,6 +11,13 @@ export interface QuestVerificationItem {
   checked: boolean;
 }
 
+/** A single entry in the quest feedback thread (PR-review style). */
+export interface QuestFeedbackEntry {
+  author: "human" | "agent";
+  text: string;
+  ts: number;
+}
+
 /** An image attached to a quest, stored on disk. */
 export interface QuestImage {
   /** Unique image ID (used for filename) */
@@ -69,6 +76,8 @@ export type QuestInProgress = Omit<QuestRefined, "status"> & {
 export type QuestNeedsVerification = Omit<QuestInProgress, "status"> & {
   status: "needs_verification";
   verificationItems: QuestVerificationItem[];
+  /** Threaded feedback conversation between human reviewer and agent */
+  feedback?: QuestFeedbackEntry[];
 };
 
 /** Done: all verification complete (or cancelled) */
@@ -107,6 +116,8 @@ export interface QuestPatchInput {
   title?: string;
   description?: string;
   tags?: string[];
+  /** Replace the feedback thread (used by the append endpoint after adding an entry) */
+  feedback?: QuestFeedbackEntry[];
 }
 
 /** Status transitions. Always creates a new version linked to the previous. */

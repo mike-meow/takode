@@ -2624,6 +2624,29 @@ export function createRoutes(
     }
   });
 
+  // Append a feedback entry to a quest's thread
+  api.post("/quests/:questId/feedback", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const text = body.text;
+    const author = body.author === "agent" ? "agent" : "human";
+    if (!text || typeof text !== "string" || !text.trim()) {
+      return c.json({ error: "text is required" }, 400);
+    }
+    try {
+      const current = questStore.getQuest(c.req.param("questId"));
+      if (!current) return c.json({ error: "Quest not found" }, 404);
+      const existing: import("./quest-types.js").QuestFeedbackEntry[] =
+        "feedback" in current ? (current as { feedback?: import("./quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+      const entry: import("./quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
+      const quest = questStore.patchQuest(c.req.param("questId"), { feedback: [...existing, entry] });
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
   api.post("/quests/:questId/images", async (c) => {
     try {
       const body = await c.req.parseBody();

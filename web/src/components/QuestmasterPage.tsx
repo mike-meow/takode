@@ -10,6 +10,7 @@ import type {
   QuestmasterTask,
   QuestStatus,
   QuestVerificationItem,
+  QuestFeedbackEntry,
   QuestImage,
 } from "../types.js";
 
@@ -194,6 +195,10 @@ export function QuestmasterPage() {
 
   // Lightbox for image preview
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // Feedback thread state
+  const [feedbackDraft, setFeedbackDraft] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
 
   // Version history toggle (questId → show history)
   const [historyForId, setHistoryForId] = useState<string | null>(null);
@@ -398,6 +403,21 @@ export function QuestmasterPage() {
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleAddFeedback(questId: string, text: string) {
+    if (!text.trim()) return;
+    setFeedbackSubmitting(true);
+    setError("");
+    try {
+      await api.addQuestFeedback(questId, text, "human");
+      setFeedbackDraft("");
+      await refreshQuests();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeedbackSubmitting(false);
     }
   }
 
@@ -1156,6 +1176,18 @@ export function QuestmasterPage() {
                             {vProgress.checked}/{vProgress.total}
                           </span>
                         )}
+                        {(() => {
+                          const fb = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+                          if (!fb?.length) return null;
+                          return (
+                            <span className="text-[10px] text-amber-400/70 flex items-center gap-0.5">
+                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                <path d="M2.5 2A1.5 1.5 0 001 3.5v8A1.5 1.5 0 002.5 13H5l3 3 3-3h2.5a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0013.5 2h-11z" />
+                              </svg>
+                              {fb.length}
+                            </span>
+                          );
+                        })()}
                         <span className="text-[10px] text-cc-muted/50">
                           {timeAgo(quest.createdAt)}
                         </span>
@@ -1388,6 +1420,84 @@ export function QuestmasterPage() {
                               </div>
                             </div>
                           )}
+
+                          {/* Feedback thread */}
+                          {(() => {
+                            const feedbackEntries: QuestFeedbackEntry[] =
+                              "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback ?? [] : [];
+                            const hasFeedback = feedbackEntries.length > 0;
+                            const canAddFeedback = quest.status === "needs_verification" || quest.status === "in_progress";
+                            if (!hasFeedback && !canAddFeedback) return null;
+                            return (
+                              <div>
+                                {hasFeedback && (
+                                  <>
+                                    <label className="block text-[11px] text-cc-muted mb-1">
+                                      Feedback
+                                    </label>
+                                    <div className="space-y-1.5 mb-2">
+                                      {feedbackEntries.map((entry, i) => (
+                                        <div
+                                          key={i}
+                                          className={`px-2.5 py-1.5 rounded-lg text-xs ${
+                                            entry.author === "human"
+                                              ? "bg-amber-500/8 border border-amber-500/15 text-amber-300/90"
+                                              : "bg-cc-input-bg border border-cc-border text-cc-fg/80 ml-4"
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-1.5 mb-0.5">
+                                            <span className={`text-[10px] font-medium ${
+                                              entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
+                                            }`}>
+                                              {entry.author}
+                                            </span>
+                                            <span className="text-[9px] text-cc-muted/40">
+                                              {timeAgo(entry.ts)}
+                                            </span>
+                                          </div>
+                                          <div className="whitespace-pre-wrap">{entry.text}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                                {canAddFeedback && (
+                                  <div className="flex flex-col gap-1">
+                                    {!hasFeedback && (
+                                      <label className="block text-[11px] text-cc-muted mb-0.5">
+                                        Feedback
+                                      </label>
+                                    )}
+                                    <textarea
+                                      value={expandedId === quest.questId ? feedbackDraft : ""}
+                                      onChange={(e) => setFeedbackDraft(e.target.value)}
+                                      placeholder="Leave feedback..."
+                                      className="w-full text-xs bg-cc-input-bg border border-cc-border rounded-lg px-2.5 py-1.5 text-cc-fg placeholder-cc-muted/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
+                                      rows={2}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                          e.preventDefault();
+                                          handleAddFeedback(quest.questId, feedbackDraft);
+                                        }
+                                      }}
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() => handleAddFeedback(quest.questId, feedbackDraft)}
+                                        disabled={!feedbackDraft.trim() || feedbackSubmitting}
+                                        className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                      >
+                                        {feedbackSubmitting ? "Saving..." : "Add Feedback"}
+                                      </button>
+                                      <span className="text-[9px] text-cc-muted/40 ml-auto">
+                                        {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* Notes */}
                           {questNotes && (

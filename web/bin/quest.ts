@@ -19,6 +19,7 @@
  *   transition Generic status transition
  *   edit       In-place edit (no new version)
  *   check      Toggle a verification checkbox
+ *   feedback   Add a feedback entry to a quest's thread
  *   delete     Delete a quest and all versions
  */
 
@@ -168,6 +169,15 @@ function formatQuestDetail(q: QuestmasterTask): string {
     lines.push(`Verification: ${checked}/${items.length}`);
     for (let i = 0; i < items.length; i++) {
       lines.push(`  [${items[i].checked ? "x" : " "}] ${i}: ${items[i].text}`);
+    }
+  }
+  if ("feedback" in q) {
+    const entries = (q as { feedback?: { author: string; text: string; ts: number }[] }).feedback;
+    if (entries?.length) {
+      lines.push(`Feedback:`);
+      for (const entry of entries) {
+        lines.push(`  [${entry.author}, ${timeAgo(entry.ts)}] ${entry.text}`);
+      }
     }
   }
   if (q.images?.length) {
@@ -453,6 +463,44 @@ async function cmdCheck(): Promise<void> {
   }
 }
 
+async function cmdFeedback(): Promise<void> {
+  const id = positional(0);
+  if (!id) die("Usage: quest feedback <questId> --text \"...\" [--author agent|human]");
+
+  const text = option("text");
+  if (!text?.trim()) die("--text is required");
+
+  const authorOpt = option("author");
+  const author = authorOpt === "human" ? "human" : "agent";
+
+  const port = process.env.COMPANION_PORT;
+  if (!port) {
+    die("COMPANION_PORT not set. The feedback endpoint requires the server.");
+  }
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.trim(), author }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      die((err as { error: string }).error || res.statusText);
+    }
+    const quest = await res.json() as QuestmasterTask;
+    if (jsonOutput) {
+      out(quest);
+    } else {
+      const entries = "feedback" in quest ? (quest as { feedback?: { author: string; text: string }[] }).feedback : [];
+      console.log(`Added feedback to ${quest.questId} (${entries?.length ?? 0} entries total)`);
+    }
+  } catch (e) {
+    die((e as Error).message);
+  }
+}
+
 async function cmdDelete(): Promise<void> {
   const id = positional(0);
   if (!id) die("Usage: quest delete <questId>");
@@ -514,6 +562,7 @@ Commands:
   transition <id> --status <s> [--desc "..."] [--json]   Change status
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item
+  feedback <id> --text "..." [--author agent|human] [--json]  Add feedback entry
   delete <id> [--json]                                   Delete quest
 
 Environment:
@@ -549,6 +598,8 @@ async function main(): Promise<void> {
       return cmdEdit();
     case "check":
       return cmdCheck();
+    case "feedback":
+      return cmdFeedback();
     case "delete":
       return cmdDelete();
     case "help":
