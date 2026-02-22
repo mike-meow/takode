@@ -1548,62 +1548,14 @@ export class WsBridge {
     const acc = session.assistantAccumulator.get(msgId);
 
     if (!acc) {
-      // No accumulator for this message ID.
-      // Check if a previous occurrence already exists in history (e.g. from a
-      // prior CLI connection, or because the accumulator was cleaned up after
-      // stop_reason). If so, merge any new content blocks instead of skipping —
-      // the CLI may send additional blocks (e.g. tool_use) in a follow-up send
-      // after the text blocks.
-      const historyEntry = session.messageHistory.findLast(
+      // No accumulator — either first time seeing this message, or a replay
+      // after server restart (accumulators are in-memory only).
+      const alreadyInHistory = session.messageHistory.some(
         (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
-      ) as { type: "assistant"; message: CLIAssistantMessage["message"] } | undefined;
+      );
+      if (alreadyInHistory) return;
 
-      if (historyEntry) {
-        // Rebuild accumulator from existing content, then merge new blocks
-        const contentBlockIds = new Set<string>();
-        for (const block of historyEntry.message.content) {
-          if (block.type === "tool_use" && block.id) {
-            contentBlockIds.add(block.id);
-          }
-        }
-
-        let hasNewBlocks = false;
-        for (const block of msg.message.content) {
-          if (block.type === "tool_use" && block.id) {
-            if (contentBlockIds.has(block.id)) continue;
-            contentBlockIds.add(block.id);
-            if (!session.toolStartTimes.has(block.id)) {
-              session.toolStartTimes.set(block.id, Date.now());
-            }
-          }
-          historyEntry.message.content.push(block);
-          hasNewBlocks = true;
-        }
-
-        if (msg.message.stop_reason) {
-          historyEntry.message.stop_reason = msg.message.stop_reason;
-        }
-        if (msg.message.usage) {
-          historyEntry.message.usage = msg.message.usage;
-        }
-
-        session.assistantAccumulator.set(msgId, { contentBlockIds });
-
-        // Only re-broadcast if we actually added new content
-        if (hasNewBlocks) {
-          const allToolStartTimes: Record<string, number> = {};
-          for (const block of historyEntry.message.content) {
-            if (block.type === "tool_use" && block.id && session.toolStartTimes.has(block.id)) {
-              allToolStartTimes[block.id] = session.toolStartTimes.get(block.id)!;
-            }
-          }
-          const rebroadcast: BrowserIncomingMessage = {
-            ...(historyEntry as BrowserIncomingMessage),
-            ...(Object.keys(allToolStartTimes).length > 0 ? { tool_start_times: allToolStartTimes } : {}),
-          };
-          this.broadcastToBrowsers(session, rebroadcast);
-        }
-      } else {
+      {
         // Truly first occurrence — store and broadcast
         const contentBlockIds = new Set<string>();
         const now = Date.now();
@@ -1674,10 +1626,13 @@ export class WsBridge {
       this.broadcastToBrowsers(session, rebroadcast);
     }
 
-    // Clean up accumulator when message is complete
-    if (msg.message.stop_reason) {
-      session.assistantAccumulator.delete(msgId);
-    }
+    // NOTE: we intentionally do NOT delete the accumulator on stop_reason.
+    // The CLI may send the same message ID in multiple parts (e.g. [text] first,
+    // then [tool_use] second, both with stop_reason: tool_use). Keeping the
+    // accumulator alive lets part 2 hit the normal merge path above. The
+    // accumulator is in-memory only, so it naturally resets on server restart —
+    // replayed messages from CLI reconnect will be correctly skipped via the
+    // alreadyInHistory check.
 
     // Extract activity preview from TodoWrite/TaskUpdate tool calls
     // (mirrors browser-side extractTaskItemsFromToolUse in ws.ts)
