@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { navigateToSession } from "../utils/routing.js";
+import { Lightbox } from "./Lightbox.js";
 import type {
   QuestmasterTask,
   QuestStatus,
@@ -139,6 +140,9 @@ export function QuestmasterPage() {
 
   // Collapsed phase groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<QuestStatus>>(new Set());
+
+  // Lightbox for image preview
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // Load quests on mount
   useEffect(() => {
@@ -726,8 +730,8 @@ export function QuestmasterPage() {
                                     <img
                                       src={api.questImageUrl(img.id)}
                                       alt={img.filename}
-                                      className="w-24 h-24 object-cover cursor-pointer"
-                                      onClick={() => window.open(api.questImageUrl(img.id), "_blank")}
+                                      className="w-24 h-24 object-cover cursor-zoom-in"
+                                      onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
                                     />
                                     <button
                                       onClick={() => handleRemoveImage(quest.questId, img.id)}
@@ -818,8 +822,8 @@ export function QuestmasterPage() {
                                   <img
                                     src={api.questImageUrl(img.id)}
                                     alt={img.filename}
-                                    className="w-20 h-20 object-cover cursor-pointer"
-                                    onClick={() => window.open(api.questImageUrl(img.id), "_blank")}
+                                    className="w-20 h-20 object-cover cursor-zoom-in"
+                                    onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
                                   />
                                   <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
                                     {img.filename}
@@ -1011,6 +1015,11 @@ export function QuestmasterPage() {
           )}
         </div>
       </div>
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
     </div>
   );
 }
