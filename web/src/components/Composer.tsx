@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
-import { api } from "../api.js";
 import { CLAUDE_MODES, CODEX_MODES, getNextMode, resolveClaudeCliMode, deriveUiMode } from "../utils/backends.js";
 import { isTouchDevice } from "../utils/mobile.js";
 import type { ModeOption } from "../utils/backends.js";
@@ -580,20 +579,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 <span className="flex items-center gap-0.5 text-[10px]">
                   {(sessionData.git_ahead || 0) > 0 && <span className="text-green-500">{sessionData.git_ahead}&#8593;</span>}
                   {(sessionData.git_behind || 0) > 0 && (
-                    <button
-                      className="text-cc-warning hover:text-amber-400 cursor-pointer hover:underline"
-                      title="Pull latest changes"
-                      onClick={() => {
-                        const cwd = sessionData.repo_root || sessionData.cwd;
-                        if (!cwd) return;
-                        // Server will broadcast updated git_ahead/git_behind via session_update
-                        api.gitPull(cwd, sessionId).then((r) => {
-                          if (!r.success) console.warn("[git pull]", r.output);
-                        }).catch((e) => console.error("[git pull]", e));
-                      }}
-                    >
-                      {sessionData.git_behind}&#8595;
-                    </button>
+                    <span className="text-cc-warning">{sessionData.git_behind}&#8595;</span>
                   )}
                 </span>
               )}

@@ -738,7 +738,7 @@ export class WsBridge {
     }
   }
 
-  private static readonly DIFF_DEBOUNCE_MS = 60_000;
+  private static readonly DIFF_DEBOUNCE_MS = 5_000;
 
   /**
    * Compute diff stats (total lines added/removed) by running `git diff --numstat`
