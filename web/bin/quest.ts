@@ -111,12 +111,14 @@ const STATUS_ICONS: Record<string, string> = {
 };
 
 function formatQuestLine(q: QuestmasterTask): string {
-  const icon = STATUS_ICONS[q.status] || "?";
+  const cancelled = "cancelled" in q && (q as { cancelled?: boolean }).cancelled;
+  const icon = cancelled ? "✗" : STATUS_ICONS[q.status] || "?";
   const tags = q.tags?.length ? `  [${q.tags.join(", ")}]` : "";
   const session =
     "sessionId" in q ? `  → session ${(q as { sessionId: string }).sessionId.slice(0, 8)}` : "";
+  const statusLabel = cancelled ? "cancelled" : q.status;
   const pad = (s: string, len: number) => s.padEnd(len);
-  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}  (${q.status}${session})`;
+  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}  (${statusLabel}${session})`;
 }
 
 function formatQuestDetail(q: QuestmasterTask): string {
@@ -149,6 +151,12 @@ function formatQuestDetail(q: QuestmasterTask): string {
     for (const img of q.images) {
       lines.push(`  ${img.filename} → ${img.path}`);
     }
+  }
+  if ("cancelled" in q && (q as { cancelled?: boolean }).cancelled) {
+    lines.push(`Cancelled:   yes`);
+  }
+  if ("notes" in q && (q as { notes?: string }).notes) {
+    lines.push(`Notes:       ${(q as { notes: string }).notes}`);
   }
   if ("completedAt" in q) {
     lines.push(`Completed:   ${timeAgo((q as { completedAt: number }).completedAt)}`);
@@ -290,16 +298,20 @@ async function cmdComplete(): Promise<void> {
 
 async function cmdDone(): Promise<void> {
   const id = positional(0);
-  if (!id) die("Usage: quest done <questId>");
+  if (!id) die("Usage: quest done <questId> [--notes \"...\"] [--cancelled]");
+
+  const notes = option("notes");
+  const cancelled = flag("cancelled");
 
   try {
-    const quest = markDone(id);
+    const quest = markDone(id, { notes, cancelled });
     if (!quest) die(`Quest ${id} not found`);
     await notifyServer();
     if (jsonOutput) {
       out(quest);
     } else {
-      console.log(`Marked ${quest.questId} "${quest.title}" as done`);
+      const verb = cancelled ? "Cancelled" : "Marked done";
+      console.log(`${verb} ${quest.questId} "${quest.title}"`);
     }
   } catch (e) {
     die((e as Error).message);
@@ -425,7 +437,7 @@ Commands:
   create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
   complete <id> --items "c1,c2" [--json]                 Submit for verification
-  done   <id> [--json]                                   Mark as done
+  done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
   transition <id> --status <s> [--desc "..."] [--json]   Change status
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item

@@ -71,10 +71,14 @@ export type QuestNeedsVerification = Omit<QuestInProgress, "status"> & {
   verificationItems: QuestVerificationItem[];
 };
 
-/** Done: all verification complete */
+/** Done: all verification complete (or cancelled) */
 export type QuestDone = Omit<QuestNeedsVerification, "status"> & {
   status: "done";
   completedAt: number;
+  /** Free-form closure notes (commit hashes, reasoning, references, etc.) */
+  notes?: string;
+  /** If true, this quest was cancelled/aborted rather than completed */
+  cancelled?: boolean;
 };
 
 // ─── Union type ──────────────────────────────────────────────────────────────
@@ -114,4 +118,8 @@ export interface QuestTransitionInput {
   sessionId?: string;
   /** Required for needs_verification+ */
   verificationItems?: QuestVerificationItem[];
+  /** Closure notes for done status (commit hashes, reasoning, etc.) */
+  notes?: string;
+  /** If true, marks this as cancelled/aborted rather than completed */
+  cancelled?: boolean;
 }

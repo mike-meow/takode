@@ -2575,9 +2575,13 @@ export function createRoutes(
     }
   });
 
-  api.post("/quests/:questId/done", (c) => {
+  api.post("/quests/:questId/done", async (c) => {
     try {
-      const quest = questStore.markDone(c.req.param("questId"));
+      const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean };
+      const quest = questStore.markDone(c.req.param("questId"), {
+        notes: body.notes,
+        cancelled: body.cancelled,
+      });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       // Clear the claimed quest from the session since it's now done

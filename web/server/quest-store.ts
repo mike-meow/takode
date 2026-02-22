@@ -266,7 +266,7 @@ export function transitionQuest(
   const targetStatus = input.status;
 
   // Guard against no-op transitions (same status with no new fields)
-  if (targetStatus === current.status && !input.description && !input.sessionId && !input.verificationItems) {
+  if (targetStatus === current.status && !input.description && !input.sessionId && !input.verificationItems && !input.notes && !input.cancelled) {
     return current;
   }
   const now = Date.now();
@@ -407,6 +407,8 @@ export function transitionQuest(
             : now,
         verificationItems,
         completedAt: now,
+        ...(input.notes ? { notes: input.notes } : {}),
+        ...(input.cancelled ? { cancelled: true } : {}),
       } as QuestDone;
       break;
     }
@@ -455,9 +457,16 @@ export function completeQuest(
   });
 }
 
-/** Convenience: mark a quest as done. */
-export function markDone(questId: string): QuestmasterTask | null {
-  return transitionQuest(questId, { status: "done" });
+/** Convenience: mark a quest as done (or cancelled). */
+export function markDone(
+  questId: string,
+  opts?: { notes?: string; cancelled?: boolean },
+): QuestmasterTask | null {
+  return transitionQuest(questId, {
+    status: "done",
+    ...(opts?.notes ? { notes: opts.notes } : {}),
+    ...(opts?.cancelled ? { cancelled: true } : {}),
+  });
 }
 
 /** Toggle a verification item checkbox (in-place, no new version). */

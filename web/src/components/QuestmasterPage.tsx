@@ -503,6 +503,7 @@ export function QuestmasterPage() {
             </div>
           ) : (
             filtered.map((quest) => {
+              const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
               const cfg = STATUS_CONFIG[quest.status];
               const isExpanded = expandedId === quest.questId;
               const hasVerification =
@@ -518,7 +519,7 @@ export function QuestmasterPage() {
                   className={`border rounded-xl overflow-hidden transition-colors ${
                     isExpanded
                       ? "bg-cc-card border-cc-primary/30"
-                      : "bg-cc-card border-cc-border hover:border-cc-border/80"
+                      : `bg-cc-card border-cc-border hover:border-cc-border/80 ${isCancelled ? "opacity-60" : ""}`
                   }`}
                 >
                   {/* Card header */}
@@ -528,13 +529,13 @@ export function QuestmasterPage() {
                   >
                     {/* Status dot */}
                     <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`}
+                      className={`w-2 h-2 rounded-full shrink-0 ${isCancelled ? "bg-red-400" : cfg.dot}`}
                     />
 
                     {/* Title + meta */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-cc-fg truncate">
+                        <span className={`text-sm font-medium truncate ${isCancelled ? "text-cc-muted line-through" : "text-cc-fg"}`}>
                           {quest.title}
                         </span>
                         {quest.parentId && (
@@ -545,9 +546,9 @@ export function QuestmasterPage() {
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${isCancelled ? "bg-red-500/10 text-red-400" : `${cfg.bg} ${cfg.text}`}`}
                         >
-                          {cfg.label}
+                          {isCancelled ? "Cancelled" : cfg.label}
                         </span>
                         {quest.tags?.map((tag) => (
                           <span
@@ -872,6 +873,18 @@ export function QuestmasterPage() {
                                 </label>
                               ),
                             )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {"notes" in quest && (quest as { notes?: string }).notes && (
+                        <div>
+                          <label className="block text-[11px] text-cc-muted mb-1">
+                            Notes
+                          </label>
+                          <div className="px-3 py-2 text-xs text-cc-fg bg-cc-input-bg border border-cc-border rounded-lg whitespace-pre-wrap">
+                            {(quest as { notes: string }).notes}
                           </div>
                         </div>
                       )}

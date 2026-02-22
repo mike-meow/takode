@@ -76,7 +76,7 @@ quest history <id> [--json]                                   Show version histo
 quest create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> --items "c1,c2" [--json]                  Submit for verification
-quest done   <id> [--json]                                    Mark as done
+quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
 quest transition <id> --status <s> [--desc "..."] [--json]    Change status
 quest edit   <id> [--title "..."] [--desc "..."] [--json]     Edit in place
 quest check  <id> <index> [--json]                            Toggle verification item
@@ -102,14 +102,41 @@ Use the Read tool to view images — they are standard image files on disk.
 - \`COMPANION_SESSION_ID\` is set automatically — \`quest claim\` uses it by default
 - \`COMPANION_PORT\` is set automatically — the CLI uses it for browser notifications
 - Pass \`--json\` to any command for machine-parseable output
+- If \`quest\` is not found on PATH, use the full path: \`~/.companion/bin/quest\`
 
-## Status flow
+## Status flow and transition guidelines
 
 \`\`\`
 idea → refined → in_progress → needs_verification → done
                       ↑                |
                       └────────────────┘  (rework)
 \`\`\`
+
+**Never skip states or jump directly to \`done\`.** Before proposing any transition, consider:
+
+### idea → refined
+- Is the quest description clear and actionable?
+- Are acceptance criteria defined (what does "done" look like)?
+- Are there open questions that need the human's input first?
+
+### refined → in_progress
+- Has the quest been claimed by a session (\`quest claim\`)?
+- Do you understand the full scope of work?
+- Are there dependencies or blockers to flag?
+
+### in_progress → needs_verification
+- Is the implementation actually complete (not partially done)?
+- Have you run tests, typecheck, and linting?
+- What manual verification does the human need to do? Always propose specific verification items via \`quest complete --items "..."\`. Think about what you CANNOT verify yourself — UI appearance, UX feel, cross-browser behavior, edge cases that need human judgment, deployment concerns, etc.
+- Did you consider side effects or regressions in related features?
+
+### needs_verification → done
+- **Only the human should mark quests as done**, after reviewing verification items. Never transition to \`done\` yourself unless the human explicitly asks you to.
+- When marking done (by human request), always include \`--notes\` with high-info-density closure notes: which commits contain the changes (exact hashes), why it's done, any caveats or follow-ups. Example: \`quest done q-3 --notes "Implemented in commits abc1234, def5678. Added image upload UI, CLI display, and REST endpoints. Follow-up: consider image compression."\`
+- Use \`--cancelled\` if the quest is being abandoned/aborted rather than completed. Always include \`--notes\` explaining why cancelled. Example: \`quest done q-5 --cancelled --notes "Superseded by q-7 which takes a different approach."\`
+
+### needs_verification → in_progress (rework)
+- The human found issues during verification. Re-read their feedback before resuming work.
 `;
 
   writeFileSync(skillPath, content, "utf-8");
