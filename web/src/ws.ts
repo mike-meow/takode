@@ -396,8 +396,12 @@ function handleParsedMessage(
       if (typeof data.session.askPermission === "boolean") {
         store.setAskPermission(sessionId, data.session.askPermission);
       }
-      // Restore quest-named flag from persisted session state (on reconnect)
-      if (data.session.claimedQuestId) {
+      // Restore quest name and styling from persisted session state (on reconnect).
+      // This is the most reliable path since session_init fires on every WS connect.
+      if (data.session.claimedQuestId && data.session.claimedQuestTitle) {
+        store.setSessionName(sessionId, data.session.claimedQuestTitle);
+        store.markQuestNamed(sessionId);
+      } else if (data.session.claimedQuestId) {
         store.markQuestNamed(sessionId);
       } else {
         store.clearQuestNamed(sessionId);
