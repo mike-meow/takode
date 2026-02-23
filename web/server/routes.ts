@@ -2748,8 +2748,14 @@ export function createRoutes(
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
 
+    let streamClosed = false;
     const sendLine = (data: Record<string, unknown>) => {
-      writer.write(encoder.encode(JSON.stringify(data) + "\n"));
+      if (streamClosed) return;
+      try {
+        writer.write(encoder.encode(JSON.stringify(data) + "\n"));
+      } catch {
+        streamClosed = true;
+      }
     };
 
     // Run import asynchronously, streaming progress lines
@@ -2768,7 +2774,7 @@ export function createRoutes(
         sendLine({ step: "error", error: e instanceof Error ? e.message : String(e) });
       } finally {
         try { unlinkSync(tempPath); } catch { /* ignore */ }
-        writer.close();
+        try { writer.close(); } catch { /* stream may already be closed */ }
       }
     })();
 
