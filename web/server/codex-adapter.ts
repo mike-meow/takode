@@ -140,6 +140,7 @@ class JsonRpcTransport {
   private requestHandler: ((method: string, id: number, params: Record<string, unknown>) => void) | null = null;
   private rawInCb: ((line: string) => void) | null = null;
   private rawOutCb: ((data: string) => void) | null = null;
+  private closeCb: (() => void) | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array>;
   private connected = true;
   private buffer = "";
@@ -187,6 +188,7 @@ class JsonRpcTransport {
         reject(new Error("Transport closed"));
       }
       this.pending.clear();
+      this.closeCb?.();
     }
   }
 
@@ -289,6 +291,11 @@ class JsonRpcTransport {
     this.rawOutCb = cb;
   }
 
+  /** Register callback for when the transport closes (stdout ends or errors). */
+  onClose(cb: () => void): void {
+    this.closeCb = cb;
+  }
+
   private async writeRaw(data: string): Promise<void> {
     if (!this.connected) {
       throw new Error("Transport closed");
@@ -387,8 +394,24 @@ export class CodexAdapter {
       });
     }
 
+    // Propagate transport close (stdout ends) to the adapter.
+    // This fires independently of proc.exited — stdout can close while
+    // the process node wrapper is still alive, leaving the adapter in a
+    // stale "connected" state that rejects messages with "Transport closed".
+    this.transport.onClose(() => {
+      if (!this.connected) return; // already handled by proc.exited
+      console.log(`[codex-adapter] Transport closed for session ${sessionId} (process may still be running)`);
+      this.connected = false;
+      for (const pending of this.pendingDynamicToolCalls.values()) {
+        clearTimeout(pending.timeout);
+      }
+      this.pendingDynamicToolCalls.clear();
+      this.disconnectCb?.();
+    });
+
     // Monitor process exit
     proc.exited.then(() => {
+      if (!this.connected) return; // already handled by transport.onClose
       this.connected = false;
       for (const pending of this.pendingDynamicToolCalls.values()) {
         clearTimeout(pending.timeout);
