@@ -243,6 +243,11 @@ function applyNamingResult(
   result: import("./session-namer.js").NamingResult,
   history: import("./session-types.js").BrowserIncomingMessage[],
 ): void {
+  // Re-check: quest may have been claimed while the namer was in-flight
+  if (getActiveQuestForSession(sessionId)) {
+    console.log(`[session-namer] Discarding namer result for ${sessionId} (quest claimed during evaluation)`);
+    return;
+  }
   // Merge keywords regardless of naming action
   if (result.keywords?.length) {
     wsBridge.mergeKeywords(sessionId, result.keywords);
@@ -352,6 +357,11 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       const result = await generateFirstName(sessionId, history, cwd, { signal, isGenerating, claimedQuest });
       if (signal.aborted) return;
       if (!result || result.action !== "name") return;
+      // Re-check: quest may have been claimed while we were generating
+      if (getActiveQuestForSession(sessionId)) {
+        console.log(`[session-namer] Discarding first-name result for ${sessionId} (quest claimed during generation)`);
+        return;
+      }
       // Don't overwrite if user renamed while we were generating
       const freshName = sessionNames.getName(sessionId);
       if (freshName && !isRandomSessionName(freshName)) return;

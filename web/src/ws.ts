@@ -855,6 +855,7 @@ function handleParsedMessage(
     }
 
     case "session_quest_claimed": {
+      console.log(`[ws] session_quest_claimed for ${sessionId}:`, data.quest);
       store.updateSession(sessionId, {
         claimedQuestId: data.quest?.id ?? undefined,
         claimedQuestTitle: data.quest?.title ?? undefined,
