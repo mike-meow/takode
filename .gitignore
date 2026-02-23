@@ -13,3 +13,5 @@ web/.env.local
 .dev-*.log
 e2e_tests/screenshots/
 .mcp-cmd.json
+.claude/settings.json
+.claude/settings.local.json
