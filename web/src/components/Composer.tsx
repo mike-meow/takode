@@ -704,7 +704,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
           {/* Git branch + model + lines info */}
           {(sessionData?.git_branch || sessionData?.model) && (
-            <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted overflow-hidden">
+            <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted">
               {sessionData?.git_branch && (
                 <span className="flex items-center gap-1 truncate min-w-0">
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-60">

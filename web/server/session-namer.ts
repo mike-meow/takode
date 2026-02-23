@@ -10,6 +10,7 @@
  */
 import type { BrowserIncomingMessage, ContentBlock } from "./session-types.js";
 import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
+import { getSettings } from "./settings-manager.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -487,6 +488,13 @@ const SYSTEM_PROMPT = `You generate short titles and keywords for coding session
 let resolvedBinary: string | null | undefined;
 
 function getClaudeBinary(): string | null {
+  // Use custom binary from settings if configured (e.g. claude.sh with LiteLLM auth)
+  const settings = getSettings();
+  if (settings.claudeBinary) {
+    const resolved = resolveBinary(settings.claudeBinary);
+    if (resolved) return resolved;
+  }
+  // Fall back to auto-detected claude
   if (resolvedBinary !== undefined) return resolvedBinary;
   resolvedBinary = resolveBinary("claude");
   return resolvedBinary;
