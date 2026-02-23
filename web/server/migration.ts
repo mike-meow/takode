@@ -145,7 +145,25 @@ export async function runImport(archivePath: string, targetPort: number): Promis
     }
 
     // ── Sessions: merge all archived port dirs into the target port ──
+    // Clear cliSessionId from staged launcher.json entries — the CLI's
+    // internal conversations don't exist on the new machine, so --resume
+    // would fail. Stripping before merge ensures fresh starts.
     const stagedSessions = join(stagingDir, "sessions");
+    if (existsSync(stagedSessions)) {
+      for (const portEntry of readdirSync(stagedSessions)) {
+        const launcherPath = join(stagedSessions, portEntry, "launcher.json");
+        if (existsSync(launcherPath)) {
+          try {
+            const entries = JSON.parse(readFileSync(launcherPath, "utf-8"));
+            if (Array.isArray(entries)) {
+              for (const entry of entries) delete entry.cliSessionId;
+              writeFileSync(launcherPath, JSON.stringify(entries, null, 2), "utf-8");
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
+
     const targetDir = join(COMPANION_HOME, "sessions", String(targetPort));
     mkdirSync(targetDir, { recursive: true });
 
