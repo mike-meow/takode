@@ -35,14 +35,12 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     ? session.repo_root
     : cwd;
 
-  // Initialize from cached stats so re-opening DiffPanel doesn't flash empty
+  // Initialize from cached stats so re-opening DiffPanel doesn't flash empty.
+  // Fresh diffs are always fetched on mount to replace stale cached values.
   const [fileStats, setFileStats] = useState<Map<string, FileStats>>(
     () => useStore.getState().diffFileStats?.get(sessionId) ?? new Map(),
   );
-  // Pre-populate fetched set from cached stats so we don't re-fetch files we already have
-  const fetchedFilesRef = useRef<Set<string>>(
-    new Set(useStore.getState().diffFileStats?.get(sessionId)?.keys()),
-  );
+  const fetchedFilesRef = useRef<Set<string>>(new Set());
 
   // Multi-file diff state
   const [allDiffs, setAllDiffs] = useState<Map<string, string>>(new Map());
