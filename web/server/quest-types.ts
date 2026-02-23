@@ -32,6 +32,10 @@ export interface QuestFeedbackEntry {
   author: "human" | "agent";
   text: string;
   ts: number;
+  /** Images attached to this feedback entry */
+  images?: QuestImage[];
+  /** Whether this feedback has been addressed (only meaningful for human entries) */
+  addressed?: boolean;
 }
 
 /** An image attached to a quest, stored on disk. */

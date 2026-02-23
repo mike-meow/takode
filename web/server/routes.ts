@@ -2613,7 +2613,52 @@ export function createRoutes(
       const existing: import("./quest-types.js").QuestFeedbackEntry[] =
         "feedback" in current ? (current as { feedback?: import("./quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
       const entry: import("./quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
+      if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
       const quest = questStore.patchQuest(c.req.param("questId"), { feedback: [...existing, entry] });
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  // Edit an existing feedback entry by index
+  api.patch("/quests/:questId/feedback/:index", async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const index = parseInt(c.req.param("index"), 10);
+      if (isNaN(index) || index < 0) return c.json({ error: "Invalid index" }, 400);
+      const current = questStore.getQuest(c.req.param("questId"));
+      if (!current) return c.json({ error: "Quest not found" }, 404);
+      const existing: import("./quest-types.js").QuestFeedbackEntry[] =
+        "feedback" in current ? (current as { feedback?: import("./quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+      if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
+      const updated = [...existing];
+      if (typeof body.text === "string" && body.text.trim()) updated[index] = { ...updated[index], text: body.text.trim() };
+      if (body.images !== undefined) updated[index] = { ...updated[index], images: Array.isArray(body.images) && body.images.length > 0 ? body.images : undefined };
+      const quest = questStore.patchQuest(c.req.param("questId"), { feedback: updated });
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  // Toggle addressed status on a feedback entry
+  api.post("/quests/:questId/feedback/:index/addressed", async (c) => {
+    try {
+      const index = parseInt(c.req.param("index"), 10);
+      if (isNaN(index) || index < 0) return c.json({ error: "Invalid index" }, 400);
+      const current = questStore.getQuest(c.req.param("questId"));
+      if (!current) return c.json({ error: "Quest not found" }, 404);
+      const existing: import("./quest-types.js").QuestFeedbackEntry[] =
+        "feedback" in current ? (current as { feedback?: import("./quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+      if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
+      const updated = [...existing];
+      updated[index] = { ...updated[index], addressed: !updated[index].addressed };
+      const quest = questStore.patchQuest(c.req.param("questId"), { feedback: updated });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       return c.json(quest);

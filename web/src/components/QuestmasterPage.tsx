@@ -199,6 +199,14 @@ export function QuestmasterPage() {
   // Feedback thread state
   const [feedbackDraft, setFeedbackDraft] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackImages, setFeedbackImages] = useState<QuestImage[]>([]);
+  const [uploadingFeedbackImage, setUploadingFeedbackImage] = useState(false);
+  const feedbackTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Editing an existing feedback entry: { questId, index, text, images }
+  const [editingFeedback, setEditingFeedback] = useState<{
+    questId: string; index: number; text: string; images: QuestImage[];
+  } | null>(null);
+  const editFeedbackTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Version history toggle (questId → show history)
   const [historyForId, setHistoryForId] = useState<string | null>(null);
@@ -407,17 +415,83 @@ export function QuestmasterPage() {
   }
 
   async function handleAddFeedback(questId: string, text: string) {
-    if (!text.trim()) return;
+    if (!text.trim() && feedbackImages.length === 0) return;
     setFeedbackSubmitting(true);
     setError("");
     try {
-      await api.addQuestFeedback(questId, text, "human");
+      await api.addQuestFeedback(questId, text, "human", feedbackImages.length > 0 ? feedbackImages : undefined);
       setFeedbackDraft("");
+      setFeedbackImages([]);
+      if (feedbackTextareaRef.current) {
+        feedbackTextareaRef.current.style.height = "auto";
+      }
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setFeedbackSubmitting(false);
+    }
+  }
+
+  async function handleEditFeedbackSave() {
+    if (!editingFeedback) return;
+    if (!editingFeedback.text.trim() && editingFeedback.images.length === 0) return;
+    setFeedbackSubmitting(true);
+    setError("");
+    try {
+      await api.editQuestFeedback(editingFeedback.questId, editingFeedback.index, {
+        text: editingFeedback.text,
+        images: editingFeedback.images.length > 0 ? editingFeedback.images : undefined,
+      });
+      setEditingFeedback(null);
+      await refreshQuests();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
+
+  async function handleToggleAddressed(questId: string, index: number) {
+    setError("");
+    try {
+      await api.toggleFeedbackAddressed(questId, index);
+      await refreshQuests();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleFeedbackImageUpload(files: FileList | File[]) {
+    setUploadingFeedbackImage(true);
+    setError("");
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const image = await api.uploadStandaloneQuestImage(file);
+        setFeedbackImages((prev) => [...prev, image]);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingFeedbackImage(false);
+    }
+  }
+
+  async function handleEditFeedbackImageUpload(files: FileList | File[]) {
+    if (!editingFeedback) return;
+    setUploadingFeedbackImage(true);
+    setError("");
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const image = await api.uploadStandaloneQuestImage(file);
+        setEditingFeedback((prev) => prev ? { ...prev, images: [...prev.images, image] } : prev);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingFeedbackImage(false);
     }
   }
 
@@ -1182,12 +1256,19 @@ export function QuestmasterPage() {
                         {(() => {
                           const fb = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
                           if (!fb?.length) return null;
+                          const unaddressed = fb.filter((e) => e.author === "human" && !e.addressed).length;
+                          const addressed = fb.filter((e) => e.author === "human" && e.addressed).length;
                           return (
-                            <span className="text-[10px] text-amber-400/70 flex items-center gap-0.5">
-                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                            <span className="text-[10px] flex items-center gap-1">
+                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-amber-400/70">
                                 <path d="M2.5 2A1.5 1.5 0 001 3.5v8A1.5 1.5 0 002.5 13H5l3 3 3-3h2.5a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0013.5 2h-11z" />
                               </svg>
-                              {fb.length}
+                              {unaddressed > 0 && (
+                                <span className="text-amber-400">{unaddressed}</span>
+                              )}
+                              {addressed > 0 && (
+                                <span className="text-cc-muted/40">{addressed}</span>
+                              )}
                             </span>
                           );
                         })()}
@@ -1439,28 +1520,144 @@ export function QuestmasterPage() {
                                       Feedback
                                     </label>
                                     <div className="space-y-1.5 mb-2">
-                                      {feedbackEntries.map((entry, i) => (
-                                        <div
-                                          key={i}
-                                          className={`px-2.5 py-1.5 rounded-lg text-xs ${
-                                            entry.author === "human"
-                                              ? "bg-amber-500/8 border border-amber-500/15 text-amber-300/90"
-                                              : "bg-cc-input-bg border border-cc-border text-cc-fg/80 ml-4"
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-1.5 mb-0.5">
-                                            <span className={`text-[10px] font-medium ${
-                                              entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
-                                            }`}>
-                                              {entry.author}
-                                            </span>
-                                            <span className="text-[9px] text-cc-muted/40">
-                                              {timeAgo(entry.ts)}
-                                            </span>
+                                      {feedbackEntries.map((entry, i) => {
+                                        const isEditing = editingFeedback?.questId === quest.questId && editingFeedback?.index === i;
+                                        return (
+                                          <div
+                                            key={i}
+                                            className={`px-2.5 py-1.5 rounded-lg text-xs ${
+                                              entry.author === "human"
+                                                ? entry.addressed
+                                                  ? "bg-amber-500/5 border border-amber-500/10 text-amber-300/50"
+                                                  : "bg-amber-500/8 border border-amber-500/15 text-amber-300/90"
+                                                : "bg-cc-input-bg border border-cc-border text-cc-fg/80 ml-4"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-1.5 mb-0.5">
+                                              <span className={`text-[10px] font-medium ${
+                                                entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
+                                              }`}>
+                                                {entry.author}
+                                              </span>
+                                              <span className="text-[9px] text-cc-muted/40">
+                                                {timeAgo(entry.ts)}
+                                              </span>
+                                              {entry.author === "human" && entry.addressed && (
+                                                <span className="text-[9px] text-green-500/60 font-medium">addressed</span>
+                                              )}
+                                              <span className="ml-auto flex items-center gap-1">
+                                                {entry.author === "human" && (
+                                                  <button
+                                                    onClick={() => handleToggleAddressed(quest.questId, i)}
+                                                    className={`text-[9px] px-1 py-0.5 rounded transition-colors cursor-pointer ${
+                                                      entry.addressed
+                                                        ? "text-green-500/50 hover:text-green-500/70"
+                                                        : "text-cc-muted/30 hover:text-green-500/60"
+                                                    }`}
+                                                    title={entry.addressed ? "Mark unaddressed" : "Mark addressed"}
+                                                  >
+                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                      <path d="M8 2a6 6 0 100 12A6 6 0 008 2zM0 8a8 8 0 1116 0A8 8 0 010 8zm11.354-1.646a.5.5 0 00-.708-.708L7 9.293 5.354 7.646a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" />
+                                                    </svg>
+                                                  </button>
+                                                )}
+                                                {entry.author === "human" && !isEditing && (
+                                                  <button
+                                                    onClick={() => setEditingFeedback({
+                                                      questId: quest.questId, index: i,
+                                                      text: entry.text, images: entry.images ?? [],
+                                                    })}
+                                                    className="text-[9px] text-cc-muted/30 hover:text-cc-muted/60 cursor-pointer transition-colors"
+                                                    title="Edit"
+                                                  >
+                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                      <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.098a.25.25 0 00-.064.108l-.386 1.35 1.35-.386a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.354L12.427 2.487z" />
+                                                    </svg>
+                                                  </button>
+                                                )}
+                                              </span>
+                                            </div>
+                                            {isEditing ? (
+                                              <div className="flex flex-col gap-1 mt-1">
+                                                <textarea
+                                                  ref={editFeedbackTextareaRef}
+                                                  value={editingFeedback.text}
+                                                  onChange={(e) => {
+                                                    setEditingFeedback((prev) => prev ? { ...prev, text: e.target.value } : prev);
+                                                    e.target.style.height = "auto";
+                                                    e.target.style.height = e.target.scrollHeight + "px";
+                                                  }}
+                                                  className="w-full text-xs bg-cc-bg border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-cc-fg focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
+                                                  rows={2}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                                      e.preventDefault();
+                                                      handleEditFeedbackSave();
+                                                    } else if (e.key === "Escape") {
+                                                      setEditingFeedback(null);
+                                                    }
+                                                  }}
+                                                  onPaste={(e) => {
+                                                    const imgs = extractPastedImages(e);
+                                                    if (imgs.length > 0) handleEditFeedbackImageUpload(imgs);
+                                                  }}
+                                                />
+                                                {editingFeedback.images.length > 0 && (
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {editingFeedback.images.map((img) => (
+                                                      <div key={img.id} className="relative group">
+                                                        <img
+                                                          src={api.questImageUrl(img.id)}
+                                                          className="w-10 h-10 object-cover rounded cursor-pointer"
+                                                          onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
+                                                        />
+                                                        <button
+                                                          onClick={() => setEditingFeedback((prev) => prev ? { ...prev, images: prev.images.filter((im) => im.id !== img.id) } : prev)}
+                                                          className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                        >
+                                                          x
+                                                        </button>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                <div className="flex items-center gap-1.5">
+                                                  <button
+                                                    onClick={handleEditFeedbackSave}
+                                                    disabled={feedbackSubmitting}
+                                                    className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 cursor-pointer"
+                                                  >
+                                                    Save
+                                                  </button>
+                                                  <button
+                                                    onClick={() => setEditingFeedback(null)}
+                                                    className="text-[10px] px-2 py-0.5 rounded text-cc-muted hover:text-cc-fg cursor-pointer"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <>
+                                                <div className="whitespace-pre-wrap">{entry.text}</div>
+                                                {entry.images && entry.images.length > 0 && (
+                                                  <div className="flex flex-wrap gap-1 mt-1">
+                                                    {entry.images.map((img) => (
+                                                      <img
+                                                        key={img.id}
+                                                        src={api.questImageUrl(img.id)}
+                                                        className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                                        title={img.filename}
+                                                        onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
+                                                      />
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </>
+                                            )}
                                           </div>
-                                          <div className="whitespace-pre-wrap">{entry.text}</div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   </>
                                 )}
@@ -1472,8 +1669,13 @@ export function QuestmasterPage() {
                                       </label>
                                     )}
                                     <textarea
+                                      ref={feedbackTextareaRef}
                                       value={expandedId === quest.questId ? feedbackDraft : ""}
-                                      onChange={(e) => setFeedbackDraft(e.target.value)}
+                                      onChange={(e) => {
+                                        setFeedbackDraft(e.target.value);
+                                        e.target.style.height = "auto";
+                                        e.target.style.height = e.target.scrollHeight + "px";
+                                      }}
                                       placeholder="Leave feedback..."
                                       className="w-full text-xs bg-cc-input-bg border border-cc-border rounded-lg px-2.5 py-1.5 text-cc-fg placeholder-cc-muted/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
                                       rows={2}
@@ -1483,15 +1685,41 @@ export function QuestmasterPage() {
                                           handleAddFeedback(quest.questId, feedbackDraft);
                                         }
                                       }}
+                                      onPaste={(e) => {
+                                        const imgs = extractPastedImages(e);
+                                        if (imgs.length > 0) handleFeedbackImageUpload(imgs);
+                                      }}
                                     />
+                                    {feedbackImages.length > 0 && expandedId === quest.questId && (
+                                      <div className="flex flex-wrap gap-1">
+                                        {feedbackImages.map((img) => (
+                                          <div key={img.id} className="relative group">
+                                            <img
+                                              src={api.questImageUrl(img.id)}
+                                              className="w-10 h-10 object-cover rounded cursor-pointer"
+                                              onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
+                                            />
+                                            <button
+                                              onClick={() => setFeedbackImages((prev) => prev.filter((im) => im.id !== img.id))}
+                                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                            >
+                                              x
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                     <div className="flex items-center gap-1.5">
                                       <button
                                         onClick={() => handleAddFeedback(quest.questId, feedbackDraft)}
-                                        disabled={!feedbackDraft.trim() || feedbackSubmitting}
+                                        disabled={(!feedbackDraft.trim() && feedbackImages.length === 0) || feedbackSubmitting}
                                         className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                                       >
                                         {feedbackSubmitting ? "Saving..." : "Add Feedback"}
                                       </button>
+                                      {uploadingFeedbackImage && (
+                                        <span className="text-[9px] text-cc-muted animate-pulse">Uploading...</span>
+                                      )}
                                       <span className="text-[9px] text-cc-muted/40 ml-auto">
                                         {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
                                       </span>

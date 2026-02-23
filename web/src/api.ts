@@ -647,8 +647,12 @@ export const api = {
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/done`),
   checkQuestVerification: (id: string, index: number, checked: boolean) =>
     patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/${index}`, { checked }),
-  addQuestFeedback: (id: string, text: string, author: "human" | "agent" = "human") =>
-    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback`, { text, author }),
+  addQuestFeedback: (id: string, text: string, author: "human" | "agent" = "human", images?: import("./types.js").QuestImage[]) =>
+    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback`, { text, author, images }),
+  editQuestFeedback: (id: string, index: number, updates: { text?: string; images?: import("./types.js").QuestImage[] }) =>
+    patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`, updates),
+  toggleFeedbackAddressed: (id: string, index: number) =>
+    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}/addressed`, {}),
 
   // Quest images
 

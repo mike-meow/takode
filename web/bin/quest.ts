@@ -172,11 +172,17 @@ function formatQuestDetail(q: QuestmasterTask): string {
     }
   }
   if ("feedback" in q) {
-    const entries = (q as { feedback?: { author: string; text: string; ts: number }[] }).feedback;
+    const entries = (q as { feedback?: { author: string; text: string; ts: number; addressed?: boolean; images?: { filename: string; path: string }[] }[] }).feedback;
     if (entries?.length) {
       lines.push(`Feedback:`);
       for (const entry of entries) {
-        lines.push(`  [${entry.author}, ${timeAgo(entry.ts)}] ${entry.text}`);
+        const tag = entry.addressed ? `${entry.author}, addressed, ${timeAgo(entry.ts)}` : `${entry.author}, ${timeAgo(entry.ts)}`;
+        lines.push(`  [${tag}] ${entry.text}`);
+        if (entry.images?.length) {
+          for (const img of entry.images) {
+            lines.push(`    ${img.filename} → ${img.path}`);
+          }
+        }
       }
     }
   }
