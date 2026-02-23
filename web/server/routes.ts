@@ -2671,12 +2671,14 @@ export function createRoutes(
     const tempPath = join(tmpdir(), `companion-export-${Date.now()}.tar.zst`);
     try {
       await runExport({ outputPath: tempPath });
-      const file = Bun.file(tempPath);
+      // Read into memory before responding — unlinkSync in finally would race
+      // with a lazy stream and produce a 0-byte download.
+      const buf = readFileSync(tempPath);
       const timestamp = new Date().toISOString().replace(/:/g, "-").slice(0, 19);
       c.header("Content-Type", "application/zstd");
       c.header("Content-Disposition", `attachment; filename="companion-export-${timestamp}.tar.zst"`);
-      c.header("Content-Length", String(file.size));
-      return c.body(file.stream());
+      c.header("Content-Length", String(buf.byteLength));
+      return c.body(buf);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     } finally {
