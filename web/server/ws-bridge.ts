@@ -2745,10 +2745,10 @@ export class WsBridge {
   }
 
   /** Push a session name update to all connected browsers for a session. */
-  broadcastNameUpdate(sessionId: string, name: string): void {
+  broadcastNameUpdate(sessionId: string, name: string, source?: "quest"): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    this.broadcastToBrowsers(session, { type: "session_name_update", name });
+    this.broadcastToBrowsers(session, { type: "session_name_update", name, ...(source && { source }) });
   }
 
   /** Add a task entry to the session's task history, persist, and broadcast. */

@@ -58,6 +58,8 @@ interface AppState {
   sessionNames: Map<string, string>;
   // Track sessions that were just renamed (for animation)
   recentlyRenamed: Set<string>;
+  // Track sessions whose name was set by a quest claim (for amber styling)
+  questNamedSessions: Set<string>;
 
   // Last user message preview per session (truncated)
   sessionPreviews: Map<string, string>;
@@ -194,6 +196,8 @@ interface AppState {
   setSessionName: (sessionId: string, name: string) => void;
   markRecentlyRenamed: (sessionId: string) => void;
   clearRecentlyRenamed: (sessionId: string) => void;
+  markQuestNamed: (sessionId: string) => void;
+  clearQuestNamed: (sessionId: string) => void;
 
   // Session preview actions
   setSessionPreview: (sessionId: string, preview: string) => void;
@@ -378,6 +382,7 @@ export const useStore = create<AppState>((set) => ({
   diffFileStats: new Map(),
   sessionNames: getInitialSessionNames(),
   recentlyRenamed: new Set(),
+  questNamedSessions: new Set(),
   sessionPreviews: new Map(),
   sessionPreviewUpdatedAt: new Map(),
   sessionTaskHistory: new Map(),
@@ -913,6 +918,22 @@ export const useStore = create<AppState>((set) => ({
       const recentlyRenamed = new Set(s.recentlyRenamed);
       recentlyRenamed.delete(sessionId);
       return { recentlyRenamed };
+    }),
+
+  markQuestNamed: (sessionId) =>
+    set((s) => {
+      if (s.questNamedSessions.has(sessionId)) return s;
+      const questNamedSessions = new Set(s.questNamedSessions);
+      questNamedSessions.add(sessionId);
+      return { questNamedSessions };
+    }),
+
+  clearQuestNamed: (sessionId) =>
+    set((s) => {
+      if (!s.questNamedSessions.has(sessionId)) return s;
+      const questNamedSessions = new Set(s.questNamedSessions);
+      questNamedSessions.delete(sessionId);
+      return { questNamedSessions };
     }),
 
   setSessionPreview: (sessionId, preview) =>

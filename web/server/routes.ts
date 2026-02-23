@@ -2530,6 +2530,16 @@ export function createRoutes(
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       wsBridge.setSessionClaimedQuest(sessionId, { id: quest.questId, title: quest.title });
+      // Override session name with quest title (suppresses auto-namer while quest is active)
+      sessionNames.setName(sessionId, quest.title);
+      wsBridge.broadcastNameUpdate(sessionId, quest.title, "quest");
+      wsBridge.addTaskEntry(sessionId, {
+        title: quest.title,
+        action: "new",
+        timestamp: Date.now(),
+        triggerMessageId: "quest-" + quest.questId,
+        source: "quest",
+      });
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

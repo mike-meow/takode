@@ -396,6 +396,12 @@ function handleParsedMessage(
       if (typeof data.session.askPermission === "boolean") {
         store.setAskPermission(sessionId, data.session.askPermission);
       }
+      // Restore quest-named flag from persisted session state (on reconnect)
+      if (data.session.claimedQuestId) {
+        store.markQuestNamed(sessionId);
+      } else {
+        store.clearQuestNamed(sessionId);
+      }
       break;
     }
 
@@ -795,6 +801,12 @@ function handleParsedMessage(
         store.setSessionName(sessionId, data.name);
         store.markRecentlyRenamed(sessionId);
       }
+      // Track whether this name was set by a quest claim (for amber styling)
+      if (data.source === "quest") {
+        store.markQuestNamed(sessionId);
+      } else {
+        store.clearQuestNamed(sessionId);
+      }
       break;
     }
 
@@ -847,6 +859,13 @@ function handleParsedMessage(
         claimedQuestId: data.quest?.id ?? undefined,
         claimedQuestTitle: data.quest?.title ?? undefined,
       });
+      // Also sync quest-named styling (redundant with session_name_update source,
+      // but ensures consistency when quest is unclaimed/done)
+      if (data.quest?.id) {
+        store.markQuestNamed(sessionId);
+      } else {
+        store.clearQuestNamed(sessionId);
+      }
       // Insert a quest-claimed message into the chat feed with full details
       if (data.quest?.id) {
         const questId = data.quest.id;

@@ -50,6 +50,7 @@ interface MockStoreState {
   sessionPreviewUpdatedAt: Map<string, number>;
   sessionTaskPreview: Map<string, string>;
   recentlyRenamed: Set<string>;
+  questNamedSessions: Set<string>;
   pendingPermissions: Map<string, Map<string, unknown>>;
   collapsedProjects: Set<string>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
@@ -131,6 +132,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     sessionPreviewUpdatedAt: new Map(),
     sessionTaskPreview: new Map(),
     recentlyRenamed: new Set(),
+    questNamedSessions: new Set(),
     pendingPermissions: new Map(),
     collapsedProjects: new Set(),
     sessionAttention: new Map(),

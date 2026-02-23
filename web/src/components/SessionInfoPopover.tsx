@@ -141,7 +141,7 @@ export function SessionInfoPopover({
             {taskHistory.map((task, i) => (
               <div key={i} className="flex items-start gap-1.5">
                 <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
-                <span className="text-[11px] text-cc-fg leading-snug line-clamp-1">{task.title}</span>
+                <span className={`text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
               </div>
             ))}
           </div>

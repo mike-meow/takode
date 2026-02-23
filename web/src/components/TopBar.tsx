@@ -185,6 +185,7 @@ export function TopBar() {
       sdkSessions.find((s) => s.sessionId === currentSessionId)?.name ||
       `Session ${currentSessionId.slice(0, 8)}`)
     : null;
+  const isQuestNamed = useStore((s) => currentSessionId ? s.questNamedSessions.has(currentSessionId) : false);
 
   return (
     <header className="shrink-0 flex items-center justify-between px-2 sm:px-4 py-2 sm:py-2.5 bg-cc-card border-b border-cc-border">
@@ -225,7 +226,7 @@ export function TopBar() {
                 />
               </div>
               {sessionName && (
-                <span className="text-[11px] font-medium text-cc-fg truncate" title={sessionName}>
+                <span className={`text-[11px] font-medium truncate ${isQuestNamed ? "text-amber-400" : "text-cc-fg"}`} title={sessionName}>
                   {sessionName}
                 </span>
               )}

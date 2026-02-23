@@ -240,6 +240,8 @@ export interface SessionTaskEntry {
   timestamp: number;
   /** ID of the user message that triggered this naming evaluation. */
   triggerMessageId: string;
+  /** When "quest", this entry was created by claiming a quest (not by the auto-namer). */
+  source?: "quest";
 }
 
 /** Messages the bridge sends to the browser */
@@ -262,7 +264,7 @@ export type BrowserIncomingMessageBase =
   | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[] }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
-  | { type: "session_name_update"; name: string }
+  | { type: "session_name_update"; name: string; source?: "quest" }
   | { type: "session_task_history"; tasks: SessionTaskEntry[] }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }

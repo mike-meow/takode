@@ -72,6 +72,7 @@ export function SessionItem({
   const shortId = s.id.slice(0, 8);
   const label = sessionName || s.model || shortId;
   const isEditing = editingSessionId === s.id;
+  const isQuestNamed = useStore((st) => st.questNamedSessions.has(s.id));
 
   // Long-press to open context menu on touch devices
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -187,7 +188,9 @@ export function SessionItem({
                 />
               ) : (
                 <span
-                  className={`text-[13px] truncate text-cc-fg leading-snug ${
+                  className={`text-[13px] truncate leading-snug ${
+                    isQuestNamed ? "text-amber-400" : "text-cc-fg"
+                  } ${
                     attention ? "font-semibold" : "font-medium"
                   } ${isRecentlyRenamed ? "animate-name-appear" : ""}`}
                   onAnimationEnd={() => onClearRecentlyRenamed(s.id)}

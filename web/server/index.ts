@@ -320,6 +320,11 @@ async function evaluateAndApply(
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
 wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) => {
+  // Suppress auto-namer while a quest is active — quest title IS the session name
+  if (getActiveQuestForSession(sessionId)) {
+    console.log(`[session-namer] Skipping user-message namer for ${sessionId} (active quest)`);
+    return;
+  }
   const currentName = sessionNames.getName(sessionId);
   const isRandomName = isRandomSessionName(currentName);
   const isFirstEvaluation = !autoNamingEvaluated.has(sessionId);
@@ -379,6 +384,10 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
 // The agent has done meaningful research/work to produce the plan, providing
 // rich context for naming — and it's a natural breakpoint before execution.
 wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
+  if (getActiveQuestForSession(sessionId)) {
+    console.log(`[session-namer] Skipping agent-paused namer for ${sessionId} (active quest)`);
+    return;
+  }
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
@@ -401,6 +410,10 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
 const NAMER_COOLDOWN_MS = 30_000;
 
 wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
+  if (getActiveQuestForSession(sessionId)) {
+    console.log(`[session-namer] Skipping turn-completed namer for ${sessionId} (active quest)`);
+    return;
+  }
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
