@@ -821,6 +821,9 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
               {importResult.sessionsNew > 0 && <div>{importResult.sessionsNew} new sessions imported</div>}
               {importResult.sessionsUpdated > 0 && <div>{importResult.sessionsUpdated} updated (archive was newer)</div>}
               {importResult.sessionsSkipped > 0 && <div>{importResult.sessionsSkipped} skipped (local was newer)</div>}
+              {importResult.claudeSessionsRestored > 0 && (
+                <div>{importResult.claudeSessionsRestored} Claude Code sessions restored (conversation context preserved)</div>
+              )}
               {importResult.worktreeSessionsNeedingRecreation > 0 && (
                 <div>{importResult.worktreeSessionsNeedingRecreation} worktree sessions will recreate on open</div>
               )}

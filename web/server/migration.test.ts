@@ -6,6 +6,7 @@ import {
   rewritePathsInFile,
   rewritePathsInDir,
   recreateWorktreeIfMissing,
+  cwdToProjectDir,
 } from "./migration.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -157,6 +158,59 @@ describe("rewritePathsInDir", () => {
     rewritePathsInDir(tempDir, "/home/old", "/home/new");
 
     expect(readFileSync(imgPath, "utf-8")).toBe("binary content /home/old/path here");
+  });
+});
+
+// ─── cwdToProjectDir ────────────────────────────────────────────────────────
+
+describe("cwdToProjectDir", () => {
+  it("converts a standard Linux path", () => {
+    expect(cwdToProjectDir("/home/jiayiwei/companion")).toBe("-home-jiayiwei-companion");
+  });
+
+  it("handles dotfiles in paths (double dash from / + .)", () => {
+    expect(cwdToProjectDir("/home/jiayiwei/.companion/worktrees/companion/jiayi-9104"))
+      .toBe("-home-jiayiwei--companion-worktrees-companion-jiayi-9104");
+  });
+
+  it("handles macOS paths", () => {
+    expect(cwdToProjectDir("/Users/alice/projects/myapp"))
+      .toBe("-Users-alice-projects-myapp");
+  });
+
+  it("preserves dashes in directory names", () => {
+    expect(cwdToProjectDir("/home/user/my-project"))
+      .toBe("-home-user-my-project");
+  });
+});
+
+// ─── rewritePathsInDir with JSONL ──────────────────────────────────────────
+
+describe("rewritePathsInDir with JSONL files", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true });
+  });
+
+  it("rewrites paths in .jsonl files", () => {
+    const jsonlPath = join(tempDir, "session.jsonl");
+    const lines = [
+      JSON.stringify({ type: "enqueue", content: "check /home/old/repo/file.ts" }),
+      JSON.stringify({ type: "tool_use", input: { file_path: "/home/old/repo/src/main.ts" } }),
+    ];
+    writeFileSync(jsonlPath, lines.join("\n"), "utf-8");
+
+    rewritePathsInDir(tempDir, "/home/old", "/home/new");
+
+    const result = readFileSync(jsonlPath, "utf-8");
+    expect(result).toContain("/home/new/repo/file.ts");
+    expect(result).toContain("/home/new/repo/src/main.ts");
+    expect(result).not.toContain("/home/old");
   });
 });
 

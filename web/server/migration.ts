@@ -10,6 +10,17 @@ import type { WsBridge } from "./ws-bridge.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export interface ClaudeSessionMapping {
+  /** The Companion's session UUID */
+  sessionId: string;
+  /** Claude Code's internal session ID (used with --resume) */
+  cliSessionId: string;
+  /** Claude Code project directory name (derived from cwd) */
+  projectDir: string;
+  /** Original cwd for recomputing projectDir after path rewriting */
+  cwd: string;
+}
+
 export interface MigrationManifest {
   version: 1;
   exportedAt: number;
@@ -17,7 +28,10 @@ export interface MigrationManifest {
   homeDir: string;
   port: number;
   includeRecordings: boolean;
-  stats: { sessionCount: number };
+  includeClaudeSessions: boolean;
+  stats: { sessionCount: number; claudeSessionCount: number };
+  /** Mapping of exported Claude Code session data for --resume portability */
+  claudeSessions?: ClaudeSessionMapping[];
 }
 
 export interface ImportStats {
@@ -25,6 +39,7 @@ export interface ImportStats {
   sessionsUpdated: number;
   sessionsSkipped: number;
   worktreeSessionsNeedingRecreation: number;
+  claudeSessionsRestored: number;
   pathsRewritten: boolean;
   filesImported: number;
   filesSkipped: number;
@@ -34,8 +49,10 @@ export interface ImportStats {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const COMPANION_HOME = join(homedir(), ".companion");
+const CLAUDE_HOME = join(homedir(), ".claude");
 const MANIFEST_NAME = ".export-manifest.json";
 const STAGING_DIR = ".import-staging";
+const EXPORT_CLAUDE_DIR = ".export-claude";
 
 const ASSET_DIRS = ["images", "questmaster", "codex-home", "envs", "cron", "assistant"];
 const EXPORT_FILES = ["worktrees.json", "containers.json", "session-names.json"];
@@ -46,8 +63,9 @@ export async function runExport(options: {
   port: number;
   outputPath: string;
   includeRecordings?: boolean;
+  includeClaudeSessions?: boolean;
 }): Promise<void> {
-  const { port, outputPath, includeRecordings } = options;
+  const { port, outputPath, includeRecordings, includeClaudeSessions = true } = options;
   const paths: string[] = [];
 
   // Only export sessions for the current port
@@ -73,6 +91,51 @@ export async function runExport(options: {
     }
   }
 
+  // ── Collect Claude Code session data for --resume portability ──
+  const claudeSessions: ClaudeSessionMapping[] = [];
+  const claudeExportDir = join(COMPANION_HOME, EXPORT_CLAUDE_DIR);
+  if (includeClaudeSessions) {
+    const launcherPath = join(COMPANION_HOME, portSessionDir, "launcher.json");
+    if (existsSync(launcherPath)) {
+      try {
+        const entries = JSON.parse(readFileSync(launcherPath, "utf-8")) as Array<Record<string, unknown>>;
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            const cliSessionId = entry.cliSessionId as string | undefined;
+            const cwd = entry.cwd as string | undefined;
+            const sessionId = entry.sessionId as string | undefined;
+            if (!cliSessionId || !cwd || !sessionId) continue;
+
+            const projectDir = cwdToProjectDir(cwd);
+            const claudeProjectPath = join(CLAUDE_HOME, "projects", projectDir);
+            const jsonlPath = join(claudeProjectPath, `${cliSessionId}.jsonl`);
+            if (!existsSync(jsonlPath)) continue;
+
+            // Copy Claude session files into a temp dir under ~/.companion/ for archiving
+            const destDir = join(claudeExportDir, projectDir);
+            mkdirSync(destDir, { recursive: true });
+            copyFileSync(jsonlPath, join(destDir, `${cliSessionId}.jsonl`));
+
+            // Also copy the session subdirectory (subagents, tool-results) if it exists
+            const sessionDir = join(claudeProjectPath, cliSessionId);
+            if (existsSync(sessionDir) && statSync(sessionDir).isDirectory()) {
+              copyDirRecursive(sessionDir, join(destDir, cliSessionId));
+            }
+
+            claudeSessions.push({ sessionId, cliSessionId, projectDir, cwd });
+          }
+        }
+      } catch (e) {
+        console.warn(`[migration] Warning: failed to collect Claude session data: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (claudeSessions.length > 0) {
+      paths.push(EXPORT_CLAUDE_DIR);
+      console.log(`Including ${claudeSessions.length} Claude Code session(s) for --resume portability`);
+    }
+  }
+
   // Write manifest
   const manifest: MigrationManifest = {
     version: 1,
@@ -81,7 +144,9 @@ export async function runExport(options: {
     homeDir: homedir(),
     port,
     includeRecordings: !!includeRecordings,
-    stats: { sessionCount },
+    includeClaudeSessions: claudeSessions.length > 0,
+    stats: { sessionCount, claudeSessionCount: claudeSessions.length },
+    claudeSessions: claudeSessions.length > 0 ? claudeSessions : undefined,
   };
   const manifestPath = join(COMPANION_HOME, MANIFEST_NAME);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
@@ -97,6 +162,7 @@ export async function runExport(options: {
     );
   } finally {
     try { rmSync(manifestPath); } catch { /* ignore */ }
+    try { rmSync(claudeExportDir, { recursive: true }); } catch { /* ignore */ }
   }
 
   const archiveSize = statSync(outputPath).size;
@@ -113,7 +179,8 @@ export async function runImport(archivePath: string, targetPort: number): Promis
   const stagingDir = join(COMPANION_HOME, STAGING_DIR);
   const stats: ImportStats = {
     sessionsNew: 0, sessionsUpdated: 0, sessionsSkipped: 0,
-    worktreeSessionsNeedingRecreation: 0, pathsRewritten: false,
+    worktreeSessionsNeedingRecreation: 0, claudeSessionsRestored: 0,
+    pathsRewritten: false,
     filesImported: 0, filesSkipped: 0, warnings: [],
   };
 
@@ -144,10 +211,57 @@ export async function runImport(archivePath: string, targetPort: number): Promis
       stats.pathsRewritten = true;
     }
 
+    // ── Restore Claude Code session data for --resume portability ──
+    // Build a set of cliSessionIds that were successfully restored so we
+    // know which ones to keep (vs strip) in launcher.json below.
+    const restoredCliSessionIds = new Set<string>();
+    const stagedClaudeDir = join(stagingDir, EXPORT_CLAUDE_DIR);
+    if (manifest.claudeSessions?.length && existsSync(stagedClaudeDir)) {
+      console.log(`Restoring ${manifest.claudeSessions.length} Claude Code session(s)...`);
+      const claudeProjectsDir = join(CLAUDE_HOME, "projects");
+      mkdirSync(claudeProjectsDir, { recursive: true });
+
+      for (const mapping of manifest.claudeSessions) {
+        try {
+          // Compute the new project dir based on the rewritten cwd
+          const rewrittenCwd = oldHome !== newHome
+            ? mapping.cwd.replace(oldHome, newHome)
+            : mapping.cwd;
+          const newProjectDir = cwdToProjectDir(rewrittenCwd);
+          const destDir = join(claudeProjectsDir, newProjectDir);
+          mkdirSync(destDir, { recursive: true });
+
+          // Copy the JSONL conversation file
+          const srcJsonl = join(stagedClaudeDir, mapping.projectDir, `${mapping.cliSessionId}.jsonl`);
+          const destJsonl = join(destDir, `${mapping.cliSessionId}.jsonl`);
+          if (existsSync(srcJsonl)) {
+            // Rewrite paths in the JSONL too (contains tool calls with absolute paths)
+            if (oldHome !== newHome) {
+              rewritePathsInFile(srcJsonl, oldHome, newHome);
+            }
+            copyFileSync(srcJsonl, destJsonl);
+
+            // Also copy the session subdirectory if present
+            const srcDir = join(stagedClaudeDir, mapping.projectDir, mapping.cliSessionId);
+            if (existsSync(srcDir) && statSync(srcDir).isDirectory()) {
+              copyDirRecursive(srcDir, join(destDir, mapping.cliSessionId));
+            }
+
+            restoredCliSessionIds.add(mapping.cliSessionId);
+            stats.claudeSessionsRestored++;
+          }
+        } catch (e) {
+          stats.warnings.push(`Failed to restore Claude session ${mapping.cliSessionId}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      if (stats.claudeSessionsRestored > 0) {
+        console.log(`  Restored ${stats.claudeSessionsRestored} Claude Code session(s) to ${claudeProjectsDir}`);
+      }
+    }
+
     // ── Sessions: merge all archived port dirs into the target port ──
-    // Clear cliSessionId from staged launcher.json entries — the CLI's
-    // internal conversations don't exist on the new machine, so --resume
-    // would fail. Stripping before merge ensures fresh starts.
+    // Strip cliSessionId only for sessions whose Claude data was NOT restored.
+    // Sessions with restored data keep cliSessionId so --resume works.
     const stagedSessions = join(stagingDir, "sessions");
     if (existsSync(stagedSessions)) {
       for (const portEntry of readdirSync(stagedSessions)) {
@@ -156,7 +270,11 @@ export async function runImport(archivePath: string, targetPort: number): Promis
           try {
             const entries = JSON.parse(readFileSync(launcherPath, "utf-8"));
             if (Array.isArray(entries)) {
-              for (const entry of entries) delete entry.cliSessionId;
+              for (const entry of entries) {
+                if (entry.cliSessionId && !restoredCliSessionIds.has(entry.cliSessionId)) {
+                  delete entry.cliSessionId;
+                }
+              }
               writeFileSync(launcherPath, JSON.stringify(entries, null, 2), "utf-8");
             }
           } catch { /* skip */ }
@@ -228,6 +346,9 @@ export function printImportStats(stats: ImportStats): void {
   console.log(`\n─── Import complete ───\n`);
   console.log(`Sessions: ${stats.sessionsNew} new, ${stats.sessionsUpdated} updated, ${stats.sessionsSkipped} skipped`);
   console.log(`Files: ${stats.filesImported} imported, ${stats.filesSkipped} skipped`);
+  if (stats.claudeSessionsRestored > 0) {
+    console.log(`Claude Code sessions: ${stats.claudeSessionsRestored} restored (--resume will work)`);
+  }
   if (stats.pathsRewritten) console.log(`Paths rewritten for this machine`);
   if (stats.worktreeSessionsNeedingRecreation > 0) {
     console.log(`${stats.worktreeSessionsNeedingRecreation} worktree sessions will recreate on open`);
@@ -247,14 +368,14 @@ export function rewritePathsInDir(dir: string, oldHome: string, newHome: string)
     const st = statSync(fullPath);
     if (st.isDirectory()) {
       rewritePathsInDir(fullPath, oldHome, newHome);
-    } else if (entry.endsWith(".json")) {
+    } else if (entry.endsWith(".json") || entry.endsWith(".jsonl")) {
       rewritePathsInFile(fullPath, oldHome, newHome);
     }
   }
 }
 
 /**
- * Rewrite paths in a single JSON file, preserving the original mtime.
+ * Rewrite paths in a single JSON/JSONL file, preserving the original mtime.
  * Uses trailing-slash matching to avoid false prefix matches
  * (e.g. /home/jiayi won't match /home/jiayiwei).
  */
@@ -345,7 +466,32 @@ function mergeJsonArray(importedPath: string, targetPath: string, key: string): 
   } catch { /* keep existing on failure */ }
 }
 
+// ─── Claude Code Helpers ─────────────────────────────────────────────────────
+
+/**
+ * Convert a working directory path to Claude Code's project directory name.
+ * Claude Code encodes the cwd by replacing `/` and `.` with `-`.
+ * e.g. `/home/jiayiwei/.companion/worktrees/foo` → `-home-jiayiwei--companion-worktrees-foo`
+ */
+export function cwdToProjectDir(cwd: string): string {
+  return cwd.replace(/[/.]/g, "-");
+}
+
 // ─── Utilities ──────────────────────────────────────────────────────────────
+
+/** Recursively copy a directory (unconditionally). */
+function copyDirRecursive(src: string, dest: string): void {
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src)) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    if (statSync(srcPath).isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+  }
+}
 
 /** Recursively copy a directory. Existing files are only overwritten if src is newer. */
 function copyDirNewerWins(src: string, dest: string, stats: ImportStats): void {

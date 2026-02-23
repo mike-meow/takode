@@ -725,6 +725,7 @@ export interface ImportStats {
   sessionsUpdated: number;
   sessionsSkipped: number;
   worktreeSessionsNeedingRecreation: number;
+  claudeSessionsRestored: number;
   pathsRewritten: boolean;
   filesImported: number;
   filesSkipped: number;
