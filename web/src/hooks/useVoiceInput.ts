@@ -95,8 +95,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (event.error === "not-allowed") {
         setError("Microphone access denied");
-      } else if (event.error === "no-speech") {
-        // Ignore — just means silence detected, recognition continues
+      } else if (event.error === "no-speech" || event.error === "aborted") {
+        // no-speech: silence detected, recognition continues
+        // aborted: recognition was stopped programmatically or no mic available — not actionable
         return;
       } else {
         setError(`Speech recognition error: ${event.error}`);
@@ -125,6 +126,13 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       startRecording();
     }
   }, [isRecording, startRecording, stopRecording]);
+
+  // Auto-clear errors after 4 seconds
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   // Cleanup on unmount
   useEffect(() => {
