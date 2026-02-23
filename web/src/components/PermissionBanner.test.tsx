@@ -650,3 +650,279 @@ describe("PlanReviewOverlay", () => {
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── Custom Permission Rule Editor ──────────────────────────────────────────
+
+describe("Custom Permission Rule Editor", () => {
+  it("renders 'Customize' button for tool permissions", () => {
+    const perm = makePermission({ tool_name: "Bash", input: { command: "npm test" } });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    expect(screen.getByText("Customize")).toBeTruthy();
+  });
+
+  it("does NOT render 'Customize' button for AskUserQuestion", () => {
+    const perm = makePermission({
+      tool_name: "AskUserQuestion",
+      input: { question: "Pick one?" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    expect(screen.queryByText("Customize")).toBeNull();
+  });
+
+  it("clicking 'Customize' opens the editor with pre-filled Bash command", () => {
+    const perm = makePermission({
+      tool_name: "Bash",
+      input: { command: "npm run build" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+
+    // Editor should be visible with pattern input pre-filled
+    const input = screen.getByDisplayValue("npm run build");
+    expect(input).toBeTruthy();
+    // Scope buttons should be visible
+    expect(screen.getByText("Session")).toBeTruthy();
+    expect(screen.getByText("Project")).toBeTruthy();
+    expect(screen.getByText("User")).toBeTruthy();
+    // Apply button
+    expect(screen.getByText("Allow with Rule")).toBeTruthy();
+  });
+
+  it("pre-fills pattern from file_path for Edit tool", () => {
+    const perm = makePermission({
+      tool_name: "Edit",
+      input: { file_path: "/src/main.ts", old_string: "a", new_string: "b" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+
+    expect(screen.getByDisplayValue("/src/main.ts")).toBeTruthy();
+  });
+
+  it("pre-fills pattern from file_path for Read tool", () => {
+    const perm = makePermission({
+      tool_name: "Read",
+      input: { file_path: "/etc/config.json" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+
+    expect(screen.getByDisplayValue("/etc/config.json")).toBeTruthy();
+  });
+
+  it("pre-fills pattern from pattern for Glob tool", () => {
+    const perm = makePermission({
+      tool_name: "Glob",
+      input: { pattern: "**/*.ts" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+
+    expect(screen.getByDisplayValue("**/*.ts")).toBeTruthy();
+  });
+
+  it("shows empty pattern for unknown tools", () => {
+    const perm = makePermission({
+      tool_name: "SomeCustomTool",
+      input: { foo: "bar" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+
+    // Pattern input should be empty
+    const input = screen.getByPlaceholderText(/e\.g\./);
+    expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  it("clicking 'Customize' again closes the editor", () => {
+    const perm = makePermission({ tool_name: "Bash", input: { command: "ls" } });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Open
+    fireEvent.click(screen.getByText("Customize"));
+    expect(screen.getByText("Allow with Rule")).toBeTruthy();
+
+    // Close
+    fireEvent.click(screen.getByText("Customize"));
+    expect(screen.queryByText("Allow with Rule")).toBeNull();
+  });
+
+  it("sends correct permission_response with default Session scope", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-1",
+      tool_name: "Bash",
+      input: { command: "npm test" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Open editor and apply with default scope (Session)
+    fireEvent.click(screen.getByText("Customize"));
+    fireEvent.click(screen.getByText("Allow with Rule"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "permission_response",
+      request_id: "req-custom-1",
+      behavior: "allow",
+      updated_input: undefined,
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "npm test" }],
+        behavior: "allow",
+        destination: "session",
+      }],
+    });
+
+    vi.advanceTimersByTime(350);
+    expect(mockRemovePermission).toHaveBeenCalledWith("s1", "req-custom-1");
+    vi.useRealTimers();
+  });
+
+  it("scope selection changes the destination in the permission update", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-2",
+      tool_name: "Bash",
+      input: { command: "npm run build" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    // Open editor, switch to Project scope, apply
+    fireEvent.click(screen.getByText("Customize"));
+    fireEvent.click(screen.getByText("Project"));
+    fireEvent.click(screen.getByText("Allow with Rule"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "permission_response",
+      request_id: "req-custom-2",
+      behavior: "allow",
+      updated_input: undefined,
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "npm run build" }],
+        behavior: "allow",
+        destination: "projectSettings",
+      }],
+    });
+    vi.useRealTimers();
+  });
+
+  it("User scope sends userSettings destination", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-3",
+      tool_name: "Read",
+      input: { file_path: "/etc/hosts" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+    fireEvent.click(screen.getByText("User"));
+    fireEvent.click(screen.getByText("Allow with Rule"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "permission_response",
+      request_id: "req-custom-3",
+      behavior: "allow",
+      updated_input: undefined,
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "Read", ruleContent: "/etc/hosts" }],
+        behavior: "allow",
+        destination: "userSettings",
+      }],
+    });
+    vi.useRealTimers();
+  });
+
+  it("empty pattern omits ruleContent (blanket tool allow)", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-4",
+      tool_name: "SomeCustomTool",
+      input: { foo: "bar" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+    // Pattern should already be empty for unknown tools
+    fireEvent.click(screen.getByText("Allow with Rule"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "permission_response",
+      request_id: "req-custom-4",
+      behavior: "allow",
+      updated_input: undefined,
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "SomeCustomTool" }],
+        behavior: "allow",
+        destination: "session",
+      }],
+    });
+    vi.useRealTimers();
+  });
+
+  it("edited pattern is trimmed and sent correctly", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-5",
+      tool_name: "Bash",
+      input: { command: "npm test" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+    // Change the pattern
+    const input = screen.getByDisplayValue("npm test");
+    fireEvent.change(input, { target: { value: "  npm run *  " } });
+    fireEvent.click(screen.getByText("Allow with Rule"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "permission_response",
+      request_id: "req-custom-5",
+      behavior: "allow",
+      updated_input: undefined,
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "npm run *" }],
+        behavior: "allow",
+        destination: "session",
+      }],
+    });
+    vi.useRealTimers();
+  });
+
+  it("Enter key in pattern input triggers apply", () => {
+    vi.useFakeTimers();
+    const perm = makePermission({
+      request_id: "req-custom-6",
+      tool_name: "Bash",
+      input: { command: "echo hello" },
+    });
+    render(<PermissionBanner permission={perm} sessionId="s1" />);
+
+    fireEvent.click(screen.getByText("Customize"));
+    const input = screen.getByDisplayValue("echo hello");
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
+      type: "permission_response",
+      behavior: "allow",
+      updated_permissions: [{
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "echo hello" }],
+        behavior: "allow",
+        destination: "session",
+      }],
+    }));
+    vi.useRealTimers();
+  });
+});

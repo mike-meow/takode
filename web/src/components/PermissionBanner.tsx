@@ -23,6 +23,18 @@ function suggestionLabel(s: PermissionUpdate): string {
   return `Allow ${scope}`;
 }
 
+/** Derive a sensible default pattern from the tool's input */
+function deriveDefaultPattern(toolName: string, input: Record<string, unknown>): string {
+  if (toolName === "Bash") return typeof input.command === "string" ? input.command : "";
+  if (["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"].includes(toolName))
+    return typeof input.file_path === "string" ? input.file_path
+      : typeof input.notebook_path === "string" ? input.notebook_path : "";
+  if (toolName === "Glob") return typeof input.pattern === "string" ? input.pattern : "";
+  if (toolName === "Grep") return typeof input.pattern === "string" ? input.pattern : "";
+  if (toolName === "WebFetch") return typeof input.url === "string" ? input.url : "";
+  return "";
+}
+
 /** Extract plan preview text from ExitPlanMode permission */
 function getPlanPreview(permission: PermissionRequest): string {
   const planText = typeof permission.input?.plan === "string" ? permission.input.plan : "";
@@ -318,6 +330,100 @@ export function PlanCollapsedChip({
   );
 }
 
+// ── CustomRuleEditor — inline editor for creating custom permission rules ────
+
+type ScopeOption = "session" | "projectSettings" | "userSettings";
+const SCOPE_OPTIONS: { value: ScopeOption; label: string; desc: string }[] = [
+  { value: "session", label: "Session", desc: "This session only" },
+  { value: "projectSettings", label: "Project", desc: "All sessions in this project" },
+  { value: "userSettings", label: "User", desc: "All projects" },
+];
+
+function CustomRuleEditor({
+  toolName,
+  input,
+  onApply,
+  disabled,
+}: {
+  toolName: string;
+  input: Record<string, unknown>;
+  onApply: (update: PermissionUpdate) => void;
+  disabled: boolean;
+}) {
+  const [pattern, setPattern] = useState(() => deriveDefaultPattern(toolName, input));
+  const [scope, setScope] = useState<ScopeOption>("session");
+
+  function handleSubmit() {
+    const update: PermissionUpdate = {
+      type: "addRules",
+      rules: [{
+        toolName,
+        ...(pattern.trim() ? { ruleContent: pattern.trim() } : {}),
+      }],
+      behavior: "allow",
+      destination: scope,
+    };
+    onApply(update);
+  }
+
+  return (
+    <div className="mt-2.5 p-3 rounded-lg border border-cc-border/50 bg-cc-code-bg/20 space-y-3 animate-[fadeSlideIn_0.2s_ease-out]">
+      {/* Pattern input */}
+      <div className="space-y-1">
+        <label className="text-[10px] text-cc-muted uppercase tracking-wider font-medium">
+          Pattern
+        </label>
+        <input
+          type="text"
+          value={pattern}
+          onChange={(e) => setPattern(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !disabled) handleSubmit(); }}
+          placeholder={`e.g. ${toolName === "Bash" ? "npm test*" : "**/*.ts"}`}
+          className="w-full px-2.5 py-1.5 text-xs font-mono-code bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 transition-colors"
+          disabled={disabled}
+        />
+        <p className="text-[10px] text-cc-muted">
+          Leave empty to allow all <span className="font-mono-code">{toolName}</span> calls
+        </p>
+      </div>
+
+      {/* Scope selector */}
+      <div className="space-y-1">
+        <span className="text-[10px] text-cc-muted uppercase tracking-wider font-medium">Scope</span>
+        <div className="flex gap-0.5 p-0.5 bg-cc-hover/50 rounded-lg w-fit">
+          {SCOPE_OPTIONS.map(({ value, label, desc }) => (
+            <button
+              key={value}
+              onClick={() => setScope(value)}
+              disabled={disabled}
+              title={desc}
+              className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
+                scope === value
+                  ? "bg-cc-card text-cc-fg shadow-sm border border-cc-border/50"
+                  : "text-cc-muted hover:text-cc-fg"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Apply button */}
+      <button
+        onClick={handleSubmit}
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-primary hover:bg-cc-primary/90 text-white disabled:opacity-50 transition-colors cursor-pointer"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+          <path d="M3 8.5l3.5 3.5 6.5-7" />
+        </svg>
+        Allow with Rule
+      </button>
+    </div>
+  );
+}
+
 // ── PermissionBanner — handles all non-ExitPlanMode permissions ─────────────
 // ExitPlanMode is handled by PlanReviewOverlay/PlanCollapsedChip via ChatView.
 
@@ -331,6 +437,7 @@ export function PermissionBanner({
   const [loading, setLoading] = useState(false);
   const [stamping, setStamping] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [customEditorOpen, setCustomEditorOpen] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
 
   function handleAllow(updatedInput?: Record<string, unknown>, updatedPermissions?: PermissionUpdate[]) {
@@ -470,7 +577,7 @@ export function PermissionBanner({
             )}
 
             {/* Actions - only for non-AskUserQuestion tools */}
-            {!isAskUser && (
+            {!isAskUser && (<>
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <button
                   onClick={() => handleAllow()}
@@ -515,8 +622,35 @@ export function PermissionBanner({
                     Deny
                   </button>
                 )}
+
+                {/* Custom rule editor toggle */}
+                {!stamping && (
+                  <button
+                    onClick={() => setCustomEditorOpen(!customEditorOpen)}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover border border-cc-border/30 disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                      <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" />
+                    </svg>
+                    Customize
+                    <svg className={`w-3 h-3 transition-transform ${customEditorOpen ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M3 5l3 3 3-3" />
+                    </svg>
+                  </button>
+                )}
               </div>
-            )}
+
+              {/* Custom rule editor panel */}
+              {customEditorOpen && !stamping && (
+                <CustomRuleEditor
+                  toolName={permission.tool_name}
+                  input={permission.input}
+                  onApply={(update) => handleAllow(undefined, [update])}
+                  disabled={loading}
+                />
+              )}
+            </>)}
           </div>
         </div>
       </div>

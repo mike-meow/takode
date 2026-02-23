@@ -133,6 +133,15 @@ const PERM_DYNAMIC = mockPermission({
   description: "Custom tool call: code_interpreter",
 });
 
+// Bash permission with NO suggestions — shows "Customize" button is always available
+const PERM_BASH_NO_SUGGESTIONS = mockPermission({
+  tool_name: "Bash",
+  input: {
+    command: "rm -rf node_modules && npm install",
+    description: "Clean reinstall dependencies",
+  },
+});
+
 const PERM_ASK_SINGLE = mockPermission({
   tool_name: "AskUserQuestion",
   input: {
@@ -761,9 +770,10 @@ export function Playground() {
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-12">
         {/* ─── Permission Banners ──────────────────────────────── */}
-        <Section title="Permission Banners" description="Tool approval requests shown above the composer">
+        <Section title="Permission Banners" description="Tool approval requests. Click 'Customize' to open the custom permission rule editor.">
           <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card divide-y divide-cc-border">
             <PermissionBanner permission={PERM_BASH} sessionId={MOCK_SESSION_ID} />
+            <PermissionBanner permission={PERM_BASH_NO_SUGGESTIONS} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_EDIT} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_WRITE} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_READ} sessionId={MOCK_SESSION_ID} />
