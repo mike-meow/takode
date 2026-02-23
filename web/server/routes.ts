@@ -2743,6 +2743,8 @@ export function createRoutes(
       try {
         writeFileSync(tempPath, buf);
         const stats = await runImport(tempPath);
+        // Reload imported sessions into the running server's memory
+        launcher.restoreFromDisk();
         return c.json(stats);
       } finally {
         try { unlinkSync(tempPath); } catch { /* ignore */ }
