@@ -1359,6 +1359,105 @@ export function Playground() {
           </div>
         </Section>
 
+        {/* ─── Composer — Voice Recording ──────────────────────────────── */}
+        <Section title="Composer — Voice Recording" description="Microphone button for speech-to-text input via Web Speech API">
+          <div className="max-w-3xl">
+            <Card label="Recording active — listening">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  {/* Recording indicator */}
+                  <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span>Listening...</span>
+                  </div>
+                  <textarea
+                    readOnly
+                    value="Can you refactor the auth module to"
+                    rows={1}
+                    className="w-full px-4 pt-2 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                          <rect x="2" y="2" width="12" height="12" rx="2" />
+                          <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                          <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      {/* Mic button — recording state (red) */}
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-red-500 bg-red-500/10">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 animate-pulse">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
+            <Card label="Idle — mic button ready">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  <textarea
+                    readOnly
+                    value=""
+                    placeholder="Type a message... (/ for commands)"
+                    rows={1}
+                    className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui placeholder:text-cc-muted"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                          <rect x="2" y="2" width="12" height="12" rx="2" />
+                          <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                          <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      {/* Mic button — idle state (muted) */}
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Streaming Indicator ──────────────────────────────── */}
         <Section title="Streaming Indicator" description="Live typing animation shown while the assistant is generating">
           <div className="space-y-4 max-w-3xl">

@@ -6,6 +6,7 @@ import { isTouchDevice } from "../utils/mobile.js";
 import type { ModeOption } from "../utils/backends.js";
 import { Lightbox } from "./Lightbox.js";
 import { CatPawAvatar } from "./CatIcons.js";
+import { useVoiceInput } from "../hooks/useVoiceInput.js";
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -145,6 +146,30 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const modeDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
+
+  // Voice input — transcribes speech to text via Web Speech API
+  const preRecordingTextRef = useRef("");
+  const { isRecording, isSupported: voiceSupported, error: voiceError, toggleRecording } = useVoiceInput({
+    onTranscript: (transcript) => {
+      // Live update: show pre-existing text + new transcript
+      const prefix = preRecordingTextRef.current;
+      const separator = prefix && !prefix.endsWith(" ") && !prefix.endsWith("\n") ? " " : "";
+      setText(prefix + separator + transcript);
+    },
+    onFinalTranscript: (transcript) => {
+      const prefix = preRecordingTextRef.current;
+      const separator = prefix && !prefix.endsWith(" ") && !prefix.endsWith("\n") ? " " : "";
+      setText(prefix + separator + transcript);
+    },
+  });
+
+  const handleMicClick = useCallback(() => {
+    if (!isRecording) {
+      // Save current text so we can prepend it to transcript
+      preRecordingTextRef.current = text;
+    }
+    toggleRecording();
+  }, [isRecording, text, toggleRecording]);
 
   // Mobile detection via media query (matches Tailwind's sm: breakpoint)
   const [isMobile, setIsMobile] = useState(() => {
@@ -671,6 +696,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
+          {/* Voice recording indicator */}
+          {isRecording && (
+            <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>Listening...</span>
+            </div>
+          )}
+          {voiceError && !isRecording && (
+            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
+          )}
+
           <textarea
             ref={textareaRef}
             value={text}
@@ -913,6 +949,26 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
+
+              {voiceSupported && (
+                <button
+                  onClick={handleMicClick}
+                  disabled={!isConnected}
+                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
+                    !isConnected
+                      ? "text-cc-muted opacity-30 cursor-not-allowed"
+                      : isRecording
+                      ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                  }`}
+                  title={voiceError || (isRecording ? "Stop recording" : "Voice input")}
+                >
+                  <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 sm:w-4 sm:h-4 ${isRecording ? "animate-pulse" : ""}`}>
+                    <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                    <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                  </svg>
+                </button>
+              )}
 
               <button
                 onClick={() => {
