@@ -72,6 +72,21 @@ function barColor(pct: number): string {
   return "bg-cc-primary";
 }
 
+const FIVE_HOURS_MS = 5 * 3_600_000;
+const SEVEN_DAYS_MS = 7 * 86_400_000;
+
+function cycleElapsedPct(resetsAt: string | null | undefined, cycleDurationMs: number): number | null {
+  if (!resetsAt) return null;
+  try {
+    const remainingMs = new Date(resetsAt).getTime() - Date.now();
+    if (remainingMs <= 0) return 100;
+    const elapsed = 1 - remainingMs / cycleDurationMs;
+    return Math.max(0, Math.min(100, elapsed * 100));
+  } catch {
+    return null;
+  }
+}
+
 function UsageLimitsSection({ sessionId }: { sessionId: string }) {
   const limits = useUsageLimits(sessionId);
 
@@ -101,13 +116,19 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
               )}
             </span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden relative">
             <div
               className={`h-full rounded-full transition-all duration-500 ${barColor(limits.five_hour.utilization)}`}
               style={{
                 width: `${Math.min(limits.five_hour.utilization, 100)}%`,
               }}
             />
+            {(() => {
+              const tp = cycleElapsedPct(limits.five_hour.resets_at, FIVE_HOURS_MS);
+              return tp !== null ? (
+                <div className="absolute top-0 h-full w-px bg-cc-fg/40" style={{ left: `${Math.min(tp, 100)}%` }} />
+              ) : null;
+            })()}
           </div>
         </div>
       )}
@@ -128,13 +149,19 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
               )}
             </span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden relative">
             <div
               className={`h-full rounded-full transition-all duration-500 ${barColor(limits.seven_day.utilization)}`}
               style={{
                 width: `${Math.min(limits.seven_day.utilization, 100)}%`,
               }}
             />
+            {(() => {
+              const tp = cycleElapsedPct(limits.seven_day.resets_at, SEVEN_DAYS_MS);
+              return tp !== null ? (
+                <div className="absolute top-0 h-full w-px bg-cc-fg/40" style={{ left: `${Math.min(tp, 100)}%` }} />
+              ) : null;
+            })()}
           </div>
         </div>
       )}
