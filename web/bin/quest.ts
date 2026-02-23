@@ -9,6 +9,7 @@
  *
  * Commands:
  *   list       List all quests (latest versions)
+ *   mine       List quests owned by current session
  *   show       Show full quest detail
  *   history    Show all versions of a quest
  *   create     Create a new quest
@@ -20,6 +21,7 @@
  *   edit       In-place edit (no new version)
  *   check      Toggle a verification checkbox
  *   feedback   Add a feedback entry to a quest's thread
+ *   address    Toggle feedback addressed status
  *   delete     Delete a quest and all versions
  */
 
@@ -507,6 +509,63 @@ async function cmdFeedback(): Promise<void> {
   }
 }
 
+async function cmdAddress(): Promise<void> {
+  const id = positional(0);
+  const indexStr = positional(1);
+  if (!id || indexStr === undefined) die("Usage: quest address <questId> <index>");
+
+  const index = parseInt(indexStr, 10);
+  if (isNaN(index) || index < 0) die("Invalid index");
+
+  const port = process.env.COMPANION_PORT;
+  if (!port) {
+    die("COMPANION_PORT not set. The address endpoint requires the server.");
+  }
+
+  try {
+    const res = await fetch(
+      `http://localhost:${port}/api/quests/${encodeURIComponent(id)}/feedback/${index}/addressed`,
+      { method: "POST", signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      die((err as { error: string }).error || res.statusText);
+    }
+    const quest = await res.json() as QuestmasterTask;
+    if (jsonOutput) {
+      out(quest);
+    } else {
+      const fb = "feedback" in quest ? (quest as { feedback?: { addressed?: boolean }[] }).feedback : [];
+      const entry = fb?.[index];
+      console.log(`Feedback #${index} on ${quest.questId}: ${entry?.addressed ? "addressed" : "unaddressed"}`);
+    }
+  } catch (e) {
+    die((e as Error).message);
+  }
+}
+
+async function cmdMine(): Promise<void> {
+  if (!currentSessionId) die("COMPANION_SESSION_ID not set.");
+
+  const quests = listQuests().filter(
+    (q) => "sessionId" in q && (q as { sessionId?: string }).sessionId === currentSessionId,
+  );
+
+  if (jsonOutput) {
+    out(quests);
+    return;
+  }
+
+  if (quests.length === 0) {
+    console.log("No quests owned by this session.");
+    return;
+  }
+
+  for (const q of quests) {
+    console.log(formatQuestLine(q));
+  }
+}
+
 async function cmdDelete(): Promise<void> {
   const id = positional(0);
   if (!id) die("Usage: quest delete <questId>");
@@ -557,6 +616,7 @@ Usage: quest <command> [options]
 
 Commands:
   list   [--status <s>] [--json]                         List quests
+  mine   [--json]                                        List quests owned by current session
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history
   tags   [--json]                                        List all existing tags with counts
@@ -569,6 +629,7 @@ Commands:
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item
   feedback <id> --text "..." [--author agent|human] [--json]  Add feedback entry
+  address <id> <index> [--json]                          Toggle feedback addressed status
   delete <id> [--json]                                   Delete quest
 
 Environment:
@@ -582,6 +643,8 @@ async function main(): Promise<void> {
   switch (command) {
     case "list":
       return cmdList();
+    case "mine":
+      return cmdMine();
     case "show":
       return cmdShow();
     case "history":
@@ -606,6 +669,8 @@ async function main(): Promise<void> {
       return cmdCheck();
     case "feedback":
       return cmdFeedback();
+    case "address":
+      return cmdAddress();
     case "delete":
       return cmdDelete();
     case "help":

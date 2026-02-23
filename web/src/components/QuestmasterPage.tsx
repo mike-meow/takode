@@ -1258,16 +1258,24 @@ export function QuestmasterPage() {
                           if (!fb?.length) return null;
                           const unaddressed = fb.filter((e) => e.author === "human" && !e.addressed).length;
                           const addressed = fb.filter((e) => e.author === "human" && e.addressed).length;
+                          if (unaddressed === 0 && addressed === 0) return null;
                           return (
-                            <span className="text-[10px] flex items-center gap-1">
-                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-amber-400/70">
-                                <path d="M2.5 2A1.5 1.5 0 001 3.5v8A1.5 1.5 0 002.5 13H5l3 3 3-3h2.5a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0013.5 2h-11z" />
-                              </svg>
+                            <span className="text-[10px] flex items-center gap-1.5">
                               {unaddressed > 0 && (
-                                <span className="text-amber-400">{unaddressed}</span>
+                                <span className="flex items-center gap-0.5 text-amber-400">
+                                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                    <path d="M2.5 2A1.5 1.5 0 001 3.5v8A1.5 1.5 0 002.5 13H5l3 3 3-3h2.5a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0013.5 2h-11z" />
+                                  </svg>
+                                  {unaddressed}
+                                </span>
                               )}
                               {addressed > 0 && (
-                                <span className="text-cc-muted/40">{addressed}</span>
+                                <span className="flex items-center gap-0.5 text-emerald-400/70">
+                                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                    <path d="M2.5 2A1.5 1.5 0 001 3.5v8A1.5 1.5 0 002.5 13H5l3 3 3-3h2.5a1.5 1.5 0 001.5-1.5v-8A1.5 1.5 0 0013.5 2h-11z" />
+                                  </svg>
+                                  {addressed}
+                                </span>
                               )}
                             </span>
                           );
