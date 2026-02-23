@@ -39,6 +39,7 @@ export default function App() {
   const creationError = useStore((s) => s.creationError);
   const showNewSessionModal = useStore((s) => s.showNewSessionModal);
   const serverRestarting = useStore((s) => s.serverRestarting);
+  const serverReachable = useStore((s) => s.serverReachable);
   const hash = useHash();
   const route = useMemo(() => parseHash(hash), [hash]);
   const isSettingsPage = route.page === "settings";
@@ -210,6 +211,15 @@ export default function App() {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
+        {/* Server unreachable banner — always visible across all pages */}
+        {!serverReachable && (
+          <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-center flex items-center justify-center gap-2 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse shrink-0" />
+            <span className="text-xs text-red-400 font-medium">
+              Server unreachable
+            </span>
+          </div>
+        )}
         <div className="flex-1 overflow-hidden relative">
           {isSettingsPage && (
             <div className="absolute inset-0">
