@@ -182,6 +182,9 @@ const autoNamingEvaluated = new Set<string>();
 // Track the history index at which the current name was derived, so subsequent
 // evaluations only show the model events that happened *since* the name was set.
 const nameSetAtHistoryIndex = new Map<string, number>();
+// Track when a name was last applied, to prevent rapid successive evaluations
+// (e.g. user-message namer + turn-completed namer both firing within the same turn).
+const nameLastAppliedAt = new Map<string, number>();
 
 // ─── Namer cancellation ─────────────────────────────────────────────────────
 // Each new namer invocation for a session cancels any in-flight one (kills the
@@ -253,6 +256,7 @@ function applyNamingResult(
       if (freshName !== previousName) return; // name changed while we were evaluating
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
+      nameLastAppliedAt.set(sessionId, Date.now());
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
@@ -268,6 +272,7 @@ function applyNamingResult(
       if (freshName !== previousName) return;
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
+      nameLastAppliedAt.set(sessionId, Date.now());
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
@@ -347,6 +352,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       if (freshName && !isRandomSessionName(freshName)) return;
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
+      nameLastAppliedAt.set(sessionId, Date.now());
       wsBridge.broadcastNameUpdate(sessionId, result.title);
       wsBridge.addTaskEntry(sessionId, {
         title: result.title,
@@ -389,9 +395,21 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
 // Re-evaluate session name after agent completes a turn.
 // This lets Haiku refine the title based on what the agent actually did,
 // and improves the initial name after the first turn.
+//
+// Cooldown: if a name was applied within the last 30s (e.g. by the user-message
+// namer for the same turn), skip re-evaluation to prevent duplicate task entries.
+const NAMER_COOLDOWN_MS = 30_000;
+
 wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
+
+  // Skip if a name was just applied (prevents rapid first-name → immediate-revise)
+  const lastApplied = nameLastAppliedAt.get(sessionId) ?? 0;
+  if (Date.now() - lastApplied < NAMER_COOLDOWN_MS) {
+    console.log(`[session-namer] Turn completed — skipping evaluation for ${sessionId} (name was applied ${Date.now() - lastApplied}ms ago)`);
+    return;
+  }
 
   // Cancel any in-flight namer (e.g. from a user message that triggered just before completion)
   const controller = beginNamerCall(sessionId);
