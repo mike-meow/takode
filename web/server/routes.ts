@@ -2715,6 +2715,8 @@ export function createRoutes(
   api.get("/migration/export", async (c) => {
     const tempPath = join(tmpdir(), `companion-export-${Date.now()}.tar.zst`);
     try {
+      // Flush debounced session writes so the archive includes latest messages
+      sessionStore.flushAll();
       await runExport({ port: launcher.getPort(), outputPath: tempPath });
       // Read into memory before responding — unlinkSync in finally would race
       // with a lazy stream and produce a 0-byte download.
