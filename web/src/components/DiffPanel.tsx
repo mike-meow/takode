@@ -266,32 +266,37 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     <div className="h-full flex flex-col bg-cc-bg">
       {/* Top bar: branch selector, total stats, file picker, line numbers toggle */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-cc-card border-b border-cc-border">
+        {/* Branch selector */}
         <select
-          value={baseBranch || ""}
+          value={baseBranch && !/^[0-9a-f]{7,40}$/.test(baseBranch) ? baseBranch : ""}
           onChange={(e) => handleBaseBranchChange(e.target.value || null)}
-          className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[240px]"
-          title="Base branch or commit for diff comparison"
+          className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[180px]"
+          title="Base branch for diff comparison"
         >
           <option value="">
             {resolvedDefault ? `vs ${resolvedDefault} (default)` : "vs default branch"}
           </option>
-          {availableBranches.length > 0 && (
-            <optgroup label="Branches">
-              {availableBranches.map((b) => (
-                <option key={b} value={b}>vs {b}</option>
-              ))}
-            </optgroup>
-          )}
-          {recentCommits.length > 0 && (
-            <optgroup label="Recent Commits">
-              {recentCommits.map((c) => (
-                <option key={c.sha} value={c.sha}>
-                  {c.shortSha} {c.message.length > 40 ? c.message.slice(0, 40) + "…" : c.message}
-                </option>
-              ))}
-            </optgroup>
-          )}
+          {availableBranches.map((b) => (
+            <option key={b} value={b}>vs {b}</option>
+          ))}
         </select>
+
+        {/* Commit selector */}
+        {recentCommits.length > 0 && (
+          <select
+            value={baseBranch && /^[0-9a-f]{7,40}$/.test(baseBranch) ? baseBranch : ""}
+            onChange={(e) => handleBaseBranchChange(e.target.value || null)}
+            className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[200px]"
+            title="Compare against a specific commit"
+          >
+            <option value="">commit...</option>
+            {recentCommits.map((c) => (
+              <option key={c.sha} value={c.sha}>
+                {c.shortSha} {c.message.length > 35 ? c.message.slice(0, 35) + "…" : c.message}
+              </option>
+            ))}
+          </select>
+        )}
 
         {(totalStats.additions > 0 || totalStats.deletions > 0) && (
           <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1">
