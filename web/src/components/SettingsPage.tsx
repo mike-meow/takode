@@ -65,6 +65,8 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importPhase, setImportPhase] = useState<"uploading" | "processing">("uploading");
+  const [importPct, setImportPct] = useState(0);
   const [importResult, setImportResult] = useState<ImportStats | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -250,8 +252,13 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
     setImporting(true);
     setImportResult(null);
     setImportError(null);
+    setImportPhase("uploading");
+    setImportPct(0);
     try {
-      const stats = await api.importSessions(file);
+      const stats = await api.importSessions(file, (phase, pct) => {
+        setImportPhase(phase);
+        setImportPct(pct);
+      });
       setImportResult(stats);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
@@ -782,6 +789,25 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
               {importing ? "Importing..." : "Import Sessions"}
             </button>
           </div>
+
+          {importing && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-cc-muted">
+                <span>{importPhase === "uploading" ? "Uploading archive..." : "Processing import..."}</span>
+                <span>{importPhase === "uploading" ? `${importPct}%` : ""}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-cc-hover overflow-hidden">
+                {importPhase === "uploading" ? (
+                  <div
+                    className="h-full bg-cc-accent rounded-full transition-[width] duration-200"
+                    style={{ width: `${importPct}%` }}
+                  />
+                ) : (
+                  <div className="h-full bg-cc-accent rounded-full animate-pulse w-full" />
+                )}
+              </div>
+            </div>
+          )}
 
           {importError && (
             <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">

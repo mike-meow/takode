@@ -694,19 +694,29 @@ export const api = {
   /** Trigger a .tar.zst download of all session data. */
   exportSessionsUrl: () => `${BASE}/migration/export`,
 
-  /** Upload a .tar.zst archive to import sessions. Returns import stats. */
-  importSessions: async (file: File): Promise<ImportStats> => {
-    const form = new FormData();
-    form.append("archive", file);
-    const res = await fetch(`${BASE}/migration/import`, {
-      method: "POST",
-      body: form,
+  /** Upload a .tar.zst archive to import sessions. Reports upload progress via callback. */
+  importSessions: (file: File, onProgress?: (phase: "uploading" | "processing", pct: number) => void): Promise<ImportStats> => {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("archive", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}/migration/import`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress("uploading", Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.upload.onload = () => { onProgress?.("processing", 100); };
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data as ImportStats);
+          else reject(new Error(data.error || `HTTP ${xhr.status}`));
+        } catch { reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`)); }
+      };
+      xhr.onerror = () => reject(new Error("Network error"));
+      xhr.send(form);
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error((err as { error?: string }).error || res.statusText);
-    }
-    return res.json();
   },
 };
 
