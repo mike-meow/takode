@@ -797,6 +797,7 @@ function handleParsedMessage(
     case "session_name_update": {
       // Server is authoritative for all name updates (auto-naming, manual rename, etc.)
       const prevName = store.sessionNames.get(sessionId);
+      console.log(`[ws] session_name_update for ${sessionId}: "${prevName}" → "${data.name}" source=${(data as Record<string, unknown>).source ?? "none"}`);
       if (prevName !== data.name) {
         store.setSessionName(sessionId, data.name);
         store.markRecentlyRenamed(sessionId);

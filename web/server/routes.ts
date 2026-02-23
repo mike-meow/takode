@@ -2531,6 +2531,7 @@ export function createRoutes(
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       wsBridge.setSessionClaimedQuest(sessionId, { id: quest.questId, title: quest.title });
       // Override session name with quest title (suppresses auto-namer while quest is active)
+      console.log(`[quest-claim] Setting session name for ${sessionId} to "${quest.title}" (quest ${quest.questId})`);
       sessionNames.setName(sessionId, quest.title);
       wsBridge.broadcastNameUpdate(sessionId, quest.title, "quest");
       wsBridge.addTaskEntry(sessionId, {

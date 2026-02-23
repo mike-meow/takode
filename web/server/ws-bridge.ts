@@ -2747,7 +2747,11 @@ export class WsBridge {
   /** Push a session name update to all connected browsers for a session. */
   broadcastNameUpdate(sessionId: string, name: string, source?: "quest"): void {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session) {
+      console.log(`[ws-bridge] broadcastNameUpdate: session ${sessionId} not found in sessions map`);
+      return;
+    }
+    console.log(`[ws-bridge] broadcastNameUpdate: "${name}" source=${source ?? "none"} browsers=${session.browserSockets.size} session=${sessionId}`);
     this.broadcastToBrowsers(session, { type: "session_name_update", name, ...(source && { source }) });
   }
 
