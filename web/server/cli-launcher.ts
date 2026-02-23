@@ -316,6 +316,16 @@ export class CliLauncher {
       info.actualBranch = options.worktreeInfo.actualBranch;
     }
 
+    // Inject worktree guardrails (CLAUDE.md + AGENTS.md) for both Claude Code and Codex
+    if (info.isWorktree && info.branch) {
+      this.injectWorktreeGuardrails(
+        info.cwd,
+        info.actualBranch || info.branch,
+        info.repoRoot || "",
+        info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+      );
+    }
+
     // Pre-set cliSessionId for resume so subsequent relaunches also use --resume
     if (options.resumeCliSessionId) {
       info.cliSessionId = options.resumeCliSessionId;
@@ -536,16 +546,6 @@ export class CliLauncher {
       for (const tool of options.allowedTools) {
         args.push("--allowedTools", tool);
       }
-    }
-
-    // Inject CLAUDE.md guardrails for worktree sessions
-    if (info.isWorktree && info.branch) {
-      this.injectWorktreeGuardrails(
-        info.cwd,
-        info.actualBranch || info.branch,
-        info.repoRoot || "",
-        info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
-      );
     }
 
     // Always pass -p "" for headless mode. When relaunching, also pass --resume
@@ -866,8 +866,8 @@ export class CliLauncher {
   }
 
   /**
-   * Inject a CLAUDE.md file into the worktree with branch guardrails.
-   * Only injects into actual worktree directories, never the main repo.
+   * Inject worktree branch guardrails into both .claude/CLAUDE.md (for Claude Code)
+   * and AGENTS.md (for Codex). Only injects into actual worktree directories, never the main repo.
    */
   private injectWorktreeGuardrails(worktreePath: string, branch: string, repoRoot: string, parentBranch?: string): void {
     // Safety: never inject guardrails into the main repository itself
@@ -941,7 +941,7 @@ ${MARKER_END}`;
       } else {
         writeFileSync(claudeMdPath, guardrails, "utf-8");
       }
-      console.log(`[cli-launcher] Injected worktree guardrails for branch ${branch}`);
+      console.log(`[cli-launcher] Injected worktree guardrails into .claude/CLAUDE.md for branch ${branch}`);
 
       // Add .claude/CLAUDE.md to the worktree-local git exclude so it doesn't
       // show as untracked and is protected from `git clean -fd`.
@@ -963,7 +963,36 @@ ${MARKER_END}`;
       // visible to other sessions.
       this.symlinkProjectSettings(worktreePath, repoRoot);
     } catch (e) {
-      console.warn(`[cli-launcher] Failed to inject worktree guardrails:`, e);
+      console.warn(`[cli-launcher] Failed to inject .claude/CLAUDE.md guardrails:`, e);
+    }
+
+    // Also write AGENTS.md at the worktree root for Codex compatibility.
+    // Codex auto-discovers AGENTS.md by walking from git root to cwd.
+    const agentsMdPath = join(worktreePath, "AGENTS.md");
+    try {
+      if (existsSync(agentsMdPath)) {
+        const existing = readFileSync(agentsMdPath, "utf-8");
+        if (existing.includes(MARKER_START)) {
+          const before = existing.substring(0, existing.indexOf(MARKER_START));
+          const afterIdx = existing.indexOf(MARKER_END);
+          const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
+          writeFileSync(agentsMdPath, before + guardrails + after, "utf-8");
+        } else {
+          writeFileSync(agentsMdPath, existing + "\n\n" + guardrails, "utf-8");
+        }
+      } else {
+        writeFileSync(agentsMdPath, guardrails, "utf-8");
+      }
+      console.log(`[cli-launcher] Injected worktree guardrails into AGENTS.md for branch ${branch}`);
+
+      this.addWorktreeGitExclude(worktreePath, "AGENTS.md");
+      try {
+        execSync("git update-index --skip-worktree AGENTS.md", {
+          cwd: worktreePath, stdio: "pipe", timeout: 5000,
+        });
+      } catch { /* file may not be tracked in this repo — ignore */ }
+    } catch (e) {
+      console.warn(`[cli-launcher] Failed to inject AGENTS.md guardrails:`, e);
     }
   }
 
