@@ -604,7 +604,7 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const isCodex = (session?.backend_type || sdkBackendType) === "codex";
-  const showTasks = !!session && !isCodex;
+  const showTasks = !!session;
   const cwd = session?.cwd || sdkSession?.cwd || null;
 
   return (

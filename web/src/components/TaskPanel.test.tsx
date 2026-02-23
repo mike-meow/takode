@@ -28,6 +28,9 @@ interface CodexRateLimits {
 
 interface MockStoreState {
   sessionTasks: Map<string, { id: string; status: string; subject: string }[]>;
+  sessionTaskHistory: Map<string, { title: string; triggerMessageId: string }[]>;
+  requestScrollToTurn: ReturnType<typeof vi.fn>;
+  sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
   sessions: Map<string, {
     backend_type?: string;
     cwd?: string;
@@ -47,6 +50,9 @@ let mockState: MockStoreState;
 function resetStore(overrides: Partial<MockStoreState> = {}) {
   mockState = {
     sessionTasks: new Map(),
+    sessionTaskHistory: new Map(),
+    requestScrollToTurn: vi.fn(),
+    sessionStatus: new Map([["s1", "idle"]]),
     sessions: new Map([["s1", { backend_type: "codex" }]]),
     sdkSessions: [],
     taskPanelOpen: true,
@@ -74,9 +80,29 @@ describe("TaskPanel", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("shows task sections for Codex sessions when tasks exist", () => {
+    // Regression coverage: Codex sessions should display the same task/todo UI
+    // as Claude sessions whenever the store has extracted tasks.
+    resetStore({
+      sessionTasks: new Map([[
+        "s1",
+        [
+          { id: "t1", status: "in_progress", subject: "Implement adapter fix" },
+          { id: "t2", status: "pending", subject: "Add regression tests" },
+        ],
+      ]]),
+      sessions: new Map([["s1", { backend_type: "codex" }]]),
+    });
+
+    render(<TaskPanel sessionId="s1" />);
+    expect(screen.getByText("Current To-Dos")).toBeInTheDocument();
+    expect(screen.getByText("Implement adapter fix")).toBeInTheDocument();
+    expect(screen.getByText("Add regression tests")).toBeInTheDocument();
+  });
+
   it("keeps a single scroll container for long MCP content even without tasks", () => {
-    // Regression coverage: Codex sessions do not render the Tasks list,
-    // so the panel itself must still provide vertical scrolling.
+    // Regression coverage: when no task list is present, the panel itself
+    // must still provide vertical scrolling for long MCP content.
     const { container } = render(<TaskPanel sessionId="s1" />);
 
     expect(screen.getByTestId("mcp-section")).toBeInTheDocument();

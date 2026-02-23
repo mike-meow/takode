@@ -4,8 +4,6 @@ import { TaskRow } from "./TaskPanel.js";
 
 export function TodoStatusLine({ sessionId }: { sessionId: string }) {
   const tasks = useStore((s) => s.sessionTasks.get(sessionId));
-  const session = useStore((s) => s.sessions.get(sessionId));
-  const sdkSession = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
   const [popoverOpen, setPopoverOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -32,9 +30,6 @@ export function TodoStatusLine({ sessionId }: { sessionId: string }) {
   }, [popoverOpen]);
 
   if (!tasks || tasks.length === 0) return null;
-
-  const isCodex = (session?.backend_type || sdkSession?.backendType) === "codex";
-  if (isCodex) return null;
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const activeTask = tasks.find((t) => t.status === "in_progress");
