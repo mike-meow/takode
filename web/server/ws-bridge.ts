@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from "bun";
 import { randomUUID } from "node:crypto";
-import { execSync, exec as execCb } from "node:child_process";
+import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 
 const execPromise = promisify(execCb);
@@ -41,6 +41,7 @@ import type { RecorderManager } from "./recorder.js";
 import type { ImageStore } from "./image-store.js";
 import type { CliLauncher } from "./cli-launcher.js";
 import * as gitUtils from "./git-utils.js";
+import { sessionTag } from "./session-tag.js";
 
 // ─── Denial summary helper ───────────────────────────────────────────────────
 
@@ -219,21 +220,22 @@ function makeDefaultState(sessionId: string, backendType: BackendType = "claude"
 
 // ─── Git info helper ─────────────────────────────────────────────────────────
 
-function resolveGitInfo(state: SessionState): void {
+async function resolveGitInfo(state: SessionState): Promise<void> {
   if (!state.cwd) return;
   // Preserve is_containerized — it's set during session launch, not derived from git
   const wasContainerized = state.is_containerized;
   try {
-    state.git_branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
+    const { stdout: branchOut } = await execPromise("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
       cwd: state.cwd, encoding: "utf-8", timeout: 3000,
-    }).trim();
+    });
+    state.git_branch = branchOut.trim();
 
     // Detect if this is a linked worktree
     try {
-      const gitDir = execSync("git rev-parse --git-dir 2>/dev/null", {
+      const { stdout: gitDirOut } = await execPromise("git rev-parse --git-dir 2>/dev/null", {
         cwd: state.cwd, encoding: "utf-8", timeout: 3000,
-      }).trim();
-      state.is_worktree = gitDir.includes("/worktrees/");
+      });
+      state.is_worktree = gitDirOut.trim().includes("/worktrees/");
     } catch {
       state.is_worktree = false;
     }
@@ -242,22 +244,23 @@ function resolveGitInfo(state: SessionState): void {
       // For worktrees, --show-toplevel gives the worktree root, not the main repo.
       // Use --git-common-dir to find the real repo root.
       if (state.is_worktree) {
-        const commonDir = execSync("git rev-parse --git-common-dir 2>/dev/null", {
+        const { stdout: commonDirOut } = await execPromise("git rev-parse --git-common-dir 2>/dev/null", {
           cwd: state.cwd, encoding: "utf-8", timeout: 3000,
-        }).trim();
+        });
         // commonDir is e.g. /path/to/repo/.git — parent is the repo root
-        state.repo_root = resolve(state.cwd, commonDir, "..");
+        state.repo_root = resolve(state.cwd, commonDirOut.trim(), "..");
       } else {
-        state.repo_root = execSync("git rev-parse --show-toplevel 2>/dev/null", {
+        const { stdout: toplevelOut } = await execPromise("git rev-parse --show-toplevel 2>/dev/null", {
           cwd: state.cwd, encoding: "utf-8", timeout: 3000,
-        }).trim();
+        });
+        state.repo_root = toplevelOut.trim();
       }
     } catch { /* ignore */ }
 
     // Set diff_base_branch if not already set (first time or restored session).
     // This is the single source of truth for all ahead/behind and diff computations.
     if (!state.diff_base_branch && state.git_branch) {
-      state.diff_base_branch = gitUtils.resolveDefaultBranch(state.repo_root || state.cwd, state.git_branch);
+      state.diff_base_branch = await gitUtils.resolveDefaultBranchAsync(state.repo_root || state.cwd, state.git_branch);
     }
 
     // Compute ahead/behind using diff_base_branch as the reference point.
@@ -265,11 +268,11 @@ function resolveGitInfo(state: SessionState): void {
     const ref = state.diff_base_branch || state.git_default_branch;
     if (ref) {
       try {
-        const counts = execSync(
+        const { stdout: countsOut } = await execPromise(
           `git rev-list --left-right --count ${ref}...HEAD 2>/dev/null`,
           { cwd: state.cwd, encoding: "utf-8", timeout: 3000 },
-        ).trim();
-        const [behind, ahead] = counts.split(/\s+/).map(Number);
+        );
+        const [behind, ahead] = countsOut.trim().split(/\s+/).map(Number);
         state.git_ahead = ahead || 0;
         state.git_behind = behind || 0;
       } catch {
@@ -434,7 +437,7 @@ export class WsBridge {
       session: { diff_base_branch: branch },
     });
     // Immediately recompute ahead/behind and diff stats with the new base
-    this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
+    void this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
     this.persistSession(session);
     return true;
   }
@@ -640,8 +643,8 @@ export class WsBridge {
         diffDebounceTimer: null,
       };
       session.state.backend_type = session.backendType;
-      // Resolve git info for restored sessions (may have been persisted without it)
-      resolveGitInfo(session.state);
+      // Git info resolves lazily on first CLI/browser connect — skipping here
+      // eliminates hundreds of blocking git calls at startup on NFS.
       this.sessions.set(p.id, session);
       count++;
     }
@@ -696,16 +699,16 @@ export class WsBridge {
     });
   }
 
-  private refreshGitInfo(
+  private async refreshGitInfo(
     session: Session,
     options: { broadcastUpdate?: boolean; notifyPoller?: boolean; computeDiff?: boolean } = {},
-  ): void {
+  ): Promise<void> {
     const before: Record<string, unknown> = {};
     for (const key of WsBridge.GIT_SESSION_KEYS) {
       before[key] = session.state[key];
     }
 
-    resolveGitInfo(session.state);
+    await resolveGitInfo(session.state);
 
     // Compute diff stats asynchronously to avoid blocking the event loop on NFS.
     // When done, broadcast the updated stats if they changed.
@@ -834,7 +837,7 @@ export class WsBridge {
         clearTimeout(session.diffDebounceTimer);
         session.diffDebounceTimer = null;
       }
-      this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
+      void this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
       return;
     }
 
@@ -845,7 +848,7 @@ export class WsBridge {
     const remaining = WsBridge.DIFF_DEBOUNCE_MS - elapsed;
     session.diffDebounceTimer = setTimeout(() => {
       session.diffDebounceTimer = null;
-      this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
+      void this.refreshGitInfo(session, { broadcastUpdate: true, computeDiff: true });
     }, remaining);
   }
 
@@ -1075,11 +1078,11 @@ export class WsBridge {
 
       if (msg.type === "session_init") {
         session.state = { ...session.state, ...msg.session, backend_type: "codex" };
-        this.refreshGitInfo(session, { notifyPoller: true });
+        void this.refreshGitInfo(session, { notifyPoller: true });
         this.persistSession(session);
       } else if (msg.type === "session_update") {
         session.state = { ...session.state, ...msg.session, backend_type: "codex" };
-        this.refreshGitInfo(session, { notifyPoller: true });
+        void this.refreshGitInfo(session, { notifyPoller: true });
         this.persistSession(session);
       } else if (msg.type === "status_change") {
         session.state.is_compacting = msg.status === "compacting";
@@ -1105,7 +1108,7 @@ export class WsBridge {
         const content = (msg as { message?: { content?: Array<{ type: string }> } }).message?.content;
         const hasToolUse = content?.some((b) => b.type === "tool_use");
         if (hasToolUse) {
-          console.log(`[ws-bridge] Broadcasting tool_use assistant to ${session.browserSockets.size} browser(s) for session ${session.id}`);
+          console.log(`[ws-bridge] Broadcasting tool_use assistant to ${session.browserSockets.size} browser(s) for session ${sessionTag(session.id)}`);
         }
       }
 
@@ -1132,7 +1135,7 @@ export class WsBridge {
       }
       if (meta.cwd) session.state.cwd = meta.cwd;
       session.state.backend_type = "codex";
-      this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true });
+      void this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true });
       this.persistSession(session);
     });
 
@@ -1147,7 +1150,7 @@ export class WsBridge {
       this.setGenerating(session, false, "codex_disconnect");
       this.persistSession(session);
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
-      console.log(`[ws-bridge] Codex adapter disconnected for session ${sessionId}${idleKilled ? " (idle limit)" : ""}`);
+      console.log(`[ws-bridge] Codex adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""}`);
       this.broadcastToBrowsers(session, {
         type: "cli_disconnected",
         ...(idleKilled ? { reason: "idle_limit" as const } : {}),
@@ -1159,7 +1162,7 @@ export class WsBridge {
 
     // Flush any messages queued while waiting for the adapter
     if (session.pendingMessages.length > 0) {
-      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) to Codex adapter for session ${sessionId}`);
+      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) to Codex adapter for session ${sessionTag(sessionId)}`);
       const queued = session.pendingMessages.splice(0);
       for (const raw of queued) {
         try {
@@ -1173,7 +1176,7 @@ export class WsBridge {
 
     // Notify browsers that the backend is connected
     this.broadcastToBrowsers(session, { type: "cli_connected" });
-    console.log(`[ws-bridge] Codex adapter attached for session ${sessionId}`);
+    console.log(`[ws-bridge] Codex adapter attached for session ${sessionTag(sessionId)}`);
   }
 
   // ── CLI WebSocket handlers ──────────────────────────────────────────────
@@ -1181,7 +1184,7 @@ export class WsBridge {
   handleCLIOpen(ws: ServerWebSocket<SocketData>, sessionId: string) {
     const session = this.getOrCreateSession(sessionId);
     session.cliSocket = ws;
-    console.log(`[ws-bridge] CLI connected for session ${sessionId}`);
+    console.log(`[ws-bridge] CLI connected for session ${sessionTag(sessionId)}`);
     this.broadcastToBrowsers(session, { type: "cli_connected" });
 
     // Flush any messages queued while waiting for the CLI WebSocket.
@@ -1190,7 +1193,7 @@ export class WsBridge {
     // system.init (which would create a deadlock for slow-starting sessions
     // like Docker containers where the user message arrives before CLI connects).
     if (session.pendingMessages.length > 0) {
-      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on CLI connect for session ${sessionId}`);
+      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on CLI connect for session ${sessionTag(sessionId)}`);
       const queued = session.pendingMessages.splice(0);
       for (const ndjson of queued) {
         this.sendToCLI(session, ndjson);
@@ -1234,7 +1237,7 @@ export class WsBridge {
     session.cliSocket = null;
     this.setGenerating(session, false, "cli_disconnect");
     const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
-    console.log(`[ws-bridge] CLI disconnected for session ${sessionId}${idleKilled ? " (idle limit)" : ""}`);
+    console.log(`[ws-bridge] CLI disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""}`);
     this.broadcastToBrowsers(session, {
       type: "cli_disconnected",
       ...(idleKilled ? { reason: "idle_limit" as const } : {}),
@@ -1266,10 +1269,10 @@ export class WsBridge {
     browserData.subscribed = false;
     browserData.lastAckSeq = 0;
     session.browserSockets.add(ws);
-    console.log(`[ws-bridge] Browser connected for session ${sessionId} (${session.browserSockets.size} browsers)`);
+    console.log(`[ws-bridge] Browser connected for session ${sessionTag(sessionId)} (${session.browserSockets.size} browsers)`);
 
     // Refresh git state on browser connect so branch changes made mid-session are reflected.
-    this.refreshGitInfo(session, { notifyPoller: true });
+    void this.refreshGitInfo(session, { notifyPoller: true });
 
     // Send current session state as snapshot (includes nextEventSeq for stale seq detection).
     // If slash_commands/skills haven't arrived yet (CLI sends them only after the first
@@ -1302,7 +1305,7 @@ export class WsBridge {
         ...(idleKilled ? { reason: "idle_limit" as const } : {}),
       });
       if (this.onCLIRelaunchNeeded) {
-        console.log(`[ws-bridge] Browser connected but backend is dead for session ${sessionId}, requesting relaunch`);
+        console.log(`[ws-bridge] Browser connected but backend is dead for session ${sessionTag(sessionId)}, requesting relaunch`);
         this.onCLIRelaunchNeeded(sessionId);
       }
     } else {
@@ -1348,7 +1351,7 @@ export class WsBridge {
 
     session.browserSockets.delete(ws);
     const hasBackend = session.backendType === "codex" ? !!session.codexAdapter : !!session.cliSocket;
-    console.log(`[ws-bridge] Browser disconnected for session ${sessionId} (${session.browserSockets.size} remaining, backend=${hasBackend ? "alive" : "dead"})`);
+    console.log(`[ws-bridge] Browser disconnected for session ${sessionTag(sessionId)} (${session.browserSockets.size} remaining, backend=${hasBackend ? "alive" : "dead"})`);
   }
 
   // ── CLI message routing ─────────────────────────────────────────────────
@@ -1478,7 +1481,7 @@ export class WsBridge {
       }
 
       // Resolve and publish git info
-      this.refreshGitInfo(session, { notifyPoller: true });
+      void this.refreshGitInfo(session, { notifyPoller: true });
 
       this.broadcastToBrowsers(session, {
         type: "session_init",
@@ -1489,7 +1492,7 @@ export class WsBridge {
       // Flush any messages queued before CLI was initialized (e.g. user sent
       // a message while the container was still starting up).
       if (session.pendingMessages.length > 0) {
-        console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) after init for session ${session.id}`);
+        console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) after init for session ${sessionTag(session.id)}`);
         const queued = session.pendingMessages.splice(0);
         for (const ndjson of queued) {
           this.sendToCLI(session, ndjson);
@@ -1749,7 +1752,7 @@ export class WsBridge {
 
     // Re-check git state + compute diff stats after each turn (session idle).
     // This replaces CLI-reported line counts with server-computed git diff stats.
-    this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true, computeDiff: true });
+    void this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true, computeDiff: true });
 
     // Broadcast updated metrics to all browsers
     // (total_lines_added/removed are now included in the refreshGitInfo broadcast)
@@ -1773,7 +1776,7 @@ export class WsBridge {
         this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
         this.pushoverNotifier?.cancelPermission(session.id, reqId);
       }
-      console.log(`[ws-bridge] Cleared ${session.pendingPermissions.size} stale pending permission(s) on result for session ${session.id}`);
+      console.log(`[ws-bridge] Cleared ${session.pendingPermissions.size} stale pending permission(s) on result for session ${sessionTag(session.id)}`);
       session.pendingPermissions.clear();
     }
 
@@ -1928,7 +1931,7 @@ export class WsBridge {
       this.pushoverNotifier?.cancelPermission(session.id, reqId);
       this.clearActionAttentionIfNoPermissions(session);
       this.persistSession(session);
-      console.log(`[ws-bridge] CLI cancelled pending permission ${reqId} (${pending.tool_name}) for session ${session.id}`);
+      console.log(`[ws-bridge] CLI cancelled pending permission ${reqId} (${pending.tool_name}) for session ${sessionTag(session.id)}`);
     }
   }
 
@@ -2215,7 +2218,7 @@ export class WsBridge {
         // Adapter not yet attached — queue for when it's ready.
         // The adapter itself also queues during init, but this covers
         // the window between session creation and adapter attachment.
-        console.log(`[ws-bridge] Codex adapter not yet attached for session ${session.id}, queuing ${msg.type}`);
+        console.log(`[ws-bridge] Codex adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
         session.pendingMessages.push(JSON.stringify(msg));
       }
       return;
@@ -2579,7 +2582,7 @@ export class WsBridge {
         // takes a round-trip to arrive.
         this.setGenerating(session, true, "exit_plan_mode");
         this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-        console.log(`[ws-bridge] ExitPlanMode approved for session ${session.id}, switching to ${postPlanMode} (askPermission=${askPerm})`);
+        console.log(`[ws-bridge] ExitPlanMode approved for session ${sessionTag(session.id)}, switching to ${postPlanMode} (askPermission=${askPerm})`);
       }
     } else {
       const ndjson = JSON.stringify({
@@ -2604,7 +2607,7 @@ export class WsBridge {
         // the browser auto-rejects a plan by sending a new message (deny →
         // interrupt → user_message), because the CLI's interrupt response
         // arrives after user_message's "running" broadcast and overwrites it.
-        console.log(`[ws-bridge] ExitPlanMode denied for session ${session.id}, sending interrupt`);
+        console.log(`[ws-bridge] ExitPlanMode denied for session ${sessionTag(session.id)}, sending interrupt`);
       }
 
       // Broadcast denial record to all browsers and persist in history
@@ -2750,7 +2753,7 @@ export class WsBridge {
     if (!session.cliSocket) {
       // Queue the message — CLI might still be starting up.
       // Don't record here; the message will be recorded when flushed.
-      console.log(`[ws-bridge] CLI not yet connected for session ${session.id}, queuing message`);
+      console.log(`[ws-bridge] CLI not yet connected for session ${sessionTag(session.id)}, queuing message`);
       session.pendingMessages.push(ndjson);
       return;
     }
@@ -2778,10 +2781,10 @@ export class WsBridge {
   broadcastNameUpdate(sessionId: string, name: string, source?: "quest"): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      console.log(`[ws-bridge] broadcastNameUpdate: session ${sessionId} not found in sessions map`);
+      console.log(`[ws-bridge] broadcastNameUpdate: session ${sessionTag(sessionId)} not found in sessions map`);
       return;
     }
-    console.log(`[ws-bridge] broadcastNameUpdate: "${name}" source=${source ?? "none"} browsers=${session.browserSockets.size} session=${sessionId}`);
+    console.log(`[ws-bridge] broadcastNameUpdate: "${name}" source=${source ?? "none"} browsers=${session.browserSockets.size} session=${sessionTag(sessionId)}`);
     this.broadcastToBrowsers(session, { type: "session_name_update", name, ...(source && { source }) });
   }
 
@@ -2839,13 +2842,13 @@ export class WsBridge {
     if (generating) {
       session.generationStartedAt = Date.now();
       session.stuckNotifiedAt = null;
-      console.log(`[ws-bridge] Generation started for session ${session.id} (${reason})`);
+      console.log(`[ws-bridge] Generation started for session ${sessionTag(session.id)} (${reason})`);
       this.recorder?.recordServerEvent(session.id, "generation_started", { reason }, session.backendType, session.state.cwd);
     } else {
       const elapsed = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
       session.generationStartedAt = null;
       session.stuckNotifiedAt = null;
-      console.log(`[ws-bridge] Generation ended for session ${session.id} (${reason}, duration: ${elapsed}ms)`);
+      console.log(`[ws-bridge] Generation ended for session ${sessionTag(session.id)} (${reason}, duration: ${elapsed}ms)`);
       this.recorder?.recordServerEvent(session.id, "generation_ended", { reason, elapsed }, session.backendType, session.state.cwd);
     }
   }
@@ -2913,7 +2916,7 @@ export class WsBridge {
   private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage) {
     // Debug: warn when assistant messages are broadcast to 0 browsers (they may be lost)
     if (session.browserSockets.size === 0 && (msg.type === "assistant" || msg.type === "stream_event" || msg.type === "result")) {
-      console.log(`[ws-bridge] ⚠ Broadcasting ${msg.type} to 0 browsers for session ${session.id} (stored in history: ${msg.type === "assistant" || msg.type === "result"})`);
+      console.log(`[ws-bridge] ⚠ Broadcasting ${msg.type} to 0 browsers for session ${sessionTag(session.id)} (stored in history: ${msg.type === "assistant" || msg.type === "result"})`);
     }
     const json = JSON.stringify(this.sequenceEvent(session, msg));
 

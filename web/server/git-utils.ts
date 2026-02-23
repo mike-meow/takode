@@ -1,7 +1,10 @@
-import { execSync } from "node:child_process";
+import { execSync, exec as execCb } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
+
+const execPromise = promisify(execCb);
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,79 @@ function gitSafe(cmd: string, cwd: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ─── Async helpers (non-blocking — for hot paths) ────────────────────────────
+
+async function gitAsync(cmd: string, cwd: string): Promise<string> {
+  const { stdout } = await execPromise(`git ${cmd}`, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 10_000,
+  });
+  return stdout.trim();
+}
+
+async function gitSafeAsync(cmd: string, cwd: string): Promise<string | null> {
+  try {
+    return await gitAsync(cmd, cwd);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Async version of findClosestParentBranch. Uses non-blocking exec
+ * to avoid stalling the event loop on NFS.
+ */
+async function findClosestParentBranchAsync(repoRoot: string, currentBranch: string): Promise<string | null> {
+  // Fast path: name-based match for worktree branches (e.g. "jiayi-wt-4719" → "jiayi")
+  const wtMatch = currentBranch.match(/^(.+)-wt-\d+$/);
+  if (wtMatch) {
+    const parentName = wtMatch[1];
+    const exists = await gitSafeAsync(`rev-parse --verify refs/heads/${parentName}`, repoRoot);
+    if (exists) return parentName;
+  }
+
+  const output = await gitSafeAsync("for-each-ref --format=%(refname:short) --contains=HEAD refs/heads/", repoRoot);
+  if (!output) return null;
+
+  const candidates = output.split("\n")
+    .map(b => b.trim())
+    .filter(b => b && b !== currentBranch);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Multiple candidates: pick the one closest to HEAD (fewest commits ahead)
+  let bestBranch = candidates[0];
+  let bestCount = Infinity;
+  for (const candidate of candidates) {
+    const countStr = await gitSafeAsync(`rev-list --count HEAD..${candidate}`, repoRoot);
+    const count = countStr ? parseInt(countStr, 10) : Infinity;
+    if (count < bestCount) {
+      bestCount = count;
+      bestBranch = candidate;
+      if (count === 0) break;
+    }
+  }
+  return bestBranch;
+}
+
+/** Async version of resolveDefaultBranch. Non-blocking for hot paths. */
+export async function resolveDefaultBranchAsync(repoRoot: string, currentBranch?: string): Promise<string> {
+  if (currentBranch && currentBranch !== "HEAD") {
+    const closest = await findClosestParentBranchAsync(repoRoot, currentBranch);
+    if (closest) return closest;
+  }
+
+  const originRef = await gitSafeAsync("symbolic-ref refs/remotes/origin/HEAD", repoRoot);
+  if (originRef) {
+    return originRef.replace("refs/remotes/origin/", "");
+  }
+  const branches = await gitSafeAsync("branch --list main master", repoRoot) || "";
+  if (branches.includes("main")) return "main";
+  if (branches.includes("master")) return "master";
+  return "main";
 }
 
 // ─── Functions ──────────────────────────────────────────────────────────────

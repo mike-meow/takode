@@ -23,6 +23,7 @@ import {
   getLegacyCodexHome,
   resolveCompanionCodexSessionHome,
 } from "./codex-home.js";
+import { sessionTag } from "./session-tag.js";
 
 function sanitizeSpawnArgsForLog(args: string[]): string {
   const secretKeyPattern = /(token|key|secret|password)/i;
@@ -369,7 +370,7 @@ export class CliLauncher {
       const containerState = containerManager.isContainerAlive(info.containerId);
 
       if (containerState === "missing") {
-        console.error(`[cli-launcher] Container ${containerLabel} no longer exists for session ${sessionId}`);
+        console.error(`[cli-launcher] Container ${containerLabel} no longer exists for session ${sessionTag(sessionId)}`);
         info.state = "exited";
         info.exitCode = 1;
         this.persistState();
@@ -382,7 +383,7 @@ export class CliLauncher {
       if (containerState === "stopped") {
         try {
           containerManager.startContainer(info.containerId);
-          console.log(`[cli-launcher] Restarted stopped container ${containerLabel} for session ${sessionId}`);
+          console.log(`[cli-launcher] Restarted stopped container ${containerLabel} for session ${sessionTag(sessionId)}`);
         } catch (e) {
           info.state = "exited";
           info.exitCode = 1;
@@ -397,7 +398,7 @@ export class CliLauncher {
       // Validate the CLI binary exists inside the container
       const binary = info.backendType === "codex" ? "codex" : "claude";
       if (!containerManager.hasBinaryInContainer(info.containerId, binary)) {
-        console.error(`[cli-launcher] "${binary}" not found in container ${containerLabel} for session ${sessionId}`);
+        console.error(`[cli-launcher] "${binary}" not found in container ${containerLabel} for session ${sessionTag(sessionId)}`);
         info.state = "exited";
         info.exitCode = 127;
         this.persistState();
@@ -411,7 +412,7 @@ export class CliLauncher {
     info.state = "starting";
     info.killedByIdleManager = false;
 
-    console.log(`[cli-launcher] Relaunching session ${sessionId} (cliSessionId: ${info.cliSessionId || "none"}, state: ${info.state}, backendType: ${info.backendType || "claude"})`);
+    console.log(`[cli-launcher] Relaunching session ${sessionTag(sessionId)} (cliSessionId: ${info.cliSessionId || "none"}, state: ${info.state}, backendType: ${info.backendType || "claude"})`);
     this.recorder?.recordServerEvent(sessionId, "cli_relaunch", {
       cliSessionId: info.cliSessionId || null,
       hasResume: !!info.cliSessionId,
@@ -601,7 +602,7 @@ export class CliLauncher {
     }
 
     console.log(
-      `[cli-launcher] Spawning session ${sessionId}${isContainerized ? " (container)" : ""}: ` +
+      `[cli-launcher] Spawning session ${sessionTag(sessionId)}${isContainerized ? " (container)" : ""}: ` +
       sanitizeSpawnArgsForLog(spawnCmd),
     );
 
@@ -622,7 +623,7 @@ export class CliLauncher {
     const spawnedAt = Date.now();
     proc.exited.then((exitCode) => {
       const uptime = Date.now() - spawnedAt;
-      console.log(`[cli-launcher] Session ${sessionId} exited (code=${exitCode}, uptime=${uptime}ms)`);
+      console.log(`[cli-launcher] Session ${sessionTag(sessionId)} exited (code=${exitCode}, uptime=${uptime}ms)`);
       this.recorder?.recordServerEvent(sessionId, "cli_exit", {
         exitCode, uptime, hadResume: !!options.resumeSessionId,
       }, info.backendType || "claude", info.cwd);
@@ -630,7 +631,7 @@ export class CliLauncher {
       // Guard against stale exits: if a new process was already spawned
       // (e.g. relaunch timeout), this exit belongs to the old process.
       if (this.processes.get(sessionId) !== proc) {
-        console.log(`[cli-launcher] Ignoring stale exit for session ${sessionId}`);
+        console.log(`[cli-launcher] Ignoring stale exit for session ${sessionTag(sessionId)}`);
         return;
       }
 
@@ -791,7 +792,7 @@ export class CliLauncher {
     }
 
     console.log(
-      `[cli-launcher] Spawning Codex session ${sessionId}${isContainerized ? " (container)" : ""}: ` +
+      `[cli-launcher] Spawning Codex session ${sessionTag(sessionId)}${isContainerized ? " (container)" : ""}: ` +
       sanitizeSpawnArgsForLog(spawnCmd),
     );
 
@@ -827,7 +828,7 @@ export class CliLauncher {
     // Also clear cliSessionId so the next relaunch starts a fresh thread
     // instead of trying to resume one whose rollout may be missing.
     adapter.onInitError((error) => {
-      console.error(`[cli-launcher] Codex session ${sessionId} init failed: ${error}`);
+      console.error(`[cli-launcher] Codex session ${sessionTag(sessionId)} init failed: ${error}`);
       const session = this.sessions.get(sessionId);
       if (session) {
         session.state = "exited";
@@ -848,7 +849,7 @@ export class CliLauncher {
     // Monitor process exit
     const spawnedAt = Date.now();
     proc.exited.then((exitCode) => {
-      console.log(`[cli-launcher] Codex session ${sessionId} exited (code=${exitCode})`);
+      console.log(`[cli-launcher] Codex session ${sessionTag(sessionId)} exited (code=${exitCode})`);
       const session = this.sessions.get(sessionId);
       if (session) {
         session.state = "exited";
@@ -1061,7 +1062,7 @@ ${MARKER_END}`;
     const session = this.sessions.get(sessionId);
     if (session && (session.state === "starting" || session.state === "connected")) {
       session.state = "connected";
-      console.log(`[cli-launcher] Session ${sessionId} connected via WebSocket`);
+      console.log(`[cli-launcher] Session ${sessionTag(sessionId)} connected via WebSocket`);
       this.persistState();
     }
   }
@@ -1094,7 +1095,7 @@ ${MARKER_END}`;
     ]);
 
     if (!exited) {
-      console.log(`[cli-launcher] Force-killing session ${sessionId}`);
+      console.log(`[cli-launcher] Force-killing session ${sessionTag(sessionId)}`);
       proc.kill("SIGKILL");
     }
 

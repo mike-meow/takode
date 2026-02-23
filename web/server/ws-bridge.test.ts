@@ -347,7 +347,7 @@ describe("CLI handlers", () => {
     expect(state.skills).toEqual(["pdf"]);
   });
 
-  it("handleCLIMessage: system.init preserves host cwd for containerized sessions", () => {
+  it("handleCLIMessage: system.init preserves host cwd for containerized sessions", async () => {
     // markContainerized sets the host cwd and is_containerized before CLI connects
     bridge.markContainerized("s1", "/Users/stan/Dev/myproject");
 
@@ -369,11 +369,14 @@ describe("CLI handlers", () => {
     const state = bridge.getSession("s1")!.state;
     expect(state.cwd).toBe("/Users/stan/Dev/myproject");
     expect(state.is_containerized).toBe(true);
-    expect(state.git_branch).toBe("main");
-    expect(state.repo_root).toBe("/Users/stan/Dev/myproject");
+    // resolveGitInfo is async (fire-and-forget) — wait for it to complete
+    await vi.waitFor(() => {
+      expect(state.git_branch).toBe("main");
+      expect(state.repo_root).toBe("/Users/stan/Dev/myproject");
+    });
   });
 
-  it("handleCLIMessage: markWorktree pre-populates repo_root, git_default_branch, and diff_base_branch", () => {
+  it("handleCLIMessage: markWorktree pre-populates repo_root, git_default_branch, and diff_base_branch", async () => {
     // markWorktree sets is_worktree, repo_root, cwd, git_default_branch, and diff_base_branch before CLI connects
     bridge.markWorktree("s1", "/home/user/companion", "/home/user/.companion/worktrees/companion/jiayi-wt-1234", "jiayi");
 
@@ -385,7 +388,7 @@ describe("CLI handlers", () => {
     // diff_base_branch should be set from defaultBranch at creation
     expect(state.diff_base_branch).toBe("jiayi");
 
-    // After CLI connects, resolveGitInfo runs and should preserve the worktree info
+    // After CLI connects, resolveGitInfo runs (fire-and-forget) and should preserve the worktree info
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
       if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
@@ -398,11 +401,14 @@ describe("CLI handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/home/user/.companion/worktrees/companion/jiayi-wt-1234" }));
 
+    // resolveGitInfo is async (fire-and-forget) — wait for it to complete
     const stateAfter = bridge.getSession("s1")!.state;
-    // repo_root should still point to the parent repo, not the worktree
-    expect(stateAfter.repo_root).toBe("/home/user/companion");
-    expect(stateAfter.is_worktree).toBe(true);
-    expect(stateAfter.git_branch).toBe("jiayi-wt-1234");
+    await vi.waitFor(() => {
+      // repo_root should still point to the parent repo, not the worktree
+      expect(stateAfter.repo_root).toBe("/home/user/companion");
+      expect(stateAfter.is_worktree).toBe(true);
+      expect(stateAfter.git_branch).toBe("jiayi-wt-1234");
+    });
   });
 
   it("markWorktree: diffBaseBranch overrides defaultBranch for diff_base_branch", () => {
@@ -466,7 +472,7 @@ describe("CLI handlers", () => {
     expect(bridge.setDiffBaseBranch("nonexistent", "main")).toBe(false);
   });
 
-  it("handleCLIMessage: system.init resolves git info and sets diff_base_branch via execSync", () => {
+  it("handleCLIMessage: system.init resolves git info and sets diff_base_branch via async exec", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/test-branch\n";
       if (cmd.includes("--show-toplevel")) return "/repo\n";
@@ -482,16 +488,19 @@ describe("CLI handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg());
 
+    // resolveGitInfo is async (fire-and-forget) — wait for it to complete
     const state = bridge.getSession("s1")!.state;
-    expect(state.git_branch).toBe("feat/test-branch");
-    expect(state.repo_root).toBe("/repo");
-    expect(state.git_ahead).toBe(5);
-    expect(state.git_behind).toBe(2);
-    // diff_base_branch should be auto-resolved since not pre-set
-    expect(state.diff_base_branch).toBe("main");
+    await vi.waitFor(() => {
+      expect(state.git_branch).toBe("feat/test-branch");
+      expect(state.repo_root).toBe("/repo");
+      expect(state.git_ahead).toBe(5);
+      expect(state.git_behind).toBe(2);
+      // diff_base_branch should be auto-resolved since not pre-set
+      expect(state.diff_base_branch).toBe("main");
+    });
   });
 
-  it("handleCLIMessage: system.init resolves repo_root via --show-toplevel for standard repo", () => {
+  it("handleCLIMessage: system.init resolves repo_root via --show-toplevel for standard repo", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "main\n";
       if (cmd.includes("--git-dir")) return ".git\n";
@@ -508,8 +517,11 @@ describe("CLI handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/home/user/myproject" }));
 
+    // resolveGitInfo is async (fire-and-forget) — wait for it to complete
     const state = bridge.getSession("s1")!.state;
-    expect(state.repo_root).toBe("/home/user/myproject");
+    await vi.waitFor(() => {
+      expect(state.repo_root).toBe("/home/user/myproject");
+    });
   });
 
   it("handleCLIMessage: system.status updates compacting and permissionMode", () => {
@@ -605,7 +617,9 @@ describe("Browser handlers", () => {
     expect(firstMsg.session.session_id).toBe("s1");
   });
 
-  it("handleBrowserOpen: refreshes git branch before sending session snapshot", () => {
+  it("handleBrowserOpen: refreshes git branch asynchronously and notifies poller", async () => {
+    // resolveGitInfo is now async (fire-and-forget), so session_init sends current state
+    // and the git branch is updated asynchronously after the initial snapshot.
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/dynamic-branch\n";
       if (cmd.includes("--git-dir")) return ".git\n";
@@ -628,10 +642,16 @@ describe("Browser handlers", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
+    // session_init is sent immediately with the current (stale) state
     const firstMsg = JSON.parse(browser.send.mock.calls[0][0]);
     expect(firstMsg.type).toBe("session_init");
-    expect(firstMsg.session.git_branch).toBe("feat/dynamic-branch");
-    expect(gitInfoCb).toHaveBeenCalledWith("s1", "/repo", "feat/dynamic-branch");
+    expect(firstMsg.session.git_branch).toBe("main"); // stale — async hasn't resolved yet
+
+    // After the async resolveGitInfo completes, session state and poller are updated
+    await vi.waitFor(() => {
+      expect(session.state.git_branch).toBe("feat/dynamic-branch");
+      expect(gitInfoCb).toHaveBeenCalledWith("s1", "/repo", "feat/dynamic-branch");
+    });
   });
 
   it("handleBrowserOpen: does NOT send message_history (deferred to session_subscribe)", () => {
@@ -1102,7 +1122,7 @@ describe("CLI message routing", () => {
     expect(resultBroadcast.data.total_cost_usd).toBe(0.05);
   });
 
-  it("result: refreshes git branch and broadcasts session_update when branch changes", () => {
+  it("result: refreshes git branch and broadcasts session_update when branch changes", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/new-branch\n";
       if (cmd.includes("--git-dir")) return ".git\n";
@@ -1138,12 +1158,16 @@ describe("CLI message routing", () => {
 
     bridge.handleCLIMessage(cli, msg);
 
+    // refreshGitInfo is async (fire-and-forget) — wait for session_update broadcast
+    await vi.waitFor(() => {
+      expect(bridge.getSession("s1")!.state.git_branch).toBe("feat/new-branch");
+    });
+
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const updateMsg = calls.find((c: any) => c.type === "session_update");
+    const updateMsg = calls.find((c: any) => c.type === "session_update" && c.session?.git_branch);
     expect(updateMsg).toBeDefined();
     expect(updateMsg.session.git_branch).toBe("feat/new-branch");
     expect(updateMsg.session.git_ahead).toBe(1);
-    expect(bridge.getSession("s1")!.state.git_branch).toBe("feat/new-branch");
   });
 
   it("result: computes context_used_percent from modelUsage", () => {
@@ -4010,7 +4034,7 @@ describe("Diff stats computation", () => {
     vi.useRealTimers();
   });
 
-  it("resolveGitInfo: uses diff_base_branch directly for ahead/behind (no @{upstream} fallback)", () => {
+  it("resolveGitInfo: uses diff_base_branch directly for ahead/behind (no @{upstream} fallback)", async () => {
     // Session with diff_base_branch pre-set — resolveGitInfo should use it directly
     bridge.markWorktree("s1", "/repo", "/tmp/wt", "jiayi");
     const session = bridge.getSession("s1")!;
@@ -4030,8 +4054,11 @@ describe("Diff stats computation", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/tmp/wt" }));
 
-    expect(session.state.git_ahead).toBe(3);
-    expect(session.state.git_behind).toBe(2);
-    expect(session.state.diff_base_branch).toBe("jiayi");
+    // resolveGitInfo is async (fire-and-forget) — wait for it to complete
+    await vi.waitFor(() => {
+      expect(session.state.git_ahead).toBe(3);
+      expect(session.state.git_behind).toBe(2);
+      expect(session.state.diff_base_branch).toBe("jiayi");
+    });
   });
 });

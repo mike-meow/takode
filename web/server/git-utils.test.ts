@@ -8,11 +8,15 @@ const mockHomedir = vi.hoisted(() => {
 });
 
 const mockExecSync = vi.hoisted(() => vi.fn());
+const mockExecCb = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockMkdirSync = vi.hoisted(() => vi.fn());
 
 vi.mock("node:os", () => ({ homedir: () => mockHomedir.get() }));
-vi.mock("node:child_process", () => ({ execSync: mockExecSync }));
+vi.mock("node:child_process", () => ({
+  execSync: mockExecSync,
+  exec: mockExecCb,
+}));
 vi.mock("node:fs", () => ({
   existsSync: mockExistsSync,
   mkdirSync: mockMkdirSync,
@@ -41,6 +45,36 @@ function mockGitCommands(map: Record<string, string | Error>) {
   });
 }
 
+/**
+ * Mock the callback-style `exec` used by the async functions (via promisify).
+ * promisify(exec) calls exec(cmd, opts, cb) — we dispatch based on cmd content.
+ */
+function mockAsyncGitCommand(pattern: string | RegExp, result: string) {
+  mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+    if (typeof pattern === "string" ? cmd.includes(pattern) : pattern.test(cmd)) {
+      cb(null, { stdout: result + "\n", stderr: "" });
+    } else {
+      cb(new Error(`Unexpected git command: ${cmd}`), { stdout: "", stderr: "" });
+    }
+  });
+}
+
+function mockAsyncGitCommands(map: Record<string, string | Error>) {
+  mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+    for (const [pattern, result] of Object.entries(map)) {
+      if (cmd.includes(pattern)) {
+        if (result instanceof Error) {
+          cb(result, { stdout: "", stderr: "" });
+          return;
+        }
+        cb(null, { stdout: result + "\n", stderr: "" });
+        return;
+      }
+    }
+    cb(new Error(`Unmocked async git command: ${cmd}`), { stdout: "", stderr: "" });
+  });
+}
+
 // ─── Dynamic import with module reset ────────────────────────────────────────
 
 let gitUtils: typeof import("./git-utils.js");
@@ -48,6 +82,7 @@ let gitUtils: typeof import("./git-utils.js");
 beforeEach(async () => {
   vi.resetModules();
   mockExecSync.mockReset();
+  mockExecCb.mockReset();
   mockExistsSync.mockReset();
   mockMkdirSync.mockReset();
   mockHomedir.set("/fake/home");
@@ -896,5 +931,163 @@ describe("getBranchStatus", () => {
     const status = gitUtils.getBranchStatus("/repo", "main");
     expect(status.ahead).toBe(0);
     expect(status.behind).toBe(0);
+  });
+});
+
+// ─── resolveDefaultBranchAsync ──────────────────────────────────────────────
+
+describe("resolveDefaultBranchAsync", () => {
+  it("resolves default branch via origin HEAD", async () => {
+    mockAsyncGitCommands({
+      // findClosestParentBranchAsync: for-each-ref returns only current branch → no parent
+      "for-each-ref": "develop",
+      "symbolic-ref refs/remotes/origin/HEAD": "refs/remotes/origin/develop",
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "develop");
+    expect(result).toBe("develop");
+  });
+
+  it("falls back to 'main' when origin HEAD and master are unavailable", async () => {
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("for-each-ref")) {
+        // Only the current branch itself — no parent candidates
+        cb(null, { stdout: "feature\n", stderr: "" });
+      } else if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(new Error("no origin"), { stdout: "", stderr: "" });
+      } else if (cmd.includes("branch --list main master")) {
+        cb(null, { stdout: "\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "feature");
+    expect(result).toBe("main");
+  });
+
+  it("falls back to 'master' when origin HEAD fails and only master exists", async () => {
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("for-each-ref")) {
+        cb(null, { stdout: "feature\n", stderr: "" });
+      } else if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(new Error("no origin"), { stdout: "", stderr: "" });
+      } else if (cmd.includes("branch --list main master")) {
+        cb(null, { stdout: "  master\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "feature");
+    expect(result).toBe("master");
+  });
+
+  it("resolves closest parent branch for worktree sessions", async () => {
+    // Worktree branch jiayi-wt-4719 was created from jiayi. The for-each-ref
+    // --contains=HEAD command returns jiayi as a branch containing HEAD.
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("for-each-ref") && cmd.includes("--contains=HEAD")) {
+        cb(null, { stdout: "jiayi\njiayi-wt-4719\n", stderr: "" });
+      } else if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(new Error("no origin"), { stdout: "", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "jiayi-wt-4719");
+    expect(result).toBe("jiayi");
+  });
+
+  it("uses fast-path name match for worktree branches (e.g. jiayi-wt-4719 → jiayi)", async () => {
+    // The async version has a fast path: if the branch name matches /^(.+)-wt-\d+$/,
+    // check if the parent branch exists without running for-each-ref.
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("rev-parse --verify refs/heads/jiayi")) {
+        cb(null, { stdout: "abc123\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "jiayi-wt-4719");
+    expect(result).toBe("jiayi");
+    // Should NOT have called for-each-ref since fast path succeeded
+    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) =>
+      (c[0] as string).includes("for-each-ref"),
+    );
+    expect(forEachRefCalls).toHaveLength(0);
+  });
+
+  it("picks closest parent when multiple branches contain HEAD", async () => {
+    // Both jiayi and main contain HEAD, but jiayi is 1 commit ahead
+    // while main is 100 commits ahead — jiayi is the closer parent.
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("for-each-ref") && cmd.includes("--contains=HEAD")) {
+        cb(null, { stdout: "feat-branch\njiayi\nmain\n", stderr: "" });
+      } else if (cmd.includes("rev-list --count HEAD..jiayi")) {
+        cb(null, { stdout: "1\n", stderr: "" });
+      } else if (cmd.includes("rev-list --count HEAD..main")) {
+        cb(null, { stdout: "100\n", stderr: "" });
+      } else if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(new Error("no origin"), { stdout: "", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "feat-branch");
+    expect(result).toBe("jiayi");
+  });
+
+  it("falls back to origin/HEAD when no parent branch found", async () => {
+    // No other branches contain HEAD → falls back to origin/HEAD
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("for-each-ref") && cmd.includes("--contains=HEAD")) {
+        cb(null, { stdout: "orphan-branch\n", stderr: "" });
+      } else if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(null, { stdout: "refs/remotes/origin/main\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "orphan-branch");
+    expect(result).toBe("main");
+  });
+
+  it("returns 'main' when no currentBranch is provided and origin/HEAD fails", async () => {
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(new Error("no origin"), { stdout: "", stderr: "" });
+      } else if (cmd.includes("branch --list main master")) {
+        cb(null, { stdout: "\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    // No currentBranch — skips findClosestParentBranchAsync entirely
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo");
+    expect(result).toBe("main");
+  });
+
+  it("skips parent branch search when currentBranch is 'HEAD' (detached)", async () => {
+    mockExecCb.mockImplementation((cmd: string, _opts: unknown, cb: Function) => {
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) {
+        cb(null, { stdout: "refs/remotes/origin/main\n", stderr: "" });
+      } else {
+        cb(new Error(`Unmocked async: ${cmd}`), { stdout: "", stderr: "" });
+      }
+    });
+
+    const result = await gitUtils.resolveDefaultBranchAsync("/repo", "HEAD");
+    expect(result).toBe("main");
+    // Should NOT have called for-each-ref since HEAD is excluded
+    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) =>
+      (c[0] as string).includes("for-each-ref"),
+    );
+    expect(forEachRefCalls).toHaveLength(0);
   });
 });
