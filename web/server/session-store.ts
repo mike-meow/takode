@@ -22,6 +22,8 @@ export interface PersistedSession {
   lastAckSeq?: number;
   processedClientMessageIds?: string[];
   archived?: boolean;
+  /** Epoch ms when this session was archived */
+  archivedAt?: number;
   /** Serialized Map entries for full tool results (tool_use_id → result) */
   toolResults?: [string, { content: string; is_error: boolean; timestamp: number }][];
   /** Epoch ms when the user last viewed this session (server-authoritative) */
@@ -116,6 +118,7 @@ export class SessionStore {
     const session = this.load(sessionId);
     if (!session) return false;
     session.archived = archived;
+    session.archivedAt = archived ? Date.now() : undefined;
     this.saveSync(session);
     return true;
   }

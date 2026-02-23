@@ -78,6 +78,8 @@ export interface SdkSessionInfo {
   /** The CLI's internal session ID (from system.init), used for `claude --resume` */
   cliSessionId?: string;
   archived?: boolean;
+  /** Epoch ms when this session was archived */
+  archivedAt?: number;
   containerId?: string;
   containerName?: string;
   containerImage?: string;

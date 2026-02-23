@@ -16,6 +16,7 @@ export interface SessionItem {
   sdkState: "starting" | "connected" | "running" | "exited" | null;
   createdAt: number;
   archived: boolean;
+  archivedAt?: number;
   backendType: "claude" | "codex";
   repoRoot: string;
   permCount: number;

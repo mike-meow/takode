@@ -369,6 +369,7 @@ export function Sidebar() {
       sdkState: sdkInfo?.state ?? null,
       createdAt: sdkInfo?.createdAt ?? 0,
       archived: sdkInfo?.archived ?? false,
+      archivedAt: sdkInfo?.archivedAt,
       backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
       repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
       permCount: pendingPermissions.get(id)?.size ?? 0,
@@ -384,7 +385,9 @@ export function Sidebar() {
 
   const activeSessions = allSessionList.filter((s) => !s.archived && !s.cronJobId);
   const cronSessions = allSessionList.filter((s) => !s.archived && !!s.cronJobId);
-  const archivedSessions = allSessionList.filter((s) => s.archived);
+  const archivedSessions = allSessionList
+    .filter((s) => s.archived)
+    .sort((a, b) => (b.archivedAt ?? b.createdAt) - (a.archivedAt ?? a.createdAt));
   const currentSession = currentSessionId ? allSessionList.find((s) => s.id === currentSessionId) : null;
   const logoSrc = currentSession?.backendType === "codex" ? "/logo-codex.svg" : "/logo.svg";
   const [showCronSessions, setShowCronSessions] = useState(true);

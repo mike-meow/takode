@@ -56,6 +56,8 @@ export interface SdkSessionInfo {
   /** The CLI's internal session ID (from system.init), used for --resume */
   cliSessionId?: string;
   archived?: boolean;
+  /** Epoch ms when this session was archived */
+  archivedAt?: number;
   /** User-facing session name */
   name?: string;
   /** Which backend this session uses */
@@ -1156,6 +1158,7 @@ ${MARKER_END}`;
     const info = this.sessions.get(sessionId);
     if (info) {
       info.archived = archived;
+      info.archivedAt = archived ? Date.now() : undefined;
       this.persistState();
     }
   }

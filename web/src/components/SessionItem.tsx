@@ -3,6 +3,17 @@ import type { SessionItem as SessionItemType } from "../utils/project-grouping.j
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
 
+function timeAgo(epochMs: number): string {
+  const diffMs = Date.now() - epochMs;
+  if (diffMs < 60_000) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 interface SessionItemProps {
   session: SessionItemType;
   isActive: boolean;
@@ -197,6 +208,9 @@ export function SessionItem({
                 >
                   {label}
                 </span>
+              )}
+              {archived && s.archivedAt && (
+                <span className="text-[10px] text-cc-muted/60 shrink-0 ml-auto">{timeAgo(s.archivedAt)}</span>
               )}
             </div>
 
