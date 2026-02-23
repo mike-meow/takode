@@ -436,7 +436,6 @@ describe("CLI handlers", () => {
     // Create a session with a browser connected and a tracked changed file
     bridge.markWorktree("s1", "/home/user/companion", "/tmp/wt", "jiayi");
     const session = bridge.getSession("s1")!;
-    session.changedFiles.add("file.ts"); // computeDiffStats only runs when changedFiles is non-empty
     const browserWs = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browserWs, "s1");
     browserWs.send.mockClear();
@@ -1071,7 +1070,6 @@ describe("CLI message routing", () => {
     const session = bridge.getSession("s1")!;
     session.state.cwd = "/test";
     session.state.diff_base_branch = "main";
-    session.changedFiles.add("file.ts");
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/branch\n";
@@ -3870,11 +3868,8 @@ describe("Diff stats computation", () => {
     bridge.markWorktree("s1", "/repo", "/tmp/wt", "main");
     const session = bridge.getSession("s1")!;
 
-    // Trigger diff computation via refreshGitInfo with computeDiff
-    // We need to set cwd and tracked files for computeDiffStats to run
+    // Set cwd so computeDiffStats can run
     session.state.cwd = "/tmp/wt";
-    session.changedFiles.add("file1.ts");
-    session.changedFiles.add("file2.ts");
 
     // Use setDiffBaseBranch which triggers computeDiff
     mockExecSync.mockImplementation((cmd: string) => {
@@ -3932,7 +3927,6 @@ describe("Diff stats computation", () => {
     bridge.markWorktree("s1", "/repo", "/tmp/wt", "main");
     const session = bridge.getSession("s1")!;
     session.state.cwd = "/tmp/wt";
-    session.changedFiles.add("file.ts");
     const browserWs = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browserWs, "s1");
 
@@ -4029,7 +4023,6 @@ describe("Diff stats computation", () => {
       session_id: "s1",
     }));
     expect(session.diffStatsDirty).toBe(true);
-    expect(session.changedFiles.has("/repo/file.ts")).toBe(true);
 
     // Bash tool (not in READ_ONLY_TOOLS) should also mark dirty
     session.diffStatsDirty = false;

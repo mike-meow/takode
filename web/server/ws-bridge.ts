@@ -176,8 +176,6 @@ interface Session {
   taskHistory: SessionTaskEntry[];
   /** Accumulated search keywords from the session auto-namer */
   keywords: string[];
-  /** File paths changed by edit tool calls during this session (for scoping diff stats) */
-  changedFiles: Set<string>;
   /** Whether agent activity has occurred since the last diff computation */
   diffStatsDirty: boolean;
   /** Whether this session was created by resuming an external CLI session (VS Code/terminal) */
@@ -639,7 +637,6 @@ export class WsBridge {
         attentionReason: p.attentionReason ?? null,
         taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
         keywords: Array.isArray(p.keywords) ? p.keywords : [],
-        changedFiles: new Set(Array.isArray(p.changedFiles) ? p.changedFiles : []),
         diffStatsDirty: true,
       };
       session.state.backend_type = session.backendType;
@@ -672,7 +669,6 @@ export class WsBridge {
       attentionReason: session.attentionReason,
       taskHistory: session.taskHistory,
       keywords: session.keywords,
-      changedFiles: Array.from(session.changedFiles),
     });
   }
 
@@ -695,7 +691,6 @@ export class WsBridge {
       attentionReason: session.attentionReason,
       taskHistory: session.taskHistory,
       keywords: session.keywords,
-      changedFiles: Array.from(session.changedFiles),
     });
   }
 
@@ -777,8 +772,8 @@ export class WsBridge {
 
   /**
    * Compute diff stats (total lines added/removed) by running `git diff --numstat`
-   * against the session's diff_base_branch. Scoped to files changed during the session
-   * (tracked via changedFiles). If no files are tracked yet, stats remain 0/0.
+   * against the session's diff_base_branch (or git_default_branch as fallback).
+   * Diffs the entire repo — git tracks what changed, no need to scope by file list.
    * Runs asynchronously via child_process.exec to avoid blocking the event loop on NFS.
    */
   private async computeDiffStatsAsync(session: Session): Promise<boolean> {
@@ -786,13 +781,6 @@ export class WsBridge {
     // Fall back to git_default_branch when diff_base_branch is "" (user selected "default")
     const ref = session.state.diff_base_branch || session.state.git_default_branch;
     if (!cwd || !ref) return false;
-
-    // No files changed by tools yet — nothing to diff
-    if (session.changedFiles.size === 0) {
-      session.state.total_lines_added = 0;
-      session.state.total_lines_removed = 0;
-      return true;
-    }
 
     try {
       // Compute merge-base to diff against (async).
@@ -806,10 +794,7 @@ export class WsBridge {
         } catch { /* no common ancestor — use branch name directly */ }
       }
 
-      // Scope diff to session-changed files only
-      const filePaths = Array.from(session.changedFiles).map(f => `"${f}"`).join(" ");
-      const cmd = `git diff --numstat ${diffBase} -- ${filePaths}`;
-
+      const cmd = `git diff --numstat ${diffBase}`;
       const { stdout } = await execPromise(cmd, { cwd, timeout: 10_000 });
       const raw = stdout.trim();
 
@@ -868,7 +853,6 @@ export class WsBridge {
         attentionReason: null,
         taskHistory: [],
         keywords: [],
-        changedFiles: new Set(),
         diffStatsDirty: true,
       };
       this.sessions.set(sessionId, session);
@@ -1243,9 +1227,10 @@ export class WsBridge {
     console.log(`[ws-bridge] Browser connected for session ${sessionTag(sessionId)} (${session.browserSockets.size} browsers)`);
 
     // Refresh git state on browser connect so branch changes made mid-session are reflected.
-    void this.refreshGitInfo(session, { notifyPoller: true });
-    // Recompute diff stats if agent activity occurred since last computation.
-    this.recomputeDiffIfDirty(session);
+    // Chain diff recomputation after git info resolves — needs git_default_branch populated.
+    void this.refreshGitInfo(session, { notifyPoller: true }).then(() => {
+      this.recomputeDiffIfDirty(session);
+    });
 
     // Send current session state as snapshot (includes nextEventSeq for stale seq detection).
     // If slash_commands/skills haven't arrived yet (CLI sends them only after the first
@@ -1639,24 +1624,14 @@ export class WsBridge {
     // (mirrors browser-side extractTaskItemsFromToolUse in ws.ts)
     this.extractActivityPreview(session, msg.message.content);
 
-    // Detect tool calls: track changed files and mark diff stats dirty
+    // Mark diff stats dirty when non-read-only tools are used (any tool that could modify files)
     if (Array.isArray(msg.message.content)) {
-      const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
       for (const block of msg.message.content) {
         if (block.type !== "tool_use") continue;
         const name = (block as { name?: string }).name ?? "";
-        const input = (block as { input?: Record<string, unknown> }).input;
-        // Track file paths from known file-editing tools
-        const filePath = name === "NotebookEdit" ? input?.notebook_path : input?.file_path;
-        if (FILE_EDIT_TOOLS.has(name) && typeof filePath === "string") {
-          const scope = session.state.repo_root || session.state.cwd;
-          if (scope && filePath.startsWith(scope + "/")) {
-            session.changedFiles.add(filePath);
-          }
-        }
-        // Mark dirty for any non-read-only tool (Bash, MCP tools, etc.)
         if (!WsBridge.READ_ONLY_TOOLS.has(name)) {
           session.diffStatsDirty = true;
+          break; // One dirty tool is enough
         }
       }
     }
