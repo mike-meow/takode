@@ -1516,16 +1516,16 @@ export function QuestmasterPage() {
                               <div>
                                 {hasFeedback && (
                                   <>
-                                    <label className="block text-[11px] text-cc-muted mb-1">
+                                    <label className="block text-xs text-cc-muted mb-1">
                                       Feedback
                                     </label>
-                                    <div className="space-y-1.5 mb-2">
+                                    <div className="space-y-2 mb-2">
                                       {feedbackEntries.map((entry, i) => {
                                         const isEditing = editingFeedback?.questId === quest.questId && editingFeedback?.index === i;
                                         return (
                                           <div
                                             key={i}
-                                            className={`px-2.5 py-1.5 rounded-lg text-xs ${
+                                            className={`px-2.5 py-2 rounded-lg text-sm ${
                                               entry.author === "human"
                                                 ? entry.addressed
                                                   ? "bg-amber-500/5 border border-amber-500/10 text-amber-300/50"
@@ -1534,29 +1534,29 @@ export function QuestmasterPage() {
                                             }`}
                                           >
                                             <div className="flex items-center gap-1.5 mb-0.5">
-                                              <span className={`text-[10px] font-medium ${
+                                              <span className={`text-xs font-medium ${
                                                 entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
                                               }`}>
                                                 {entry.author}
                                               </span>
-                                              <span className="text-[9px] text-cc-muted/40">
+                                              <span className="text-[11px] text-cc-muted/40">
                                                 {timeAgo(entry.ts)}
                                               </span>
                                               {entry.author === "human" && entry.addressed && (
-                                                <span className="text-[9px] text-green-500/60 font-medium">addressed</span>
+                                                <span className="text-[11px] text-green-500/60 font-medium">addressed</span>
                                               )}
                                               <span className="ml-auto flex items-center gap-1">
                                                 {entry.author === "human" && (
                                                   <button
                                                     onClick={() => handleToggleAddressed(quest.questId, i)}
-                                                    className={`text-[9px] px-1 py-0.5 rounded transition-colors cursor-pointer ${
+                                                    className={`px-1 py-0.5 rounded transition-colors cursor-pointer ${
                                                       entry.addressed
                                                         ? "text-green-500/50 hover:text-green-500/70"
                                                         : "text-cc-muted/30 hover:text-green-500/60"
                                                     }`}
                                                     title={entry.addressed ? "Mark unaddressed" : "Mark addressed"}
                                                   >
-                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                                                       <path d="M8 2a6 6 0 100 12A6 6 0 008 2zM0 8a8 8 0 1116 0A8 8 0 010 8zm11.354-1.646a.5.5 0 00-.708-.708L7 9.293 5.354 7.646a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" />
                                                     </svg>
                                                   </button>
@@ -1567,10 +1567,10 @@ export function QuestmasterPage() {
                                                       questId: quest.questId, index: i,
                                                       text: entry.text, images: entry.images ?? [],
                                                     })}
-                                                    className="text-[9px] text-cc-muted/30 hover:text-cc-muted/60 cursor-pointer transition-colors"
+                                                    className="text-cc-muted/30 hover:text-cc-muted/60 cursor-pointer transition-colors"
                                                     title="Edit"
                                                   >
-                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                                                       <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.098a.25.25 0 00-.064.108l-.386 1.35 1.35-.386a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.354L12.427 2.487z" />
                                                     </svg>
                                                   </button>
@@ -1587,7 +1587,7 @@ export function QuestmasterPage() {
                                                     e.target.style.height = "auto";
                                                     e.target.style.height = e.target.scrollHeight + "px";
                                                   }}
-                                                  className="w-full text-xs bg-cc-bg border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-cc-fg focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
+                                                  className="w-full text-sm bg-cc-bg border border-amber-500/30 rounded-lg px-2.5 py-1.5 text-cc-fg focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
                                                   rows={2}
                                                   onKeyDown={(e) => {
                                                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1625,13 +1625,13 @@ export function QuestmasterPage() {
                                                   <button
                                                     onClick={handleEditFeedbackSave}
                                                     disabled={feedbackSubmitting}
-                                                    className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 cursor-pointer"
+                                                    className="text-xs px-2.5 py-1 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 cursor-pointer"
                                                   >
                                                     Save
                                                   </button>
                                                   <button
                                                     onClick={() => setEditingFeedback(null)}
-                                                    className="text-[10px] px-2 py-0.5 rounded text-cc-muted hover:text-cc-fg cursor-pointer"
+                                                    className="text-xs px-2.5 py-1 rounded text-cc-muted hover:text-cc-fg cursor-pointer"
                                                   >
                                                     Cancel
                                                   </button>
@@ -1664,7 +1664,7 @@ export function QuestmasterPage() {
                                 {canAddFeedback && (
                                   <div className="flex flex-col gap-1">
                                     {!hasFeedback && (
-                                      <label className="block text-[11px] text-cc-muted mb-0.5">
+                                      <label className="block text-xs text-cc-muted mb-0.5">
                                         Feedback
                                       </label>
                                     )}
@@ -1677,7 +1677,7 @@ export function QuestmasterPage() {
                                         e.target.style.height = e.target.scrollHeight + "px";
                                       }}
                                       placeholder="Leave feedback..."
-                                      className="w-full text-xs bg-cc-input-bg border border-cc-border rounded-lg px-2.5 py-1.5 text-cc-fg placeholder-cc-muted/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
+                                      className="w-full text-sm bg-cc-input-bg border border-cc-border rounded-lg px-2.5 py-2 text-cc-fg placeholder-cc-muted/50 focus:outline-none focus:ring-1 focus:ring-amber-500/30 resize-none"
                                       rows={2}
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1713,14 +1713,14 @@ export function QuestmasterPage() {
                                       <button
                                         onClick={() => handleAddFeedback(quest.questId, feedbackDraft)}
                                         disabled={(!feedbackDraft.trim() && feedbackImages.length === 0) || feedbackSubmitting}
-                                        className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                        className="text-xs px-2.5 py-1 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
                                       >
                                         {feedbackSubmitting ? "Saving..." : "Add Feedback"}
                                       </button>
                                       {uploadingFeedbackImage && (
-                                        <span className="text-[9px] text-cc-muted animate-pulse">Uploading...</span>
+                                        <span className="text-xs text-cc-muted animate-pulse">Uploading...</span>
                                       )}
-                                      <span className="text-[9px] text-cc-muted/40 ml-auto">
+                                      <span className="text-[11px] text-cc-muted/40 ml-auto">
                                         {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
                                       </span>
                                     </div>
