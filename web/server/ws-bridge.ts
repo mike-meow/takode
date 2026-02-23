@@ -795,13 +795,16 @@ export class WsBridge {
     }
 
     try {
-      // Compute merge-base to diff against (async)
+      // Compute merge-base to diff against (async).
+      // Skip merge-base for commit SHAs — diff directly against the exact commit.
       let diffBase = ref;
-      try {
-        const { stdout } = await execPromise(`git merge-base ${ref} HEAD`, { cwd, timeout: 5000 });
-        const mergeBase = stdout.trim();
-        if (mergeBase) diffBase = mergeBase;
-      } catch { /* no common ancestor — use branch name directly */ }
+      if (!/^[0-9a-f]{7,40}$/.test(ref)) {
+        try {
+          const { stdout } = await execPromise(`git merge-base ${ref} HEAD`, { cwd, timeout: 5000 });
+          const mergeBase = stdout.trim();
+          if (mergeBase) diffBase = mergeBase;
+        } catch { /* no common ancestor — use branch name directly */ }
+      }
 
       // Scope diff to session-changed files only
       const filePaths = Array.from(session.changedFiles).map(f => `"${f}"`).join(" ");

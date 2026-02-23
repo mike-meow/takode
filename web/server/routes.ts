@@ -49,8 +49,14 @@ function execCaptureStdout(
   }
 }
 
+/** Check if a ref looks like a commit SHA (7-40 hex chars). */
+function looksLikeSha(ref: string): boolean {
+  return /^[0-9a-f]{7,40}$/.test(ref);
+}
+
 /** Resolve the commit to diff against (merge-base of baseBranch and HEAD). */
 function resolveDiffBase(repoRoot: string, baseBranch: string): string {
+  if (looksLikeSha(baseBranch)) return baseBranch;
   try {
     const mergeBase = execSync(`git merge-base ${baseBranch} HEAD`, {
       cwd: repoRoot, encoding: "utf-8", timeout: 5000,
@@ -84,6 +90,7 @@ async function execCaptureStdoutAsync(command: string, cwd: string): Promise<str
 
 /** Async version of resolveDiffBase. */
 async function resolveDiffBaseAsync(repoRoot: string, baseBranch: string): Promise<string> {
+  if (looksLikeSha(baseBranch)) return baseBranch;
   try {
     const mergeBase = await execAsync(`git merge-base ${baseBranch} HEAD`, repoRoot);
     if (mergeBase) return mergeBase;
@@ -2038,6 +2045,29 @@ export function createRoutes(
     if (!repoRoot) return c.json({ error: "repoRoot required" }, 400);
     try {
       return c.json(gitUtils.listBranches(repoRoot));
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  api.get("/git/commits", async (c) => {
+    const repoRoot = c.req.query("repoRoot");
+    if (!repoRoot) return c.json({ error: "repoRoot required" }, 400);
+    const limitStr = c.req.query("limit");
+    const limit = Math.min(Math.max(parseInt(limitStr || "20", 10) || 20, 1), 100);
+    try {
+      const raw = await execCaptureStdoutAsync(
+        `git log --format="%H%x00%h%x00%s%x00%ct" -${limit}`,
+        repoRoot,
+      );
+      const commits = raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [sha, shortSha, message, ts] = line.split("\0");
+          return { sha, shortSha, message, timestamp: parseInt(ts, 10) * 1000 };
+        });
+      return c.json({ commits });
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }

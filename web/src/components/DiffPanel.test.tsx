@@ -9,6 +9,7 @@ const mockApi = {
   listBranches: vi.fn().mockResolvedValue([]),
   getRepoInfo: vi.fn().mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false }),
   setDiffBase: vi.fn().mockResolvedValue({ ok: true }),
+  getRecentCommits: vi.fn().mockResolvedValue({ commits: [] }),
 };
 
 vi.mock("../api.js", () => ({
@@ -17,6 +18,7 @@ vi.mock("../api.js", () => ({
     listBranches: (...args: unknown[]) => mockApi.listBranches(...args),
     getRepoInfo: (...args: unknown[]) => mockApi.getRepoInfo(...args),
     setDiffBase: (...args: unknown[]) => mockApi.setDiffBase(...args),
+    getRecentCommits: (...args: unknown[]) => mockApi.getRecentCommits(...args),
   },
 }));
 
@@ -61,6 +63,7 @@ beforeEach(() => {
   mockApi.getFileDiff.mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
   mockApi.listBranches.mockResolvedValue([]);
   mockApi.getRepoInfo.mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false });
+  mockApi.getRecentCommits.mockResolvedValue({ commits: [] });
   localStorage.clear();
   resetStore();
 });

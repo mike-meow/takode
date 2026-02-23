@@ -94,6 +94,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const resolvedDefault = serverDefaultBranch || fallbackDefault;
   const effectiveBranch = baseBranch || resolvedDefault || null;
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [recentCommits, setRecentCommits] = useState<{ sha: string; shortSha: string; message: string; timestamp: number }[]>([]);
   const branchesFetched = useRef(false);
 
   const changedFiles = useMemo(() => changedFilesSet ?? new Set<string>(), [changedFilesSet]);
@@ -126,6 +127,9 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     }
     api.listBranches(cwd).then((branches) => {
       setAvailableBranches(branches.map((b) => b.name));
+    }).catch(() => {});
+    api.getRecentCommits(cwd, 20).then((res) => {
+      setRecentCommits(res.commits);
     }).catch(() => {});
   }, [cwd, serverDefaultBranch]);
 
@@ -265,15 +269,28 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         <select
           value={baseBranch || ""}
           onChange={(e) => handleBaseBranchChange(e.target.value || null)}
-          className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[180px]"
-          title="Base branch for diff comparison"
+          className="text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors max-w-[240px]"
+          title="Base branch or commit for diff comparison"
         >
           <option value="">
             {resolvedDefault ? `vs ${resolvedDefault} (default)` : "vs default branch"}
           </option>
-          {availableBranches.map((b) => (
-            <option key={b} value={b}>vs {b}</option>
-          ))}
+          {availableBranches.length > 0 && (
+            <optgroup label="Branches">
+              {availableBranches.map((b) => (
+                <option key={b} value={b}>vs {b}</option>
+              ))}
+            </optgroup>
+          )}
+          {recentCommits.length > 0 && (
+            <optgroup label="Recent Commits">
+              {recentCommits.map((c) => (
+                <option key={c.sha} value={c.sha}>
+                  {c.shortSha} {c.message.length > 40 ? c.message.slice(0, 40) + "…" : c.message}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
 
         {(totalStats.additions > 0 || totalStats.deletions > 0) && (

@@ -498,6 +498,10 @@ export const api = {
     get<GitBranchInfo[]>(
       `/git/branches?repoRoot=${encodeURIComponent(repoRoot)}`,
     ),
+  getRecentCommits: (repoRoot: string, limit = 20) =>
+    get<{ commits: { sha: string; shortSha: string; message: string; timestamp: number }[] }>(
+      `/git/commits?repoRoot=${encodeURIComponent(repoRoot)}&limit=${limit}`,
+    ),
   gitFetch: (repoRoot: string) =>
     post<{ success: boolean; output: string }>("/git/fetch", { repoRoot }),
   gitPull: (cwd: string, sessionId?: string) =>
