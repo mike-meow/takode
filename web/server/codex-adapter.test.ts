@@ -1647,6 +1647,32 @@ describe("CodexAdapter", () => {
     expect(rl!.secondary).toBeNull();
   });
 
+  it("normalizes fractional usedPercent (0..1) into percentage values", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdout.push(JSON.stringify({
+      method: "account/rateLimits/updated",
+      params: {
+        rateLimits: {
+          primary: { usedPercent: 0.42, windowDurationMins: 300, resetsAt: 1730947200 },
+          secondary: { usedPercent: 0.09, windowDurationMins: 10080, resetsAt: 1731552000 },
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const rl = adapter.getRateLimits();
+    expect(rl).toBeDefined();
+    expect(rl!.primary).toEqual({ usedPercent: 42, windowDurationMins: 300, resetsAt: 1730947200 });
+    expect(rl!.secondary).toEqual({ usedPercent: 9, windowDurationMins: 10080, resetsAt: 1731552000 });
+  });
+
   // ── requestUserInput tests ──────────────────────────────────────────────
 
   it("forwards item/tool/requestUserInput as AskUserQuestion permission_request", async () => {

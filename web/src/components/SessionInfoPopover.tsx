@@ -34,8 +34,8 @@ export function SessionInfoPopover({
   const isWorktree = session?.is_worktree ?? false;
   const gitAhead = session?.git_ahead ?? 0;
   const gitBehind = session?.git_behind ?? 0;
-  const linesAdded = session?.total_lines_added || sdkSession?.totalLinesAdded || 0;
-  const linesRemoved = session?.total_lines_removed || sdkSession?.totalLinesRemoved || 0;
+  const linesAdded = session?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
+  const linesRemoved = session?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
 
   // Close on click outside
   useEffect(() => {

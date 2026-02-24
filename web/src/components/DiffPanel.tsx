@@ -179,8 +179,8 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
   // Total line stats from server (single source of truth)
   const totalStats = useMemo(() => ({
-    additions: session?.total_lines_added || sdkSession?.totalLinesAdded || 0,
-    deletions: session?.total_lines_removed || sdkSession?.totalLinesRemoved || 0,
+    additions: session?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0,
+    deletions: session?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0,
   }), [session?.total_lines_added, session?.total_lines_removed, sdkSession?.totalLinesAdded, sdkSession?.totalLinesRemoved]);
 
   // Sync fileStats to store for TopBar badge

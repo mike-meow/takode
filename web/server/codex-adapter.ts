@@ -1566,9 +1566,25 @@ export class CodexAdapter {
   private updateRateLimits(data: Record<string, unknown>): void {
     const rl = data?.rateLimits as Record<string, unknown> | undefined;
     if (!rl) return;
+    const normalizeLimit = (value: unknown) => {
+      if (!value || typeof value !== "object") return null;
+      const raw = value as Record<string, unknown>;
+      const usedRaw = Number(raw.usedPercent ?? 0);
+      // Codex has been observed to report this as either 0..100 or 0..1.
+      const usedPercent = Number.isFinite(usedRaw)
+        ? (usedRaw > 0 && usedRaw <= 1 ? usedRaw * 100 : usedRaw)
+        : 0;
+      const windowDurationMins = Number(raw.windowDurationMins ?? 0);
+      const resetsAt = Number(raw.resetsAt ?? 0);
+      return {
+        usedPercent,
+        windowDurationMins: Number.isFinite(windowDurationMins) ? windowDurationMins : 0,
+        resetsAt: Number.isFinite(resetsAt) ? resetsAt : 0,
+      };
+    };
     this._rateLimits = {
-      primary: rl.primary as { usedPercent: number; windowDurationMins: number; resetsAt: number } | null,
-      secondary: rl.secondary as { usedPercent: number; windowDurationMins: number; resetsAt: number } | null,
+      primary: normalizeLimit(rl.primary),
+      secondary: normalizeLimit(rl.secondary),
     };
     // Forward rate limits to browser for UI display
     this.emit({

@@ -120,7 +120,7 @@ function createMockCodexProc(pid = 12345) {
 }
 
 const mockSpawn = vi.fn();
-const bunGlobal = globalThis as typeof globalThis & { Bun?: { spawn?: unknown } };
+const bunGlobal = globalThis as typeof globalThis & { Bun?: any };
 const hadBunGlobal = typeof bunGlobal.Bun !== "undefined";
 const originalBunSpawn = hadBunGlobal ? bunGlobal.Bun!.spawn : undefined;
 if (hadBunGlobal) {
@@ -809,6 +809,51 @@ describe("relaunch", () => {
     expect(session?.exitCode).toBe(127);
   });
 
+  it("validates configured Claude binary name in container during relaunch", async () => {
+    launcher.setSettingsGetter(() => ({
+      claudeBinary: "/opt/custom/claude-enterprise",
+      codexBinary: "",
+    }));
+
+    launcher.launch({
+      cwd: "/tmp/project",
+      containerId: "abc123def456",
+      containerName: "companion-custom-claude",
+    });
+
+    mockIsContainerAlive.mockReturnValueOnce("running");
+    mockHasBinaryInContainer.mockReturnValueOnce(false);
+
+    const result = await launcher.relaunch("test-session-id");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("claude-enterprise");
+    expect(mockHasBinaryInContainer).toHaveBeenCalledWith("abc123def456", "/opt/custom/claude-enterprise");
+  });
+
+  it("validates configured Codex binary name in container during relaunch", async () => {
+    launcher.setSettingsGetter(() => ({
+      claudeBinary: "",
+      codexBinary: "/opt/custom/codex-enterprise --app-server",
+    }));
+
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+    launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      containerId: "abc123def456",
+      containerName: "companion-custom-codex",
+      codexSandbox: "workspace-write",
+    });
+
+    mockIsContainerAlive.mockReturnValueOnce("running");
+    mockHasBinaryInContainer.mockReturnValueOnce(false);
+
+    const result = await launcher.relaunch("test-session-id");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("codex-enterprise");
+    expect(mockHasBinaryInContainer).toHaveBeenCalledWith("abc123def456", "/opt/custom/codex-enterprise");
+  });
+
   it("skips container validation for non-containerized sessions", async () => {
     // Create initial proc that exits when killed
     let resolveFirst: (code: number) => void;
@@ -1147,5 +1192,53 @@ describe("symlinkProjectSettings", () => {
     );
     // CLAUDE.md + settings.json + settings.local.json = 3 exclude entries
     expect(excludeCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not inject .claude/CLAUDE.md for Codex worktree sessions", () => {
+    mockExistsSync.mockImplementation((path: string) => path === WORKTREE);
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    launcher.launch({
+      backendType: "codex",
+      cwd: WORKTREE,
+      worktreeInfo: {
+        isWorktree: true,
+        repoRoot: REPO_ROOT,
+        branch: "feature-x",
+        actualBranch: "feature-x",
+        worktreePath: WORKTREE,
+      },
+    });
+
+    const writeTargets = mockWriteFileSync.mock.calls.map((c: any[]) => String(c[0]));
+    expect(writeTargets.some((p) => p.endsWith("/.claude/CLAUDE.md"))).toBe(false);
+    expect(writeTargets.some((p) => p.endsWith("/AGENTS.md"))).toBe(true);
+    expect(mockSymlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("skips AGENTS.md write when AGENTS.md is a symlink in Codex worktree sessions", () => {
+    const agentsPath = join(WORKTREE, "AGENTS.md");
+    mockExistsSync.mockImplementation((path: string) => path === WORKTREE || path === agentsPath);
+    mockLstatSync.mockImplementation((path?: string) => {
+      if (path === agentsPath) return { isSymbolicLink: () => true };
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    launcher.launch({
+      backendType: "codex",
+      cwd: WORKTREE,
+      worktreeInfo: {
+        isWorktree: true,
+        repoRoot: REPO_ROOT,
+        branch: "feature-x",
+        actualBranch: "feature-x",
+        worktreePath: WORKTREE,
+      },
+    });
+
+    const writeTargets = mockWriteFileSync.mock.calls.map((c: any[]) => String(c[0]));
+    expect(writeTargets.some((p) => p.endsWith("/AGENTS.md"))).toBe(false);
+    expect(writeTargets.some((p) => p.endsWith("/.claude/CLAUDE.md"))).toBe(false);
   });
 });

@@ -212,8 +212,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions?.find((x) => x.sessionId === sessionId));
-  const diffLinesAdded = sessionData?.total_lines_added || sdkSession?.totalLinesAdded || 0;
-  const diffLinesRemoved = sessionData?.total_lines_removed || sdkSession?.totalLinesRemoved || 0;
+  const diffLinesAdded = sessionData?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
+  const diffLinesRemoved = sessionData?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
 
   const isConnected = cliConnected.get(sessionId) ?? false;
   const currentMode = sessionData?.permissionMode || "acceptEdits";

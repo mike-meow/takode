@@ -25,8 +25,15 @@ vi.mock("../api.js", () => ({
 // ─── Store mock ─────────────────────────────────────────────────────────────
 
 interface MockStoreState {
-  sessions: Map<string, { cwd?: string; repo_root?: string; git_default_branch?: string; diff_base_branch?: string }>;
-  sdkSessions: { sessionId: string; cwd?: string }[];
+  sessions: Map<string, {
+    cwd?: string;
+    repo_root?: string;
+    git_default_branch?: string;
+    diff_base_branch?: string;
+    total_lines_added?: number;
+    total_lines_removed?: number;
+  }>;
+  sdkSessions: { sessionId: string; cwd?: string; totalLinesAdded?: number; totalLinesRemoved?: number }[];
   diffPanelSelectedFile: Map<string, string>;
   changedFiles: Map<string, Set<string>>;
   setDiffPanelSelectedFile: ReturnType<typeof vi.fn>;
@@ -165,6 +172,20 @@ describe("DiffPanel", () => {
 
     render(<DiffPanel sessionId="s1" />);
     expect(screen.getByText("Waiting for session to initialize...")).toBeInTheDocument();
+  });
+
+  it("treats server 0 diff stats as authoritative over stale sdk stats", () => {
+    // Regression: use nullish coalescing for line stats so 0 from bridge state
+    // does not fall back to stale non-zero sdk values.
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", total_lines_added: 0, total_lines_removed: 0 }]]),
+      sdkSessions: [{ sessionId: "s1", cwd: "/repo", totalLinesAdded: 34, totalLinesRemoved: 2 }],
+    });
+
+    const { container } = render(<DiffPanel sessionId="s1" />);
+    // Header stat row should stay hidden because authoritative totals are 0/0.
+    expect(container.querySelector(".text-green-500")).toBeNull();
+    expect(container.querySelector(".text-red-400")).toBeNull();
   });
 
   it("reselects when selected file is outside cwd scope", async () => {

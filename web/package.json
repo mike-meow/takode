@@ -33,10 +33,10 @@
     "start": "NODE_ENV=production bun server/index.ts",
     "serve": "bun serve.ts",
     "prepublishOnly": "bun run build",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run --silent --reporter=verbose",
-    "test:watch": "vitest",
-    "test:codex-contract": "vitest run server/codex-protocol-*.test.ts"
+    "typecheck": "\"$npm_execpath\" x --bun tsc --noEmit",
+    "test": "\"$npm_execpath\" x --bun vitest run --silent --reporter=verbose",
+    "test:watch": "\"$npm_execpath\" x --bun vitest",
+    "test:codex-contract": "\"$npm_execpath\" x --bun vitest run server/codex-protocol-*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

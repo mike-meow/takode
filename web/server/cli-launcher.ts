@@ -317,12 +317,13 @@ export class CliLauncher {
       info.actualBranch = options.worktreeInfo.actualBranch;
     }
 
-    // Inject worktree guardrails (CLAUDE.md + AGENTS.md) for both Claude Code and Codex
+    // Inject backend-specific worktree guardrails.
     if (info.isWorktree && info.branch) {
       this.injectWorktreeGuardrails(
         info.cwd,
         info.actualBranch || info.branch,
         info.repoRoot || "",
+        backendType,
         info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
       );
     }
@@ -358,6 +359,7 @@ export class CliLauncher {
   async relaunch(sessionId: string): Promise<{ ok: boolean; error?: string }> {
     const info = this.sessions.get(sessionId);
     if (!info) return { ok: false, error: "Session not found" };
+    const binSettings = this.settingsGetter?.() ?? { claudeBinary: "", codexBinary: "" };
 
     // Kill old process if still alive
     const oldProc = this.processes.get(sessionId);
@@ -406,8 +408,13 @@ export class CliLauncher {
         }
       }
 
-      // Validate the CLI binary exists inside the container
-      const binary = info.backendType === "codex" ? "codex" : "claude";
+      // Validate the configured CLI binary exists inside the container.
+      const configuredBinary = (info.backendType === "codex"
+        ? binSettings.codexBinary
+        : binSettings.claudeBinary).trim();
+      const binary = (configuredBinary || (info.backendType === "codex" ? "codex" : "claude"))
+        .split(/\s+/)[0];
+
       if (!containerManager.hasBinaryInContainer(info.containerId, binary)) {
         console.error(`[cli-launcher] "${binary}" not found in container ${containerLabel} for session ${sessionTag(sessionId)}`);
         info.state = "exited";
@@ -431,7 +438,6 @@ export class CliLauncher {
     }, info.backendType || "claude", info.cwd);
 
     const runtimeEnv = this.sessionEnvs.get(sessionId);
-    const binSettings = this.settingsGetter?.() ?? { claudeBinary: "", codexBinary: "" };
 
     if (info.backendType === "codex") {
       this.spawnCodex(sessionId, info, {
@@ -869,10 +875,19 @@ export class CliLauncher {
   }
 
   /**
-   * Inject worktree branch guardrails into both .claude/CLAUDE.md (for Claude Code)
-   * and AGENTS.md (for Codex). Only injects into actual worktree directories, never the main repo.
+   * Inject worktree branch guardrails into backend-appropriate instruction files.
+   * Claude: .claude/CLAUDE.md
+   * Codex: AGENTS.md (worktree root)
+   *
+   * Only injects into actual worktree directories, never the main repo.
    */
-  private injectWorktreeGuardrails(worktreePath: string, branch: string, repoRoot: string, parentBranch?: string): void {
+  private injectWorktreeGuardrails(
+    worktreePath: string,
+    branch: string,
+    repoRoot: string,
+    backendType: BackendType,
+    parentBranch?: string,
+  ): void {
     // Safety: never inject guardrails into the main repository itself
     if (worktreePath === repoRoot) {
       console.warn(`[cli-launcher] Skipping guardrails injection: worktree path is the main repo (${repoRoot})`);
@@ -924,78 +939,88 @@ Do NOT report the sync as complete until ALL of the following are true:
 - [ ] Changes have been pushed to the remote
 ${MARKER_END}`;
 
-    const claudeDir = join(worktreePath, ".claude");
-    const claudeMdPath = join(claudeDir, "CLAUDE.md");
+    if (backendType === "claude") {
+      const claudeDir = join(worktreePath, ".claude");
+      const claudeMdPath = join(claudeDir, "CLAUDE.md");
 
-    try {
-      mkdirSync(claudeDir, { recursive: true });
-
-      if (existsSync(claudeMdPath)) {
-        const existing = readFileSync(claudeMdPath, "utf-8");
-        // Replace existing guardrails section or append
-        if (existing.includes(MARKER_START)) {
-          const before = existing.substring(0, existing.indexOf(MARKER_START));
-          const afterIdx = existing.indexOf(MARKER_END);
-          const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
-          writeFileSync(claudeMdPath, before + guardrails + after, "utf-8");
-        } else {
-          writeFileSync(claudeMdPath, existing + "\n\n" + guardrails, "utf-8");
-        }
-      } else {
-        writeFileSync(claudeMdPath, guardrails, "utf-8");
-      }
-      console.log(`[cli-launcher] Injected worktree guardrails into .claude/CLAUDE.md for branch ${branch}`);
-
-      // Add .claude/CLAUDE.md to the worktree-local git exclude so it doesn't
-      // show as untracked and is protected from `git clean -fd`.
-      // Worktrees store their git metadata at the path inside .git (a file, not dir).
-      this.addWorktreeGitExclude(worktreePath, ".claude/CLAUDE.md");
-
-      // Mark the file as skip-worktree so git ignores local modifications to this
-      // tracked file. Without this, `git status` always shows .claude/CLAUDE.md as
-      // modified, which prevents automatic worktree cleanup on archive.
       try {
-        execSync("git update-index --skip-worktree .claude/CLAUDE.md", {
-          cwd: worktreePath, stdio: "pipe", timeout: 5000,
-        });
-      } catch { /* file may not be tracked in this repo — ignore */ }
+        mkdirSync(claudeDir, { recursive: true });
 
-      // Symlink project settings files so all worktrees for the same repo share
-      // the same permission rules. Without this, rules written with
-      // destination:"projectSettings" go to the worktree's local copy and aren't
-      // visible to other sessions.
-      this.symlinkProjectSettings(worktreePath, repoRoot);
-    } catch (e) {
-      console.warn(`[cli-launcher] Failed to inject .claude/CLAUDE.md guardrails:`, e);
+        if (existsSync(claudeMdPath)) {
+          const existing = readFileSync(claudeMdPath, "utf-8");
+          // Replace existing guardrails section or append
+          if (existing.includes(MARKER_START)) {
+            const before = existing.substring(0, existing.indexOf(MARKER_START));
+            const afterIdx = existing.indexOf(MARKER_END);
+            const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
+            writeFileSync(claudeMdPath, before + guardrails + after, "utf-8");
+          } else {
+            writeFileSync(claudeMdPath, existing + "\n\n" + guardrails, "utf-8");
+          }
+        } else {
+          writeFileSync(claudeMdPath, guardrails, "utf-8");
+        }
+        console.log(`[cli-launcher] Injected worktree guardrails into .claude/CLAUDE.md for branch ${branch}`);
+
+        // Add .claude/CLAUDE.md to the worktree-local git exclude so it doesn't
+        // show as untracked and is protected from `git clean -fd`.
+        // Worktrees store their git metadata at the path inside .git (a file, not dir).
+        this.addWorktreeGitExclude(worktreePath, ".claude/CLAUDE.md");
+
+        // Mark the file as skip-worktree so git ignores local modifications to this
+        // tracked file. Without this, `git status` always shows .claude/CLAUDE.md as
+        // modified, which prevents automatic worktree cleanup on archive.
+        try {
+          execSync("git update-index --skip-worktree .claude/CLAUDE.md", {
+            cwd: worktreePath, stdio: "pipe", timeout: 5000,
+          });
+        } catch { /* file may not be tracked in this repo — ignore */ }
+
+        // Symlink project settings files so all worktrees for the same repo share
+        // the same permission rules. Without this, rules written with
+        // destination:"projectSettings" go to the worktree's local copy and aren't
+        // visible to other sessions.
+        this.symlinkProjectSettings(worktreePath, repoRoot);
+      } catch (e) {
+        console.warn(`[cli-launcher] Failed to inject .claude/CLAUDE.md guardrails:`, e);
+      }
     }
 
-    // Also write AGENTS.md at the worktree root for Codex compatibility.
-    // Codex auto-discovers AGENTS.md by walking from git root to cwd.
-    const agentsMdPath = join(worktreePath, "AGENTS.md");
-    try {
-      if (existsSync(agentsMdPath)) {
-        const existing = readFileSync(agentsMdPath, "utf-8");
-        if (existing.includes(MARKER_START)) {
-          const before = existing.substring(0, existing.indexOf(MARKER_START));
-          const afterIdx = existing.indexOf(MARKER_END);
-          const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
-          writeFileSync(agentsMdPath, before + guardrails + after, "utf-8");
-        } else {
-          writeFileSync(agentsMdPath, existing + "\n\n" + guardrails, "utf-8");
-        }
-      } else {
-        writeFileSync(agentsMdPath, guardrails, "utf-8");
-      }
-      console.log(`[cli-launcher] Injected worktree guardrails into AGENTS.md for branch ${branch}`);
-
-      this.addWorktreeGitExclude(worktreePath, "AGENTS.md");
+    if (backendType === "codex") {
+      // Codex auto-discovers AGENTS.md by walking from git root to cwd.
+      // Do not overwrite symlinked AGENTS.md, since that can mutate tracked CLAUDE.md.
+      const agentsMdPath = join(worktreePath, "AGENTS.md");
       try {
-        execSync("git update-index --skip-worktree AGENTS.md", {
-          cwd: worktreePath, stdio: "pipe", timeout: 5000,
-        });
-      } catch { /* file may not be tracked in this repo — ignore */ }
-    } catch (e) {
-      console.warn(`[cli-launcher] Failed to inject AGENTS.md guardrails:`, e);
+        if (existsSync(agentsMdPath)) {
+          const stat = lstatSync(agentsMdPath);
+          if (stat.isSymbolicLink()) {
+            console.log("[cli-launcher] Skipping AGENTS.md guardrails write: file is a symlink");
+            return;
+          }
+
+          const existing = readFileSync(agentsMdPath, "utf-8");
+          if (existing.includes(MARKER_START)) {
+            const before = existing.substring(0, existing.indexOf(MARKER_START));
+            const afterIdx = existing.indexOf(MARKER_END);
+            const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
+            writeFileSync(agentsMdPath, before + guardrails + after, "utf-8");
+          } else {
+            writeFileSync(agentsMdPath, existing + "\n\n" + guardrails, "utf-8");
+          }
+        } else {
+          writeFileSync(agentsMdPath, guardrails, "utf-8");
+        }
+        console.log(`[cli-launcher] Injected worktree guardrails into AGENTS.md for branch ${branch}`);
+
+        this.addWorktreeGitExclude(worktreePath, "AGENTS.md");
+        try {
+          execSync("git update-index --skip-worktree AGENTS.md", {
+            cwd: worktreePath, stdio: "pipe", timeout: 5000,
+          });
+        } catch { /* file may not be tracked in this repo — ignore */ }
+      } catch (e) {
+        console.warn(`[cli-launcher] Failed to inject AGENTS.md guardrails:`, e);
+      }
     }
   }
 
