@@ -53,4 +53,16 @@ describe("ensureQuestmasterIntegration", () => {
       "utf-8",
     );
   });
+
+  it("writes a ~/.local/bin/quest shim that delegates to ~/.companion/bin/quest", () => {
+    ensureQuestmasterIntegration(3456, "/repo/web");
+
+    expect(fsMocks.mkdirSync).toHaveBeenCalledWith("/home/tester/.local/bin", { recursive: true });
+    expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
+      "/home/tester/.local/bin/quest",
+      expect.stringContaining("exec \"$HOME/.companion/bin/quest\" \"$@\""),
+      "utf-8",
+    );
+    expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/quest", 0o755);
+  });
 });
