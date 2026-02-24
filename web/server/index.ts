@@ -112,6 +112,11 @@ wsBridge.onCLIRelaunchNeededCallback(async (sessionId) => {
   if (relaunchingSet.has(sessionId)) return;
   const info = launcher.getSession(sessionId);
   if (info?.archived) return;
+  // Don't auto-relaunch sessions killed by the idle manager — they were
+  // intentionally stopped to enforce maxKeepAlive. Relaunching would create
+  // a kill/relaunch loop where the relaunched session gets a fresh
+  // lastActivityAt, causing the idle manager to kill other (active) sessions.
+  if (info?.killedByIdleManager) return;
   if (info && info.state !== "starting") {
     relaunchingSet.add(sessionId);
 

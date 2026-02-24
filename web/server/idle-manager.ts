@@ -50,15 +50,22 @@ export class IdleManager {
     let killed = 0;
 
     for (let i = 0; i < Math.min(toKill, killable.length); i++) {
+      const s = killable[i];
+      const age = s.lastActivityAt
+        ? `${Math.round((Date.now() - s.lastActivityAt) / 1000)}s ago`
+        : "no activity";
+      console.log(
+        `[idle-manager] Killing session ${s.sessionId.slice(0, 8)} (lastActivity: ${age}, name: ${s.name ?? "unnamed"})`,
+      );
       // Mark session so the UI can show a less alarming indicator for idle kills
-      killable[i].killedByIdleManager = true;
-      this.launcher.kill(killable[i].sessionId);
+      s.killedByIdleManager = true;
+      this.launcher.kill(s.sessionId);
       killed++;
     }
 
     if (killed > 0) {
       console.log(
-        `[idle-manager] Killed ${killed} idle session(s) to enforce maxKeepAlive=${maxKeepAlive}`,
+        `[idle-manager] Killed ${killed} idle session(s) to enforce maxKeepAlive=${maxKeepAlive} (${alive.length} alive, ${killable.length} killable)`,
       );
     }
 

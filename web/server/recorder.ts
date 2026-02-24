@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import type { BackendType } from "./session-types.js";
 
 const DEFAULT_MAX_LINES = 100_000;
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // once per day
 /** Flush buffered entries after this many milliseconds of inactivity. */
 const FLUSH_INTERVAL_MS = 200;
 /** Flush when the buffer reaches this many entries. */
