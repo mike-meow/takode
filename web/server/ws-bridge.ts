@@ -432,11 +432,12 @@ export class WsBridge {
       type: "session_update",
       session: { diff_base_branch: branch },
     });
-    // Immediately recompute ahead/behind and diff stats with the new base
-    void this.refreshGitInfo(session, { broadcastUpdate: true });
-    // Force recompute regardless of dirty flag — base changed
+    // Recompute ahead/behind with new base, then recompute diff stats.
+    // Chained so git_default_branch is fresh when diff falls back to it (user selected "default").
     session.diffStatsDirty = true;
-    this.recomputeDiffIfDirty(session);
+    void this.refreshGitInfo(session, { broadcastUpdate: true }).then(() => {
+      this.recomputeDiffIfDirty(session);
+    });
     this.persistSession(session);
     return true;
   }
@@ -724,8 +725,6 @@ export class WsBridge {
             repo_root: session.state.repo_root,
             git_ahead: session.state.git_ahead,
             git_behind: session.state.git_behind,
-            total_lines_added: session.state.total_lines_added,
-            total_lines_removed: session.state.total_lines_removed,
           },
         });
       }
@@ -753,15 +752,10 @@ export class WsBridge {
     this.computeDiffStatsAsync(session).then((didRun) => {
       if (!didRun) return;
       session.diffStatsDirty = false;
+      // Only broadcast diff stats — git info fields are broadcast by refreshGitInfo
       this.broadcastToBrowsers(session, {
         type: "session_update",
         session: {
-          git_branch: session.state.git_branch,
-          is_worktree: session.state.is_worktree,
-          is_containerized: session.state.is_containerized,
-          repo_root: session.state.repo_root,
-          git_ahead: session.state.git_ahead,
-          git_behind: session.state.git_behind,
           total_lines_added: session.state.total_lines_added,
           total_lines_removed: session.state.total_lines_removed,
         },
@@ -1694,15 +1688,14 @@ export class WsBridge {
       }
     }
 
-    // Re-check git state after each turn (session idle).
-    void this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true });
-    // Always recompute diff stats after a turn completes — any turn involves
-    // tool calls that would have set the dirty flag, and we want fresh stats.
+    // Re-check git state after each turn (session idle), then recompute diff stats.
+    // Chained so git_default_branch is populated before diff computation.
     session.diffStatsDirty = true;
-    this.recomputeDiffIfDirty(session);
+    void this.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true }).then(() => {
+      this.recomputeDiffIfDirty(session);
+    });
 
     // Broadcast updated metrics to all browsers
-    // (total_lines_added/removed are now included in the refreshGitInfo broadcast)
     this.broadcastToBrowsers(session, {
       type: "session_update",
       session: {
