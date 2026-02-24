@@ -219,13 +219,8 @@ export function TopBar() {
                 />
               </div>
               {sessionName && (
-                <span className={`text-[11px] font-medium truncate flex items-center gap-1 ${isQuestNamed ? "text-amber-400" : "text-cc-fg"}`} title={sessionName}>
-                  {sessionName}
-                  {isQuestNamed && questStatus === "needs_verification" && (
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-purple-400">
-                      <path fillRule="evenodd" d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  )}
+                <span className={`text-[11px] font-medium truncate ${isQuestNamed && questStatus !== "needs_verification" ? "text-amber-400" : "text-cc-fg"}`} title={sessionName}>
+                  {isQuestNamed && questStatus === "needs_verification" ? `☑ ${sessionName}` : sessionName}
                 </span>
               )}
             </button>

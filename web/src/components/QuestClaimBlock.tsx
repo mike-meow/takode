@@ -31,7 +31,7 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const statusInfo = STATUS_LABELS[quest.status] || { label: quest.status, color: "text-cc-muted" };
   const isSubmitted = variant === "submitted";
-  const headerLabel = isSubmitted ? "Quest Submitted" : "Quest Claimed";
+  const headerLabel = isSubmitted ? "Quest Ready for Review" : "Quest Claimed";
   const borderColor = isSubmitted ? "border-purple-500/30" : "border-amber-500/30";
   const accentColor = isSubmitted ? "text-purple-400" : "text-amber-400";
 
