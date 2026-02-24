@@ -820,6 +820,7 @@ describe("persistence", () => {
         },
       ];
       store.saveLauncher(savedSessions);
+      await store.flushAll();
 
       // Mock process.kill(pid, 0) to succeed (process is alive)
       const origKill = process.kill;
@@ -857,6 +858,7 @@ describe("persistence", () => {
         },
       ];
       store.saveLauncher(savedSessions);
+      await store.flushAll();
 
       // Mock process.kill(pid, 0) to throw (process is dead)
       const killSpy = vi.spyOn(process, "kill").mockImplementation(((
@@ -907,6 +909,7 @@ describe("persistence", () => {
         },
       ];
       store.saveLauncher(savedSessions);
+      await store.flushAll();
 
       const newLauncher = new CliLauncher(3456);
       newLauncher.setStore(store);
