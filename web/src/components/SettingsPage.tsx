@@ -3,6 +3,7 @@ import { api, checkHealth, type ImportStats, type AutoApprovalConfig } from "../
 import { useStore } from "../store.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
+import { FolderPicker } from "./FolderPicker.js";
 
 import { navigateToSession, navigateToMostRecentSession } from "../utils/routing.js";
 
@@ -75,6 +76,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [aaNewCriteria, setAaNewCriteria] = useState("");
   const [aaCreating, setAaCreating] = useState(false);
   const [aaCreateError, setAaCreateError] = useState("");
+  const [showAaFolderPicker, setShowAaFolderPicker] = useState(false);
 
   // Session export/import state
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -943,13 +945,35 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
             {/* Add new config form */}
             <div className="border border-dashed border-cc-border rounded-lg p-3 space-y-2">
               <span className="text-xs font-medium text-cc-muted">Add Project Rule</span>
-              <input
-                type="text"
-                value={aaNewProjectPath}
-                onChange={(e) => setAaNewProjectPath(e.target.value)}
-                placeholder="Project path (e.g. /home/user/my-project)"
-                className="w-full px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={aaNewProjectPath}
+                  onChange={(e) => setAaNewProjectPath(e.target.value)}
+                  placeholder="Project path (e.g. /home/user/my-project)"
+                  className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAaFolderPicker(true)}
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                  title="Browse folders"
+                >
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+                  </svg>
+                </button>
+              </div>
+              {showAaFolderPicker && (
+                <FolderPicker
+                  initialPath={aaNewProjectPath || ""}
+                  onSelect={(path) => {
+                    setAaNewProjectPath(path);
+                    if (!aaNewLabel.trim()) setAaNewLabel(path.split("/").pop() || "");
+                  }}
+                  onClose={() => setShowAaFolderPicker(false)}
+                />
+              )}
               <input
                 type="text"
                 value={aaNewLabel}
@@ -1025,6 +1049,7 @@ function AutoApprovalConfigCard({
   const [enabled, setEnabled] = useState(config.enabled);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSave() {
@@ -1042,7 +1067,10 @@ function AutoApprovalConfigCard({
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete auto-approval config for "${config.label}"?`)) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
     setDeleting(true);
     try {
       await api.deleteAutoApprovalConfig(config.slug);
@@ -1075,14 +1103,34 @@ function AutoApprovalConfigCard({
         >
           {editing ? "Cancel" : "Edit"}
         </button>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="text-[10px] text-cc-error/70 hover:text-cc-error cursor-pointer disabled:opacity-50"
-        >
-          {deleting ? "..." : "Delete"}
-        </button>
+        {confirmDelete ? (
+          <>
+            <span className="text-[10px] text-cc-error">Sure?</span>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-[10px] text-cc-error font-medium hover:underline cursor-pointer disabled:opacity-50"
+            >
+              {deleting ? "..." : "Yes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer"
+            >
+              No
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="text-[10px] text-cc-error/70 hover:text-cc-error cursor-pointer"
+          >
+            Delete
+          </button>
+        )}
       </div>
 
       {editing ? (
