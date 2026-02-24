@@ -65,4 +65,25 @@ describe("ensureQuestmasterIntegration", () => {
     );
     expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/quest", 0o755);
   });
+
+  it("writes a ~/.local/bin/rg compatibility shim", () => {
+    ensureQuestmasterIntegration(3456, "/repo/web");
+
+    expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
+      "/home/tester/.local/bin/rg",
+      expect.stringContaining("rg (companion shim) 0.0.0"),
+      "utf-8",
+    );
+    expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
+      "/home/tester/.local/bin/rg",
+      expect.stringContaining("if [ \"$1\" = \"--files\" ]; then"),
+      "utf-8",
+    );
+    expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
+      "/home/tester/.local/bin/rg",
+      expect.stringContaining("exec grep -RIn --binary-files=without-match --exclude-dir=.git -- \"$pattern\" \"$@\""),
+      "utf-8",
+    );
+    expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/rg", 0o755);
+  });
 });
