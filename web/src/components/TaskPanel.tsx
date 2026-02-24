@@ -126,7 +126,7 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
             {(() => {
               const tp = cycleElapsedPct(limits.five_hour.resets_at, FIVE_HOURS_MS);
               return tp !== null ? (
-                <div className="absolute top-0 h-full w-px bg-cc-fg/40" style={{ left: `${Math.min(tp, 100)}%` }} />
+                <div className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]" style={{ left: `${Math.min(tp, 100)}%` }} />
               ) : null;
             })()}
           </div>
@@ -159,7 +159,7 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
             {(() => {
               const tp = cycleElapsedPct(limits.seven_day.resets_at, SEVEN_DAYS_MS);
               return tp !== null ? (
-                <div className="absolute top-0 h-full w-px bg-cc-fg/40" style={{ left: `${Math.min(tp, 100)}%` }} />
+                <div className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]" style={{ left: `${Math.min(tp, 100)}%` }} />
               ) : null;
             })()}
           </div>

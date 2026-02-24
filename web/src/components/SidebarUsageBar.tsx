@@ -52,7 +52,7 @@ function UsageRow({ label, pct, resetStr, timePct }: { label: string; pct: numbe
         />
         {timePct !== null && (
           <div
-            className="absolute top-0 h-full w-px bg-cc-fg/40"
+            className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]"
             style={{ left: `${Math.min(timePct, 100)}%` }}
           />
         )}
