@@ -296,6 +296,41 @@ async function cmdClaim(): Promise<void> {
   const sessionId = option("session") || process.env.COMPANION_SESSION_ID;
   if (!sessionId) die("No session ID. Pass --session <id> or set COMPANION_SESSION_ID.");
 
+  // Prefer HTTP endpoint when server is available — it handles session name
+  // override, session_quest_claimed broadcast, and task entry addition.
+  const port = process.env.COMPANION_PORT;
+  if (port) {
+    try {
+      const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        die((err as { error: string }).error || res.statusText);
+      }
+      const quest = await res.json() as QuestmasterTask;
+      if (jsonOutput) {
+        out(quest);
+      } else {
+        console.log(`Claimed ${quest.questId} "${quest.title}" for session ${formatSessionLabel(sessionId)}`);
+      }
+      return;
+    } catch (e) {
+      // Server unreachable — fall through to direct filesystem claim
+      if ((e as Error).message === "The operation was aborted due to timeout") {
+        // Timeout — fall through
+      } else if ((e as Error).name === "AbortError") {
+        // Abort — fall through
+      } else {
+        die((e as Error).message);
+      }
+    }
+  }
+
+  // Fallback: direct filesystem claim (no session name integration)
   try {
     const quest = claimQuest(id, sessionId);
     if (!quest) die(`Quest ${id} not found`);
