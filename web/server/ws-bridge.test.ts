@@ -4181,4 +4181,46 @@ describe("Codex adapter result handling", () => {
     );
     expect(diffUpdate).toBeDefined();
   });
+
+  it("converts codex assistant tool_result into tool_result_preview and suppresses raw tool_result bubble", () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "asst-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tool-1",
+            content: "sed: can't read missing.ts: No such file or directory\nExit code: 2",
+            is_error: true,
+          },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((c: any) => c.type === "assistant")).toBeUndefined();
+
+    const previewMsg = calls.find((c: any) => c.type === "tool_result_preview");
+    expect(previewMsg).toBeDefined();
+    expect(previewMsg.previews[0].tool_use_id).toBe("tool-1");
+    expect(previewMsg.previews[0].is_error).toBe(true);
+    expect(previewMsg.previews[0].content).toContain("No such file or directory");
+
+    const session = bridge.getSession("s1")!;
+    expect(session.toolResults.get("tool-1")?.content).toContain("Exit code: 2");
+  });
 });

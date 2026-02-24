@@ -30,6 +30,7 @@ import type {
   ReplayableBrowserIncomingMessage,
   BufferedBrowserEvent,
   ToolResultPreview,
+  ContentBlock,
   SessionState,
   PermissionRequest,
   BackendType,
@@ -1045,6 +1046,7 @@ export class WsBridge {
       // Track Codex CLI activity for idle management and stuck detection
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
+      let outgoing: BrowserIncomingMessage | null = msg;
 
       if (msg.type === "session_init") {
         session.state = { ...session.state, ...msg.session, backend_type: "codex" };
@@ -1057,22 +1059,50 @@ export class WsBridge {
       } else if (msg.type === "status_change") {
         session.state.is_compacting = msg.status === "compacting";
         this.persistSession(session);
+      } else if (msg.type === "assistant") {
+        const content = msg.message.content || [];
+        const toolResults = content.filter((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
+        if (toolResults.length > 0) {
+          const previews = this.buildToolResultPreviews(session, toolResults);
+          if (previews.length > 0) {
+            const previewMsg: BrowserIncomingMessage = {
+              type: "tool_result_preview",
+              previews,
+            };
+            session.messageHistory.push(previewMsg);
+            this.broadcastToBrowsers(session, previewMsg);
+            this.persistSession(session);
+          }
+
+          // Preserve non-tool_result content blocks (text/tool_use/thinking).
+          // If the message only contains tool_result blocks, suppress it so
+          // Codex renders results via the shared ToolBlock result section.
+          const nonResult = content.filter((b) => b.type !== "tool_result");
+          if (nonResult.length === 0) {
+            outgoing = null;
+          } else {
+            outgoing = {
+              ...msg,
+              message: { ...msg.message, content: nonResult },
+            };
+          }
+        }
       }
 
       // Store assistant/result messages in history for replay
-      if (msg.type === "assistant") {
-        session.messageHistory.push({ ...msg, timestamp: msg.timestamp || Date.now() });
+      if (outgoing?.type === "assistant") {
+        session.messageHistory.push({ ...outgoing, timestamp: outgoing.timestamp || Date.now() });
         this.persistSession(session);
-      } else if (msg.type === "result") {
+      } else if (outgoing?.type === "result") {
         // Route through the unified result handler so Codex gets the same
         // post-turn state refresh (git + diff stats + attention) as Claude.
-        this.handleResultMessage(session, msg.data);
+        this.handleResultMessage(session, outgoing.data);
         return;
       }
 
       // Diagnostic: log tool_use assistant messages
-      if (msg.type === "assistant") {
-        const content = (msg as { message?: { content?: Array<{ type: string }> } }).message?.content;
+      if (outgoing?.type === "assistant") {
+        const content = (outgoing as { message?: { content?: Array<{ type: string }> } }).message?.content;
         const hasToolUse = content?.some((b) => b.type === "tool_use");
         if (hasToolUse) {
           console.log(`[ws-bridge] Broadcasting tool_use assistant to ${session.browserSockets.size} browser(s) for session ${sessionTag(session.id)}`);
@@ -1080,12 +1110,12 @@ export class WsBridge {
       }
 
       // Handle permission requests
-      if (msg.type === "permission_request") {
-        session.pendingPermissions.set(msg.request.request_id, msg.request);
+      if (outgoing?.type === "permission_request") {
+        session.pendingPermissions.set(outgoing.request.request_id, outgoing.request);
         this.persistSession(session);
       }
 
-      this.broadcastToBrowsers(session, msg);
+      if (outgoing) this.broadcastToBrowsers(session, outgoing);
     });
 
     // Handle session metadata updates
@@ -2151,11 +2181,31 @@ export class WsBridge {
     const content = msg.message?.content;
     if (!Array.isArray(content)) return;
 
+    const toolResults = content.filter((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
+    const previews = this.buildToolResultPreviews(session, toolResults);
+
+    if (previews.length === 0) return;
+
+    const browserMsg: BrowserIncomingMessage = {
+      type: "tool_result_preview",
+      previews,
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+    this.persistSession(session);
+  }
+
+  /**
+   * Convert tool_result blocks into ToolResultPreview entries and index full payloads.
+   * Shared by Claude and Codex paths to keep Terminal result rendering consistent.
+   */
+  private buildToolResultPreviews(
+    session: Session,
+    toolResults: Array<Extract<ContentBlock, { type: "tool_result" }>>,
+  ): ToolResultPreview[] {
     const previews: ToolResultPreview[] = [];
 
-    for (const block of content) {
-      if (block.type !== "tool_result") continue;
-
+    for (const block of toolResults) {
       const resultContent = typeof block.content === "string"
         ? block.content
         : JSON.stringify(block.content);
@@ -2188,15 +2238,7 @@ export class WsBridge {
       });
     }
 
-    if (previews.length === 0) return;
-
-    const browserMsg: BrowserIncomingMessage = {
-      type: "tool_result_preview",
-      previews,
-    };
-    session.messageHistory.push(browserMsg);
-    this.broadcastToBrowsers(session, browserMsg);
-    this.persistSession(session);
+    return previews;
   }
 
   /** Look up a full tool result by tool_use_id for lazy fetch via REST. */
