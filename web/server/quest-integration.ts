@@ -89,18 +89,91 @@ if [ "$1" = "--files" ]; then
   exit 0
 fi
 
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "rg (companion shim): partial compatibility mode using grep/find"
+  echo "supports: --version, --files, and common search flags"
+  exit 0
+fi
+
 if [ "$#" -lt 1 ]; then
-  echo "rg shim: usage: rg PATTERN [PATH ...] or rg --files [PATH]" >&2
+  echo "rg shim: usage: rg [OPTIONS] PATTERN [PATH ...] or rg --files [PATH]" >&2
   exit 2
 fi
 
-pattern="$1"
-shift
-if [ "$#" -eq 0 ]; then
-  set -- .
+grep_args=(
+  -R
+  -I
+  -n
+  -E
+  --binary-files=without-match
+  --exclude-dir=.git
+)
+positional=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --)
+      shift
+      while [ "$#" -gt 0 ]; do
+        positional+=("$1")
+        shift
+      done
+      break
+      ;;
+    --hidden|-uu|-uuu)
+      # Ignored: grep -R already walks hidden paths by default.
+      shift
+      ;;
+    --glob|-g)
+      if [ "$#" -lt 2 ]; then
+        echo "rg shim: $1 requires a pattern argument" >&2
+        exit 2
+      fi
+      grep_args+=(--include "$2")
+      shift 2
+      ;;
+    -g*)
+      grep_args+=(--include "$\{1#-g}")
+      shift
+      ;;
+    -n|-S)
+      # -n is already enabled, -S (smart case) is not supported.
+      shift
+      ;;
+    -F|-i|-w|-x|-v|-l|-L|-c|-o|-s|-h|-H)
+      grep_args+=("$1")
+      shift
+      ;;
+    -e|-f)
+      if [ "$#" -lt 2 ]; then
+        echo "rg shim: $1 requires an argument" >&2
+        exit 2
+      fi
+      grep_args+=("$1" "$2")
+      shift 2
+      ;;
+    -*)
+      grep_args+=("$1")
+      shift
+      ;;
+    *)
+      positional+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [ "$\{#positional[@]}" -lt 1 ]; then
+  echo "rg shim: missing PATTERN" >&2
+  exit 2
 fi
 
-exec grep -RIn --binary-files=without-match --exclude-dir=.git -- "$pattern" "$@"
+pattern="$\{positional[0]}"
+if [ "$\{#positional[@]}" -eq 1 ]; then
+  positional+=(.)
+fi
+
+exec grep "$\{grep_args[@]}" -- "$pattern" "$\{positional[@]:1}"
 `;
 
   writeFileSync(shimPath, shim, "utf-8");
