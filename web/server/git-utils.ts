@@ -1,6 +1,7 @@
 import { execSync, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, mkdirSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 
@@ -459,6 +460,17 @@ export function removeWorktree(
 export function isWorktreeDirty(worktreePath: string): boolean {
   if (!existsSync(worktreePath)) return false;
   const status = gitSafe("status --porcelain", worktreePath);
+  return status !== null && status.length > 0;
+}
+
+/** Async version of isWorktreeDirty — avoids blocking event loop on NFS. */
+export async function isWorktreeDirtyAsync(worktreePath: string): Promise<boolean> {
+  try {
+    await access(worktreePath);
+  } catch {
+    return false;
+  }
+  const status = await gitSafeAsync("status --porcelain", worktreePath);
   return status !== null && status.length > 0;
 }
 

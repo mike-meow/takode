@@ -3,7 +3,7 @@ import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { execSync, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveBinary, expandTilde } from "./path-resolver.js";
-import { readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, stat, access as accessAsync } from "node:fs/promises";
 import { resolve, join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -1022,12 +1022,12 @@ export function createRoutes(
     }
   });
 
-  api.get("/sessions", (c) => {
+  api.get("/sessions", async (c) => {
     const sessions = launcher.listSessions();
     const names = sessionNames.getAllNames();
     const bridgeStates = wsBridge.getAllSessions();
     const bridgeMap = new Map(bridgeStates.map((s) => [s.session_id, s]));
-    const enriched = sessions.map((s) => {
+    const enriched = await Promise.all(sessions.map(async (s) => {
       try {
         const bridge = bridgeMap.get(s.sessionId);
         return {
@@ -1044,16 +1044,20 @@ export function createRoutes(
           keywords: wsBridge.getSessionKeywords(s.sessionId),
           ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
           // Worktree liveness status for archived worktree sessions
-          ...(s.isWorktree && s.archived ? {
-            worktreeExists: existsSync(s.cwd),
-            worktreeDirty: existsSync(s.cwd) ? gitUtils.isWorktreeDirty(s.cwd) : undefined,
-          } : {}),
+          ...(s.isWorktree && s.archived ? await (async () => {
+            let exists = false;
+            try { await accessAsync(s.cwd); exists = true; } catch { /* not found */ }
+            return {
+              worktreeExists: exists,
+              worktreeDirty: exists ? await gitUtils.isWorktreeDirtyAsync(s.cwd) : undefined,
+            };
+          })() : {}),
         };
       } catch (e) {
         console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
         return { ...s, name: names[s.sessionId] ?? s.name };
       }
-    });
+    }));
     return c.json(enriched);
   });
 

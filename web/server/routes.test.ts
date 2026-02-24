@@ -42,6 +42,14 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    access: vi.fn(async () => {}), // default: file exists (no throw)
+  };
+});
+
 vi.mock("./git-utils.js", () => ({
   getRepoInfo: vi.fn(() => null),
   listBranches: vi.fn(() => []),
@@ -52,6 +60,7 @@ vi.mock("./git-utils.js", () => ({
   checkoutBranch: vi.fn(),
   removeWorktree: vi.fn(),
   isWorktreeDirty: vi.fn(() => false),
+  isWorktreeDirtyAsync: vi.fn(async () => false),
   resolveDefaultBranch: vi.fn(() => "main"),
 }));
 
@@ -702,8 +711,7 @@ describe("GET /api/sessions", () => {
     ];
     launcher.listSessions.mockReturnValue(sessions);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
-    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/wt/repo-wt-1234");
-    vi.mocked(gitUtils.isWorktreeDirty).mockReturnValue(true);
+    vi.mocked(gitUtils.isWorktreeDirtyAsync).mockResolvedValue(true);
 
     const res = await app.request("/api/sessions", { method: "GET" });
 
