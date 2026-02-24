@@ -353,7 +353,7 @@ function AssistantMessage({ message, sessionId }: { message: ChatMessage; sessio
       <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
         {grouped.map((group, i) => {
           if (group.kind === "content") {
-            return <ContentBlockRenderer key={i} block={group.block} />;
+            return <ContentBlockRenderer key={i} block={group.block} sessionId={sessionId} />;
           }
           // Single tool_use renders as before
           if (group.items.length === 1) {
@@ -486,13 +486,15 @@ function CompactMarker({ message }: { message: ChatMessage }) {
   );
 }
 
-function ContentBlockRenderer({ block }: { block: ContentBlock }) {
+function ContentBlockRenderer({ block, sessionId }: { block: ContentBlock; sessionId?: string }) {
+  const isCodex = useStore((s) => sessionId ? s.sessions.get(sessionId)?.backend_type === "codex" : false);
+
   if (block.type === "text") {
     return <MarkdownContent text={block.text} />;
   }
 
   if (block.type === "thinking") {
-    return <ThinkingBlock text={block.thinking} />;
+    return <ThinkingBlock text={block.thinking} isCodex={isCodex} />;
   }
 
   if (block.type === "tool_use") {
@@ -555,9 +557,14 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
   );
 }
 
-function ThinkingBlock({ text }: { text: string }) {
+function ThinkingBlock({ text, isCodex }: { text: string; isCodex: boolean }) {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLButtonElement>(null);
+  const preview = useMemo(() => {
+    const oneLine = text.replace(/\s+/g, " ").trim();
+    if (oneLine.length <= 90) return oneLine;
+    return `${oneLine.slice(0, 87)}...`;
+  }, [text]);
 
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden">
@@ -573,8 +580,14 @@ function ThinkingBlock({ text }: { text: string }) {
         >
           <path d="M6 4l4 4-4 4" />
         </svg>
-        <span className="font-medium">Thinking</span>
-        <span className="text-cc-muted/60">{text.length} chars</span>
+        {isCodex && !open ? (
+          <span className="font-medium truncate min-w-0">{preview || "Thinking"}</span>
+        ) : (
+          <>
+            <span className="font-medium">Thinking</span>
+            <span className="text-cc-muted/60">{text.length} chars</span>
+          </>
+        )}
       </button>
       {open && (
         <div className="px-3 pb-3 pt-0">

@@ -332,6 +332,7 @@ export class CodexAdapter {
 
   // Track command execution start times for progress indicator
   private commandStartTimes = new Map<string, number>();
+  private commandOutputByItemId = new Map<string, string>();
 
   // Accumulate reasoning text by item ID so we can emit final thinking blocks.
   private reasoningTextByItemId = new Map<string, string>();
@@ -1280,6 +1281,7 @@ export class CodexAdapter {
         const cmd = item as CodexCommandExecutionItem;
         const commandStr = Array.isArray(cmd.command) ? cmd.command.join(" ") : (cmd.command || "");
         this.commandStartTimes.set(item.id, Date.now());
+        this.commandOutputByItemId.delete(item.id);
         this.emitToolUseStart(item.id, "Bash", { command: commandStr });
         break;
       }
@@ -1435,10 +1437,13 @@ export class CodexAdapter {
         this.ensureToolUseEmitted(item.id, "Bash", { command: commandStr });
         // Clean up progress tracking
         this.commandStartTimes.delete(item.id);
+        const streamedOutput = (this.commandOutputByItemId.get(item.id) || "").trim();
+        this.commandOutputByItemId.delete(item.id);
         // Emit tool result
         const output = (item as Record<string, unknown>).stdout as string || "";
         const stderr = (item as Record<string, unknown>).stderr as string || "";
-        const combinedOutput = [output, stderr].filter(Boolean).join("\n").trim();
+        const directOutput = [output, stderr].filter(Boolean).join("\n").trim();
+        const combinedOutput = directOutput || streamedOutput;
         const exitCode = typeof cmd.exitCode === "number" ? cmd.exitCode : 0;
         const durationMs = typeof cmd.durationMs === "number" ? cmd.durationMs : undefined;
         const failed = cmd.status === "failed" || cmd.status === "declined" || exitCode !== 0;
@@ -1641,12 +1646,47 @@ export class CodexAdapter {
     if (!itemId) return;
     const startTime = this.commandStartTimes.get(itemId);
     const elapsed = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
+    const deltaText = this.extractCommandOutputDelta(params);
+    if (deltaText) {
+      const prev = this.commandOutputByItemId.get(itemId) || "";
+      this.commandOutputByItemId.set(itemId, prev + deltaText);
+    }
     this.emit({
       type: "tool_progress",
       tool_use_id: itemId,
       tool_name: "Bash",
       elapsed_time_seconds: elapsed,
     });
+  }
+
+  private extractCommandOutputDelta(params: Record<string, unknown>): string {
+    const collected: string[] = [];
+    const seen = new Set<unknown>();
+
+    const visit = (value: unknown): void => {
+      if (value == null || seen.has(value)) return;
+      seen.add(value);
+      if (typeof value === "string") {
+        collected.push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        for (const key of ["delta", "text", "output", "stdout", "stderr", "content", "message"]) {
+          if (key in obj) visit(obj[key]);
+        }
+      }
+    };
+
+    for (const key of ["delta", "output", "stdout", "stderr", "content"]) {
+      visit(params[key]);
+    }
+
+    return collected.join("");
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────

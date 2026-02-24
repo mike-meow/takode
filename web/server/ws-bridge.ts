@@ -1064,13 +1064,10 @@ export class WsBridge {
         session.messageHistory.push({ ...msg, timestamp: msg.timestamp || Date.now() });
         this.persistSession(session);
       } else if (msg.type === "result") {
-        this.setGenerating(session, false, "codex_result");
-        session.messageHistory.push(msg);
-        this.persistSession(session);
-        // Trigger auto-naming re-evaluation after Codex turn completion
-        if (this.onTurnCompleted) {
-          this.onTurnCompleted(session.id, [...session.messageHistory], session.state.cwd);
-        }
+        // Route through the unified result handler so Codex gets the same
+        // post-turn state refresh (git + diff stats + attention) as Claude.
+        this.handleResultMessage(session, msg.data);
+        return;
       }
 
       // Diagnostic: log tool_use assistant messages

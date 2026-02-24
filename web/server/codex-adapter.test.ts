@@ -1535,6 +1535,61 @@ describe("CodexAdapter", () => {
     expect(toolResultMsg).toBeUndefined();
   });
 
+  it("uses streamed outputDelta text when failed command lacks stdout/stderr", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        item: { type: "commandExecution", id: "cmd_fail", command: "sed -n '1,260p' missing.ts", status: "inProgress" },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Simulate codex sending streamed terminal output but no final stdout/stderr fields.
+    stdout.push(JSON.stringify({
+      method: "item/commandExecution/outputDelta",
+      params: {
+        itemId: "cmd_fail",
+        delta: "sed: can't read missing.ts: No such file or directory\n",
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "commandExecution",
+          id: "cmd_fail",
+          command: "sed -n '1,260p' missing.ts",
+          status: "failed",
+          exitCode: 2,
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const toolResultMsg = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      return content.some((b) => b.type === "tool_result" && b.tool_use_id === "cmd_fail");
+    }) as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } } | undefined;
+
+    expect(toolResultMsg).toBeDefined();
+    const resultBlock = toolResultMsg!.message.content.find((b) => b.type === "tool_result" && b.tool_use_id === "cmd_fail");
+    expect(resultBlock?.content).toContain("No such file or directory");
+    expect(resultBlock?.content).toContain("Exit code: 2");
+  });
+
   it("fetches rate limits after initialization via account/rateLimits/read", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 

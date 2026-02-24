@@ -280,6 +280,19 @@ const MSG_ASSISTANT_THINKING: ChatMessage = {
   timestamp: Date.now() - 40000,
 };
 
+const MSG_ASSISTANT_THINKING_CODEX: ChatMessage = {
+  id: "msg-5b",
+  role: "assistant",
+  content: "",
+  contentBlocks: [
+    {
+      type: "thinking",
+      thinking: "Need to fix Codex diff metrics not updating in chat header by routing Codex result events through the unified ws-bridge result handler and adding a regression test for total_lines updates.",
+    },
+  ],
+  timestamp: Date.now() - 39000,
+};
+
 const MSG_SYSTEM: ChatMessage = {
   id: "msg-6",
   role: "system",
@@ -876,6 +889,9 @@ export function Playground() {
             </Card>
             <Card label="Assistant message (thinking block)">
               <MessageBubble message={MSG_ASSISTANT_THINKING} />
+            </Card>
+            <Card label="Assistant message (Codex thinking preview)">
+              <MessageBubble message={MSG_ASSISTANT_THINKING_CODEX} sessionId={CODEX_DEMO_SESSION} />
             </Card>
             <Card label="Tool result with error">
               <MessageBubble message={MSG_TOOL_ERROR} />

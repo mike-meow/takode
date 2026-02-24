@@ -28,6 +28,23 @@ function makeBrowserSocket(sessionId: string) {
   return createMockSocket({ kind: "browser", sessionId });
 }
 
+function makeCodexAdapterMock() {
+  let onBrowserMessageCb: ((msg: any) => void) | undefined;
+  let onSessionMetaCb: ((meta: any) => void) | undefined;
+  let onDisconnectCb: (() => void) | undefined;
+
+  return {
+    onBrowserMessage: vi.fn((cb: (msg: any) => void) => { onBrowserMessageCb = cb; }),
+    onSessionMeta: vi.fn((cb: (meta: any) => void) => { onSessionMetaCb = cb; }),
+    onDisconnect: vi.fn((cb: () => void) => { onDisconnectCb = cb; }),
+    sendBrowserMessage: vi.fn(),
+    isConnected: vi.fn(() => true),
+    emitBrowserMessage: (msg: any) => onBrowserMessageCb?.(msg),
+    emitSessionMeta: (meta: any) => onSessionMetaCb?.(meta),
+    emitDisconnect: () => onDisconnectCb?.(),
+  };
+}
+
 let bridge: WsBridge;
 let tempDir: string;
 let store: SessionStore;
@@ -4098,5 +4115,70 @@ describe("Diff stats computation", () => {
       expect(session.state.git_behind).toBe(2);
       expect(session.state.diff_base_branch).toBe("jiayi");
     });
+  });
+});
+
+describe("Codex adapter result handling", () => {
+  it("recomputes and broadcasts diff stats on codex result", async () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "feat/codex\n";
+      if (cmd.includes("--git-dir")) return ".git\n";
+      if (cmd.includes("--show-toplevel")) return "/test\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base")) return "abc123\n";
+      if (cmd.includes("diff --numstat")) return "12\t4\tsrc/app.ts\n";
+      if (cmd.includes("for-each-ref")) return "";
+      if (cmd.includes("symbolic-ref")) return "";
+      if (cmd.includes("branch --list")) return "  main\n";
+      return "";
+    });
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        cwd: "/test",
+        model: "gpt-5-codex",
+      },
+    });
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 1000,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "codex-result-1",
+        session_id: "s1",
+      },
+    });
+
+    await vi.waitFor(() => {
+      const state = bridge.getSession("s1")!.state;
+      expect(state.total_lines_added).toBe(12);
+      expect(state.total_lines_removed).toBe(4);
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const resultBroadcasts = calls.filter((c: any) => c.type === "result");
+    expect(resultBroadcasts).toHaveLength(1);
+    const diffUpdate = calls.find((c: any) =>
+      c.type === "session_update"
+      && c.session?.total_lines_added === 12
+      && c.session?.total_lines_removed === 4,
+    );
+    expect(diffUpdate).toBeDefined();
   });
 });
