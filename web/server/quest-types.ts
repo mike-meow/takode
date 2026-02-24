@@ -1,6 +1,7 @@
 // ─── Questmaster Types ───────────────────────────────────────────────────────
 //
-// Progressive types: each stage extends the previous, strictly adding fields.
+// Progressive types: each stage extends the previous, strictly adding fields
+// where practical.
 // Linked-list versioning: every status transition creates a new version object
 // linked to the previous. No data is ever lost.
 //
@@ -72,6 +73,8 @@ interface QuestBase {
   parentId?: string;
   /** Attached images stored on disk */
   images?: QuestImage[];
+  /** Past owners in chronological order. Excludes the current active owner. */
+  previousOwnerSessionIds?: string[];
 }
 
 // ─── Progressive stage types (each extends the previous) ─────────────────────
@@ -91,6 +94,7 @@ export type QuestRefined = QuestBase & {
 /** In Progress: claimed by a session */
 export type QuestInProgress = Omit<QuestRefined, "status"> & {
   status: "in_progress";
+  /** Active owner session ID (historically named sessionId for compatibility). */
   sessionId: string;
   claimedAt: number;
 };
@@ -104,8 +108,12 @@ export type QuestNeedsVerification = Omit<QuestInProgress, "status"> & {
 };
 
 /** Done: all verification complete (or cancelled) */
-export type QuestDone = Omit<QuestNeedsVerification, "status"> & {
+export type QuestDone = Omit<QuestNeedsVerification, "status" | "sessionId" | "claimedAt"> & {
   status: "done";
+  /** Active owner is cleared when done; sessionId may be present in legacy data. */
+  sessionId?: string;
+  /** Preserved for compatibility/history display when available. */
+  claimedAt?: number;
   completedAt: number;
   /** Free-form closure notes (commit hashes, reasoning, references, etc.) */
   notes?: string;

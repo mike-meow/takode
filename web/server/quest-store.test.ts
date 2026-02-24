@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -178,6 +179,29 @@ describe("getQuest", () => {
   it("returns null for non-existent questId", async () => {
     expect(await questStore.getQuest("q-999")).toBeNull();
   });
+
+  it("normalizes legacy done ownership (sessionId -> previousOwnerSessionIds)", async () => {
+    const legacy = {
+      id: "q-1-v1",
+      questId: "q-1",
+      version: 1,
+      title: "Legacy",
+      createdAt: Date.now(),
+      status: "done",
+      description: "Legacy data",
+      sessionId: "sess-legacy",
+      verificationItems: [{ text: "verify", checked: true }],
+      completedAt: Date.now(),
+    };
+    await writeFile(join(questDir(), "q-1-v1.json"), JSON.stringify(legacy), "utf-8");
+
+    const q = await questStore.getQuest("q-1");
+    expect(q?.status).toBe("done");
+    if (q?.status === "done") {
+      expect(q.sessionId).toBeUndefined();
+      expect(q.previousOwnerSessionIds).toEqual(["sess-legacy"]);
+    }
+  });
 });
 
 describe("getQuestVersion", () => {
@@ -284,6 +308,8 @@ describe("forward transitions", () => {
     if (done?.status === "done") {
       expect(done.completedAt).toBeGreaterThan(0);
       expect(done.verificationItems).toHaveLength(2); // carried forward
+      expect(done.sessionId).toBeUndefined(); // active owner is cleared at done
+      expect(done.previousOwnerSessionIds).toContain("sess-1");
     }
   });
 
@@ -375,6 +401,26 @@ describe("claimQuest", () => {
     await expect(questStore.claimQuest("q-1", "sess-2")).rejects.toThrow(
       "already claimed by session sess-1",
     );
+  });
+
+  it("allows transfer when current owner is archived", async () => {
+    await questStore.createQuest({ title: "Takeover" });
+    await questStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Ready",
+    });
+    await questStore.claimQuest("q-1", "sess-1");
+
+    const claimed = await questStore.claimQuest("q-1", "sess-2", {
+      allowArchivedOwnerTakeover: true,
+      isSessionArchived: (sid) => sid === "sess-1",
+    });
+    expect(claimed?.status).toBe("in_progress");
+    if (claimed?.status === "in_progress") {
+      expect(claimed.sessionId).toBe("sess-2");
+      expect(claimed.previousOwnerSessionIds).toContain("sess-1");
+      expect(claimed.previousOwnerSessionIds).not.toContain("sess-2");
+    }
   });
 
   it("allows re-claiming by the same session", async () => {
@@ -475,7 +521,7 @@ describe("cancelQuest", () => {
     }
   });
 
-  it("cancels an in_progress quest, carrying forward sessionId", async () => {
+  it("cancels an in_progress quest, moving active owner to previous owners", async () => {
     // Build up to in_progress
     await questStore.createQuest({ title: "Cancel in progress" });
     await questStore.transitionQuest("q-1", {
@@ -489,7 +535,8 @@ describe("cancelQuest", () => {
     expect(cancelled!.status).toBe("done");
     if (cancelled!.status === "done") {
       expect(cancelled!.cancelled).toBe(true);
-      expect(cancelled!.sessionId).toBe("sess-1");
+      expect(cancelled!.sessionId).toBeUndefined();
+      expect(cancelled!.previousOwnerSessionIds).toContain("sess-1");
     }
   });
 

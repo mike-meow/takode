@@ -61,6 +61,50 @@ function normalizeVerificationItems(
   return result;
 }
 
+function getActiveSessionId(quest: QuestmasterTask): string | undefined {
+  if (!("sessionId" in quest) || typeof quest.sessionId !== "string") return undefined;
+  const sid = quest.sessionId.trim();
+  return sid.length > 0 ? sid : undefined;
+}
+
+function getPreviousOwnerSessionIds(quest: QuestmasterTask): string[] {
+  const raw = (quest as { previousOwnerSessionIds?: unknown }).previousOwnerSessionIds;
+  if (!Array.isArray(raw)) return [];
+  const unique = new Set<string>();
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const sid = v.trim();
+    if (!sid) continue;
+    unique.add(sid);
+  }
+  return [...unique];
+}
+
+function normalizeQuestOwnership(quest: QuestmasterTask): QuestmasterTask {
+  const normalized = { ...quest } as QuestmasterTask & { previousOwnerSessionIds?: string[]; sessionId?: string };
+  const previous = getPreviousOwnerSessionIds(normalized);
+  const active = getActiveSessionId(normalized);
+
+  // Legacy normalization: done quests used to carry sessionId. Treat it as past owner.
+  if (normalized.status === "done" && active) {
+    if (!previous.includes(active)) previous.push(active);
+    delete normalized.sessionId;
+  }
+
+  const finalActive = getActiveSessionId(normalized);
+  if (finalActive) {
+    const idx = previous.indexOf(finalActive);
+    if (idx !== -1) previous.splice(idx, 1);
+  }
+
+  if (previous.length > 0) {
+    normalized.previousOwnerSessionIds = previous;
+  } else {
+    delete normalized.previousOwnerSessionIds;
+  }
+  return normalized;
+}
+
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 const QUESTMASTER_DIR = join(homedir(), ".companion", "questmaster");
@@ -133,7 +177,7 @@ async function readQuest(id: string): Promise<QuestmasterTask | null> {
   await ensureDir();
   try {
     const raw = await readFile(filePath(id), "utf-8");
-    return JSON.parse(raw) as QuestmasterTask;
+    return normalizeQuestOwnership(JSON.parse(raw) as QuestmasterTask);
   } catch {
     return null;
   }
@@ -141,7 +185,7 @@ async function readQuest(id: string): Promise<QuestmasterTask | null> {
 
 async function writeQuest(quest: QuestmasterTask): Promise<void> {
   await ensureDir();
-  await writeFile(filePath(quest.id), JSON.stringify(quest, null, 2), "utf-8");
+  await writeFile(filePath(quest.id), JSON.stringify(normalizeQuestOwnership(quest), null, 2), "utf-8");
 }
 
 /** Read all version files, grouped by questId. */
@@ -155,7 +199,7 @@ async function readAllVersions(): Promise<Map<string, QuestmasterTask[]>> {
     for (const file of files) {
       try {
         const raw = await readFile(join(QUESTMASTER_DIR, file), "utf-8");
-        const quest = JSON.parse(raw) as QuestmasterTask;
+        const quest = normalizeQuestOwnership(JSON.parse(raw) as QuestmasterTask);
         const arr = groups.get(quest.questId) || [];
         arr.push(quest);
         groups.set(quest.questId, arr);
@@ -335,6 +379,9 @@ export async function transitionQuest(
 
   // Extract feedback thread from current version (may exist on needs_verification/done/in_progress)
   const currentFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+  const currentActiveSessionId = getActiveSessionId(current);
+  const currentPreviousOwners = getPreviousOwnerSessionIds(current);
+  const previousOwners = [...currentPreviousOwners];
 
   const base = {
     id: newId,
@@ -346,15 +393,20 @@ export async function transitionQuest(
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
+    ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
   };
 
   let quest: QuestmasterTask;
 
   switch (targetStatus) {
     case "idea": {
+      if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
+        previousOwners.push(currentActiveSessionId);
+      }
       quest = {
         ...base,
         status: "idea",
+        ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
         ...("description" in current && current.description
           ? { description: current.description }
           : {}),
@@ -372,10 +424,14 @@ export async function transitionQuest(
       if (!description?.trim()) {
         throw new Error("Description is required for refined status");
       }
+      if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
+        previousOwners.push(currentActiveSessionId);
+      }
       quest = {
         ...base,
         status: "refined",
         description,
+        ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
       } as QuestRefined;
       break;
     }
@@ -393,12 +449,17 @@ export async function transitionQuest(
       if (!sessionId) {
         throw new Error("sessionId is required for in_progress status");
       }
+      if (currentActiveSessionId && currentActiveSessionId !== sessionId && !previousOwners.includes(currentActiveSessionId)) {
+        previousOwners.push(currentActiveSessionId);
+      }
+      const nextPreviousOwners = previousOwners.filter((sid) => sid !== sessionId);
       quest = {
         ...base,
         status: "in_progress",
         description,
         sessionId,
         claimedAt: now,
+        ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
         ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestInProgress;
       break;
@@ -417,6 +478,10 @@ export async function transitionQuest(
       if (!sessionId) {
         throw new Error("sessionId is required for needs_verification status");
       }
+      if (currentActiveSessionId && currentActiveSessionId !== sessionId && !previousOwners.includes(currentActiveSessionId)) {
+        previousOwners.push(currentActiveSessionId);
+      }
+      const nextPreviousOwners = previousOwners.filter((sid) => sid !== sessionId);
       const rawItems =
         input.verificationItems ??
         ("verificationItems" in current
@@ -436,6 +501,7 @@ export async function transitionQuest(
             ? (current as QuestInProgress).claimedAt
             : now,
         verificationItems,
+        ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
         ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestNeedsVerification;
       break;
@@ -448,12 +514,8 @@ export async function transitionQuest(
       if (!description?.trim()) {
         throw new Error("Description is required for done status");
       }
-      const sessionId =
-        "sessionId" in current
-          ? (current as QuestInProgress).sessionId
-          : undefined;
-      if (!sessionId) {
-        throw new Error("sessionId is required for done status");
+      if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
+        previousOwners.push(currentActiveSessionId);
       }
       const verificationItems =
         "verificationItems" in current
@@ -466,12 +528,12 @@ export async function transitionQuest(
         ...base,
         status: "done",
         description,
-        sessionId,
         claimedAt:
           "claimedAt" in current
             ? (current as QuestInProgress).claimedAt
             : now,
         verificationItems,
+        ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
         completedAt: now,
         ...(input.notes ? { notes: input.notes } : {}),
         ...(input.cancelled ? { cancelled: true } : {}),
@@ -503,6 +565,10 @@ export async function getActiveQuestForSession(sessionId: string): Promise<Quest
 export async function claimQuest(
   questId: string,
   sessionId: string,
+  options?: {
+    allowArchivedOwnerTakeover?: boolean;
+    isSessionArchived?: (sessionId: string) => boolean;
+  },
 ): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
@@ -523,13 +589,18 @@ export async function claimQuest(
     (current as QuestInProgress).sessionId !== sessionId
   ) {
     const existingSessionId = (current as QuestInProgress).sessionId;
-    const ownerName = getName(existingSessionId);
-    const ownerLabel = ownerName
-      ? `"${ownerName}" (${existingSessionId.slice(0, 8)})`
-      : existingSessionId;
-    throw new Error(
-      `Quest ${questId} is already claimed by session ${ownerLabel}`,
-    );
+    const ownerArchived = !!options?.isSessionArchived?.(existingSessionId);
+    if (options?.allowArchivedOwnerTakeover && ownerArchived) {
+      // Archived active owner can be taken over by a live session.
+    } else {
+      const ownerName = getName(existingSessionId);
+      const ownerLabel = ownerName
+        ? `"${ownerName}" (${existingSessionId.slice(0, 8)})`
+        : existingSessionId;
+      throw new Error(
+        `Quest ${questId} is already claimed by session ${ownerLabel}`,
+      );
+    }
   }
 
   // Enforce one in_progress quest per session: if this session already has
@@ -588,6 +659,11 @@ export async function cancelQuest(
 
   const description =
     "description" in current ? current.description : undefined;
+  const currentActiveSessionId = getActiveSessionId(current);
+  const previousOwners = getPreviousOwnerSessionIds(current);
+  if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
+    previousOwners.push(currentActiveSessionId);
+  }
 
   const cancelFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
   const quest: QuestDone = {
@@ -600,12 +676,9 @@ export async function cancelQuest(
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
+    ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     status: "done",
     ...(description ? { description } : {}),
-    // Carry forward sessionId if present, otherwise omit
-    ...("sessionId" in current
-      ? { sessionId: (current as QuestInProgress).sessionId }
-      : {}),
     claimedAt:
       "claimedAt" in current
         ? (current as QuestInProgress).claimedAt

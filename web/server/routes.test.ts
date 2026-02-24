@@ -154,11 +154,13 @@ function createMockBridge() {
     setInitialCwd: vi.fn(),
     setDiffBaseBranch: vi.fn(() => true),
     setInitialAskPermission: vi.fn(),
+    markResumedFromExternal: vi.fn(),
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),
     broadcastGlobal: vi.fn(),
     broadcastNameUpdate: vi.fn(),
     setSessionClaimedQuest: vi.fn(),
+    addTaskEntry: vi.fn(),
     persistSessionSync: vi.fn(),
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),
@@ -377,6 +379,28 @@ describe("POST /api/sessions/create", () => {
     const json = await res.json();
     expect(json.error).toContain("Invalid backend");
     expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
+  it("injects COMPANION_PORT for resumed sessions", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backend: "claude",
+        cwd: "/test",
+        resumeCliSessionId: "cli-resume-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resumeCliSessionId: "cli-resume-1",
+        env: expect.objectContaining({
+          COMPANION_PORT: "3456",
+        }),
+      }),
+    );
   });
 
   it("sets up a worktree when useWorktree and branch are specified", async () => {
@@ -2196,6 +2220,31 @@ describe("POST /api/sessions/create-stream", () => {
     expect(doneData.cwd).toBe("/test");
   });
 
+  it("injects COMPANION_PORT when resuming via create-stream", async () => {
+    const res = await app.request("/api/sessions/create-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backend: "claude",
+        cwd: "/test",
+        resumeCliSessionId: "cli-resume-2",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resumeCliSessionId: "cli-resume-2",
+        env: expect.objectContaining({
+          COMPANION_PORT: "3456",
+        }),
+      }),
+    );
+  });
+
   it("emits git progress events when branch is specified", async () => {
     // When branch is specified without useWorktree, should emit fetch/checkout/pull events
     vi.mocked(gitUtils.getRepoInfo).mockReturnValueOnce({
@@ -2720,6 +2769,118 @@ describe("PATCH /api/quests/:questId", () => {
     expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
       expect.objectContaining({ type: "quest_list_updated" }),
     );
+  });
+});
+
+describe("POST /api/quests/:questId/claim", () => {
+  it("passes archived-owner takeover policy to questStore.claimQuest", async () => {
+    vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "session-2",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-1"
+        ? { sessionId: "session-1", state: "exited", cwd: "/test", archived: true }
+        : { sessionId: sid, state: "running", cwd: "/test", archived: false },
+    );
+
+    const res = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "session-2" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.claimQuest).toHaveBeenCalledWith(
+      "q-1",
+      "session-2",
+      expect.objectContaining({
+        allowArchivedOwnerTakeover: true,
+        isSessionArchived: expect.any(Function),
+      }),
+    );
+    const opts = vi.mocked(questStore.claimQuest).mock.calls[0][2] as { isSessionArchived: (sid: string) => boolean };
+    expect(opts.isSessionArchived("session-1")).toBe(true);
+    expect(opts.isSessionArchived("session-2")).toBe(false);
+  });
+});
+
+describe("POST /api/quests/:questId/done", () => {
+  it("clears claimed quest from the pre-transition active owner", async () => {
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v2",
+      questId: "q-1",
+      title: "Quest",
+      status: "needs_verification",
+      sessionId: "session-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "verify", checked: false }],
+    } as any);
+    vi.spyOn(questStore, "markDone").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "done",
+      createdAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "verify", checked: true }],
+      completedAt: Date.now(),
+      previousOwnerSessionIds: ["session-1"],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/done", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
+  });
+});
+
+describe("POST /api/quests/:questId/cancel", () => {
+  it("clears claimed quest from the pre-transition active owner", async () => {
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v2",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "session-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+    vi.spyOn(questStore, "cancelQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "done",
+      createdAt: Date.now(),
+      description: "Ready",
+      verificationItems: [],
+      completedAt: Date.now(),
+      cancelled: true,
+      previousOwnerSessionIds: ["session-1"],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
   });
 });
 

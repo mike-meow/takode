@@ -125,29 +125,59 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const currentSessionId = process.env.COMPANION_SESSION_ID;
+const companionPort = process.env.COMPANION_PORT;
 
-function formatSessionLabel(sid: string): string {
+let sessionArchivedCache: Map<string, boolean> | null = null;
+
+async function getSessionArchivedMap(): Promise<Map<string, boolean>> {
+  if (sessionArchivedCache) return sessionArchivedCache;
+  if (!companionPort) {
+    sessionArchivedCache = new Map();
+    return sessionArchivedCache;
+  }
+  try {
+    const res = await fetch(`http://localhost:${companionPort}/api/sessions`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const sessions = await res.json() as { sessionId: string; archived?: boolean }[];
+    sessionArchivedCache = new Map(sessions.map((s) => [s.sessionId, !!s.archived]));
+    return sessionArchivedCache;
+  } catch {
+    sessionArchivedCache = new Map();
+    return sessionArchivedCache;
+  }
+}
+
+function formatSessionLabel(sid: string, archivedMap?: Map<string, boolean>): string {
   const name = getName(sid);
   const isYou = currentSessionId === sid;
-  const suffix = isYou ? " (you)" : "";
+  const archived = archivedMap?.get(sid) ? ", archived" : "";
+  const you = isYou ? ", you" : "";
+  const suffix = archived || you ? ` (${[archived.replace(/^, /, ""), you.replace(/^, /, "")].filter(Boolean).join(", ")})` : "";
   return name ? `"${name}" (${sid.slice(0, 8)})${suffix}` : `${sid.slice(0, 8)}${suffix}`;
 }
 
-function formatQuestLine(q: QuestmasterTask): string {
+function formatQuestLine(q: QuestmasterTask, archivedMap?: Map<string, boolean>): string {
   const cancelled = "cancelled" in q && (q as { cancelled?: boolean }).cancelled;
   const icon = cancelled ? "✗" : STATUS_ICONS[q.status] || "?";
   const tags = q.tags?.length ? `  [${q.tags.join(", ")}]` : "";
   const session = (() => {
     if (!("sessionId" in q)) return "";
     const sid = (q as { sessionId: string }).sessionId;
-    return `  → ${formatSessionLabel(sid)}`;
+    return `  → ${formatSessionLabel(sid, archivedMap)}`;
+  })();
+  const ownership = (() => {
+    const previous = (q as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds;
+    if (!previous?.length) return "";
+    return `  [prev:${previous.length}]`;
   })();
   const statusLabel = cancelled ? "cancelled" : (STATUS_LABELS[q.status] ?? q.status);
   const pad = (s: string, len: number) => s.padEnd(len);
-  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}  (${statusLabel}${session})`;
+  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}${ownership}  (${statusLabel}${session})`;
 }
 
-function formatQuestDetail(q: QuestmasterTask): string {
+function formatQuestDetail(q: QuestmasterTask, archivedMap?: Map<string, boolean>): string {
   const lines: string[] = [];
   lines.push(`Quest ${q.questId} (v${q.version}, ${STATUS_LABELS[q.status] ?? q.status})`);
   lines.push(`Title:       ${q.title}`);
@@ -159,7 +189,11 @@ function formatQuestDetail(q: QuestmasterTask): string {
   }
   if ("sessionId" in q) {
     const sid = (q as { sessionId: string }).sessionId;
-    lines.push(`Session:     ${formatSessionLabel(sid)}`);
+    lines.push(`Session:     ${formatSessionLabel(sid, archivedMap)}`);
+  }
+  const previousOwners = (q as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds;
+  if (previousOwners?.length) {
+    lines.push(`Previous:    ${previousOwners.map((sid) => formatSessionLabel(sid, archivedMap)).join(", ")}`);
   }
   if ("claimedAt" in q) {
     lines.push(`Claimed:     ${timeAgo((q as { claimedAt: number }).claimedAt)}`);
@@ -219,6 +253,7 @@ function die(message: string): never {
 
 async function cmdList(): Promise<void> {
   let quests = await listQuests();
+  const archivedMap = await getSessionArchivedMap();
   const statusFilter = option("status");
   if (statusFilter) {
     quests = quests.filter((q) => q.status === statusFilter);
@@ -234,7 +269,7 @@ async function cmdList(): Promise<void> {
     return;
   }
   for (const q of quests) {
-    console.log(formatQuestLine(q));
+    console.log(formatQuestLine(q, archivedMap));
   }
 }
 
@@ -249,7 +284,8 @@ async function cmdShow(): Promise<void> {
     out(quest);
     return;
   }
-  console.log(formatQuestDetail(quest));
+  const archivedMap = await getSessionArchivedMap();
+  console.log(formatQuestDetail(quest, archivedMap));
 }
 
 async function cmdHistory(): Promise<void> {
@@ -298,10 +334,9 @@ async function cmdClaim(): Promise<void> {
 
   // Prefer HTTP endpoint when server is available — it handles session name
   // override, session_quest_claimed broadcast, and task entry addition.
-  const port = process.env.COMPANION_PORT;
-  if (port) {
+  if (companionPort) {
     try {
-      const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/claim`, {
+      const res = await fetch(`http://localhost:${companionPort}/api/quests/${encodeURIComponent(id)}/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
@@ -319,14 +354,7 @@ async function cmdClaim(): Promise<void> {
       }
       return;
     } catch (e) {
-      // Server unreachable — fall through to direct filesystem claim
-      if ((e as Error).message === "The operation was aborted due to timeout") {
-        // Timeout — fall through
-      } else if ((e as Error).name === "AbortError") {
-        // Abort — fall through
-      } else {
-        die((e as Error).message);
-      }
+      die(`Failed to claim via Companion server: ${(e as Error).message}`);
     }
   }
 
@@ -361,10 +389,9 @@ async function cmdComplete(): Promise<void> {
 
   // Prefer HTTP endpoint when server is available — it broadcasts quest status
   // change to browsers (triggers "Quest Submitted" chat message + review badge).
-  const port = process.env.COMPANION_PORT;
-  if (port) {
+  if (companionPort) {
     try {
-      const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/complete`, {
+      const res = await fetch(`http://localhost:${companionPort}/api/quests/${encodeURIComponent(id)}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ verificationItems: items }),

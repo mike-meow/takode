@@ -152,6 +152,8 @@ export function createRoutes(
           const companionEnv = await envManager.getEnv(body.envSlug);
           if (companionEnv) envVars = { ...companionEnv.variables, ...body.env };
         }
+        // Inject COMPANION_PORT so resumed sessions can call the local API.
+        envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
         const binarySettings = getSettings();
         const session = launcher.launch({
           cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
@@ -520,6 +522,8 @@ export function createRoutes(
             const companionEnv = await envManager.getEnv(body.envSlug);
             if (companionEnv) envVars = { ...companionEnv.variables, ...body.env };
           }
+          // Inject COMPANION_PORT so resumed sessions can call the local API.
+          envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
           await emitProgress(stream, "resolving_env", "Environment resolved", "done");
 
           await emitProgress(stream, "launching_cli", "Resuming CLI session...", "in_progress");
@@ -2799,7 +2803,10 @@ export function createRoutes(
     const sessionId = body.sessionId as string | undefined;
     if (!sessionId) return c.json({ error: "sessionId is required" }, 400);
     try {
-      const quest = await questStore.claimQuest(c.req.param("questId"), sessionId);
+      const quest = await questStore.claimQuest(c.req.param("questId"), sessionId, {
+        allowArchivedOwnerTakeover: true,
+        isSessionArchived: (sid: string) => !!launcher.getSession(sid)?.archived,
+      });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       wsBridge.setSessionClaimedQuest(sessionId, { id: quest.questId, title: quest.title, status: quest.status });
@@ -2852,15 +2859,16 @@ export function createRoutes(
   api.post("/quests/:questId/done", async (c) => {
     try {
       const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean };
+      const current = await questStore.getQuest(c.req.param("questId"));
       const quest = await questStore.markDone(c.req.param("questId"), {
         notes: body.notes,
         cancelled: body.cancelled,
       });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
-      // Clear the claimed quest from the session since it's now done
-      if ("sessionId" in quest) {
-        wsBridge.setSessionClaimedQuest((quest as { sessionId: string }).sessionId, null);
+      // Clear the claimed quest from the active owner session since it's now done.
+      if (current && "sessionId" in current && typeof current.sessionId === "string") {
+        wsBridge.setSessionClaimedQuest(current.sessionId, null);
       }
       return c.json(quest);
     } catch (e: unknown) {
@@ -2871,12 +2879,13 @@ export function createRoutes(
   api.post("/quests/:questId/cancel", async (c) => {
     try {
       const body = await c.req.json().catch(() => ({})) as { notes?: string };
+      const current = await questStore.getQuest(c.req.param("questId"));
       const quest = await questStore.cancelQuest(c.req.param("questId"), body.notes);
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
-      // Clear the claimed quest from the session since it's now cancelled
-      if ("sessionId" in quest) {
-        wsBridge.setSessionClaimedQuest((quest as { sessionId: string }).sessionId, null);
+      // Clear the claimed quest from the active owner session since it's now cancelled.
+      if (current && "sessionId" in current && typeof current.sessionId === "string") {
+        wsBridge.setSessionClaimedQuest(current.sessionId, null);
       }
       return c.json(quest);
     } catch (e: unknown) {
