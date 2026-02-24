@@ -45,7 +45,7 @@ import type { ImageStore } from "./image-store.js";
 import type { CliLauncher } from "./cli-launcher.js";
 import * as gitUtils from "./git-utils.js";
 import { sessionTag } from "./session-tag.js";
-import { shouldAttemptAutoApproval, evaluatePermission } from "./auto-approver.js";
+import { shouldAttemptAutoApproval, evaluatePermission, type RecentToolCall } from "./auto-approver.js";
 
 // ─── Denial summary helper ───────────────────────────────────────────────────
 
@@ -1903,6 +1903,30 @@ export class WsBridge {
    * handled by checking `session.pendingPermissions.has(requestId)` before
    * acting on the LLM result.
    */
+  /** Extract the last N tool_use inputs from messageHistory (no outputs, inputs only). */
+  private extractRecentToolCalls(session: Session, limit = 10): RecentToolCall[] {
+    const calls: RecentToolCall[] = [];
+    // Walk backwards through messageHistory to find assistant messages with tool_use blocks
+    for (let i = session.messageHistory.length - 1; i >= 0 && calls.length < limit; i--) {
+      const msg = session.messageHistory[i];
+      if (msg.type === "assistant" && msg.message?.content) {
+        const blocks = msg.message.content;
+        // Iterate blocks in reverse to get most recent first
+        for (let j = blocks.length - 1; j >= 0 && calls.length < limit; j--) {
+          const block = blocks[j];
+          if (block.type === "tool_use") {
+            calls.push({
+              toolName: block.name,
+              input: block.input as Record<string, unknown>,
+            });
+          }
+        }
+      }
+    }
+    // Reverse so oldest is first (chronological order)
+    return calls.reverse();
+  }
+
   private async tryLlmAutoApproval(
     session: Session,
     requestId: string,
@@ -1910,6 +1934,9 @@ export class WsBridge {
   ): Promise<void> {
     const abort = new AbortController();
     session.evaluatingAborts.set(requestId, abort);
+
+    // Collect last 10 tool call inputs for context
+    const recentToolCalls = this.extractRecentToolCalls(session);
 
     try {
       const result = await evaluatePermission(
@@ -1919,6 +1946,7 @@ export class WsBridge {
         perm.description,
         session.state.cwd,
         abort.signal,
+        recentToolCalls,
       );
 
       // Clean up abort controller

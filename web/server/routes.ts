@@ -2816,6 +2816,14 @@ export function createRoutes(
     }
   });
 
+  /** Find the matching auto-approval config for a given cwd (longest prefix match). */
+  api.get("/auto-approval/configs/match", (c) => {
+    const cwd = c.req.query("cwd");
+    if (!cwd) return c.json({ error: "Missing cwd query parameter" }, 400);
+    const config = autoApprovalStore.getConfigForPath(cwd);
+    return c.json({ config });
+  });
+
   api.get("/auto-approval/configs/:slug", (c) => {
     const config = autoApprovalStore.getConfig(c.req.param("slug"));
     if (!config) return c.json({ error: "Config not found" }, 404);

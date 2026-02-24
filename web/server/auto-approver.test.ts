@@ -33,9 +33,40 @@ describe("auto-approver", () => {
       expect(parseResponse("Deny: no")?.decision).toBe("deny");
     });
 
-    it("only uses the first line", () => {
-      const result = parseResponse("APPROVE: safe\nSome extra explanation\nMore text");
-      expect(result).toEqual({ decision: "approve", reason: "safe" });
+    it("parses rationale-first format (rationale then decision on last line)", () => {
+      const raw = "The command only reads files within the project directory.\nAPPROVE";
+      const result = parseResponse(raw);
+      expect(result).toEqual({
+        decision: "approve",
+        reason: "The command only reads files within the project directory.",
+      });
+    });
+
+    it("parses rationale-first DENY format", () => {
+      const raw = "This command deletes files outside the project scope.\nDENY";
+      const result = parseResponse(raw);
+      expect(result).toEqual({
+        decision: "deny",
+        reason: "This command deletes files outside the project scope.",
+      });
+    });
+
+    it("supports legacy single-line APPROVE: reason format", () => {
+      const result = parseResponse("APPROVE: safe operation");
+      expect(result).toEqual({ decision: "approve", reason: "safe operation" });
+    });
+
+    it("supports legacy single-line DENY: reason format", () => {
+      const result = parseResponse("DENY: dangerous operation");
+      expect(result).toEqual({ decision: "deny", reason: "dangerous operation" });
+    });
+
+    it("bare APPROVE on single line uses default reason", () => {
+      expect(parseResponse("APPROVE")).toEqual({ decision: "approve", reason: "Approved" });
+    });
+
+    it("bare DENY on single line uses default reason", () => {
+      expect(parseResponse("DENY")).toEqual({ decision: "deny", reason: "Denied" });
     });
 
     it("returns null for empty string", () => {
@@ -46,27 +77,19 @@ describe("auto-approver", () => {
       expect(parseResponse("I think this should be allowed because...")).toBeNull();
     });
 
-    it("returns null for missing colon", () => {
-      expect(parseResponse("APPROVE")).toBeNull();
-    });
-
-    it("returns null for missing reason", () => {
-      // The regex requires at least one character after the colon+space
-      expect(parseResponse("APPROVE: ")).toBeNull();
-    });
-
     it("trims whitespace from reason", () => {
       const result = parseResponse("APPROVE:   spaces around   ");
       expect(result?.reason).toBe("spaces around");
     });
 
-    it("handles multi-line responses where model adds explanations", () => {
-      const raw = `DENY: command attempts to delete system files
-The command 'rm -rf /' would delete all files on the system which is clearly dangerous.`;
+    it("multi-line rationale is joined for reason when decision is bare", () => {
+      const raw = `The command reads a configuration file.
+This is a safe read-only operation within the project.
+APPROVE`;
       const result = parseResponse(raw);
       expect(result).toEqual({
-        decision: "deny",
-        reason: "command attempts to delete system files",
+        decision: "approve",
+        reason: "The command reads a configuration file. This is a safe read-only operation within the project.",
       });
     });
   });

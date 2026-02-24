@@ -8,6 +8,13 @@ interface ClaudeMdFile {
   content: string;
 }
 
+interface AutoApprovalInfo {
+  label: string;
+  criteria: string;
+  enabled: boolean;
+  projectPath: string;
+}
+
 interface ClaudeMdEditorProps {
   cwd: string;
   open: boolean;
@@ -23,14 +30,26 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createMode, setCreateMode] = useState<null | string>(null);
+  const [autoApproval, setAutoApproval] = useState<AutoApprovalInfo | null>(null);
+  /** When true, the auto-approval criteria section is selected (read-only view) */
+  const [showAutoApproval, setShowAutoApproval] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    api
-      .getClaudeMdFiles(cwd)
-      .then((res) => {
+    setShowAutoApproval(false);
+    Promise.all([
+      api.getClaudeMdFiles(cwd),
+      api.getAutoApprovalConfigForPath(cwd).catch(() => ({ config: null })),
+    ])
+      .then(([res, aaRes]) => {
         setFiles(res.files);
+        setAutoApproval(aaRes.config ? {
+          label: aaRes.config.label,
+          criteria: aaRes.config.criteria,
+          enabled: aaRes.config.enabled,
+          projectPath: aaRes.config.projectPath,
+        } : null);
         if (res.files.length > 0) {
           setSelectedIdx(0);
           setEditContent(res.files[0].content);
@@ -57,6 +76,7 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
     setEditContent(files[idx].content);
     setDirty(false);
     setCreateMode(null);
+    setShowAutoApproval(false);
   };
 
   const handleSave = async () => {
@@ -202,6 +222,23 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
                     )}
                   </>
                 )}
+                {autoApproval && (
+                  <button
+                    onClick={() => {
+                      if (dirty && !confirm("Discard unsaved changes?")) return;
+                      setShowAutoApproval(true);
+                      setCreateMode(null);
+                      setDirty(false);
+                    }}
+                    className={`shrink-0 px-3 py-2 text-xs border-b-2 transition-colors cursor-pointer ${
+                      showAutoApproval
+                        ? "border-cc-warning text-cc-fg bg-cc-active"
+                        : "border-transparent text-cc-fg/70"
+                    }`}
+                  >
+                    Auto-Approval
+                  </button>
+                )}
               </div>
 
               {/* Desktop: file tabs sidebar */}
@@ -245,6 +282,29 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
                         {relPath(createMode)}
                       </span>
                     </div>
+                  )}
+                  {/* Auto-approval criteria entry */}
+                  {autoApproval && (
+                    <button
+                      onClick={() => {
+                        if (dirty && !confirm("Discard unsaved changes?")) return;
+                        setShowAutoApproval(true);
+                        setCreateMode(null);
+                        setDirty(false);
+                      }}
+                      className={`flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] transition-colors cursor-pointer ${
+                        showAutoApproval
+                          ? "bg-cc-active text-cc-fg"
+                          : "text-cc-fg/70 hover:bg-cc-hover"
+                      }`}
+                    >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-warning shrink-0">
+                        <path d="M8 1.5a.5.5 0 01.424.235l6.5 10.5A.5.5 0 0114.5 13h-13a.5.5 0 01-.424-.765l6.5-10.5A.5.5 0 018 1.5zM7.5 6v3.5a.5.5 0 001 0V6a.5.5 0 00-1 0zm.5 5.5a.6.6 0 100 1.2.6.6 0 000-1.2z" />
+                      </svg>
+                      <span className="truncate text-[11px]">
+                        Auto-Approval Rules
+                      </span>
+                    </button>
                   )}
                 </div>
 
@@ -292,7 +352,38 @@ export function ClaudeMdEditor({ cwd, open, onClose }: ClaudeMdEditorProps) {
 
               {/* Editor area */}
               <div className="flex-1 flex flex-col min-w-0">
-                {files.length === 0 && !createMode ? (
+                {showAutoApproval && autoApproval ? (
+                  /* Read-only auto-approval criteria view */
+                  <div className="flex-1 flex flex-col">
+                    <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-cc-card border-b border-cc-border">
+                      <span className="text-[12px] text-cc-warning font-medium">
+                        Auto-Approval Rules
+                        {!autoApproval.enabled && (
+                          <span className="ml-2 text-[10px] text-cc-muted font-normal">(disabled)</span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-cc-muted">Read-only</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <div className="mb-3">
+                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">Project</span>
+                        <p className="text-[12px] text-cc-fg/80 font-mono-code mt-0.5">{autoApproval.projectPath}</p>
+                      </div>
+                      <div className="mb-3">
+                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">Label</span>
+                        <p className="text-[12px] text-cc-fg/80 mt-0.5">{autoApproval.label}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">Criteria</span>
+                        <pre className="mt-1 p-3 bg-cc-card border border-cc-border rounded-lg text-[13px] text-cc-fg font-mono-code leading-relaxed whitespace-pre-wrap">{autoApproval.criteria}</pre>
+                      </div>
+                      <p className="mt-4 text-[11px] text-cc-muted leading-relaxed">
+                        These criteria are evaluated by the auto-approver LLM when permission requests arrive for this project.
+                        Edit them in Settings &rarr; Auto-Approval.
+                      </p>
+                    </div>
+                  </div>
+                ) : files.length === 0 && !createMode ? (
                   <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
                     <div className="w-14 h-14 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
                       <svg
