@@ -61,8 +61,9 @@ Use \`companion\` to manage Takode. All commands output JSON.
 
 ## Creating Skills
 
-Skills are reusable workflow templates for Claude Code. They live in \`~/.claude/skills/<slug>/SKILL.md\`
-and become available as \`/<slug>\` commands in all Claude Code sessions.
+Skills are reusable workflow templates for Claude Code and Codex.
+They live in \`~/.claude/skills/<slug>/SKILL.md\` (Claude) and \`~/.codex/skills/<slug>/SKILL.md\` (Codex),
+and become available as \`/<slug>\` commands in new sessions.
 
 ### Skill File Format
 
@@ -87,9 +88,9 @@ Instructions for Claude Code when this skill is invoked.
 2. Then use \`companion skills get my-skill\` to read the generated template
 3. Edit with \`companion skills update my-skill --content "<full markdown>"\`
 
-Or write the SKILL.md file directly to \`~/.claude/skills/<slug>/SKILL.md\` using Bash.
+Or write the SKILL.md file directly to the skill directory using Bash.
 
-The skill will be available in the next Claude Code session as \`/my-skill\`.
+The skill will be available in the next session as \`/my-skill\`.
 
 ## Troubleshooting: \`companion\` command not found
 

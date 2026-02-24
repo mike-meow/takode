@@ -32,6 +32,7 @@ import { getUsageLimits } from "./usage-limits.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends } from "./transcription.js";
+import { getLegacyCodexHome } from "./codex-home.js";
 
 const ROUTES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = dirname(ROUTES_DIR);
@@ -2307,52 +2308,94 @@ export function createRoutes(
 
   // ─── Skills ─────────────────────────────────────────────────────────
 
-  const SKILLS_DIR = join(homedir(), ".claude", "skills");
+  type SkillBackend = "claude" | "codex" | "both";
+  const CLAUDE_SKILLS_DIR = join(homedir(), ".claude", "skills");
+  const CODEX_SKILLS_DIR = join(getLegacyCodexHome(), "skills");
+
+  function parseSkillBackend(raw: string | undefined): SkillBackend | null {
+    if (!raw || raw === "both") return "both";
+    if (raw === "claude" || raw === "codex") return raw;
+    return null;
+  }
+
+  function getSkillRoots(backend: SkillBackend): Array<{ backend: "claude" | "codex"; dir: string }> {
+    if (backend === "claude") return [{ backend: "claude", dir: CLAUDE_SKILLS_DIR }];
+    if (backend === "codex") return [{ backend: "codex", dir: CODEX_SKILLS_DIR }];
+    return [
+      { backend: "claude", dir: CLAUDE_SKILLS_DIR },
+      { backend: "codex", dir: CODEX_SKILLS_DIR },
+    ];
+  }
 
   api.get("/skills", async (c) => {
     try {
-      if (!existsSync(SKILLS_DIR)) return c.json([]);
-      const entries = await readdir(SKILLS_DIR, { withFileTypes: true });
-      const skills = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const skillMdPath = join(SKILLS_DIR, entry.name, "SKILL.md");
-        if (!existsSync(skillMdPath)) continue;
-        const content = await readFile(skillMdPath, "utf-8");
-        // Parse frontmatter
-        const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-        let name = entry.name;
-        let description = "";
-        let body = content;
-        if (fmMatch) {
-          body = fmMatch[2];
-          for (const line of fmMatch[1].split("\n")) {
-            const nameMatch = line.match(/^name:\s*(.+)/);
-            if (nameMatch) name = nameMatch[1].trim().replace(/^["']|["']$/g, "");
-            const descMatch = line.match(/^description:\s*["']?(.+?)["']?\s*$/);
-            if (descMatch) description = descMatch[1];
+      const backend = parseSkillBackend(c.req.query("backend"));
+      if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
+
+      const roots = getSkillRoots(backend);
+      const bySlug = new Map<string, { slug: string; name: string; description: string; path: string; backends: Array<"claude" | "codex"> }>();
+      for (const root of roots) {
+        if (!existsSync(root.dir)) continue;
+        const entries = await readdir(root.dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const skillMdPath = join(root.dir, entry.name, "SKILL.md");
+          if (!existsSync(skillMdPath)) continue;
+          const content = await readFile(skillMdPath, "utf-8");
+          const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+          let name = entry.name;
+          let description = "";
+          if (fmMatch) {
+            for (const line of fmMatch[1].split("\n")) {
+              const nameMatch = line.match(/^name:\s*(.+)/);
+              if (nameMatch) name = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+              const descMatch = line.match(/^description:\s*["']?(.+?)["']?\s*$/);
+              if (descMatch) description = descMatch[1];
+            }
+          }
+
+          const existing = bySlug.get(entry.name);
+          if (!existing) {
+            bySlug.set(entry.name, {
+              slug: entry.name,
+              name,
+              description,
+              path: skillMdPath,
+              backends: [root.backend],
+            });
+          } else if (!existing.backends.includes(root.backend)) {
+            existing.backends.push(root.backend);
           }
         }
-        skills.push({ slug: entry.name, name, description, path: skillMdPath });
       }
-      return c.json(skills);
+      return c.json(Array.from(bySlug.values()));
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
   });
 
   api.get("/skills/:slug", async (c) => {
+    const backend = parseSkillBackend(c.req.query("backend"));
+    if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
+
     const slug = c.req.param("slug");
     if (!slug || slug.includes("..") || slug.includes("/") || slug.includes("\\")) {
       return c.json({ error: "Invalid slug" }, 400);
     }
-    const skillMdPath = join(SKILLS_DIR, slug, "SKILL.md");
-    if (!existsSync(skillMdPath)) return c.json({ error: "Skill not found" }, 404);
-    const content = await readFile(skillMdPath, "utf-8");
-    return c.json({ slug, path: skillMdPath, content });
+    const roots = getSkillRoots(backend);
+    for (const root of roots) {
+      const skillMdPath = join(root.dir, slug, "SKILL.md");
+      if (!existsSync(skillMdPath)) continue;
+      const content = await readFile(skillMdPath, "utf-8");
+      return c.json({ slug, path: skillMdPath, content, backend: root.backend });
+    }
+    return c.json({ error: "Skill not found" }, 404);
   });
 
   api.post("/skills", async (c) => {
+    const backend = parseSkillBackend(c.req.query("backend"));
+    if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
+
     const body = await c.req.json().catch(() => ({}));
     const { name, description, content } = body;
     if (!name || typeof name !== "string") {
@@ -2362,47 +2405,69 @@ export function createRoutes(
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     if (!slug) return c.json({ error: "Invalid name" }, 400);
 
-    const skillDir = join(SKILLS_DIR, slug);
-    const skillMdPath = join(skillDir, "SKILL.md");
-
-    if (existsSync(skillMdPath)) {
-      return c.json({ error: `Skill "${slug}" already exists` }, 409);
+    const roots = getSkillRoots(backend);
+    for (const root of roots) {
+      const skillMdPath = join(root.dir, slug, "SKILL.md");
+      if (existsSync(skillMdPath)) {
+        return c.json({ error: `Skill "${slug}" already exists in ${root.backend}` }, 409);
+      }
     }
 
     const { mkdirSync, writeFileSync } = await import("node:fs");
-    mkdirSync(skillDir, { recursive: true });
-
     const md = `---\nname: ${slug}\ndescription: ${JSON.stringify(description || `Skill: ${name}`)}\n---\n\n${content || `# ${name}\n\nDescribe what this skill does and how to use it.\n`}`;
-    writeFileSync(skillMdPath, md);
+    const paths: Record<string, string> = {};
+    for (const root of roots) {
+      const skillDir = join(root.dir, slug);
+      const skillMdPath = join(skillDir, "SKILL.md");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(skillMdPath, md);
+      paths[root.backend] = skillMdPath;
+    }
 
-    return c.json({ slug, name, description: description || `Skill: ${name}`, path: skillMdPath });
+    return c.json({ slug, name, description: description || `Skill: ${name}`, backends: roots.map((r) => r.backend), paths });
   });
 
   api.put("/skills/:slug", async (c) => {
+    const backend = parseSkillBackend(c.req.query("backend"));
+    if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
+
     const slug = c.req.param("slug");
     if (!slug || slug.includes("..") || slug.includes("/") || slug.includes("\\")) {
       return c.json({ error: "Invalid slug" }, 400);
     }
-    const skillMdPath = join(SKILLS_DIR, slug, "SKILL.md");
-    if (!existsSync(skillMdPath)) return c.json({ error: "Skill not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     if (typeof body.content !== "string") {
       return c.json({ error: "content is required" }, 400);
     }
-    await writeFile(skillMdPath, body.content);
-    return c.json({ ok: true, slug, path: skillMdPath });
+    const updatedPaths: Record<string, string> = {};
+    for (const root of getSkillRoots(backend)) {
+      const skillMdPath = join(root.dir, slug, "SKILL.md");
+      if (!existsSync(skillMdPath)) continue;
+      await writeFile(skillMdPath, body.content);
+      updatedPaths[root.backend] = skillMdPath;
+    }
+    if (Object.keys(updatedPaths).length === 0) return c.json({ error: "Skill not found" }, 404);
+    return c.json({ ok: true, slug, backends: Object.keys(updatedPaths), paths: updatedPaths });
   });
 
   api.delete("/skills/:slug", async (c) => {
+    const backend = parseSkillBackend(c.req.query("backend"));
+    if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
+
     const slug = c.req.param("slug");
     if (!slug || slug.includes("..") || slug.includes("/") || slug.includes("\\")) {
       return c.json({ error: "Invalid slug" }, 400);
     }
-    const skillDir = join(SKILLS_DIR, slug);
-    if (!existsSync(skillDir)) return c.json({ error: "Skill not found" }, 404);
     const { rmSync } = await import("node:fs");
-    rmSync(skillDir, { recursive: true });
-    return c.json({ ok: true, slug });
+    const removed: Array<"claude" | "codex"> = [];
+    for (const root of getSkillRoots(backend)) {
+      const skillDir = join(root.dir, slug);
+      if (!existsSync(skillDir)) continue;
+      rmSync(skillDir, { recursive: true });
+      removed.push(root.backend);
+    }
+    if (removed.length === 0) return c.json({ error: "Skill not found" }, 404);
+    return c.json({ ok: true, slug, backends: removed });
   });
 
   // ─── Cron Jobs ──────────────────────────────────────────────────────

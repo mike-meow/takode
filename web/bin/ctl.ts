@@ -468,7 +468,7 @@ Management commands:
   companion sessions <subcommand>         Manage sessions
   companion envs <subcommand>             Manage environment profiles
   companion cron <subcommand>             Manage scheduled jobs
-  companion skills <subcommand>           Manage Claude Code skills
+  companion skills <subcommand>           Manage Claude/Codex skills
   companion settings <subcommand>         Manage settings
   companion assistant <subcommand>        Manage the Companion Assistant
 

@@ -3,19 +3,21 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 const COMPANION_BIN_DIR = join(homedir(), ".companion", "bin");
-const SKILL_DIR = join(homedir(), ".claude", "skills", "quest");
+const CLAUDE_SKILL_DIR = join(homedir(), ".claude", "skills", "quest");
+const CODEX_SKILL_DIR = join(homedir(), ".codex", "skills", "quest");
 const OLD_SLASH_COMMAND = join(homedir(), ".claude", "commands", "quest.md");
 const OLD_API_DOC = join(homedir(), ".companion", "questmaster", "API.md");
 
 /**
  * Set up Questmaster CLI integration on server startup:
  * 1. Write a wrapper script at ~/.companion/bin/quest
- * 2. Write an agent skill at ~/.claude/skills/quest/SKILL.md
+ * 2. Write an agent skill for both Claude and Codex skill homes
  * 3. Clean up old files (slash command, API.md)
  */
 export function ensureQuestmasterIntegration(port: number, packageRoot: string): void {
   writeWrapperScript(packageRoot);
-  writeAgentSkill();
+  writeAgentSkill(CLAUDE_SKILL_DIR);
+  writeAgentSkill(CODEX_SKILL_DIR);
   cleanupOldFiles();
   console.log("[quest-integration] CLI wrapper and agent skill installed");
 }
@@ -36,10 +38,10 @@ exec bun "${questScript}" "$@"
   chmodSync(wrapperPath, 0o755);
 }
 
-function writeAgentSkill(): void {
-  mkdirSync(SKILL_DIR, { recursive: true });
+function writeAgentSkill(skillDir: string): void {
+  mkdirSync(skillDir, { recursive: true });
 
-  const skillPath = join(SKILL_DIR, "SKILL.md");
+  const skillPath = join(skillDir, "SKILL.md");
 
   const content = `---
 name: quest
