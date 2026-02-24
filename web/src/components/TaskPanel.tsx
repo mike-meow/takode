@@ -512,8 +512,9 @@ export function McpCollapsible({ sessionId }: { sessionId: string }) {
 
 export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?: string }) {
   const [collapsed, toggle] = usePersistedCollapse("cc-collapse-claudemd");
-  const [files, setFiles] = useState<{ path: string; content: string }[]>([]);
+  const [files, setFiles] = useState<{ path: string; content: string; writable?: boolean }[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   useEffect(() => {
     if (collapsed) return;
@@ -538,7 +539,10 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
             files.map((f) => (
               <button
                 key={f.path}
-                onClick={() => setEditorOpen(true)}
+                onClick={() => {
+                  setSelectedPath(f.path);
+                  setEditorOpen(true);
+                }}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-[11px] text-cc-fg/80 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
               >
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary shrink-0">
@@ -550,7 +554,16 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
           )}
         </div>
       )}
-      <ClaudeMdEditor cwd={cwd} repoRoot={repoRoot} open={editorOpen} onClose={() => setEditorOpen(false)} />
+      <ClaudeMdEditor
+        cwd={cwd}
+        repoRoot={repoRoot}
+        open={editorOpen}
+        initialPath={selectedPath ?? undefined}
+        onClose={() => {
+          setEditorOpen(false);
+          setSelectedPath(null);
+        }}
+      />
     </>
   );
 }

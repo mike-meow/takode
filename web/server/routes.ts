@@ -4,7 +4,7 @@ import { execSync, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveBinary, expandTilde } from "./path-resolver.js";
 import { readdir, readFile, writeFile, stat } from "node:fs/promises";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -1595,6 +1595,44 @@ export function createRoutes(
     }
   });
 
+  api.get("/fs/image", async (c) => {
+    const path = c.req.query("path");
+    if (!path) return c.json({ error: "path required" }, 400);
+    const absPath = resolve(path);
+    const ext = extname(absPath).toLowerCase();
+    const mimeByExt: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+      ".bmp": "image/bmp",
+      ".ico": "image/x-icon",
+      ".avif": "image/avif",
+      ".tif": "image/tiff",
+      ".tiff": "image/tiff",
+      ".heic": "image/heic",
+      ".heif": "image/heif",
+    };
+    const contentType = mimeByExt[ext];
+    if (!contentType) {
+      return c.json({ error: "file is not a supported image type" }, 400);
+    }
+    try {
+      const content = await readFile(absPath);
+      return c.body(content, 200, {
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=30",
+      });
+    } catch (e: unknown) {
+      return c.json(
+        { error: e instanceof Error ? e.message : "Cannot read image file" },
+        404,
+      );
+    }
+  });
+
   /** Write a single file */
   api.put("/fs/write", async (c) => {
     const body = await c.req.json().catch(() => ({}));
@@ -1693,7 +1731,7 @@ export function createRoutes(
     }
   });
 
-  /** Find CLAUDE.md files for a project (root + .claude/) */
+  /** Find Claude config files for a project (CLAUDE.md + .claude/settings*.json) */
   api.get("/fs/claude-md", async (c) => {
     const cwd = c.req.query("cwd");
     if (!cwd) return c.json({ error: "cwd required" }, 400);
@@ -1701,16 +1739,18 @@ export function createRoutes(
     // Resolve to absolute path to prevent path traversal
     const resolvedCwd = resolve(cwd);
 
-    const candidates = [
-      join(resolvedCwd, "CLAUDE.md"),
-      join(resolvedCwd, ".claude", "CLAUDE.md"),
+    const candidates: Array<{ path: string; writable: boolean }> = [
+      { path: join(resolvedCwd, "CLAUDE.md"), writable: true },
+      { path: join(resolvedCwd, ".claude", "CLAUDE.md"), writable: true },
+      { path: join(resolvedCwd, ".claude", "settings.json"), writable: false },
+      { path: join(resolvedCwd, ".claude", "settings.local.json"), writable: false },
     ];
 
-    const files: { path: string; content: string }[] = [];
-    for (const p of candidates) {
+    const files: { path: string; content: string; writable: boolean }[] = [];
+    for (const { path: p, writable } of candidates) {
       try {
         const content = await readFile(p, "utf-8");
-        files.push({ path: p, content });
+        files.push({ path: p, content, writable });
       } catch {
         // file doesn't exist — skip
       }

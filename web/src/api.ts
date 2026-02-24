@@ -596,6 +596,8 @@ export const api = {
     get<{ path: string; content: string }>(
       `/fs/read?path=${encodeURIComponent(path)}`,
     ),
+  getFsImageUrl: (path: string) =>
+    `${BASE}/fs/image?path=${encodeURIComponent(path)}`,
   writeFile: (path: string, content: string) =>
     put<{ ok: boolean; path: string }>("/fs/write", { path, content }),
   getFileDiff: (path: string, base?: string) => {
@@ -609,7 +611,7 @@ export const api = {
       { files, repoRoot, base: base || undefined },
     ),
   getClaudeMdFiles: (cwd: string) =>
-    get<{ cwd: string; files: { path: string; content: string }[] }>(
+    get<{ cwd: string; files: { path: string; content: string; writable?: boolean }[] }>(
       `/fs/claude-md?cwd=${encodeURIComponent(cwd)}`,
     ),
   saveClaudeMd: (path: string, content: string) =>

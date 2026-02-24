@@ -120,6 +120,29 @@ function verificationProgress(
   };
 }
 
+type EditorTarget = "newTitle" | "newDescription" | "editTitle" | "editDescription";
+
+function extractHashtags(text: string): string[] {
+  const tags = new Set<string>();
+  const matches = text.matchAll(/(^|\s)#([a-zA-Z0-9][a-zA-Z0-9_-]*)/g);
+  for (const match of matches) tags.add(match[2].toLowerCase());
+  return Array.from(tags);
+}
+
+function findHashtagTokenAtCursor(text: string, cursor: number): { start: number; end: number; query: string } | null {
+  const clamped = Math.max(0, Math.min(cursor, text.length));
+  const beforeCursor = text.slice(0, clamped);
+  const hashPos = beforeCursor.lastIndexOf("#");
+  if (hashPos < 0) return null;
+  if (hashPos > 0) {
+    const prev = beforeCursor[hashPos - 1];
+    if (!/\s/.test(prev)) return null;
+  }
+  const token = beforeCursor.slice(hashPos + 1);
+  if (/\s/.test(token)) return null;
+  return { start: hashPos, end: clamped, query: token };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function QuestmasterPage() {
@@ -158,7 +181,6 @@ export function QuestmasterPage() {
   // Create form state
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newTags, setNewTags] = useState("");
   const [creating, setCreating] = useState(false);
   const titleInputRef = useRef<HTMLTextAreaElement>(null);
   const newDescRef = useRef<HTMLTextAreaElement>(null);
@@ -169,7 +191,11 @@ export function QuestmasterPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editTags, setEditTags] = useState("");
+
+  // Hashtag autocomplete for create/edit title + description fields.
+  const [editorHashtagQuery, setEditorHashtagQuery] = useState("");
+  const [editorAutocompleteIndex, setEditorAutocompleteIndex] = useState(0);
+  const [editorAutocompleteTarget, setEditorAutocompleteTarget] = useState<EditorTarget | null>(null);
 
   // Track the quest version when entering edit mode so we can detect remote
   // changes and exit edit mode to prevent overwriting someone else's edits.
@@ -318,7 +344,6 @@ export function QuestmasterPage() {
     setEditingId(quest.questId);
     setEditTitle(quest.title);
     setEditDescription("description" in quest ? (quest.description ?? "") : "");
-    setEditTags(quest.tags?.join(", ") ?? "");
     editVersionRef.current = quest.version;
     setEditStaleNotice(false);
   }
@@ -326,6 +351,9 @@ export function QuestmasterPage() {
   function cancelEdit() {
     setEditingId(null);
     setEditStaleNotice(false);
+    setEditorHashtagQuery("");
+    setEditorAutocompleteTarget(null);
+    setEditorAutocompleteIndex(0);
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────
@@ -336,20 +364,20 @@ export function QuestmasterPage() {
     setCreating(true);
     setError("");
     try {
-      const tags = newTags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const description = newDescription.trim() || undefined;
+      const tags = extractHashtags(`${title}\n${description ?? ""}`);
       await api.createQuest({
         title,
-        description: newDescription.trim() || undefined,
+        description,
         tags: tags.length > 0 ? tags : undefined,
         images: createImages.length > 0 ? createImages : undefined,
       });
       setNewTitle("");
       setNewDescription("");
-      setNewTags("");
       setCreateImages([]);
+      setEditorHashtagQuery("");
+      setEditorAutocompleteTarget(null);
+      setEditorAutocompleteIndex(0);
       setShowCreateForm(false);
       await refreshQuests();
     } catch (e: unknown) {
@@ -362,13 +390,15 @@ export function QuestmasterPage() {
   async function handlePatch(questId: string) {
     setError("");
     try {
-      const tags = editTags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const currentQuest = quests.find((q) => q.questId === questId);
+      const nextDescription = editDescription.trim() || undefined;
+      const extracted = extractHashtags(`${editTitle.trim()}\n${nextDescription ?? ""}`);
+      const tags = extracted.length > 0
+        ? extracted
+        : (currentQuest?.tags ?? []);
       await api.patchQuest(questId, {
         title: editTitle.trim() || undefined,
-        description: editDescription.trim() || undefined,
+        description: nextDescription,
         tags: tags.length > 0 ? tags : undefined,
       });
       setEditingId(null);
@@ -667,6 +697,79 @@ export function QuestmasterPage() {
     return allTags.filter((t) => t.includes(q) && !selectedTags.has(t));
   }, [hashtagQuery, allTags, selectedTags]);
 
+  const editorAutocompleteMatches = useMemo(() => {
+    if (!editorHashtagQuery) return [];
+    const q = editorHashtagQuery.toLowerCase();
+    return allTags.filter((t) => t.includes(q));
+  }, [editorHashtagQuery, allTags]);
+
+  const editorAutocompleteOptions = useMemo(() => {
+    if (!editorHashtagQuery) return [];
+    const q = editorHashtagQuery.toLowerCase();
+    const existing = editorAutocompleteMatches.map((tag) => ({ tag, isNew: false }));
+    if (!allTags.includes(q)) existing.push({ tag: q, isNew: true });
+    return existing;
+  }, [editorHashtagQuery, editorAutocompleteMatches, allTags]);
+
+  function getEditorText(target: EditorTarget): string {
+    if (target === "newTitle") return newTitle;
+    if (target === "newDescription") return newDescription;
+    if (target === "editTitle") return editTitle;
+    return editDescription;
+  }
+
+  function setEditorText(target: EditorTarget, value: string) {
+    if (target === "newTitle") setNewTitle(value);
+    else if (target === "newDescription") setNewDescription(value);
+    else if (target === "editTitle") setEditTitle(value);
+    else setEditDescription(value);
+  }
+
+  function getEditorRef(target: EditorTarget) {
+    if (target === "newTitle") return titleInputRef;
+    if (target === "newDescription") return newDescRef;
+    if (target === "editTitle") return editTitleRef;
+    return editDescRef;
+  }
+
+  function updateEditorHashtagState(target: EditorTarget, value: string, cursor: number) {
+    const token = findHashtagTokenAtCursor(value, cursor);
+    if (!token) {
+      setEditorHashtagQuery("");
+      setEditorAutocompleteTarget(null);
+      setEditorAutocompleteIndex(0);
+      return;
+    }
+    setEditorAutocompleteTarget(target);
+    setEditorHashtagQuery(token.query.toLowerCase());
+    setEditorAutocompleteIndex(0);
+  }
+
+  function applyEditorHashtag(tag: string) {
+    const target = editorAutocompleteTarget;
+    if (!target) return;
+    const current = getEditorText(target);
+    const ref = getEditorRef(target).current;
+    const cursor = ref?.selectionStart ?? current.length;
+    const token = findHashtagTokenAtCursor(current, cursor);
+    if (!token) return;
+    const before = current.slice(0, token.start);
+    const after = current.slice(token.end);
+    const next = `${before}#${tag} ${after}`;
+    setEditorText(target, next);
+    setEditorHashtagQuery("");
+    setEditorAutocompleteTarget(null);
+    setEditorAutocompleteIndex(0);
+    const nextCursor = before.length + tag.length + 2;
+    requestAnimationFrame(() => {
+      const node = getEditorRef(target).current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(nextCursor, nextCursor);
+      autoResize(node);
+    });
+  }
+
   // ─── Filtering ────────────────────────────────────────────────────────
 
   // Layer 1: text search (case-insensitive on title + description)
@@ -699,6 +802,62 @@ export function QuestmasterPage() {
   // Layer 3: status filter
   const filtered =
     filter === "all" ? afterTags : afterTags.filter((q) => q.status === filter);
+
+  function handleEditorAutocompleteKeyDown(e: { key: string; preventDefault: () => void }): boolean {
+    if (!editorHashtagQuery || editorAutocompleteOptions.length === 0) return false;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setEditorAutocompleteIndex((i) => Math.min(i + 1, editorAutocompleteOptions.length - 1));
+      return true;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setEditorAutocompleteIndex((i) => Math.max(i - 1, 0));
+      return true;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      const option = editorAutocompleteOptions[editorAutocompleteIndex];
+      if (option) applyEditorHashtag(option.tag);
+      return true;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setEditorHashtagQuery("");
+      setEditorAutocompleteTarget(null);
+      setEditorAutocompleteIndex(0);
+      return true;
+    }
+    return false;
+  }
+
+  function renderEditorHashtagDropdown(target: EditorTarget) {
+    if (editorAutocompleteTarget !== target || !editorHashtagQuery || editorAutocompleteOptions.length === 0) {
+      return null;
+    }
+    return (
+      <div className="mt-1 bg-cc-card border border-cc-border rounded-lg shadow-xl py-1 max-h-44 overflow-y-auto">
+        {editorAutocompleteOptions.map((option, i) => (
+          <button
+            key={`${option.tag}:${option.isNew ? "new" : "existing"}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              applyEditorHashtag(option.tag);
+            }}
+            className={`w-full px-3 py-1.5 text-xs text-left flex items-center gap-2 transition-colors cursor-pointer ${
+              i === editorAutocompleteIndex
+                ? "bg-cc-primary/10 text-cc-primary"
+                : "text-cc-fg hover:bg-cc-hover"
+            }`}
+          >
+            <span className="text-cc-muted">#</span>
+            <span className="flex-1">{option.tag}</span>
+            {option.isNew && <span className="text-[10px] text-cc-muted">(new tag)</span>}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -1008,8 +1167,20 @@ export function QuestmasterPage() {
               onChange={(e) => {
                 setNewTitle(e.target.value);
                 autoResize(e.target);
+                updateEditorHashtagState("newTitle", e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
+              onFocus={(e) => {
+                updateEditorHashtagState("newTitle", e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  setEditorHashtagQuery("");
+                  setEditorAutocompleteTarget(null);
+                  setEditorAutocompleteIndex(0);
+                }, 120);
               }}
               onKeyDown={(e) => {
+                if (handleEditorAutocompleteKeyDown(e)) return;
                 if (e.key === "Enter") {
                   e.preventDefault();
                   if (newTitle.trim()) handleCreate();
@@ -1021,25 +1192,34 @@ export function QuestmasterPage() {
               className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-hidden"
               style={{ minHeight: "36px" }}
             />
+            {renderEditorHashtagDropdown("newTitle")}
             <textarea
               ref={newDescRef}
               value={newDescription}
               onChange={(e) => {
                 setNewDescription(e.target.value);
                 autoResize(e.target);
+                updateEditorHashtagState("newDescription", e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
+              onFocus={(e) => {
+                updateEditorHashtagState("newDescription", e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  setEditorHashtagQuery("");
+                  setEditorAutocompleteTarget(null);
+                  setEditorAutocompleteIndex(0);
+                }, 120);
+              }}
+              onKeyDown={(e) => {
+                handleEditorAutocompleteKeyDown(e);
               }}
               placeholder="Description (optional)"
               rows={1}
               className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-y-auto"
               style={{ minHeight: "36px", maxHeight: "200px" }}
             />
-            <input
-              type="text"
-              value={newTags}
-              onChange={(e) => setNewTags(e.target.value)}
-              placeholder="Tags (comma separated)"
-              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
-            />
+            {renderEditorHashtagDropdown("newDescription")}
 
             {/* Images section */}
             <div>
@@ -1327,14 +1507,27 @@ export function QuestmasterPage() {
                               onChange={(e) => {
                                 setEditTitle(e.target.value);
                                 autoResize(e.target);
+                                updateEditorHashtagState("editTitle", e.target.value, e.target.selectionStart ?? e.target.value.length);
+                              }}
+                              onFocus={(e) => {
+                                updateEditorHashtagState("editTitle", e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setEditorHashtagQuery("");
+                                  setEditorAutocompleteTarget(null);
+                                  setEditorAutocompleteIndex(0);
+                                }, 120);
                               }}
                               onKeyDown={(e) => {
+                                if (handleEditorAutocompleteKeyDown(e)) return;
                                 if (e.key === "Enter") e.preventDefault();
                               }}
                               rows={1}
                               className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50 resize-none overflow-hidden"
                               style={{ minHeight: "36px" }}
                             />
+                            {renderEditorHashtagDropdown("editTitle")}
                           </div>
                           <div>
                             <label className="block text-[11px] text-cc-muted mb-1">Description</label>
@@ -1344,22 +1537,27 @@ export function QuestmasterPage() {
                               onChange={(e) => {
                                 setEditDescription(e.target.value);
                                 autoResize(e.target);
+                                updateEditorHashtagState("editDescription", e.target.value, e.target.selectionStart ?? e.target.value.length);
+                              }}
+                              onFocus={(e) => {
+                                updateEditorHashtagState("editDescription", e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setEditorHashtagQuery("");
+                                  setEditorAutocompleteTarget(null);
+                                  setEditorAutocompleteIndex(0);
+                                }, 120);
+                              }}
+                              onKeyDown={(e) => {
+                                handleEditorAutocompleteKeyDown(e);
                               }}
                               placeholder="Add a description..."
                               rows={1}
                               className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-none overflow-y-auto"
                               style={{ minHeight: "36px", maxHeight: "200px" }}
                             />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-cc-muted mb-1">Tags</label>
-                            <input
-                              type="text"
-                              value={editTags}
-                              onChange={(e) => setEditTags(e.target.value)}
-                              placeholder="Comma separated tags"
-                              className="w-full px-3 py-2 text-base sm:text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
-                            />
+                            {renderEditorHashtagDropdown("editDescription")}
                           </div>
 
                           {/* Images (always show upload in edit mode) */}

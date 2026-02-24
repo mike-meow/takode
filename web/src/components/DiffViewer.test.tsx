@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DiffViewer } from "./DiffViewer.js";
 
 describe("DiffViewer", () => {
@@ -48,6 +48,7 @@ index 1234567..abcdefg 100644
     );
     expect(container.querySelector(".diff-compact")).toBeTruthy();
     expect(container.querySelector(".diff-gutter")).toBeNull();
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
   });
 
   it("renders full mode with line numbers", () => {
@@ -60,6 +61,18 @@ index 1234567..abcdefg 100644
     );
     expect(container.querySelector(".diff-full")).toBeTruthy();
     expect(container.querySelector(".diff-gutter")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+  });
+
+  it("opens and closes full-screen modal from compact mode", () => {
+    const { container } = render(
+      <DiffViewer oldText="a" newText="b" mode="compact" fileName="src/file.ts" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(container.ownerDocument.querySelector(".diff-modal-backdrop")).toBeTruthy();
+    expect(container.ownerDocument.querySelector(".diff-modal-panel")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(container.ownerDocument.querySelector(".diff-modal-backdrop")).toBeNull();
   });
 
   it("shows new file diff (old is empty)", () => {

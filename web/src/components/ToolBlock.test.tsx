@@ -343,6 +343,50 @@ describe("ToolBlock", () => {
     expect(screen.getByText("/home/user/test.txt")).toBeTruthy();
   });
 
+  it("renders image thumbnail metadata for Read image input", () => {
+    render(
+      <ToolBlock
+        name="Read"
+        input={{ file_path: "/home/user/image.png" }}
+        toolUseId="tool-image-1"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("Thumbnail preview")).toBeTruthy();
+    const img = screen.getByRole("img", { name: "/home/user/image.png" });
+    expect(img.getAttribute("src")).toContain("/api/fs/image?path=");
+  });
+
+  it("hides binary result dumps for Read image tool results", () => {
+    const toolResults = new Map();
+    const sessionResults = new Map();
+    sessionResults.set("tool-image-2", {
+      tool_use_id: "tool-image-2",
+      content: "PNG binary bytes...",
+      is_error: false,
+      total_size: 4096,
+      is_truncated: false,
+      duration_seconds: 0.2,
+    });
+    toolResults.set("s-image", sessionResults);
+    useStore.setState({ toolResults });
+
+    render(
+      <ToolBlock
+        name="Read"
+        input={{ file_path: "/home/user/screenshot.jpg" }}
+        toolUseId="tool-image-2"
+        sessionId="s-image"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("Binary image output hidden.")).toBeTruthy();
+    expect(screen.queryByText("PNG binary bytes...")).toBeNull();
+    useStore.setState({ toolResults: new Map() });
+  });
+
   it("renders JSON for unknown tools when expanded", () => {
     render(
       <ToolBlock

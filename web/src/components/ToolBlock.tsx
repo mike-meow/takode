@@ -176,7 +176,14 @@ export const ToolBlock = memo(function ToolBlock({
           <div className="mt-2">
             <ToolDetail name={name} input={input} />
           </div>
-          {sessionId && name !== "Task" && <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} />}
+          {sessionId && name !== "Task" && (
+            <ToolResultSection
+              toolUseId={toolUseId}
+              sessionId={sessionId}
+              toolName={name}
+              input={input}
+            />
+          )}
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
@@ -233,12 +240,47 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ToolResultSection({ toolUseId, sessionId }: { toolUseId: string; sessionId: string }) {
+function isLikelyImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif|tiff?)$/i.test(path);
+}
+
+function ToolResultSection({
+  toolUseId,
+  sessionId,
+  toolName,
+  input,
+}: {
+  toolUseId: string;
+  sessionId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}) {
   const preview = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId));
+  const filePath = String(input.file_path || input.path || "");
+  const isReadImage = toolName === "Read" && isLikelyImagePath(filePath);
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (!preview) return null;
+
+  if (isReadImage && !preview.is_error) {
+    return (
+      <div className="mt-2 pt-2 border-t border-cc-border/50">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[10px] font-medium text-cc-muted uppercase tracking-wider">Result</span>
+          <span className="text-[10px] text-cc-muted">image preview</span>
+        </div>
+        <div className="rounded-lg border border-cc-border bg-cc-code-bg/40 p-2">
+          <img
+            src={api.getFsImageUrl(filePath)}
+            alt={filePath}
+            className="max-h-48 w-auto rounded border border-cc-border/70 bg-black/10"
+          />
+          <div className="mt-1 text-[10px] text-cc-muted">Binary image output hidden.</div>
+        </div>
+      </div>
+    );
+  }
 
   const displayContent = fullContent ?? preview.content;
   const showExpandButton = preview.is_truncated && fullContent === null;
@@ -389,6 +431,7 @@ function ReadToolDetail({ input }: { input: Record<string, unknown> }) {
   const filePath = String(input.file_path || input.path || "");
   const offset = input.offset as number | undefined;
   const limit = input.limit as number | undefined;
+  const isImage = isLikelyImagePath(filePath);
 
   return (
     <div className="space-y-1">
@@ -397,6 +440,16 @@ function ReadToolDetail({ input }: { input: Record<string, unknown> }) {
         <div className="flex gap-2 text-[10px] text-cc-muted">
           {offset != null && <span>offset: {offset}</span>}
           {limit != null && <span>limit: {limit}</span>}
+        </div>
+      )}
+      {isImage && (
+        <div className="rounded-lg border border-cc-border bg-cc-code-bg/40 p-2">
+          <img
+            src={api.getFsImageUrl(filePath)}
+            alt={filePath}
+            className="max-h-36 w-auto rounded border border-cc-border/70 bg-black/10"
+          />
+          <div className="mt-1 text-[10px] text-cc-muted">Thumbnail preview</div>
         </div>
       )}
     </div>

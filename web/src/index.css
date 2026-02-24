@@ -283,7 +283,7 @@ select {
 }
 .diff-compact {
   max-height: 280px;
-  overflow-y: auto;
+  overflow: auto;
 }
 .diff-full {
   overflow: auto;
@@ -341,7 +341,7 @@ select {
   user-select: none;
 }
 .diff-content {
-  flex: 1;
+  flex: 0 0 auto;
   white-space: pre;
   padding-right: 12px;
 }
@@ -378,6 +378,84 @@ select {
 }
 .dark .diff-word-del {
   background: rgba(252, 129, 129, 0.2);
+}
+.diff-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-cc-border);
+  background: rgba(0, 0, 0, 0.12);
+}
+.dark .diff-toolbar {
+  background: rgba(255, 255, 255, 0.04);
+}
+.diff-expand-btn {
+  border: 1px solid var(--color-cc-border);
+  background: var(--color-cc-bg);
+  color: var(--color-cc-fg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.diff-expand-btn:hover {
+  background: var(--color-cc-hover);
+}
+.diff-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.diff-modal-panel {
+  width: min(1200px, 100%);
+  height: min(90vh, 900px);
+  border: 1px solid var(--color-cc-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-cc-bg);
+  display: flex;
+  flex-direction: column;
+}
+.diff-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-cc-border);
+  background: var(--color-cc-card);
+}
+.diff-modal-title {
+  font-size: 12px;
+  color: var(--color-cc-fg);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.diff-modal-close {
+  border: 1px solid var(--color-cc-border);
+  background: var(--color-cc-hover);
+  color: var(--color-cc-muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.diff-modal-close:hover {
+  color: var(--color-cc-fg);
+}
+.diff-modal-body {
+  min-height: 0;
+  flex: 1;
+  padding: 10px;
+}
+.diff-modal-body .diff-viewer {
+  height: 100%;
 }
 
 /* Hide hover card on touch-only devices */

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import * as Diff from "diff";
 
 export interface DiffViewerProps {
@@ -14,6 +15,8 @@ export interface DiffViewerProps {
   mode?: "compact" | "full";
   /** Explicit control over line numbers. When omitted, defaults to true for "full" mode, false for "compact". */
   showLineNumbers?: boolean;
+  /** Optional label for the compact-mode modal trigger. */
+  expandButtonLabel?: string;
 }
 
 interface DiffLine {
@@ -224,9 +227,18 @@ function FileHeader({ fileName }: { fileName: string }) {
   );
 }
 
-export function DiffViewer({ oldText, newText, unifiedDiff, fileName, mode = "compact", showLineNumbers: showLineNumbersProp }: DiffViewerProps) {
+export function DiffViewer({
+  oldText,
+  newText,
+  unifiedDiff,
+  fileName,
+  mode = "compact",
+  showLineNumbers: showLineNumbersProp,
+  expandButtonLabel = "Open",
+}: DiffViewerProps) {
   const isCompact = mode === "compact";
   const showLineNumbers = showLineNumbersProp ?? !isCompact;
+  const [expanded, setExpanded] = useState(false);
 
   const data = useMemo(() => {
     // Case 1: unified diff string provided (from git diff)
@@ -252,8 +264,29 @@ export function DiffViewer({ oldText, newText, unifiedDiff, fileName, mode = "co
     );
   }
 
-  return (
+  useEffect(() => {
+    if (!expanded) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [expanded]);
+
+  const renderedDiff = (
     <div className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"}`}>
+      {isCompact && (
+        <div className="diff-toolbar">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="diff-expand-btn"
+            title="Open full-screen diff"
+          >
+            {expandButtonLabel}
+          </button>
+        </div>
+      )}
       {data.map((file, fi) => (
         <div key={fi} className="diff-file">
           {(file.fileName || fileName) && (
@@ -265,5 +298,40 @@ export function DiffViewer({ oldText, newText, unifiedDiff, fileName, mode = "co
         </div>
       ))}
     </div>
+  );
+
+  return (
+    <>
+      {renderedDiff}
+      {isCompact && expanded && createPortal(
+        <div className="diff-modal-backdrop" onClick={() => setExpanded(false)}>
+          <div className="diff-modal-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="diff-modal-header">
+              <span className="diff-modal-title">{fileName || "Diff Viewer"}</span>
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="diff-modal-close"
+                title="Close full-screen diff"
+              >
+                Close
+              </button>
+            </div>
+            <div className="diff-modal-body">
+              <DiffViewer
+                oldText={oldText}
+                newText={newText}
+                unifiedDiff={unifiedDiff}
+                fileName={fileName}
+                mode="full"
+                showLineNumbers
+              />
+            </div>
+          </div>
+        </div>
+        ,
+        document.body,
+      )}
+    </>
   );
 }

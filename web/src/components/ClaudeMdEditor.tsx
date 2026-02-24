@@ -6,6 +6,7 @@ import { YarnBallSpinner } from "./CatIcons.js";
 interface ClaudeMdFile {
   path: string;
   content: string;
+  writable?: boolean;
 }
 
 interface AutoApprovalInfo {
@@ -20,10 +21,12 @@ interface ClaudeMdEditorProps {
   /** Git repo root — needed for worktree sessions to match auto-approval configs. */
   repoRoot?: string;
   open: boolean;
+  /** Optional file path to preselect when the modal opens. */
+  initialPath?: string;
   onClose: () => void;
 }
 
-export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorProps) {
+export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: ClaudeMdEditorProps) {
   const [files, setFiles] = useState<ClaudeMdFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -53,8 +56,12 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
           projectPath: aaRes.config.projectPath,
         } : null);
         if (res.files.length > 0) {
-          setSelectedIdx(0);
-          setEditContent(res.files[0].content);
+          const idx = initialPath
+            ? res.files.findIndex((f) => f.path === initialPath)
+            : 0;
+          const selected = idx >= 0 ? idx : 0;
+          setSelectedIdx(selected);
+          setEditContent(res.files[selected].content);
           setCreateMode(null);
         } else {
           setCreateMode(null);
@@ -66,13 +73,22 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
         setError(e.message);
         setLoading(false);
       });
-  }, [cwd, repoRoot]);
+  }, [cwd, repoRoot, initialPath]);
 
   useEffect(() => {
     if (open) load();
   }, [open, load]);
 
+  useEffect(() => {
+    if (files.length === 0) return;
+    if (selectedIdx < files.length) return;
+    setSelectedIdx(0);
+    setEditContent(files[0].content);
+    setDirty(false);
+  }, [files, selectedIdx]);
+
   const handleSelect = (idx: number) => {
+    if (!files[idx]) return;
     if (dirty && !confirm("Discard unsaved changes?")) return;
     setSelectedIdx(idx);
     setEditContent(files[idx].content);
@@ -129,6 +145,8 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
   const hasDotClaude = files.some(
     (f) => f.path === `${cwd}/.claude/CLAUDE.md`,
   );
+  const selectedFile = files[selectedIdx];
+  const isSelectedWritable = createMode ? true : selectedFile?.writable !== false;
 
   // Portal to document.body to escape any ancestor overflow/transform constraints
   return createPortal(
@@ -197,6 +215,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
                     }`}
                   >
                     {relPath(f.path)}
+                    {f.writable === false && " (read-only)"}
                   </button>
                 ))}
                 {createMode && (
@@ -268,6 +287,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
                       </svg>
                       <span className="truncate font-mono-code">
                         {relPath(f.path)}
+                        {f.writable === false && " (read-only)"}
                       </span>
                     </button>
                   ))}
@@ -429,6 +449,9 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
                           : relPath(files[selectedIdx]?.path ?? "")}
                       </span>
                       <div className="flex items-center gap-2">
+                        {!isSelectedWritable && (
+                          <span className="text-[10px] text-cc-muted font-medium">Read-only</span>
+                        )}
                         {dirty && (
                           <span className="text-[10px] text-cc-warning font-medium">
                             Unsaved
@@ -436,9 +459,9 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
                         )}
                         <button
                           onClick={handleSave}
-                          disabled={!dirty || saving}
+                          disabled={!dirty || saving || !isSelectedWritable}
                           className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer ${
-                            dirty && !saving
+                            dirty && !saving && isSelectedWritable
                               ? "bg-cc-primary text-white hover:bg-cc-primary/90"
                               : "bg-cc-hover text-cc-muted cursor-not-allowed"
                           }`}
@@ -452,9 +475,11 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, onClose }: ClaudeMdEditorP
                     <textarea
                       value={editContent}
                       onChange={(e) => {
+                        if (!isSelectedWritable) return;
                         setEditContent(e.target.value);
                         setDirty(true);
                       }}
+                      readOnly={!isSelectedWritable}
                       spellCheck={false}
                       className="flex-1 w-full p-4 bg-cc-bg text-cc-fg text-[13px] font-mono-code leading-relaxed resize-none focus:outline-none"
                       placeholder="Write your project instructions here..."
