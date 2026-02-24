@@ -109,7 +109,7 @@ export function createRoutes(
 
   // Performance tracing middleware — records slow API requests
   if (perfTracer) {
-    api.use("/api/*", async (c, next) => {
+    api.use("/*", async (c, next) => {
       const start = performance.now();
       await next();
       const ms = performance.now() - start;

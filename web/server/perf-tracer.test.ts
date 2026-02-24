@@ -137,21 +137,25 @@ describe("PerfTracer", () => {
   });
 
   it("lag monitor detects artificial event loop blocks", async () => {
-    // Use a very low threshold so normal scheduling jitter triggers it
-    const sensitive = new PerfTracer({ lagThresholdMs: 1 });
-    sensitive.startLagMonitor(50);
+    // Gap-based detection: measure interval tick gaps exceeding the expected interval.
+    // Use a short interval (30ms) and block for much longer (80ms) to guarantee
+    // at least one tick arrives late.
+    const sensitive = new PerfTracer({ lagThresholdMs: 5 });
+    sensitive.startLagMonitor(30);
 
-    // Block the event loop for ~20ms to guarantee detection
+    // Let a few interval ticks establish the baseline
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Block the event loop for 80ms — at least 2 interval ticks will be delayed
     const start = performance.now();
-    while (performance.now() - start < 20) { /* busy wait */ }
+    while (performance.now() - start < 80) { /* busy wait */ }
 
-    // Wait for the setTimeout(0) probe to fire
-    await new Promise((r) => setTimeout(r, 100));
+    // Wait for the next tick(s) to measure the gap from the block
+    await new Promise((r) => setTimeout(r, 120));
 
     const events = sensitive.getLagEvents();
-    // Should have detected at least one lag event from the busy-wait block
     expect(events.length).toBeGreaterThanOrEqual(1);
-    expect(events[0].lagMs).toBeGreaterThanOrEqual(1);
+    expect(events[0].lagMs).toBeGreaterThanOrEqual(5);
 
     sensitive.stop();
   });

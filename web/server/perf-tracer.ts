@@ -102,8 +102,8 @@ export interface PerfSummary {
 // ─── PerfTracer ──────────────────────────────────────────────────────────────
 
 const DEFAULT_LAG_CHECK_INTERVAL_MS = 200;
-const DEFAULT_LAG_THRESHOLD_MS = 50;
-const DEFAULT_HTTP_SLOW_THRESHOLD_MS = 100;
+const DEFAULT_LAG_THRESHOLD_MS = 20;
+const DEFAULT_HTTP_SLOW_THRESHOLD_MS = 50;
 const DEFAULT_WS_SLOW_THRESHOLD_MS = 50;
 const DEFAULT_SUMMARY_INTERVAL_MS = 60_000;
 
@@ -155,15 +155,15 @@ export class PerfTracer {
 
   startLagMonitor(intervalMs = DEFAULT_LAG_CHECK_INTERVAL_MS): void {
     if (this.lagCheckInterval) return;
+    let lastTick = performance.now();
     this.lagCheckInterval = setInterval(() => {
-      const expected = performance.now();
-      setTimeout(() => {
-        const actual = performance.now();
-        const lagMs = actual - expected;
-        if (lagMs > this.lagThresholdMs) {
-          this.recordEventLoopLag(lagMs);
-        }
-      }, 0);
+      const now = performance.now();
+      const gap = now - lastTick;
+      const lag = gap - intervalMs;
+      if (lag > this.lagThresholdMs) {
+        this.recordEventLoopLag(lag);
+      }
+      lastTick = now;
     }, intervalMs);
     if (this.lagCheckInterval.unref) this.lagCheckInterval.unref();
   }
