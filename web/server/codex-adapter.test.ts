@@ -1631,6 +1631,81 @@ describe("CodexAdapter", () => {
     expect(resultBlock?.content).toContain("Exit code: 2");
   });
 
+  it("maps turn/plan/updated into TodoWrite tool_use for checklist rendering", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdout.push(JSON.stringify({
+      method: "turn/plan/updated",
+      params: {
+        turnId: "turn_plan_1",
+        plan: {
+          steps: [
+            { content: "Fix failing test", status: "in_progress", activeForm: "Fixing failing test" },
+            { content: "Run test suite", status: "completed" },
+          ],
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const todoToolUse = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
+      return content.some((b) => b.type === "tool_use" && b.name === "TodoWrite");
+    }) as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } } | undefined;
+
+    expect(todoToolUse).toBeDefined();
+    const block = todoToolUse!.message.content.find((b) => b.type === "tool_use" && b.name === "TodoWrite");
+    const todos = block?.input?.todos as Array<{ content: string; status: string; activeForm?: string }>;
+    expect(todos).toEqual([
+      { content: "Fix failing test", status: "in_progress", activeForm: "Fixing failing test" },
+      { content: "Run test suite", status: "completed" },
+    ]);
+  });
+
+  it("deduplicates identical plan updates for the same turn", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const payload = {
+      method: "turn/plan/updated",
+      params: {
+        turnId: "turn_plan_same",
+        plan: {
+          steps: [
+            { content: "Implement fix", status: "in_progress" },
+            { content: "Add tests", status: "pending" },
+          ],
+        },
+      },
+    };
+    stdout.push(JSON.stringify(payload) + "\n");
+    stdout.push(JSON.stringify(payload) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const todoToolUses = messages.filter((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
+      return content.some((b) => b.type === "tool_use" && b.name === "TodoWrite");
+    });
+    expect(todoToolUses).toHaveLength(1);
+  });
+
   it("fetches rate limits after initialization via account/rateLimits/read", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 

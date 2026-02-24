@@ -1558,6 +1558,19 @@ export class WsBridge {
       );
       if (alreadyExists) return;
 
+      // Some CLIs don't provide compact_boundary uuid. On resume/replay this can
+      // duplicate the marker immediately. If the latest history entry is an
+      // equivalent unsummarized marker, treat it as a replay and skip.
+      const last = session.messageHistory[session.messageHistory.length - 1] as
+        | { type?: string; trigger?: string; preTokens?: number; summary?: string }
+        | undefined;
+      const duplicateWithoutUuid = !cliUuid
+        && last?.type === "compact_marker"
+        && !last.summary
+        && (last.trigger ?? null) === (meta?.trigger ?? null)
+        && (last.preTokens ?? null) === (meta?.pre_tokens ?? null);
+      if (duplicateWithoutUuid) return;
+
       const ts = Date.now();
       session.messageHistory.push({
         type: "compact_marker" as const,

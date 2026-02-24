@@ -358,6 +358,8 @@ export class CodexAdapter {
   // Track command execution start times for progress indicator
   private commandStartTimes = new Map<string, number>();
   private commandOutputByItemId = new Map<string, string>();
+  private planToolUseSeq = 0;
+  private planSignatureByKey = new Map<string, string>();
 
   // Accumulate reasoning text by item ID so we can emit final thinking blocks.
   private reasoningTextByItemId = new Map<string, string>();
@@ -912,7 +914,7 @@ export class CodexAdapter {
         break;
       }
       case "item/plan/delta":
-        // Plan updates — could display in future.
+        this.emitPlanTodoWrite(params, "item_plan_delta");
         break;
       case "item/updated":
         this.handleItemUpdated(params);
@@ -930,7 +932,7 @@ export class CodexAdapter {
         this.handleTurnCompleted(params);
         break;
       case "turn/plan/updated":
-        // Could emit as tool_progress or similar
+        this.emitPlanTodoWrite(params, "turn_plan_updated");
         break;
       case "turn/diff/updated":
         // Could show diff, but not needed for MVP
@@ -1391,6 +1393,88 @@ export class CodexAdapter {
   private handleItemUpdated(params: Record<string, unknown>): void {
     // item/updated is a general update — currently we handle streaming via the specific delta events
     // Could handle status updates for command_execution / file_change items here
+  }
+
+  private normalizePlanStatus(value: unknown): "pending" | "in_progress" | "completed" {
+    const status = toSafeText(value).toLowerCase();
+    if (status.includes("done") || status.includes("complete") || status.includes("finished")) return "completed";
+    if (
+      status.includes("progress")
+      || status.includes("doing")
+      || status.includes("active")
+      || status.includes("running")
+      || status.includes("current")
+    ) return "in_progress";
+    return "pending";
+  }
+
+  private extractPlanTodos(
+    params: Record<string, unknown>,
+  ): Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm?: string }> {
+    const todos: Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm?: string }> = [];
+    const seen = new Set<unknown>();
+
+    const pushTodo = (value: unknown): void => {
+      if (typeof value === "string") {
+        const content = value.trim();
+        if (content) todos.push({ content, status: "pending" });
+        return;
+      }
+      if (!value || typeof value !== "object") return;
+      const rec = value as Record<string, unknown>;
+      const content = toSafeText(
+        rec.content ?? rec.text ?? rec.title ?? rec.step ?? rec.name ?? rec.description ?? rec.task,
+      ).trim();
+      if (!content) return;
+      const activeForm = toSafeText(rec.activeForm ?? rec.active_form ?? rec.inProgressForm).trim() || undefined;
+      todos.push({ content, status: this.normalizePlanStatus(rec.status ?? rec.state), activeForm });
+    };
+
+    const walk = (value: unknown): void => {
+      if (value == null || seen.has(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          pushTodo(entry);
+          walk(entry);
+        }
+        return;
+      }
+      if (typeof value !== "object") return;
+      const rec = value as Record<string, unknown>;
+      for (const key of ["todos", "steps", "items", "plan", "checklist", "tasks", "value", "delta"]) {
+        if (key in rec) walk(rec[key]);
+      }
+    };
+
+    walk(params);
+    if (todos.length > 0) return todos;
+
+    // Fallback: parse markdown checkbox lines from textual deltas.
+    const rawDelta = toSafeText(params.delta ?? params.text ?? params.plan ?? "");
+    if (!rawDelta) return todos;
+    for (const line of rawDelta.split("\n")) {
+      const match = line.match(/^\s*[-*]\s*\[([ xX])\]\s+(.+)$/);
+      if (!match) continue;
+      todos.push({
+        content: match[2].trim(),
+        status: match[1].toLowerCase() === "x" ? "completed" : "pending",
+      });
+    }
+    return todos;
+  }
+
+  private emitPlanTodoWrite(params: Record<string, unknown>, source: "item_plan_delta" | "turn_plan_updated"): void {
+    const todos = this.extractPlanTodos(params);
+    if (todos.length === 0) return;
+
+    const key = toSafeText(params.turnId ?? params.itemId ?? params.threadId ?? source) || source;
+    const signature = JSON.stringify(todos);
+    if (this.planSignatureByKey.get(key) === signature) return;
+    this.planSignatureByKey.set(key, signature);
+
+    const toolUseId = `codex-plan-${key}-${++this.planToolUseSeq}`;
+    this.emitToolUseTracked(toolUseId, "TodoWrite", { todos });
   }
 
   private handleItemCompleted(params: Record<string, unknown>): void {

@@ -959,8 +959,11 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
       {turns.map((turn, index) => {
         const isLastTurn = index === turns.length - 1;
         const override = overrides?.get(turn.id);
-        // Default: last turn expanded, all others collapsed
-        const isActivityExpanded = override !== undefined ? override : isLastTurn;
+        // Default: last turn expanded, older finished turns collapsed.
+        // If a turn has no final assistant text yet, keep it expanded so
+        // user-inserted follow-up messages don't hide in-flight context.
+        const defaultExpanded = isLastTurn || turn.responseEntry === null;
+        const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
         return (
           <div key={turn.id} data-turn-id={turn.id} className="turn-container space-y-3 sm:space-y-5" data-user-turn={turn.userEntry ? "true" : undefined}>

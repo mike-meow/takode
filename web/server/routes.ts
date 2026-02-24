@@ -2725,6 +2725,22 @@ export function createRoutes(
     try {
       const quest = await questStore.patchQuest(c.req.param("questId"), body);
       if (!quest) return c.json({ error: "Quest not found" }, 404);
+      if (
+        typeof body.title === "string" &&
+        "sessionId" in quest &&
+        quest.status === "in_progress" &&
+        typeof quest.sessionId === "string" &&
+        body.title.trim().length > 0
+      ) {
+        // Keep quest-owned session names in sync when a claimed quest is retitled.
+        sessionNames.setName(quest.sessionId, quest.title);
+        wsBridge.broadcastNameUpdate(quest.sessionId, quest.title, "quest");
+        wsBridge.setSessionClaimedQuest(quest.sessionId, {
+          id: quest.questId,
+          title: quest.title,
+          status: quest.status,
+        });
+      }
       wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       return c.json(quest);
     } catch (e: unknown) {

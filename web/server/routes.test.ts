@@ -104,6 +104,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRoutes } from "./routes.js";
 import * as envManager from "./env-manager.js";
 import * as gitUtils from "./git-utils.js";
+import * as questStore from "./quest-store.js";
 import * as sessionNames from "./session-names.js";
 import * as settingsManager from "./settings-manager.js";
 import { containerManager } from "./container-manager.js";
@@ -147,6 +148,8 @@ function createMockBridge() {
     broadcastSessionUpdate: vi.fn(),
     broadcastToSession: vi.fn(),
     broadcastGlobal: vi.fn(),
+    broadcastNameUpdate: vi.fn(),
+    setSessionClaimedQuest: vi.fn(),
     persistSessionSync: vi.fn(),
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),
@@ -2675,6 +2678,40 @@ describe("POST /api/sessions/:id/revert", () => {
     expect(res.status).toBe(503);
     const json = await res.json();
     expect(json.error).toBe("CLI not found");
+  });
+});
+
+// ─── Quests ────────────────────────────────────────────────────────────────
+
+describe("PATCH /api/quests/:questId", () => {
+  it("syncs claimed session name when in-progress quest title is updated", async () => {
+    vi.spyOn(questStore, "patchQuest").mockReturnValueOnce({
+      id: "q-1-v2",
+      questId: "q-1",
+      title: "Updated quest title",
+      status: "in_progress",
+      sessionId: "session-1",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    } as any);
+
+    const res = await app.request("/api/quests/q-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Updated quest title" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sessionNames.setName).toHaveBeenCalledWith("session-1", "Updated quest title");
+    expect(bridge.broadcastNameUpdate).toHaveBeenCalledWith("session-1", "Updated quest title", "quest");
+    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", {
+      id: "q-1",
+      title: "Updated quest title",
+      status: "in_progress",
+    });
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "quest_list_updated" }),
+    );
   });
 });
 

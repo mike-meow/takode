@@ -725,4 +725,27 @@ describe("MessageFeed - collapsed turns", () => {
     // No activity bar since there are no remaining agent entries after extracting response
     expect(screen.queryByText(/message/)).toBeNull();
   });
+
+  it("keeps unfinished non-last turn expanded when a new user message arrives", () => {
+    const sid = "test-unfinished-turn-expanded";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "First request" }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-streaming", name: "Read", input: { file_path: "/tmp/a.ts" } },
+        ],
+      }),
+      makeMessage({ id: "u2", role: "user", content: "Follow-up while previous turn is unfinished" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Acknowledged follow-up" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    // Unfinished first turn should stay expanded: render the real tool block,
+    // not just a hidden/collapsed aggregate.
+    expect(screen.getByText("Read File")).toBeTruthy();
+  });
 });
