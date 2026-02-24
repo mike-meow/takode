@@ -98,7 +98,11 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
               onChange={(e) => setDirInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && dirInput.trim()) {
-                  selectDir(dirInput.trim());
+                  // Navigate to the typed path instead of selecting directly.
+                  // This lets the server expand tildes (~/...) and validates
+                  // the path exists before the user commits to it.
+                  loadDirs(dirInput.trim());
+                  setShowDirInput(false);
                 }
                 if (e.key === "Escape") {
                   e.stopPropagation();

@@ -101,6 +101,19 @@ export function buildFallbackPath(): string {
   return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(":");
 }
 
+// ─── Tilde expansion ─────────────────────────────────────────────────────────
+
+/**
+ * Expand leading `~` or `~/` to the current user's home directory.
+ * Shell-style tilde expansion doesn't happen automatically when paths
+ * come from browser text input — Node's path.resolve() treats `~` as literal.
+ */
+export function expandTilde(inputPath: string): string {
+  if (inputPath === "~") return homedir();
+  if (inputPath.startsWith("~/")) return join(homedir(), inputPath.slice(2));
+  return inputPath;
+}
+
 // ─── Enriched PATH (cached) ───────────────────────────────────────────────────
 
 let _cachedPath: string | null = null;

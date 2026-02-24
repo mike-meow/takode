@@ -34,6 +34,7 @@ import {
   getEnrichedPath,
   resolveBinary,
   getServicePath,
+  expandTilde,
   _resetPathCache,
 } from "./path-resolver.js";
 
@@ -366,6 +367,39 @@ describe("getServicePath", () => {
     });
 
     expect(getServicePath()).toBe(getEnrichedPath());
+  });
+});
+
+// ─── expandTilde ─────────────────────────────────────────────────────────────
+
+describe("expandTilde", () => {
+  it("expands ~ to home directory", () => {
+    expect(expandTilde("~")).toBe("/home/testuser");
+  });
+
+  it("expands ~/path to home directory + path", () => {
+    expect(expandTilde("~/projects/HQ")).toBe("/home/testuser/projects/HQ");
+  });
+
+  it("expands ~/single-segment", () => {
+    expect(expandTilde("~/HQ")).toBe("/home/testuser/HQ");
+  });
+
+  it("leaves absolute paths unchanged", () => {
+    expect(expandTilde("/usr/local/bin")).toBe("/usr/local/bin");
+  });
+
+  it("leaves relative paths unchanged", () => {
+    expect(expandTilde("relative/path")).toBe("relative/path");
+  });
+
+  it("does not expand tilde in the middle of a path", () => {
+    expect(expandTilde("/some/~/path")).toBe("/some/~/path");
+  });
+
+  it("does not expand ~username patterns (unsupported)", () => {
+    // ~otheruser/foo is left as-is — we only expand the current user's ~
+    expect(expandTilde("~otheruser/foo")).toBe("~otheruser/foo");
   });
 });
 

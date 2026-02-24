@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { execSync, exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
-import { resolveBinary } from "./path-resolver.js";
+import { resolveBinary, expandTilde } from "./path-resolver.js";
 import { readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -127,7 +127,7 @@ export function createRoutes(
         }
         const binarySettings = getSettings();
         const session = launcher.launch({
-          cwd: body.cwd || process.cwd(),
+          cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
           claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
           env: envVars,
           backendType: "claude",
@@ -161,6 +161,14 @@ export function createRoutes(
       let cwd = body.cwd;
       const isAssistantMode = body.assistantMode === true;
       let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
+
+      // Expand tilde and validate cwd before any downstream use
+      if (cwd) {
+        cwd = resolve(expandTilde(cwd));
+        if (!existsSync(cwd)) {
+          return c.json({ error: `Directory does not exist: ${cwd}` }, 400);
+        }
+      }
 
       // Inject COMPANION_PORT so agents in any session can call the REST API
       envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
@@ -490,14 +498,14 @@ export function createRoutes(
           await emitProgress(stream, "launching_cli", "Resuming CLI session...", "in_progress");
           const binarySettings = getSettings();
           const session = launcher.launch({
-            cwd: body.cwd || process.cwd(),
+            cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
             claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
             env: envVars,
             backendType: "claude",
             resumeCliSessionId: body.resumeCliSessionId,
             permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
           });
-          wsBridge.setInitialCwd(session.sessionId, body.cwd || process.cwd());
+          wsBridge.setInitialCwd(session.sessionId, body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd());
           wsBridge.setInitialAskPermission(session.sessionId, body.askPermission !== false);
           wsBridge.markResumedFromExternal(session.sessionId);
           const existingNames = new Set(Object.values(sessionNames.getAllNames()));
@@ -529,6 +537,18 @@ export function createRoutes(
         let cwd = body.cwd;
         const isAssistantMode = body.assistantMode === true;
         let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
+
+        // Expand tilde and validate cwd before any downstream use
+        if (cwd) {
+          cwd = resolve(expandTilde(cwd));
+          if (!existsSync(cwd)) {
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ error: `Directory does not exist: ${cwd}`, step: "resolving_env" }),
+            });
+            return;
+          }
+        }
 
         // Inject COMPANION_PORT so agents in any session can call the REST API
         envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
@@ -1465,7 +1485,7 @@ export function createRoutes(
 
   api.get("/fs/list", async (c) => {
     const rawPath = c.req.query("path") || homedir();
-    const basePath = resolve(rawPath);
+    const basePath = resolve(expandTilde(rawPath));
     try {
       const entries = await readdir(basePath, { withFileTypes: true });
       const dirs: { name: string; path: string }[] = [];
