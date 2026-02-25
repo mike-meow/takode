@@ -92,10 +92,13 @@ function ensureLoaded(): void {
 
 function persist(): void {
   const data = JSON.stringify(settings, null, 2);
-  mkdirSync(dirname(filePath), { recursive: true });
-  // Fire-and-forget async write — callers don't need to wait.
-  // In-memory cache is already updated; disk is eventual.
-  _pendingWrite = writeFile(filePath, data, "utf-8").catch(() => {});
+  const path = filePath; // capture current path before any async re-assignment
+  mkdirSync(dirname(path), { recursive: true });
+  // Chain writes so each waits for the previous to finish. This prevents
+  // an earlier write from completing after a later one and overwriting it.
+  _pendingWrite = _pendingWrite.then(() =>
+    writeFile(path, data, "utf-8").catch(() => {}),
+  );
 }
 
 export function getSettings(): CompanionSettings {
