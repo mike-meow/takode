@@ -793,7 +793,10 @@ describe("GET /api/sessions", () => {
     });
   });
 
-  it("refreshes worktree ahead/behind from diff base when bridge counts are stale", async () => {
+  it("uses cached bridge ahead/behind counts instead of running git per-session", async () => {
+    // Previously this test verified that the route ran `git rev-list` per worktree
+    // session. That was removed (caused 800-1300ms latency on NFS). Now the route
+    // uses cached bridge values from refreshGitInfo (updated on CLI connect).
     const sessions = [
       { sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, branch: "jiayi" },
     ];
@@ -804,27 +807,22 @@ describe("GET /api/sessions", () => {
         session_id: "s1",
         is_worktree: true,
         diff_base_branch: "jiayi",
-        git_ahead: 0,
-        git_behind: 0,
+        git_ahead: 3,
+        git_behind: 7,
         total_lines_added: 167,
         total_lines_removed: 858,
       },
     ]);
-    (execSync as any).mockImplementation((cmd: string) => {
-      if (cmd.includes("git --no-optional-locks rev-list --left-right --count jiayi...HEAD")) {
-        return "6\t0\n";
-      }
-      return "";
-    });
 
     const res = await app.request("/api/sessions", { method: "GET" });
 
     expect(res.status).toBe(200);
     const json = await res.json();
+    // Should use cached bridge values, not run git commands
     expect(json[0]).toMatchObject({
       sessionId: "s1",
-      gitAhead: 0,
-      gitBehind: 6,
+      gitAhead: 3,
+      gitBehind: 7,
       totalLinesAdded: 167,
       totalLinesRemoved: 858,
     });

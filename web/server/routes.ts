@@ -1080,27 +1080,10 @@ export function createRoutes(
         const bridge = bridgeMap.get(s.sessionId);
         let gitAhead = bridge?.git_ahead || 0;
         let gitBehind = bridge?.git_behind || 0;
-        // Worktree sessions can become behind their base branch while a session
-        // is idle (e.g. base branch moved by another machine). Refresh counts
-        // on listSessions so sidebar chips show branch divergence, not only diff lines.
-        const worktreeRef =
-          (typeof bridge?.diff_base_branch === "string" && bridge.diff_base_branch.trim())
-          || (typeof bridge?.git_default_branch === "string" && bridge.git_default_branch.trim())
-          || (typeof s.branch === "string" && s.branch.trim())
-          || "";
-        if ((bridge?.is_worktree || s.isWorktree) && s.cwd && worktreeRef) {
-          try {
-            const { stdout } = await execPromise(
-              `git --no-optional-locks rev-list --left-right --count ${worktreeRef}...HEAD`,
-              { cwd: s.cwd, encoding: "utf-8", timeout: GIT_CMD_TIMEOUT },
-            );
-            const [behind, ahead] = stdout.trim().split(/\s+/).map((v) => parseInt(v, 10));
-            gitAhead = Number.isFinite(ahead) ? ahead : gitAhead;
-            gitBehind = Number.isFinite(behind) ? behind : gitBehind;
-          } catch {
-            // Keep existing bridge counts on git errors.
-          }
-        }
+        // Ahead/behind counts come from the bridge's cached git info (refreshed
+        // lazily on CLI connect, not on every sidebar poll). Previously this ran
+        // a `git rev-list` per worktree session on every /api/sessions request,
+        // causing 800-1300ms latency on NFS.
         return {
           ...s,
           name: names[s.sessionId] ?? s.name,
