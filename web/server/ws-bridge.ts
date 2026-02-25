@@ -2475,14 +2475,27 @@ export class WsBridge {
         return;
       }
 
+      // Compress large images before sending to the Codex adapter.
+      // Codex receives JSON-RPC on stdin — multi-MB base64 images in a
+      // single NDJSON line can block the event loop and crash the process.
+      let adapterMsg = msg;
+      if (msg.type === "user_message" && msg.images?.length && this.imageStore) {
+        const compressedImages: { media_type: string; data: string }[] = [];
+        for (const img of msg.images) {
+          const { base64, mediaType } = await this.imageStore.compressForTransport(img.data, img.media_type);
+          compressedImages.push({ media_type: mediaType, data: base64 });
+        }
+        adapterMsg = { ...msg, images: compressedImages };
+      }
+
       if (session.codexAdapter) {
-        session.codexAdapter.sendBrowserMessage(msg);
+        session.codexAdapter.sendBrowserMessage(adapterMsg);
       } else {
         // Adapter not yet attached — queue for when it's ready.
         // The adapter itself also queues during init, but this covers
         // the window between session creation and adapter attachment.
         console.log(`[ws-bridge] Codex adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
-        session.pendingMessages.push(JSON.stringify(msg));
+        session.pendingMessages.push(JSON.stringify(adapterMsg));
       }
       return;
     }

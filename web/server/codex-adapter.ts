@@ -726,6 +726,18 @@ export class CodexAdapter {
     // Add text
     input.push({ type: "text", text: msg.content });
 
+    // Log when payload is large (images, long prompts) to help diagnose
+    // transport issues — Codex reads JSON-RPC from stdin, so huge lines
+    // can cause event loop blocks and process crashes.
+    const estimatedChars = input.reduce(
+      (sum, i) => sum + (i.url?.length || 0) + (i.text?.length || 0), 0,
+    );
+    if (estimatedChars > 500_000) {
+      console.warn(
+        `[codex-adapter] Large turn/start payload: ~${(estimatedChars / 1024).toFixed(0)}KB for session ${this.sessionId}`,
+      );
+    }
+
     try {
       const result = await this.transport.call("turn/start", {
         threadId: this.threadId,

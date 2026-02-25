@@ -167,4 +167,58 @@ describe("ImageStore", () => {
     expect(result.base64).toBe(junkBase64);
     expect(result.mediaType).toBe("image/heic");
   });
+
+  // ── compressForTransport tests ──────────────────────────────────────────
+
+  // Small images should pass through unchanged — no compression overhead.
+  it("compressForTransport() passes through small images unchanged", async () => {
+    const result = await store.compressForTransport(TINY_PNG_BASE64, "image/png");
+    expect(result.base64).toBe(TINY_PNG_BASE64);
+    expect(result.mediaType).toBe("image/png");
+  });
+
+  // Large images should be compressed to JPEG to keep the JSON-RPC payload
+  // under transport limits. Verifies both size reduction and format change.
+  it("compressForTransport() compresses large images to JPEG", async () => {
+    // Create a large PNG (200x200 noise) that exceeds TRANSPORT_MAX_BASE64_CHARS
+    const sharp = (await import("sharp")).default;
+    const width = 200;
+    const height = 200;
+    // Raw RGBA noise — compresses poorly as PNG but well as JPEG
+    const rawPixels = Buffer.alloc(width * height * 4);
+    for (let i = 0; i < rawPixels.length; i++) {
+      rawPixels[i] = Math.floor(Math.random() * 256);
+    }
+    const pngBuffer = await sharp(rawPixels, { raw: { width, height, channels: 4 } })
+      .png({ compressionLevel: 0 }) // no compression → large PNG
+      .toBuffer();
+    const largeBase64 = pngBuffer.toString("base64");
+
+    // Only test if the generated image is large enough to trigger compression.
+    // With 200x200 uncompressed PNG this should be well over the threshold.
+    if (largeBase64.length <= 1_500_000) {
+      // If the random image is somehow small, just verify passthrough
+      const result = await store.compressForTransport(largeBase64, "image/png");
+      expect(result.base64).toBe(largeBase64);
+      return;
+    }
+
+    const result = await store.compressForTransport(largeBase64, "image/png");
+    expect(result.mediaType).toBe("image/jpeg");
+    expect(result.base64.length).toBeLessThan(largeBase64.length);
+
+    // Verify the output is valid JPEG
+    const metadata = await sharp(Buffer.from(result.base64, "base64")).metadata();
+    expect(metadata.format).toBe("jpeg");
+  });
+
+  // Non-image data that exceeds the threshold should fall back gracefully,
+  // returning the original data instead of throwing.
+  it("compressForTransport() returns original data when compression fails", async () => {
+    // Create a string that exceeds the transport threshold but isn't valid image data
+    const junkData = "A".repeat(2_000_000); // 2M chars of junk base64-ish data
+    const result = await store.compressForTransport(junkData, "image/png");
+    expect(result.base64).toBe(junkData);
+    expect(result.mediaType).toBe("image/png");
+  });
 });

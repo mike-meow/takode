@@ -34,6 +34,16 @@ const DEFAULT_BASE_DIR = join(homedir(), ".companion", "images");
 const THUMB_MAX_DIM = 300;
 const THUMB_QUALITY = 80;
 
+/**
+ * Maximum base64 characters before we compress for transport.
+ * ~1.1MB of raw image data → ~1.5MB base64. Keeps the JSON-RPC
+ * payload under 2MB to avoid blocking the event loop and crashing
+ * the Codex process when written to stdin.
+ */
+const TRANSPORT_MAX_BASE64_CHARS = 1_500_000;
+const TRANSPORT_MAX_DIM = 2048;
+const TRANSPORT_JPEG_QUALITY = 85;
+
 export class ImageStore {
   private baseDir: string;
   private counter = 0;
@@ -95,6 +105,35 @@ export class ImageStore {
       return path;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Compress large images to a transport-safe size for JSON-RPC payloads.
+   * Codex receives messages on stdin as single NDJSON lines — multi-MB
+   * base64 images block the event loop and can crash the Codex process.
+   * Images below the threshold are returned unchanged.
+   */
+  async compressForTransport(base64Data: string, mediaType: string): Promise<{ base64: string; mediaType: string }> {
+    if (base64Data.length <= TRANSPORT_MAX_BASE64_CHARS) {
+      return { base64: base64Data, mediaType };
+    }
+    try {
+      const buffer = Buffer.from(base64Data, "base64");
+      const compressed = await sharp(buffer)
+        .rotate()
+        .resize({ width: TRANSPORT_MAX_DIM, height: TRANSPORT_MAX_DIM, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: TRANSPORT_JPEG_QUALITY })
+        .toBuffer();
+      const compressedBase64 = compressed.toString("base64");
+      const reduction = ((1 - compressedBase64.length / base64Data.length) * 100).toFixed(0);
+      console.log(
+        `[image-store] Compressed image for transport: ${(base64Data.length / 1024).toFixed(0)}KB → ${(compressedBase64.length / 1024).toFixed(0)}KB base64 (${reduction}% reduction)`,
+      );
+      return { base64: compressedBase64, mediaType: "image/jpeg" };
+    } catch (err) {
+      console.warn("[image-store] Failed to compress image for transport:", err);
+      return { base64: base64Data, mediaType };
     }
   }
 

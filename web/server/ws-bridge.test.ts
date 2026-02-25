@@ -4471,3 +4471,98 @@ describe("Codex /compact interception", () => {
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
   });
 });
+
+describe("Codex image compression for transport", () => {
+  // Large images sent to Codex go through stdin as JSON-RPC. Multi-MB
+  // base64 payloads block the event loop and crash the Codex process.
+  // The ws-bridge must compress images before passing to the adapter.
+  //
+  // NOTE: handleBrowserMessage does NOT await routeBrowserMessage (fire-and-forget),
+  // so tests need a microtask flush after the call for async image operations.
+
+  /** Flush microtask queue so async routeBrowserMessage completes. */
+  const flush = () => new Promise((r) => setTimeout(r, 20));
+
+  it("compresses large images before sending to Codex adapter", async () => {
+    const adapter = makeCodexAdapterMock();
+
+    // Create a mock imageStore that simulates compression
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+      compressForTransport: vi.fn().mockResolvedValue({
+        base64: "compressed-base64-data",
+        mediaType: "image/jpeg",
+      }),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "describe this image",
+      images: [{ media_type: "image/png", data: "large-base64-data" }],
+    }));
+    await flush();
+
+    // compressForTransport should have been called with the original image
+    expect(mockImageStore.compressForTransport).toHaveBeenCalledWith("large-base64-data", "image/png");
+
+    // Adapter should receive the compressed image, not the original
+    expect(adapter.sendBrowserMessage).toHaveBeenCalled();
+    const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
+    expect(sentMsg.images[0].data).toBe("compressed-base64-data");
+    expect(sentMsg.images[0].media_type).toBe("image/jpeg");
+  });
+
+  it("passes through small images unchanged (no imageStore compression needed)", async () => {
+    const adapter = makeCodexAdapterMock();
+
+    // Mock imageStore where compressForTransport returns input unchanged
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+      compressForTransport: vi.fn().mockImplementation((base64: string, mediaType: string) =>
+        Promise.resolve({ base64, mediaType }),
+      ),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "what is this?",
+      images: [{ media_type: "image/png", data: "small-data" }],
+    }));
+    await flush();
+
+    // Adapter receives the original data (passthrough from compressForTransport)
+    const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
+    expect(sentMsg.images[0].data).toBe("small-data");
+    expect(sentMsg.images[0].media_type).toBe("image/png");
+  });
+
+  it("skips compression when imageStore is not set", async () => {
+    const adapter = makeCodexAdapterMock();
+    // No imageStore set on bridge
+    bridge.attachCodexAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "no store",
+      images: [{ media_type: "image/png", data: "raw-data" }],
+    }));
+    await flush();
+
+    // Adapter receives original message (no compression without imageStore)
+    const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
+    expect(sentMsg.images[0].data).toBe("raw-data");
+  });
+});
