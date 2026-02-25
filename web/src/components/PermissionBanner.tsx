@@ -947,10 +947,48 @@ function AskUserQuestionDisplay({
   );
 }
 
+function getChangePatch(change: Record<string, unknown>): string {
+  const candidates = [
+    change.diff,
+    change.unified_diff,
+    change.unifiedDiff,
+    change.patch,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "";
+}
+
 function EditDisplay({ input }: { input: Record<string, unknown> }) {
-  const filePath = String(input.file_path || "");
+  const changes = Array.isArray(input.changes) ? input.changes as Array<Record<string, unknown>> : [];
+  const firstChangePath = changes.find((c) => typeof c.path === "string")?.path as string | undefined;
+  const filePath = String(input.file_path || firstChangePath || "");
   const oldStr = String(input.old_string || "");
   const newStr = String(input.new_string || "");
+  const unifiedDiff = changes.map((c) => getChangePatch(c)).filter(Boolean).join("\n");
+
+  if (!oldStr && !newStr && unifiedDiff) {
+    return (
+      <DiffViewer
+        unifiedDiff={unifiedDiff}
+        fileName={filePath}
+        mode="compact"
+      />
+    );
+  }
+
+  if (!oldStr && !newStr && changes.length > 0) {
+    return (
+      <div className="text-xs text-cc-muted font-mono-code bg-cc-code-bg/30 rounded-lg px-3 py-2 space-y-1">
+        {changes.map((change, i) => (
+          <div key={`${typeof change.path === "string" ? change.path : "file"}-${i}`}>
+            {(typeof change.kind === "string" ? change.kind : "modify")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <DiffViewer

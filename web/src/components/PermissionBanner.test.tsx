@@ -114,6 +114,35 @@ describe("EditDisplay", () => {
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
+
+  it("renders diff view from changes.unified_diff when old/new strings are missing", () => {
+    const { container } = render(
+      <PermissionBanner
+        permission={makePermission({
+          tool_name: "Edit",
+          input: {
+            file_path: "/src/main.ts",
+            changes: [{
+              path: "/src/main.ts",
+              kind: "modify",
+              unified_diff: [
+                "diff --git a/src/main.ts b/src/main.ts",
+                "--- a/src/main.ts",
+                "+++ b/src/main.ts",
+                "@@ -1 +1 @@",
+                "-const a = 1;",
+                "+const a = 3;",
+              ].join("\n"),
+            }],
+          },
+        })}
+        sessionId="s1"
+      />,
+    );
+    expect(screen.getByText("main.ts")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+  });
 });
 
 // ─── WriteDisplay ────────────────────────────────────────────────────────────

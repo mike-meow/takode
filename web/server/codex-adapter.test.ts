@@ -1913,6 +1913,43 @@ describe("CodexAdapter", () => {
     expect(toolResultMsg).toBeUndefined();
   });
 
+  it("uses aggregatedOutput when command completion omits stdout/stderr", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "commandExecution",
+          id: "cmd_agg",
+          command: "git status --short",
+          status: "completed",
+          aggregatedOutput: " M src/index.ts\n",
+          exitCode: 0,
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const toolResultMsg = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      return content.some((b) => b.type === "tool_result" && b.tool_use_id === "cmd_agg");
+    }) as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } } | undefined;
+
+    expect(toolResultMsg).toBeDefined();
+    const resultBlock = toolResultMsg!.message.content.find((b) => b.type === "tool_result" && b.tool_use_id === "cmd_agg");
+    expect(resultBlock?.content).toContain("src/index.ts");
+  });
+
   it("uses streamed outputDelta text when failed command lacks stdout/stderr", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
@@ -2356,7 +2393,10 @@ describe("CodexAdapter", () => {
         conversationId: "thr_123",
         callId: "call_patch_1",
         fileChanges: {
-          "src/index.ts": { kind: "modify" },
+          "src/index.ts": {
+            kind: "modify",
+            unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+          },
           "src/utils.ts": { kind: "create" },
         },
         reason: "Refactoring imports",
@@ -2369,11 +2409,21 @@ describe("CodexAdapter", () => {
     expect(permReqs.length).toBe(1);
 
     const perm = permReqs[0] as unknown as {
-      request: { tool_name: string; input: { file_paths: string[] }; description: string };
+      request: {
+        tool_name: string;
+        input: {
+          file_path: string;
+          file_paths: string[];
+          changes: Array<{ path: string; kind: string; diff?: string }>;
+        };
+        description: string;
+      };
     };
     expect(perm.request.tool_name).toBe("Edit");
+    expect(perm.request.input.file_path).toBe("src/index.ts");
     expect(perm.request.input.file_paths).toContain("src/index.ts");
     expect(perm.request.input.file_paths).toContain("src/utils.ts");
+    expect(perm.request.input.changes[0].diff).toContain("@@ -1 +1 @@");
     expect(perm.request.description).toBe("Refactoring imports");
   });
 

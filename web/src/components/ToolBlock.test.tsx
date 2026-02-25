@@ -361,6 +361,37 @@ describe("ToolBlock", () => {
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
 
+  it("renders Edit diff when changes use unified_diff field", () => {
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/src/app.ts",
+          changes: [
+            {
+              path: "/home/user/src/app.ts",
+              kind: "modify",
+              unified_diff: [
+                "diff --git a/src/app.ts b/src/app.ts",
+                "--- a/src/app.ts",
+                "+++ b/src/app.ts",
+                "@@ -1 +1 @@",
+                "-const x = 1;",
+                "+const x = 3;",
+              ].join("\n"),
+            },
+          ],
+        }}
+        toolUseId="tool-7u"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("app.ts")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+  });
+
   it("renders non-empty fallback summary for Edit changes without patch text", () => {
     render(
       <ToolBlock

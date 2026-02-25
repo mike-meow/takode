@@ -423,15 +423,28 @@ function BashDetail({ input }: { input: Record<string, unknown> }) {
   );
 }
 
+function getChangePatch(change: Record<string, unknown>): string {
+  const candidates = [
+    change.diff,
+    change.unified_diff,
+    change.unifiedDiff,
+    change.patch,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "";
+}
+
 function EditToolDetail({ input }: { input: Record<string, unknown> }) {
   const filePath = String(input.file_path || "");
   const oldStr = String(input.old_string || "");
   const newStr = String(input.new_string || "");
   const changes = Array.isArray(input.changes)
-    ? input.changes as Array<{ path?: string; kind?: string; diff?: string }>
+    ? input.changes as Array<Record<string, unknown>>
     : [];
   const unifiedDiff = changes
-    .map((c) => (typeof c.diff === "string" ? c.diff.trim() : ""))
+    .map((c) => getChangePatch(c))
     .filter(Boolean)
     .join("\n");
 
@@ -445,8 +458,11 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
         <div className="text-[10px] text-cc-muted uppercase tracking-wider">Applied changes</div>
         <div className="space-y-1">
           {changes.map((change, i) => (
-            <div key={`${change.path || "file"}-${i}`} className="text-[11px] text-cc-muted font-mono-code">
-              {(change.kind || "modify")}: {change.path || filePath || "(unknown file)"}
+            <div
+              key={`${typeof change.path === "string" ? change.path : "file"}-${i}`}
+              className="text-[11px] text-cc-muted font-mono-code"
+            >
+              {(typeof change.kind === "string" ? change.kind : "modify")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
             </div>
           ))}
         </div>

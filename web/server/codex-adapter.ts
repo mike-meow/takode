@@ -133,12 +133,61 @@ function formatCommandForDisplay(command: string | string[] | undefined, command
   return unwrapShellWrappedCommand(raw);
 }
 
-function mapFileChangesForTool(changes: Array<{ path: string; kind: unknown; diff?: string }>) {
-  return changes.map((c) => ({
-    path: c.path,
-    kind: safeKind(c.kind),
-    ...(typeof c.diff === "string" && c.diff.trim() ? { diff: c.diff } : {}),
-  }));
+function firstNonEmptyString(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function extractChangeDiff(change: Record<string, unknown>): string {
+  const direct = firstNonEmptyString(change, [
+    "diff",
+    "unified_diff",
+    "unifiedDiff",
+    "patch",
+  ]);
+  if (direct) return direct;
+
+  const kind = change.kind;
+  if (kind && typeof kind === "object") {
+    const nested = firstNonEmptyString(kind as Record<string, unknown>, [
+      "diff",
+      "unified_diff",
+      "unifiedDiff",
+      "patch",
+    ]);
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function mapFileChangesForTool(changes: Array<Record<string, unknown>>) {
+  return changes.map((c) => {
+    const path = typeof c.path === "string" ? c.path : "";
+    const kind = safeKind(c.kind ?? c.type);
+    const diff = extractChangeDiff(c);
+    return {
+      path,
+      kind,
+      ...(diff ? { diff } : {}),
+    };
+  });
+}
+
+function mapFileChangesObjectForTool(fileChanges: Record<string, unknown>) {
+  return Object.entries(fileChanges).map(([path, raw]) => {
+    const rec = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const kind = safeKind(rec.kind ?? rec.type);
+    const diff = extractChangeDiff(rec);
+    return {
+      path,
+      kind,
+      ...(diff ? { diff } : {}),
+    };
+  });
 }
 
 interface CodexAgentMessageItem extends CodexItem {
@@ -1314,8 +1363,9 @@ export class CodexAdapter {
     this.pendingApprovals.set(requestId, jsonRpcId);
 
     // Extract file paths from changes array if available
-    const changes = params.changes as Array<{ path?: string; kind?: string }> | undefined;
-    const filePaths = changes?.map((c) => c.path).filter(Boolean) || [];
+    const rawChanges = Array.isArray(params.changes) ? params.changes as Array<Record<string, unknown>> : [];
+    const changes = mapFileChangesForTool(rawChanges);
+    const filePaths = changes.map((c) => c.path).filter(Boolean);
     const fileList = filePaths.length > 0 ? filePaths.join(", ") : undefined;
 
     const perm: PermissionRequest = {
@@ -1323,8 +1373,9 @@ export class CodexAdapter {
       tool_name: "Edit",
       input: {
         description: params.reason as string || "File changes pending approval",
+        ...(filePaths[0] ? { file_path: filePaths[0] } : {}),
         ...(filePaths.length > 0 && { file_paths: filePaths }),
-        ...(changes && { changes }),
+        ...(changes.length > 0 && { changes }),
       },
       description: params.reason as string || (fileList ? `Codex wants to modify: ${fileList}` : "Codex wants to modify files"),
       tool_use_id: params.itemId as string || requestId,
@@ -1481,14 +1532,17 @@ export class CodexAdapter {
     this.pendingReviewDecisions.add(requestId);
 
     const fileChanges = params.fileChanges as Record<string, unknown> || {};
-    const filePaths = Object.keys(fileChanges);
+    const changes = mapFileChangesObjectForTool(fileChanges);
+    const filePaths = changes.map((c) => c.path).filter(Boolean);
     const reason = params.reason as string | null;
 
     const perm: PermissionRequest = {
       request_id: requestId,
       tool_name: "Edit",
       input: {
+        ...(filePaths[0] ? { file_path: filePaths[0] } : {}),
         file_paths: filePaths,
+        ...(changes.length > 0 ? { changes } : {}),
         ...(reason && { reason }),
       },
       description: reason || (filePaths.length > 0
@@ -1814,8 +1868,21 @@ export class CodexAdapter {
         const streamedOutput = (this.commandOutputByItemId.get(item.id) || "").trim();
         this.commandOutputByItemId.delete(item.id);
         // Emit tool result
-        const output = (item as Record<string, unknown>).stdout as string || "";
-        const stderr = (item as Record<string, unknown>).stderr as string || "";
+        const cmdRecord = item as Record<string, unknown>;
+        // Codex often only sets aggregatedOutput/formatted_output on completion
+        // (without stdout/stderr), so we must check all known output fields.
+        const output = firstNonEmptyString(cmdRecord, [
+          "stdout",
+          "aggregatedOutput",
+          "aggregated_output",
+          "formatted_output",
+          "output",
+        ]);
+        const stderr = firstNonEmptyString(cmdRecord, [
+          "stderr",
+          "errorOutput",
+          "error_output",
+        ]);
         const directOutput = [output, stderr].filter(Boolean).join("\n").trim();
         const combinedOutput = directOutput || streamedOutput;
         const exitCode = typeof cmd.exitCode === "number" ? cmd.exitCode : 0;

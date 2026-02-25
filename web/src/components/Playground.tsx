@@ -73,6 +73,27 @@ const PERM_EDIT = mockPermission({
   ],
 });
 
+const PERM_EDIT_PATCH = mockPermission({
+  tool_name: "Edit",
+  input: {
+    file_path: "/Users/stan/Dev/project/src/utils/format.ts",
+    changes: [
+      {
+        path: "/Users/stan/Dev/project/src/utils/format.ts",
+        kind: "modify",
+        unified_diff: [
+          "diff --git a/src/utils/format.ts b/src/utils/format.ts",
+          "--- a/src/utils/format.ts",
+          "+++ b/src/utils/format.ts",
+          "@@ -1 +1 @@",
+          "-return d.toISOString();",
+          "+return d.toLocaleDateString();",
+        ].join("\n"),
+      },
+    ],
+  },
+});
+
 const PERM_WRITE = mockPermission({
   tool_name: "Write",
   input: {
@@ -801,6 +822,7 @@ export function Playground() {
             <PermissionBanner permission={PERM_BASH} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_BASH_NO_SUGGESTIONS} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_EDIT} sessionId={MOCK_SESSION_ID} />
+            <PermissionBanner permission={PERM_EDIT_PATCH} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_WRITE} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_READ} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_GLOB} sessionId={MOCK_SESSION_ID} />
@@ -971,6 +993,7 @@ export function Playground() {
             <ToolBlock name="Bash" input={{ command: "git status && npm run lint", description: "Check git status and lint" }} toolUseId="tb-1" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Read" input={{ file_path: "/Users/stan/Dev/project/src/index.ts", offset: 10, limit: 50 }} toolUseId="tb-2" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Edit" input={{ file_path: "src/utils.ts", old_string: "const x = 1;", new_string: "const x = 2;", replace_all: true }} toolUseId="tb-3" sessionId={MOCK_SESSION_ID} />
+            <ToolBlock name="Edit" input={{ file_path: "src/utils.ts", changes: [{ path: "src/utils.ts", kind: "modify", unified_diff: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }] }} toolUseId="tb-3b" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Write" input={{ file_path: "src/new-file.ts", content: 'export const hello = "world";\n' }} toolUseId="tb-4" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Glob" input={{ pattern: "**/*.tsx", path: "/Users/stan/Dev/project/src" }} toolUseId="tb-5" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Grep" input={{ pattern: "useEffect", path: "src/", glob: "*.tsx", output_mode: "content", context: 3, head_limit: 20 }} toolUseId="tb-6" sessionId={MOCK_SESSION_ID} />
