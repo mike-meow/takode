@@ -1040,6 +1040,66 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
+  const [codexStreamingText, setCodexStreamingText] = useState("");
+  const codexPendingTextRef = useRef("");
+  const codexFlushTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isCodexSession) {
+      if (codexFlushTimerRef.current !== null) {
+        window.clearTimeout(codexFlushTimerRef.current);
+        codexFlushTimerRef.current = null;
+      }
+      codexPendingTextRef.current = "";
+      if (codexStreamingText) setCodexStreamingText("");
+      return;
+    }
+
+    const next = streamingText || "";
+    codexPendingTextRef.current = next;
+
+    if (!next) {
+      if (codexFlushTimerRef.current !== null) {
+        window.clearTimeout(codexFlushTimerRef.current);
+        codexFlushTimerRef.current = null;
+      }
+      if (codexStreamingText) setCodexStreamingText("");
+      return;
+    }
+
+    // First chunk should show immediately.
+    if (!codexStreamingText) {
+      setCodexStreamingText(next);
+      return;
+    }
+
+    // Flush whole lines immediately; otherwise throttle markdown re-renders.
+    if (next.endsWith("\n")) {
+      if (codexFlushTimerRef.current !== null) {
+        window.clearTimeout(codexFlushTimerRef.current);
+        codexFlushTimerRef.current = null;
+      }
+      if (codexStreamingText !== next) setCodexStreamingText(next);
+      return;
+    }
+
+    if (codexFlushTimerRef.current !== null) return;
+    codexFlushTimerRef.current = window.setTimeout(() => {
+      codexFlushTimerRef.current = null;
+      setCodexStreamingText((prev) => (
+        prev === codexPendingTextRef.current ? prev : codexPendingTextRef.current
+      ));
+    }, 120);
+  }, [isCodexSession, streamingText, codexStreamingText]);
+
+  useEffect(() => {
+    return () => {
+      if (codexFlushTimerRef.current !== null) {
+        window.clearTimeout(codexFlushTimerRef.current);
+        codexFlushTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <>
@@ -1063,12 +1123,17 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
           <div className="flex items-start gap-3">
             <PawTrailAvatar isStreaming />
             <div className="flex-1 min-w-0">
-              <pre
-                className={`${isCodexSession ? "font-mono-code text-[14px] sm:text-[15px]" : "font-serif-assistant text-[15px]"} text-cc-fg whitespace-pre-wrap break-words leading-relaxed`}
-              >
-                {streamingText}
-                <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
-              </pre>
+              {isCodexSession ? (
+                <div>
+                  <MarkdownContent text={codexStreamingText || streamingText} />
+                  <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle -translate-y-[2px] animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
+                </div>
+              ) : (
+                <pre className="font-serif-assistant text-[15px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
+                  {streamingText}
+                  <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
+                </pre>
+              )}
             </div>
           </div>
         </div>
