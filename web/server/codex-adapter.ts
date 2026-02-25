@@ -812,7 +812,12 @@ export class CodexAdapter {
   // ── Outgoing message handlers ───────────────────────────────────────────
 
   private async handleOutgoingUserMessage(
-    msg: { type: "user_message"; content: string; images?: { media_type: string; data: string }[] },
+    msg: {
+      type: "user_message";
+      content: string;
+      images?: { media_type: string; data: string }[];
+      local_images?: string[];
+    },
   ): Promise<void> {
     // User message is the latest completed message before Codex starts reasoning.
     this.markMessageFinished(Date.now());
@@ -832,9 +837,26 @@ export class CodexAdapter {
       await this.interruptAndWaitForTurnEnd();
     }
 
-    const input: Array<{ type: string; text?: string; url?: string }> = [];
+    const input: Array<{
+      type: string;
+      text?: string;
+      url?: string;
+      path?: string;
+      text_elements?: unknown[];
+    }> = [];
 
-    // Add images if present
+    // Prefer local paths to avoid persisting large data: URLs in thread history.
+    // Codex schema: UserInput::LocalImage => { type: "localImage", path }.
+    if (msg.local_images?.length) {
+      for (const path of msg.local_images) {
+        input.push({
+          type: "localImage",
+          path,
+        });
+      }
+    }
+
+    // Add inline data URLs as fallback when local paths aren't available.
     if (msg.images?.length) {
       for (const img of msg.images) {
         input.push({
@@ -845,13 +867,14 @@ export class CodexAdapter {
     }
 
     // Add text
-    input.push({ type: "text", text: msg.content });
+    input.push({ type: "text", text: msg.content, text_elements: [] });
 
     // Log when payload is large (images, long prompts) to help diagnose
     // transport issues — Codex reads JSON-RPC from stdin, so huge lines
     // can cause event loop blocks and process crashes.
     const estimatedChars = input.reduce(
-      (sum, i) => sum + (i.url?.length || 0) + (i.text?.length || 0), 0,
+      (sum, i) => sum + (i.url?.length || 0) + (i.path?.length || 0) + (i.text?.length || 0),
+      0,
     );
     if (estimatedChars > 500_000) {
       console.warn(

@@ -4505,10 +4505,10 @@ describe("Codex /compact passthrough", () => {
   });
 });
 
-describe("Codex image compression for transport", () => {
-  // Large images sent to Codex go through stdin as JSON-RPC. Multi-MB
-  // base64 payloads block the event loop and crash the Codex process.
-  // The ws-bridge must compress images before passing to the adapter.
+describe("Codex image transport", () => {
+  // Prefer local image paths for Codex turn/start to avoid persisting large
+  // data: URLs in thread history. If local paths are unavailable, fall back to
+  // compressed inline base64 payloads.
   //
   // NOTE: handleBrowserMessage does NOT await routeBrowserMessage (fire-and-forget),
   // so tests need a microtask flush after the call for async image operations.
@@ -4516,12 +4516,13 @@ describe("Codex image compression for transport", () => {
   /** Flush microtask queue so async routeBrowserMessage completes. */
   const flush = () => new Promise((r) => setTimeout(r, 20));
 
-  it("compresses large images before sending to Codex adapter", async () => {
+  it("sends local image paths to Codex when stored originals are available", async () => {
     const adapter = makeCodexAdapterMock();
 
-    // Create a mock imageStore that simulates compression
+    // Create a mock imageStore that can resolve local original paths.
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
       compressForTransport: vi.fn().mockResolvedValue({
         base64: "compressed-base64-data",
         mediaType: "image/jpeg",
@@ -4540,25 +4541,25 @@ describe("Codex image compression for transport", () => {
     }));
     await flush();
 
-    // compressForTransport should have been called with the original image
-    expect(mockImageStore.compressForTransport).toHaveBeenCalledWith("large-base64-data", "image/png");
-
-    // Adapter should receive the compressed image, not the original
+    // Adapter should receive local paths and skip inline payload compression.
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
-    expect(sentMsg.images[0].data).toBe("compressed-base64-data");
-    expect(sentMsg.images[0].media_type).toBe("image/jpeg");
+    expect(sentMsg.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
+    expect(sentMsg.images).toBeUndefined();
+    expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
 
-  it("passes through small images unchanged (no imageStore compression needed)", async () => {
+  it("falls back to compressed inline images when local path lookup fails", async () => {
     const adapter = makeCodexAdapterMock();
 
-    // Mock imageStore where compressForTransport returns input unchanged
+    // Mock imageStore where original path lookup fails.
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      compressForTransport: vi.fn().mockImplementation((base64: string, mediaType: string) =>
-        Promise.resolve({ base64, mediaType }),
-      ),
+      getOriginalPath: vi.fn().mockResolvedValue(null),
+      compressForTransport: vi.fn().mockResolvedValue({
+        base64: "compressed-fallback-data",
+        mediaType: "image/jpeg",
+      }),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter("s1", adapter as any);
@@ -4573,10 +4574,12 @@ describe("Codex image compression for transport", () => {
     }));
     await flush();
 
-    // Adapter receives the original data (passthrough from compressForTransport)
+    // Adapter receives compressed inline data and no local_images.
     const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
-    expect(sentMsg.images[0].data).toBe("small-data");
-    expect(sentMsg.images[0].media_type).toBe("image/png");
+    expect(mockImageStore.compressForTransport).toHaveBeenCalledWith("small-data", "image/png");
+    expect(sentMsg.images[0].data).toBe("compressed-fallback-data");
+    expect(sentMsg.images[0].media_type).toBe("image/jpeg");
+    expect(sentMsg.local_images).toBeUndefined();
   });
 
   it("skips compression when imageStore is not set", async () => {

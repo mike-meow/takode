@@ -348,6 +348,34 @@ describe("CodexAdapter", () => {
     expect(allWritten).toContain("thr_123");
   });
 
+  it("sends localImage user inputs when local_images are provided", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Complete initialization
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdin.chunks = [];
+
+    adapter.sendBrowserMessage({
+      type: "user_message",
+      content: "Describe these files",
+      local_images: ["/tmp/image-a.png", "/tmp/image-b.png"],
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const allWritten = stdin.chunks.join("");
+    expect(allWritten).toContain('"method":"turn/start"');
+    expect(allWritten).toContain('"type":"localImage"');
+    expect(allWritten).toContain("/tmp/image-a.png");
+    expect(allWritten).toContain("/tmp/image-b.png");
+  });
+
   it("sends approval response when receiving permission_response", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });

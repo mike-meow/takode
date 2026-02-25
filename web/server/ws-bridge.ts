@@ -2386,6 +2386,8 @@ export class WsBridge {
 
     // For Codex sessions, delegate entirely to the adapter
     if (session.backendType === "codex") {
+      let userImageRefs: import("./image-store.js").ImageRef[] | undefined;
+
       // Store user messages in history for replay with stable ID for dedup on reconnect
       if (msg.type === "user_message") {
         const ts = Date.now();
@@ -2397,6 +2399,7 @@ export class WsBridge {
             imageRefs.push(ref);
           }
         }
+        userImageRefs = imageRefs;
         const userHistoryEntry: BrowserIncomingMessage = {
           type: "user_message",
           content: msg.content,
@@ -2467,17 +2470,38 @@ export class WsBridge {
         return;
       }
 
-      // Compress large images before sending to the Codex adapter.
-      // Codex receives JSON-RPC on stdin — multi-MB base64 images in a
-      // single NDJSON line can block the event loop and crash the process.
+      // Prefer local image paths for Codex user turns so thread history stores
+      // compact local references instead of large data: URLs. If any path can't
+      // be resolved, fall back to compressed inline base64 payloads.
       let adapterMsg = msg;
-      if (msg.type === "user_message" && msg.images?.length && this.imageStore) {
-        const compressedImages: { media_type: string; data: string }[] = [];
-        for (const img of msg.images) {
-          const { base64, mediaType } = await this.imageStore.compressForTransport(img.data, img.media_type);
-          compressedImages.push({ media_type: mediaType, data: base64 });
+      if (msg.type === "user_message" && msg.images?.length) {
+        let localImagePaths: string[] | undefined;
+
+        if (this.imageStore && userImageRefs?.length === msg.images.length) {
+          const paths: string[] = [];
+          for (const ref of userImageRefs) {
+            const originalPath = await this.imageStore.getOriginalPath(session.id, ref.imageId);
+            if (!originalPath) {
+              paths.length = 0;
+              break;
+            }
+            paths.push(originalPath);
+          }
+          if (paths.length === msg.images.length) localImagePaths = paths;
         }
-        adapterMsg = { ...msg, images: compressedImages };
+
+        if (localImagePaths?.length) {
+          const localMsg = { ...msg, local_images: localImagePaths } as BrowserOutgoingMessage;
+          delete (localMsg as { images?: unknown }).images;
+          adapterMsg = localMsg;
+        } else if (this.imageStore) {
+          const compressedImages: { media_type: string; data: string }[] = [];
+          for (const img of msg.images) {
+            const { base64, mediaType } = await this.imageStore.compressForTransport(img.data, img.media_type);
+            compressedImages.push({ media_type: mediaType, data: base64 });
+          }
+          adapterMsg = { ...msg, images: compressedImages };
+        }
       }
 
       if (session.codexAdapter) {
