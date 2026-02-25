@@ -17,6 +17,10 @@ function countDiffStats(diff: string): { additions: number; deletions: number } 
   return { additions, deletions };
 }
 
+function formatBranchLabel(branch: string): string {
+  return branch.startsWith("origin/") ? branch.slice("origin/".length) : branch;
+}
+
 interface FileStats {
   additions: number;
   deletions: number;
@@ -104,6 +108,12 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const branchesFetched = useRef(false);
 
   const changedFiles = useMemo(() => changedFilesSet ?? new Set<string>(), [changedFilesSet]);
+  const branchOptions = useMemo(() => {
+    const options = new Set(availableBranches);
+    if (serverDefaultBranch) options.add(serverDefaultBranch);
+    if (serverBaseBranch) options.add(serverBaseBranch);
+    return [...options];
+  }, [availableBranches, serverDefaultBranch, serverBaseBranch]);
 
   const relativeChangedFiles = useMemo(() => {
     if (!changedFiles.size || !repoRoot) return [];
@@ -314,10 +324,10 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
           title="Base branch for diff comparison"
         >
           <option value="">
-            {resolvedDefault ? `vs ${resolvedDefault} (default)` : "vs default branch"}
+            {resolvedDefault ? `vs ${formatBranchLabel(resolvedDefault)} (default)` : "vs default branch"}
           </option>
-          {availableBranches.map((b) => (
-            <option key={b} value={b}>vs {b}</option>
+          {branchOptions.map((b) => (
+            <option key={b} value={b}>vs {formatBranchLabel(b)}</option>
           ))}
         </select>
 

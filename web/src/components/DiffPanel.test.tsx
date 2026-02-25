@@ -258,6 +258,34 @@ describe("DiffPanel", () => {
     });
   });
 
+  it("preserves remote tracking refs from server state in the branch selector", async () => {
+    // Regression: non-worktree defaults may now be remote refs (e.g. origin/jiayi).
+    // Ensure the select includes that value even when local branch list omits it.
+    mockApi.listBranches.mockResolvedValue([{ name: "jiayi", isCurrent: true, isRemote: false }]);
+    mockApi.getFileDiff.mockResolvedValue({
+      path: "/repo/src/app.ts",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      baseBranch: "origin/jiayi",
+    });
+
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "origin/jiayi", git_default_branch: "origin/jiayi" }]]),
+      changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
+      diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
+    });
+
+    render(<DiffPanel sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "origin/jiayi");
+    });
+
+    const [branchSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(branchSelect.value).toBe("origin/jiayi");
+    const optionValues = [...branchSelect.options].map((o) => o.value);
+    expect(optionValues).toContain("origin/jiayi");
+  });
+
   it("displays changed files in worktree sessions where repo_root differs from cwd", () => {
     // In a worktree, repo_root points to the main repo (e.g. /main/companion) but
     // the session cwd is the worktree directory. Files under the worktree should appear.

@@ -518,6 +518,61 @@ describe("CLI handlers", () => {
       expect(state.git_behind).toBe(2);
       // diff_base_branch should be auto-resolved since not pre-set
       expect(state.diff_base_branch).toBe("main");
+      expect(state.git_default_branch).toBe("main");
+    });
+  });
+
+  it("handleCLIMessage: system.init defaults non-worktree base to upstream tracking ref", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("--git-dir")) return ".git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("jiayi@{upstream}")) return "origin/jiayi\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("origin/jiayi...HEAD")) return "1\t2\n";
+      if (cmd.includes("diff --numstat")) return "";
+      throw new Error(`unknown git cmd: ${cmd}`);
+    });
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/repo" }));
+
+    const state = bridge.getSession("s1")!.state;
+    await vi.waitFor(() => {
+      expect(state.git_default_branch).toBe("origin/jiayi");
+      expect(state.diff_base_branch).toBe("origin/jiayi");
+      expect(state.git_ahead).toBe(2);
+      expect(state.git_behind).toBe(1);
+    });
+  });
+
+  it("handleCLIMessage: system.init migrates legacy non-worktree default base from repo default to upstream", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("--git-dir")) return ".git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("jiayi@{upstream}")) return "origin/jiayi\n";
+      if (cmd.includes("for-each-ref")) return "jiayi\n";
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) return "refs/remotes/origin/main\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("origin/jiayi...HEAD")) return "0\t3\n";
+      if (cmd.includes("diff --numstat")) return "";
+      throw new Error(`unknown git cmd: ${cmd}`);
+    });
+
+    const session = bridge.getOrCreateSession("s1");
+    session.state.cwd = "/repo";
+    session.state.diff_base_branch = "main";
+    (session as any).cliSocket = { send: vi.fn() };
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/repo" }));
+
+    await vi.waitFor(() => {
+      expect(session.state.git_default_branch).toBe("origin/jiayi");
+      expect(session.state.diff_base_branch).toBe("origin/jiayi");
+      expect(session.state.git_ahead).toBe(3);
+      expect(session.state.git_behind).toBe(0);
     });
   });
 

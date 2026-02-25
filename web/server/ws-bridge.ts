@@ -191,7 +191,31 @@ interface Session {
   evaluatingAborts: Map<string, AbortController>;
 }
 
-type GitSessionKey = "git_branch" | "is_worktree" | "is_containerized" | "repo_root" | "git_ahead" | "git_behind" | "total_lines_added" | "total_lines_removed";
+type GitSessionKey =
+  | "git_branch"
+  | "git_default_branch"
+  | "diff_base_branch"
+  | "is_worktree"
+  | "is_containerized"
+  | "repo_root"
+  | "git_ahead"
+  | "git_behind"
+  | "total_lines_added"
+  | "total_lines_removed";
+
+async function resolveUpstreamRef(state: SessionState): Promise<string | null> {
+  if (!state.cwd || !state.git_branch || state.git_branch === "HEAD" || state.is_worktree) return null;
+  try {
+    const { stdout } = await execPromise(
+      `git rev-parse --abbrev-ref --symbolic-full-name ${state.git_branch}@{upstream} 2>/dev/null`,
+      { cwd: state.cwd, encoding: "utf-8", timeout: GIT_CMD_TIMEOUT },
+    );
+    const upstreamRef = stdout.trim();
+    return upstreamRef || null;
+  } catch {
+    return null;
+  }
+}
 
 function makeDefaultState(sessionId: string, backendType: BackendType = "claude"): SessionState {
   return {
@@ -262,10 +286,34 @@ async function resolveGitInfo(state: SessionState): Promise<void> {
       }
     } catch { /* ignore */ }
 
-    // Set diff_base_branch if not already set (first time or restored session).
-    // This is the single source of truth for all ahead/behind and diff computations.
-    if (!state.diff_base_branch && state.git_branch) {
-      state.diff_base_branch = await gitUtils.resolveDefaultBranchAsync(state.repo_root || state.cwd, state.git_branch);
+    const upstreamRef = await resolveUpstreamRef(state);
+    let legacyDefaultBranch: string | null = null;
+    const getLegacyDefaultBranch = async () => {
+      if (!legacyDefaultBranch) {
+        legacyDefaultBranch = await gitUtils.resolveDefaultBranchAsync(state.repo_root || state.cwd, state.git_branch);
+      }
+      return legacyDefaultBranch;
+    };
+
+    // Non-worktree sessions should default to the current branch's upstream
+    // tracking ref (e.g. origin/jiayi), not repo default (often main).
+    if (upstreamRef) {
+      state.git_default_branch = upstreamRef;
+      if (!state.diff_base_branch) {
+        state.diff_base_branch = upstreamRef;
+      } else {
+        // Migrate legacy sessions that auto-defaulted to repo default branch.
+        const legacyDefault = await getLegacyDefaultBranch();
+        if (state.diff_base_branch === legacyDefault) {
+          state.diff_base_branch = upstreamRef;
+        }
+      }
+    } else {
+      const fallbackBase = await getLegacyDefaultBranch();
+      state.git_default_branch = fallbackBase;
+      if (!state.diff_base_branch && state.git_branch) {
+        state.diff_base_branch = fallbackBase;
+      }
     }
 
     // Compute ahead/behind using diff_base_branch as the reference point.
@@ -291,6 +339,8 @@ async function resolveGitInfo(state: SessionState): Promise<void> {
   } catch {
     // Not a git repo or git not available
     state.git_branch = "";
+    state.git_default_branch = "";
+    state.diff_base_branch = "";
     state.is_worktree = false;
     state.repo_root = "";
     state.git_ahead = 0;
@@ -340,6 +390,8 @@ export class WsBridge {
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
     "git_branch",
+    "git_default_branch",
+    "diff_base_branch",
     "is_worktree",
     "is_containerized",
     "repo_root",
@@ -754,6 +806,8 @@ export class WsBridge {
           type: "session_update",
           session: {
             git_branch: session.state.git_branch,
+            git_default_branch: session.state.git_default_branch,
+            diff_base_branch: session.state.diff_base_branch,
             is_worktree: session.state.is_worktree,
             is_containerized: session.state.is_containerized,
             repo_root: session.state.repo_root,
