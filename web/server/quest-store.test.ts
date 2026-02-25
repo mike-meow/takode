@@ -299,6 +299,7 @@ describe("forward transitions", () => {
     if (needsVerification?.status === "needs_verification") {
       expect(needsVerification.verificationItems).toHaveLength(2);
       expect(needsVerification.sessionId).toBe("sess-1"); // carried forward
+      expect(needsVerification.verificationInboxUnread).toBe(true);
     }
 
     // → done
@@ -458,6 +459,7 @@ describe("completeQuest", () => {
     expect(completed?.status).toBe("needs_verification");
     if (completed?.status === "needs_verification") {
       expect(completed.verificationItems).toHaveLength(2);
+      expect(completed.verificationInboxUnread).toBe(true);
     }
   });
 });
@@ -837,6 +839,66 @@ describe("feedback", () => {
     const fb = (result as { feedback?: { text: string }[] }).feedback;
     expect(fb).toHaveLength(1);
     expect(fb![0].text).toBe("Nevermind");
+  });
+
+  it("moves verification quests back to inbox when agent feedback is appended", async () => {
+    // Regression: once a quest is marked read, a new agent update in verification
+    // should push it back into the inbox so humans can notice fresh changes.
+    await setupVerificationQuest();
+    await questStore.markQuestVerificationRead("q-1");
+
+    const current = await questStore.getQuest("q-1");
+    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    await questStore.patchQuest("q-1", {
+      feedback: [...existing, { author: "agent", text: "Addressed in latest patch", ts: Date.now() }],
+    });
+
+    const result = await questStore.getQuest("q-1");
+    expect(result?.status).toBe("needs_verification");
+    if (result?.status === "needs_verification") {
+      expect(result.verificationInboxUnread).toBe(true);
+    }
+  });
+
+  it("does not move to inbox for human-only feedback updates", async () => {
+    // Human review comments should not re-inbox the quest; only agent updates do.
+    await setupVerificationQuest();
+    await questStore.markQuestVerificationRead("q-1");
+
+    const current = await questStore.getQuest("q-1");
+    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    await questStore.patchQuest("q-1", {
+      feedback: [...existing, { author: "human", text: "Please tweak spacing", ts: Date.now() }],
+    });
+
+    const result = await questStore.getQuest("q-1");
+    expect(result?.status).toBe("needs_verification");
+    if (result?.status === "needs_verification") {
+      expect(result.verificationInboxUnread).toBeFalsy();
+    }
+  });
+});
+
+describe("verification inbox", () => {
+  it("marks a verification quest as read without creating a new version", async () => {
+    // Read/unread is a view-state mutation on the latest version, not a lifecycle
+    // transition, so this operation must remain in-place.
+    await questStore.createQuest({ title: "Read me" });
+    await questStore.transitionQuest("q-1", { status: "refined", description: "Ready" });
+    await questStore.claimQuest("q-1", "sess-1");
+    await questStore.completeQuest("q-1", [{ text: "Verify", checked: false }]);
+
+    const before = await questStore.getQuest("q-1");
+    expect(before?.status).toBe("needs_verification");
+    if (before?.status === "needs_verification") {
+      expect(before.verificationInboxUnread).toBe(true);
+      const readQuest = await questStore.markQuestVerificationRead("q-1");
+      expect(readQuest?.status).toBe("needs_verification");
+      if (readQuest?.status === "needs_verification") {
+        expect(readQuest.version).toBe(before.version);
+        expect(readQuest.verificationInboxUnread).toBe(false);
+      }
+    }
   });
 });
 

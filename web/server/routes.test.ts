@@ -2935,6 +2935,36 @@ describe("POST /api/quests/:questId/cancel", () => {
   });
 });
 
+describe("POST /api/quests/:questId/verification/read", () => {
+  it("marks verification quest as read and broadcasts quest_list_updated", async () => {
+    // Endpoint contract: mark as read in store and notify all browsers so inbox
+    // sections update in real time.
+    vi.spyOn(questStore, "markQuestVerificationRead").mockResolvedValueOnce({
+      id: "q-1-v4",
+      questId: "q-1",
+      title: "Quest",
+      status: "needs_verification",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "verify", checked: false }],
+      verificationInboxUnread: false,
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/verification/read", {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.markQuestVerificationRead).toHaveBeenCalledWith("q-1");
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "quest_list_updated" }),
+    );
+  });
+});
+
 // ─── Questmaster Notify ─────────────────────────────────────────────────────
 
 describe("POST /api/quests/_notify", () => {

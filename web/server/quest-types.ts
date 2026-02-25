@@ -103,6 +103,8 @@ export type QuestInProgress = Omit<QuestRefined, "status"> & {
 export type QuestNeedsVerification = Omit<QuestInProgress, "status"> & {
   status: "needs_verification";
   verificationItems: QuestVerificationItem[];
+  /** True when this verification quest is in the review inbox and needs a fresh human read. */
+  verificationInboxUnread?: boolean;
   /** Threaded feedback conversation between human reviewer and agent */
   feedback?: QuestFeedbackEntry[];
 };

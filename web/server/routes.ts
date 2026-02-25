@@ -2924,6 +2924,17 @@ export function createRoutes(
     }
   });
 
+  api.post("/quests/:questId/verification/read", async (c) => {
+    try {
+      const quest = await questStore.markQuestVerificationRead(c.req.param("questId"));
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
   // Append a feedback entry to a quest's thread
   api.post("/quests/:questId/feedback", async (c) => {
     const body = await c.req.json().catch(() => ({}));

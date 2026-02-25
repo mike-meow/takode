@@ -105,6 +105,21 @@ function normalizeQuestOwnership(quest: QuestmasterTask): QuestmasterTask {
   return normalized;
 }
 
+function shouldMarkVerificationInboxUnreadFromFeedbackPatch(
+  current: QuestmasterTask,
+  nextFeedback: QuestFeedbackEntry[] | undefined,
+): boolean {
+  if (current.status !== "needs_verification") return false;
+  if (!nextFeedback || nextFeedback.length === 0) return false;
+  const previous =
+    "feedback" in current
+      ? (current as { feedback?: QuestFeedbackEntry[] }).feedback ?? []
+      : [];
+  if (nextFeedback.length <= previous.length) return false;
+  const appended = nextFeedback.slice(previous.length);
+  return appended.some((entry) => entry.author === "agent");
+}
+
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 const QUESTMASTER_DIR = join(homedir(), ".companion", "questmaster");
@@ -326,6 +341,10 @@ export async function patchQuest(
   const current = await getQuest(questId);
   if (!current) return null;
 
+  const markVerificationInboxUnread = shouldMarkVerificationInboxUnreadFromFeedbackPatch(
+    current,
+    patch.feedback,
+  );
   const updated = { ...current, updatedAt: Date.now() } as QuestmasterTask;
   if (patch.title !== undefined) (updated as { title: string }).title = patch.title.trim();
   if (patch.description !== undefined) {
@@ -336,6 +355,9 @@ export async function patchQuest(
   }
   if (patch.feedback !== undefined) {
     (updated as { feedback?: QuestFeedbackEntry[] }).feedback = patch.feedback.length > 0 ? patch.feedback : undefined;
+  }
+  if (markVerificationInboxUnread && updated.status === "needs_verification") {
+    (updated as QuestNeedsVerification).verificationInboxUnread = true;
   }
 
   await writeQuest(updated);
@@ -501,6 +523,7 @@ export async function transitionQuest(
             ? (current as QuestInProgress).claimedAt
             : now,
         verificationItems,
+        verificationInboxUnread: true,
         ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
         ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestNeedsVerification;
@@ -720,6 +743,24 @@ export async function checkVerificationItem(
   (current as { updatedAt?: number }).updatedAt = Date.now();
   await writeQuest(current);
   return current;
+}
+
+/** Mark a verification quest as read so it leaves the verification inbox. */
+export async function markQuestVerificationRead(
+  questId: string,
+): Promise<QuestmasterTask | null> {
+  const current = await getQuest(questId);
+  if (!current) return null;
+  if (current.status !== "needs_verification") return current;
+  if (!current.verificationInboxUnread) return current;
+
+  const updated: QuestNeedsVerification = {
+    ...current,
+    verificationInboxUnread: false,
+    updatedAt: Date.now(),
+  };
+  await writeQuest(updated);
+  return updated;
 }
 
 // ─── Image management ────────────────────────────────────────────────────────

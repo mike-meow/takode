@@ -123,6 +123,13 @@ function verificationProgress(
   };
 }
 
+function isVerificationInboxUnread(quest: QuestmasterTask): boolean {
+  return (
+    quest.status === "needs_verification" &&
+    !!(quest as { verificationInboxUnread?: boolean }).verificationInboxUnread
+  );
+}
+
 type EditorTarget = "newTitle" | "newDescription" | "editTitle" | "editDescription";
 
 function extractHashtags(text: string): string[] {
@@ -536,6 +543,16 @@ export function QuestmasterPage() {
     setError("");
     try {
       await api.checkQuestVerification(questId, index, checked);
+      await refreshQuests();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleMarkVerificationRead(questId: string) {
+    setError("");
+    try {
+      await api.markQuestVerificationRead(questId);
       await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1440,6 +1457,18 @@ export function QuestmasterPage() {
               .filter((status) => filtered.some((q) => q.status === status))
               .map((status) => {
                 const groupQuests = filtered.filter((q) => q.status === status);
+                const inboxQuests =
+                  status === "needs_verification"
+                    ? groupQuests.filter((q) => isVerificationInboxUnread(q))
+                    : [];
+                const regularQuests =
+                  status === "needs_verification"
+                    ? groupQuests.filter((q) => !isVerificationInboxUnread(q))
+                    : groupQuests;
+                const orderedGroupQuests =
+                  status === "needs_verification"
+                    ? [...inboxQuests, ...regularQuests]
+                    : groupQuests;
                 const gcfg = STATUS_CONFIG[status];
                 const isCollapsed = filter === "all" && collapsedGroups.has(status);
                 return (
@@ -1470,11 +1499,12 @@ export function QuestmasterPage() {
                       </button>
                     )}
                     {!isCollapsed && <div className="space-y-2">
-                    {groupQuests.map((quest) => {
+                    {orderedGroupQuests.map((quest, questIndex) => {
               const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
               const cfg = STATUS_CONFIG[quest.status];
               const isExpanded = expandedId === quest.questId;
               const isEditing = editingId === quest.questId;
+              const isInboxVerification = isVerificationInboxUnread(quest);
               const hasVerification =
                 "verificationItems" in quest &&
                 quest.verificationItems?.length > 0;
@@ -1486,17 +1516,40 @@ export function QuestmasterPage() {
               const questSessionId = "sessionId" in quest ? (quest as { sessionId: string }).sessionId : null;
               const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
               const questSessionName = questSessionId ? (sessionNames.get(questSessionId) || (isKnownSession ? questSessionId.slice(0, 8) : questSessionId)) : null;
+              const showInboxHeader =
+                status === "needs_verification" &&
+                inboxQuests.length > 0 &&
+                questIndex === 0;
+              const showRegularHeader =
+                status === "needs_verification" &&
+                inboxQuests.length > 0 &&
+                regularQuests.length > 0 &&
+                questIndex === inboxQuests.length;
 
               return (
-                <div
-                  key={quest.id}
-                  data-quest-id={quest.questId}
-                  className={`border rounded-xl transition-colors ${
-                    isExpanded
-                      ? "bg-cc-card border-cc-primary/30"
-                      : `bg-cc-card border-cc-border hover:border-cc-border/80 ${isCancelled ? "opacity-60" : ""}`
-                  }`}
-                >
+                <div key={quest.id}>
+                  {showInboxHeader && (
+                    <div className="px-2 py-1 text-[10px] text-amber-400/90 font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      Verification Inbox
+                      <span className="text-cc-muted/60 font-normal">{inboxQuests.length}</span>
+                    </div>
+                  )}
+                  {showRegularHeader && (
+                    <div className="px-2 py-1 text-[10px] text-purple-400/80 font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                      Verification
+                      <span className="text-cc-muted/60 font-normal">{regularQuests.length}</span>
+                    </div>
+                  )}
+                  <div
+                    data-quest-id={quest.questId}
+                    className={`border rounded-xl transition-colors ${
+                      isExpanded
+                        ? "bg-cc-card border-cc-primary/30"
+                        : `bg-cc-card border-cc-border hover:border-cc-border/80 ${isCancelled ? "opacity-60" : ""}`
+                    }`}
+                  >
                   {/* Card header */}
                   <button
                     onClick={() => handleExpand(quest)}
@@ -1523,6 +1576,11 @@ export function QuestmasterPage() {
                         <span className="text-[10px] text-cc-muted/50 shrink-0">
                           {quest.questId}
                         </span>
+                        {isInboxVerification && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
+                            Inbox
+                          </span>
+                        )}
                         {questSessionId && (
                           isKnownSession ? (
                             <span
@@ -2085,6 +2143,15 @@ export function QuestmasterPage() {
 
                           {/* Action bar: Edit, Assign, Transitions, Delete */}
                           <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                            {isInboxVerification && (
+                              <button
+                                onClick={() => handleMarkVerificationRead(quest.questId)}
+                                className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/25 hover:bg-amber-500/25 transition-colors cursor-pointer"
+                              >
+                                Read
+                              </button>
+                            )}
+
                             {/* Edit button */}
                             <button
                               onClick={() => enterEditMode(quest)}
@@ -2153,6 +2220,7 @@ export function QuestmasterPage() {
                       )}
                     </div>
                   )}
+                </div>
                 </div>
               );
             })}
