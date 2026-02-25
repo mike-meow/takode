@@ -164,7 +164,7 @@ function questIdFromHash(hash: string): string | null {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function QuestmasterPage() {
+export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const initialViewStateRef = useRef<ReturnType<typeof loadQuestmasterViewState> | undefined>(undefined);
   if (initialViewStateRef.current === undefined) {
     initialViewStateRef.current = loadQuestmasterViewState();
@@ -291,6 +291,7 @@ export function QuestmasterPage() {
   // reaches browsers that have an active session WS connection), and refetch
   // when the tab regains visibility so switching back always shows fresh data.
   useEffect(() => {
+    if (!isActive) return;
     refreshQuests();
 
     // Poll every 5 seconds as a fallback — lightweight GET that only triggers
@@ -319,10 +320,11 @@ export function QuestmasterPage() {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleFocus);
     };
-  }, []);
+  }, [isActive]);
 
   // Hydrate persisted scroll position once enough content has rendered.
   useEffect(() => {
+    if (!isActive) return;
     if (hasHydratedViewStateRef.current) return;
     const el = scrollContainerRef.current;
     const savedScrollTop = restoreScrollTopRef.current;
@@ -332,10 +334,11 @@ export function QuestmasterPage() {
     el.scrollTop = Math.min(savedScrollTop, maxScrollTop);
     hasHydratedViewStateRef.current = true;
     restoreScrollTopRef.current = null;
-  }, [questsLoading, quests.length]);
+  }, [isActive, questsLoading, quests.length]);
 
   // Persist view state on scroll and before unmount so navigation preserves context.
   useEffect(() => {
+    if (!isActive) return;
     const el = scrollContainerRef.current;
     if (!el) return;
 
@@ -362,16 +365,17 @@ export function QuestmasterPage() {
       if (rafId !== null) cancelAnimationFrame(rafId);
       persistNow();
     };
-  }, [collapsedGroups]);
+  }, [isActive, collapsedGroups]);
 
   // Persist immediately when collapse state changes.
   useEffect(() => {
+    if (!isActive) return;
     if (!hasHydratedViewStateRef.current) return;
     saveQuestmasterViewState({
       scrollTop: scrollContainerRef.current?.scrollTop ?? 0,
       collapsedGroups: Array.from(collapsedGroups),
     });
-  }, [collapsedGroups]);
+  }, [isActive, collapsedGroups]);
 
   // Deep-link support: #/questmaster?quest=q-123 should focus and expand that quest.
   useEffect(() => {

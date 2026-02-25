@@ -245,11 +245,9 @@ export default function App() {
             </div>
           )}
 
-          {isQuestmasterPage && (
-            <div className="absolute inset-0">
-              <QuestmasterPage />
-            </div>
-          )}
+          <div className={`absolute inset-0 ${isQuestmasterPage ? "" : "hidden"}`}>
+            <QuestmasterPage isActive={isQuestmasterPage} />
+          </div>
 
           {isSessionView && (
             <>
