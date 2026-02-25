@@ -77,6 +77,22 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
+function parseCodexModeSlashCommand(text: string): "plan" | "acceptEdits" | "bypassPermissions" | null {
+  const normalized = text.trim().toLowerCase().replace(/\s+/g, "");
+  switch (normalized) {
+    case "/plan":
+    case "/suggest":
+      return "plan";
+    case "/accept-edits":
+    case "/acceptedits":
+      return "acceptEdits";
+    case "/auto":
+      return "bypassPermissions";
+    default:
+      return null;
+  }
+}
+
 function CollapseAllButton({ sessionId }: { sessionId: string }) {
   const collapsibleTurnIds = useStore((s) => s.collapsibleTurnIds.get(sessionId));
   const overrides = useStore((s) => s.turnActivityOverrides.get(sessionId));
@@ -390,6 +406,22 @@ export function Composer({ sessionId }: { sessionId: string }) {
       });
       sendToSession(sessionId, { type: "interrupt" });
       useStore.getState().removePermission(sessionId, pendingPlanPerm.request_id);
+    }
+
+    // Codex local slash shortcuts for mode switching.
+    // These must not be sent as normal user turns.
+    if (isCodex) {
+      const targetMode = parseCodexModeSlashCommand(msg);
+      if (targetMode) {
+        const switched = sendToSession(sessionId, { type: "set_permission_mode", mode: targetMode });
+        if (!switched) return;
+        useStore.getState().clearComposerDraft(sessionId);
+        setSlashMenuOpen(false);
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        if (isTouchDevice()) textareaRef.current?.blur();
+        else textareaRef.current?.focus();
+        return;
+      }
     }
 
     const sent = sendToSession(sessionId, {

@@ -132,6 +132,11 @@ describe("static model/mode lists", () => {
     expect(CODEX_MODES.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("codex plan mode label is explicit in UI", () => {
+    const codexPlan = CODEX_MODES.find((m) => m.value === "plan");
+    expect(codexPlan?.label).toBe("Plan (Suggest)");
+  });
+
   it("claude modes contain plan and agent virtual modes", () => {
     const values = CLAUDE_MODES.map((m) => m.value);
     expect(values).toContain("plan");

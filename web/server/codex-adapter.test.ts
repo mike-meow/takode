@@ -348,6 +348,104 @@ describe("CodexAdapter", () => {
     expect(allWritten).toContain("thr_123");
   });
 
+  it("sets collaborationMode=plan on turn/start when approvalMode is plan", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      approvalMode: "plan",
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdin.chunks = [];
+    adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const turnStart = lines.find((line) => line.method === "turn/start");
+    expect(turnStart).toBeDefined();
+    expect(turnStart.params.collaborationMode.mode).toBe("plan");
+  });
+
+  it("sets collaborationMode=default on turn/start when approvalMode is bypassPermissions", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      approvalMode: "bypassPermissions",
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdin.chunks = [];
+    adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const turnStart = lines.find((line) => line.method === "turn/start");
+    expect(turnStart).toBeDefined();
+    expect(turnStart.params.collaborationMode.mode).toBe("default");
+  });
+
+  it("maps legacy approvalMode=suggest to collaborationMode=plan", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      approvalMode: "suggest",
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdin.chunks = [];
+    adapter.sendBrowserMessage({ type: "user_message", content: "legacy mode mapping" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const turnStart = lines.find((line) => line.method === "turn/start");
+    expect(turnStart).toBeDefined();
+    expect(turnStart.params.collaborationMode.mode).toBe("plan");
+  });
+
+  it("retries turn/start without collaborationMode when server rejects the field", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      approvalMode: "plan",
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    stdin.chunks = [];
+    adapter.sendBrowserMessage({ type: "user_message", content: "fallback test" });
+    await new Promise((r) => setTimeout(r, 30));
+
+    // id=4 is turn/start here (initialize=1, thread/start=2, rateLimits/read=3)
+    stdout.push(JSON.stringify({
+      id: 4,
+      error: { code: -32602, message: "invalid params: unknown field `collaborationMode`" },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 30));
+    stdout.push(JSON.stringify({ id: 5, result: { turn: { id: "turn_1" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const turnStarts = lines.filter((line) => line.method === "turn/start");
+    expect(turnStarts).toHaveLength(2);
+    expect(turnStarts[0].params.collaborationMode.mode).toBe("plan");
+    expect(turnStarts[1].params.collaborationMode).toBeUndefined();
+  });
+
   it("sends localImage user inputs when local_images are provided", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
@@ -911,6 +1009,7 @@ describe("CodexAdapter", () => {
 
   it.each([
     { approvalMode: "bypassPermissions", expected: "never" },
+    { approvalMode: "suggest", expected: "untrusted" },
     { approvalMode: "plan", expected: "untrusted" },
     { approvalMode: "acceptEdits", expected: "untrusted" },
     { approvalMode: "default", expected: "untrusted" },

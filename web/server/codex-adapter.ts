@@ -436,6 +436,7 @@ export class CodexAdapter {
   private connected = false;
   private initialized = false;
   private initFailed = false;
+  private collaborationModeSupported = true;
 
   // Last few raw JSON-RPC messages for debugging unexpected disconnects
   private recentRawMessages: string[] = [];
@@ -495,6 +496,14 @@ export class CodexAdapter {
     secondary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
   }>();
   private static readonly DYNAMIC_TOOL_CALL_TIMEOUT_MS = 120_000;
+  private static readonly VALID_REASONING_EFFORTS = new Set([
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+  ]);
 
   constructor(proc: Subprocess, sessionId: string, options: CodexAdapterOptions = {}) {
     this.proc = proc;
@@ -882,15 +891,41 @@ export class CodexAdapter {
       );
     }
 
-    try {
-      const result = await this.transport.call("turn/start", {
-        threadId: this.threadId,
-        input,
-        cwd: this.options.cwd,
-      }) as { turn: { id: string } };
+    const turnStartParams: Record<string, unknown> = {
+      threadId: this.threadId,
+      input,
+      cwd: this.options.cwd,
+    };
+    const collaborationMode = this.collaborationModeSupported
+      ? this.buildCollaborationModeOverride()
+      : null;
+    if (collaborationMode) {
+      turnStartParams.collaborationMode = collaborationMode;
+    }
 
+    try {
+      const result = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
       this.currentTurnId = result.turn.id;
     } catch (err) {
+      // Older Codex builds may reject collaborationMode. If so, retry once
+      // without it and remember to skip it for future turns.
+      if (collaborationMode && this.isCollaborationModeUnsupportedError(err)) {
+        this.collaborationModeSupported = false;
+        delete turnStartParams.collaborationMode;
+        console.warn(
+          `[codex-adapter] collaborationMode not supported; falling back for session ${this.sessionId}`,
+        );
+        try {
+          const retry = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+          this.currentTurnId = retry.turn.id;
+          return;
+        } catch (retryErr) {
+          this.turnStartFailedCb?.(msg);
+          this.emit({ type: "error", message: `Failed to start turn: ${retryErr}` });
+          return;
+        }
+      }
+
       this.turnStartFailedCb?.(msg);
       this.emit({ type: "error", message: `Failed to start turn: ${err}` });
     }
@@ -2198,6 +2233,7 @@ export class CodexAdapter {
     switch (mode) {
       case "bypassPermissions":
         return "never";
+      case "suggest":
       case "plan":
       case "acceptEdits":
       case "default":
@@ -2213,6 +2249,35 @@ export class CodexAdapter {
       default:
         return "workspace-write";
     }
+  }
+
+  private buildCollaborationModeOverride():
+    { mode: "default" | "plan"; settings: { model: string; reasoning_effort: string | null; developer_instructions: null } }
+    | null {
+    const mode = (this.options.approvalMode === "plan" || this.options.approvalMode === "suggest")
+      ? "plan"
+      : "default";
+    return {
+      mode,
+      settings: {
+        model: this.options.model?.trim() || "gpt-5.3-codex",
+        reasoning_effort: this.normalizeReasoningEffort(this.options.reasoningEffort),
+        developer_instructions: null,
+      },
+    };
+  }
+
+  private normalizeReasoningEffort(effort?: string): string | null {
+    if (!effort) return null;
+    const normalized = effort.trim().toLowerCase();
+    if (!normalized) return null;
+    return CodexAdapter.VALID_REASONING_EFFORTS.has(normalized) ? normalized : null;
+  }
+
+  private isCollaborationModeUnsupportedError(err: unknown): boolean {
+    const text = String(err).toLowerCase();
+    return text.includes("collaborationmode")
+      && (text.includes("unknown field") || text.includes("invalid params") || text.includes("-32602"));
   }
 
   private async listAllMcpServerStatuses(): Promise<CodexMcpServerStatus[]> {

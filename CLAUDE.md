@@ -133,6 +133,7 @@ When syncing with upstream: fast-forward `main` to `upstream/main`, then rebase 
 
 - In this fork, when the user says **"sync to main repo"**, it means **sync to `origin/jiayi`** (the primary working branch), **not** `origin/main`.
 - Only sync to `origin/main` when the user explicitly says `main branch` or `origin/main`.
+- User testing usually happens by restarting the server from `/home/jiayiwei/companion` on branch `jiayi`. After implementing a fix in a worktree branch, land it in the main repo (`jiayi`) before asking the user to restart and verify.
 
 ## Key Architectural Principles
 (please keep these updated as you work on the codebase)

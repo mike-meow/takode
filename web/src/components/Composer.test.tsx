@@ -263,6 +263,28 @@ describe("Composer sending messages", () => {
 
     expect(textarea.value).toBe("");
   });
+
+  it("treats /plan as a Codex mode switch (not a user message)", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        model: "gpt-5.3-codex",
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "/plan" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "set_permission_mode",
+      mode: "plan",
+    });
+    expect(mockSendToSession).not.toHaveBeenCalledWith("s1", expect.objectContaining({
+      type: "user_message",
+    }));
+  });
 });
 
 // ─── Mode cycling ───────────────────────────────────────────────────────────
