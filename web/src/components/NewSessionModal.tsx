@@ -93,6 +93,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   // Git branch state
   const [gitRepoInfo, setGitRepoInfo] = useState<GitRepoInfo | null>(null);
+  const [repoInfoLoading, setRepoInfoLoading] = useState(false);
   const [useWorktree, setUseWorktree] = useState(
     () => scopedGetItem("cc-worktree") === "true",
   );
@@ -195,8 +196,10 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   useEffect(() => {
     if (!open || !cwd) {
       setGitRepoInfo(null);
+      setRepoInfoLoading(false);
       return;
     }
+    setRepoInfoLoading(true);
     api.getRepoInfo(cwd).then((info) => {
       setGitRepoInfo(info);
       setIsNewBranch(false);
@@ -214,6 +217,8 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       });
     }).catch(() => {
       setGitRepoInfo(null);
+    }).finally(() => {
+      setRepoInfoLoading(false);
     });
   }, [open, cwd]);
 
@@ -278,7 +283,9 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     onClose();
     setSending(false);
 
-    const branchName = selectedBranch.trim() || undefined;
+    const branchName = selectedBranch.trim()
+      || (useWorktree ? gitRepoInfo?.currentBranch : undefined)
+      || undefined;
     const cwdSnapshot = cwd;
 
     try {
@@ -927,7 +934,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
               )}
 
               {/* Worktree toggle */}
-              {gitRepoInfo && (
+              {(gitRepoInfo || repoInfoLoading || useWorktree) && (
                 <button
                   onClick={() => { const next = !useWorktree; setUseWorktree(next); scopedSetItem("cc-worktree", String(next)); }}
                   className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
@@ -935,7 +942,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                       ? "bg-cc-primary/15 text-cc-primary font-medium"
                       : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
                   }`}
-                  title="Create an isolated worktree for this session"
+                  title={repoInfoLoading ? "Worktree metadata is loading" : "Create an isolated worktree for this session"}
                 >
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
                     <path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v5.256a2.25 2.25 0 101.5 0V5.372zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zm7.5-9.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V7A2.5 2.5 0 0110 9.5H6a1 1 0 000 2h4a2.5 2.5 0 012.5 2.5v.628a2.25 2.25 0 11-1.5 0V14a1 1 0 00-1-1H6a2.5 2.5 0 01-2.5-2.5V10a2.5 2.5 0 012.5-2.5h4a1 1 0 001-1V5.372a2.25 2.25 0 01-1.5-2.122z" />

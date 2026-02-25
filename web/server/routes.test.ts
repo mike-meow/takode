@@ -453,6 +453,66 @@ describe("POST /api/sessions/create", () => {
     );
   });
 
+  it("falls back to current branch when useWorktree is enabled but branch is omitted", async () => {
+    vi.mocked(gitUtils.getRepoInfo).mockReturnValue({
+      repoRoot: "/repo",
+      repoName: "my-repo",
+      currentBranch: "main",
+      defaultBranch: "main",
+      isWorktree: false,
+    });
+    vi.mocked(gitUtils.ensureWorktree).mockReturnValue({
+      worktreePath: "/home/.companion/worktrees/my-repo/main",
+      branch: "main",
+      actualBranch: "main",
+      isNew: true,
+    });
+
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/repo", useWorktree: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(gitUtils.ensureWorktree).toHaveBeenCalledWith("/repo", "main", {
+      baseBranch: "main",
+      createBranch: undefined,
+      forceNew: true,
+    });
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/home/.companion/worktrees/my-repo/main" }),
+    );
+  });
+
+  it("returns 400 when useWorktree is enabled without cwd", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ useWorktree: true }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Worktree mode requires a cwd" });
+    expect(gitUtils.ensureWorktree).not.toHaveBeenCalled();
+    expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when useWorktree is enabled outside a git repository", async () => {
+    vi.mocked(gitUtils.getRepoInfo).mockReturnValue(null);
+
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/not-a-repo", useWorktree: true }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Worktree mode requires a git repository" });
+    expect(gitUtils.ensureWorktree).not.toHaveBeenCalled();
+    expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
   it("returns 503 when env has Docker image but container startup fails", async () => {
     vi.mocked(envManager.getEnv).mockResolvedValue({
       name: "Companion",
@@ -2364,6 +2424,76 @@ describe("POST /api/sessions/create-stream", () => {
     expect(steps).toContain("launching_cli");
     // Should NOT have fetch/checkout/pull since it uses worktree
     expect(steps).not.toContain("fetching_git");
+  });
+
+  it("uses current branch for worktree create-stream when branch is omitted", async () => {
+    vi.mocked(gitUtils.getRepoInfo).mockReturnValueOnce({
+      repoRoot: "/test",
+      currentBranch: "main",
+      defaultBranch: "main",
+    } as any);
+    vi.mocked(gitUtils.ensureWorktree).mockReturnValueOnce({
+      worktreePath: "/test-wt-main",
+      actualBranch: "main",
+      created: true,
+    } as any);
+
+    const res = await app.request("/api/sessions/create-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", useWorktree: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    expect(gitUtils.ensureWorktree).toHaveBeenCalledWith("/test", "main", {
+      baseBranch: "main",
+      createBranch: undefined,
+      forceNew: true,
+    });
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/test-wt-main" }),
+    );
+  });
+
+  it("emits creating_worktree error when useWorktree is enabled without cwd", async () => {
+    const res = await app.request("/api/sessions/create-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ useWorktree: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const errorEvent = events.find((e) => e.event === "error");
+    expect(errorEvent).toBeDefined();
+    expect(JSON.parse(errorEvent!.data)).toEqual({
+      error: "Worktree mode requires a cwd",
+      step: "creating_worktree",
+    });
+    expect(launcher.launch).not.toHaveBeenCalled();
+  });
+
+  it("emits creating_worktree error when useWorktree is enabled outside git repo", async () => {
+    vi.mocked(gitUtils.getRepoInfo).mockReturnValueOnce(null);
+
+    const res = await app.request("/api/sessions/create-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/tmp/non-repo", useWorktree: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const errorEvent = events.find((e) => e.event === "error");
+    expect(errorEvent).toBeDefined();
+    expect(JSON.parse(errorEvent!.data)).toEqual({
+      error: "Worktree mode requires a git repository",
+      step: "creating_worktree",
+    });
+    expect(launcher.launch).not.toHaveBeenCalled();
   });
 
   it("emits error event for invalid branch name", async () => {

@@ -196,25 +196,34 @@ export function createRoutes(
         return c.json({ error: "Invalid branch name" }, 400);
       }
 
-      if (body.useWorktree && body.branch && cwd) {
-        // Worktree isolation: create/reuse a worktree for the selected branch
-        const repoInfo = gitUtils.getRepoInfo(cwd);
-        if (repoInfo) {
-          const result = gitUtils.ensureWorktree(repoInfo.repoRoot, body.branch, {
-            baseBranch: repoInfo.defaultBranch,
-            createBranch: body.createBranch,
-            forceNew: true,
-          });
-          cwd = result.worktreePath;
-          worktreeInfo = {
-            isWorktree: true,
-            repoRoot: repoInfo.repoRoot,
-            branch: body.branch,
-            actualBranch: result.actualBranch,
-            worktreePath: result.worktreePath,
-            defaultBranch: repoInfo.defaultBranch,
-          };
+      if (body.useWorktree) {
+        if (!cwd) {
+          return c.json({ error: "Worktree mode requires a cwd" }, 400);
         }
+        // Worktree isolation: create/reuse a worktree for the selected branch.
+        // If the UI hasn't loaded branch metadata yet, fall back to current branch.
+        const repoInfo = gitUtils.getRepoInfo(cwd);
+        if (!repoInfo) {
+          return c.json({ error: "Worktree mode requires a git repository" }, 400);
+        }
+        const targetBranch = body.branch || repoInfo.currentBranch;
+        if (!targetBranch) {
+          return c.json({ error: "Unable to determine branch for worktree session" }, 400);
+        }
+        const result = gitUtils.ensureWorktree(repoInfo.repoRoot, targetBranch, {
+          baseBranch: repoInfo.defaultBranch,
+          createBranch: body.createBranch,
+          forceNew: true,
+        });
+        cwd = result.worktreePath;
+        worktreeInfo = {
+          isWorktree: true,
+          repoRoot: repoInfo.repoRoot,
+          branch: targetBranch,
+          actualBranch: result.actualBranch,
+          worktreePath: result.worktreePath,
+          defaultBranch: repoInfo.defaultBranch,
+        };
       } else if (body.branch && cwd) {
         // Non-worktree: checkout the selected branch in-place (lightweight)
         const repoInfo = gitUtils.getRepoInfo(cwd);
@@ -587,25 +596,46 @@ export function createRoutes(
         }
 
         // --- Step: Git operations ---
-        if (body.useWorktree && body.branch && cwd) {
+        if (body.useWorktree) {
+          if (!cwd) {
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ error: "Worktree mode requires a cwd", step: "creating_worktree" }),
+            });
+            return;
+          }
           await emitProgress(stream, "creating_worktree", "Creating worktree...", "in_progress");
           const repoInfo = gitUtils.getRepoInfo(cwd);
-          if (repoInfo) {
-            const result = gitUtils.ensureWorktree(repoInfo.repoRoot, body.branch, {
-              baseBranch: repoInfo.defaultBranch,
-              createBranch: body.createBranch,
-              forceNew: true,
+          if (!repoInfo) {
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ error: "Worktree mode requires a git repository", step: "creating_worktree" }),
             });
-            cwd = result.worktreePath;
-            worktreeInfo = {
-              isWorktree: true,
-              repoRoot: repoInfo.repoRoot,
-              branch: body.branch,
-              actualBranch: result.actualBranch,
-              worktreePath: result.worktreePath,
-              defaultBranch: repoInfo.defaultBranch,
-            };
+            return;
           }
+          // If branch metadata hasn't loaded in the client yet, default to current branch.
+          const targetBranch = body.branch || repoInfo.currentBranch;
+          if (!targetBranch) {
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ error: "Unable to determine branch for worktree session", step: "creating_worktree" }),
+            });
+            return;
+          }
+          const result = gitUtils.ensureWorktree(repoInfo.repoRoot, targetBranch, {
+            baseBranch: repoInfo.defaultBranch,
+            createBranch: body.createBranch,
+            forceNew: true,
+          });
+          cwd = result.worktreePath;
+          worktreeInfo = {
+            isWorktree: true,
+            repoRoot: repoInfo.repoRoot,
+            branch: targetBranch,
+            actualBranch: result.actualBranch,
+            worktreePath: result.worktreePath,
+            defaultBranch: repoInfo.defaultBranch,
+          };
           await emitProgress(stream, "creating_worktree", "Worktree ready", "done");
         } else if (body.branch && cwd) {
           const repoInfo = gitUtils.getRepoInfo(cwd);
