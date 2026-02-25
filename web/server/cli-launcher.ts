@@ -1109,8 +1109,12 @@ ${MARKER_END}`;
    * to the main repo's copies. This ensures all worktrees for the same repo share
    * the same project-level permission rules.
    *
-   * Only creates symlinks for files that don't already exist in the worktree
-   * (i.e., not tracked by git or previously created).
+   * On every launch:
+   * - If the worktree file doesn't exist → create symlink to main repo file
+   * - If the worktree file is already a symlink → leave it (previous run)
+   * - If the worktree file is a real file → merge its contents into the main
+   *   repo file, replace with symlink. This handles the case where Claude Code's
+   *   atomic write (write-to-temp-then-rename) broke a previous symlink.
    */
   private symlinkProjectSettings(worktreePath: string, repoRoot: string): void {
     if (!repoRoot) return;
@@ -1122,7 +1126,7 @@ ${MARKER_END}`;
     // Ensure the main repo's .claude/ directory exists so the CLI can create
     // the settings file at the symlink target.
     try {
-      mkdirSync(repoClaudeDir, { recursive: true });
+      mkdirSync(repoClaudeDir, { recursive: true }); // sync-ok: session launch, not called during message handling
     } catch {
       return; // can't create target directory — skip
     }
@@ -1132,18 +1136,36 @@ ${MARKER_END}`;
       const repoFile = join(repoClaudeDir, filename);
 
       try {
-        // Use lstatSync (doesn't follow symlinks) to detect dangling symlinks.
-        // existsSync follows symlinks — returns false for dangling ones, causing
-        // symlinkSync to fail with EEXIST on relaunch.
-        try {
-          const stat = lstatSync(worktreeFile); // sync-ok: session launch, not called during message handling
-          if (!stat.isSymbolicLink()) continue; // real file — don't replace
-          continue; // already a symlink (from previous run) — leave it
-        } catch {
-          // file doesn't exist at all — create symlink below
+        // Seed the target file if it doesn't exist, so the symlink is never
+        // dangling. A dangling symlink gets replaced by a real file when the
+        // CLI does an atomic write (write-temp-then-rename).
+        if (!existsSync(repoFile)) { // sync-ok: session launch, not called during message handling
+          writeFileSync(repoFile, "{}\n", "utf-8"); // sync-ok: session launch, not called during message handling
+          console.log(`[cli-launcher] Seeded ${repoFile} for symlink target`);
         }
 
-        symlinkSync(repoFile, worktreeFile);
+        // Use lstatSync (doesn't follow symlinks) to detect dangling symlinks
+        // and real files that replaced a previous symlink.
+        let worktreeFileStat: import("node:fs").Stats | null = null;
+        try {
+          worktreeFileStat = lstatSync(worktreeFile); // sync-ok: session launch, not called during message handling
+        } catch {
+          // file doesn't exist — create symlink below
+        }
+
+        if (worktreeFileStat) {
+          if (worktreeFileStat.isSymbolicLink()) {
+            continue; // already a symlink (from previous run) — leave it
+          }
+
+          // Real file exists — Claude Code's atomic write broke a previous
+          // symlink. Merge its contents into the main repo file, then replace.
+          this.mergeSettingsIntoRepo(worktreeFile, repoFile);
+          unlinkSync(worktreeFile); // sync-ok: session launch, not called during message handling
+          console.log(`[cli-launcher] Merged and removed real ${worktreeFile} (was broken symlink)`);
+        }
+
+        symlinkSync(repoFile, worktreeFile); // sync-ok: session launch, not called during message handling
         console.log(`[cli-launcher] Symlinked ${worktreeFile} → ${repoFile}`);
 
         // Add to git exclude so symlink doesn't show as untracked
@@ -1151,6 +1173,44 @@ ${MARKER_END}`;
       } catch (e) {
         console.warn(`[cli-launcher] Failed to symlink .claude/${filename}:`, e);
       }
+    }
+  }
+
+  /**
+   * Merge permission rules from a worktree's settings file into the main
+   * repo's settings file. Deduplicates rules so merging is idempotent.
+   */
+  private mergeSettingsIntoRepo(worktreeFile: string, repoFile: string): void {
+    try {
+      const wtRaw = readFileSync(worktreeFile, "utf-8"); // sync-ok: session launch, not called during message handling
+      const wtData = JSON.parse(wtRaw) as Record<string, unknown>;
+
+      let repoData: Record<string, unknown> = {};
+      try {
+        const repoRaw = readFileSync(repoFile, "utf-8"); // sync-ok: session launch, not called during message handling
+        repoData = JSON.parse(repoRaw) as Record<string, unknown>;
+      } catch { /* empty or corrupt — start fresh */ }
+
+      // Merge permissions.allow and permissions.deny arrays
+      const wtPerms = (wtData.permissions ?? {}) as Record<string, unknown>;
+      const repoPerms = (repoData.permissions ?? {}) as Record<string, unknown>;
+
+      for (const key of ["allow", "deny"] as const) {
+        const wtRules = Array.isArray(wtPerms[key]) ? wtPerms[key] as string[] : [];
+        const repoRules = Array.isArray(repoPerms[key]) ? repoPerms[key] as string[] : [];
+        const merged = [...new Set([...repoRules, ...wtRules])];
+        if (merged.length > 0) {
+          repoPerms[key] = merged;
+        }
+      }
+
+      if (Object.keys(repoPerms).length > 0) {
+        repoData.permissions = repoPerms;
+      }
+
+      writeFileSync(repoFile, JSON.stringify(repoData, null, 2) + "\n", "utf-8"); // sync-ok: session launch, not called during message handling
+    } catch (e) {
+      console.warn(`[cli-launcher] Failed to merge settings into repo:`, e);
     }
   }
 

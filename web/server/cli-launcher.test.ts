@@ -1119,9 +1119,10 @@ describe("symlinkProjectSettings", () => {
     );
   });
 
-  it("does NOT replace a real (non-symlink) file with a symlink", () => {
-    // Simulate settings.json being a real file in the worktree.
-    // lstatSync returns a stat object (file exists); isSymbolicLink returns false.
+  it("merges a real (non-symlink) file into repo and replaces with symlink", () => {
+    // Simulate settings.json being a real file in the worktree (Claude Code's
+    // atomic write broke a previous symlink). The file should be merged into
+    // the main repo's copy and replaced with a symlink.
     mockLstatSync.mockImplementation((path: any) => {
       if (path === join(WORKTREE, ".claude", "settings.json")) {
         return { isSymbolicLink: () => false };
@@ -1130,7 +1131,19 @@ describe("symlinkProjectSettings", () => {
     });
     mockExistsSync.mockImplementation((path: string) => {
       if (path === WORKTREE) return true;
+      // Repo target file exists (seeded or from previous worktree)
+      if (path === join(REPO_ROOT, ".claude", "settings.json")) return true;
       return false;
+    });
+    // Mock readFileSync for merge — worktree file has rules, repo file is empty
+    mockReadFileSync.mockImplementation((path: any) => {
+      if (path === join(WORKTREE, ".claude", "settings.json")) {
+        return JSON.stringify({ permissions: { allow: ["Bash(git reset:*)"] } });
+      }
+      if (path === join(REPO_ROOT, ".claude", "settings.json")) {
+        return "{}";
+      }
+      return "";
     });
 
     launcher.launch({
@@ -1144,11 +1157,21 @@ describe("symlinkProjectSettings", () => {
       },
     });
 
-    // Only settings.local.json should be symlinked (settings.json is a real file)
-    expect(mockSymlinkSync).toHaveBeenCalledTimes(1);
+    // Real file should be removed and replaced with symlink
+    expect(mockUnlinkSync).toHaveBeenCalledWith(
+      join(WORKTREE, ".claude", "settings.json"),
+    );
+    // Both settings.json and settings.local.json should be symlinked
+    expect(mockSymlinkSync).toHaveBeenCalledTimes(2);
     expect(mockSymlinkSync).toHaveBeenCalledWith(
-      join(REPO_ROOT, ".claude", "settings.local.json"),
-      join(WORKTREE, ".claude", "settings.local.json"),
+      join(REPO_ROOT, ".claude", "settings.json"),
+      join(WORKTREE, ".claude", "settings.json"),
+    );
+    // Repo file should be written with merged permissions
+    expect(mockWriteFileSync).toHaveBeenCalledWith(
+      join(REPO_ROOT, ".claude", "settings.json"),
+      expect.stringContaining("git reset"),
+      "utf-8",
     );
   });
 
