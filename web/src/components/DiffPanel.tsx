@@ -166,29 +166,39 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
     let cancelled = false;
     setAllDiffsLoading(true);
-    const promises = newFiles.map(({ abs }) =>
-      api.getFileDiff(abs, effectiveBranch).then((res) => {
-        return { abs, diff: res.diff, stats: countDiffStats(res.diff) };
-      }).catch(() => ({ abs, diff: "", stats: { additions: 0, deletions: 0 } })),
-    );
-    Promise.all(promises).then((results) => {
-      if (cancelled) return;
-      setFileStats((prev) => {
-        const next = new Map(prev);
-        for (const { abs, stats } of results) {
-          next.set(abs, stats);
-          fetchedFilesRef.current.add(abs);
-        }
-        return next;
-      });
-      setAllDiffs((prev) => {
-        const next = new Map(prev);
-        for (const { abs, diff } of results) {
-          next.set(abs, diff);
-        }
-        return next;
-      });
-      setAllDiffsLoading(false);
+    const BATCH_SIZE = 12;
+    void (async () => {
+      for (let i = 0; i < newFiles.length; i += BATCH_SIZE) {
+        const batch = newFiles.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(({ abs }) =>
+            api.getFileDiff(abs, effectiveBranch).then((res) => {
+              return { abs, diff: res.diff, stats: countDiffStats(res.diff) };
+            }).catch(() => ({ abs, diff: "", stats: { additions: 0, deletions: 0 } })),
+          ),
+        );
+        if (cancelled) return;
+        setFileStats((prev) => {
+          const next = new Map(prev);
+          for (const { abs, stats } of results) {
+            next.set(abs, stats);
+            fetchedFilesRef.current.add(abs);
+          }
+          return next;
+        });
+        setAllDiffs((prev) => {
+          const next = new Map(prev);
+          for (const { abs, diff } of results) {
+            next.set(abs, diff);
+          }
+          return next;
+        });
+      }
+      if (!cancelled) {
+        setAllDiffsLoading(false);
+      }
+    })().catch(() => {
+      if (!cancelled) setAllDiffsLoading(false);
     });
     return () => { cancelled = true; };
   }, [relativeChangedFiles, effectiveBranch]);

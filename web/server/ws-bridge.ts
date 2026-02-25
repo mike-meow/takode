@@ -7,6 +7,7 @@ const execPromise = promisify(execCb);
 
 /** Timeout (ms) for git shell commands. Generous default for large repos on NFS. */
 export const GIT_CMD_TIMEOUT = Number(process.env.COMPANION_GIT_TIMEOUT) || 60_000;
+const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve, basename } from "node:path";
 import { homedir } from "node:os";
 import type { PushoverNotifier } from "./pushover.js";
@@ -971,8 +972,9 @@ export class WsBridge {
   }
 
   /**
-   * Keep a stable per-worktree diff anchor for "agent-made changes" and
-   * re-anchor only when branch history is rewritten (rebase/reset/cherry-pick).
+   * Keep a per-worktree baseline anchor for "agent-made changes".
+   * For branch mode, derive it from merge-base(baseRef, HEAD) so base branch
+   * fast-forwards do not inflate session-owned diff stats.
    */
   private async updateDiffBaseStartSha(session: Session, previousHeadSha: string): Promise<boolean> {
     if (!session.state.is_worktree) return false;
@@ -981,44 +983,50 @@ export class WsBridge {
     if (!cwd || !currentHeadSha) return false;
 
     const existingAnchor = session.state.diff_base_start_sha?.trim() || "";
-    if (!existingAnchor) {
-      // First observation for this session: anchor at current HEAD so diff totals
-      // represent changes made after session/worktree creation.
-      session.state.diff_base_start_sha = currentHeadSha;
-      return true;
-    }
+    const ref = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
 
-    if (!previousHeadSha || previousHeadSha === currentHeadSha) return false;
-
-    try {
-      await execPromise(
-        `git --no-optional-locks merge-base --is-ancestor ${previousHeadSha} ${currentHeadSha}`,
-        { cwd, timeout: GIT_CMD_TIMEOUT },
-      );
-      // Fast-forward/normal commit path — keep existing anchor stable.
-      return false;
-    } catch {
-      // History rewrite detected. Re-anchor to merge-base with base ref when possible.
-      let nextAnchor = currentHeadSha;
-      const ref = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
-      if (ref) {
-        try {
-          const { stdout } = await execPromise(
-            `git --no-optional-locks merge-base ${ref} HEAD`,
-            { cwd, timeout: GIT_CMD_TIMEOUT },
-          );
-          const mergeBase = stdout.trim();
-          if (mergeBase) nextAnchor = mergeBase;
-        } catch {
-          // Fall back to current HEAD when merge-base is unavailable.
-        }
-      }
-      if (nextAnchor !== existingAnchor) {
-        session.state.diff_base_start_sha = nextAnchor;
+    // Explicit commit mode: keep anchor stable so stats can compare directly
+    // against the selected commit SHA.
+    if (ref && GIT_SHA_REF_RE.test(ref)) {
+      if (!existingAnchor) {
+        session.state.diff_base_start_sha = currentHeadSha;
         return true;
       }
+      // If history was rewritten while commit mode is active, keep anchor aligned
+      // with HEAD so clearing commit mode doesn't restore stale baselines.
+      if (previousHeadSha && previousHeadSha !== currentHeadSha) {
+        try {
+          await execPromise(
+            `git --no-optional-locks merge-base --is-ancestor ${previousHeadSha} ${currentHeadSha}`,
+            { cwd, timeout: GIT_CMD_TIMEOUT },
+          );
+        } catch {
+          session.state.diff_base_start_sha = currentHeadSha;
+          return true;
+        }
+      }
       return false;
     }
+
+    let nextAnchor = currentHeadSha;
+    if (ref) {
+      try {
+        const { stdout } = await execPromise(
+          `git --no-optional-locks merge-base ${ref} HEAD`,
+          { cwd, timeout: GIT_CMD_TIMEOUT },
+        );
+        const mergeBase = stdout.trim();
+        if (mergeBase) nextAnchor = mergeBase;
+      } catch {
+        // Fall back to current HEAD when merge-base is unavailable.
+      }
+    }
+
+    if (nextAnchor !== existingAnchor) {
+      session.state.diff_base_start_sha = nextAnchor;
+      return true;
+    }
+    return false;
   }
 
   /** Refresh git metadata and then recompute dirty diff stats. */
@@ -1080,11 +1088,17 @@ export class WsBridge {
     try {
       let diffBase = "";
       if (session.state.is_worktree) {
-        // Stable metric: only count changes made on this worktree since anchor.
-        diffBase = session.state.diff_base_start_sha?.trim() || session.state.git_head_sha?.trim() || "";
-        if (!diffBase) {
-          // Fallback for older persisted sessions before git_head/anchor is available.
-          diffBase = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
+        const selectedBase = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
+        if (selectedBase && GIT_SHA_REF_RE.test(selectedBase)) {
+          // Explicit commit selection in DiffPanel.
+          diffBase = selectedBase;
+        } else {
+          // Worktree metric: branch-local changes since merge-base anchor.
+          diffBase = session.state.diff_base_start_sha?.trim() || session.state.git_head_sha?.trim() || "";
+          if (!diffBase) {
+            // Fallback for older persisted sessions before git_head/anchor is available.
+            diffBase = selectedBase;
+          }
         }
       } else {
         // Non-worktree fallback: compare against selected base ref.

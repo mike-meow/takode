@@ -4108,7 +4108,7 @@ describe("Tool call duration tracking", () => {
 // ─── Diff stats computation and dirty flag ──────────────────────────────────
 
 describe("Diff stats computation", () => {
-  it("computeDiffStats: compares directly to the configured base ref", async () => {
+  it("computeDiffStats: uses merge-base anchor for worktree branch refs", async () => {
     bridge.markWorktree("s1", "/repo", "/tmp/wt", "main");
     const session = bridge.getSession("s1")!;
     session.state.cwd = "/tmp/wt";
@@ -4116,11 +4116,12 @@ describe("Diff stats computation", () => {
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat-wt-1234\n";
+      if (cmd.includes("rev-parse HEAD")) return "head-sha-1\n";
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/feat-wt-1234\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
       if (cmd.includes("--left-right --count")) return "0\t0\n";
-      if (cmd.includes("merge-base")) throw new Error("should not call merge-base");
-      if (cmd.includes("diff --numstat jiayi")) return "7\t2\tsrc/file.ts\n";
+      if (cmd.includes("merge-base jiayi HEAD")) return "wt-anchor-sha\n";
+      if (cmd.includes("diff --numstat wt-anchor-sha")) return "7\t2\tsrc/file.ts\n";
       return "";
     });
 
@@ -4129,6 +4130,29 @@ describe("Diff stats computation", () => {
     await vi.waitFor(() => {
       expect(session.state.total_lines_added).toBe(7);
       expect(session.state.total_lines_removed).toBe(2);
+    });
+  });
+
+  it("computeDiffStats: compares directly to selected commit SHA in worktree mode", async () => {
+    bridge.markWorktree("s1", "/repo", "/tmp/wt", "main");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = "/tmp/wt";
+    session.state.diff_base_branch = "abcdef1234567";
+    session.diffStatsDirty = true;
+    (session as any).cliSocket = { send: vi.fn() };
+
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("diff --numstat abcdef1234567")) return "9\t4\tsrc/file.ts\n";
+      if (cmd.includes("merge-base --is-ancestor")) return "";
+      if (cmd.includes("merge-base abcdef1234567 HEAD")) throw new Error("should not use merge-base for commit refs");
+      return "";
+    });
+
+    bridge.recomputeDiffIfDirty(session);
+
+    await vi.waitFor(() => {
+      expect(session.state.total_lines_added).toBe(9);
+      expect(session.state.total_lines_removed).toBe(4);
     });
   });
 
@@ -4154,16 +4178,13 @@ describe("Diff stats computation", () => {
     });
   });
 
-  it("re-anchors worktree diff base after history rewrite", async () => {
+  it("re-anchors worktree diff base to merge-base after base ref changes", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/rebased\n";
       if (cmd.includes("rev-parse HEAD")) return "new-head-sha\n";
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/feat-rebased\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
       if (cmd.includes("--left-right --count")) return "0\t0\n";
-      if (cmd.includes("merge-base --is-ancestor old-head-sha new-head-sha")) {
-        throw new Error("not ancestor");
-      }
       if (cmd.includes("merge-base jiayi HEAD")) return "rebased-anchor-sha\n";
       if (cmd.includes("diff --numstat rebased-anchor-sha")) return "3\t1\tsrc/rebased.ts\n";
       return "";
@@ -4337,9 +4358,6 @@ describe("Diff stats computation", () => {
       if (cmd.includes("--show-toplevel")) return "/repo\n";
       if (cmd.includes("rev-parse HEAD")) return "new-head-sha\n";
       if (cmd.includes("--left-right --count")) return "0\t0\n";
-      if (cmd.includes("merge-base --is-ancestor old-head-sha new-head-sha")) {
-        throw new Error("history rewritten");
-      }
       if (cmd.includes("merge-base")) return "new-head-sha\n";
       if (cmd.includes("diff --numstat")) return "\n";
       return "";
