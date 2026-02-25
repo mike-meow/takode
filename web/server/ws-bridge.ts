@@ -270,6 +270,8 @@ interface Session {
   stuckNotifiedAt: number | null;
   /** Server-side activity preview (mirrors browser's sessionTaskPreview) */
   lastActivityPreview?: string;
+  /** Cached truncated content of the last user message (avoids scanning messageHistory) */
+  lastUserMessage?: string;
   /** Epoch ms when the user last viewed this session (server-authoritative) */
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
@@ -847,6 +849,17 @@ export class WsBridge {
 
       // Git info resolves lazily on first CLI/browser connect — skipping here
       // eliminates hundreds of blocking git calls at startup on NFS.
+
+      // Initialize lastUserMessage cache from history (scan once at restore,
+      // not on every /api/sessions request)
+      for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+        const m = session.messageHistory[i];
+        if (m.type === "user_message" && m.content) {
+          session.lastUserMessage = m.content.slice(0, 80);
+          break;
+        }
+      }
+
       this.sessions.set(p.id, session);
       count++;
     }
@@ -1248,15 +1261,7 @@ export class WsBridge {
 
   /** Returns the truncated content of the last user message for a session. */
   getLastUserMessage(sessionId: string): string | undefined {
-    const session = this.sessions.get(sessionId);
-    if (!session) return undefined;
-    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
-      const m = session.messageHistory[i];
-      if (m.type === "user_message") {
-        return m.content.slice(0, 80);
-      }
-    }
-    return undefined;
+    return this.sessions.get(sessionId)?.lastUserMessage;
   }
 
   getSessionActivityPreview(sessionId: string): string | undefined {
@@ -2681,6 +2686,7 @@ export class WsBridge {
           ...(imageRefs?.length ? { images: imageRefs } : {}),
         };
         session.messageHistory.push(userHistoryEntry);
+        session.lastUserMessage = (msg.content || "").slice(0, 80);
         // Broadcast user message to all browsers (server-authoritative)
         this.broadcastToBrowsers(session, userHistoryEntry);
         const wasGenerating = session.isGenerating;
