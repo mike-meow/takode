@@ -110,4 +110,12 @@ describe("ensureQuestmasterIntegration", () => {
       "/home/tester/.local/bin/rg",
       expect.stringContaining("grep_args=("),
       "utf-8",
- 
+    );
+    expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
+      "/home/tester/.local/bin/rg",
+      expect.stringContaining("exec grep \"${grep_args[@]}\" -- \"$pattern\" \"${positional[@]:1}\""),
+      "utf-8",
+    );
+    expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/rg", 0o755);
+  });
+});
