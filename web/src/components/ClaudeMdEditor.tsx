@@ -21,12 +21,14 @@ interface ClaudeMdEditorProps {
   /** Git repo root — needed for worktree sessions to match auto-approval configs. */
   repoRoot?: string;
   open: boolean;
+  /** Initial panel to show when opening. */
+  initialView?: "file" | "autoApproval";
   /** Optional file path to preselect when the modal opens. */
   initialPath?: string;
   onClose: () => void;
 }
 
-export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: ClaudeMdEditorProps) {
+export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", initialPath, onClose }: ClaudeMdEditorProps) {
   const [files, setFiles] = useState<ClaudeMdFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -42,7 +44,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: Cl
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    setShowAutoApproval(false);
+    setShowAutoApproval(initialView === "autoApproval");
     Promise.all([
       api.getClaudeMdFiles(cwd),
       api.getAutoApprovalConfigForPath(cwd, repoRoot).catch(() => ({ config: null })),
@@ -55,6 +57,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: Cl
           enabled: aaRes.config.enabled,
           projectPath: aaRes.config.projectPath,
         } : null);
+        setShowAutoApproval(initialView === "autoApproval" && !!aaRes.config);
         if (res.files.length > 0) {
           const idx = initialPath
             ? res.files.findIndex((f) => f.path === initialPath)
@@ -73,7 +76,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: Cl
         setError(e.message);
         setLoading(false);
       });
-  }, [cwd, repoRoot, initialPath]);
+  }, [cwd, repoRoot, initialPath, initialView]);
 
   useEffect(() => {
     if (open) load();
@@ -153,12 +156,14 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialPath, onClose }: Cl
     <>
       {/* Backdrop */}
       <div
+        data-claude-md-editor-root="true"
         className="fixed inset-0 bg-black/40 z-50"
         onClick={handleClose}
       />
 
       {/* Modal */}
       <div
+        data-claude-md-editor-root="true"
         className="fixed inset-4 sm:inset-8 md:inset-x-[10%] md:inset-y-[5%] z-50 flex flex-col bg-cc-bg border border-cc-border rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >

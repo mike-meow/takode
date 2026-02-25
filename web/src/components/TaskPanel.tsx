@@ -517,12 +517,29 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
   const [collapsed, toggle] = usePersistedCollapse("cc-collapse-claudemd");
   const [files, setFiles] = useState<{ path: string; content: string; writable?: boolean }[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [initialEditorView, setInitialEditorView] = useState<"file" | "autoApproval">("file");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [hasAutoApprovalConfig, setHasAutoApprovalConfig] = useState(false);
 
   useEffect(() => {
     if (collapsed) return;
-    api.getClaudeMdFiles(cwd).then((res) => setFiles(res.files)).catch(() => {});
-  }, [cwd, collapsed]);
+    let cancelled = false;
+    Promise.all([
+      api.getClaudeMdFiles(cwd).catch(() => ({ files: [] })),
+      api.getAutoApprovalConfigForPath(cwd, repoRoot).catch(() => ({ config: null })),
+    ]).then(([res, aaRes]) => {
+      if (cancelled) return;
+      setFiles(res.files);
+      setHasAutoApprovalConfig(!!aaRes.config);
+    }).catch(() => {
+      if (cancelled) return;
+      setFiles([]);
+      setHasAutoApprovalConfig(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd, repoRoot, collapsed]);
 
   const relPath = (p: string) => p.startsWith(cwd + "/") ? p.slice(cwd.length + 1) : p;
 
@@ -533,7 +550,10 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
         <div className="px-3 py-2 space-y-1">
           {files.length === 0 ? (
             <button
-              onClick={() => setEditorOpen(true)}
+              onClick={() => {
+                setInitialEditorView("file");
+                setEditorOpen(true);
+              }}
               className="w-full text-left px-2 py-1.5 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
             >
               + Create CLAUDE.md
@@ -543,6 +563,7 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
               <button
                 key={f.path}
                 onClick={() => {
+                  setInitialEditorView("file");
                   setSelectedPath(f.path);
                   setEditorOpen(true);
                 }}
@@ -555,15 +576,32 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
               </button>
             ))
           )}
+          {hasAutoApprovalConfig && (
+            <button
+              onClick={() => {
+                setInitialEditorView("autoApproval");
+                setSelectedPath(null);
+                setEditorOpen(true);
+              }}
+              className="flex items-center gap-2 w-full px-2 py-1.5 text-[11px] text-cc-warning/90 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-warning shrink-0">
+                <path d="M8 1.5a.5.5 0 01.424.235l6.5 10.5A.5.5 0 0114.5 13h-13a.5.5 0 01-.424-.765l6.5-10.5A.5.5 0 018 1.5zM7.5 6v3.5a.5.5 0 001 0V6a.5.5 0 00-1 0zm.5 5.5a.6.6 0 100 1.2.6.6 0 000-1.2z" />
+              </svg>
+              <span className="truncate">Auto-Approval Rules</span>
+            </button>
+          )}
         </div>
       )}
       <ClaudeMdEditor
         cwd={cwd}
         repoRoot={repoRoot}
         open={editorOpen}
+        initialView={initialEditorView}
         initialPath={selectedPath ?? undefined}
         onClose={() => {
           setEditorOpen(false);
+          setInitialEditorView("file");
           setSelectedPath(null);
         }}
       />

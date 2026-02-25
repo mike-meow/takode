@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
-vi.mock("../api.js", () => ({
-  api: {
+const { mockApi } = vi.hoisted(() => ({
+  mockApi: {
     getSessionUsageLimits: vi.fn().mockRejectedValue(new Error("skip")),
     getPRStatus: vi.fn().mockRejectedValue(new Error("skip")),
+    getClaudeMdFiles: vi.fn().mockResolvedValue({ cwd: "/repo", files: [] }),
+    getAutoApprovalConfigForPath: vi.fn().mockResolvedValue({ config: null }),
   },
+}));
+
+vi.mock("../api.js", () => ({
+  api: mockApi,
 }));
 
 vi.mock("./McpPanel.js", () => ({
@@ -66,10 +72,13 @@ vi.mock("../store.js", () => ({
   useStore: (selector: (s: MockStoreState) => unknown) => selector(mockState),
 }));
 
-import { TaskPanel, CodexRateLimitsSection, CodexTokenDetailsSection } from "./TaskPanel.js";
+import { TaskPanel, CodexRateLimitsSection, CodexTokenDetailsSection, ClaudeMdCollapsible } from "./TaskPanel.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  mockApi.getClaudeMdFiles.mockResolvedValue({ cwd: "/repo", files: [] });
+  mockApi.getAutoApprovalConfigForPath.mockResolvedValue({ config: null });
   resetStore();
 });
 
@@ -108,6 +117,33 @@ describe("TaskPanel", () => {
     expect(screen.getByTestId("mcp-section")).toBeInTheDocument();
     expect(screen.getByTestId("task-panel-content")).toHaveClass("overflow-y-auto");
     expect(container.querySelectorAll(".overflow-y-auto")).toHaveLength(1);
+  });
+
+  it("shows Auto-Approval Rules in CLAUDE.md section when config exists", async () => {
+    mockApi.getClaudeMdFiles.mockResolvedValue({
+      cwd: "/repo",
+      files: [],
+    });
+    mockApi.getAutoApprovalConfigForPath.mockResolvedValue({
+      config: {
+        slug: "repo",
+        projectPath: "/repo",
+        label: "Repo defaults",
+        criteria: "Allow harmless commands",
+        enabled: true,
+      },
+    });
+
+    render(<ClaudeMdCollapsible cwd="/repo" repoRoot="/repo" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Auto-Approval Rules" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Auto-Approval Rules" }));
+    await waitFor(() => {
+      expect(screen.getByText("Read-only")).toBeInTheDocument();
+    });
   });
 });
 

@@ -40,6 +40,10 @@ export function SessionInfoPopover({
   // Close on click outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      const targetEl = e.target instanceof Element ? e.target : null;
+      if (targetEl?.closest("[data-claude-md-editor-root='true']")) {
+        return;
+      }
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
       }

@@ -87,4 +87,24 @@ describe("SessionInfoPopover", () => {
     expect(screen.queryByRole("button", { name: "Quest without id" })).toBeNull();
     expect(screen.getByText("Quest without id")).toBeInTheDocument();
   });
+
+  it("does not close when clicking inside ClaudeMdEditor portal content", () => {
+    resetStore([]);
+    const onClose = vi.fn();
+    vi.useFakeTimers();
+    try {
+      render(<SessionInfoPopover sessionId="s1" onClose={onClose} />);
+      vi.runAllTimers();
+
+      const modalNode = document.createElement("div");
+      modalNode.setAttribute("data-claude-md-editor-root", "true");
+      document.body.appendChild(modalNode);
+      fireEvent.mouseDown(modalNode);
+
+      expect(onClose).not.toHaveBeenCalled();
+      modalNode.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

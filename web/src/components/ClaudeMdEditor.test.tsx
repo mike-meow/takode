@@ -104,4 +104,34 @@ describe("ClaudeMdEditor", () => {
     });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("opens directly in auto-approval view when requested", async () => {
+    mockApi.getClaudeMdFiles.mockResolvedValue({
+      cwd: "/repo",
+      files: [{ path: "/repo/CLAUDE.md", content: "root file", writable: true }],
+    });
+    mockApi.getAutoApprovalConfigForPath.mockResolvedValue({
+      config: {
+        slug: "repo",
+        projectPath: "/repo",
+        label: "Repo defaults",
+        criteria: "Allow harmless commands",
+        enabled: true,
+      },
+    });
+
+    render(
+      <ClaudeMdEditor
+        cwd="/repo"
+        open
+        initialView="autoApproval"
+        onClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Read-only")).toBeTruthy();
+      expect(screen.getByText("Allow harmless commands")).toBeTruthy();
+    });
+  });
 });
