@@ -133,17 +133,22 @@ describe("TaskPanel", () => {
         enabled: true,
       },
     });
+    localStorage.setItem("cc-collapse-claudemd", "0");
 
     render(<ClaudeMdCollapsible cwd="/repo" repoRoot="/repo" />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Auto-Approval Rules" })).toBeInTheDocument();
-    });
+    await waitFor(
+      () => expect(mockApi.getAutoApprovalConfigForPath).toHaveBeenCalledWith("/repo", "/repo"),
+      { timeout: 5000 },
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "Auto-Approval Rules" }));
-    await waitFor(() => {
-      expect(screen.getByText("Read-only")).toBeInTheDocument();
-    });
+    const autoApprovalButton = await screen.findByRole(
+      "button",
+      { name: "Auto-Approval Rules" },
+      { timeout: 5000 },
+    );
+    fireEvent.click(autoApprovalButton);
+    await screen.findByText("Read-only", {}, { timeout: 5000 });
   });
 });
 

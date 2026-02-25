@@ -46,6 +46,10 @@ describe("Codex adapter method drift vs upstream protocol snapshot", () => {
       "item/updated",
       "codex/event/stream_error",
       "codex/event/error",
+      // Observed in live Codex sessions for apply_patch diff metadata but absent
+      // from the pinned upstream snapshot in this repo.
+      "codex/event/patch_apply_begin",
+      "codex/event/patch_apply_end",
     ]);
 
     const legacyServerRequests = new Set([
