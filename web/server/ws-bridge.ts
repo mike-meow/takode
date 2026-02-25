@@ -2473,7 +2473,7 @@ export class WsBridge {
       // Prefer local image paths for Codex user turns so thread history stores
       // compact local references instead of large data: URLs. If any path can't
       // be resolved, fall back to compressed inline base64 payloads.
-      let adapterMsg = msg;
+      let adapterMsg: BrowserOutgoingMessage = msg;
       if (msg.type === "user_message" && msg.images?.length) {
         let localImagePaths: string[] | undefined;
 

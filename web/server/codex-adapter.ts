@@ -706,7 +706,7 @@ export class CodexAdapter {
           version: "1.0.0",
         },
         capabilities: {
-          experimentalApi: false,
+          experimentalApi: true,
         },
       }) as Record<string, unknown>;
 
@@ -2277,7 +2277,8 @@ export class CodexAdapter {
   private isCollaborationModeUnsupportedError(err: unknown): boolean {
     const text = String(err).toLowerCase();
     return text.includes("collaborationmode")
-      && (text.includes("unknown field") || text.includes("invalid params") || text.includes("-32602"));
+      && (text.includes("unknown field") || text.includes("invalid params")
+        || text.includes("-32602") || text.includes("experimentalapi"));
   }
 
   private async listAllMcpServerStatuses(): Promise<CodexMcpServerStatus[]> {
