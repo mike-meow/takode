@@ -63,10 +63,21 @@ async function del<T = unknown>(path: string, body?: object): Promise<T> {
 }
 
 export async function checkHealth(): Promise<boolean> {
+  const start = performance.now();
   try {
     const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(5000) });
+    const elapsed = performance.now() - start;
+    if (elapsed > 2000) {
+      console.warn(`[health] slow response: ${Math.round(elapsed)}ms`);
+    }
     return res.ok;
-  } catch {
+  } catch (err) {
+    const elapsed = performance.now() - start;
+    console.warn(
+      `[health] failed after ${Math.round(elapsed)}ms:`,
+      err instanceof Error ? err.message : err,
+      `visibility=${document.visibilityState}`,
+    );
     return false;
   }
 }

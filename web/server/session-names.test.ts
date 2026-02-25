@@ -14,6 +14,7 @@ import {
   getAllNames,
   removeName,
   _resetForTest,
+  _flushForTest,
 } from "./session-names.js";
 
 let tempDir: string;
@@ -37,8 +38,10 @@ describe("session-names", () => {
     expect(getName("s1")).toBe("Fix auth bug");
   });
 
-  it("persists to disk", () => {
+  // Persistence tests must await _flushForTest() since writes are now async
+  it("persists to disk", async () => {
     setName("s1", "My Session");
+    await _flushForTest();
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
     const data = JSON.parse(raw);
     expect(data).toEqual({ s1: "My Session" });
@@ -54,10 +57,11 @@ describe("session-names", () => {
     expect(getName("s3")).toBeUndefined();
   });
 
-  it("removeName deletes a name", () => {
+  it("removeName deletes a name", async () => {
     setName("s1", "Session One");
     removeName("s1");
     expect(getName("s1")).toBeUndefined();
+    await _flushForTest();
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
     expect(JSON.parse(raw)).toEqual({});
   });
