@@ -135,6 +135,7 @@ describe("QuestmasterPage verification inbox", () => {
     render(<QuestmasterPage />);
 
     expect(screen.getByText("Verification Inbox")).toBeInTheDocument();
+    expect(screen.getByText(/^Verification$/)).toBeInTheDocument();
     expect(screen.getByText("Inbox quest")).toBeInTheDocument();
     expect(screen.getByText("Regular verification quest")).toBeInTheDocument();
   });

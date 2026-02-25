@@ -915,6 +915,50 @@ export function QuestmasterPage() {
   const filtered =
     filter === "all" ? afterTags : afterTags.filter((q) => q.status === filter);
 
+  type QuestSection = {
+    key: string;
+    label: string;
+    dotClass: string;
+    textClass: string;
+    quests: QuestmasterTask[];
+    collapseStatus?: QuestStatus;
+  };
+
+  const showVerificationSplit = filter === "all" || filter === "needs_verification";
+  const verificationInboxQuests = showVerificationSplit
+    ? filtered.filter((q) => isVerificationInboxUnread(q))
+    : [];
+  const regularVerificationQuests = showVerificationSplit
+    ? filtered.filter((q) => q.status === "needs_verification" && !isVerificationInboxUnread(q))
+    : [];
+
+  const questSections: QuestSection[] = [];
+  if (showVerificationSplit && verificationInboxQuests.length > 0) {
+    questSections.push({
+      key: "verification_inbox",
+      label: "Verification Inbox",
+      dotClass: "bg-amber-400",
+      textClass: "text-amber-400",
+      quests: verificationInboxQuests,
+    });
+  }
+
+  for (const status of (filter === "all" ? DISPLAY_ORDER : ALL_STATUSES)) {
+    const sectionQuests = status === "needs_verification" && showVerificationSplit
+      ? regularVerificationQuests
+      : filtered.filter((q) => q.status === status);
+    if (sectionQuests.length === 0) continue;
+    const cfg = STATUS_CONFIG[status];
+    questSections.push({
+      key: status,
+      label: cfg.label,
+      dotClass: cfg.dot,
+      textClass: cfg.text,
+      quests: sectionQuests,
+      ...(filter === "all" ? { collapseStatus: status } : {}),
+    });
+  }
+
   function renderSearchHighlight(text: string): React.ReactNode {
     if (!searchText) return text;
     const parts = getHighlightParts(text, searchText);
@@ -1453,53 +1497,51 @@ export function QuestmasterPage() {
                   : "No quests match this filter."}
             </div>
           ) : (
-            (filter === "all" ? DISPLAY_ORDER : ALL_STATUSES)
-              .filter((status) => filtered.some((q) => q.status === status))
-              .map((status) => {
-                const groupQuests = filtered.filter((q) => q.status === status);
-                const inboxQuests =
-                  status === "needs_verification"
-                    ? groupQuests.filter((q) => isVerificationInboxUnread(q))
-                    : [];
-                const regularQuests =
-                  status === "needs_verification"
-                    ? groupQuests.filter((q) => !isVerificationInboxUnread(q))
-                    : groupQuests;
-                const orderedGroupQuests =
-                  status === "needs_verification"
-                    ? [...inboxQuests, ...regularQuests]
-                    : groupQuests;
-                const gcfg = STATUS_CONFIG[status];
-                const isCollapsed = filter === "all" && collapsedGroups.has(status);
+            questSections.map((section) => {
+                const isCollapsible = !!section.collapseStatus;
+                const isCollapsed = !!section.collapseStatus && collapsedGroups.has(section.collapseStatus);
+                const showSectionHeader =
+                  filter === "all" ||
+                  (filter === "needs_verification" &&
+                    (section.key === "verification_inbox" || section.key === "needs_verification"));
                 return (
-                  <div key={status}>
-                    {/* Group header (only when showing all) */}
-                    {filter === "all" && (
-                      <button
-                        onClick={() => setCollapsedGroups((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(status)) next.delete(status);
-                          else next.add(status);
-                          return next;
-                        })}
-                        className="flex items-center gap-2 mb-1.5 mt-3 first:mt-0 cursor-pointer group/gh w-full text-left"
-                      >
-                        <svg
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          className={`w-3 h-3 text-cc-muted/40 group-hover/gh:text-cc-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                  <div key={section.key}>
+                    {showSectionHeader && (
+                      isCollapsible ? (
+                        <button
+                          onClick={() => setCollapsedGroups((prev) => {
+                            const next = new Set(prev);
+                            if (section.collapseStatus && next.has(section.collapseStatus)) next.delete(section.collapseStatus);
+                            else if (section.collapseStatus) next.add(section.collapseStatus);
+                            return next;
+                          })}
+                          className="flex items-center gap-2 mb-1.5 mt-3 first:mt-0 cursor-pointer group/gh w-full text-left"
                         >
-                          <path d="M6 3l5 5-5 5V3z" />
-                        </svg>
-                        <span className={`w-1.5 h-1.5 rounded-full ${gcfg.dot}`} />
-                        <span className={`text-xs font-medium ${gcfg.text}`}>
-                          {gcfg.label}
-                        </span>
-                        <span className="text-[10px] text-cc-muted/50">{groupQuests.length}</span>
-                      </button>
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            className={`w-3 h-3 text-cc-muted/40 group-hover/gh:text-cc-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                          >
+                            <path d="M6 3l5 5-5 5V3z" />
+                          </svg>
+                          <span className={`w-1.5 h-1.5 rounded-full ${section.dotClass}`} />
+                          <span className={`text-xs font-medium ${section.textClass}`}>
+                            {section.label}
+                          </span>
+                          <span className="text-[10px] text-cc-muted/50">{section.quests.length}</span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 mb-1.5 mt-3 first:mt-0 px-0.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${section.dotClass}`} />
+                          <span className={`text-xs font-medium ${section.textClass}`}>
+                            {section.label}
+                          </span>
+                          <span className="text-[10px] text-cc-muted/50">{section.quests.length}</span>
+                        </div>
+                      )
                     )}
                     {!isCollapsed && <div className="space-y-2">
-                    {orderedGroupQuests.map((quest, questIndex) => {
+                    {section.quests.map((quest) => {
               const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
               const cfg = STATUS_CONFIG[quest.status];
               const isExpanded = expandedId === quest.questId;
@@ -1516,32 +1558,9 @@ export function QuestmasterPage() {
               const questSessionId = "sessionId" in quest ? (quest as { sessionId: string }).sessionId : null;
               const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
               const questSessionName = questSessionId ? (sessionNames.get(questSessionId) || (isKnownSession ? questSessionId.slice(0, 8) : questSessionId)) : null;
-              const showInboxHeader =
-                status === "needs_verification" &&
-                inboxQuests.length > 0 &&
-                questIndex === 0;
-              const showRegularHeader =
-                status === "needs_verification" &&
-                inboxQuests.length > 0 &&
-                regularQuests.length > 0 &&
-                questIndex === inboxQuests.length;
 
               return (
                 <div key={quest.id}>
-                  {showInboxHeader && (
-                    <div className="px-2 py-1 text-[10px] text-amber-400/90 font-medium flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      Verification Inbox
-                      <span className="text-cc-muted/60 font-normal">{inboxQuests.length}</span>
-                    </div>
-                  )}
-                  {showRegularHeader && (
-                    <div className="px-2 py-1 text-[10px] text-purple-400/80 font-medium flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                      Verification
-                      <span className="text-cc-muted/60 font-normal">{regularQuests.length}</span>
-                    </div>
-                  )}
                   <div
                     data-quest-id={quest.questId}
                     className={`border rounded-xl transition-colors ${
