@@ -223,6 +223,20 @@ describe("MessageBubble - assistant messages", () => {
     expect((time.textContent || "").length).toBeGreaterThan(0);
   });
 
+  it("shows assistant turn duration next to the timestamp when present", () => {
+    const ts = 1700000003000;
+    const msg = makeMessage({
+      role: "assistant",
+      content: "Timed response",
+      timestamp: ts,
+      turnDurationMs: 5200,
+    });
+    render(<MessageBubble message={msg} />);
+
+    const time = screen.getByTestId("message-timestamp");
+    expect(time.textContent).toContain("5.2s");
+  });
+
   it("renders assistant message with text content blocks", () => {
     const msg = makeMessage({
       role: "assistant",

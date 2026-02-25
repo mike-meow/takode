@@ -373,6 +373,7 @@ function handleParsedMessage(
         parentToolUseId: data.parent_tool_use_id,
         model: msg.model,
         stopReason: msg.stop_reason,
+        turnDurationMs: data.turn_duration_ms,
         cliUuid: (data as Record<string, unknown>).uuid as string | undefined,
       };
       // Server accumulates content blocks for same-ID messages (parallel tool calls).
@@ -388,6 +389,9 @@ function handleParsedMessage(
           contentBlocks: mergedBlocks,
           timestamp: data.timestamp || existing.timestamp,
           stopReason: msg.stop_reason || existing.stopReason,
+          ...(typeof data.turn_duration_ms === "number"
+            ? { turnDurationMs: data.turn_duration_ms }
+            : {}),
         });
       } else {
         store.appendMessage(sessionId, chatMsg);

@@ -3,8 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { QuestmasterTask } from "../types.js";
 
-const mockMarkQuestVerificationRead = vi.fn().mockResolvedValue({});
-const mockMarkQuestVerificationInbox = vi.fn().mockResolvedValue({});
+const mockMarkQuestVerificationRead = vi.fn();
+const mockMarkQuestVerificationInbox = vi.fn();
 
 vi.mock("../api.js", () => ({
   api: {
@@ -42,6 +42,7 @@ type MockStoreState = {
   quests: QuestmasterTask[];
   questsLoading: boolean;
   refreshQuests: ReturnType<typeof vi.fn>;
+  setQuests: (quests: QuestmasterTask[]) => void;
   sdkSessions: Array<{ sessionId: string; state: "connected"; cwd: string; createdAt: number; archived: boolean }>;
   sessionNames: Map<string, string>;
   sessions: Map<string, Record<string, unknown>>;
@@ -84,6 +85,9 @@ function resetState(overrides: Partial<MockStoreState> = {}) {
     quests: [],
     questsLoading: false,
     refreshQuests: vi.fn().mockResolvedValue(undefined),
+    setQuests: (quests: QuestmasterTask[]) => {
+      mockState.quests = quests;
+    },
     sdkSessions: [],
     sessionNames: new Map(),
     sessions: new Map(),
@@ -113,21 +117,28 @@ import { QuestmasterPage } from "./QuestmasterPage.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetState({
-    quests: [
-      buildVerificationQuest({
-        id: "q-1-v3",
-        questId: "q-1",
-        title: "Inbox quest",
-        verificationInboxUnread: true,
-      }),
-      buildVerificationQuest({
-        id: "q-2-v3",
-        questId: "q-2",
-        title: "Regular verification quest",
-        verificationInboxUnread: false,
-      }),
-    ],
+  const inboxQuest = buildVerificationQuest({
+    id: "q-1-v3",
+    questId: "q-1",
+    title: "Inbox quest",
+    verificationInboxUnread: true,
+  });
+  const regularQuest = buildVerificationQuest({
+    id: "q-2-v3",
+    questId: "q-2",
+    title: "Regular verification quest",
+    verificationInboxUnread: false,
+  });
+  resetState({ quests: [inboxQuest, regularQuest] });
+  mockMarkQuestVerificationRead.mockImplementation(async (questId: string) => {
+    const quest = mockState.quests.find((q) => q.questId === questId);
+    if (!quest || quest.status !== "needs_verification") throw new Error("quest not found");
+    return { ...quest, verificationInboxUnread: false } as QuestmasterTask;
+  });
+  mockMarkQuestVerificationInbox.mockImplementation(async (questId: string) => {
+    const quest = mockState.quests.find((q) => q.questId === questId);
+    if (!quest || quest.status !== "needs_verification") throw new Error("quest not found");
+    return { ...quest, verificationInboxUnread: true } as QuestmasterTask;
   });
   window.location.hash = "#/questmaster";
 });
@@ -154,7 +165,9 @@ describe("QuestmasterPage verification inbox", () => {
       expect(mockMarkQuestVerificationRead).toHaveBeenCalledWith("q-1");
     });
     await waitFor(() => {
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(2);
+      const quest = mockState.quests.find((q) => q.questId === "q-1");
+      expect(quest).toBeTruthy();
+      expect((quest as { verificationInboxUnread?: boolean }).verificationInboxUnread).toBe(false);
     });
   });
 
@@ -169,7 +182,9 @@ describe("QuestmasterPage verification inbox", () => {
       expect(mockMarkQuestVerificationInbox).toHaveBeenCalledWith("q-2");
     });
     await waitFor(() => {
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(2);
+      const quest = mockState.quests.find((q) => q.questId === "q-2");
+      expect(quest).toBeTruthy();
+      expect((quest as { verificationInboxUnread?: boolean }).verificationInboxUnread).toBe(true);
     });
   });
 

@@ -222,7 +222,7 @@ These are completely different systems. Do NOT confuse them.
 ## Commands
 
 \`\`\`
-quest list   [--status <s>] [--json]                          List quests
+quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--json]  List quests
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts

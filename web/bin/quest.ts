@@ -40,6 +40,7 @@ import {
   deleteQuest,
 } from "../server/quest-store.js";
 import type { QuestmasterTask } from "../server/quest-types.js";
+import { applyQuestListFilters } from "../server/quest-list-filters.js";
 import { getName } from "../server/session-names.js";
 
 // ─── Arg parsing helpers ────────────────────────────────────────────────────
@@ -252,12 +253,14 @@ function die(message: string): never {
 // ─── Commands ───────────────────────────────────────────────────────────────
 
 async function cmdList(): Promise<void> {
-  let quests = await listQuests();
+  const quests = applyQuestListFilters(await listQuests(), {
+    status: option("status"),
+    tags: option("tags"),
+    tag: option("tag"),
+    session: option("session"),
+    text: option("text"),
+  });
   const archivedMap = await getSessionArchivedMap();
-  const statusFilter = option("status");
-  if (statusFilter) {
-    quests = quests.filter((q) => q.status === statusFilter);
-  }
 
   if (jsonOutput) {
     out(quests);
@@ -709,7 +712,8 @@ function showHelp(): void {
 Usage: quest <command> [options]
 
 Commands:
-  list   [--status <s>] [--json]                         List quests
+  list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--json]
+                                                         List quests with optional filters
   mine   [--json]                                        List quests owned by current session
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history

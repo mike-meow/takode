@@ -183,6 +183,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const quests = useStore((s) => s.quests);
   const questsLoading = useStore((s) => s.questsLoading);
   const refreshQuests = useStore((s) => s.refreshQuests);
+  const setQuests = useStore((s) => s.setQuests);
   const sdkSessions = useStore((s) => s.sdkSessions);
   const sessionNames = useStore((s) => s.sessionNames);
   const sessions = useStore((s) => s.sessions);
@@ -496,12 +497,17 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     try {
       const description = newDescription.trim() || undefined;
       const tags = extractHashtags(`${title}\n${description ?? ""}`);
-      await api.createQuest({
+      const createdQuest = await api.createQuest({
         title,
         description,
         tags: tags.length > 0 ? tags : undefined,
         images: createImages.length > 0 ? createImages : undefined,
       });
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        [createdQuest, ...currentQuests.filter((q) => q.questId !== createdQuest.questId)]
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
       setNewTitle("");
       setNewDescription("");
       setCreateImages([]);
@@ -509,7 +515,6 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       setEditorAutocompleteTarget(null);
       setEditorAutocompleteIndex(0);
       setShowCreateForm(false);
-      await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -526,13 +531,18 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       const tags = extracted.length > 0
         ? extracted
         : (currentQuest?.tags ?? []);
-      await api.patchQuest(questId, {
+      const updatedQuest = await api.patchQuest(questId, {
         title: editTitle.trim() || undefined,
         description: nextDescription,
         tags: tags.length > 0 ? tags : undefined,
       });
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
       setEditingId(null);
-      await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -541,8 +551,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   async function handleTransition(questId: string, status: QuestStatus) {
     setError("");
     try {
-      await api.transitionQuest(questId, { status });
-      await refreshQuests();
+      const updatedQuest = await api.transitionQuest(questId, { status });
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -554,7 +569,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       await api.deleteQuest(questId);
       if (expandedId === questId) setExpandedId(null);
       setConfirmDeleteId(null);
-      await refreshQuests();
+      const currentQuests = useStore.getState().quests;
+      setQuests(currentQuests.filter((q) => q.questId !== questId));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -567,8 +583,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   ) {
     setError("");
     try {
-      await api.checkQuestVerification(questId, index, checked);
-      await refreshQuests();
+      const updatedQuest = await api.checkQuestVerification(questId, index, checked);
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -577,8 +598,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   async function handleMarkVerificationRead(questId: string) {
     setError("");
     try {
-      await api.markQuestVerificationRead(questId);
-      await refreshQuests();
+      const updatedQuest = await api.markQuestVerificationRead(questId);
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -587,8 +613,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   async function handleMarkVerificationInbox(questId: string) {
     setError("");
     try {
-      await api.markQuestVerificationInbox(questId);
-      await refreshQuests();
+      const updatedQuest = await api.markQuestVerificationInbox(questId);
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -599,13 +630,23 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     setFeedbackSubmitting(true);
     setError("");
     try {
-      await api.addQuestFeedback(questId, text, "human", feedbackImages.length > 0 ? feedbackImages : undefined);
+      const updatedQuest = await api.addQuestFeedback(
+        questId,
+        text,
+        "human",
+        feedbackImages.length > 0 ? feedbackImages : undefined,
+      );
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
       setFeedbackDraft("");
       setFeedbackImages([]);
       if (feedbackTextareaRef.current) {
         feedbackTextareaRef.current.style.height = "auto";
       }
-      await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -619,12 +660,17 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     setFeedbackSubmitting(true);
     setError("");
     try {
-      await api.editQuestFeedback(editingFeedback.questId, editingFeedback.index, {
+      const updatedQuest = await api.editQuestFeedback(editingFeedback.questId, editingFeedback.index, {
         text: editingFeedback.text,
         images: editingFeedback.images.length > 0 ? editingFeedback.images : undefined,
       });
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
       setEditingFeedback(null);
-      await refreshQuests();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -635,8 +681,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   async function handleToggleAddressed(questId: string, index: number) {
     setError("");
     try {
-      await api.toggleFeedbackAddressed(questId, index);
-      await refreshQuests();
+      const updatedQuest = await api.toggleFeedbackAddressed(questId, index);
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -712,23 +763,36 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
   async function handleImageUpload(questId: string, files: FileList | File[]) {
     setError("");
+    let lastUpdatedQuest: QuestmasterTask | null = null;
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) continue;
       try {
-        await api.uploadQuestImage(questId, file);
+        lastUpdatedQuest = await api.uploadQuestImage(questId, file);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
         return;
       }
     }
-    await refreshQuests();
+    if (lastUpdatedQuest) {
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === lastUpdatedQuest.questId ? lastUpdatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
+    }
   }
 
   async function handleRemoveImage(questId: string, imageId: string) {
     setError("");
     try {
-      await api.removeQuestImage(questId, imageId);
-      await refreshQuests();
+      const updatedQuest = await api.removeQuestImage(questId, imageId);
+      const currentQuests = useStore.getState().quests;
+      setQuests(
+        currentQuests
+          .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+          .sort((a, b) => b.createdAt - a.createdAt),
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }

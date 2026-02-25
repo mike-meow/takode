@@ -2080,7 +2080,24 @@ export class WsBridge {
       },
     });
 
+    const turnDurationMs =
+      typeof session.generationStartedAt === "number"
+        ? Math.max(0, Date.now() - session.generationStartedAt)
+        : undefined;
+
     this.setGenerating(session, false, "result");
+
+    // Persist turn duration on the latest top-level assistant message and
+    // rebroadcast it so the chat feed can render the completed turn timing.
+    if (typeof turnDurationMs === "number") {
+      const latestAssistant = session.messageHistory.findLast(
+        (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id === null,
+      ) as (BrowserIncomingMessage & { type: "assistant"; turn_duration_ms?: number }) | undefined;
+      if (latestAssistant) {
+        latestAssistant.turn_duration_ms = turnDurationMs;
+        this.broadcastToBrowsers(session, latestAssistant);
+      }
+    }
 
     // Safety net: clear any stale pending permissions when a turn completes.
     // A completed turn means the CLI has no outstanding tool calls, so any

@@ -1301,9 +1301,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   }
 
   // Auto-scroll: on initial render, restore saved scroll position or jump to
-  // bottom. On subsequent renders (streaming), smooth-scroll if near bottom.
-  // Streaming scroll is throttled to avoid layout thrashing on iOS Safari
-  // when the DOM contains many image elements.
+  // bottom. On subsequent renders, keep "sticky to bottom" behavior if the
+  // user is near bottom:
+  // - during streaming: use immediate alignment to avoid smooth-scroll lag
+  // - otherwise: keep smooth scrolling for non-streaming message arrivals
+  // Throttled to avoid layout thrashing on heavy feeds.
   const lastScrollTime = useRef(0);
   useEffect(() => {
     if (isInitialRender.current) {
@@ -1328,17 +1330,29 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     }
     if (isNearBottom.current) {
       const now = Date.now();
-      if (now - lastScrollTime.current >= 200) {
+      const throttleMs = streamingText ? 80 : 200;
+      if (now - lastScrollTime.current >= throttleMs) {
         lastScrollTime.current = now;
         const el = containerRef.current;
-        if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        if (el) {
+          if (streamingText) {
+            // Keep up with token streaming without animation backlog.
+            el.scrollTop = el.scrollHeight;
+          } else {
+            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          }
+        }
       }
     }
   }, [messages.length, streamingText]);
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      isNearBottom.current = true;
+      setShowScrollButton(false);
+    }
   }, []);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
@@ -1531,7 +1545,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           )}
           {/* Go to bottom */}
           <button
-            onClick={() => containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" })}
+            onClick={scrollToBottom}
             className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
             title="Go to bottom"
             aria-label="Go to bottom"

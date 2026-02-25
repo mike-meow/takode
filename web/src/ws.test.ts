@@ -413,6 +413,46 @@ describe("handleMessage: assistant", () => {
     expect(msgs[0].timestamp).toBe(2500);
   });
 
+  it("updates turn duration when an existing assistant message is re-broadcast with duration", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "assistant",
+      timestamp: 1000,
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "done soon" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    fireMessage({
+      type: "assistant",
+      timestamp: 1000,
+      turn_duration_ms: 4200,
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "done soon" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].turnDurationMs).toBe(4200);
+  });
+
   it("tracks changed files using session cwd for resolving relative tool paths", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });

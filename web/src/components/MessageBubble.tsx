@@ -20,11 +20,31 @@ function formatMessageTime(timestamp: number): string {
   });
 }
 
-function MessageTimestamp({ timestamp, align = "left" }: { timestamp: number; align?: "left" | "right" }) {
+function formatTurnDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  if (ms < 100) return "<0.1s";
+  const seconds = ms / 1000;
+  if (seconds < 10) return `${seconds.toFixed(1).replace(/\.0$/, "")}s`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
+function MessageTimestamp({
+  timestamp,
+  align = "left",
+  turnDurationMs,
+}: {
+  timestamp: number;
+  align?: "left" | "right";
+  turnDurationMs?: number;
+}) {
   const d = new Date(timestamp);
   if (Number.isNaN(d.getTime())) return null;
   const timeText = formatMessageTime(timestamp);
   if (!timeText) return null;
+  const durationText = typeof turnDurationMs === "number" ? formatTurnDuration(turnDurationMs) : "";
   return (
     <time
       data-testid="message-timestamp"
@@ -32,7 +52,7 @@ function MessageTimestamp({ timestamp, align = "left" }: { timestamp: number; al
       title={d.toLocaleString()}
       className={`block mt-1 text-[11px] text-cc-muted/70 ${align === "right" ? "text-right" : "text-left"}`}
     >
-      {timeText}
+      {durationText ? `${timeText} · ${durationText}` : timeText}
     </time>
   );
 }
@@ -376,7 +396,7 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
         {!hidePaw && <PawTrailAvatar />}
         <div ref={contentRef} className="flex-1 min-w-0 pr-6">
           <MarkdownContent text={message.content} />
-          {showTimestamp && <MessageTimestamp timestamp={message.timestamp} />}
+          {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
         </div>
         <CopyMessageButton message={message} contentRef={contentRef} />
       </div>
@@ -399,7 +419,7 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
           // Grouped tool_uses
           return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
         })}
-        {showTimestamp && <MessageTimestamp timestamp={message.timestamp} />}
+        {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
       </div>
       {hasTextContent && <CopyMessageButton message={message} contentRef={contentRef} />}
     </div>

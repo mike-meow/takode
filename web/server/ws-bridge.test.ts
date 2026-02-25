@@ -1219,6 +1219,54 @@ describe("CLI message routing", () => {
     expect(resultBroadcast.data.total_cost_usd).toBe(0.05);
   });
 
+  it("result: annotates latest top-level assistant message with turn duration and re-broadcasts it", () => {
+    const assistantMsg = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-turn-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Completed turn" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 50, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "uuid-turn-1",
+      session_id: "s1",
+    });
+    bridge.handleCLIMessage(cli, assistantMsg);
+
+    const session = bridge.getSession("s1")!;
+    session.isGenerating = true;
+    session.generationStartedAt = Date.now() - 2500;
+
+    const resultMsg = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "Done!",
+      duration_ms: 2500,
+      duration_api_ms: 2000,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 50, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-turn-result",
+      session_id: "s1",
+    });
+    bridge.handleCLIMessage(cli, resultMsg);
+
+    const latestAssistant = session.messageHistory.findLast((m: any) => m.type === "assistant") as any;
+    expect(typeof latestAssistant.turn_duration_ms).toBe("number");
+    expect(latestAssistant.turn_duration_ms).toBeGreaterThanOrEqual(2000);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const assistantRebroadcast = [...calls].reverse().find((c: any) => c.type === "assistant" && c.message?.id === "msg-turn-1");
+    expect(assistantRebroadcast).toBeDefined();
+    expect(typeof assistantRebroadcast.turn_duration_ms).toBe("number");
+  });
+
   it("result: refreshes git branch and broadcasts session_update when branch changes", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/new-branch\n";
