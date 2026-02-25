@@ -1,15 +1,16 @@
 /**
  * Per-project auto-approval config store.
  *
- * Each project (identified by an absolute directory path) can have its own
- * natural-language auto-approval criteria. Configs live as individual JSON
- * files in `~/.companion/auto-approval/`, following the env-manager pattern.
+ * All configs live in a single JSON file (`~/.companion/auto-approval.json`)
+ * as an array. This minimizes NFS round-trips: one readFile to load, one
+ * writeFile to save — no readdir or per-file I/O.
  *
- * All file I/O is async to avoid blocking the event loop on NFS.
+ * Writes are chained via `_pendingWrite` (same pattern as settings-manager.ts)
+ * to prevent concurrent writes from interleaving.
  */
-import { readdir, readFile, writeFile, unlink, mkdir, access } from "node:fs/promises";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFile, writeFile, readdir } from "node:fs/promises";
+import { mkdirSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 
@@ -20,7 +21,7 @@ export interface AutoApprovalConfig {
   projectPath: string;
   /** Human-readable label (e.g. "companion", "my-api") */
   label: string;
-  /** Stable slug derived from hashing projectPath — used as filename */
+  /** Stable slug derived from hashing projectPath — used as identifier */
   slug: string;
   /** Free-form natural language criteria for auto-approval */
   criteria: string;
@@ -33,26 +34,78 @@ export interface AutoApprovalConfig {
 // ─── Paths ──────────────────────────────────────────────────────────────────
 
 const COMPANION_DIR = join(homedir(), ".companion");
-let storeDir = join(COMPANION_DIR, "auto-approval");
+let storePath = join(COMPANION_DIR, "auto-approval.json");
 
-// Cold-path: ensure dir exists at module load so first async call never races.
-mkdirSync(storeDir, { recursive: true });
+// Cold-path: ensure parent dir exists at module load.
+mkdirSync(dirname(storePath), { recursive: true }); // sync-ok: cold path, once at module load
 
-async function ensureDir(): Promise<void> {
-  await mkdir(storeDir, { recursive: true });
+/** Write chain to prevent concurrent writes from interleaving. */
+let _pendingWrite: Promise<void> = Promise.resolve();
+
+// ─── Migration from old per-file store ──────────────────────────────────────
+
+/**
+ * Derive the old per-file store directory from the current store path's parent.
+ * In production: ~/.companion/auto-approval.json → ~/.companion/auto-approval/
+ * In tests: /tmp/.../auto-approval.json → /tmp/.../auto-approval/ (won't exist)
+ */
+function oldStoreDirForMigration(): string {
+  const base = storePath.replace(/\.json$/, "");
+  return base; // e.g. ~/.companion/auto-approval
 }
 
-async function fileExists(path: string): Promise<boolean> {
+async function migrateFromOldStore(): Promise<AutoApprovalConfig[]> {
   try {
-    await access(path);
-    return true;
+    const oldDir = oldStoreDirForMigration();
+    if (!existsSync(oldDir)) return []; // sync-ok: cold path, migration runs once
+    const files = (await readdir(oldDir)).filter((f) => f.endsWith(".json"));
+    if (files.length === 0) return [];
+    const configs: AutoApprovalConfig[] = [];
+    for (const file of files) {
+      try {
+        const raw = await readFile(join(oldDir, file), "utf-8");
+        configs.push(JSON.parse(raw) as AutoApprovalConfig);
+      } catch {
+        // Skip corrupt files
+      }
+    }
+    return configs;
   } catch {
-    return false;
+    return [];
   }
 }
 
-function filePath(slug: string): string {
-  return join(storeDir, `${slug}.json`);
+// ─── Internal I/O ───────────────────────────────────────────────────────────
+
+async function readAll(): Promise<AutoApprovalConfig[]> {
+  // Wait for any in-flight write to complete before reading, so we never
+  // read stale data when createConfig/updateConfig/deleteConfig are called
+  // in quick succession.
+  await _pendingWrite;
+  try {
+    const raw = await readFile(storePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err: unknown) {
+    // File doesn't exist yet — try migrating from old per-file store
+    if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "ENOENT") {
+      const migrated = await migrateFromOldStore();
+      if (migrated.length > 0) {
+        // Persist migrated configs to the new single file
+        await writeFile(storePath, JSON.stringify(migrated, null, 2), "utf-8");
+      }
+      return migrated;
+    }
+    return [];
+  }
+}
+
+function persist(configs: AutoApprovalConfig[]): void {
+  const data = JSON.stringify(configs, null, 2);
+  const path = storePath; // capture before any async re-assignment
+  _pendingWrite = _pendingWrite.then(() =>
+    writeFile(path, data, "utf-8").catch(() => {}),
+  );
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -71,33 +124,14 @@ function normalizePath(p: string): string {
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
 export async function listConfigs(): Promise<AutoApprovalConfig[]> {
-  await ensureDir();
-  try {
-    const files = (await readdir(storeDir)).filter((f) => f.endsWith(".json"));
-    const configs: AutoApprovalConfig[] = [];
-    for (const file of files) {
-      try {
-        const raw = await readFile(join(storeDir, file), "utf-8");
-        configs.push(JSON.parse(raw));
-      } catch {
-        // Skip corrupt files
-      }
-    }
-    configs.sort((a, b) => a.label.localeCompare(b.label));
-    return configs;
-  } catch {
-    return [];
-  }
+  const configs = await readAll();
+  configs.sort((a, b) => a.label.localeCompare(b.label));
+  return configs;
 }
 
 export async function getConfig(slug: string): Promise<AutoApprovalConfig | null> {
-  await ensureDir();
-  try {
-    const raw = await readFile(filePath(slug), "utf-8");
-    return JSON.parse(raw) as AutoApprovalConfig;
-  } catch {
-    return null;
-  }
+  const configs = await readAll();
+  return configs.find((c) => c.slug === slug) ?? null;
 }
 
 /**
@@ -120,7 +154,7 @@ export async function getConfigForPath(cwd: string, extraPaths?: string[]): Prom
     }
   }
 
-  const configs = (await listConfigs()).filter((c) => c.enabled);
+  const configs = (await readAll()).filter((c) => c.enabled);
 
   let bestMatch: AutoApprovalConfig | null = null;
   let bestLen = 0;
@@ -159,9 +193,9 @@ export async function createConfig(
   const normalized = normalizePath(projectPath.trim());
   const slug = slugFromPath(normalized);
 
-  await ensureDir();
-  if (await fileExists(filePath(slug))) {
-    throw new Error(`A config for this project path already exists`);
+  const configs = await readAll();
+  if (configs.some((c) => c.slug === slug)) {
+    throw new Error("A config for this project path already exists");
   }
 
   const now = Date.now();
@@ -175,7 +209,8 @@ export async function createConfig(
     updatedAt: now,
   };
 
-  await writeFile(filePath(slug), JSON.stringify(config, null, 2), "utf-8");
+  configs.push(config);
+  persist(configs);
   return config;
 }
 
@@ -183,10 +218,11 @@ export async function updateConfig(
   slug: string,
   updates: { label?: string; criteria?: string; enabled?: boolean },
 ): Promise<AutoApprovalConfig | null> {
-  await ensureDir();
-  const existing = await getConfig(slug);
-  if (!existing) return null;
+  const configs = await readAll();
+  const idx = configs.findIndex((c) => c.slug === slug);
+  if (idx === -1) return null;
 
+  const existing = configs[idx];
   const config: AutoApprovalConfig = {
     ...existing,
     ...(updates.label !== undefined ? { label: updates.label.trim() } : {}),
@@ -195,28 +231,33 @@ export async function updateConfig(
     updatedAt: Date.now(),
   };
 
-  await writeFile(filePath(slug), JSON.stringify(config, null, 2), "utf-8");
+  configs[idx] = config;
+  persist(configs);
   return config;
 }
 
 export async function deleteConfig(slug: string): Promise<boolean> {
-  await ensureDir();
-  if (!(await fileExists(filePath(slug)))) return false;
-  try {
-    await unlink(filePath(slug));
-    return true;
-  } catch {
-    return false;
-  }
+  const configs = await readAll();
+  const idx = configs.findIndex((c) => c.slug === slug);
+  if (idx === -1) return false;
+
+  configs.splice(idx, 1);
+  persist(configs);
+  return true;
 }
 
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
-/** Override the store directory for tests. */
-export function _setStoreDirForTest(dir: string): void {
-  storeDir = dir;
+/** Override the store file path for tests. */
+export function _setStorePathForTest(path: string): void {
+  storePath = path;
 }
 
-export function _resetStoreDir(): void {
-  storeDir = join(COMPANION_DIR, "auto-approval");
+export function _resetStorePath(): void {
+  storePath = join(COMPANION_DIR, "auto-approval.json");
+}
+
+/** Wait for any pending async writes to complete. Test-only. */
+export function _flushForTest(): Promise<void> {
+  return _pendingWrite;
 }

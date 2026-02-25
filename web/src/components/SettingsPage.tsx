@@ -67,7 +67,6 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [aaEnabled, setAaEnabled] = useState(false);
   const [aaModel, setAaModel] = useState("haiku");
   const [aaSaving, setAaSaving] = useState(false);
-  const [aaSaved, setAaSaved] = useState(false);
   const [aaError, setAaError] = useState("");
   const [aaConfigs, setAaConfigs] = useState<AutoApprovalConfig[]>([]);
   const [aaConfigsLoading, setAaConfigsLoading] = useState(false);
@@ -868,51 +867,59 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
             If the LLM approves, the permission is auto-approved. Otherwise, it falls through to you as usual.
           </p>
 
-          {/* Master toggle + model selector */}
+          {/* Master toggle + model selector — auto-save on change */}
           <div className="flex items-center gap-4 flex-wrap">
             <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
               <input
                 type="checkbox"
                 checked={aaEnabled}
-                onChange={(e) => setAaEnabled(e.target.checked)}
+                disabled={aaSaving}
+                onChange={async (e) => {
+                  const newEnabled = e.target.checked;
+                  setAaEnabled(newEnabled);
+                  setAaSaving(true);
+                  setAaError("");
+                  try {
+                    const res = await api.updateSettings({ autoApprovalEnabled: newEnabled });
+                    setAaEnabled(res.autoApprovalEnabled);
+                  } catch (err: unknown) {
+                    setAaEnabled(!newEnabled); // revert on error
+                    setAaError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setAaSaving(false);
+                  }
+                }}
                 className="accent-cc-primary"
               />
-              Enabled
+              Enabled {aaSaving && <span className="text-cc-muted">(saving...)</span>}
             </label>
             <label className="flex items-center gap-2 text-xs text-cc-fg">
               <span className="text-cc-muted">Model:</span>
               <select
                 value={aaModel}
-                onChange={(e) => setAaModel(e.target.value)}
+                disabled={aaSaving}
+                onChange={async (e) => {
+                  const newModel = e.target.value;
+                  const oldModel = aaModel;
+                  setAaModel(newModel);
+                  setAaSaving(true);
+                  setAaError("");
+                  try {
+                    const res = await api.updateSettings({ autoApprovalModel: newModel });
+                    setAaModel(res.autoApprovalModel);
+                  } catch (err: unknown) {
+                    setAaModel(oldModel); // revert on error
+                    setAaError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setAaSaving(false);
+                  }
+                }}
                 className="px-2 py-1 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
               >
                 <option value="haiku">Haiku (fast, cheap)</option>
                 <option value="sonnet">Sonnet (more capable)</option>
               </select>
             </label>
-            <button
-              type="button"
-              disabled={aaSaving}
-              onClick={async () => {
-                setAaSaving(true);
-                setAaError("");
-                setAaSaved(false);
-                try {
-                  const res = await api.updateSettings({ autoApprovalEnabled: aaEnabled, autoApprovalModel: aaModel });
-                  setAaEnabled(res.autoApprovalEnabled);
-                  setAaModel(res.autoApprovalModel);
-                  setAaSaved(true);
-                  setTimeout(() => setAaSaved(false), 1800);
-                } catch (err: unknown) {
-                  setAaError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setAaSaving(false);
-                }
-              }}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-primary hover:bg-cc-primary-hover text-white disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              {aaSaving ? "Saving..." : aaSaved ? "Saved" : "Save"}
-            </button>
             {aaError && <span className="text-xs text-cc-error">{aaError}</span>}
           </div>
 
@@ -1056,7 +1063,7 @@ function AutoApprovalConfigCard({
     setSaving(true);
     setError("");
     try {
-      await api.updateAutoApprovalConfig(config.slug, { label, criteria, enabled });
+      await api.updateAutoApprovalConfig(config.slug, { label, criteria });
       setEditing(false);
       onUpdate();
     } catch (err: unknown) {
@@ -1088,7 +1095,22 @@ function AutoApprovalConfigCard({
           <input
             type="checkbox"
             checked={enabled}
-            onChange={(e) => { setEnabled(e.target.checked); setEditing(true); }}
+            disabled={saving}
+            onChange={async (e) => {
+              const newEnabled = e.target.checked;
+              setEnabled(newEnabled);
+              setSaving(true);
+              setError("");
+              try {
+                await api.updateAutoApprovalConfig(config.slug, { enabled: newEnabled });
+                onUpdate();
+              } catch (err: unknown) {
+                setEnabled(!newEnabled); // revert on error
+                setError(err instanceof Error ? err.message : String(err));
+              } finally {
+                setSaving(false);
+              }
+            }}
             className="accent-cc-primary"
           />
           <span className="text-xs font-medium text-cc-fg">{config.label}</span>
