@@ -903,9 +903,14 @@ export class WsBridge {
     session: Session,
     options: { broadcastUpdate?: boolean; notifyPoller?: boolean } = {},
   ): Promise<void> {
-    // Skip expensive git operations for sessions without a CLI connection
-    // (archived/exited sessions). Each call triggers 5+ git subprocesses on NFS.
-    if (!session.cliSocket && !session.codexAdapter) return;
+    // Skip expensive git operations for fully background sessions without a
+    // backend connection. Exception: actively viewed worktree sessions still
+    // need refresh to re-anchor diff_base_start_sha after sync/rebase/reset.
+    if (
+      !session.cliSocket
+      && !session.codexAdapter
+      && !(session.state.is_worktree && session.browserSockets.size > 0)
+    ) return;
 
     const before: Record<string, unknown> = {};
     for (const key of WsBridge.GIT_SESSION_KEYS) {
@@ -1026,8 +1031,13 @@ export class WsBridge {
    */
   recomputeDiffIfDirty(session: Session): void {
     if (!session.diffStatsDirty) return;
-    // Skip expensive git diff for sessions without a CLI connection (archived/exited)
-    if (!session.cliSocket && !session.codexAdapter) return;
+    // Skip expensive git diff for fully background sessions without a backend.
+    // Exception: actively viewed worktree sessions should refresh totals.
+    if (
+      !session.cliSocket
+      && !session.codexAdapter
+      && !(session.state.is_worktree && session.browserSockets.size > 0)
+    ) return;
     this.computeDiffStatsAsync(session).then((didRun) => {
       if (!didRun) return;
       session.diffStatsDirty = false;

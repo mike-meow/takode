@@ -4330,6 +4330,39 @@ describe("Diff stats computation", () => {
     expect(session.diffStatsDirty).toBe(false);
   });
 
+  it("recomputes diff stats on browser open for disconnected worktree sessions", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1\n";
+      if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/jiayi-wt-1\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("rev-parse HEAD")) return "new-head-sha\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base --is-ancestor old-head-sha new-head-sha")) {
+        throw new Error("history rewritten");
+      }
+      if (cmd.includes("merge-base")) return "new-head-sha\n";
+      if (cmd.includes("diff --numstat")) return "\n";
+      return "";
+    });
+
+    bridge.markWorktree("s1", "/repo", "/tmp/wt", "jiayi");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = "/tmp/wt";
+    session.state.diff_base_start_sha = "old-anchor-sha";
+    session.state.git_head_sha = "old-head-sha";
+    session.diffStatsDirty = true;
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    await vi.waitFor(() => {
+      expect(session.state.diff_base_start_sha).toBe("new-head-sha");
+      expect(session.state.total_lines_added).toBe(0);
+      expect(session.state.total_lines_removed).toBe(0);
+    });
+    expect(session.diffStatsDirty).toBe(false);
+  });
+
   it("non-read-only tool marks diffStatsDirty; read-only tool does not", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("for-each-ref")) return "";
