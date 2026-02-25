@@ -77,15 +77,16 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
-function parseCodexModeSlashCommand(text: string): "plan" | "acceptEdits" | "bypassPermissions" | null {
+function parseCodexModeSlashCommand(text: string): "plan" | "suggest" | "bypassPermissions" | null {
   const normalized = text.trim().toLowerCase().replace(/\s+/g, "");
   switch (normalized) {
     case "/plan":
-    case "/suggest":
       return "plan";
+    case "/suggest":
+      return "suggest";
     case "/accept-edits":
     case "/acceptedits":
-      return "acceptEdits";
+      return "suggest";
     case "/auto":
       return "bypassPermissions";
     default:

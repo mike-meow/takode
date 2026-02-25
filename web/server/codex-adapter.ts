@@ -969,13 +969,25 @@ export class CodexAdapter {
           this.currentTurnId = retry.turn.id;
           return;
         } catch (retryErr) {
-          this.turnStartFailedCb?.(msg);
+          const requeued = this.handleTurnStartDispatchFailure(msg);
+          if (requeued && this.isTransportClosedError(retryErr)) {
+            console.warn(
+              `[codex-adapter] turn/start transport closed; message re-queued for session ${this.sessionId}`,
+            );
+            return;
+          }
           this.emit({ type: "error", message: `Failed to start turn: ${retryErr}` });
           return;
         }
       }
 
-      this.turnStartFailedCb?.(msg);
+      const requeued = this.handleTurnStartDispatchFailure(msg);
+      if (requeued && this.isTransportClosedError(err)) {
+        console.warn(
+          `[codex-adapter] turn/start transport closed; message re-queued for session ${this.sessionId}`,
+        );
+        return;
+      }
       this.emit({ type: "error", message: `Failed to start turn: ${err}` });
     }
   }
@@ -2321,9 +2333,7 @@ export class CodexAdapter {
   private buildCollaborationModeOverride():
     { mode: "default" | "plan"; settings: { model: string; reasoning_effort: string | null; developer_instructions: null } }
     | null {
-    const mode = (this.options.approvalMode === "plan" || this.options.approvalMode === "suggest")
-      ? "plan"
-      : "default";
+    const mode = this.options.approvalMode === "plan" ? "plan" : "default";
     return {
       mode,
       settings: {
@@ -2346,6 +2356,16 @@ export class CodexAdapter {
     return text.includes("collaborationmode")
       && (text.includes("unknown field") || text.includes("invalid params")
         || text.includes("-32602") || text.includes("experimentalapi"));
+  }
+
+  private isTransportClosedError(err: unknown): boolean {
+    return String(err).toLowerCase().includes("transport closed");
+  }
+
+  private handleTurnStartDispatchFailure(msg: BrowserOutgoingMessage): boolean {
+    if (!this.turnStartFailedCb) return false;
+    this.turnStartFailedCb(msg);
+    return true;
   }
 
   private async listAllMcpServerStatuses(): Promise<CodexMcpServerStatus[]> {

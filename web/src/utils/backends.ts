@@ -61,9 +61,8 @@ export const CLAUDE_MODES: ModeOption[] = [
 
 export const CODEX_MODES: ModeOption[] = [
   { value: "bypassPermissions", label: "Auto" },
-  { value: "acceptEdits", label: "Accept Edits" },
-  // Codex calls this "suggest", but the underlying permission mode is "plan".
-  { value: "plan", label: "Plan (Suggest)" },
+  { value: "suggest", label: "Suggest" },
+  { value: "plan", label: "Plan" },
 ];
 
 export const CODEX_REASONING_EFFORTS: ModeOption[] = [

@@ -392,7 +392,7 @@ describe("CodexAdapter", () => {
     expect(turnStart.params.collaborationMode.mode).toBe("default");
   });
 
-  it("maps legacy approvalMode=suggest to collaborationMode=plan", async () => {
+  it("keeps approvalMode=suggest in collaborationMode=default", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", {
       model: "gpt-5.3-codex",
       approvalMode: "suggest",
@@ -411,7 +411,7 @@ describe("CodexAdapter", () => {
     const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
     expect(turnStart).toBeDefined();
-    expect(turnStart.params.collaborationMode.mode).toBe("plan");
+    expect(turnStart.params.collaborationMode.mode).toBe("default");
   });
 
   it("retries turn/start without collaborationMode when server rejects the field", async () => {
@@ -2890,6 +2890,41 @@ describe("onTurnStartFailed callback", () => {
     expect(failedCb).toHaveBeenCalledWith(
       expect.objectContaining({ type: "user_message", content: "test message" }),
     );
+  });
+
+  it("does not emit a turn/start error when transport closes and message is re-queued", async () => {
+    const adapter = await initAdapter();
+    const failedCb = vi.fn();
+    const emitted: BrowserIncomingMessage[] = [];
+    adapter.onBrowserMessage((msg) => emitted.push(msg));
+    adapter.onTurnStartFailed(failedCb);
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
+    await new Promise((r) => setTimeout(r, 20));
+
+    stdout.close();
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(failedCb).toHaveBeenCalledOnce();
+    const startErrors = emitted.filter((m) =>
+      m.type === "error" && m.message.includes("Failed to start turn"));
+    expect(startErrors).toHaveLength(0);
+  });
+
+  it("emits a turn/start error when transport closes and no re-queue callback is registered", async () => {
+    const adapter = await initAdapter();
+    const emitted: BrowserIncomingMessage[] = [];
+    adapter.onBrowserMessage((msg) => emitted.push(msg));
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
+    await new Promise((r) => setTimeout(r, 20));
+
+    stdout.close();
+    await new Promise((r) => setTimeout(r, 150));
+
+    const startErrors = emitted.filter((m) =>
+      m.type === "error" && m.message.includes("Failed to start turn"));
+    expect(startErrors.length).toBeGreaterThan(0);
   });
 
   it("does NOT fire onTurnStartFailed when turn/start succeeds", async () => {

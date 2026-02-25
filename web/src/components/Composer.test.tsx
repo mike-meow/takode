@@ -285,6 +285,28 @@ describe("Composer sending messages", () => {
       type: "user_message",
     }));
   });
+
+  it("treats /suggest as a Codex mode switch to suggest mode", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        model: "gpt-5.3-codex",
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "/suggest" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "set_permission_mode",
+      mode: "suggest",
+    });
+    expect(mockSendToSession).not.toHaveBeenCalledWith("s1", expect.objectContaining({
+      type: "user_message",
+    }));
+  });
 });
 
 // ─── Mode cycling ───────────────────────────────────────────────────────────
