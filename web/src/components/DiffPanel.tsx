@@ -341,18 +341,27 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
                 handleBaseBranchChange(nextCommit);
               } else {
                 // Clearing commit selection restores the user's branch selection.
-                handleBaseBranchChange(selectedBranch);
+                // If no explicit branch was chosen, fall back to the repo default.
+                const restoredBranch = selectedBranch ?? resolvedDefault ?? null;
+                setSelectedBranch(restoredBranch);
+                handleBaseBranchChange(restoredBranch);
               }
             }}
             className="w-full sm:w-auto max-w-full sm:max-w-[200px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
             title="Compare against a specific commit"
           >
             <option value="">commit...</option>
-            {recentCommits.map((c) => (
-              <option key={c.sha} value={c.sha}>
-                {c.shortSha} {c.message.length > 35 ? c.message.slice(0, 35) + "…" : c.message}
-              </option>
-            ))}
+            {recentCommits.map((c) => {
+              const message = typeof c.message === "string" ? c.message : "";
+              const preview = message
+                ? (message.length > 35 ? message.slice(0, 35) + "…" : message)
+                : "(no message)";
+              return (
+                <option key={c.sha} value={c.sha}>
+                  {c.shortSha} {preview}
+                </option>
+              );
+            })}
           </select>
         )}
 

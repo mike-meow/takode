@@ -359,4 +359,41 @@ describe("DiffPanel", () => {
     });
     expect(branchSelect.value).toBe("develop");
   });
+
+  it("clearing commit falls back to default branch when no explicit branch is selected", async () => {
+    mockApi.listBranches.mockResolvedValue([{ name: "main" }]);
+    mockApi.getRecentCommits.mockResolvedValue({
+      commits: [
+        { sha: "abcdef1234567890", shortSha: "abcdef1", message: "Recent commit", timestamp: Date.now() },
+      ],
+    });
+    mockApi.getFileDiff.mockResolvedValue({
+      path: "/repo/src/app.ts",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      baseBranch: "abcdef1234567890",
+    });
+
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "abcdef1234567890", git_default_branch: "main" }]]),
+      changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
+      diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
+    });
+
+    render(<DiffPanel sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(2);
+    });
+
+    const [branchSelect, commitSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(branchSelect.value).toBe("");
+    expect(commitSelect.value).toBe("abcdef1234567890");
+
+    fireEvent.change(commitSelect, { target: { value: "" } });
+
+    await waitFor(() => {
+      expect(mockApi.setDiffBase).toHaveBeenLastCalledWith("s1", "main");
+    });
+    expect(branchSelect.value).toBe("main");
+  });
 });
