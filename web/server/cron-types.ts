@@ -25,6 +25,8 @@ export interface CronJob {
   permissionMode: string;
   /** Codex-only: enable internet access */
   codexInternetAccess?: boolean;
+  /** Codex-only: reasoning effort override */
+  codexReasoningEffort?: string;
 
   // ── Tracking ──
   createdAt: number;

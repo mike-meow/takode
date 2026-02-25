@@ -54,6 +54,24 @@ describe("createSession", () => {
     });
   });
 
+  it("passes codexReasoningEffort when provided", async () => {
+    const responseData = { sessionId: "s4", state: "starting", cwd: "/repo" };
+    mockFetch.mockResolvedValueOnce(mockResponse(responseData));
+
+    await api.createSession({
+      backend: "codex",
+      cwd: "/repo",
+      codexReasoningEffort: "high",
+    });
+
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({
+      backend: "codex",
+      cwd: "/repo",
+      codexReasoningEffort: "high",
+    });
+  });
+
   it("passes container options when provided", async () => {
     const responseData = { sessionId: "s3", state: "starting", cwd: "/repo" };
     mockFetch.mockResolvedValueOnce(mockResponse(responseData));

@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useStore } from "../store.js";
 import { api, createSessionStream, type CompanionEnv, type GitRepoInfo, type GitBranchInfo, type BackendInfo, type CliSession } from "../api.js";
-import { connectSession, sendToSession } from "../ws.js";
+import { connectSession } from "../ws.js";
 import { disconnectSession } from "../ws.js";
 import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
-import { getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
+import { CODEX_REASONING_EFFORTS, getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { EnvManager } from "./EnvManager.js";
@@ -60,6 +60,10 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const [codexInternetAccess, setCodexInternetAccess] = useState(() =>
     scopedGetItem("cc-codex-internet-access") === "1",
   );
+  const [codexReasoningEffort, setCodexReasoningEffort] = useState(() => {
+    const stored = scopedGetItem("cc-codex-reasoning-effort");
+    return stored ?? "";
+  });
   const [askPermission, setAskPermission] = useState(() => {
     const stored = scopedGetItem("cc-ask-permission");
     return stored !== null ? stored === "true" : true;
@@ -84,6 +88,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   // Dropdown states
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
 
   // Git branch state
@@ -105,6 +110,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const envDropdownRef = useRef<HTMLDivElement>(null);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -170,6 +176,9 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       }
       if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
         setShowModeDropdown(false);
+      }
+      if (reasoningDropdownRef.current && !reasoningDropdownRef.current.contains(e.target as Node)) {
+        setShowReasoningDropdown(false);
       }
       if (envDropdownRef.current && !envDropdownRef.current.contains(e.target as Node)) {
         setShowEnvDropdown(false);
@@ -284,6 +293,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
           useWorktree: useWorktree || undefined,
           backend,
           codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
+          codexReasoningEffort: backend === "codex" ? (codexReasoningEffort || undefined) : undefined,
           assistantMode: assistantMode || undefined,
           askPermission: backend !== "codex" ? askPermission : undefined,
         },
@@ -694,24 +704,61 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
             <div className="flex items-center gap-1 flex-wrap">
               {/* Codex internet access toggle */}
               {backend === "codex" && (
-                <button
-                  onClick={() => {
-                    const next = !codexInternetAccess;
-                    setCodexInternetAccess(next);
-                    scopedSetItem("cc-codex-internet-access", next ? "1" : "0");
-                  }}
-                  className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
-                    codexInternetAccess
-                      ? "bg-cc-primary/15 text-cc-primary font-medium"
-                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-                  }`}
-                  title="Allow Codex internet/network access for this session"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
-                    <path d="M8 2a6 6 0 100 12A6 6 0 008 2zm0 1.5c.8 0 1.55.22 2.2.61-.39.54-.72 1.21-.95 1.98H6.75c-.23-.77-.56-1.44-.95-1.98A4.47 4.47 0 018 3.5zm-3.2 1.3c.3.4.57.86.78 1.37H3.83c.24-.53.57-1.01.97-1.37zm-.97 2.87h2.15c.07.44.12.9.12 1.38 0 .48-.05.94-.12 1.38H3.83A4.56 4.56 0 013.5 9c0-.47.12-.92.33-1.33zm2.03 4.08c.39-.54.72-1.21.95-1.98h2.38c.23.77.56 1.44.95 1.98A4.47 4.47 0 018 12.5c-.8 0-1.55-.22-2.2-.61zm4.34-1.37c.07-.44.12-.9.12-1.38 0-.48-.05-.94-.12-1.38h2.15c.21.41.33.86.33 1.33 0 .47-.12.92-.33 1.33H10.2zm1.37-3.58h-1.75c-.21-.51-.48-.97-.78-1.37.4.36.73.84.97 1.37z" />
-                  </svg>
-                  <span>Internet</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      const next = !codexInternetAccess;
+                      setCodexInternetAccess(next);
+                      scopedSetItem("cc-codex-internet-access", next ? "1" : "0");
+                    }}
+                    className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
+                      codexInternetAccess
+                        ? "bg-cc-primary/15 text-cc-primary font-medium"
+                        : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                    }`}
+                    title="Allow Codex internet/network access for this session"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
+                      <path d="M8 2a6 6 0 100 12A6 6 0 008 2zm0 1.5c.8 0 1.55.22 2.2.61-.39.54-.72 1.21-.95 1.98H6.75c-.23-.77-.56-1.44-.95-1.98A4.47 4.47 0 018 3.5zm-3.2 1.3c.3.4.57.86.78 1.37H3.83c.24-.53.57-1.01.97-1.37zm-.97 2.87h2.15c.07.44.12.9.12 1.38 0 .48-.05.94-.12 1.38H3.83A4.56 4.56 0 013.5 9c0-.47.12-.92.33-1.33zm2.03 4.08c.39-.54.72-1.21.95-1.98h2.38c.23.77.56 1.44.95 1.98A4.47 4.47 0 018 12.5c-.8 0-1.55-.22-2.2-.61zm4.34-1.37c.07-.44.12-.9.12-1.38 0-.48-.05-.94-.12-1.38h2.15c.21.41.33.86.33 1.33 0 .47-.12.92-.33 1.33H10.2zm1.37-3.58h-1.75c-.21-.51-.48-.97-.78-1.37.4.36.73.84.97 1.37z" />
+                    </svg>
+                    <span>Internet</span>
+                  </button>
+
+                  <div className="relative" ref={reasoningDropdownRef}>
+                    <button
+                      onClick={() => setShowReasoningDropdown(!showReasoningDropdown)}
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                      title="Codex reasoning effort"
+                    >
+                      <span>
+                        reasoning:
+                        {CODEX_REASONING_EFFORTS.find((x) => x.value === codexReasoningEffort)?.label.toLowerCase() || "default"}
+                      </span>
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
+                        <path d="M4 6l4 4 4-4" />
+                      </svg>
+                    </button>
+                    {showReasoningDropdown && (
+                      <div className="absolute left-0 top-full mt-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                        {CODEX_REASONING_EFFORTS.map((effort) => (
+                          <button
+                            key={effort.value || "default"}
+                            onClick={() => {
+                              setCodexReasoningEffort(effort.value);
+                              scopedSetItem("cc-codex-reasoning-effort", effort.value);
+                              setShowReasoningDropdown(false);
+                            }}
+                            className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
+                              effort.value === codexReasoningEffort ? "text-cc-primary font-medium" : "text-cc-fg"
+                            }`}
+                          >
+                            {effort.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {/* Folder selector */}

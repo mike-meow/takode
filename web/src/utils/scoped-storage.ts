@@ -33,6 +33,7 @@ const SCOPED_KEYS = [
   "cc-backend",
   "cc-mode",
   "cc-codex-internet-access",
+  "cc-codex-reasoning-effort",
   "cc-ask-permission",
   "cc-selected-env",
   "cc-worktree",

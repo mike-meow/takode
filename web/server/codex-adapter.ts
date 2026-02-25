@@ -585,6 +585,10 @@ export class CodexAdapter {
     return this.threadId;
   }
 
+  private isMissingRolloutError(err: unknown): boolean {
+    return String(err).toLowerCase().includes("no rollout found");
+  }
+
   // ── Initialization ──────────────────────────────────────────────────────
 
   private async initialize(): Promise<void> {
@@ -609,15 +613,31 @@ export class CodexAdapter {
 
       // Step 3: Start or resume a thread
       if (this.options.threadId) {
-        // Resume an existing thread
-        const resumeResult = await this.transport.call("thread/resume", {
-          threadId: this.options.threadId,
-          model: this.options.model,
-          cwd: this.options.cwd,
-          approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
-          sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
-        }) as { thread: { id: string } };
-        this.threadId = resumeResult.thread.id;
+        try {
+          // Resume an existing thread
+          const resumeResult = await this.transport.call("thread/resume", {
+            threadId: this.options.threadId,
+            model: this.options.model,
+            cwd: this.options.cwd,
+            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
+            sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
+          }) as { thread: { id: string } };
+          this.threadId = resumeResult.thread.id;
+        } catch (err) {
+          // Fresh or partially-initialized Codex threads may fail resume with
+          // "no rollout found". Fall back to a fresh thread to avoid a stuck session.
+          if (!this.isMissingRolloutError(err)) throw err;
+          console.warn(
+            `[codex-adapter] thread/resume failed for ${this.options.threadId}: ${err}. Starting a fresh thread.`,
+          );
+          const threadResult = await this.transport.call("thread/start", {
+            model: this.options.model,
+            cwd: this.options.cwd,
+            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
+            sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
+          }) as { thread: { id: string } };
+          this.threadId = threadResult.thread.id;
+        }
       } else {
         // Start a new thread
         const threadResult = await this.transport.call("thread/start", {

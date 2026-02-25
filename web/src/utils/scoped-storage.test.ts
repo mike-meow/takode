@@ -140,6 +140,7 @@ describe("bootstrapServerId", () => {
     localStorage.setItem("cc-backend", "claude");
     localStorage.setItem("cc-current-session", "sess-42");
     localStorage.setItem("cc-recent-dirs", '["a","b"]');
+    localStorage.setItem("cc-codex-reasoning-effort", "high");
 
     bootstrapServerId("srv1");
 
@@ -147,11 +148,13 @@ describe("bootstrapServerId", () => {
     expect(localStorage.getItem("srv1:cc-backend")).toBe("claude");
     expect(localStorage.getItem("srv1:cc-current-session")).toBe("sess-42");
     expect(localStorage.getItem("srv1:cc-recent-dirs")).toBe('["a","b"]');
+    expect(localStorage.getItem("srv1:cc-codex-reasoning-effort")).toBe("high");
 
     // Un-prefixed originals still exist (not deleted)
     expect(localStorage.getItem("cc-backend")).toBe("claude");
     expect(localStorage.getItem("cc-current-session")).toBe("sess-42");
     expect(localStorage.getItem("cc-recent-dirs")).toBe('["a","b"]');
+    expect(localStorage.getItem("cc-codex-reasoning-effort")).toBe("high");
   });
 
   it("migrates dynamic model keys", () => {

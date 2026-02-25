@@ -315,6 +315,7 @@ describe("edge cases", () => {
       enabled: false,
       permissionMode: "plan",
       codexInternetAccess: true,
+      codexReasoningEffort: "high",
     });
 
     const created = await cronStore.createJob(input);
@@ -332,6 +333,7 @@ describe("edge cases", () => {
     expect(retrieved!.enabled).toBe(false);
     expect(retrieved!.permissionMode).toBe("plan");
     expect(retrieved!.codexInternetAccess).toBe(true);
+    expect(retrieved!.codexReasoningEffort).toBe("high");
     expect(retrieved!.consecutiveFailures).toBe(0);
     expect(retrieved!.totalRuns).toBe(0);
   });
@@ -350,6 +352,7 @@ describe("edge cases", () => {
       enabled: false,
       permissionMode: "plan",
       codexInternetAccess: true,
+      codexReasoningEffort: "medium",
       consecutiveFailures: 2,
       totalRuns: 15,
       lastRunAt: 1700000000000,
@@ -367,6 +370,7 @@ describe("edge cases", () => {
     expect(result!.enabled).toBe(false);
     expect(result!.permissionMode).toBe("plan");
     expect(result!.codexInternetAccess).toBe(true);
+    expect(result!.codexReasoningEffort).toBe("medium");
     expect(result!.consecutiveFailures).toBe(2);
     expect(result!.totalRuns).toBe(15);
     expect(result!.lastRunAt).toBe(1700000000000);

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { api, type CronJobInfo } from "../api.js";
-import { getModelsForBackend, getDefaultModel, toModelOptions, type ModelOption } from "../utils/backends.js";
+import { CODEX_REASONING_EFFORTS, getModelsForBackend, getDefaultModel, toModelOptions, type ModelOption } from "../utils/backends.js";
+import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { FolderPicker } from "./FolderPicker.js";
 
 interface Props {
@@ -91,18 +92,28 @@ interface JobFormData {
   backendType: "claude" | "codex";
   model: string;
   cwd: string;
+  codexReasoningEffort: string;
 }
 
-const EMPTY_FORM: JobFormData = {
-  name: "",
-  prompt: "",
-  recurring: true,
-  schedule: "0 8 * * *",
-  oneTimeDate: "",
-  backendType: "claude",
-  model: getDefaultModel("claude"),
-  cwd: "",
-};
+function getDefaultCodexReasoningEffort(): string {
+  return scopedGetItem("cc-codex-reasoning-effort") ?? "";
+}
+
+function makeEmptyForm(): JobFormData {
+  return {
+    name: "",
+    prompt: "",
+    recurring: true,
+    schedule: "0 8 * * *",
+    oneTimeDate: "",
+    backendType: "claude",
+    model: getDefaultModel("claude"),
+    cwd: "",
+    codexReasoningEffort: getDefaultCodexReasoningEffort(),
+  };
+}
+
+const EMPTY_FORM: JobFormData = makeEmptyForm();
 
 const CRON_PRESETS: { label: string; value: string }[] = [
   { label: "Every hour", value: "0 * * * *" },
@@ -118,8 +129,8 @@ export function CronManager({ onClose, embedded = false }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<JobFormData>(EMPTY_FORM);
-  const [createForm, setCreateForm] = useState<JobFormData>(EMPTY_FORM);
+  const [editForm, setEditForm] = useState<JobFormData>(() => makeEmptyForm());
+  const [createForm, setCreateForm] = useState<JobFormData>(() => makeEmptyForm());
   const [creating, setCreating] = useState(false);
   const [createCollapsed, setCreateCollapsed] = useState(true);
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
@@ -158,8 +169,11 @@ export function CronManager({ onClose, embedded = false }: Props) {
         backendType: createForm.backendType,
         model: createForm.model.trim() || undefined,
         cwd: createForm.cwd.trim() || undefined,
+        codexReasoningEffort: createForm.backendType === "codex"
+          ? (createForm.codexReasoningEffort.trim() || undefined)
+          : undefined,
       } as Partial<CronJobInfo>);
-      setCreateForm(EMPTY_FORM);
+      setCreateForm(makeEmptyForm());
       setCreateCollapsed(true);
       refresh();
     } catch (e: unknown) {
@@ -182,6 +196,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
       backendType: job.backendType,
       model: job.model,
       cwd: job.cwd,
+      codexReasoningEffort: job.codexReasoningEffort || "",
     });
     setError("");
   }
@@ -211,6 +226,9 @@ export function CronManager({ onClose, embedded = false }: Props) {
         backendType: editForm.backendType,
         model: editForm.model.trim() || undefined,
         cwd: editForm.cwd.trim() || undefined,
+        codexReasoningEffort: editForm.backendType === "codex"
+          ? (editForm.codexReasoningEffort.trim() || undefined)
+          : undefined,
       } as Partial<CronJobInfo>);
       setEditingId(null);
       setError("");
@@ -539,13 +557,18 @@ function JobForm({
   form: JobFormData;
   onChange: (form: JobFormData) => void;
 }) {
+  const persistCodexReasoningEffort = (effort: string) => {
+    scopedSetItem("cc-codex-reasoning-effort", effort);
+  };
   const update = (partial: Partial<JobFormData>) =>
     onChange({ ...form, ...partial });
 
   // ─── Dynamic model fetching (same pattern as HomePage) ──────────
   const [dynamicModels, setDynamicModels] = useState<ModelOption[] | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
 
   const models = dynamicModels || getModelsForBackend(form.backendType);
@@ -577,15 +600,18 @@ function JobForm({
 
   // Close model dropdown on outside click
   useEffect(() => {
-    if (!showModelDropdown) return;
+    if (!showModelDropdown && !showReasoningDropdown) return;
     function handleClick(e: PointerEvent) {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
       }
+      if (reasoningDropdownRef.current && !reasoningDropdownRef.current.contains(e.target as Node)) {
+        setShowReasoningDropdown(false);
+      }
     }
     document.addEventListener("pointerdown", handleClick);
     return () => document.removeEventListener("pointerdown", handleClick);
-  }, [showModelDropdown]);
+  }, [showModelDropdown, showReasoningDropdown]);
 
   // Folder display label
   const dirLabel = form.cwd
@@ -684,7 +710,11 @@ function JobForm({
         <button
           onClick={() => {
             const next = form.backendType === "claude" ? "codex" : "claude";
-            update({ backendType: next as "claude" | "codex", model: getDefaultModel(next as "claude" | "codex") });
+            update({
+              backendType: next as "claude" | "codex",
+              model: getDefaultModel(next as "claude" | "codex"),
+              ...(next === "codex" ? { codexReasoningEffort: getDefaultCodexReasoningEffort() } : {}),
+            });
           }}
           className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
             form.backendType === "codex"
@@ -727,6 +757,44 @@ function JobForm({
             </div>
           )}
         </div>
+
+        {/* Codex reasoning effort */}
+        {form.backendType === "codex" && (
+          <div className="relative" ref={reasoningDropdownRef}>
+            <button
+              onClick={() => setShowReasoningDropdown(!showReasoningDropdown)}
+              className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-cc-muted hover:text-cc-fg rounded-lg hover:bg-cc-hover transition-colors cursor-pointer border border-cc-border"
+              title="Codex reasoning effort"
+            >
+              <span>
+                reasoning:
+                {CODEX_REASONING_EFFORTS.find((x) => x.value === form.codexReasoningEffort)?.label.toLowerCase() || "default"}
+              </span>
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+            {showReasoningDropdown && (
+              <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1">
+                {CODEX_REASONING_EFFORTS.map((effort) => (
+                  <button
+                    key={effort.value || "default"}
+                    onClick={() => {
+                      update({ codexReasoningEffort: effort.value });
+                      persistCodexReasoningEffort(effort.value);
+                      setShowReasoningDropdown(false);
+                    }}
+                    className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
+                      effort.value === form.codexReasoningEffort ? "text-cc-primary font-medium" : "text-cc-fg"
+                    }`}
+                  >
+                    {effort.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Folder picker */}
         <button

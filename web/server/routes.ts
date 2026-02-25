@@ -411,6 +411,9 @@ export function createRoutes(
         ? (body.permissionMode || "suggest")
         : (askPermission ? "plan" : "bypassPermissions");
       const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+      const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
+        ? (body.codexReasoningEffort.trim() || undefined)
+        : undefined;
       const binarySettings = getSettings();
       const session = launcher.launch({
         model,
@@ -422,6 +425,7 @@ export function createRoutes(
         codexSandbox: backend === "codex" && body.codexInternetAccess === true
           ? "danger-full-access"
           : "workspace-write",
+        codexReasoningEffort,
         allowedTools: body.allowedTools,
         env: envVars,
         backendType: backend,
@@ -848,6 +852,9 @@ export function createRoutes(
           ? (body.permissionMode || "suggest")
           : (askPermission ? "plan" : "bypassPermissions");
         const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+        const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
+          ? (body.codexReasoningEffort.trim() || undefined)
+          : undefined;
         const streamBinarySettings = getSettings();
         const session = launcher.launch({
           model,
@@ -859,6 +866,7 @@ export function createRoutes(
           codexSandbox: backend === "codex" && body.codexInternetAccess === true
             ? "danger-full-access"
             : "workspace-write",
+          codexReasoningEffort,
           allowedTools: body.allowedTools,
           env: envVars,
           backendType: backend,
@@ -2574,6 +2582,9 @@ export function createRoutes(
         enabled: body.enabled ?? true,
         permissionMode: body.permissionMode || "bypassPermissions",
         codexInternetAccess: body.codexInternetAccess,
+        codexReasoningEffort: typeof body.codexReasoningEffort === "string"
+          ? (body.codexReasoningEffort.trim() || undefined)
+          : undefined,
       });
       if (job.enabled) cronScheduler?.scheduleJob(job);
       return c.json(job, 201);
@@ -2588,8 +2599,11 @@ export function createRoutes(
     try {
       // Only allow user-editable fields — prevent tampering with internal tracking
       const allowed: Record<string, unknown> = {};
-      for (const key of ["name", "prompt", "schedule", "recurring", "backendType", "model", "cwd", "envSlug", "enabled", "permissionMode", "codexInternetAccess"] as const) {
+      for (const key of ["name", "prompt", "schedule", "recurring", "backendType", "model", "cwd", "envSlug", "enabled", "permissionMode", "codexInternetAccess", "codexReasoningEffort"] as const) {
         if (key in body) allowed[key] = body[key];
+      }
+      if (typeof allowed.codexReasoningEffort === "string") {
+        allowed.codexReasoningEffort = allowed.codexReasoningEffort.trim() || undefined;
       }
       const job = await cronStore.updateJob(id, allowed);
       if (!job) return c.json({ error: "Job not found" }, 404);

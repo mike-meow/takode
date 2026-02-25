@@ -891,6 +891,35 @@ describe("Codex sandbox modes", () => {
 
     scheduler.destroy();
   });
+
+  it("passes codexReasoningEffort through for Codex jobs", async () => {
+    const launcher = createMockLauncher();
+    const bridge = createMockBridge();
+    const scheduler = new CronSchedulerClass(launcher as any, bridge as any);
+
+    await cronStore.createJob({
+      name: "Codex High Reasoning",
+      prompt: "Think deeply",
+      schedule: "0 8 * * *",
+      recurring: true,
+      backendType: "codex",
+      model: "gpt-5.3-codex",
+      cwd: "/tmp",
+      enabled: true,
+      permissionMode: "bypassPermissions",
+      codexReasoningEffort: "high",
+    });
+
+    await scheduler.executeJob("codex-high-reasoning");
+
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        codexReasoningEffort: "high",
+      }),
+    );
+
+    scheduler.destroy();
+  });
 });
 
 // ===========================================================================

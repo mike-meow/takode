@@ -99,6 +99,7 @@ export interface CreateSessionOpts {
   claudeBinary?: string;
   codexBinary?: string;
   codexInternetAccess?: boolean;
+  codexReasoningEffort?: string;
   allowedTools?: string[];
   envSlug?: string;
   branch?: string;
@@ -288,6 +289,7 @@ export interface CronJobInfo {
   enabled: boolean;
   permissionMode: string;
   codexInternetAccess?: boolean;
+  codexReasoningEffort?: string;
   createdAt: number;
   updatedAt: number;
   lastRunAt?: number;

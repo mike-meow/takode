@@ -128,6 +128,9 @@ export class CronScheduler {
         env: envVars,
         backendType: job.backendType,
         codexInternetAccess: job.backendType === "codex" ? (job.codexInternetAccess ?? true) : undefined,
+        codexReasoningEffort: job.backendType === "codex"
+          ? (job.codexReasoningEffort?.trim() || undefined)
+          : undefined,
         codexSandbox: job.backendType === "codex"
           ? (job.permissionMode === "bypassPermissions" ? "danger-full-access" : "workspace-write")
           : undefined,

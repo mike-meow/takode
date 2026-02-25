@@ -922,6 +922,44 @@ describe("CodexAdapter", () => {
     expect(allWritten).not.toContain('"method":"thread/start"');
   });
 
+  it("falls back to thread/start when thread/resume fails with missing rollout", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const errors: string[] = [];
+    const mock = createMockProcess();
+
+    const adapter = new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      threadId: "thr_stale_123",
+    });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    adapter.onInitError((err) => errors.push(err));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // initialize response
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // thread/resume error from stale thread/rollout
+    mock.stdout.push(JSON.stringify({
+      id: 2,
+      error: { code: -1, message: "no rollout found for thread id thr_stale_123" },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // fallback thread/start success
+    mock.stdout.push(JSON.stringify({ id: 3, result: { thread: { id: "thr_new_789" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 80));
+
+    const allWritten = mock.stdin.chunks.join("");
+    expect(allWritten).toContain('"method":"thread/resume"');
+    expect(allWritten).toContain('"threadId":"thr_stale_123"');
+    expect(allWritten).toContain('"method":"thread/start"');
+    expect(errors).toHaveLength(0);
+    expect(messages.some((m) => m.type === "session_init")).toBe(true);
+  });
+
   // ── Backfill tool_use when item/started is missing ──────────────────────────
 
   it("backfills tool_use when item/completed arrives without item/started", async () => {
