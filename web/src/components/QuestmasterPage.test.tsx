@@ -172,4 +172,18 @@ describe("QuestmasterPage verification inbox", () => {
       expect(mockState.refreshQuests).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("opens deep-linked quest in modal and closes it", () => {
+    // Deep-linking should open the targeted quest in modal detail view.
+    window.location.hash = "#/questmaster?quest=q-2";
+    render(<QuestmasterPage />);
+
+    expect(screen.getByRole("button", { name: "Close quest details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Inbox" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close quest details" }));
+
+    expect(screen.queryByRole("button", { name: "Close quest details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Inbox" })).toBeNull();
+  });
 });

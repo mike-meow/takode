@@ -135,7 +135,7 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
 
           {/* View in Questmaster link */}
           <a
-            href="#/questmaster"
+            href={`#/questmaster?quest=${encodeURIComponent(quest.questId)}`}
             className={`inline-flex items-center gap-1 text-[11px] ${accentColor} hover:underline`}
           >
             View in Questmaster

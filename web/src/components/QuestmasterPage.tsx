@@ -286,6 +286,19 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     return () => document.removeEventListener("keydown", handleKey);
   }, [assignPickerForId]);
 
+  // Close quest detail modal on Escape
+  useEffect(() => {
+    if (!expandedId) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setExpandedId(null);
+        setEditingId(null);
+      }
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [expandedId]);
+
   // Load quests on mount, poll periodically as a fallback for cases where
   // no session WebSocket is open (the `quest_list_updated` broadcast only
   // reaches browsers that have an active session WS connection), and refetch
@@ -381,8 +394,16 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   useEffect(() => {
     const targetQuestId = questIdFromHash(hash);
     if (!targetQuestId) return;
-    if (!quests.some((q) => q.questId === targetQuestId)) return;
+    const targetQuest = quests.find((q) => q.questId === targetQuestId);
+    if (!targetQuest) return;
     setFilter("all");
+    // Ensure deep-linked quests are visible in the list as well as the modal.
+    setCollapsedGroups((prev) => {
+      if (!prev.has(targetQuest.status)) return prev;
+      const next = new Set(prev);
+      next.delete(targetQuest.status);
+      return next;
+    });
     setExpandedId(targetQuestId);
     setShowCreateForm(false);
     setEditingId(null);
@@ -1709,11 +1730,41 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                   </button>
 
                   {/* Expanded detail */}
-                  {isExpanded && (
+                  {isExpanded && createPortal(
                     <div
-                      className="px-4 pb-4 pt-1 border-t border-cc-border space-y-3"
-                      onPaste={isEditing ? (e) => handleEditPaste(quest.questId, e) : undefined}
+                      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3 py-4"
+                      onClick={() => { setExpandedId(null); setEditingId(null); }}
                     >
+                      <div
+                        className="w-[min(920px,100%)] max-h-[88dvh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="shrink-0 flex items-start justify-between gap-3 px-4 py-3 border-b border-cc-border">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${isCancelled ? "bg-red-400" : cfg.dot}`} />
+                              <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border ${cfg.border} ${cfg.bg} ${cfg.text}`}>
+                                {cfg.label}
+                              </span>
+                              <span className="text-[10px] text-cc-muted/60">{quest.questId}</span>
+                            </div>
+                            <div className="text-sm font-semibold text-cc-fg mt-1 truncate">{quest.title}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setExpandedId(null); setEditingId(null); }}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-cc-hover text-cc-muted hover:text-cc-fg transition-colors cursor-pointer shrink-0"
+                            aria-label="Close quest details"
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div
+                          className="overflow-y-auto px-4 pb-4 pt-3 space-y-3"
+                          onPaste={isEditing ? (e) => handleEditPaste(quest.questId, e) : undefined}
+                        >
                       {isEditing ? (
                         /* ─── Edit mode ─── */
                         <>
@@ -2272,7 +2323,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                           </div>
                         </>
                       )}
-                    </div>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body,
                   )}
                 </div>
                 </div>
