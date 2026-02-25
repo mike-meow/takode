@@ -65,9 +65,9 @@ async function del<T = unknown>(path: string, body?: object): Promise<T> {
 export async function checkHealth(): Promise<boolean> {
   const start = performance.now();
   try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(10_000) });
     const elapsed = performance.now() - start;
-    if (elapsed > 2000) {
+    if (elapsed > 5000) {
       console.warn(`[health] slow response: ${Math.round(elapsed)}ms`);
     }
     return res.ok;
