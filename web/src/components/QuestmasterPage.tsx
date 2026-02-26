@@ -298,13 +298,15 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     if (!expandedId) return;
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // When image preview is open, Esc should close that first.
+        if (lightboxSrc) return;
         setExpandedId(null);
         setEditingId(null);
       }
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [expandedId]);
+  }, [expandedId, lightboxSrc]);
 
   // Load quests on mount, poll periodically as a fallback for cases where
   // no session WebSocket is open (the `quest_list_updated` broadcast only
@@ -419,7 +421,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     setEditingId(null);
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-quest-id="${targetQuestId}"]`);
-      if (el instanceof HTMLElement) {
+      if (el instanceof HTMLElement && typeof el.scrollIntoView === "function") {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     });
@@ -1817,7 +1819,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                   </button>
 
                   {/* Expanded detail */}
-                  {isExpanded && createPortal(
+                  {isExpanded && (
                     <div
                       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3 py-4"
                       onClick={() => { setExpandedId(null); setEditingId(null); }}
@@ -2471,6 +2473,20 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                               {/* Separator */}
                               <span className="w-px h-4 bg-cc-border mx-0.5" />
 
+                              {/* Complete quest */}
+                              {quest.status !== "done" && (
+                                <>
+                                  <button
+                                    onClick={() => handleTransition(quest.questId, "done")}
+                                    className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-green-500/12 text-green-400 border border-green-500/25 hover:bg-green-500/20 transition-colors cursor-pointer"
+                                  >
+                                    Finish Quest
+                                  </button>
+                                  {/* Separator */}
+                                  <span className="w-px h-4 bg-cc-border mx-0.5" />
+                                </>
+                              )}
+
                               {/* Delete */}
                               {confirmDeleteId === quest.questId ? (
                                 <>
@@ -2521,8 +2537,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                       )}
                         </div>
                       </div>
-                    </div>,
-                    document.body,
+                    </div>
                   )}
                 </div>
                 </div>

@@ -288,4 +288,32 @@ describe("QuestmasterPage verification inbox", () => {
     const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
     expect(within(dialog).getByRole("button", { name: "Rework" })).toBeDisabled();
   });
+
+  it("closes lightbox first on Escape and keeps quest modal open", async () => {
+    mockState.quests = mockState.quests.map((q) => (
+      q.questId === "q-1"
+        ? ({
+            ...q,
+            images: [{
+              id: "img-1",
+              filename: "proof.png",
+              mimeType: "image/png",
+              path: "/tmp/proof.png",
+            }],
+          } as QuestmasterTask)
+        : q
+    ));
+    window.location.hash = "#/questmaster?quest=q-1";
+    render(<QuestmasterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
+    fireEvent.click(within(dialog).getByAltText("proof.png"));
+    expect(screen.getByTestId("lightbox-backdrop")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
+    });
+    expect(screen.getByRole("dialog", { name: /Quest details: Inbox quest/ })).toBeInTheDocument();
+  });
 });
