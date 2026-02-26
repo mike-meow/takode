@@ -2396,6 +2396,7 @@ export class WsBridge {
         config,
         abort.signal,
         recentToolCalls,
+        session.state.model,
       );
 
       // Clean up abort controller

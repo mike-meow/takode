@@ -31,7 +31,7 @@ export interface CompanionSettings {
   maxKeepAlive: number;
   /** Whether LLM auto-approval is enabled globally (default: false) */
   autoApprovalEnabled: boolean;
-  /** Model to use for auto-approval LLM calls (default: "haiku") */
+  /** Model to use for auto-approval LLM calls (empty = use session model, falls back to "haiku") */
   autoApprovalModel: string;
   updatedAt: number;
 }
@@ -55,7 +55,7 @@ let settings: CompanionSettings = {
   codexBinary: "",
   maxKeepAlive: 0,
   autoApprovalEnabled: false,
-  autoApprovalModel: "haiku",
+  autoApprovalModel: "",
   updatedAt: 0,
 };
 
@@ -72,7 +72,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     codexBinary: typeof raw?.codexBinary === "string" ? raw.codexBinary : "",
     maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
     autoApprovalEnabled: typeof raw?.autoApprovalEnabled === "boolean" ? raw.autoApprovalEnabled : false,
-    autoApprovalModel: typeof raw?.autoApprovalModel === "string" && raw.autoApprovalModel ? raw.autoApprovalModel : "haiku",
+    autoApprovalModel: typeof raw?.autoApprovalModel === "string" ? raw.autoApprovalModel : "",
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }

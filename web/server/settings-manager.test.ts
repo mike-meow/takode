@@ -40,7 +40,7 @@ describe("settings-manager", () => {
       codexBinary: "",
       maxKeepAlive: 0,
       autoApprovalEnabled: false,
-      autoApprovalModel: "haiku",
+      autoApprovalModel: "",
       updatedAt: 0,
     });
   });
@@ -113,7 +113,7 @@ describe("settings-manager", () => {
       codexBinary: "",
       maxKeepAlive: 0,
       autoApprovalEnabled: false,
-      autoApprovalModel: "haiku",
+      autoApprovalModel: "",
       updatedAt: 0,
     });
   });

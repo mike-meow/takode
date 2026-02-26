@@ -65,7 +65,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
 
   // Auto-approval state
   const [aaEnabled, setAaEnabled] = useState(false);
-  const [aaModel, setAaModel] = useState("haiku");
+  const [aaModel, setAaModel] = useState("");
   const [aaSaving, setAaSaving] = useState(false);
   const [aaError, setAaError] = useState("");
   const [aaConfigs, setAaConfigs] = useState<AutoApprovalConfig[]>([]);
@@ -107,7 +107,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
         setPoBaseUrl(s.pushoverBaseUrl || "");
         setRestartSupported(s.restartSupported);
         setAaEnabled(s.autoApprovalEnabled);
-        setAaModel(s.autoApprovalModel || "haiku");
+        setAaModel(s.autoApprovalModel ?? "");
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -916,6 +916,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
                 }}
                 className="px-2 py-1 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
               >
+                <option value="">Default (session model)</option>
                 <option value="haiku">Haiku (fast, cheap)</option>
                 <option value="sonnet">Sonnet (more capable)</option>
               </select>
