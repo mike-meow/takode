@@ -606,7 +606,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     }
   }
 
-  async function handleMarkVerificationRead(questId: string) {
+  async function handleMarkVerificationRead(questId: string): Promise<boolean> {
     setError("");
     try {
       const updatedQuest = await api.markQuestVerificationRead(questId);
@@ -616,8 +616,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
           .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
           .sort((a, b) => b.createdAt - a.createdAt),
       );
+      return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     }
   }
 
@@ -1866,26 +1868,6 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                     >
                                       {questSessionName}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleReworkInSession(quest, questSessionId);
-                                      }}
-                                      disabled={unaddressedFeedbackCount === 0}
-                                      title={
-                                        unaddressedFeedbackCount > 0
-                                          ? "Switch to this session and draft a rework message for quest feedback."
-                                          : "No unaddressed human feedback."
-                                      }
-                                      className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                                        unaddressedFeedbackCount > 0
-                                          ? "bg-amber-500/10 text-amber-400 border-amber-500/25 hover:bg-amber-500/20 cursor-pointer"
-                                          : "bg-cc-hover text-cc-muted/60 border-cc-border cursor-not-allowed"
-                                      }`}
-                                    >
-                                      Rework
-                                    </button>
                                   </div>
                                 ) : (
                                   <span className="text-[10px] text-cc-muted/50 truncate max-w-[220px]">
@@ -2487,6 +2469,31 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                 </>
                               )}
 
+                              {/* Rework in session */}
+                              {questSessionId && isKnownSession && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReworkInSession(quest, questSessionId)}
+                                    disabled={unaddressedFeedbackCount === 0}
+                                    title={
+                                      unaddressedFeedbackCount > 0
+                                        ? "Switch to this session and draft a rework message for quest feedback."
+                                        : "No unaddressed human feedback."
+                                    }
+                                    className={`px-2.5 py-1.5 text-[11px] font-medium rounded-lg border transition-colors ${
+                                      unaddressedFeedbackCount > 0
+                                        ? "bg-amber-500/10 text-amber-400 border-amber-500/25 hover:bg-amber-500/20 cursor-pointer"
+                                        : "bg-cc-hover text-cc-muted/60 border-cc-border cursor-not-allowed"
+                                    }`}
+                                  >
+                                    Rework
+                                  </button>
+                                  {/* Separator */}
+                                  <span className="w-px h-4 bg-cc-border mx-0.5" />
+                                </>
+                              )}
+
                               {/* Delete */}
                               {confirmDeleteId === quest.questId ? (
                                 <>
@@ -2516,7 +2523,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                             {quest.status === "needs_verification" && (
                               isInboxVerification ? (
                                 <button
-                                  onClick={() => handleMarkVerificationRead(quest.questId)}
+                                  onClick={async () => {
+                                    const marked = await handleMarkVerificationRead(quest.questId);
+                                    if (marked) {
+                                      setExpandedId(null);
+                                      setEditingId(null);
+                                    }
+                                  }}
                                   title="Remove from Verification Inbox and keep it in Verification for now."
                                   className="ml-auto px-2.5 py-1.5 text-[11px] font-medium rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/25 hover:bg-amber-500/25 transition-colors cursor-pointer"
                                 >

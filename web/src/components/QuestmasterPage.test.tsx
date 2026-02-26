@@ -196,7 +196,7 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("marks an inbox quest as read", async () => {
-    // Clicking Later should remove an inbox item from the inbox split.
+    // Clicking Later should remove an inbox item from the inbox split and close the modal.
     render(<QuestmasterPage />);
 
     fireEvent.click(screen.getByText("Inbox quest"));
@@ -209,6 +209,9 @@ describe("QuestmasterPage verification inbox", () => {
       const quest = mockState.quests.find((q) => q.questId === "q-1");
       expect(quest).toBeTruthy();
       expect((quest as { verificationInboxUnread?: boolean }).verificationInboxUnread).toBe(false);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close quest details" })).toBeNull();
     });
   });
 
@@ -271,6 +274,18 @@ describe("QuestmasterPage verification inbox", () => {
       images: [],
     });
     expect(mockNavigateToSession).toHaveBeenCalledWith("session-1");
+  });
+
+  it("shows Rework in the bottom action row next to Finish Quest", () => {
+    window.location.hash = "#/questmaster?quest=q-1";
+    render(<QuestmasterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
+    const reworkButtons = within(dialog).getAllByRole("button", { name: "Rework" });
+    const finishButton = within(dialog).getByRole("button", { name: "Finish Quest" });
+
+    expect(reworkButtons).toHaveLength(1);
+    expect(reworkButtons[0].parentElement).toBe(finishButton.parentElement);
   });
 
   it("disables Rework when all human feedback is addressed", () => {
