@@ -195,6 +195,38 @@ describe("QuestmasterPage verification inbox", () => {
     expect(screen.getByText("Inbox quest")).toBeInTheDocument();
   });
 
+  it("orders quests within a group by recency (updatedAt fallback to createdAt)", () => {
+    const olderCreatedButRecentlyUpdated = {
+      ...buildVerificationQuest({
+        id: "q-10-v3",
+        questId: "q-10",
+        title: "Older create, newer update",
+        verificationInboxUnread: false,
+      }),
+      createdAt: 1_000,
+      updatedAt: 5_000,
+      verificationInboxUnread: false,
+    } as QuestmasterTask;
+    const newerCreatedButNotUpdated = {
+      ...buildVerificationQuest({
+        id: "q-11-v3",
+        questId: "q-11",
+        title: "Newer create, older update",
+        verificationInboxUnread: false,
+      }),
+      createdAt: 4_000,
+      updatedAt: 4_000,
+      verificationInboxUnread: false,
+    } as QuestmasterTask;
+
+    mockState.quests = [newerCreatedButNotUpdated, olderCreatedButRecentlyUpdated];
+    render(<QuestmasterPage />);
+
+    const order = Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]"))
+      .map((el) => el.dataset.questId);
+    expect(order).toEqual(["q-10", "q-11"]);
+  });
+
   it("marks an inbox quest as read", async () => {
     // Clicking Later should remove an inbox item from the inbox split and close the modal.
     render(<QuestmasterPage />);

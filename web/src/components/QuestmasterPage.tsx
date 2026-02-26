@@ -129,6 +129,10 @@ function verificationProgress(
   };
 }
 
+function questRecencyTs(quest: QuestmasterTask): number {
+  return (quest as { updatedAt?: number }).updatedAt ?? quest.createdAt;
+}
+
 function isVerificationInboxUnread(quest: QuestmasterTask): boolean {
   return (
     quest.status === "needs_verification" &&
@@ -1062,6 +1066,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const regularVerificationQuests = showVerificationSplit
     ? filtered.filter((q) => q.status === "needs_verification" && !isVerificationInboxUnread(q))
     : [];
+  const sortByRecencyDesc = (items: QuestmasterTask[]): QuestmasterTask[] =>
+    [...items].sort((a, b) => questRecencyTs(b) - questRecencyTs(a));
 
   const questSections: QuestSection[] = [];
   if (showVerificationSplit && verificationInboxQuests.length > 0) {
@@ -1070,7 +1076,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       label: "Verification Inbox",
       dotClass: "bg-amber-400",
       textClass: "text-amber-400",
-      quests: verificationInboxQuests,
+      quests: sortByRecencyDesc(verificationInboxQuests),
       ...(filter === "all" ? { collapseGroup: VERIFICATION_INBOX_COLLAPSE_KEY } : {}),
     });
   }
@@ -1086,7 +1092,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       label: cfg.label,
       dotClass: cfg.dot,
       textClass: cfg.text,
-      quests: sectionQuests,
+      quests: sortByRecencyDesc(sectionQuests),
       ...(filter === "all" ? { collapseGroup: status } : {}),
     });
   }
