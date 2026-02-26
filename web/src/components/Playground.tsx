@@ -406,6 +406,22 @@ const MSG_APPROVED_PLAN: ChatMessage = {
   variant: "approved",
 };
 
+const MSG_APPROVED_AUTO_SHORT: ChatMessage = {
+  id: "approval-auto-short",
+  role: "system",
+  content: "Auto-approved Bash: This is a git push to a non-destructive branch.",
+  timestamp: Date.now() - 15800,
+  variant: "approved",
+};
+
+const MSG_APPROVED_AUTO_LONG: ChatMessage = {
+  id: "approval-auto-long",
+  role: "system",
+  content: "Auto-approved Bash: Step 1: The criteria explicitly mention \"any local or remote git operations applied to ~/companion or its git work tree copies\" except for destructive remote operations. Step 2: This request is a git push operation to origin/jiayi branch in the companion work tree with GIT_TRACE debugging enabled. A push to a feature branch is a non-destructive remote git operation. Step 3: This is a standard push operation on a feature branch in the companion repo work tree, which falls within the auto-approval criteria for non-destructive git operations.",
+  timestamp: Date.now() - 15700,
+  variant: "approved",
+};
+
 const MSG_APPROVED_ASK: ChatMessage = {
   id: "approval-ask-1",
   role: "system",
@@ -975,6 +991,12 @@ export function Playground() {
             </Card>
             <Card label="Approved — Plan">
               <MessageBubble message={MSG_APPROVED_PLAN} />
+            </Card>
+            <Card label="Approved — Auto-approval (short, fits 1 line)">
+              <MessageBubble message={MSG_APPROVED_AUTO_SHORT} />
+            </Card>
+            <Card label="Approved — Auto-approval (long, collapsed by default)">
+              <MessageBubble message={MSG_APPROVED_AUTO_LONG} />
             </Card>
             <Card label="Approved — AskUserQuestion with answers">
               <MessageBubble message={MSG_APPROVED_ASK} />

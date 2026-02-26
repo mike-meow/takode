@@ -121,17 +121,7 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         );
       }
-      return (
-        <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs text-green-400/80 font-mono-code">
-            <svg className="w-3 h-3 text-green-400/60 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="8" r="6.5" />
-              <path d="M5.5 8.5l2 2 3.5-4" />
-            </svg>
-            <span>{message.content}</span>
-          </div>
-        </div>
-      );
+      return <AutoApprovedChip content={message.content} />;
     }
     // Quest lifecycle blocks — rendered as collapsible cards in the feed
     if ((message.variant === "quest_claimed" || message.variant === "quest_submitted") && message.metadata?.quest) {
@@ -500,6 +490,25 @@ function CopyMessageButton({ message, contentRef }: { message: ChatMessage; cont
           onClose={() => setMenuPos(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Auto-approved chip — collapsed to one line by default, click to expand full rationale. */
+function AutoApprovedChip({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs text-green-400/80 font-mono-code max-w-[85%] text-left cursor-pointer hover:bg-green-500/15 transition-colors"
+      >
+        <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <circle cx="8" cy="8" r="6.5" />
+          <path d="M5.5 8.5l2 2 3.5-4" />
+        </svg>
+        <span className={expanded ? "" : "line-clamp-1"}>{content}</span>
+      </button>
     </div>
   );
 }
