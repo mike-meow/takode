@@ -255,6 +255,7 @@ export interface AutoApprovalLogIndexEntry {
   sessionId: string;
   timestamp: number;
   toolName: string;
+  model: string;
   parsed: { decision: string; reason: string } | null;
   projectPath: string;
   durationMs: number;

@@ -130,6 +130,7 @@ export function AutoApprovalDebugPanel() {
                   >
                     <span className="text-cc-muted shrink-0 w-16">{timeAgo(entry.timestamp)}</span>
                     <span className="text-cc-fg shrink-0 font-mono-code">{entry.toolName}</span>
+                    <span className="text-cc-muted shrink-0 text-[10px] font-mono-code">{entry.model}</span>
                     <span className={`flex-1 truncate ${decisionColor(entry.parsed)}`}>
                       {decisionLabel(entry.parsed)}
                     </span>
@@ -170,7 +171,7 @@ export function AutoApprovalDebugPanel() {
                       {selectedIndexEntry.parsed?.decision ?? "error"}
                     </span>
                     <span className="text-xs text-cc-muted">
-                      {timeAgo(selectedIndexEntry.timestamp)} &middot; {formatDuration(selectedIndexEntry.durationMs)} &middot; {selectedIndexEntry.sessionId.slice(0, 8)}
+                      {selectedIndexEntry.model} &middot; {timeAgo(selectedIndexEntry.timestamp)} &middot; {formatDuration(selectedIndexEntry.durationMs)} &middot; {selectedIndexEntry.sessionId.slice(0, 8)}
                     </span>
                   </>
                 )}

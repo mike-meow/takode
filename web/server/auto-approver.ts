@@ -23,6 +23,7 @@ export interface AutoApprovalLogEntry {
   sessionId: string;
   timestamp: number;
   toolName: string;
+  model: string;
   systemPrompt: string;
   prompt: string;
   promptLength: number;
@@ -395,6 +396,7 @@ export async function evaluatePermission(
     sessionId,
     timestamp: Date.now(),
     toolName,
+    model,
     prompt,
     rawResponse: raw,
     parsed,
