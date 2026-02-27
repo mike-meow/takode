@@ -111,6 +111,27 @@ takode watch --sessions 1,2 --since 42
 
 **\`--sessions\` is required.** Always specify which sessions you're watching. Use \`takode list\` first to discover session numbers.
 
+### \`takode tasks <session> [--json]\`
+
+Show the task outline (table of contents) for a session's conversation history. Tasks are automatically detected by the session auto-namer and quest system.
+
+\`\`\`bash
+takode tasks 1
+\`\`\`
+
+Output shows each task with its title, start time, and message ID range:
+\`\`\`
+  #  Started   Task                                              Msg Range
+  ──────────────────────────────────────────────────────────────────────────────
+   1  07:13     Explore existing CLI for session interaction       [0]-[36]
+   2  07:36     Design cross-session orchestration system          [37]-[98]
+   3  08:23     Refine design with user feedback                   [99]-[420]
+\`\`\`
+
+Use the message ranges with \`takode peek <session> --from <msg-id>\` to browse a specific task, or use \`takode peek <session> --task <n>\` as a shortcut.
+
+**Tip:** Run \`takode tasks\` first when investigating an unfamiliar session — it gives you a high-level map of what the agent has been working on, organized by task boundaries.
+
 ### \`takode peek <session> [--from N] [--count N] [--detail --turns N] [--json]\`
 
 View session activity with progressive detail. Three modes:
@@ -146,10 +167,11 @@ takode peek 1 --detail --turns 3
 #### Navigation workflow
 
 \`\`\`
-1. takode peek 1              → Overview: see last 5 collapsed + expanded last turn
-2. takode peek 1 --from 800   → Browse messages [800]-[830] in detail
-3. takode read 1 815          → Full content of message 815
-4. takode peek 1 --from 770   → Continue browsing backwards
+1. takode tasks 1              → Table of contents: tasks with msg ranges
+2. takode peek 1               → Overview: collapsed turns + expanded last turn
+3. takode peek 1 --task 3      → Browse task 3's messages
+4. takode peek 1 --from 800    → Browse messages [800]-[830] in detail
+5. takode read 1 815           → Full content of message 815
 \`\`\`
 
 ### \`takode read <session> <msg-id> [--offset N] [--limit N] [--json]\`

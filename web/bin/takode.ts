@@ -426,6 +426,62 @@ async function handleWatch(base: string, args: string[]): Promise<void> {
   }
 }
 
+// ─── Tasks handler ───────────────────────────────────────────────────────────
+
+async function handleTasks(base: string, args: string[]): Promise<void> {
+  const sessionRef = args[0];
+  if (!sessionRef) err("Usage: takode tasks <session> [--json]");
+
+  const flags = parseFlags(args.slice(1));
+  const jsonMode = flags.json === true;
+
+  const data = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`) as {
+    sessionId: string;
+    sessionNum: number;
+    sessionName: string;
+    totalMessages: number;
+    tasks: Array<{
+      taskNum: number;
+      title: string;
+      startIdx: number;
+      endIdx: number;
+      startedAt: number;
+      source: string;
+      questId: string | null;
+    }>;
+  };
+
+  if (jsonMode) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+
+  console.log(`Session #${data.sessionNum} "${data.sessionName}"`);
+  console.log(`${data.tasks.length} tasks, ${data.totalMessages} messages`);
+  console.log("");
+
+  if (data.tasks.length === 0) {
+    console.log("  No tasks recorded yet.");
+    return;
+  }
+
+  // Table header
+  console.log(`  #  Started   Task${" ".repeat(50)}Msg Range`);
+  console.log(`  ${"─".repeat(78)}`);
+
+  for (const task of data.tasks) {
+    const num = String(task.taskNum).padStart(2);
+    const time = formatTimeShort(task.startedAt);
+    const title = truncate(task.title, 50).padEnd(54);
+    const range = `[${task.startIdx}]-[${task.endIdx}]`;
+    const quest = task.questId ? ` (${task.questId})` : "";
+    console.log(`  ${num}  ${time}   ${title}${range}${quest}`);
+  }
+
+  console.log("");
+  console.log(`Browse: takode peek ${sessionRef} --from <msg-id> | Task: takode peek ${sessionRef} --task <n>`);
+}
+
 // ─── Peek types ──────────────────────────────────────────────────────────────
 
 type PeekMessage = {
@@ -750,12 +806,33 @@ function printPeekDetail(d: PeekDetailResponse): void {
 
 async function handlePeek(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
-  if (!sessionRef) err("Usage: takode peek <session> [--from N] [--detail] [--turns N] [--json]");
+  if (!sessionRef) err("Usage: takode peek <session> [--from N] [--task N] [--detail] [--turns N] [--json]");
 
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
+  const taskNum = flags.task !== undefined ? Number(flags.task) : undefined;
   const fromIdx = flags.from !== undefined ? Number(flags.from) : undefined;
   const detail = flags.detail === true;
+
+  // Resolve --task N to a message range via the tasks endpoint
+  if (taskNum !== undefined) {
+    const tasksData = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`) as {
+      tasks: Array<{ taskNum: number; startIdx: number; endIdx: number }>;
+    };
+    const task = tasksData.tasks.find(t => t.taskNum === taskNum);
+    if (!task) err(`Task #${taskNum} not found. Use "takode tasks ${sessionRef}" to see available tasks.`);
+
+    const count = Number(flags.count) || 30;
+    const params = new URLSearchParams({ from: String(task.startIdx), count: String(count) });
+    const path = `/sessions/${encodeURIComponent(sessionRef)}/messages?${params}`;
+    const data = await apiGet(base, path);
+    if (jsonMode) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    printPeekRange(data as PeekRangeResponse, sessionRef, count);
+    return;
+  }
 
   // Determine mode and build query params
   let path: string;
@@ -878,6 +955,7 @@ Usage: takode <command> [options]
 Commands:
   list     List sessions (active by default, --all for all)
   watch    Wait for events from watched sessions
+  tasks    Show task outline of a session (table of contents)
   peek     View session activity (smart overview by default)
   read     Read full content of a specific message
   send     Send a message to a session
@@ -895,6 +973,7 @@ Global options:
 Examples:
   takode list
   takode list --all
+  takode tasks 1
   takode watch --sessions 1,2,3
   takode peek 1
   takode peek 1 --from 200
@@ -924,6 +1003,9 @@ try {
       break;
     case "watch":
       await handleWatch(base, args);
+      break;
+    case "tasks":
+      await handleTasks(base, args);
       break;
     case "peek":
       await handlePeek(base, args);

@@ -1609,6 +1609,63 @@ export function createRoutes(
     return c.json(result);
   });
 
+  // ─── Task History (table of contents) ──────────────────────
+
+  api.get("/sessions/:id/tasks", (c) => {
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
+
+    const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
+    const messageHistory = wsBridge.getMessageHistory(sessionId);
+    if (!messageHistory) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const sessionNum = launcher.getSessionNum(sessionId) ?? -1;
+    const sessionName = sessionNames.getName(sessionId) || sessionId.slice(0, 8);
+
+    // Build a message ID → array index lookup map for all user messages
+    const idToIdx = new Map<string, number>();
+    for (let i = 0; i < messageHistory.length; i++) {
+      const msg = messageHistory[i];
+      if (msg.type === "user_message" && (msg as any).id) {
+        idToIdx.set((msg as any).id, i);
+      }
+    }
+
+    // Resolve each task's triggerMessageId to an array index and compute ranges
+    const tasks = taskHistory
+      .filter(t => t.action !== "revise") // revise entries update in-place, skip them
+      .map((task, i, arr) => {
+        const startIdx = idToIdx.get(task.triggerMessageId) ?? 0;
+
+        // endIdx = start of next task - 1, or end of history
+        let endIdx = messageHistory.length - 1;
+        if (i + 1 < arr.length) {
+          const nextStart = idToIdx.get(arr[i + 1].triggerMessageId);
+          if (nextStart !== undefined && nextStart > 0) {
+            endIdx = nextStart - 1;
+          }
+        }
+
+        return {
+          taskNum: i + 1,
+          title: task.title,
+          startIdx,
+          endIdx,
+          startedAt: task.timestamp,
+          source: task.source || "namer",
+          questId: task.questId || null,
+        };
+      });
+
+    return c.json({
+      sessionId,
+      sessionNum,
+      sessionName,
+      totalMessages: messageHistory.length,
+      tasks,
+    });
+  });
+
   // ─── Recording Management ──────────────────────────────────
 
   api.post("/sessions/:id/recording/start", (c) => {
