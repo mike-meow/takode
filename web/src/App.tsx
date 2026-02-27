@@ -222,11 +222,9 @@ export default function App() {
               </span>
             </div>
           )}
-          {isSettingsPage && (
-            <div className="absolute inset-0">
-              <SettingsPage embedded />
-            </div>
-          )}
+          <div className={`absolute inset-0 ${isSettingsPage ? "" : "hidden"}`}>
+            <SettingsPage embedded isActive={isSettingsPage} />
+          </div>
 
           {isTerminalPage && (
             <div className="absolute inset-0">

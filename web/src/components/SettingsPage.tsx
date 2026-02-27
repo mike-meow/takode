@@ -12,9 +12,10 @@ const SCROLL_STORAGE_KEY = "cc-settings-scroll";
 
 interface SettingsPageProps {
   embedded?: boolean;
+  isActive?: boolean;
 }
 
-export function SettingsPage({ embedded = false }: SettingsPageProps) {
+export function SettingsPage({ embedded = false, isActive = true }: SettingsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const darkMode = useStore((s) => s.darkMode);
@@ -73,7 +74,8 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [aaError, setAaError] = useState("");
   const [aaConfigs, setAaConfigs] = useState<AutoApprovalConfig[]>([]);
   const [aaConfigsLoading, setAaConfigsLoading] = useState(false);
-  const [aaNewProjectPath, setAaNewProjectPath] = useState("");
+  const [aaNewProjectPaths, setAaNewProjectPaths] = useState<string[]>([]);
+  const [aaNewPathInput, setAaNewPathInput] = useState("");
   const [aaNewLabel, setAaNewLabel] = useState("");
   const [aaNewCriteria, setAaNewCriteria] = useState("");
   const [aaCreating, setAaCreating] = useState(false);
@@ -920,31 +922,82 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
             {/* Add new config form */}
             <div className="border border-dashed border-cc-border rounded-lg p-3 space-y-2">
               <span className="text-xs font-medium text-cc-muted">Add Project Rule</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={aaNewProjectPath}
-                  onChange={(e) => setAaNewProjectPath(e.target.value)}
-                  placeholder="Project path (e.g. /home/user/my-project)"
-                  className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAaFolderPicker(true)}
-                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                  title="Browse folders"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
-                  </svg>
-                </button>
+
+              {/* Project paths */}
+              <div className="space-y-1">
+                {aaNewProjectPaths.map((p, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="flex-1 px-2 py-1 text-[10px] font-mono-code bg-cc-hover rounded truncate" title={p}>
+                      {p}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAaNewProjectPaths(aaNewProjectPaths.filter((_, j) => j !== i))}
+                      className="text-[10px] text-cc-error/60 hover:text-cc-error cursor-pointer px-1"
+                      title="Remove path"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={aaNewPathInput}
+                    onChange={(e) => setAaNewPathInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const trimmed = aaNewPathInput.trim();
+                        if (trimmed && !aaNewProjectPaths.includes(trimmed)) {
+                          setAaNewProjectPaths([...aaNewProjectPaths, trimmed]);
+                          if (!aaNewLabel.trim()) setAaNewLabel(trimmed.split("/").pop() || "");
+                          setAaNewPathInput("");
+                        }
+                      }
+                    }}
+                    placeholder={aaNewProjectPaths.length === 0
+                      ? "Project path (e.g. /home/user/my-project)"
+                      : "Add another project path..."}
+                    className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAaFolderPicker(true)}
+                    className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                    title="Browse folders"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+                    </svg>
+                  </button>
+                  {aaNewPathInput.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = aaNewPathInput.trim();
+                        if (trimmed && !aaNewProjectPaths.includes(trimmed)) {
+                          setAaNewProjectPaths([...aaNewProjectPaths, trimmed]);
+                          if (!aaNewLabel.trim()) setAaNewLabel(trimmed.split("/").pop() || "");
+                          setAaNewPathInput("");
+                        }
+                      }}
+                      className="text-[10px] text-cc-primary hover:text-cc-primary-hover cursor-pointer px-1"
+                    >
+                      Add
+                    </button>
+                  )}
+                </div>
               </div>
               {showAaFolderPicker && (
                 <FolderPicker
-                  initialPath={aaNewProjectPath || ""}
+                  initialPath={aaNewPathInput || ""}
                   onSelect={(path) => {
-                    setAaNewProjectPath(path);
+                    if (!aaNewProjectPaths.includes(path)) {
+                      setAaNewProjectPaths([...aaNewProjectPaths, path]);
+                    }
                     if (!aaNewLabel.trim()) setAaNewLabel(path.split("/").pop() || "");
+                    setAaNewPathInput("");
                   }}
                   onClose={() => setShowAaFolderPicker(false)}
                 />
@@ -966,17 +1019,19 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={aaCreating || !aaNewProjectPath.trim() || !aaNewLabel.trim() || !aaNewCriteria.trim()}
+                  disabled={aaCreating || aaNewProjectPaths.length === 0 || !aaNewLabel.trim() || !aaNewCriteria.trim()}
                   onClick={async () => {
                     setAaCreating(true);
                     setAaCreateError("");
                     try {
                       await api.createAutoApprovalConfig({
-                        projectPath: aaNewProjectPath.trim(),
+                        projectPath: aaNewProjectPaths[0],
+                        projectPaths: aaNewProjectPaths.length > 1 ? aaNewProjectPaths : undefined,
                         label: aaNewLabel.trim(),
                         criteria: aaNewCriteria.trim(),
                       });
-                      setAaNewProjectPath("");
+                      setAaNewProjectPaths([]);
+                      setAaNewPathInput("");
                       setAaNewLabel("");
                       setAaNewCriteria("");
                       loadAutoApprovalConfigs();
@@ -1056,17 +1111,25 @@ function AutoApprovalConfigCard({
   const [editing, setEditing] = useState(false);
   const [criteria, setCriteria] = useState(config.criteria);
   const [label, setLabel] = useState(config.label);
+  const [paths, setPaths] = useState<string[]>(config.projectPaths?.length ? config.projectPaths : [config.projectPath]);
   const [enabled, setEnabled] = useState(config.enabled);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
+  const [newPath, setNewPath] = useState("");
+  const [showPathPicker, setShowPathPicker] = useState(false);
 
   async function handleSave() {
+    const validPaths = paths.filter((p) => p.trim());
+    if (validPaths.length === 0) {
+      setError("At least one project path is required");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await api.updateAutoApprovalConfig(config.slug, { label, criteria });
+      await api.updateAutoApprovalConfig(config.slug, { label, criteria, projectPaths: validPaths });
       setEditing(false);
       onUpdate();
     } catch (err: unknown) {
@@ -1091,6 +1154,21 @@ function AutoApprovalConfigCard({
     }
   }
 
+  function addPath() {
+    const trimmed = newPath.trim();
+    if (trimmed && !paths.includes(trimmed)) {
+      setPaths([...paths, trimmed]);
+      setNewPath("");
+    }
+  }
+
+  function removePath(idx: number) {
+    if (paths.length <= 1) return;
+    setPaths(paths.filter((_, i) => i !== idx));
+  }
+
+  const allPaths = config.projectPaths?.length ? config.projectPaths : [config.projectPath];
+
   return (
     <div className="border border-cc-border rounded-lg p-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -1108,7 +1186,7 @@ function AutoApprovalConfigCard({
                 await api.updateAutoApprovalConfig(config.slug, { enabled: newEnabled });
                 onUpdate();
               } catch (err: unknown) {
-                setEnabled(!newEnabled); // revert on error
+                setEnabled(!newEnabled);
                 setError(err instanceof Error ? err.message : String(err));
               } finally {
                 setSaving(false);
@@ -1118,8 +1196,8 @@ function AutoApprovalConfigCard({
           />
           <span className="text-xs font-medium text-cc-fg">{config.label}</span>
         </label>
-        <span className="text-[10px] text-cc-muted font-mono-code truncate flex-1" title={config.projectPath}>
-          {config.projectPath}
+        <span className="text-[10px] text-cc-muted font-mono-code truncate flex-1" title={allPaths.join(", ")}>
+          {allPaths.length === 1 ? allPaths[0] : `${allPaths.length} projects`}
         </span>
         <button
           type="button"
@@ -1158,6 +1236,17 @@ function AutoApprovalConfigCard({
         )}
       </div>
 
+      {/* Show all paths when not editing (collapsed view) */}
+      {!editing && allPaths.length > 1 && (
+        <div className="space-y-0.5">
+          {allPaths.map((p, i) => (
+            <div key={i} className="text-[10px] text-cc-muted font-mono-code truncate" title={p}>
+              {p}
+            </div>
+          ))}
+        </div>
+      )}
+
       {editing ? (
         <div className="space-y-2">
           <input
@@ -1167,6 +1256,68 @@ function AutoApprovalConfigCard({
             placeholder="Label"
             className="w-full px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
           />
+
+          {/* Project paths list */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-cc-muted">Project Paths</span>
+            {paths.map((p, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <span className="flex-1 px-2 py-1 text-[10px] font-mono-code bg-cc-hover rounded truncate" title={p}>
+                  {p}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removePath(i)}
+                  disabled={paths.length <= 1}
+                  className="text-[10px] text-cc-error/60 hover:text-cc-error cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed px-1"
+                  title="Remove path"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPath(); } }}
+                placeholder="Add another project path..."
+                className="flex-1 px-2 py-1 text-[10px] bg-cc-input-bg border border-cc-border rounded text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPathPicker(true)}
+                className="shrink-0 w-5 h-5 flex items-center justify-center rounded border border-cc-border text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                title="Browse folders"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+                  <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={addPath}
+                disabled={!newPath.trim()}
+                className="text-[10px] text-cc-primary hover:text-cc-primary-hover cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed px-1"
+              >
+                Add
+              </button>
+            </div>
+            {showPathPicker && (
+              <FolderPicker
+                initialPath={newPath || ""}
+                onSelect={(path) => {
+                  if (!paths.includes(path)) {
+                    setPaths([...paths, path]);
+                  }
+                  setNewPath("");
+                }}
+                onClose={() => setShowPathPicker(false)}
+              />
+            )}
+          </div>
+
           <textarea
             value={criteria}
             onChange={(e) => setCriteria(e.target.value)}

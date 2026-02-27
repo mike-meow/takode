@@ -707,7 +707,16 @@ export function Sidebar() {
           <button
             title="Terminal"
             onClick={() => {
-              window.location.hash = "#/terminal";
+              if (isTerminalPage) {
+                const sessionId = useStore.getState().currentSessionId;
+                if (sessionId) {
+                  navigateToSession(sessionId);
+                } else {
+                  navigateToMostRecentSession();
+                }
+              } else {
+                window.location.hash = "#/terminal";
+              }
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
               }
@@ -727,7 +736,16 @@ export function Sidebar() {
           <button
             title="Scheduled"
             onClick={() => {
-              window.location.hash = "#/scheduled";
+              if (isScheduledPage) {
+                const sessionId = useStore.getState().currentSessionId;
+                if (sessionId) {
+                  navigateToSession(sessionId);
+                } else {
+                  navigateToMostRecentSession();
+                }
+              } else {
+                window.location.hash = "#/scheduled";
+              }
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
               }
@@ -745,7 +763,16 @@ export function Sidebar() {
           <button
             title="Quests"
             onClick={() => {
-              window.location.hash = "#/questmaster";
+              if (isQuestmasterPage) {
+                const sessionId = useStore.getState().currentSessionId;
+                if (sessionId) {
+                  navigateToSession(sessionId);
+                } else {
+                  navigateToMostRecentSession();
+                }
+              } else {
+                window.location.hash = "#/questmaster";
+              }
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
               }
@@ -763,7 +790,16 @@ export function Sidebar() {
           <button
             title="Settings"
             onClick={() => {
-              window.location.hash = "#/settings";
+              if (isSettingsPage) {
+                const sessionId = useStore.getState().currentSessionId;
+                if (sessionId) {
+                  navigateToSession(sessionId);
+                } else {
+                  navigateToMostRecentSession();
+                }
+              } else {
+                window.location.hash = "#/settings";
+              }
               if (window.innerWidth < 768) {
                 useStore.getState().setSidebarOpen(false);
               }

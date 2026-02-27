@@ -3124,6 +3124,7 @@ export function createRoutes(
         body.label,
         body.criteria,
         body.enabled,
+        body.projectPaths,
       );
       return c.json(config, 201);
     } catch (e: unknown) {
@@ -3139,6 +3140,7 @@ export function createRoutes(
         label: body.label,
         criteria: body.criteria,
         enabled: body.enabled,
+        projectPaths: body.projectPaths,
       });
       if (!config) return c.json({ error: "Config not found" }, 404);
       return c.json(config);

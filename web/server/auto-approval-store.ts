@@ -17,8 +17,10 @@ import { createHash } from "node:crypto";
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface AutoApprovalConfig {
-  /** Canonical absolute path to the project directory */
+  /** Canonical absolute path to the project directory (primary / first path) */
   projectPath: string;
+  /** All project paths this rule applies to. When present, supersedes projectPath for matching. */
+  projectPaths?: string[];
   /** Human-readable label (e.g. "companion", "my-api") */
   label: string;
   /** Stable slug derived from hashing projectPath — used as identifier */
@@ -160,15 +162,20 @@ export async function getConfigForPath(cwd: string, extraPaths?: string[]): Prom
   let bestLen = 0;
 
   for (const config of configs) {
-    const normalizedProject = normalizePath(config.projectPath);
-    for (const normalizedCwd of candidates) {
-      if (
-        normalizedCwd === normalizedProject ||
-        normalizedCwd.startsWith(normalizedProject + "/")
-      ) {
-        if (normalizedProject.length > bestLen) {
-          bestLen = normalizedProject.length;
-          bestMatch = config;
+    const configPaths = config.projectPaths?.length
+      ? config.projectPaths
+      : [config.projectPath];
+    for (const pp of configPaths) {
+      const normalizedProject = normalizePath(pp);
+      for (const normalizedCwd of candidates) {
+        if (
+          normalizedCwd === normalizedProject ||
+          normalizedCwd.startsWith(normalizedProject + "/")
+        ) {
+          if (normalizedProject.length > bestLen) {
+            bestLen = normalizedProject.length;
+            bestMatch = config;
+          }
         }
       }
     }
@@ -182,6 +189,7 @@ export async function createConfig(
   label: string,
   criteria: string,
   enabled: boolean = true,
+  projectPaths?: string[],
 ): Promise<AutoApprovalConfig> {
   if (!projectPath || !projectPath.trim()) {
     throw new Error("Project path is required");
@@ -198,9 +206,15 @@ export async function createConfig(
     throw new Error("A config for this project path already exists");
   }
 
+  // Normalize all additional paths
+  const normalizedPaths = projectPaths?.length
+    ? [...new Set(projectPaths.map((p) => normalizePath(p.trim())).filter(Boolean))]
+    : undefined;
+
   const now = Date.now();
   const config: AutoApprovalConfig = {
     projectPath: normalized,
+    ...(normalizedPaths && normalizedPaths.length > 0 ? { projectPaths: normalizedPaths } : {}),
     label: label.trim(),
     slug,
     criteria: criteria.trim(),
@@ -216,20 +230,30 @@ export async function createConfig(
 
 export async function updateConfig(
   slug: string,
-  updates: { label?: string; criteria?: string; enabled?: boolean },
+  updates: { label?: string; criteria?: string; enabled?: boolean; projectPaths?: string[] },
 ): Promise<AutoApprovalConfig | null> {
   const configs = await readAll();
   const idx = configs.findIndex((c) => c.slug === slug);
   if (idx === -1) return null;
 
   const existing = configs[idx];
+  const normalizedPaths = updates.projectPaths
+    ? [...new Set(updates.projectPaths.map((p) => normalizePath(p.trim())).filter(Boolean))]
+    : undefined;
+
   const config: AutoApprovalConfig = {
     ...existing,
     ...(updates.label !== undefined ? { label: updates.label.trim() } : {}),
     ...(updates.criteria !== undefined ? { criteria: updates.criteria.trim() } : {}),
     ...(updates.enabled !== undefined ? { enabled: updates.enabled } : {}),
+    ...(normalizedPaths !== undefined ? { projectPaths: normalizedPaths.length > 0 ? normalizedPaths : undefined } : {}),
     updatedAt: Date.now(),
   };
+
+  // Update primary projectPath to first element if projectPaths changed
+  if (normalizedPaths && normalizedPaths.length > 0) {
+    config.projectPath = normalizedPaths[0];
+  }
 
   configs[idx] = config;
   persist(configs);

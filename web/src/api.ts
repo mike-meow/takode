@@ -242,6 +242,7 @@ export interface AppSettings {
 
 export interface AutoApprovalConfig {
   projectPath: string;
+  projectPaths?: string[];
   label: string;
   slug: string;
   criteria: string;
@@ -696,9 +697,9 @@ export const api = {
     if (repoRoot) url += `&repo_root=${encodeURIComponent(repoRoot)}`;
     return get<{ config: AutoApprovalConfig | null }>(url);
   },
-  createAutoApprovalConfig: (data: { projectPath: string; label: string; criteria: string; enabled?: boolean }) =>
+  createAutoApprovalConfig: (data: { projectPath: string; projectPaths?: string[]; label: string; criteria: string; enabled?: boolean }) =>
     post<AutoApprovalConfig>("/auto-approval/configs", data),
-  updateAutoApprovalConfig: (slug: string, data: { label?: string; criteria?: string; enabled?: boolean }) =>
+  updateAutoApprovalConfig: (slug: string, data: { label?: string; criteria?: string; enabled?: boolean; projectPaths?: string[] }) =>
     put<AutoApprovalConfig>(`/auto-approval/configs/${encodeURIComponent(slug)}`, data),
   deleteAutoApprovalConfig: (slug: string) =>
     del(`/auto-approval/configs/${encodeURIComponent(slug)}`),
