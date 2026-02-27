@@ -303,7 +303,7 @@ function ToolResultSection({
             <div className="absolute top-1.5 right-1.5 z-10">
               <CodeCopyButton text={liveOutput} />
             </div>
-            <pre className="text-[11px] font-mono-code whitespace-pre-wrap leading-relaxed rounded-lg px-2.5 py-2 max-h-64 overflow-y-auto bg-cc-code-bg text-cc-muted">
+            <pre className="text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 max-h-64 overflow-y-auto overflow-x-auto bg-cc-code-bg text-cc-muted">
               {liveOutput}
             </pre>
           </div>
@@ -372,9 +372,9 @@ function ToolResultSection({
         <div className="absolute top-1.5 right-1.5 z-10">
           <CodeCopyButton text={displayContent} />
         </div>
-        <pre className={`text-[11px] font-mono-code whitespace-pre-wrap leading-relaxed rounded-lg px-2.5 py-2 ${
+        <pre className={`text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 ${
           fullContent === null ? "max-h-40" : "max-h-96"
-        } overflow-y-auto ${
+        } overflow-y-auto overflow-x-auto ${
           preview.is_error
             ? "bg-cc-error/5 border border-cc-error/20 text-cc-error"
             : "bg-cc-code-bg text-cc-muted"
