@@ -26,8 +26,10 @@ export interface TakodePeekMessage {
   content: string;
   /** Epoch ms timestamp */
   ts: number;
-  /** Tool calls (only for assistant messages) */
+  /** Detailed tool calls (only in detail/expanded mode) */
   tools?: TakodePeekTool[];
+  /** Compact tool counts by name, e.g. { Read: 3, Bash: 2 } (for peek/range modes) */
+  toolCounts?: Record<string, number>;
   /** Turn duration in ms (only for result messages) */
   turnDurationMs?: number;
   /** Whether the result was successful (only for result messages) */
@@ -566,16 +568,17 @@ export function buildPeekRange(
 ): PeekRangeResponse {
   const totalMessages = messageHistory.length;
   const clampedFrom = Math.max(0, Math.min(from, totalMessages - 1));
-  const clampedTo = Math.min(clampedFrom + count, totalMessages - 1);
 
   const contentLimit = 120;
   const allTurns = findTurnBoundaries(messageHistory);
 
-  // Collect peekable messages in range
+  // Collect peekable messages starting from `from`, up to `count` peekable messages
   const messages: TakodePeekMessage[] = [];
   let lastKnownTs = 0;
+  let scanEnd = clampedFrom; // track how far we actually scanned
 
-  for (let i = clampedFrom; i <= clampedTo; i++) {
+  for (let i = clampedFrom; i < totalMessages && messages.length < count; i++) {
+    scanEnd = i;
     const msg = messageHistory[i];
     if (!isPeekable(msg)) continue;
 
@@ -593,14 +596,15 @@ export function buildPeekRange(
 
     const peekMsg: TakodePeekMessage = { idx: i, type: toPeekType(msg.type), content, ts };
 
+    // Compact tool counts (not individual tool lines — use `read` for details)
     if (msg.type === "assistant" && msg.message?.content) {
       const toolBlocks = extractToolUseBlocks(msg.message.content);
       if (toolBlocks.length > 0) {
-        peekMsg.tools = toolBlocks.map(block => ({
-          idx: msg.message.content.indexOf(block),
-          name: block.name,
-          summary: buildToolSummary(block.name, block.input),
-        }));
+        const counts: Record<string, number> = {};
+        for (const block of toolBlocks) {
+          counts[block.name] = (counts[block.name] || 0) + 1;
+        }
+        peekMsg.toolCounts = counts;
       }
     }
 
@@ -616,7 +620,7 @@ export function buildPeekRange(
   const turnBoundaries = allTurns
     .filter(t => {
       const tEnd = t.endIdx >= 0 ? t.endIdx : totalMessages - 1;
-      return t.startIdx <= clampedTo && tEnd >= clampedFrom;
+      return t.startIdx <= scanEnd && tEnd >= clampedFrom;
     })
     .map(t => ({
       turnNum: allTurns.indexOf(t),
@@ -628,7 +632,7 @@ export function buildPeekRange(
     mode: "range",
     totalMessages,
     from: clampedFrom,
-    to: clampedTo,
+    to: scanEnd,
     messages,
     turnBoundaries,
   };

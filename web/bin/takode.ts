@@ -434,6 +434,7 @@ type PeekMessage = {
   content: string;
   ts: number;
   tools?: Array<{ idx: number; name: string; summary: string }>;
+  toolCounts?: Record<string, number>;
   turnDurationMs?: number;
   success?: boolean;
 };
@@ -672,11 +673,9 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
       activeTurnNum = boundary.turnNum;
     }
 
-    // Message rendering
+    // Message rendering (compact: tool counts instead of individual lines)
     const time = formatTime(msg.ts);
     const idx = `[${msg.idx}]`;
-    const isLast = mi === d.messages.length - 1;
-    const pipe = isLast ? " " : "|";
 
     switch (msg.type) {
       case "user":
@@ -684,16 +683,13 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
         break;
       case "assistant": {
         const text = msg.content.trim();
+        const toolStr = msg.toolCounts
+          ? "  (" + Object.entries(msg.toolCounts).map(([n, c]) => c > 1 ? `${n}×${c}` : n).join(", ") + ")"
+          : "";
         if (text) {
-          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 100)}`);
-        }
-        if (msg.tools && msg.tools.length > 0) {
-          for (let ti = 0; ti < msg.tools.length; ti++) {
-            const tool = msg.tools[ti];
-            const isLastTool = ti === msg.tools.length - 1 && !text;
-            const connector = isLastTool && isLast ? "└─" : "├─";
-            console.log(`  ${pipe}       ${connector} ${tool.name.padEnd(6)} ${tool.summary}`);
-          }
+          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 90)}${toolStr}`);
+        } else if (toolStr) {
+          console.log(`  ${idx.padEnd(7)} ${time}  asst ${toolStr}`);
         }
         break;
       }
