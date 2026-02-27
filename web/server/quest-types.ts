@@ -33,6 +33,8 @@ export interface QuestFeedbackEntry {
   author: "human" | "agent";
   text: string;
   ts: number;
+  /** Companion session ID that authored this entry (for agent comments). */
+  authorSessionId?: string;
   /** Images attached to this feedback entry */
   images?: QuestImage[];
   /** Whether this feedback has been addressed (only meaningful for human entries) */

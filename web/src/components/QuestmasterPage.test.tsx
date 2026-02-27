@@ -332,6 +332,35 @@ describe("QuestmasterPage verification inbox", () => {
     expect(within(dialog).getByText("ui")).toBeInTheDocument();
   });
 
+  it("renders agent feedback with session label and opens that session on click", () => {
+    mockState.quests = [{
+      id: "q-8-v4",
+      questId: "q-8",
+      version: 4,
+      title: "Quest with agent feedback",
+      createdAt: Date.now(),
+      status: "done",
+      description: "Done",
+      verificationItems: [{ text: "checked", checked: true }],
+      completedAt: Date.now(),
+      feedback: [
+        {
+          author: "agent",
+          authorSessionId: "session-1",
+          text: "Implemented and verified.",
+          ts: Date.now(),
+        },
+      ],
+    } as QuestmasterTask];
+    window.location.hash = "#/questmaster?quest=q-8";
+    render(<QuestmasterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: /Quest details: Quest with agent feedback/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Session One" }));
+
+    expect(mockNavigateToSession).toHaveBeenCalledWith("session-1");
+  });
+
   it("prefills and navigates when clicking Rework with unaddressed feedback", () => {
     window.location.hash = "#/questmaster?quest=q-1";
     render(<QuestmasterPage />);

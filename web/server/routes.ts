@@ -2983,8 +2983,23 @@ export function createRoutes(
     const body = await c.req.json().catch(() => ({}));
     const text = body.text;
     const author = body.author === "agent" ? "agent" : "human";
+    const rawAuthorSessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    if (author === "agent" && rawAuthorSessionId.length === 0) {
+      return c.json({ error: "sessionId is required for agent feedback" }, 400);
+    }
+    const authorSessionId = author === "agent" ? rawAuthorSessionId : undefined;
     if (!text || typeof text !== "string" || !text.trim()) {
       return c.json({ error: "text is required" }, 400);
+    }
+    if (authorSessionId && !launcher.getSession(authorSessionId)) {
+      return c.json(
+        {
+          error:
+            `Unknown sessionId: ${authorSessionId}. ` +
+            "Agent feedback must include a valid Companion session ID.",
+        },
+        400,
+      );
     }
     try {
       const current = await questStore.getQuest(c.req.param("questId"));
@@ -2992,6 +3007,7 @@ export function createRoutes(
       const existing: import("./quest-types.js").QuestFeedbackEntry[] =
         "feedback" in current ? (current as { feedback?: import("./quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
       const entry: import("./quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
+      if (authorSessionId) entry.authorSessionId = authorSessionId;
       if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
       const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: [...existing, entry] });
       if (!quest) return c.json({ error: "Quest not found" }, 404);

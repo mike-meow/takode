@@ -3058,6 +3058,88 @@ describe("POST /api/quests/:questId/claim", () => {
   });
 });
 
+describe("POST /api/quests/:questId/feedback", () => {
+  it("returns 400 when agent feedback omits sessionId", async () => {
+    const getQuestSpy = vi.spyOn(questStore, "getQuest");
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Addressed", author: "agent" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(getQuestSpy).not.toHaveBeenCalled();
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when agent feedback sessionId does not belong to a known companion session", async () => {
+    const getQuestSpy = vi.spyOn(questStore, "getQuest");
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+    launcher.getSession.mockReturnValue(undefined);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Addressed", author: "agent", sessionId: "cli-standalone" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(getQuestSpy).not.toHaveBeenCalled();
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+
+  it("records authorSessionId for agent feedback when sessionId is valid", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "session-1",
+      state: "running",
+      cwd: "/test",
+      archived: false,
+    });
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "agent", authorSessionId: "session-1", text: "Addressed", ts: Date.now() }],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Addressed", author: "agent", sessionId: "session-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    const feedback = (patchSpy.mock.calls[0][1] as { feedback: Array<{ author: string; authorSessionId?: string; text: string }> }).feedback;
+    expect(feedback[feedback.length - 1]).toMatchObject({
+      author: "agent",
+      authorSessionId: "session-1",
+      text: "Addressed",
+    });
+  });
+});
+
 describe("POST /api/quests/:questId/done", () => {
   it("clears claimed quest from the pre-transition active owner", async () => {
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({

@@ -222,11 +222,23 @@ function formatQuestDetail(q: QuestmasterTask, archivedMap?: Map<string, boolean
     }
   }
   if ("feedback" in q) {
-    const entries = (q as { feedback?: { author: string; text: string; ts: number; addressed?: boolean; images?: { filename: string; path: string }[] }[] }).feedback;
+    const entries = (q as {
+      feedback?: {
+        author: string;
+        text: string;
+        ts: number;
+        addressed?: boolean;
+        authorSessionId?: string;
+        images?: { filename: string; path: string }[];
+      }[];
+    }).feedback;
     if (entries?.length) {
       lines.push(`Feedback:`);
       for (const entry of entries) {
-        const tag = entry.addressed ? `${entry.author}, addressed, ${timeAgo(entry.ts)}` : `${entry.author}, ${timeAgo(entry.ts)}`;
+        const authorLabel = entry.authorSessionId
+          ? `${entry.author}:${formatSessionLabel(entry.authorSessionId, archivedMap)}`
+          : entry.author;
+        const tag = entry.addressed ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}` : `${authorLabel}, ${timeAgo(entry.ts)}`;
         lines.push(`  [${tag}] ${entry.text}`);
         if (entry.images?.length) {
           for (const img of entry.images) {
@@ -631,7 +643,7 @@ async function cmdCheck(): Promise<void> {
 async function cmdFeedback(): Promise<void> {
   const id = positional(0);
   if (!id) {
-    die("Usage: quest feedback <questId> --text \"...\" [--author agent|human] [--image <path>] [--images \"p1,p2\"]");
+    die("Usage: quest feedback <questId> --text \"...\" [--author agent|human] [--session <sid>] [--image <path>] [--images \"p1,p2\"]");
   }
 
   const text = option("text");
@@ -639,6 +651,10 @@ async function cmdFeedback(): Promise<void> {
 
   const authorOpt = option("author");
   const author = authorOpt === "human" ? "human" : "agent";
+  const sessionId = option("session") || currentSessionId;
+  if (author === "agent" && !sessionId) {
+    die("Agent feedback requires --session <sid> or COMPANION_SESSION_ID.");
+  }
   const imagePaths = [
     ...options("image"),
     ...options("images").flatMap((group) => group.split(",").map((p) => p.trim())),
@@ -659,6 +675,7 @@ async function cmdFeedback(): Promise<void> {
       body: JSON.stringify({
         text: text.trim(),
         author,
+        ...(author === "agent" && sessionId ? { sessionId } : {}),
         ...(uploadedImages?.length ? { images: uploadedImages } : {}),
       }),
       signal: AbortSignal.timeout(5000),
@@ -800,7 +817,7 @@ Commands:
   transition <id> --status <s> [--desc "..."] [--json]   Change status
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item
-  feedback <id> --text "..." [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+  feedback <id> --text "..." [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
   address <id> <index> [--json]                          Toggle feedback addressed status
   delete <id> [--json]                                   Delete quest
 

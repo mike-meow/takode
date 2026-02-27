@@ -2206,6 +2206,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                     <div className="space-y-2 mb-2">
                                       {feedbackEntries.map((entry, i) => {
                                         const isEditing = editingFeedback?.questId === quest.questId && editingFeedback?.index === i;
+                                        const feedbackSessionId = entry.author === "agent" ? entry.authorSessionId : undefined;
+                                        const feedbackSessionName = feedbackSessionId ? sessionNames.get(feedbackSessionId) : undefined;
+                                        const feedbackAuthorLabel = feedbackSessionName || feedbackSessionId || entry.author;
                                         return (
                                           <div
                                             key={i}
@@ -2218,11 +2221,25 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                             }`}
                                           >
                                             <div className="flex items-center gap-1.5 mb-0.5">
-                                              <span className={`text-xs font-medium ${
-                                                entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
-                                              }`}>
-                                                {entry.author}
-                                              </span>
+                                              {feedbackSessionId ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigateToSession(feedbackSessionId);
+                                                  }}
+                                                  className="text-xs font-medium text-cc-primary hover:text-cc-primary-hover underline-offset-2 hover:underline cursor-pointer"
+                                                  title={`Open session ${feedbackSessionId}`}
+                                                >
+                                                  {feedbackAuthorLabel}
+                                                </button>
+                                              ) : (
+                                                <span className={`text-xs font-medium ${
+                                                  entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
+                                                }`}>
+                                                  {feedbackAuthorLabel}
+                                                </span>
+                                              )}
                                               <span className="text-[11px] text-cc-muted/40">
                                                 {timeAgo(entry.ts)}
                                               </span>
