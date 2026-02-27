@@ -2,11 +2,10 @@ import type { ServerWebSocket } from "bun";
 import { randomUUID } from "node:crypto";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
+import { GIT_CMD_TIMEOUT } from "./constants.js";
 
 const execPromise = promisify(execCb);
 
-/** Timeout (ms) for git shell commands. Generous default for large repos on NFS. */
-export const GIT_CMD_TIMEOUT = Number(process.env.COMPANION_GIT_TIMEOUT) || 60_000;
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve, basename } from "node:path";
 import { homedir } from "node:os";

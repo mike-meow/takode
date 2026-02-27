@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import type { CliLauncher } from "./cli-launcher.js";
-import { type WsBridge, GIT_CMD_TIMEOUT } from "./ws-bridge.js";
+import type { WsBridge } from "./ws-bridge.js";
 import type { SessionStore } from "./session-store.js";
 import type { WorktreeTracker } from "./worktree-tracker.js";
 import type { TerminalManager } from "./terminal-manager.js";
@@ -34,6 +34,7 @@ import { generateUniqueSessionName } from "../src/utils/names.js";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends } from "./transcription.js";
 import { getLegacyCodexHome } from "./codex-home.js";
 import type { PerfTracer } from "./perf-tracer.js";
+import { GIT_CMD_TIMEOUT } from "./constants.js";
 
 const ROUTES_DIR = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = dirname(ROUTES_DIR);

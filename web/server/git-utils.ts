@@ -4,6 +4,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
+import { GIT_CMD_TIMEOUT } from "./constants.js";
 
 const execPromise = promisify(execCb);
 
@@ -72,7 +73,7 @@ function git(cmd: string, cwd: string): string {
   return execSync(`git --no-optional-locks ${cmd}`, { // sync-ok: session setup, not called during message handling
     cwd,
     encoding: "utf-8",
-    timeout: 10_000,
+    timeout: GIT_CMD_TIMEOUT,
     stdio: ["pipe", "pipe", "pipe"],
   }).trim();
 }
@@ -91,7 +92,7 @@ async function gitAsync(cmd: string, cwd: string): Promise<string> {
   const { stdout } = await execPromise(`git --no-optional-locks ${cmd}`, {
     cwd,
     encoding: "utf-8",
-    timeout: 10_000,
+    timeout: GIT_CMD_TIMEOUT,
   });
   return stdout.trim();
 }
