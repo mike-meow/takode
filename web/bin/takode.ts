@@ -101,6 +101,17 @@ function formatTime(epoch: number): string {
   return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function formatDate(epoch: number): string {
+  const d = new Date(epoch);
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** Returns YYYY-MM-DD for date boundary comparison */
+function dateKey(epoch: number): string {
+  const d = new Date(epoch);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function formatRelativeTime(epoch: number): string {
   const diff = Date.now() - epoch;
   if (diff < 60000) return `${Math.round(diff / 1000)}s ago`;
@@ -460,35 +471,61 @@ async function handlePeek(base: string, args: string[]): Promise<void> {
   console.log("");
 
   // Turns
+  let lastDate = "";
   for (const turn of d.turns) {
+    // Date boundary
+    const turnDate = turn.startedAt ? dateKey(turn.startedAt) : "";
+    if (turnDate && turnDate !== lastDate) {
+      console.log(`── ${formatDate(turn.startedAt)} ──`);
+      lastDate = turnDate;
+    }
+
     const duration = turn.durationMs ? `${Math.round(turn.durationMs / 1000)}s` : "running";
     const ended = turn.endedAt ? `, ended ${formatTime(turn.endedAt)}` : "";
     console.log(`--- Turn ${turn.turnNum} (${duration}${ended}) ---`);
 
-    for (const msg of turn.messages) {
+    for (let mi = 0; mi < turn.messages.length; mi++) {
+      const msg = turn.messages[mi];
       const time = formatTime(msg.ts);
-      const idxStr = `[${msg.idx}]`.padEnd(6);
+      const idx = `[${msg.idx}]`;
+      // Check if there are more messages after this one (for tree continuation)
+      const isLast = mi === turn.messages.length - 1;
+      const pipe = isLast ? " " : "|";
 
       switch (msg.type) {
         case "user":
-          console.log(`  ${idxStr} ${time}  user  "${truncate(msg.content, 80)}"`);
+          console.log(`  ${idx.padEnd(7)} ${time}  user  "${truncate(msg.content, 80)}"`);
           break;
-        case "assistant":
-          console.log(`  ${idxStr} ${time}  asst  ${msg.content}`);
-          if (msg.tools) {
-            for (const tool of msg.tools) {
-              const toolIdx = `[${tool.idx}]`;
-              console.log(`                        |- ${tool.name.padEnd(6)} ${tool.summary.padEnd(45)} ${toolIdx}`);
+        case "assistant": {
+          // Show text content if any (without tool info — tools shown separately below)
+          const text = msg.content.trim();
+          if (text) {
+            console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 100)}`);
+          }
+          // Show tool calls as tree children
+          if (msg.tools && msg.tools.length > 0) {
+            for (let ti = 0; ti < msg.tools.length; ti++) {
+              const tool = msg.tools[ti];
+              const isLastTool = ti === msg.tools.length - 1 && !text;
+              const connector = isLastTool && isLast ? "└─" : "├─";
+              console.log(`  ${pipe}       ${connector} ${tool.name.padEnd(6)} ${tool.summary}`);
             }
           }
           break;
+        }
         case "result": {
-          const icon = msg.success ? "\u2713" : "\u2717";
-          console.log(`  ${idxStr} ${time}  ${icon} done  ${msg.content}`);
+          const icon = msg.success ? "✓" : "✗";
+          // Only show result content if it adds info (not just repeating the last assistant text)
+          const resultText = msg.content.trim();
+          if (resultText) {
+            console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, 100)}`);
+          } else {
+            console.log(`  ${idx.padEnd(7)} ${time}  ${icon} done`);
+          }
           break;
         }
         case "system":
-          console.log(`  ${idxStr} ${time}  sys   ${msg.content}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  sys   ${msg.content}`);
           break;
       }
     }

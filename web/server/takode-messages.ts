@@ -168,7 +168,7 @@ function extractTimestamp(msg: BrowserIncomingMessage): number {
     case "assistant":
       return (msg as { timestamp?: number }).timestamp || 0;
     case "result":
-      // Result messages don't have a direct timestamp; use 0 as fallback
+      // Result messages don't have a direct timestamp; try duration_ms offset from turn start
       return 0;
     case "compact_marker":
       return msg.timestamp || 0;
@@ -284,22 +284,37 @@ export function buildPeekResponse(
     const endMsg = turn.endIdx >= 0 ? messageHistory[turn.endIdx] : null;
 
     const startedAt = extractTimestamp(startMsg);
-    const endedAt = endMsg ? extractTimestamp(endMsg) || (endMsg.type === "result" ? (endMsg.data as CLIResultMessage)?.duration_ms ? startedAt + (endMsg.data as CLIResultMessage).duration_ms : null : null) : null;
     const durationMs = endMsg?.type === "result"
       ? (endMsg.data as CLIResultMessage).duration_ms ?? null
+      : null;
+    // Estimate endedAt: use duration offset from start, or find last assistant timestamp
+    const endedAt = endMsg
+      ? (durationMs && startedAt ? startedAt + durationMs : null)
       : null;
 
     // Collect peekable messages within this turn's range
     const endBound = turn.endIdx >= 0 ? turn.endIdx : messageHistory.length - 1;
     const peekMessages: TakodePeekMessage[] = [];
+    let lastKnownTs = startedAt; // track last known timestamp for result fallback
 
     for (let i = turn.startIdx; i <= endBound; i++) {
       const msg = messageHistory[i];
       if (!isPeekable(msg)) continue;
 
-      const rawText = extractFullText(msg);
+      let ts = extractTimestamp(msg);
+      // Result messages have no timestamp — use endedAt or last known timestamp
+      if (ts === 0) ts = endedAt || lastKnownTs;
+      if (ts > 0) lastKnownTs = ts;
+
+      // For assistant messages in peek mode, only show text blocks (not tool_use)
+      // since tools are displayed separately in the tools array
+      let rawText: string;
+      if (msg.type === "assistant" && msg.message?.content) {
+        rawText = extractTextFromBlocks(msg.message.content);
+      } else {
+        rawText = extractFullText(msg);
+      }
       const content = full ? rawText : truncate(rawText, contentLimit);
-      const ts = extractTimestamp(msg);
 
       const peekMsg: TakodePeekMessage = {
         idx: i,
