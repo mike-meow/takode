@@ -450,3 +450,39 @@ export interface CreationProgressEvent {
   status: "in_progress" | "done" | "error";
   detail?: string;
 }
+
+// ─── Takode Orchestration Events ─────────────────────────────────────────────
+
+export type TakodeEventType =
+  | "turn_end"
+  | "turn_start"
+  | "permission_request"
+  | "permission_resolved"
+  | "quest_update"
+  | "session_disconnected"
+  | "session_error";
+
+export interface TakodeEvent {
+  /** Monotonic event ID for cursor-based catchup */
+  id: number;
+  /** Event type */
+  event: TakodeEventType;
+  /** Full session UUID */
+  sessionId: string;
+  /** Short integer session ID */
+  sessionNum: number;
+  /** Human-readable session name */
+  sessionName: string;
+  /** Epoch ms timestamp */
+  ts: number;
+  /** Event-specific payload */
+  data: Record<string, unknown>;
+}
+
+/** Subscriber handle for the takode event stream */
+export interface TakodeEventSubscriber {
+  /** Session UUIDs this subscriber cares about */
+  sessions: Set<string>;
+  /** Callback invoked for each matching event */
+  callback: (event: TakodeEvent) => void;
+}

@@ -37,6 +37,9 @@ Data commands (no server required):
   export      Export session data to a .tar.zst archive [--port PORT]
   import      Import session data from a .tar.zst archive [--port PORT]
 
+Orchestration commands (requires running server + TAKODE_ROLE=orchestrator):
+  takode      Cross-session orchestration (watch, peek, read, send)
+
 Management commands (requires running server):
   sessions    Manage sessions (list, create, kill, relaunch, archive, rename, send-message)
   envs        Manage environment profiles (list, get, create, update, delete)
@@ -185,6 +188,13 @@ switch (command) {
       console.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(1);
     }
+    break;
+  }
+
+  case "takode": {
+    // Delegate to takode CLI — shift argv so takode sees its own args
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    await import("./takode.js");
     break;
   }
 

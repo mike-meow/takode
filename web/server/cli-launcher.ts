@@ -58,6 +58,8 @@ function sanitizeSpawnArgsForLog(args: string[]): string {
 
 export interface SdkSessionInfo {
   sessionId: string;
+  /** Monotonic integer ID assigned at runtime (not persisted — regenerated on restart) */
+  sessionNum?: number;
   pid?: number;
   state: "starting" | "connected" | "running" | "exited";
   exitCode?: number | null;
@@ -113,6 +115,8 @@ export interface SdkSessionInfo {
 
   /** Whether this is an assistant-mode session */
   isAssistant?: boolean;
+  /** Whether this is an orchestrator session (has takode CLI access) */
+  isOrchestrator?: boolean;
   /** One-shot: resume-session-at UUID for revert (cleared after use) */
   resumeAt?: string;
 
@@ -176,6 +180,13 @@ export class CliLauncher {
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
 
+  // ─── Integer session ID tracking ───────────────────────────────────────────
+  private nextSessionNum = 0;
+  /** UUID → integer session number */
+  private sessionNumMap = new Map<string, number>();
+  /** Integer session number → UUID */
+  private sessionByNum = new Map<number, string>();
+
   constructor(port: number) {
     this.port = port;
   }
@@ -208,6 +219,51 @@ export class CliLauncher {
   /** Attach a settings getter so relaunch() can read current binary settings. */
   setSettingsGetter(fn: () => { claudeBinary: string; codexBinary: string }): void {
     this.settingsGetter = fn;
+  }
+
+  // ─── Integer session ID management ─────────────────────────────────────────
+
+  /** Assign a monotonic integer ID to a session. */
+  private assignSessionNum(sessionId: string): number {
+    const existing = this.sessionNumMap.get(sessionId);
+    if (existing !== undefined) return existing;
+    const num = this.nextSessionNum++;
+    this.sessionNumMap.set(sessionId, num);
+    this.sessionByNum.set(num, sessionId);
+    return num;
+  }
+
+  /**
+   * Resolve a session identifier to a full UUID.
+   * Accepts: integer session number, full UUID, or UUID prefix (min 4 chars).
+   * Returns null if no match found.
+   */
+  resolveSessionId(idOrNum: string): string | null {
+    // Try integer lookup first
+    const num = parseInt(idOrNum, 10);
+    if (!isNaN(num) && String(num) === idOrNum) {
+      return this.sessionByNum.get(num) ?? null;
+    }
+    // Exact UUID match
+    if (this.sessions.has(idOrNum)) return idOrNum;
+    // Prefix match (min 4 chars to avoid ambiguity)
+    if (idOrNum.length >= 4) {
+      const lower = idOrNum.toLowerCase();
+      let match: string | null = null;
+      for (const uuid of this.sessions.keys()) {
+        if (uuid.toLowerCase().startsWith(lower)) {
+          if (match !== null) return null; // ambiguous — multiple matches
+          match = uuid;
+        }
+      }
+      return match;
+    }
+    return null;
+  }
+
+  /** Get the integer session number for a UUID. */
+  getSessionNum(sessionId: string): number | undefined {
+    return this.sessionNumMap.get(sessionId);
   }
 
   /** Persist launcher state to disk. */
@@ -251,6 +307,14 @@ export class CliLauncher {
     if (recovered > 0) {
       console.log(`[cli-launcher] Recovered ${recovered} live session(s) from disk`);
     }
+
+    // Assign integer session numbers sorted by creation time (stable ordering across restarts)
+    const sorted = Array.from(this.sessions.values()).sort((a, b) => a.createdAt - b.createdAt);
+    for (const info of sorted) {
+      info.sessionNum = this.assignSessionNum(info.sessionId);
+    }
+    console.log(`[cli-launcher] Assigned session numbers 0-${this.nextSessionNum - 1} to ${sorted.length} sessions`);
+
     return recovered;
   }
 
@@ -351,6 +415,9 @@ export class CliLauncher {
     }
 
     this.sessions.set(sessionId, info);
+
+    // Assign monotonic integer session number
+    info.sessionNum = this.assignSessionNum(sessionId);
 
     // Always inject COMPANION_SESSION_ID so agents can identify themselves
     const envWithSessionId = { ...options.env, COMPANION_SESSION_ID: sessionId };

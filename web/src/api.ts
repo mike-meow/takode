@@ -120,6 +120,8 @@ export interface CreateSessionOpts {
   container?: ContainerCreateOpts;
   assistantMode?: boolean;
   askPermission?: boolean;
+  /** Session role: "orchestrator" gets TAKODE_ROLE + TAKODE_API_PORT env vars */
+  role?: "worker" | "orchestrator";
   /** CLI session ID to resume (from an external CLI session, e.g. VS Code or terminal) */
   resumeCliSessionId?: string;
 }

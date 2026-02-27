@@ -29,6 +29,7 @@ import { hasContainerCodexAuth } from "./codex-container-auth.js";
 import { getSettings, updateSettings, getServerName, setServerName, getServerId, type NamerConfig } from "./settings-manager.js";
 import { getLogPath } from "./server-logger.js";
 import { getUsageLimits } from "./usage-limits.js";
+import { buildPeekResponse, buildReadResponse } from "./takode-messages.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends } from "./transcription.js";
@@ -91,6 +92,9 @@ export function createRoutes(
 ) {
   const api = new Hono();
 
+  /** Resolve a session ID from an integer, UUID, or UUID prefix. */
+  const resolveId = (raw: string): string | null => launcher.resolveSessionId(raw);
+
   // Performance tracing middleware — records slow API requests
   if (perfTracer) {
     api.use("/*", async (c, next) => {
@@ -138,6 +142,11 @@ export function createRoutes(
         }
         // Inject COMPANION_PORT so resumed sessions can call the local API.
         envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
+        // Add orchestrator env vars if role is specified
+        if (body.role === "orchestrator") {
+          envVars.TAKODE_ROLE = "orchestrator";
+          envVars.TAKODE_API_PORT = String(launcher.getPort());
+        }
         const binarySettings = getSettings();
         const session = await launcher.launch({
           cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
@@ -147,6 +156,9 @@ export function createRoutes(
           resumeCliSessionId: body.resumeCliSessionId,
           permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
         });
+        if (body.role === "orchestrator") {
+          session.isOrchestrator = true;
+        }
         wsBridge.setInitialAskPermission(session.sessionId, body.askPermission !== false);
         wsBridge.markResumedFromExternal(session.sessionId);
         const existingNames = new Set(Object.values(sessionNames.getAllNames()));
@@ -185,6 +197,11 @@ export function createRoutes(
 
       // Inject COMPANION_PORT so agents in any session can call the REST API
       envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
+      // Add orchestrator env vars if role is specified
+      if (body.role === "orchestrator") {
+        envVars.TAKODE_ROLE = "orchestrator";
+        envVars.TAKODE_API_PORT = String(launcher.getPort());
+      }
 
       // Assistant mode: override cwd and ensure workspace exists
       if (isAssistantMode) {
@@ -459,6 +476,11 @@ export function createRoutes(
         session.isAssistant = true;
       }
 
+      // Mark as orchestrator session if role is specified
+      if (body.role === "orchestrator") {
+        session.isOrchestrator = true;
+      }
+
       // Generate a session name so all creation paths (browser, CLI, API) get names
       if (isAssistantMode) {
         sessionNames.setName(session.sessionId, "Takode");
@@ -521,6 +543,11 @@ export function createRoutes(
           }
           // Inject COMPANION_PORT so resumed sessions can call the local API.
           envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
+          // Add orchestrator env vars if role is specified
+          if (body.role === "orchestrator") {
+            envVars.TAKODE_ROLE = "orchestrator";
+            envVars.TAKODE_API_PORT = String(launcher.getPort());
+          }
           await emitProgress(stream, "resolving_env", "Environment resolved", "done");
 
           await emitProgress(stream, "launching_cli", "Resuming CLI session...", "in_progress");
@@ -533,6 +560,9 @@ export function createRoutes(
             resumeCliSessionId: body.resumeCliSessionId,
             permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
           });
+          if (body.role === "orchestrator") {
+            session.isOrchestrator = true;
+          }
           wsBridge.setInitialCwd(session.sessionId, body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd());
           wsBridge.setInitialAskPermission(session.sessionId, body.askPermission !== false);
           wsBridge.markResumedFromExternal(session.sessionId);
@@ -580,6 +610,11 @@ export function createRoutes(
 
         // Inject COMPANION_PORT so agents in any session can call the REST API
         envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
+        // Add orchestrator env vars if role is specified
+        if (body.role === "orchestrator") {
+          envVars.TAKODE_ROLE = "orchestrator";
+          envVars.TAKODE_API_PORT = String(launcher.getPort());
+        }
 
         // Assistant mode: override cwd and ensure workspace exists
         if (isAssistantMode) {
@@ -923,6 +958,11 @@ export function createRoutes(
           session.isAssistant = true;
         }
 
+        // Mark as orchestrator session if role is specified
+        if (body.role === "orchestrator") {
+          session.isOrchestrator = true;
+        }
+
         // Generate a session name so all creation paths (browser, CLI, API) get names
         if (isAssistantMode) {
           sessionNames.setName(session.sessionId, "Takode");
@@ -1113,14 +1153,16 @@ export function createRoutes(
   });
 
   api.get("/sessions/:id", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const session = launcher.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
     return c.json(session);
   });
 
   api.patch("/sessions/:id/name", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     if (typeof body.name !== "string" || !body.name.trim()) {
       return c.json({ error: "name is required" }, 400);
@@ -1133,7 +1175,8 @@ export function createRoutes(
   });
 
   api.patch("/sessions/:id/diff-base", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     const branch = typeof body.branch === "string" ? body.branch : "";
     if (!wsBridge.setDiffBaseBranch(id, branch)) {
@@ -1143,7 +1186,8 @@ export function createRoutes(
   });
 
   api.patch("/sessions/:id/read", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     if (!wsBridge.markSessionRead(id)) {
       return c.json({ error: "Session not found" }, 404);
     }
@@ -1151,7 +1195,8 @@ export function createRoutes(
   });
 
   api.patch("/sessions/:id/unread", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     if (!wsBridge.markSessionUnread(id)) {
       return c.json({ error: "Session not found" }, 404);
     }
@@ -1163,8 +1208,80 @@ export function createRoutes(
     return c.json({ ok: true });
   });
 
+  // ─── Takode Event Stream (SSE) ─────────────────────────────────────────
+
+  api.get("/events/stream", (c) => {
+    const sessionsParam = c.req.query("sessions");
+    if (!sessionsParam) {
+      return c.json({ error: "sessions parameter is required" }, 400);
+    }
+
+    // Resolve session IDs from comma-separated integers or UUIDs
+    const sessionIds = new Set<string>();
+    for (const raw of sessionsParam.split(",")) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const resolved = launcher.resolveSessionId(trimmed);
+      if (resolved) {
+        sessionIds.add(resolved);
+      }
+    }
+    if (sessionIds.size === 0) {
+      return c.json({ error: "No valid sessions found" }, 400);
+    }
+
+    const sinceParam = c.req.query("since");
+    const since = sinceParam !== undefined ? parseInt(sinceParam, 10) : undefined;
+    const timeoutMs = parseInt(c.req.query("timeout") || "120000", 10) || 120000;
+
+    return streamSSE(c, async (stream) => {
+      let unsubscribe: (() => void) | null = null;
+      let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+      // Subscribe to takode events — replays buffered events since cursor
+      unsubscribe = wsBridge.subscribeTakodeEvents(
+        sessionIds,
+        (evt) => {
+          stream.writeSSE({
+            event: "event",
+            id: String(evt.id),
+            data: JSON.stringify(evt),
+          }).catch(() => {
+            // Stream closed — cleanup handled by abort
+          });
+        },
+        since,
+      );
+
+      // Signal that buffered event replay is complete
+      await stream.writeSSE({ event: "flush_complete", data: "{}" });
+
+      // Timeout: close stream after configured duration
+      timeoutTimer = setTimeout(() => {
+        stream.writeSSE({ event: "timeout", data: "{}" }).catch(() => {});
+        stream.close().catch(() => {});
+      }, timeoutMs);
+
+      // Clean up on stream abort (client disconnect)
+      stream.onAbort(() => {
+        if (unsubscribe) unsubscribe();
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+      });
+
+      // Keep the stream open until abort or timeout
+      await new Promise<void>((resolve) => {
+        stream.onAbort(resolve);
+      });
+
+      // Final cleanup (in case resolve was called before onAbort's cleanup)
+      if (unsubscribe) unsubscribe();
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    });
+  });
+
   api.post("/sessions/:id/kill", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const killed = await launcher.kill(id);
     if (!killed)
       return c.json({ error: "Session not found or already exited" }, 404);
@@ -1176,7 +1293,8 @@ export function createRoutes(
   });
 
   api.post("/sessions/:id/relaunch", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
 
@@ -1221,7 +1339,8 @@ export function createRoutes(
   });
 
   api.post("/sessions/:id/force-compact", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
     if (!info.cliSessionId) return c.json({ error: "No CLI session to resume" }, 400);
@@ -1250,7 +1369,8 @@ export function createRoutes(
   });
 
   api.post("/sessions/:id/revert", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json<{ messageId: string }>();
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
@@ -1324,7 +1444,8 @@ export function createRoutes(
   });
 
   api.delete("/sessions/:id", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     await launcher.kill(id);
 
     // Clean up container if any
@@ -1339,7 +1460,8 @@ export function createRoutes(
   });
 
   api.post("/sessions/:id/archive", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     await launcher.kill(id);
 
@@ -1360,7 +1482,8 @@ export function createRoutes(
   });
 
   api.post("/sessions/:id/unarchive", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
 
@@ -1404,24 +1527,97 @@ export function createRoutes(
     return c.json({ ok: true, worktreeRecreated, relaunch: relaunchResult });
   });
 
+  // ─── Takode: Message Peek & Read ────────────────────────────
+
+  api.get("/sessions/:id/messages", (c) => {
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
+
+    const turns = parseInt(c.req.query("turns") ?? "1", 10);
+    const since = parseInt(c.req.query("since") ?? "0", 10);
+    const full = c.req.query("full") === "true";
+
+    const history = wsBridge.getMessageHistory(sessionId);
+    if (!history) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const sessionNum = launcher.getSessionNum(sessionId) ?? -1;
+    const sessionName = sessionNames.getName(sessionId) || sessionId.slice(0, 8);
+    const cliConnected = wsBridge.isCliConnected(sessionId);
+
+    // Derive status: check bridge session for generation state
+    const bridgeSession = wsBridge.getSession(sessionId);
+    let status: "idle" | "running" | "disconnected" = "disconnected";
+    if (cliConnected) {
+      status = bridgeSession?.isGenerating ? "running" : "idle";
+    }
+
+    // Quest info from the bridge session state (set via quest claiming)
+    const sessionState = bridgeSession?.state;
+    const quest = sessionState?.claimedQuestId
+      ? {
+          id: sessionState.claimedQuestId,
+          title: sessionState.claimedQuestTitle || "",
+          status: sessionState.claimedQuestStatus || "",
+        }
+      : null;
+
+    const peekTurns = buildPeekResponse(history, { turns, since, full });
+
+    return c.json({
+      sessionId,
+      sessionNum,
+      sessionName,
+      status,
+      quest,
+      turns: peekTurns,
+    });
+  });
+
+  api.get("/sessions/:id/messages/:idx", (c) => {
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
+
+    const idx = parseInt(c.req.param("idx"), 10);
+    if (isNaN(idx)) return c.json({ error: "Invalid message index" }, 400);
+
+    const offset = parseInt(c.req.query("offset") ?? "0", 10);
+    const limit = parseInt(c.req.query("limit") ?? "200", 10);
+
+    const history = wsBridge.getMessageHistory(sessionId);
+    if (!history) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const result = buildReadResponse(history, idx, { offset, limit });
+    if (!result) {
+      return c.json(
+        { error: `Message index ${idx} out of range (0-${history.length - 1})` },
+        404,
+      );
+    }
+
+    return c.json(result);
+  });
+
   // ─── Recording Management ──────────────────────────────────
 
   api.post("/sessions/:id/recording/start", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     if (!recorder) return c.json({ error: "Recording not available" }, 501);
     recorder.enableForSession(id);
     return c.json({ ok: true, recording: true });
   });
 
   api.post("/sessions/:id/recording/stop", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     if (!recorder) return c.json({ error: "Recording not available" }, 501);
     recorder.disableForSession(id);
     return c.json({ ok: true, recording: false });
   });
 
   api.get("/sessions/:id/recording/status", (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     if (!recorder) return c.json({ recording: false, available: false });
     return c.json({
       recording: recorder.isRecording(id),
@@ -1438,7 +1634,8 @@ export function createRoutes(
   // ─── Tool result lazy fetch ────────────────────────────────
 
   api.get("/sessions/:id/tool-result/:toolUseId", (c) => {
-    const sessionId = c.req.param("id");
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
     const toolUseId = c.req.param("toolUseId");
 
     const result = wsBridge.getToolResult(sessionId, toolUseId);
@@ -2404,7 +2601,8 @@ export function createRoutes(
   });
 
   api.get("/sessions/:id/usage-limits", async (c) => {
-    const sessionId = c.req.param("id");
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
     const session = wsBridge.getSession(sessionId);
     const empty = { five_hour: null, seven_day: null, extra_usage: null };
 
@@ -2457,7 +2655,8 @@ export function createRoutes(
   // ─── Cross-session messaging ───────────────────────────────────────
 
   api.post("/sessions/:id/message", async (c) => {
-    const id = c.req.param("id");
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
     const session = launcher.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
     if (!launcher.isAlive(id)) return c.json({ error: "Session is not running" }, 400);

@@ -37,6 +37,9 @@ import type {
   McpServerDetail,
   McpServerConfig,
   SessionTaskEntry,
+  TakodeEvent,
+  TakodeEventType,
+  TakodeEventSubscriber,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
@@ -573,6 +576,13 @@ export class WsBridge {
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   /** Track recent CLI disconnects to detect mass disconnect events. */
   private recentCliDisconnects: number[] = [];
+
+  // ── Takode orchestration event emitter ───────────────────────────────────
+  private takodeSubscribers = new Set<TakodeEventSubscriber>();
+  private takodeEventLog: TakodeEvent[] = [];
+  private takodeEventNextId = 0;
+  private static readonly TAKODE_EVENT_LOG_LIMIT = 1000;
+  private sessionNameGetter: ((sessionId: string) => string) | null = null;
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
     "git_branch",
@@ -875,6 +885,73 @@ export class WsBridge {
 
   setPerfTracer(tracer: PerfTracer): void {
     this.perfTracer = tracer;
+  }
+
+  /** Set the callback used to resolve human-readable session names for takode events. */
+  setSessionNameGetter(fn: (sessionId: string) => string): void {
+    this.sessionNameGetter = fn;
+  }
+
+  // ── Takode orchestration event methods ──────────────────────────────────
+
+  /** Emit a takode event, buffering it and notifying matching subscribers. */
+  emitTakodeEvent(sessionId: string, event: TakodeEventType, data: Record<string, unknown>): void {
+    const takodeEvent: TakodeEvent = {
+      id: this.takodeEventNextId++,
+      event,
+      sessionId,
+      sessionNum: this.launcher?.getSessionNum(sessionId) ?? -1,
+      sessionName: this.sessionNameGetter?.(sessionId) ?? sessionId.slice(0, 8),
+      ts: Date.now(),
+      data,
+    };
+
+    // Ring buffer: evict oldest when full
+    this.takodeEventLog.push(takodeEvent);
+    if (this.takodeEventLog.length > WsBridge.TAKODE_EVENT_LOG_LIMIT) {
+      this.takodeEventLog.shift();
+    }
+
+    // Notify matching subscribers (wrap in try/catch — SSE streams may have closed)
+    for (const sub of this.takodeSubscribers) {
+      if (sub.sessions.has(sessionId)) {
+        try {
+          sub.callback(takodeEvent);
+        } catch {
+          // Subscriber errored (likely closed SSE stream) — remove it
+          this.takodeSubscribers.delete(sub);
+        }
+      }
+    }
+  }
+
+  /** Subscribe to takode events for a set of sessions. Returns an unsubscribe function.
+   *  If sinceEventId is provided, immediately replays buffered events with id > sinceEventId. */
+  subscribeTakodeEvents(
+    sessions: Set<string>,
+    callback: (event: TakodeEvent) => void,
+    sinceEventId?: number,
+  ): () => void {
+    const sub: TakodeEventSubscriber = { sessions, callback };
+    this.takodeSubscribers.add(sub);
+
+    // Replay buffered events if requested
+    if (sinceEventId !== undefined) {
+      for (const evt of this.takodeEventLog) {
+        if (evt.id > sinceEventId && sessions.has(evt.sessionId)) {
+          try {
+            callback(evt);
+          } catch {
+            this.takodeSubscribers.delete(sub);
+            return () => {};
+          }
+        }
+      }
+    }
+
+    return () => {
+      this.takodeSubscribers.delete(sub);
+    };
   }
 
   /** Check if a session is actively generating or has pending permission requests. */
@@ -1370,6 +1447,12 @@ export class WsBridge {
     return this.sessions.get(sessionId)?.lastUserMessage;
   }
 
+  /** Returns the full message history for a session (read-only snapshot). */
+  getMessageHistory(sessionId: string): BrowserIncomingMessage[] | null {
+    const session = this.sessions.get(sessionId);
+    return session ? session.messageHistory : null;
+  }
+
   getSessionActivityPreview(sessionId: string): string | undefined {
     return this.sessions.get(sessionId)?.lastActivityPreview;
   }
@@ -1724,6 +1807,13 @@ export class WsBridge {
       type: "cli_disconnected",
       ...(idleKilled ? { reason: "idle_limit" as const } : {}),
     });
+
+    // Takode: session_disconnected
+    this.emitTakodeEvent(sessionId, "session_disconnected", {
+      wasGenerating,
+      reason: idleKilled ? "idle_limit" : (reason || "unknown"),
+    });
+
     // Immediately tell browsers to stop showing "Purring..." — without this,
     // the browser stays in a stale "running" state until a full reconnect.
     this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
@@ -2344,6 +2434,13 @@ export class WsBridge {
     // Set attention state for the completed/errored session
     this.setAttention(session, msg.is_error ? "error" : "review");
 
+    // Takode: session_error when the result indicates an error
+    if (msg.is_error) {
+      this.emitTakodeEvent(session.id, "session_error", {
+        error: typeof msg.result === "string" ? msg.result.slice(0, 200) : "Unknown error",
+      });
+    }
+
     // Schedule Pushover notification for session completion/error
     if (this.pushoverNotifier) {
       if (msg.is_error) {
@@ -2466,6 +2563,12 @@ export class WsBridge {
       this.broadcastToBrowsers(session, {
         type: "permission_request",
         request: perm,
+      });
+
+      // Takode: permission_request
+      this.emitTakodeEvent(session.id, "permission_request", {
+        tool_name: perm.tool_name,
+        summary: perm.description || perm.tool_name,
       });
 
       if (autoApprovalConfig) {
@@ -2944,6 +3047,13 @@ export class WsBridge {
           session.messageHistory.push(deniedMsg);
           this.broadcastToBrowsers(session, deniedMsg);
         }
+        // Takode: permission_resolved (Codex path)
+        if (pending) {
+          this.emitTakodeEvent(session.id, "permission_resolved", {
+            tool_name: pending.tool_name,
+            outcome: msg.behavior === "allow" ? "approved" : "denied",
+          });
+        }
         this.persistSession(session);
       }
 
@@ -3374,6 +3484,14 @@ export class WsBridge {
         }
       }
 
+      // Takode: permission_resolved (approved) — emit for all approvals, not just notable ones
+      if (pending) {
+        this.emitTakodeEvent(session.id, "permission_resolved", {
+          tool_name: pending.tool_name,
+          outcome: "approved",
+        });
+      }
+
       // After ExitPlanMode approval, switch the CLI to the appropriate execution
       // mode. The CLI does NOT auto-transition out of plan mode — it needs an
       // explicit set_permission_mode control_request.
@@ -3428,6 +3546,12 @@ export class WsBridge {
       };
       session.messageHistory.push(deniedMsg);
       this.broadcastToBrowsers(session, deniedMsg);
+
+      // Takode: permission_resolved (denied)
+      this.emitTakodeEvent(session.id, "permission_resolved", {
+        tool_name: pending?.tool_name || "unknown",
+        outcome: "denied",
+      });
     }
     this.persistSession(session);
   }
@@ -3887,13 +4011,62 @@ export class WsBridge {
       session.stuckNotifiedAt = null;
       console.log(`[ws-bridge] Generation started for session ${sessionTag(session.id)} (${reason})`);
       this.recorder?.recordServerEvent(session.id, "generation_started", { reason }, session.backendType, session.state.cwd);
+
+      // Takode: turn_start
+      this.emitTakodeEvent(session.id, "turn_start", {
+        reason,
+        userMessage: session.lastUserMessage?.slice(0, 120),
+      });
     } else {
       const elapsed = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
       session.generationStartedAt = null;
       session.stuckNotifiedAt = null;
       console.log(`[ws-bridge] Generation ended for session ${sessionTag(session.id)} (${reason}, duration: ${elapsed}ms)`);
       this.recorder?.recordServerEvent(session.id, "generation_ended", { reason, elapsed }, session.backendType, session.state.cwd);
+
+      // Takode: turn_end with tool summary from the last turn
+      const toolSummary = this.buildTurnToolSummary(session);
+      this.emitTakodeEvent(session.id, "turn_end", {
+        reason,
+        duration_ms: elapsed,
+        ...toolSummary,
+      });
     }
+  }
+
+  /** Scan backwards through messageHistory to build a tool usage summary for the last turn. */
+  private buildTurnToolSummary(session: Session): Record<string, unknown> {
+    const toolCounts: Record<string, number> = {};
+    let resultPreview: string | undefined;
+    const history = session.messageHistory;
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const msg = history[i];
+      // Stop at the last user message or result (previous turn boundary)
+      if (msg.type === "user_message" || msg.type === "result") {
+        if (msg.type === "result") {
+          const data = (msg as { data?: { result?: string } }).data;
+          resultPreview = data?.result?.slice(0, 200);
+        }
+        break;
+      }
+      // Count tool_use blocks from assistant messages
+      if (msg.type === "assistant") {
+        const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_use") {
+              toolCounts[block.name] = (toolCounts[block.name] || 0) + 1;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      tools: Object.keys(toolCounts).length > 0 ? toolCounts : undefined,
+      resultPreview,
+    };
   }
 
   /** Derive current session status from explicit runtime state. */

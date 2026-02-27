@@ -99,6 +99,7 @@ wsBridge.setRecorder(recorder);
 wsBridge.setImageStore(imageStore);
 wsBridge.setPushoverNotifier(pushoverNotifier);
 wsBridge.setLauncher(launcher);
+wsBridge.setSessionNameGetter((sessionId) => sessionNames.getName(sessionId) || sessionId.slice(0, 8));
 launcher.setStore(sessionStore);
 launcher.setRecorder(recorder);
 await launcher.restoreFromDisk();

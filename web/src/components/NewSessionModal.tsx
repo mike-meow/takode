@@ -97,6 +97,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     () => scopedGetItem("cc-worktree") === "true",
   );
   const [assistantMode, setAssistantMode] = useState(false);
+  const [sessionRole, setSessionRole] = useState<"worker" | "orchestrator">("worker");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
@@ -289,6 +290,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       codexReasoningEffort: backend === "codex" ? (codexReasoningEffort || undefined) : undefined,
       assistantMode: assistantMode || undefined,
       askPermission: backend !== "codex" ? askPermission : undefined,
+      role: sessionRole === "orchestrator" ? "orchestrator" as const : undefined,
     };
 
     // Create a pending session and add it to the store
@@ -959,6 +961,24 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                   <path d="M8 1l1.545 4.752h4.997l-4.043 2.938 1.545 4.752L8 10.504l-4.044 2.938 1.545-4.752L1.458 5.752h4.997z" />
                 </svg>
                 <span>Assistant</span>
+              </button>
+
+              {/* Orchestrator role toggle */}
+              <button
+                onClick={() => {
+                  setSessionRole(sessionRole === "orchestrator" ? "worker" : "orchestrator");
+                }}
+                className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
+                  sessionRole === "orchestrator"
+                    ? "bg-cc-primary/15 text-cc-primary font-medium"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                }`}
+                title="Orchestrator session: gets TAKODE_ROLE and TAKODE_API_PORT env vars for cross-session coordination"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
+                  <path d="M8 2a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM3.5 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM12.5 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM8 4.5v2M5 7.5L7 6M11 7.5L9 6M3.5 8v2.5a1 1 0 001 1h7a1 1 0 001-1V8" />
+                </svg>
+                <span>Orchestrator</span>
               </button>
             </div>
 

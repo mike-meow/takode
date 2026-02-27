@@ -147,6 +147,8 @@ function createMockLauncher() {
     updateWorktree: vi.fn(),
     removeSession: vi.fn(),
     getPort: vi.fn(() => 3456),
+    // resolveSessionId: pass-through for exact UUIDs (used by resolveId helper in routes)
+    resolveSessionId: vi.fn((id: string) => id),
   } as any;
 }
 
