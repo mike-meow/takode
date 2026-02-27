@@ -339,6 +339,19 @@ describe("QuestmasterPage verification inbox", () => {
     expect(within(dialog).getByText("ui")).toBeInTheDocument();
   });
 
+  it("uses status-semantic colors for verification inbox actions", () => {
+    // Action colors should communicate state intent consistently:
+    // verification inbox = sky, finish done = purple, rework = green.
+    window.location.hash = "#/questmaster?quest=q-1";
+    render(<QuestmasterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
+    expect(within(dialog).getByText("Inbox")).toHaveClass("text-sky-400");
+    expect(within(dialog).getByRole("button", { name: "Later" })).toHaveClass("text-sky-400");
+    expect(within(dialog).getByRole("button", { name: "Finish Quest" })).toHaveClass("text-purple-400");
+    expect(within(dialog).getByRole("button", { name: "Rework" })).toHaveClass("text-green-400");
+  });
+
   it("filters quests by quest id from the search box", () => {
     // Questmaster search should support direct quest-id lookup so users can
     // jump to a known quest like q-2 without remembering the title text.
