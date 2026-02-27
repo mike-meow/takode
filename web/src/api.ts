@@ -745,7 +745,10 @@ export const api = {
   completeQuest: (id: string, verificationItems: import("./types.js").QuestVerificationItem[]) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/complete`, { verificationItems }),
   markQuestDone: (id: string) =>
-    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/done`),
+    post<import("./types.js").QuestmasterTask>(
+      `/quests/${encodeURIComponent(id)}/transition`,
+      { status: "done" },
+    ),
   checkQuestVerification: (id: string, index: number, checked: boolean) =>
     patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/${index}`, { checked }),
   markQuestVerificationRead: (id: string) =>

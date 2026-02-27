@@ -4827,6 +4827,140 @@ describe("Codex adapter result handling", () => {
       status: "needs_verification",
     });
   });
+
+  it("ignores quest lifecycle reconciliation when tool output only contains errors", () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "quest-claim-start-error",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_use",
+            id: "quest-tool-err-1",
+            name: "Bash",
+            input: { command: "quest claim q-74 --json" },
+          },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "quest-claim-end-error",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "quest-tool-err-1",
+            content: "Error: sessionId is required for in_progress status",
+            is_error: false,
+          },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((c: any) => c.type === "session_quest_claimed")).toBeUndefined();
+    expect(calls.find((c: any) => c.type === "session_task_history")).toBeUndefined();
+  });
+
+  it("parses quest IDs from jq id fields and prefers the last JSON object in compound output", () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.setSessionClaimedQuest("s1", {
+      id: "q-74",
+      title: "Fix Codex quest lifecycle chips",
+      status: "in_progress",
+    });
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "quest-multi-start",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_use",
+            id: "quest-tool-multi-1",
+            name: "Bash",
+            input: {
+              command: "quest claim q-74 --json | jq '{id,status}'; quest complete q-74 --items \"Verify\" --json | jq '{id,status}'",
+            },
+          },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "quest-multi-end",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "quest-tool-multi-1",
+            content: `{
+  "id": "q-74-v2",
+  "status": "in_progress"
+}
+{
+  "id": "q-74-v3",
+  "status": "needs_verification"
+}`,
+            is_error: false,
+          },
+        ],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const questEvents = calls.filter((c: any) => c.type === "session_quest_claimed");
+    expect(questEvents).toHaveLength(1);
+    expect(questEvents[0].quest).toEqual({
+      id: "q-74",
+      title: "Fix Codex quest lifecycle chips",
+      status: "needs_verification",
+    });
+    expect(calls.find((c: any) => c.type === "session_task_history")).toBeUndefined();
+  });
 });
 
 describe("Codex turn-start failure re-queue", () => {

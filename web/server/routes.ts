@@ -2786,6 +2786,35 @@ export function createRoutes(
     return c.json({ ok: true });
   });
 
+  const transitionQuestAndSync = async (
+    questId: string,
+    input: import("./quest-types.js").QuestTransitionInput,
+  ): Promise<import("./quest-types.js").QuestmasterTask | null> => {
+    const current = await questStore.getQuest(questId);
+    const currentSessionId = current && "sessionId" in current && typeof current.sessionId === "string"
+      ? current.sessionId
+      : null;
+    const quest = await questStore.transitionQuest(questId, input);
+    if (!quest) return null;
+
+    const nextSessionId = "sessionId" in quest && typeof quest.sessionId === "string"
+      ? quest.sessionId
+      : null;
+    if (currentSessionId && currentSessionId !== nextSessionId) {
+      wsBridge.setSessionClaimedQuest(currentSessionId, null);
+    }
+    if (nextSessionId) {
+      wsBridge.setSessionClaimedQuest(nextSessionId, {
+        id: quest.questId,
+        title: quest.title,
+        status: quest.status,
+      });
+    }
+
+    wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
+    return quest;
+  };
+
   api.get("/quests", async (c) => {
     const statusFilter = c.req.query("status")?.split(",") as import("./quest-types.js").QuestStatus[] | undefined;
     const parentId = c.req.query("parentId");
@@ -2856,9 +2885,9 @@ export function createRoutes(
   api.post("/quests/:questId/transition", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     try {
-      const quest = await questStore.transitionQuest(c.req.param("questId"), body);
+      const questId = c.req.param("questId");
+      const quest = await transitionQuestAndSync(questId, body);
       if (!quest) return c.json({ error: "Quest not found" }, 404);
-      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -2946,17 +2975,13 @@ export function createRoutes(
   api.post("/quests/:questId/done", async (c) => {
     try {
       const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean };
-      const current = await questStore.getQuest(c.req.param("questId"));
-      const quest = await questStore.markDone(c.req.param("questId"), {
-        notes: body.notes,
-        cancelled: body.cancelled,
+      const quest = await transitionQuestAndSync(c.req.param("questId"), {
+        status: "done",
+        ...(body.notes ? { notes: body.notes } : {}),
+        ...(body.cancelled ? { cancelled: true } : {}),
       });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
-      wsBridge.broadcastGlobal({ type: "quest_list_updated" } as import("./session-types.js").BrowserIncomingMessage);
-      // Clear the claimed quest from the active owner session since it's now done.
-      if (current && "sessionId" in current && typeof current.sessionId === "string") {
-        wsBridge.setSessionClaimedQuest(current.sessionId, null);
-      }
+      c.header("X-Companion-Deprecated", "Use /api/quests/:questId/transition with {status:\"done\"}");
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

@@ -122,6 +122,57 @@ function normalizeQuestStatus(value: string | undefined): QuestLifecycleStatus |
   return undefined;
 }
 
+function normalizeQuestId(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const match = value.match(/\b(q-\d+)\b/i);
+  return match?.[1]?.toLowerCase();
+}
+
+function extractJsonObjectCandidates(text: string): string[] {
+  const candidates: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaping = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (ch === "\\") {
+        escaping = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+      continue;
+    }
+
+    if (ch === "}") {
+      if (depth === 0) continue;
+      depth--;
+      if (depth === 0 && start >= 0) {
+        candidates.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return candidates;
+}
+
 function parseQuestLifecycleCommand(command: string): ParsedQuestLifecycleCommand | null {
   const match = command.match(/(?:^|[\s;|&])\/?quest\s+([a-z_]+)\s+(q-\d+)\b/i);
   if (!match) return null;
@@ -152,7 +203,11 @@ function parseQuestLifecycleResult(resultText: string): {
   const parseCandidate = (candidate: string) => {
     try {
       const parsed = JSON.parse(candidate) as Record<string, unknown>;
-      const questId = typeof parsed.questId === "string" ? parsed.questId : undefined;
+      const questId = normalizeQuestId(
+        typeof parsed.questId === "string"
+          ? parsed.questId
+          : (typeof parsed.id === "string" ? parsed.id : undefined),
+      );
       const title = typeof parsed.title === "string" ? parsed.title : undefined;
       const status = normalizeQuestStatus(
         typeof parsed.status === "string" ? parsed.status : undefined,
@@ -167,11 +222,10 @@ function parseQuestLifecycleResult(resultText: string): {
   const whole = parseCandidate(trimmed);
   if (whole) return whole;
 
-  const firstBrace = trimmed.indexOf("{");
-  const lastBrace = trimmed.lastIndexOf("}");
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const sliced = parseCandidate(trimmed.slice(firstBrace, lastBrace + 1));
-    if (sliced) return sliced;
+  const jsonCandidates = extractJsonObjectCandidates(trimmed);
+  for (let i = jsonCandidates.length - 1; i >= 0; i--) {
+    const parsed = parseCandidate(jsonCandidates[i]);
+    if (parsed) return parsed;
   }
 
   const claimLine = trimmed.match(/Claimed\s+(q-\d+)\s+"([^"]+)"/i);
@@ -3611,6 +3665,7 @@ export class WsBridge {
       ? toolResult.content
       : JSON.stringify(toolResult.content);
     const parsedResult = parseQuestLifecycleResult(raw);
+    if (!parsedResult) return;
 
     const questId = parsedResult?.questId || pending.questId;
     const status = parsedResult?.status || pending.targetStatus;

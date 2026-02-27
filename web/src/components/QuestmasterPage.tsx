@@ -584,7 +584,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   async function handleTransition(questId: string, status: QuestStatus) {
     setError("");
     try {
-      const updatedQuest = await api.transitionQuest(questId, { status });
+      const updatedQuest = status === "done"
+        ? await api.markQuestDone(questId)
+        : await api.transitionQuest(questId, { status });
       const currentQuests = useStore.getState().quests;
       setQuests(
         currentQuests

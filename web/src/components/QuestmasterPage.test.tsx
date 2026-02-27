@@ -8,6 +8,7 @@ const mockMarkQuestVerificationRead = vi.fn();
 const mockMarkQuestVerificationInbox = vi.fn();
 const mockTransitionQuest = vi.fn();
 const mockCreateQuest = vi.fn();
+const mockMarkQuestDone = vi.fn();
 const mockNavigateToSession = vi.fn();
 
 vi.mock("../api.js", () => ({
@@ -20,6 +21,8 @@ vi.mock("../api.js", () => ({
       mockTransitionQuest(...args),
     createQuest: (...args: unknown[]) =>
       mockCreateQuest(...args),
+    markQuestDone: (...args: unknown[]) =>
+      mockMarkQuestDone(...args),
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
   },
 }));
@@ -176,24 +179,28 @@ beforeEach(() => {
     async (questId: string, input: { status: "done" | "idea" | "refined" | "in_progress" | "needs_verification" }) => {
       const quest = mockState.quests.find((q) => q.questId === questId);
       if (!quest) throw new Error("quest not found");
-      if (input.status !== "done") return { ...quest, status: input.status } as QuestmasterTask;
-      const currentSessionId =
-        "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : undefined;
-      const previousOwners = Array.isArray((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds)
-        ? [...((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds ?? [])]
-        : [];
-      if (currentSessionId && !previousOwners.includes(currentSessionId)) previousOwners.push(currentSessionId);
-      return {
-        ...quest,
-        id: `${quest.questId}-v${quest.version + 1}`,
-        version: quest.version + 1,
-        status: "done",
-        completedAt: Date.now(),
-        previousOwnerSessionIds: previousOwners,
-        sessionId: undefined,
-      } as QuestmasterTask;
+      return { ...quest, status: input.status } as QuestmasterTask;
     },
   );
+  mockMarkQuestDone.mockImplementation(async (questId: string) => {
+    const quest = mockState.quests.find((q) => q.questId === questId);
+    if (!quest) throw new Error("quest not found");
+    const currentSessionId =
+      "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : undefined;
+    const previousOwners = Array.isArray((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds)
+      ? [...((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds ?? [])]
+      : [];
+    if (currentSessionId && !previousOwners.includes(currentSessionId)) previousOwners.push(currentSessionId);
+    return {
+      ...quest,
+      id: `${quest.questId}-v${quest.version + 1}`,
+      version: quest.version + 1,
+      status: "done",
+      completedAt: Date.now(),
+      previousOwnerSessionIds: previousOwners,
+      sessionId: undefined,
+    } as QuestmasterTask;
+  });
   mockCreateQuest.mockImplementation(
     async (input: { title: string; description?: string; tags?: string[] }) =>
       ({
@@ -398,7 +405,7 @@ describe("QuestmasterPage verification inbox", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Finish Quest" }));
 
     await waitFor(() => {
-      expect(mockTransitionQuest).toHaveBeenCalledWith("q-1", { status: "done" });
+      expect(mockMarkQuestDone).toHaveBeenCalledWith("q-1");
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: /Quest details: Inbox quest/ })).toBeNull();

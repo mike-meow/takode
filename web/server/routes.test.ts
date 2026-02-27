@@ -3007,6 +3007,76 @@ describe("PATCH /api/quests/:questId", () => {
   });
 });
 
+describe("POST /api/quests/:questId/transition", () => {
+  it("clears claimed quest from the pre-transition active owner when moved to done", async () => {
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v2",
+      questId: "q-1",
+      title: "Quest",
+      status: "needs_verification",
+      sessionId: "session-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "verify", checked: false }],
+    } as any);
+    vi.spyOn(questStore, "transitionQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "done",
+      createdAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "verify", checked: true }],
+      completedAt: Date.now(),
+      previousOwnerSessionIds: ["session-1"],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/transition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "done" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
+  });
+
+  it("broadcasts claimed quest to the target active session for in_progress transitions", async () => {
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v1",
+      questId: "q-1",
+      title: "Quest",
+      status: "refined",
+      createdAt: Date.now(),
+      description: "Ready",
+    } as any);
+    vi.spyOn(questStore, "transitionQuest").mockResolvedValueOnce({
+      id: "q-1-v2",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+      sessionId: "session-2",
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/transition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "in_progress", sessionId: "session-2", description: "Ready" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-2", {
+      id: "q-1",
+      title: "Quest",
+      status: "in_progress",
+    });
+  });
+});
+
 describe("POST /api/quests/:questId/claim", () => {
   it("returns 400 when sessionId does not belong to a known companion session", async () => {
     const claimSpy = vi.spyOn(questStore, "claimQuest");
@@ -3196,7 +3266,7 @@ describe("POST /api/quests/:questId/done", () => {
       description: "Ready",
       verificationItems: [{ text: "verify", checked: false }],
     } as any);
-    vi.spyOn(questStore, "markDone").mockResolvedValueOnce({
+    vi.spyOn(questStore, "transitionQuest").mockResolvedValueOnce({
       id: "q-1-v3",
       questId: "q-1",
       title: "Quest",
@@ -3215,6 +3285,10 @@ describe("POST /api/quests/:questId/done", () => {
     });
 
     expect(res.status).toBe(200);
+    expect(questStore.transitionQuest).toHaveBeenCalledWith(
+      "q-1",
+      expect.objectContaining({ status: "done" }),
+    );
     expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
   });
 });
