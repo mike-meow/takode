@@ -247,6 +247,18 @@ function endNamerCall(sessionId: string, source: NamerTriggerSource, controller:
   if (inFlightNamer.get(key) === controller) inFlightNamer.delete(key);
 }
 
+/** Cancel ALL in-flight namer calls for a session (all trigger sources). */
+function cancelAllNamersForSession(sessionId: string): void {
+  for (const source of ["user_message", "turn_completed", "agent_paused"] as const) {
+    const key = getNamerKey(sessionId, source);
+    const ctrl = inFlightNamer.get(key);
+    if (ctrl) {
+      ctrl.abort();
+      inFlightNamer.delete(key);
+    }
+  }
+}
+
 function recordNamerMutation(
   sessionId: string,
   source: NamerTriggerSource,
@@ -406,6 +418,13 @@ async function evaluateAndApply(
   if (!result) return;
   await applyNamingResult(sessionId, currentName ?? "", result, history, source);
 }
+
+// When a quest claims a session, abort all in-flight namer calls so no stale
+// result can overwrite the quest-derived title.
+wsBridge.onSessionNamedByQuestCallback((sessionId) => {
+  cancelAllNamersForSession(sessionId);
+  console.log(`[session-namer] Cancelled all in-flight namer calls for ${sessionId} (quest name takeover)`);
+});
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
 wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) => {

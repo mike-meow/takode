@@ -568,6 +568,7 @@ export class WsBridge {
   private onUserMessage: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string, wasGenerating: boolean) => void) | null = null;
   private onTurnCompleted: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void) | null = null;
   private onAgentPaused: ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void) | null = null;
+  private onSessionNamedByQuest: ((sessionId: string) => void) | null = null;
   private userMsgCounter = 0;
   /** Per-project cache of slash commands & skills so new sessions get them
    *  before the CLI sends system/init (which only arrives after the first
@@ -633,6 +634,11 @@ export class WsBridge {
   /** Register a callback for when the agent pauses for user input (ExitPlanMode, for auto-naming). */
   onAgentPausedCallback(cb: (sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void): void {
     this.onAgentPaused = cb;
+  }
+
+  /** Register a callback for when a quest claims a session name (to cancel in-flight namer calls). */
+  onSessionNamedByQuestCallback(cb: (sessionId: string) => void): void {
+    this.onSessionNamedByQuest = cb;
   }
 
   /** Register a callback for when git info is resolved and branch is known. */
@@ -852,6 +858,11 @@ export class WsBridge {
     session.state.claimedQuestId = quest?.id;
     session.state.claimedQuestTitle = quest?.title;
     session.state.claimedQuestStatus = quest?.status;
+    // Cancel in-flight namer calls before broadcasting so no stale result
+    // can arrive after the quest name update reaches browsers.
+    if (quest && this.onSessionNamedByQuest) {
+      this.onSessionNamedByQuest(sessionId);
+    }
     this.broadcastToBrowsers(session, {
       type: "session_quest_claimed",
       quest,
