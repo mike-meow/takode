@@ -513,6 +513,92 @@ function getClaudeBinary(): string | null {
   return resolvedBinary;
 }
 
+/** OpenAI API timeout (shorter — no CLI boot overhead). */
+const OPENAI_TIMEOUT_MS = 15_000;
+
+/**
+ * Call an OpenAI-compatible API to generate/evaluate a session name.
+ * Returns null on any failure (no key, timeout, API error).
+ */
+async function callOpenAI(prompt: string, signal?: AbortSignal): Promise<string | null> {
+  if (signal?.aborted) return null;
+
+  const settings = getSettings();
+  const apiKey = settings.namerOpenaiApiKey;
+  if (!apiKey) {
+    console.warn("[session-namer] OpenAI API key not configured, skipping auto-name");
+    return null;
+  }
+
+  const baseUrl = (settings.namerOpenaiBaseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const model = settings.namerOpenaiModel || "gpt-4o-mini";
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
+    // Forward caller's abort signal
+    if (signal) {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 200,
+        temperature: 0.3,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      if (!signal?.aborted) {
+        console.warn(`[session-namer] OpenAI API error ${res.status}: ${body.slice(0, MAX_STDERR_LOG_CHARS)}`);
+      }
+      return null;
+    }
+
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content?.trim() ?? null;
+    return signal?.aborted ? null : content;
+  } catch (err) {
+    if (!signal?.aborted) {
+      console.warn("[session-namer] OpenAI API call failed:", err);
+    }
+    return null;
+  }
+}
+
+/**
+ * Dispatch to the configured namer backend. Checks settings.namerBackend:
+ * - "openai" → callOpenAI
+ * - "" or "claude" → callHaiku (claude -p)
+ * Returns null if the chosen backend is unavailable.
+ */
+async function callNamerBackend(prompt: string, signal?: AbortSignal): Promise<string | null> {
+  const settings = getSettings();
+  const backend = settings.namerBackend || "claude";
+
+  if (backend === "openai") {
+    return callOpenAI(prompt, signal);
+  }
+
+  // Default: claude -p via callHaiku
+  return callHaiku(prompt, signal);
+}
+
 /**
  * Call `claude -p` with Haiku to generate/evaluate a session name.
  * Returns null on any failure (binary not found, timeout, bad output).
@@ -716,7 +802,7 @@ export async function generateFirstName(
 ): Promise<NamingResult | null> {
   const prompt = buildFirstTurnPrompt(history, cwd, options?.isGenerating, options?.claimedQuest);
   const start = Date.now();
-  const raw = await callHaiku(prompt, options?.signal);
+  const raw = await callNamerBackend(prompt, options?.signal);
   const parsed = raw ? parseResponse(raw, true) : null;
   addLogEntry({
     sessionId,
@@ -757,7 +843,7 @@ export async function evaluateSessionName(
     allowNewTask,
   );
   const start = Date.now();
-  const raw = await callHaiku(prompt, options?.signal);
+  const raw = await callNamerBackend(prompt, options?.signal);
   const parsed = filterUpdateResultByMode(raw ? parseResponse(raw, false) : null, allowNewTask);
   addLogEntry({
     sessionId,

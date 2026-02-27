@@ -41,6 +41,10 @@ describe("settings-manager", () => {
       maxKeepAlive: 0,
       autoApprovalEnabled: false,
       autoApprovalModel: "",
+      namerBackend: "",
+      namerOpenaiApiKey: "",
+      namerOpenaiBaseUrl: "",
+      namerOpenaiModel: "",
       updatedAt: 0,
     });
   });
@@ -114,6 +118,10 @@ describe("settings-manager", () => {
       maxKeepAlive: 0,
       autoApprovalEnabled: false,
       autoApprovalModel: "",
+      namerBackend: "",
+      namerOpenaiApiKey: "",
+      namerOpenaiBaseUrl: "",
+      namerOpenaiModel: "",
       updatedAt: 0,
     });
   });

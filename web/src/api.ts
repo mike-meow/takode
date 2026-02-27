@@ -235,6 +235,10 @@ export interface AppSettings {
   maxKeepAlive: number;
   autoApprovalEnabled: boolean;
   autoApprovalModel: string;
+  namerBackend: string;
+  namerOpenaiApiKey: string;
+  namerOpenaiBaseUrl: string;
+  namerOpenaiModel: string;
   restartSupported: boolean;
 }
 
@@ -535,6 +539,7 @@ export const api = {
     claudeBinary?: string; codexBinary?: string;
     maxKeepAlive?: number;
     autoApprovalEnabled?: boolean; autoApprovalModel?: string;
+    namerBackend?: string; namerOpenaiApiKey?: string; namerOpenaiBaseUrl?: string; namerOpenaiModel?: string;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),

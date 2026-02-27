@@ -33,6 +33,14 @@ export interface CompanionSettings {
   autoApprovalEnabled: boolean;
   /** Model to use for auto-approval LLM calls (empty = use session model, falls back to "haiku") */
   autoApprovalModel: string;
+  /** Backend for the session auto-namer: "claude" (default, uses claude -p), "openai" (OpenAI-compatible API), or "" (auto = claude) */
+  namerBackend: string;
+  /** OpenAI API key for namer (only used when namerBackend = "openai") */
+  namerOpenaiApiKey: string;
+  /** OpenAI-compatible base URL (default: https://api.openai.com/v1). Allows LiteLLM, Ollama, etc. */
+  namerOpenaiBaseUrl: string;
+  /** Model name for OpenAI namer calls (default: "gpt-4o-mini") */
+  namerOpenaiModel: string;
   updatedAt: number;
 }
 
@@ -56,6 +64,10 @@ let settings: CompanionSettings = {
   maxKeepAlive: 0,
   autoApprovalEnabled: false,
   autoApprovalModel: "",
+  namerBackend: "",
+  namerOpenaiApiKey: "",
+  namerOpenaiBaseUrl: "",
+  namerOpenaiModel: "",
   updatedAt: 0,
 };
 
@@ -73,6 +85,10 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
     autoApprovalEnabled: typeof raw?.autoApprovalEnabled === "boolean" ? raw.autoApprovalEnabled : false,
     autoApprovalModel: typeof raw?.autoApprovalModel === "string" ? raw.autoApprovalModel : "",
+    namerBackend: typeof raw?.namerBackend === "string" ? raw.namerBackend : "",
+    namerOpenaiApiKey: typeof raw?.namerOpenaiApiKey === "string" ? raw.namerOpenaiApiKey : "",
+    namerOpenaiBaseUrl: typeof raw?.namerOpenaiBaseUrl === "string" ? raw.namerOpenaiBaseUrl : "",
+    namerOpenaiModel: typeof raw?.namerOpenaiModel === "string" ? raw.namerOpenaiModel : "",
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -108,7 +124,7 @@ export function getSettings(): CompanionSettings {
 
 export function updateSettings(
   patch: Partial<Pick<CompanionSettings,
-    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive" | "autoApprovalEnabled" | "autoApprovalModel"
+    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive" | "autoApprovalEnabled" | "autoApprovalModel" | "namerBackend" | "namerOpenaiApiKey" | "namerOpenaiBaseUrl" | "namerOpenaiModel"
   >>,
 ): CompanionSettings {
   ensureLoaded();

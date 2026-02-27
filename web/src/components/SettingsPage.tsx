@@ -82,6 +82,15 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [aaCreateError, setAaCreateError] = useState("");
   const [showAaFolderPicker, setShowAaFolderPicker] = useState(false);
 
+  // Session auto-namer state
+  const [namerBackend, setNamerBackend] = useState("");
+  const [namerApiKey, setNamerApiKey] = useState("");
+  const [namerBaseUrl, setNamerBaseUrl] = useState("");
+  const [namerModel, setNamerModel] = useState("");
+  const [namerSaving, setNamerSaving] = useState(false);
+  const [namerSaved, setNamerSaved] = useState(false);
+  const [namerError, setNamerError] = useState("");
+
   // Session export/import state
   const importInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -114,6 +123,10 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setRestartSupported(s.restartSupported);
         setAaEnabled(s.autoApprovalEnabled);
         setAaModel(s.autoApprovalModel ?? "");
+        setNamerBackend(s.namerBackend || "");
+        setNamerApiKey(s.namerOpenaiApiKey === "***" ? "***" : (s.namerOpenaiApiKey || ""));
+        setNamerBaseUrl(s.namerOpenaiBaseUrl || "");
+        setNamerModel(s.namerOpenaiModel || "");
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -605,6 +618,124 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               </button>
             </div>
           </form>
+
+          {/* Session Auto-Namer backend */}
+          <div className="border-t border-cc-border pt-3 space-y-3">
+            <div>
+              <span className="text-sm font-medium text-cc-fg">Auto-Namer Backend</span>
+              <p className="mt-1 text-xs text-cc-muted">
+                Choose how sessions are automatically named. Defaults to Claude CLI (<code className="font-mono bg-cc-hover px-1 py-0.5 rounded">claude -p</code>).
+                Use OpenAI-compatible API on machines without Claude CLI.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-cc-muted mb-1.5">Backend</label>
+              <select
+                value={namerBackend || "claude"}
+                onChange={(e) => setNamerBackend(e.target.value === "claude" ? "" : e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+              >
+                <option value="claude">Claude CLI (default)</option>
+                <option value="openai">OpenAI-compatible API</option>
+              </select>
+            </div>
+
+            {(namerBackend === "openai") && (
+              <div className="space-y-3 pl-3 border-l-2 border-cc-border">
+                <div>
+                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-api-key">
+                    API Key
+                  </label>
+                  <input
+                    id="namer-api-key"
+                    type="password"
+                    value={namerApiKey}
+                    onChange={(e) => setNamerApiKey(e.target.value)}
+                    onFocus={() => { if (namerApiKey === "***") setNamerApiKey(""); }}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-base-url">
+                    Base URL
+                  </label>
+                  <input
+                    id="namer-base-url"
+                    type="text"
+                    value={namerBaseUrl}
+                    onChange={(e) => setNamerBaseUrl(e.target.value)}
+                    placeholder="https://api.openai.com/v1"
+                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                  />
+                  <p className="mt-1 text-xs text-cc-muted">
+                    Leave empty for OpenAI. Use a custom URL for LiteLLM, Ollama, etc.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-model">
+                    Model
+                  </label>
+                  <input
+                    id="namer-model"
+                    type="text"
+                    value={namerModel}
+                    onChange={(e) => setNamerModel(e.target.value)}
+                    placeholder="gpt-4o-mini"
+                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            {namerError && (
+              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                {namerError}
+              </div>
+            )}
+            {namerSaved && (
+              <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+                Auto-namer settings saved.
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={namerSaving || loading}
+                onClick={async () => {
+                  setNamerSaving(true);
+                  setNamerError("");
+                  setNamerSaved(false);
+                  try {
+                    const update: Record<string, string> = {
+                      namerBackend: namerBackend || "",
+                    };
+                    if (namerBackend === "openai") {
+                      if (namerApiKey !== "***") update.namerOpenaiApiKey = namerApiKey;
+                      update.namerOpenaiBaseUrl = namerBaseUrl;
+                      update.namerOpenaiModel = namerModel;
+                    }
+                    await api.updateSettings(update);
+                    setNamerSaved(true);
+                    setTimeout(() => setNamerSaved(false), 3000);
+                  } catch (err: unknown) {
+                    setNamerError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setNamerSaving(false);
+                  }
+                }}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  namerSaving || loading
+                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                    : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                }`}
+              >
+                {namerSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
 
           {/* Session Data — export/import */}
           <div className="border-t border-cc-border pt-3 space-y-3">

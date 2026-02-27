@@ -2001,6 +2001,10 @@ export function createRoutes(
       maxKeepAlive: settings.maxKeepAlive,
       autoApprovalEnabled: settings.autoApprovalEnabled,
       autoApprovalModel: settings.autoApprovalModel,
+      namerBackend: settings.namerBackend,
+      namerOpenaiApiKey: settings.namerOpenaiApiKey ? "***" : "",
+      namerOpenaiBaseUrl: settings.namerOpenaiBaseUrl,
+      namerOpenaiModel: settings.namerOpenaiModel,
       restartSupported: !!process.env.COMPANION_SUPERVISED,
       logFile: getLogPath(),
     });
@@ -2041,6 +2045,18 @@ export function createRoutes(
     if (body.autoApprovalModel !== undefined && typeof body.autoApprovalModel !== "string") {
       return c.json({ error: "autoApprovalModel must be a string" }, 400);
     }
+    if (body.namerBackend !== undefined && typeof body.namerBackend !== "string") {
+      return c.json({ error: "namerBackend must be a string" }, 400);
+    }
+    if (body.namerOpenaiApiKey !== undefined && typeof body.namerOpenaiApiKey !== "string") {
+      return c.json({ error: "namerOpenaiApiKey must be a string" }, 400);
+    }
+    if (body.namerOpenaiBaseUrl !== undefined && typeof body.namerOpenaiBaseUrl !== "string") {
+      return c.json({ error: "namerOpenaiBaseUrl must be a string" }, 400);
+    }
+    if (body.namerOpenaiModel !== undefined && typeof body.namerOpenaiModel !== "string") {
+      return c.json({ error: "namerOpenaiModel must be a string" }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
@@ -2049,6 +2065,7 @@ export function createRoutes(
       "claudeBinary", "codexBinary",
       "maxKeepAlive",
       "autoApprovalEnabled", "autoApprovalModel",
+      "namerBackend", "namerOpenaiApiKey", "namerOpenaiBaseUrl", "namerOpenaiModel",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -2099,6 +2116,22 @@ export function createRoutes(
         typeof body.autoApprovalModel === "string"
           ? body.autoApprovalModel.trim()
           : undefined,
+      namerBackend:
+        typeof body.namerBackend === "string"
+          ? body.namerBackend.trim()
+          : undefined,
+      namerOpenaiApiKey:
+        typeof body.namerOpenaiApiKey === "string"
+          ? body.namerOpenaiApiKey.trim()
+          : undefined,
+      namerOpenaiBaseUrl:
+        typeof body.namerOpenaiBaseUrl === "string"
+          ? body.namerOpenaiBaseUrl.trim()
+          : undefined,
+      namerOpenaiModel:
+        typeof body.namerOpenaiModel === "string"
+          ? body.namerOpenaiModel.trim()
+          : undefined,
     });
 
     return c.json({
@@ -2113,6 +2146,10 @@ export function createRoutes(
       maxKeepAlive: settings.maxKeepAlive,
       autoApprovalEnabled: settings.autoApprovalEnabled,
       autoApprovalModel: settings.autoApprovalModel,
+      namerBackend: settings.namerBackend,
+      namerOpenaiApiKey: settings.namerOpenaiApiKey ? "***" : "",
+      namerOpenaiBaseUrl: settings.namerOpenaiBaseUrl,
+      namerOpenaiModel: settings.namerOpenaiModel,
     });
   });
 
