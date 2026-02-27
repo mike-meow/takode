@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 interface MockStoreState {
@@ -198,6 +198,46 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
     // NamerDebugPanel renders the "Session Namer Debug" heading
     expect(await screen.findByText("Session Namer Debug")).toBeInTheDocument();
+  });
+
+  it("edits auto-approval rules in a modal", async () => {
+    mockApi.getAutoApprovalConfigs.mockResolvedValue([
+      {
+        slug: "companion",
+        label: "companion",
+        projectPath: "/mnt/home/jiayiwei/companion",
+        projectPaths: ["/mnt/home/jiayiwei/companion"],
+        criteria: "Allow harmless commands",
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ]);
+    mockApi.updateAutoApprovalConfig.mockResolvedValue({});
+
+    render(<SettingsPage />);
+    await screen.findByText("companion");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit auto-approval rule" });
+    expect(dialog).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Rule criteria"), {
+      target: { value: "Allow harmless commands and test commands" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateAutoApprovalConfig).toHaveBeenCalledWith(
+        "companion",
+        expect.objectContaining({
+          label: "companion",
+          criteria: "Allow harmless commands and test commands",
+          projectPaths: ["/mnt/home/jiayiwei/companion"],
+        }),
+      );
+    });
   });
 
   // ── Collapsible section tests ──────────────────────────────────────────────
