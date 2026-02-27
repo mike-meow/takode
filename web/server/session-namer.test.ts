@@ -10,6 +10,7 @@ const {
   categorizeToolCalls,
   buildFileOpSummaries,
   parseResponse,
+  filterUpdateResultByMode,
   parseKeywords,
   sanitizeTitle,
   stripCodeFences,
@@ -716,6 +717,14 @@ describe("buildUpdatePrompt", () => {
     expect(prompt).toContain("### NEW:");
   });
 
+  it("omits NEW section for agent-triggered evaluations", () => {
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue")], undefined, false, undefined, null, false, false);
+    expect(prompt).toContain("### NO_CHANGE");
+    expect(prompt).toContain("### REVISE:");
+    expect(prompt).not.toContain("### NEW:");
+    expect(prompt).toContain("NEW is not a valid choice");
+  });
+
   it("includes conversation history with indentation", () => {
     const prompt = buildUpdatePrompt("Auth Fix", [userMsg("Fix the login"), userMsg("Also handle tokens")]);
     expect(prompt).toContain("    | Fix the login");
@@ -726,6 +735,13 @@ describe("buildUpdatePrompt", () => {
     const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Now run the tests")]);
     expect(prompt).toContain("Follow-up activities");
     expect(prompt).toContain("not new tasks");
+  });
+
+  it("biases toward NO_CHANGE when context is only a recent slice", () => {
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Now update one test")]);
+    expect(prompt).toContain("short recent slice of work");
+    expect(prompt).toContain("Prefer NO_CHANGE by default");
+    expect(prompt).toContain("Do NOT REVISE for minor wording improvements");
   });
 
   it("includes anti-injection instruction", () => {
@@ -857,6 +873,32 @@ describe("parseResponse with keywords", () => {
 
   it("returns empty keywords when no keywords line", () => {
     expect(parseResponse("Fix auth bug", true)?.keywords).toEqual([]);
+  });
+});
+
+describe("filterUpdateResultByMode", () => {
+  it("keeps NEW when allowNewTask is true", () => {
+    expect(
+      filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, true),
+    ).toEqual({ action: "new", title: "Add dark mode", keywords: [] });
+  });
+
+  it("drops NEW when allowNewTask is false", () => {
+    expect(
+      filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, false),
+    ).toBeNull();
+  });
+
+  it("keeps NO_CHANGE and REVISE when allowNewTask is false", () => {
+    expect(filterUpdateResultByMode({ action: "no_change", keywords: [] }, false)).toEqual({
+      action: "no_change",
+      keywords: [],
+    });
+    expect(filterUpdateResultByMode({ action: "revise", title: "Fix auth bug", keywords: [] }, false)).toEqual({
+      action: "revise",
+      title: "Fix auth bug",
+      keywords: [],
+    });
   });
 });
 

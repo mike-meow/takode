@@ -33,6 +33,11 @@ import { IdleManager } from "./idle-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
 import { existsSync } from "node:fs";
+import {
+  shouldAllowUserMessageOverrideOnNameMismatch,
+  type NamerMutationRecord,
+  type NamerTriggerSource,
+} from "./session-namer-arbitration.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -214,21 +219,44 @@ const autoNamingEvaluated = new Set<string>();
 // evaluations only show the model events that happened *since* the name was set.
 const nameSetAtHistoryIndex = new Map<string, number>();
 // ─── Namer cancellation ─────────────────────────────────────────────────────
-// Each new namer invocation for a session cancels any in-flight one (kills the
-// `claude -p` subprocess) to avoid races and wasted work.
+// Each new namer invocation for the same trigger source cancels any in-flight
+// one (kills the `claude -p` subprocess) to avoid stale duplicate work.
 const inFlightNamer = new Map<string, AbortController>();
 
-/** Cancel any in-flight namer for this session and return a fresh AbortController. */
-function beginNamerCall(sessionId: string): AbortController {
-  inFlightNamer.get(sessionId)?.abort();
+/** Record the last naming mutation applied by the auto-namer for race handling. */
+const lastAppliedNamerMutation = new Map<string, NamerMutationRecord>();
+
+function getNamerKey(sessionId: string, source: NamerTriggerSource): string {
+  return `${sessionId}:${source}`;
+}
+
+/** Cancel any in-flight namer for this session/trigger and return a fresh controller. */
+function beginNamerCall(sessionId: string, source: NamerTriggerSource): AbortController {
+  const key = getNamerKey(sessionId, source);
+  inFlightNamer.get(key)?.abort();
   const controller = new AbortController();
-  inFlightNamer.set(sessionId, controller);
+  inFlightNamer.set(key, controller);
   return controller;
 }
 
-/** Clean up AbortController after a namer call completes (only if it's still the current one). */
-function endNamerCall(sessionId: string, controller: AbortController): void {
-  if (inFlightNamer.get(sessionId) === controller) inFlightNamer.delete(sessionId);
+/** Clean up AbortController after a namer call completes (only if still current). */
+function endNamerCall(sessionId: string, source: NamerTriggerSource, controller: AbortController): void {
+  const key = getNamerKey(sessionId, source);
+  if (inFlightNamer.get(key) === controller) inFlightNamer.delete(key);
+}
+
+function recordNamerMutation(
+  sessionId: string,
+  source: NamerTriggerSource,
+  action: "name" | "revise" | "new",
+  nextName: string,
+): void {
+  lastAppliedNamerMutation.set(sessionId, {
+    source,
+    action,
+    nextName,
+    timestamp: Date.now(),
+  });
 }
 
 /** Find the ID of the last user_message in a history array (for task entry tracking). */
@@ -277,6 +305,7 @@ async function applyNamingResult(
   previousName: string,
   result: import("./session-namer.js").NamingResult,
   history: import("./session-types.js").BrowserIncomingMessage[],
+  source: NamerTriggerSource,
 ): Promise<void> {
   // Re-check: quest may have been claimed while the namer was in-flight
   if (await isQuestOwningSessionName(sessionId)) {
@@ -293,7 +322,11 @@ async function applyNamingResult(
       break;
     case "revise": {
       const freshName = sessionNames.getName(sessionId);
-      if (freshName !== previousName) return; // name changed while we were evaluating
+      if (freshName !== previousName) {
+        const allowUserOverride = source === "user_message"
+          && shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
+        if (!allowUserOverride) return; // name changed while we were evaluating
+      }
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
 
@@ -304,12 +337,17 @@ async function applyNamingResult(
         timestamp: Date.now(),
         triggerMessageId: findLastUserMessageId(history),
       });
+      recordNamerMutation(sessionId, source, "revise", result.title);
       console.log(`[session-namer] Revised session ${sessionId}: "${previousName}" → "${result.title}"`);
       break;
     }
     case "new": {
       const freshName = sessionNames.getName(sessionId);
-      if (freshName !== previousName) return;
+      if (freshName !== previousName) {
+        const allowUserOverride = source === "user_message"
+          && shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
+        if (!allowUserOverride) return;
+      }
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
 
@@ -320,6 +358,7 @@ async function applyNamingResult(
         timestamp: Date.now(),
         triggerMessageId: findLastUserMessageId(history),
       });
+      recordNamerMutation(sessionId, source, "new", result.title);
       console.log(`[session-namer] New task in session ${sessionId}: "${previousName}" → "${result.title}"`);
       break;
     }
@@ -334,7 +373,8 @@ async function evaluateAndApply(
   cwd: string,
   signal: AbortSignal,
   isGenerating: boolean,
-  trigger: string,
+  source: NamerTriggerSource,
+  triggerLabel: string,
 ): Promise<void> {
   const currentName = sessionNames.getName(sessionId);
   const isRandomName = isRandomSessionName(currentName);
@@ -343,19 +383,26 @@ async function evaluateAndApply(
   const relevantHistory = isRandomName ? history : history.slice(startIndex);
   const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
 
-  console.log(`[session-namer] ${trigger} — evaluating session ${sessionId} (current: ${isRandomName ? "(unnamed)" : `"${currentName}"`}, history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`);
+  console.log(`[session-namer] ${triggerLabel} — evaluating session ${sessionId} (current: ${isRandomName ? "(unnamed)" : `"${currentName}"`}, history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`);
 
   const result = await evaluateSessionName(
     sessionId,
     currentName ?? "",
     relevantHistory,
     cwd,
-    { signal, isGenerating, claimedQuest, isUnnamed: isRandomName || !currentName },
+    {
+      signal,
+      isGenerating,
+      claimedQuest,
+      isUnnamed: isRandomName || !currentName,
+      source,
+      allowNewTask: source === "user_message",
+    },
     taskHistory,
   );
   if (signal.aborted) return;
   if (!result) return;
-  await applyNamingResult(sessionId, currentName ?? "", result, history);
+  await applyNamingResult(sessionId, currentName ?? "", result, history, source);
 }
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
@@ -374,7 +421,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
   const isGenerating = wasGenerating;
 
   // Cancel any in-flight namer for this session
-  const controller = beginNamerCall(sessionId);
+  const controller = beginNamerCall(sessionId, "user_message");
   const { signal } = controller;
 
   try {
@@ -410,6 +457,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
         timestamp: Date.now(),
         triggerMessageId: findLastUserMessageId(history),
       });
+      recordNamerMutation(sessionId, "user_message", "name", result.title);
       if (result.keywords?.length) {
         wsBridge.mergeKeywords(sessionId, result.keywords);
       }
@@ -418,10 +466,10 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       // Subsequent user messages: evaluate whether to rename.
       // If name is still random (initial attempt failed), the evaluate prompt
       // tells the model the name is unknown so it generates one from context.
-      await evaluateAndApply(sessionId, history, cwd, signal, isGenerating, "User message");
+      await evaluateAndApply(sessionId, history, cwd, signal, isGenerating, "user_message", "User message");
     }
   } finally {
-    endNamerCall(sessionId, controller);
+    endNamerCall(sessionId, "user_message", controller);
   }
 });
 
@@ -436,13 +484,13 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
-  const controller = beginNamerCall(sessionId);
+  const controller = beginNamerCall(sessionId, "agent_paused");
   const { signal } = controller;
 
   try {
-    await evaluateAndApply(sessionId, history, cwd, signal, true, "Agent paused");
+    await evaluateAndApply(sessionId, history, cwd, signal, true, "agent_paused", "Agent paused");
   } finally {
-    endNamerCall(sessionId, controller);
+    endNamerCall(sessionId, "agent_paused", controller);
   }
 });
 
@@ -450,9 +498,8 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
 // This lets Haiku refine the title based on what the agent actually did,
 // and improves the initial name after the first turn.
 //
-// The turn-completed namer always runs and always cancels any in-flight
-// user-message namer first — it has richer context (full agent activity)
-// and should override any earlier naming attempt for the same turn.
+// The turn-completed namer runs independently from user-message naming.
+// User-message outcomes are preferred when both produce competing revisions.
 wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
   if (await isQuestOwningSessionName(sessionId)) {
     console.log(`[session-namer] Skipping turn-completed namer for ${sessionId} (quest owns session name)`);
@@ -461,15 +508,15 @@ wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
-  // Cancel any in-flight namer first (e.g. from a user message that triggered just before completion).
-  // This must happen unconditionally so stale in-flight requests are always killed.
-  const controller = beginNamerCall(sessionId);
+  // Cancel only stale in-flight turn-completed namers; do not cancel user-message
+  // namers, so user-message updates can win in revise/revise races.
+  const controller = beginNamerCall(sessionId, "turn_completed");
   const { signal } = controller;
 
   try {
-    await evaluateAndApply(sessionId, history, cwd, signal, false, "Turn completed");
+    await evaluateAndApply(sessionId, history, cwd, signal, false, "turn_completed", "Turn completed");
   } finally {
-    endNamerCall(sessionId, controller);
+    endNamerCall(sessionId, "turn_completed", controller);
   }
 });
 
