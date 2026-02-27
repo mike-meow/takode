@@ -308,12 +308,33 @@ export class CliLauncher {
       console.log(`[cli-launcher] Recovered ${recovered} live session(s) from disk`);
     }
 
-    // Assign integer session numbers sorted by creation time (stable ordering across restarts)
-    const sorted = Array.from(this.sessions.values()).sort((a, b) => a.createdAt - b.createdAt);
+    // Restore persisted session numbers, then assign new ones for legacy sessions without them.
+    // This ensures integer IDs are stable across restarts — once assigned, they never change.
+    const allSessions = Array.from(this.sessions.values());
+
+    // Phase 1: Restore persisted sessionNums and find the max to set nextSessionNum
+    let maxNum = -1;
+    for (const info of allSessions) {
+      if (info.sessionNum !== undefined && info.sessionNum !== null) {
+        this.sessionNumMap.set(info.sessionId, info.sessionNum);
+        this.sessionByNum.set(info.sessionNum, info.sessionId);
+        if (info.sessionNum > maxNum) maxNum = info.sessionNum;
+      }
+    }
+    this.nextSessionNum = maxNum + 1;
+
+    // Phase 2: Assign new numbers to sessions that don't have one yet (legacy/pre-migration)
+    const sorted = allSessions
+      .filter(s => s.sessionNum === undefined || s.sessionNum === null)
+      .sort((a, b) => a.createdAt - b.createdAt);
     for (const info of sorted) {
       info.sessionNum = this.assignSessionNum(info.sessionId);
     }
-    console.log(`[cli-launcher] Assigned session numbers 0-${this.nextSessionNum - 1} to ${sorted.length} sessions`);
+    if (sorted.length > 0) {
+      // Persist the newly assigned numbers so they're stable on next restart
+      this.persistState();
+    }
+    console.log(`[cli-launcher] Session numbers: ${allSessions.length} total, ${sorted.length} newly assigned, next=#${this.nextSessionNum}`);
 
     return recovered;
   }
