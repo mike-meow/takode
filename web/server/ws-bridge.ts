@@ -1875,9 +1875,11 @@ export class WsBridge {
     const now = Date.now();
     const wasGenerating = session.isGenerating;
     session.cliSocket = null;
-    // Always reset generating state immediately — prevents the UI from showing
-    // "running" for a disconnected process. Safe to do before the grace period.
-    this.setGenerating(session, false, "cli_disconnect");
+    // Reset generating state immediately — the UI needs to stop showing "running"
+    // even during the grace period. But DON'T call setGenerating() here because
+    // that emits turn_end/turn_start takode events which we want to defer.
+    session.isGenerating = false;
+    session.generationStartedAt = null;
     const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
 
     // Diagnostic: time since last CLI activity for disconnect analysis

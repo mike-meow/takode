@@ -24,10 +24,13 @@ export interface LauncherHandle {
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
-/** Events worth delivering to orchestrators (skip turn_start, quest_update) */
+/** Events worth delivering to orchestrators.
+ *  session_disconnected is excluded — disconnects are transient (CLI reconnects
+ *  every 5 minutes for token refresh) and auto-relaunch handles recovery.
+ *  Delivering disconnect events would flood the leader with noise. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "turn_end", "permission_request", "permission_resolved",
-  "session_disconnected", "session_error", "user_message",
+  "session_error", "user_message",
 ]);
 
 const DEBOUNCE_MS = 500;
