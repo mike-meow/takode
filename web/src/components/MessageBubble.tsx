@@ -146,6 +146,11 @@ export const MessageBubble = memo(function MessageBubble({
     );
   }
 
+  // Herd events: render as compact left-side notification (not a user bubble)
+  if (message.role === "user" && message.agentSource?.sessionId === "herd-events") {
+    return <HerdEventMessage message={message} showTimestamp={showTimestamp} />;
+  }
+
   if (message.role === "user") {
     return <UserMessage message={message} sessionId={sessionId} showTimestamp={showTimestamp} />;
   }
@@ -255,6 +260,26 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
           onClose={() => setMenuPos(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Compact left-side notification for herd event summaries. */
+function HerdEventMessage({ message, showTimestamp }: { message: ChatMessage; showTimestamp: boolean }) {
+  return (
+    <div className="flex items-start gap-2 max-w-[90%] animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="w-5 h-5 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-amber-500/70">
+          <path d="M8 1a.75.75 0 01.75.75v.5a5.75 5.75 0 015 5h.5a.75.75 0 010 1.5h-.5a5.75 5.75 0 01-5 5v.5a.75.75 0 01-1.5 0v-.5a5.75 5.75 0 01-5-5h-.5a.75.75 0 010-1.5h.5a5.75 5.75 0 015-5v-.5A.75.75 0 018 1zm0 3a4.25 4.25 0 100 8.5A4.25 4.25 0 008 4zm0 2.5a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5z" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+        <div className="text-[10px] text-amber-500/70 font-medium mb-0.5">Herd Events</div>
+        <pre className="text-[12px] whitespace-pre-wrap break-words font-mono-code text-cc-muted leading-relaxed">
+          {message.content}
+        </pre>
+        {showTimestamp && <MessageTimestamp timestamp={message.timestamp} align="left" />}
+      </div>
     </div>
   );
 }

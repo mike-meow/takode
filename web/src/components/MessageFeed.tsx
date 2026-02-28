@@ -573,7 +573,8 @@ function groupIntoTurns(entries: FeedEntry[]): Turn[] {
   let currentEntries: FeedEntry[] = [];
 
   for (const entry of entries) {
-    const isUser = entry.kind === "message" && entry.msg.role === "user";
+    const isUser = entry.kind === "message" && entry.msg.role === "user"
+      && entry.msg.agentSource?.sessionId !== "herd-events"; // Herd events don't start new turns
     if (isUser) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
