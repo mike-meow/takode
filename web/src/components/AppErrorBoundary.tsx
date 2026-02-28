@@ -1,5 +1,7 @@
 import type { ErrorInfo, ReactNode } from "react";
 import { Component } from "react";
+import { useStore } from "../store.js";
+import { getUiTraceSnapshot, recordUiTrace } from "../utils/ui-crash-debug.js";
 
 interface Props {
   children: ReactNode;
@@ -20,7 +22,30 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[AppErrorBoundary]", error, info.componentStack);
+    const state = useStore.getState();
+    const currentSessionId = state.currentSessionId;
+    const changedFilesCount = currentSessionId
+      ? (state.changedFiles.get(currentSessionId)?.size ?? 0)
+      : 0;
+    const errorContext = {
+      currentSessionId,
+      activeTab: state.activeTab,
+      reorderMode: state.reorderMode,
+      sidebarOpen: state.sidebarOpen,
+      taskPanelOpen: state.taskPanelOpen,
+      sdkSessionCount: state.sdkSessions.length,
+      changedFilesCount,
+    };
+    const trace = getUiTraceSnapshot().slice(-40);
+    recordUiTrace("error.boundary", {
+      message: error.message,
+      context: errorContext,
+      componentStack: info.componentStack,
+    });
+    console.error("[AppErrorBoundary]", error, info.componentStack, {
+      context: errorContext,
+      recentUiTrace: trace,
+    });
   }
 
   render() {
