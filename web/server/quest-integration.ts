@@ -427,9 +427,23 @@ idea → refined → in_progress → needs_verification → done
 - **Then mark each addressed human feedback entry** with \`quest address q-N <index>\`. This command toggles state, so run \`quest show q-N\` after each toggle and confirm the entry now shows \`addressed\` (do not toggle entries already addressed).
 - Do not claim feedback was addressed unless both happened: (1) you posted the agent reply with \`quest feedback\`, and (2) the corresponding human feedback entries are marked addressed.
 - \`quest complete --items "..."\` — only include items requiring **human** verification. Update the checklist to reflect the new state (e.g. items that were previously failing may need re-verification). Keep each item to one short sentence.
+- **After submitting**, if you can self-verify any checklist items (e.g. unit tests pass, code review confirms the fix), check them off immediately with \`quest check q-N <index>\`. Only leave items unchecked if they genuinely need human eyes (UI appearance, UX judgment, etc.).
+
+### Checking off verification items
+
+When you verify a quest (either your own or another agent's), you **MUST** check off each verification item as you confirm it:
+
+1. Run \`quest show q-N\` to see the verification checklist
+2. For each item you can confirm is working, run \`quest check q-N <index>\` (0-based index)
+3. Run \`quest show q-N\` again to confirm the item is now checked (\`[x]\`)
+4. Add feedback explaining what you verified and how: \`quest feedback q-N --text "Verified item 0: ..."\`
+
+**Never leave verification items unchecked if you have evidence they pass.** Attaching feedback alone is not enough — you must also check off the corresponding items.
 
 ### needs_verification → done
-- **Only the human marks quests as done.** Never transition to \`done\` yourself unless explicitly asked.
+- **Only the human marks quests as done.** Never transition to \`done\` yourself unless the human explicitly asks you to.
+- **All verification items must be checked** before transitioning to \`done\`. If any items are unchecked (0/N), do NOT run \`quest done\`. Leave it in \`needs_verification\` for the human to review.
+- The only exception: the human explicitly tells you to mark it done despite unchecked items.
 - Include \`--notes\` with closure info: commit hashes, caveats, follow-ups.
 - Use \`--cancelled\` with \`--notes\` if abandoning rather than completing.
 
