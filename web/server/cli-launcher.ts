@@ -280,12 +280,20 @@ export class CliLauncher {
     return this.sessionNumMap.get(sessionId);
   }
 
-  /** Persist launcher state to disk. */
+  /** Persist launcher state to disk (debounced).
+   *  Coalesces rapid calls into a single write. On NFS, each writeFile takes
+   *  100-500ms and saturates the libuv threadpool, causing event loop stalls
+   *  that break CLI ping/pong (10s timeout). */
   private persistState(): void {
     if (!this.store) return;
-    const data = Array.from(this.sessions.values());
-    this.store.saveLauncher(data);
+    if (this.persistTimer) return; // already scheduled
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      const data = Array.from(this.sessions.values());
+      this.store!.saveLauncher(data);
+    }, 150);
   }
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Restore sessions from disk and check which PIDs are still alive.

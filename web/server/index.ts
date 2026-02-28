@@ -1,5 +1,14 @@
 process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
 
+// Increase libuv threadpool size BEFORE any I/O operations.
+// Default of 4 threads is too small for NFS — concurrent async I/O operations
+// (session saves, git info, recordings) saturate the pool, stalling the event loop
+// and causing CLI WebSocket ping/pong timeouts (10s budget). Must be set before
+// the first libuv I/O call — Node/Bun reads this value once at initialization.
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = "64";
+}
+
 // Enrich process PATH at startup so binary resolution and `which` calls can find
 // binaries installed via version managers (nvm, volta, fnm, etc.).
 // Critical when running as a launchd/systemd service with a restricted PATH.
