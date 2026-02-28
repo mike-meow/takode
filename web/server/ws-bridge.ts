@@ -1764,6 +1764,16 @@ export class WsBridge {
       clearTimeout(session.disconnectGraceTimer);
       session.disconnectGraceTimer = null;
       console.log(`[ws-bridge] CLI reconnected within grace period for session ${sessionTag(sessionId)} (seamless)`);
+      // Flush any herd events that accumulated during the disconnect window.
+      // While cliSocket was null, isSessionIdle returned false, so events were
+      // buffered but never scheduled for delivery. Now that the CLI is back,
+      // trigger delivery of any pending events.
+      if (this.herdEventDispatcher) {
+        const info = this.launcher?.getSession(sessionId);
+        if (info?.isOrchestrator) {
+          this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId);
+        }
+      }
     }
 
     // When a CLI reconnects to an existing session (has history), mark it as
