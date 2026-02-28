@@ -1736,8 +1736,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                     }`}
                   >
                   {/* Card header */}
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleExpand(quest)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleExpand(quest); } }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer group"
                   >
                     {/* Status dot */}
@@ -1852,7 +1855,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                     >
                       <path d="M6 4l4 4-4 4" />
                     </svg>
-                  </button>
+                  </div>
 
                   {/* Expanded detail */}
                   {isExpanded && (
