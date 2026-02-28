@@ -404,9 +404,9 @@ async function handleWatch(base: string, args: string[]): Promise<void> {
   const allEvents = flags["all-events"] === true;
 
   // Default: only actionable events (things a human would be notified about).
-  // Use --all-events to include intermediate events like turn_start, permission_resolved.
+  // Use --all-events to include intermediate events like turn_start.
   const actionableEvents = new Set([
-    "turn_end", "permission_request", "quest_update",
+    "turn_end", "permission_request", "permission_resolved", "quest_update",
     "session_disconnected", "session_error", "user_message",
   ]);
 

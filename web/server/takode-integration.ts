@@ -122,6 +122,7 @@ takode watch --sessions 1,2 --all-events
 |---|---|
 | \`turn_end\` | Worker finished generating. Shows tools used and result preview. |
 | \`permission_request\` | Worker needs human approval (only fires after auto-approval defers). |
+| \`permission_resolved\` | Permission was approved or denied — worker unblocked. |
 | \`quest_update\` | A quest was updated (any session). |
 | \`session_disconnected\` | Worker CLI disconnected. |
 | \`session_error\` | Worker turn ended with an error. |
@@ -131,7 +132,6 @@ takode watch --sessions 1,2 --all-events
 | Event | Meaning |
 |---|---|
 | \`turn_start\` | Worker started generating (not usually actionable). |
-| \`permission_resolved\` | Permission was approved or denied (already handled). |
 
 **\`--sessions\` is required.** Always specify which sessions you're watching. Use \`takode list\` first to discover session numbers.
 

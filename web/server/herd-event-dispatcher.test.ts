@@ -160,7 +160,7 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
-  it("filters non-actionable events (turn_start, permission_resolved)", () => {
+  it("filters non-actionable events (turn_start)", () => {
     const { bridge, launcher } = createMocks();
     const dispatcher = new HerdEventDispatcher(bridge, launcher);
     dispatcher.setupForOrchestrator("orch-1");
@@ -169,11 +169,10 @@ describe("HerdEventDispatcher", () => {
 
     // Non-actionable events
     triggerEvent(makeEvent({ event: "turn_start" }));
-    triggerEvent(makeEvent({ event: "permission_resolved" as TakodeEventType }));
 
     vi.advanceTimersByTime(600);
 
-    // No delivery — all events were filtered
+    // No delivery — turn_start is filtered
     expect(bridge.injectUserMessage).not.toHaveBeenCalled();
 
     dispatcher.destroy();

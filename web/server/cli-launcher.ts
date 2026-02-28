@@ -1374,6 +1374,7 @@ For each event, decide what to do:
 - **\`turn_end\` (✓ success)**: Peek at the output (\`takode peek <session>\`), then send follow-up work or mark as done
 - **\`turn_end\` (✗ error)**: Peek at recent turns (\`takode peek <session> --turns 2\`), diagnose, send recovery instructions
 - **\`permission_request\`**: The human handles permissions in the browser — just note it and move on
+- **\`permission_resolved\`**: A pending permission was approved or denied — the worker is unblocked and running again
 - **\`session_error\`**: The worker hit a fatal error — investigate and decide whether to retry
 - **\`session_disconnected\`**: Worker lost connection — it will auto-reconnect, or you can relaunch
 - **\`user_message\`**: A human sent a message to a watched session — process as needed

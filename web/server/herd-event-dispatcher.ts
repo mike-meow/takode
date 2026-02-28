@@ -24,10 +24,10 @@ export interface LauncherHandle {
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
-/** Events worth delivering to orchestrators (skip turn_start, permission_resolved, quest_update) */
+/** Events worth delivering to orchestrators (skip turn_start, quest_update) */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
-  "turn_end", "permission_request", "session_disconnected",
-  "session_error", "user_message",
+  "turn_end", "permission_request", "permission_resolved",
+  "session_disconnected", "session_error", "user_message",
 ]);
 
 const DEBOUNCE_MS = 500;
