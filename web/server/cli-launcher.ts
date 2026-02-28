@@ -300,6 +300,11 @@ export class CliLauncher {
     for (const info of data) {
       if (this.sessions.has(info.sessionId)) continue;
 
+      // Migrate legacy herdedBy array → string (pre-single-leader refactor)
+      if (Array.isArray(info.herdedBy)) {
+        info.herdedBy = (info.herdedBy as unknown as string[])[0] ?? undefined;
+      }
+
       // Check if the process is still alive
       if (info.pid && info.state !== "exited") {
         try {
