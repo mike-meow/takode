@@ -30,6 +30,7 @@ import { RecorderManager } from "./recorder.js";
 import { CronScheduler } from "./cron-scheduler.js";
 import { ImageStore } from "./image-store.js";
 import { IdleManager } from "./idle-manager.js";
+import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
@@ -106,6 +107,17 @@ launcher.setRecorder(recorder);
 await launcher.restoreFromDisk();
 await wsBridge.restoreFromDisk();
 containerManager.restoreState(CONTAINER_STATE_PATH);
+
+// Push-based herd event delivery: wire dispatcher after bridge + launcher are ready
+const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher);
+wsBridge.setHerdEventDispatcher(herdEventDispatcher);
+launcher.onHerdChanged = (orchId) => herdEventDispatcher.onHerdChanged(orchId);
+// Bootstrap for existing orchestrators (server restart recovery)
+for (const s of launcher.listSessions()) {
+  if (s.isOrchestrator && launcher.getHerdedSessions(s.sessionId).length > 0) {
+    herdEventDispatcher.setupForOrchestrator(s.sessionId);
+  }
+}
 
 // When the CLI reports its internal session_id, store it for --resume on relaunch
 wsBridge.onCLISessionIdReceived((sessionId, cliSessionId) => {

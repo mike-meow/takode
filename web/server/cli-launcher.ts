@@ -182,6 +182,9 @@ export class CliLauncher {
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
 
+  /** Callback when herd relationships change (set by server bootstrap). */
+  onHerdChanged: ((orchId: string) => void) | null = null;
+
   // ─── Integer session ID tracking ───────────────────────────────────────────
   private nextSessionNum = 0;
   /** UUID → integer session number */
@@ -1339,56 +1342,50 @@ takode send 1 "Good work. Now refactor the auth middleware."
 
 The worker will receive this as if the human typed it. It triggers a new turn.
 
-## Orchestration Workflow
+## Orchestration Workflow — Push-Based Event Delivery
 
-### 1. Discover sessions
+### How events work
 
-\`\`\`bash
-takode list
+You do NOT need to call \`takode watch\`. The server automatically delivers events from your herded sessions.
+
+When workers in your herd have noteworthy events (finished a turn, need permission, hit an error, disconnected), the events accumulate while you're busy. When you finish your current turn and go idle, all accumulated events arrive as a single user message.
+
+### Message sources
+
+Every user message you receive has a source tag:
+- **\`[User HH:MM]\`** — a message from the human operator
+- **\`[Herd HH:MM]\`** — an automatic event summary from your herded sessions
+- **\`[Agent #N name HH:MM]\`** — a message sent by another agent session (via \`takode send\`)
+
+### Reacting to herd events
+
+When you receive a \`[Herd]\` message, it contains a compact event table:
+
+\`\`\`
+2 events from 2 sessions
+
+#5 auth-module | turn_end | ✓ 12.3s | tools: Edit(3), Bash(2)
+#7 api-tests   | session_error | Test suite failed: 3 assertions
 \`\`\`
 
-Note the session numbers (#N) you want to manage.
+For each event, decide what to do:
 
-### 2. Main event loop
+- **\`turn_end\` (✓ success)**: Peek at the output (\`takode peek <session>\`), then send follow-up work or mark as done
+- **\`turn_end\` (✗ error)**: Peek at recent turns (\`takode peek <session> --turns 2\`), diagnose, send recovery instructions
+- **\`permission_request\`**: The human handles permissions in the browser — just note it and move on
+- **\`session_error\`**: The worker hit a fatal error — investigate and decide whether to retry
+- **\`session_disconnected\`**: Worker lost connection — it will auto-reconnect, or you can relaunch
+- **\`user_message\`**: A human sent a message to a watched session — process as needed
 
-\`\`\`
-while there is work to do:
-  events = takode watch --sessions <ids>
-
-  for each event:
-    if turn_end:
-      output = takode peek <session>
-      # Review output, decide next steps
-      # Option A: send follow-up work
-      # Option B: the worker is done, notify human
-      # Option C: nothing to do, continue watching
-
-    if session_error:
-      output = takode peek <session> --turns 2
-      # Diagnose the error, maybe send recovery instructions
-
-    if permission_request:
-      # The human will handle permissions in the browser
-      # You can note this and continue watching
-
-    if quest_update:
-      # A quest changed state — check if relevant to your work
-
-    if user_message:
-      # A human sent a message to a watched session
-      # Process the request and resume watching
-\`\`\`
-
-### 3. Progressive information reveal
+### Progressive information reveal
 
 To protect your context window during long orchestration:
 
 1. **Start with \`peek\`** — see the compact summary first
 2. **Drill into specific messages with \`read\`** — only when the summary isn't enough
 3. **Paginate long messages** — use \`--offset\`/\`--limit\` just like reading files
-4. **Watch events, don't poll** — \`watch\` blocks efficiently instead of repeatedly calling \`peek\`
 
-### 4. Coordinate with quests
+### Coordinate with quests
 
 Use the \`quest\` CLI alongside \`takode\` for task tracking:
 
@@ -1421,7 +1418,8 @@ Prefer integer numbers — they're stable within a server session and easy to ty
 - **Monitor context usage.** Long orchestration sessions accumulate context. Use \`peek\` (truncated) over \`read\` (full) whenever possible.
 - **Track event cursors.** When using \`watch --since\`, pass the last event ID to avoid re-processing events.
 - **Mixed backends work seamlessly.** You can orchestrate both Claude Code and Codex sessions from either backend. The \`takode\` CLI talks to the Companion server, so the worker's backend is transparent to you.
-- **Watch auto-includes your own session.** When you run \`takode watch\`, human messages to your session will interrupt the watch so you stay responsive. Process the human's input first, then resume watching.
+- **Events are push-based.** You don't need to poll or call \`watch\`. Herd events arrive automatically as user messages when you go idle. Just react to them.
+- **\`takode watch\` still exists** for advanced use cases (debugging, manual monitoring outside the herd system), but you should not need it for normal orchestration.
 ${ORCH_END}`;
 
     const claudeDir = join(cwd, ".claude");
@@ -1729,7 +1727,10 @@ ${ORCH_END}`;
       }
       herded.push(wid);
     }
-    if (herded.length > 0) this.persistState();
+    if (herded.length > 0) {
+      this.persistState();
+      this.onHerdChanged?.(orchId);
+    }
     return { herded, notFound };
   }
 
@@ -1745,6 +1746,7 @@ ${ORCH_END}`;
     worker.herdedBy.splice(idx, 1);
     if (worker.herdedBy.length === 0) worker.herdedBy = undefined;
     this.persistState();
+    this.onHerdChanged?.(orchId);
     return true;
   }
 

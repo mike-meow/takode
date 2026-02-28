@@ -34,6 +34,8 @@ export interface TakodePeekMessage {
   turnDurationMs?: number;
   /** Whether the result was successful (only for result messages) */
   success?: boolean;
+  /** Source of the message if injected programmatically (user_message only) */
+  agentSource?: { sessionId: string; sessionLabel?: string };
 }
 
 export interface TakodePeekTurn {
@@ -65,6 +67,8 @@ export interface TakodePeekTurnSummary {
   resultPreview: string;
   /** Truncated user message that started this turn */
   userPreview: string;
+  /** Source of the user message if injected programmatically */
+  agentSource?: { sessionId: string; sessionLabel?: string };
 }
 
 export interface PeekDefaultResponse {
@@ -364,6 +368,11 @@ function buildTurnMessages(
       ts,
     };
 
+    // Include agentSource for user messages (identifies human vs agent vs herd origin)
+    if (msg.type === "user_message" && (msg as any).agentSource) {
+      peekMsg.agentSource = (msg as any).agentSource;
+    }
+
     // Extract tool calls for assistant messages
     if (msg.type === "assistant" && msg.message?.content) {
       const toolBlocks = extractToolUseBlocks(msg.message.content);
@@ -520,6 +529,7 @@ export function buildPeekDefault(
       success,
       resultPreview,
       userPreview,
+      ...((startMsg as any).agentSource ? { agentSource: (startMsg as any).agentSource } : {}),
     };
   });
 
@@ -595,6 +605,11 @@ export function buildPeekRange(
     const content = truncate(rawText, contentLimit);
 
     const peekMsg: TakodePeekMessage = { idx: i, type: toPeekType(msg.type), content, ts };
+
+    // Include agentSource for user messages (identifies human vs agent vs herd origin)
+    if (msg.type === "user_message" && (msg as any).agentSource) {
+      peekMsg.agentSource = (msg as any).agentSource;
+    }
 
     // Compact tool counts (not individual tool lines — use `read` for details)
     if (msg.type === "assistant" && msg.message?.content) {

@@ -549,6 +549,7 @@ type PeekMessage = {
   toolCounts?: Record<string, number>;
   turnDurationMs?: number;
   success?: boolean;
+  agentSource?: { sessionId: string; sessionLabel?: string };
 };
 
 type CollapsedTurn = {
@@ -562,6 +563,7 @@ type CollapsedTurn = {
   success: boolean | null;
   resultPreview: string;
   userPreview: string;
+  agentSource?: { sessionId: string; sessionLabel?: string };
 };
 
 type PeekDefaultResponse = {
@@ -617,6 +619,13 @@ type PeekDetailResponse = {
 
 // ─── Peek rendering helpers ──────────────────────────────────────────────────
 
+/** Derive a source label for user messages: [User], [Herd], or [Agent #N name]. */
+function userSourceLabel(msg: PeekMessage): string {
+  if (!msg.agentSource) return "user";
+  if (msg.agentSource.sessionId === "herd-events") return "herd";
+  return `agent${msg.agentSource.sessionLabel ? ` ${msg.agentSource.sessionLabel}` : ""}`;
+}
+
 function formatCollapsedTurn(turn: CollapsedTurn): string {
   const startTime = formatTimeShort(turn.startedAt);
   const endTime = turn.endedAt ? formatTimeShort(turn.endedAt) : "running";
@@ -645,7 +654,7 @@ function printExpandedMessages(messages: PeekMessage[]): void {
 
     switch (msg.type) {
       case "user":
-        console.log(`  ${idx.padEnd(7)} ${time}  user  "${truncate(msg.content, 80)}"`);
+        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, 80)}"`);
         break;
       case "assistant": {
         const text = msg.content.trim();
@@ -791,7 +800,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
 
     switch (msg.type) {
       case "user":
-        console.log(`  ${idx.padEnd(7)} ${time}  user  "${truncate(msg.content, 80)}"`);
+        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, 80)}"`);
         break;
       case "assistant": {
         const text = msg.content.trim();

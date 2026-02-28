@@ -568,6 +568,7 @@ export class WsBridge {
   private imageStore: ImageStore | null = null;
   private pushoverNotifier: PushoverNotifier | null = null;
   private launcher: CliLauncher | null = null;
+  private herdEventDispatcher: { onOrchestratorTurnEnd(orchId: string): void } | null = null;
   private perfTracer: PerfTracer | null = null;
   private onCLISessionId: ((sessionId: string, cliSessionId: string) => void) | null = null;
   private onCLIRelaunchNeeded: ((sessionId: string) => void) | null = null;
@@ -900,6 +901,18 @@ export class WsBridge {
   /** Attach the CLI launcher for activity tracking. */
   setLauncher(launcher: CliLauncher): void {
     this.launcher = launcher;
+  }
+
+  /** Attach the herd event dispatcher for push-based event delivery to orchestrators. */
+  setHerdEventDispatcher(dispatcher: { onOrchestratorTurnEnd(orchId: string): void }): void {
+    this.herdEventDispatcher = dispatcher;
+  }
+
+  /** Check if a session is idle (CLI connected, not generating). */
+  isSessionIdle(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    return !!(session.cliSocket || session.codexAdapter) && !session.isGenerating;
   }
 
   setPerfTracer(tracer: PerfTracer): void {
@@ -3474,6 +3487,21 @@ export class WsBridge {
       content = msg.content;
     }
 
+    // Role-prefix for orchestrator sessions: the CLI sees [User], [Herd], or [Agent] tags
+    // so the orchestrator can distinguish message sources. History/browser keep original content.
+    const isOrch = this.launcher?.getSession(session.id)?.isOrchestrator;
+    if (isOrch && typeof content === "string") {
+      const time = new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (msg.agentSource?.sessionId === "herd-events") {
+        content = `[Herd ${time}] ${content}`;
+      } else if (msg.agentSource) {
+        const label = msg.agentSource.sessionLabel || msg.agentSource.sessionId.slice(0, 8);
+        content = `[Agent ${label} ${time}] ${content}`;
+      } else {
+        content = `[User ${time}] ${content}`;
+      }
+    }
+
     const ndjson = JSON.stringify({
       type: "user",
       message: { role: "user", content },
@@ -4115,6 +4143,14 @@ export class WsBridge {
         duration_ms: elapsed,
         ...toolSummary,
       });
+
+      // Herd event dispatcher: notify if this is an orchestrator finishing a turn
+      if (this.herdEventDispatcher) {
+        const info = this.launcher?.getSession(session.id);
+        if (info?.isOrchestrator) {
+          this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+        }
+      }
     }
   }
 
