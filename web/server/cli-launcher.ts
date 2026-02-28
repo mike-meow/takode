@@ -1527,6 +1527,7 @@ Bad: \`"Here are the full quest details: [300 lines of quest JSON pasted in]..."
 ## Tips
 
 - **Coordinate, don't implement.** Never do non-trivial work yourself (anything requiring more than a few reads/edits). Delegate larger work to a herded worker session via \`takode send\`, or spin up a sub-agent for smaller tasks. This protects your context window and keeps you responsive to herd events and user requests. Your job is coordination, not implementation.
+- **Always use async sub-agents.** When spinning up sub-agents via the Task tool, always use \`run_in_background: true\`. Synchronous sub-agents block your turn and prevent you from receiving and reacting to herd events or user messages until they complete.
 - **Keep your watch loop tight.** Process each event, decide quickly, and go back to watching. Don't do heavy computation between events.
 - **Use \`--json\` for programmatic decisions.** When you need to branch on event data, parse JSON output instead of text.
 - **Don't micro-manage workers.** Send clear instructions and let them work. Only intervene on errors or when they finish a major step.
