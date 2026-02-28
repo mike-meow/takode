@@ -1234,7 +1234,14 @@ takode list
 takode list --all
 \`\`\`
 
-Output shows session number (#N), status, name, role, model, branch, and last activity. Use the session number (#N) in all other commands.
+Output format for each session:
+- \`#N\` — session number (use in all other commands)
+- Status icon: \`●\` running, \`○\` idle, \`✗\` disconnected, \`⊘\` archived, \`⚠\` needs attention
+- Session name and role labels: \`[leader]\` for orchestrators, \`[herd]\` for herded workers
+- \`📋 q-N status\` — claimed quest ID and status (if any)
+- Branch name with \`N↑\` commits ahead / \`N↓\` commits behind the base branch
+- \`wt\` — worktree session indicator
+- Last activity timestamp and message preview
 
 ### \`takode search <query> [--all] [--json]\`
 
@@ -1466,11 +1473,12 @@ Prefer integer numbers — they're stable within a server session and easy to ty
 
 ## Tips
 
+- **Coordinate, don't implement.** Never do non-trivial work yourself (anything requiring more than a few reads/edits). Delegate larger work to a herded worker session via \`takode send\`, or spin up a sub-agent for smaller tasks. This protects your context window and keeps you responsive to herd events and user requests. Your job is coordination, not implementation.
 - **Keep your watch loop tight.** Process each event, decide quickly, and go back to watching. Don't do heavy computation between events.
 - **Use \`--json\` for programmatic decisions.** When you need to branch on event data, parse JSON output instead of text.
 - **Don't micro-manage workers.** Send clear instructions and let them work. Only intervene on errors or when they finish a major step.
 - **Batch related messages.** If you need to send context + instructions to a worker, send it as one message rather than multiple.
-- **Monitor context usage.** Long orchestration sessions accumulate context. Use \`peek\` (truncated) over \`read\` (full) whenever possible.
+- **Don't worry about worker context windows.** Workers auto-compact their context when it gets large — you can't see or control this. Don't avoid assigning work to a session just because it has many turns. Prefer \`peek\` (truncated) over \`read\` (full) to protect your *own* context window.
 - **Track event cursors.** When using \`watch --since\`, pass the last event ID to avoid re-processing events.
 - **Mixed backends work seamlessly.** You can orchestrate both Claude Code and Codex sessions from either backend. The \`takode\` CLI talks to the Companion server, so the worker's backend is transparent to you.
 - **Events are push-based.** You don't need to poll or call \`watch\`. Herd events arrive automatically as user messages when you go idle. Just react to them.
