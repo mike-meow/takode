@@ -2832,6 +2832,15 @@ export function createRoutes(
         };
       }
     }
+    // Herd guard: if the target session is herded, only its leader can send messages.
+    // Calls without agentSource (e.g. cron scheduler) bypass this — they use
+    // wsBridge.injectUserMessage() directly, not this REST endpoint.
+    if (session.herdedBy) {
+      const callerId = agentSource?.sessionId;
+      if (!callerId || callerId !== session.herdedBy) {
+        return c.json({ error: "Session is herded — only its leader can send messages" }, 403);
+      }
+    }
     wsBridge.injectUserMessage(id, body.content, agentSource);
     return c.json({ ok: true, sessionId: id });
   });
