@@ -1780,8 +1780,8 @@ export class CodexAdapter {
       case "fileChange": {
         const fc = item as CodexFileChangeItem;
         const changes = this.resolveFileChangesForTool(item.id, fc.changes);
-        if (changes.length === 0) {
-          // item/started can be emitted without patch details; wait for item/completed.
+        if (changes.length === 0 || !hasAnyPatchDiff(changes)) {
+          // item/started can arrive with path/kind but no diff; defer to item/completed.
           break;
         }
         const firstChange = changes[0];
@@ -2414,7 +2414,7 @@ export class CodexAdapter {
   /** Emit tool_use only if item/started was never received for this ID. */
   private ensureToolUseEmitted(toolUseId: string, toolName: string, input: Record<string, unknown>): void {
     if (!this.emittedToolUseIds.has(toolUseId)) {
-      this.emitToolUseTracked(toolUseId, toolName, input);
+      this.emitToolUseStart(toolUseId, toolName, input);
     }
   }
 

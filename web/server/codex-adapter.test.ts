@@ -568,15 +568,17 @@ describe("CodexAdapter", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // fileChange with "create" kind → Write tool
+    // item/started without diff is deferred; item/completed provides the diff.
     stdout.push(JSON.stringify({
       method: "item/started",
       params: {
-        item: {
-          type: "fileChange",
-          id: "fc_1",
-          changes: [{ path: "/tmp/new-file.ts", kind: "create" }],
-          status: "inProgress",
-        },
+        item: { type: "fileChange", id: "fc_1", changes: [{ path: "/tmp/new-file.ts", kind: "create" }], status: "inProgress" },
+      },
+    }) + "\n");
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: { type: "fileChange", id: "fc_1", changes: [{ path: "/tmp/new-file.ts", kind: "create", diff: "+new content" }], status: "completed" },
       },
     }) + "\n");
 
@@ -593,12 +595,13 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({
       method: "item/started",
       params: {
-        item: {
-          type: "fileChange",
-          id: "fc_2",
-          changes: [{ path: "/tmp/existing.ts", kind: "modify" }],
-          status: "inProgress",
-        },
+        item: { type: "fileChange", id: "fc_2", changes: [{ path: "/tmp/existing.ts", kind: "modify" }], status: "inProgress" },
+      },
+    }) + "\n");
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: { type: "fileChange", id: "fc_2", changes: [{ path: "/tmp/existing.ts", kind: "modify", diff: "@@ -1 +1 @@\n-old\n+new" }], status: "completed" },
       },
     }) + "\n");
 
@@ -764,6 +767,68 @@ describe("CodexAdapter", () => {
       return content.some((b) => b.type === "tool_use" && b.id === "fc_late_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff);
     });
     expect(toolUseAfterComplete).toBeDefined();
+  });
+
+  it("defers fileChange with path/kind but no diff until completed provides diff", async () => {
+    // Regression: item/started with changes containing path/kind but no diff field
+    // was emitted immediately, causing ToolBlock to show "No changes".
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // item/started with path and kind, but NO diff
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        item: {
+          type: "fileChange",
+          id: "fc_no_diff",
+          changes: [{ path: "/tmp/nodiff.ts", kind: "modify" }],
+          status: "inProgress",
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 30));
+
+    // tool_use should NOT have been emitted yet (no diff data)
+    const earlyToolUse = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; id?: string }> } }).message.content;
+      return content.some((b) => b.type === "tool_use" && b.id === "fc_no_diff");
+    });
+    expect(earlyToolUse).toBeUndefined();
+
+    // item/completed with actual diff
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "fileChange",
+          id: "fc_no_diff",
+          changes: [{
+            path: "/tmp/nodiff.ts",
+            kind: "modify",
+            diff: "@@ -1 +1 @@\n-before\n+after\n",
+          }],
+          status: "completed",
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Now tool_use should exist with the diff from completed
+    const toolUse = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; id?: string; name?: string; input?: { changes?: Array<{ diff?: string }> } }> } }).message.content;
+      return content.some((b) => b.type === "tool_use" && b.id === "fc_no_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff);
+    });
+    expect(toolUse).toBeDefined();
   });
 
   it("sends turn/interrupt on interrupt message", async () => {
@@ -1710,10 +1775,14 @@ describe("CodexAdapter", () => {
     }) + "\n");
     await new Promise((r) => setTimeout(r, 20));
 
-    // Test fileChange
+    // Test fileChange (deferred until completed provides diff)
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "fileChange", id: "fc_x", changes: [{ path: "/tmp/f.ts", kind: "modify" }], status: "inProgress" } },
+    }) + "\n");
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: { item: { type: "fileChange", id: "fc_x", changes: [{ path: "/tmp/f.ts", kind: "modify", diff: "@@ -1 +1 @@\n-a\n+b" }], status: "completed" } },
     }) + "\n");
     await new Promise((r) => setTimeout(r, 50));
 
