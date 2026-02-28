@@ -26,7 +26,28 @@ interface FileStats {
   deletions: number;
 }
 
+/**
+ * Thin wrapper that reads cwd and conditionally renders the real panel.
+ * This avoids calling hooks after an early return (React Rules of Hooks).
+ */
 export function DiffPanel({ sessionId }: { sessionId: string }) {
+  const session = useStore((s) => s.sessions.get(sessionId));
+  const sdkSession = useStore((s) => s.sdkSessions.find((sdk) => sdk.sessionId === sessionId));
+  const cwd = session?.cwd || sdkSession?.cwd;
+
+  if (!cwd) {
+    return (
+      <div className="flex-1 flex items-center justify-center h-full">
+        <p className="text-cc-muted text-sm">Waiting for session to initialize...</p>
+      </div>
+    );
+  }
+
+  return <DiffPanelInner sessionId={sessionId} />;
+}
+
+/** Inner component — only mounts when cwd is available, so all hooks run unconditionally. */
+function DiffPanelInner({ sessionId }: { sessionId: string }) {
   const session = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions.find((sdk) => sdk.sessionId === sessionId));
   const selectedFile = useStore((s) => s.diffPanelSelectedFile.get(sessionId) ?? null);
@@ -308,14 +329,6 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     }
     return () => observer.disconnect();
   }, [visibleChangedFiles, sessionId, setSelectedFile]);
-
-  if (!cwd) {
-    return (
-      <div className="flex-1 flex items-center justify-center h-full">
-        <p className="text-cc-muted text-sm">Waiting for session to initialize...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col bg-cc-bg">
