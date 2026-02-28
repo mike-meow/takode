@@ -287,6 +287,20 @@ function ToolResultSection({
   const [loading, setLoading] = useState(false);
   const liveOutput = progress?.output || "";
 
+  // Suppress the result section for web search when the result just echoes the
+  // query or is a generic placeholder — the query is already shown in ToolDetail.
+  if (
+    preview
+    && !preview.is_error
+    && (toolName === "WebSearch" || toolName === "web_search")
+  ) {
+    const query = extractWebSearchQuery(input);
+    const content = preview.content.trim();
+    if (!content || content === query || content === "Web search completed") {
+      return null;
+    }
+  }
+
   if (!preview) {
     if (!progress) return null;
     return (

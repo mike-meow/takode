@@ -755,3 +755,94 @@ describe("ToolBlock duration display", () => {
     expect(durationBadge).toBeNull();
   });
 });
+
+// Regression: Codex web search was showing the query text as the "RESULT",
+// because the adapter returned the query when no structured results existed.
+// The ToolBlock should suppress the result section when it just echoes the query.
+describe("WebSearch result suppression", () => {
+  afterEach(() => {
+    useStore.setState({ toolResults: new Map() });
+  });
+
+  it("hides RESULT section when content matches the search query", () => {
+    const toolResults = new Map();
+    const sessionResults = new Map();
+    sessionResults.set("ws-echo", {
+      tool_use_id: "ws-echo",
+      content: "Codex CLI skills documentation",
+      is_error: false,
+      total_size: 32,
+      is_truncated: false,
+    });
+    toolResults.set("s-ws", sessionResults);
+    useStore.setState({ toolResults });
+
+    render(
+      <ToolBlock
+        name="WebSearch"
+        input={{ query: "Codex CLI skills documentation" }}
+        toolUseId="ws-echo"
+        sessionId="s-ws"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    // The query appears in both the preview and the WebSearchDetail section
+    expect(screen.getAllByText("Codex CLI skills documentation").length).toBeGreaterThanOrEqual(1);
+    // But NOT in a "Result" label — the result section should be suppressed
+    expect(screen.queryByText("Result")).toBeNull();
+  });
+
+  it("hides RESULT section for generic 'Web search completed' placeholder", () => {
+    const toolResults = new Map();
+    const sessionResults = new Map();
+    sessionResults.set("ws-placeholder", {
+      tool_use_id: "ws-placeholder",
+      content: "Web search completed",
+      is_error: false,
+      total_size: 20,
+      is_truncated: false,
+    });
+    toolResults.set("s-ws2", sessionResults);
+    useStore.setState({ toolResults });
+
+    render(
+      <ToolBlock
+        name="WebSearch"
+        input={{ query: "react hooks best practices" }}
+        toolUseId="ws-placeholder"
+        sessionId="s-ws2"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.queryByText("Result")).toBeNull();
+  });
+
+  it("shows RESULT section when web search has meaningful results", () => {
+    const toolResults = new Map();
+    const sessionResults = new Map();
+    sessionResults.set("ws-real", {
+      tool_use_id: "ws-real",
+      content: "React Hooks API Reference\nhttps://react.dev/reference/react/hooks\nA comprehensive guide to React hooks...",
+      is_error: false,
+      total_size: 100,
+      is_truncated: false,
+    });
+    toolResults.set("s-ws3", sessionResults);
+    useStore.setState({ toolResults });
+
+    render(
+      <ToolBlock
+        name="WebSearch"
+        input={{ query: "react hooks" }}
+        toolUseId="ws-real"
+        sessionId="s-ws3"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    // Meaningful results should show the Result section
+    expect(screen.getByText("Result")).toBeTruthy();
+  });
+});

@@ -2090,9 +2090,17 @@ export class CodexAdapter {
 
       case "webSearch": {
         const ws = item as CodexWebSearchItem;
+        const wsQuery = extractWebSearchQuery(ws);
         // Ensure tool_use was emitted
-        this.ensureToolUseEmitted(item.id, "WebSearch", { query: extractWebSearchQuery(ws) });
-        this.emitToolResult(item.id, extractWebSearchResultText(ws), false);
+        this.ensureToolUseEmitted(item.id, "WebSearch", { query: wsQuery });
+        // Only emit a result if there's meaningful content beyond the query
+        // itself. Codex web search items often lack structured result data,
+        // causing extractWebSearchResultText to return the query or a generic
+        // placeholder — showing that as "RESULT" is confusing.
+        const wsResult = extractWebSearchResultText(ws);
+        if (wsResult && wsResult !== wsQuery && wsResult !== "Web search completed") {
+          this.emitToolResult(item.id, wsResult, false);
+        }
         break;
       }
 

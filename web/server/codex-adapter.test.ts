@@ -1164,6 +1164,54 @@ describe("CodexAdapter", () => {
     expect(resultBlock?.content).not.toBe("Codex CLI skills documentation");
   });
 
+  // Regression: Codex web search items with no real result data caused the
+  // adapter to emit the query text as the tool_result, which the ToolBlock
+  // then displayed as "RESULT: <query>". The fix suppresses tool_result
+  // emission when the result would just echo the query.
+  it("skips tool_result when webSearch result would echo the query", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await new Promise((r) => setTimeout(r, 50));
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // item/started
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        item: { type: "webSearch", id: "ws_echo", query: "Codex CLI skills documentation" },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // item/completed — only has query, no real result fields. The adapter's
+    // extractWebSearchResultText falls through to "Web search completed" or
+    // returns the query itself.
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        item: {
+          type: "webSearch",
+          id: "ws_echo",
+          query: "Codex CLI skills documentation",
+        },
+      },
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // No tool_result should be emitted — the only result would be the query
+    const toolResults = messages.filter((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string }> } }).message.content;
+      return content.some((b) => b.type === "tool_result");
+    });
+    expect(toolResults.length).toBe(0);
+  });
+
   it("emits content_block_stop on reasoning item/completed", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
