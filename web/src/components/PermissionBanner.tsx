@@ -96,9 +96,10 @@ export function PlanReviewOverlay({
       updated_input: updatedInput,
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    setTimeout(() => {
-      removePermission(sessionId, permission.request_id);
-    }, 350);
+    // Don't call removePermission locally — the server broadcasts
+    // permission_approved which authoritatively removes it via ws.ts.
+    // Local removal caused a race: the component would unmount before
+    // the stamping animation could play.
   }
 
   function handleDeny() {
@@ -242,9 +243,8 @@ export function PlanCollapsedChip({
       behavior: "allow",
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    setTimeout(() => {
-      removePermission(sessionId, permission.request_id);
-    }, 350);
+    // Don't call removePermission locally — the server broadcasts
+    // permission_approved which authoritatively removes it via ws.ts.
   }
 
   function handleDeny() {
@@ -535,9 +535,10 @@ export function PermissionBanner({
       updated_input: updatedInput,
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    setTimeout(() => {
-      removePermission(sessionId, permission.request_id);
-    }, 350);
+    // Don't call removePermission locally — the server broadcasts
+    // permission_approved which authoritatively removes it via ws.ts.
+    // Local removal caused a race: the component would unmount before
+    // the stamping animation could play.
   }
 
   function handleDeny() {
