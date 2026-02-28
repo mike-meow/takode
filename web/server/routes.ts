@@ -1205,6 +1205,8 @@ export function createRoutes(
           cliConnected: wsBridge.isCliConnected(s.sessionId),
           taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
           keywords: wsBridge.getSessionKeywords(s.sessionId),
+          claimedQuestId: bridge?.claimedQuestId ?? null,
+          claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
           ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
           // Worktree liveness status for archived worktree sessions
           // Only check existence (one async access() call), skip expensive git status

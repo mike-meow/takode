@@ -239,11 +239,14 @@ async function handleList(base: string, args: string[]): Promise<void> {
     cliConnected?: boolean;
     lastMessagePreview?: string;
     gitBranch?: string;
+    gitAhead?: number;
+    gitBehind?: number;
     attentionReason?: string;
     repoRoot?: string;
     isWorktree?: boolean;
     herdedBy?: string[];
-  }>;
+    claimedQuestId?: string | null;
+    claimedQuestStatus?: string | null;  }>;
 
   // Filter unless --all: default shows all unarchived sessions
   let filtered = showAll ? sessions : sessions.filter(s => !s.archived);
@@ -328,7 +331,7 @@ async function handleList(base: string, args: string[]): Promise<void> {
 
   const herdNote = herdFilterApplied ? ` (${filtered.length - 1} herded, use --all to see all)` : "";
   console.log(`${total} session(s)${herdNote}${!herdFilterApplied && !showAll ? " (use --all to include archived)" : ""}`);
-  console.log(`Status: ● running  ○ idle  ✗ disconnected  ⊘ archived  ⚠ needs attention`);
+  console.log(`Status: ● running  ○ idle  ✗ disconnected  ⊘ archived  ⚠ needs attention  📋 quest  ↑↓ commits ahead/behind`);
 }
 
 function printSessionLine(s: {
@@ -342,10 +345,14 @@ function printSessionLine(s: {
   herdedBy?: string[];
   model?: string;
   gitBranch?: string;
+  gitAhead?: number;
+  gitBehind?: number;
   attentionReason?: string;
   lastActivityAt?: number;
   lastMessagePreview?: string;
   isWorktree?: boolean;
+  claimedQuestId?: string | null;
+  claimedQuestStatus?: string | null;
 }): void {
   const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
   const name = s.name || "(unnamed)";
@@ -355,13 +362,25 @@ function printSessionLine(s: {
     ? (s.state === "running" ? "●" : "○")
     : (s.archived ? "⊘" : "✗");
   const attention = s.attentionReason ? ` ⚠ ${s.attentionReason}` : "";
+
+  // Quest indicator: "📋 q-42 in_progress"
+  const quest = s.claimedQuestId
+    ? ` 📋 ${s.claimedQuestId}${s.claimedQuestStatus ? ` ${s.claimedQuestStatus}` : ""}`
+    : "";
+
   const branch = s.gitBranch ? `  ${s.gitBranch}` : "";
+
+  // Commits ahead/behind: "3↑5↓" (only show non-zero)
+  const ahead = s.gitAhead ? `${s.gitAhead}↑` : "";
+  const behind = s.gitBehind ? `${s.gitBehind}↓` : "";
+  const gitDelta = (ahead || behind) ? ` ${ahead}${behind}` : "";
+
   const wt = s.isWorktree ? " wt" : "";
   const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
   const preview = s.lastMessagePreview ? `  "${truncate(s.lastMessagePreview, 50)}"` : "";
 
-  console.log(`  ${num.padEnd(5)} ${status} ${name}${role}${herd}${attention}`);
-  console.log(`        ${branch}${wt}  ${activity}${preview}`);
+  console.log(`  ${num.padEnd(5)} ${status} ${name}${role}${herd}${quest}${attention}`);
+  console.log(`        ${branch}${gitDelta}${wt}  ${activity}${preview}`);
 }
 
 async function handleWatch(base: string, args: string[]): Promise<void> {
