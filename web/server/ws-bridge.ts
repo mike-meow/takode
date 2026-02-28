@@ -337,6 +337,13 @@ interface Session {
   lastCliMessageAt: number;
   /** Last keep_alive or WebSocket ping from CLI (epoch ms), for disconnect diagnostics */
   lastCliPingAt: number;
+  /**
+   * The last user message NDJSON sent to the CLI. Set when a user message is
+   * forwarded to the CLI, cleared when the turn completes (result message).
+   * If the CLI disconnects mid-turn, this is re-queued in pendingMessages so
+   * the message is automatically re-sent after --resume reconnect.
+   */
+  lastOutboundUserNdjson: string | null;
   /** When stuck notification was sent (epoch ms), to avoid repeated notifications */
   stuckNotifiedAt: number | null;
   /** Server-side activity preview (mirrors browser's sessionTaskPreview) */
@@ -1007,6 +1014,7 @@ export class WsBridge {
         generationStartedAt: null,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
+        lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
         attentionReason: p.attentionReason ?? null,
@@ -1354,6 +1362,7 @@ export class WsBridge {
         generationStartedAt: null,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
+        lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
         lastReadAt: 0,
         attentionReason: null,
@@ -1841,6 +1850,18 @@ export class WsBridge {
     }
     session.pendingPermissions.clear();
     session.assistantAccumulator.clear();
+
+    // Re-queue the in-flight user message if the CLI disconnected mid-turn.
+    // The CLI's --resume restores from its last checkpoint, which won't include
+    // a message that was being processed when the disconnect happened. By
+    // re-queuing it in pendingMessages, it's automatically re-sent when the
+    // CLI reconnects — making the disconnect transparent to the user.
+    if (wasGenerating && session.lastOutboundUserNdjson && !idleKilled) {
+      console.log(`[ws-bridge] Re-queuing in-flight user message for session ${sessionTag(sessionId)} (will re-send after reconnect)`);
+      session.pendingMessages.push(session.lastOutboundUserNdjson);
+      session.lastOutboundUserNdjson = null;
+    }
+
     // Flush cleared permissions to disk so they don't survive a server restart
     this.persistSession(session);
 
@@ -2418,6 +2439,9 @@ export class WsBridge {
         : undefined;
 
     this.setGenerating(session, false, "result");
+    // Turn completed — the user message was processed. Clear the re-queue
+    // tracker so we don't re-send it on a subsequent disconnect.
+    session.lastOutboundUserNdjson = null;
 
     // Persist turn duration on the latest top-level assistant message and
     // rebroadcast it so the chat feed can render the completed turn timing.
@@ -3426,6 +3450,10 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+    // Track the outbound user message so we can re-queue it if the CLI
+    // disconnects mid-turn (before sending a result). On --resume reconnect,
+    // the CLI's internal checkpoint won't include the in-flight message.
+    session.lastOutboundUserNdjson = ndjson;
     const wasGenerating = session.isGenerating;
     this.setGenerating(session, true, "user_message");
     // Notify all browsers immediately so the UI shows "Thinking" without
