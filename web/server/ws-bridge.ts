@@ -354,6 +354,12 @@ interface Session {
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason: "action" | "error" | "review" | null;
+  /** Grace period timer for CLI disconnect — delays side-effects to allow seamless reconnect.
+   *  The Claude Code CLI disconnects every 5 minutes for token refresh and reconnects in ~13s.
+   *  If the CLI reconnects within the grace period, the disconnect is invisible to the system. */
+  disconnectGraceTimer: ReturnType<typeof setTimeout> | null;
+  /** Whether the CLI was generating when the grace timer started (preserved for deferred handling). */
+  disconnectWasGenerating: boolean;
   /** High-level task history recognized by the session auto-namer */
   taskHistory: SessionTaskEntry[];
   /** Accumulated search keywords from the session auto-namer */
@@ -1040,6 +1046,8 @@ export class WsBridge {
         stuckNotifiedAt: null,
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
         attentionReason: p.attentionReason ?? null,
+        disconnectGraceTimer: null,
+        disconnectWasGenerating: false,
         taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
         keywords: Array.isArray(p.keywords) ? p.keywords : [],
         diffStatsDirty: true,
@@ -1388,6 +1396,8 @@ export class WsBridge {
         stuckNotifiedAt: null,
         lastReadAt: 0,
         attentionReason: null,
+        disconnectGraceTimer: null,
+        disconnectWasGenerating: false,
         taskHistory: [],
         keywords: [],
         diffStatsDirty: true,
@@ -1746,6 +1756,16 @@ export class WsBridge {
   handleCLIOpen(ws: ServerWebSocket<SocketData>, sessionId: string) {
     const session = this.getOrCreateSession(sessionId);
     session.cliSocket = ws;
+
+    // Cancel disconnect grace timer if the CLI reconnected within the window.
+    // The CLI disconnects every ~5 minutes for token refresh and reconnects in ~13s.
+    // If the grace timer is running, this reconnect is seamless — no events emitted.
+    if (session.disconnectGraceTimer) {
+      clearTimeout(session.disconnectGraceTimer);
+      session.disconnectGraceTimer = null;
+      console.log(`[ws-bridge] CLI reconnected within grace period for session ${sessionTag(sessionId)} (seamless)`);
+    }
+
     // When a CLI reconnects to an existing session (has history), mark it as
     // resuming. During --resume replay, the CLI sends stale system.status
     // messages with old permissionMode that would incorrectly overwrite uiMode
@@ -1813,6 +1833,8 @@ export class WsBridge {
     const now = Date.now();
     const wasGenerating = session.isGenerating;
     session.cliSocket = null;
+    // Always reset generating state immediately — prevents the UI from showing
+    // "running" for a disconnected process. Safe to do before the grace period.
     this.setGenerating(session, false, "cli_disconnect");
     const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
 
@@ -1846,6 +1868,41 @@ export class WsBridge {
       );
     }
 
+    // If killed by idle manager, run full disconnect immediately (no grace period)
+    if (idleKilled) {
+      this.runFullDisconnect(session, sessionId, wasGenerating, idleKilled, reason);
+      return;
+    }
+
+    // ── Grace period: the Claude Code CLI disconnects every ~5 minutes for
+    // token refresh and reconnects within ~13 seconds. Delay all side-effects
+    // (events, permission cancel, relaunch) to allow seamless reconnect.
+    // If the CLI reconnects within the grace window, handleCLIOpen cancels the
+    // timer and the disconnect is invisible to the rest of the system.
+    session.disconnectWasGenerating = wasGenerating;
+    if (session.disconnectGraceTimer) clearTimeout(session.disconnectGraceTimer);
+    session.disconnectGraceTimer = setTimeout(() => {
+      session.disconnectGraceTimer = null;
+      // CLI didn't reconnect in time — run full disconnect
+      if (!session.cliSocket) {
+        console.log(`[ws-bridge] Grace period expired for session ${sessionTag(sessionId)}, running full disconnect`);
+        this.runFullDisconnect(session, sessionId, session.disconnectWasGenerating, false, reason);
+      }
+    }, 15_000);
+    console.log(`[ws-bridge] Grace period started for session ${sessionTag(sessionId)} (15s, expecting reconnect)`);
+  }
+
+  /** Run the full disconnect side-effects (events, permission cancel, relaunch).
+   *  Separated from handleCLIClose so it can be deferred during the grace period. */
+  private runFullDisconnect(
+    session: Session, sessionId: string,
+    wasGenerating: boolean, idleKilled: boolean | undefined, reason?: string,
+  ): void {
+    // Clear generating state if not already done
+    if (session.isGenerating) {
+      this.setGenerating(session, false, "cli_disconnect");
+    }
+
     this.broadcastToBrowsers(session, {
       type: "cli_disconnected",
       ...(idleKilled ? { reason: "idle_limit" as const } : {}),
@@ -1874,24 +1931,13 @@ export class WsBridge {
     session.assistantAccumulator.clear();
 
     // Re-queue the in-flight user message if the CLI disconnected mid-turn.
-    // The CLI's --resume restores from its last checkpoint, which won't include
-    // a message that was being processed when the disconnect happened. By
-    // re-queuing it in pendingMessages, it's automatically re-sent when the
-    // CLI reconnects — making the disconnect transparent to the user.
-    //
-    // If there's no user message to re-queue but the agent WAS generating
-    // (e.g., deep into multi-tool execution where the original user message
-    // already got a result, or the agent was auto-continuing), send a
-    // synthetic nudge message so the agent doesn't sit idle after reconnect.
     if (wasGenerating && !idleKilled) {
       if (session.lastOutboundUserNdjson) {
         console.log(`[ws-bridge] Re-queuing in-flight user message for session ${sessionTag(sessionId)} (will re-send after reconnect)`);
         session.pendingMessages.push(session.lastOutboundUserNdjson);
         session.lastOutboundUserNdjson = null;
       } else {
-        // Agent was generating but no user message in flight — the agent was
-        // mid-tool-execution or auto-continuing. Send a nudge so the --resume'd
-        // CLI picks up where it left off instead of sitting idle.
+        // Agent was generating but no user message in flight — send a nudge
         const nudgeContent = "[CLI disconnected and relaunched. Please continue your work from where you left off.]";
         const nudge = JSON.stringify({
           type: "user",
@@ -1901,36 +1947,26 @@ export class WsBridge {
         });
         console.log(`[ws-bridge] Queuing continue-nudge for session ${sessionTag(sessionId)} (was generating, no user message in flight)`);
         session.pendingMessages.push(nudge);
-        // Also add to messageHistory so the browser shows the nudge
-        const ts = Date.now();
         session.messageHistory.push({
           type: "user_message",
           content: nudgeContent,
-          timestamp: ts,
-          id: `nudge-${ts}`,
+          timestamp: Date.now(),
+          id: `nudge-${Date.now()}`,
         } as BrowserIncomingMessage);
       }
     }
 
-    // Flush cleared permissions to disk so they don't survive a server restart
+    // Flush cleared permissions to disk
     this.persistSession(session);
 
-    // Auto-relaunch: instead of waiting for a browser to connect and discover
-    // the dead CLI, proactively request relaunch after a short delay. This makes
-    // disconnects nearly invisible — the CLI restarts before the user notices.
-    // The 2s delay avoids relaunching during transient network blips.
-    // Safety: relaunchingSet in index.ts prevents concurrent relaunches (5s guard),
-    // killedByIdleManager/archived checks are in the callback, and cli-launcher's
-    // fast-exit retry handles crash loops.
+    // Auto-relaunch after full disconnect (CLI didn't reconnect within grace period)
     if (!idleKilled && this.onCLIRelaunchNeeded) {
       const sid = sessionId;
-      setTimeout(() => {
-        // Re-check: CLI may have already reconnected in the 2s window
-        const s = this.sessions.get(sid);
-        if (s && !s.cliSocket) {
-          this.onCLIRelaunchNeeded!(sid);
-        }
-      }, 2000);
+      // No additional delay needed — the 15s grace period already passed
+      const s = this.sessions.get(sid);
+      if (s && !s.cliSocket) {
+        this.onCLIRelaunchNeeded(sid);
+      }
     }
   }
 

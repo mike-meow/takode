@@ -649,6 +649,7 @@ describe("CLI handlers", () => {
   });
 
   it("handleCLIClose: nulls cliSocket and broadcasts cli_disconnected", () => {
+    vi.useFakeTimers();
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -661,11 +662,16 @@ describe("CLI handlers", () => {
     expect(session.cliSocket).toBeNull();
     expect(bridge.isCliConnected("s1")).toBe(false);
 
+    // Side-effects are deferred by 15s grace period (CLI token refresh cycle)
+    vi.advanceTimersByTime(16_000);
+
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual(expect.objectContaining({ type: "cli_disconnected" }));
+    vi.useRealTimers();
   });
 
   it("handleCLIClose: cancels pending permissions", async () => {
+    vi.useFakeTimers();
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -683,10 +689,13 @@ describe("CLI handlers", () => {
       },
     });
     bridge.handleCLIMessage(cli, controlReq);
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    await vi.advanceTimersByTimeAsync(0); // flush async handleControlRequest
     browser.send.mockClear();
 
     bridge.handleCLIClose(cli);
+
+    // Side-effects are deferred by 15s grace period
+    vi.advanceTimersByTime(16_000);
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingPermissions.size).toBe(0);
@@ -695,6 +704,7 @@ describe("CLI handlers", () => {
     const cancelMsg = calls.find((c: any) => c.type === "permission_cancelled");
     expect(cancelMsg).toBeDefined();
     expect(cancelMsg.request_id).toBe("req-1");
+    vi.useRealTimers();
   });
 });
 
