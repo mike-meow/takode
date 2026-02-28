@@ -2610,11 +2610,9 @@ export class WsBridge {
         request: perm,
       });
 
-      // Takode: permission_request
-      this.emitTakodeEvent(session.id, "permission_request", {
-        tool_name: perm.tool_name,
-        summary: perm.description || perm.tool_name,
-      });
+      // NOTE: Takode permission_request event is NOT emitted here.
+      // It's deferred until auto-approval decides (if auto-approval is configured).
+      // If no auto-approval, it's emitted immediately in Path B below.
 
       if (autoApprovalConfig) {
         // Path A: LLM auto-approval available — show collapsed spinner in browser,
@@ -2625,6 +2623,12 @@ export class WsBridge {
         // Path B: Normal flow — immediate attention + notification.
         this.setAttention(session, "action");
         this.persistSession(session);
+
+        // Takode: emit permission_request only when it actually needs human attention
+        this.emitTakodeEvent(session.id, "permission_request", {
+          tool_name: perm.tool_name,
+          summary: perm.description || perm.tool_name,
+        });
 
         if (this.pushoverNotifier) {
           const eventType = toolName === "AskUserQuestion" ? "question" as const : "permission" as const;
@@ -2743,6 +2747,12 @@ export class WsBridge {
           timestamp: Date.now(),
         });
 
+        // Takode: emit permission_request NOW — auto-approval deferred, human needs to act
+        this.emitTakodeEvent(session.id, "permission_request", {
+          tool_name: perm.tool_name,
+          summary: perm.description || perm.tool_name,
+        });
+
         // NOW set attention and schedule notifications
         this.setAttention(session, "action");
         if (this.pushoverNotifier) {
@@ -2768,6 +2778,11 @@ export class WsBridge {
           type: "permission_needs_attention",
           request_id: requestId,
           timestamp: Date.now(),
+        });
+        // Takode: emit permission_request on fail-safe escalation too
+        this.emitTakodeEvent(session.id, "permission_request", {
+          tool_name: perm.tool_name,
+          summary: perm.description || perm.tool_name,
         });
         this.setAttention(session, "action");
         this.persistSession(session);

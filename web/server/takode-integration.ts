@@ -95,12 +95,14 @@ takode search jwt --all
 
 Searches across: session name, task history titles, auto-extracted keywords, git branch, last message preview, working directory, and repo root.
 
-### \`takode watch --sessions <ids> [--timeout <secs>] [--since <cursor>] [--json]\`
+### \`takode watch --sessions <ids> [--timeout <secs>] [--since <cursor>] [--all-events] [--json]\`
 
-Block and wait for events from specific sessions. Returns when events arrive or timeout (default 120s).
+Block and wait for actionable events from specific sessions. Returns when events arrive or timeout (default 120s).
+
+**By default, only actionable events are shown** — things a human would be notified about. Intermediate events (turn_start, permission auto-approved, permission_resolved) are filtered out to avoid waking the orchestrator unnecessarily.
 
 \`\`\`bash
-# Watch sessions #1 and #2
+# Watch sessions #1 and #2 (actionable events only)
 takode watch --sessions 1,2
 
 # Watch with longer timeout
@@ -108,21 +110,28 @@ takode watch --sessions 1,2,3 --timeout 300
 
 # Resume from last event cursor
 takode watch --sessions 1,2 --since 42
+
+# Include ALL events (turn_start, permission_resolved, etc.)
+takode watch --sessions 1,2 --all-events
 \`\`\`
 
 **Drain-then-block behavior**: If events arrived since your last \`watch\`, they're returned immediately as a batch. Otherwise, blocks until the next event or timeout.
 
-**Event types**:
+**Default actionable events** (shown by default):
 | Event | Meaning |
 |---|---|
 | \`turn_end\` | Worker finished generating. Shows tools used and result preview. |
-| \`turn_start\` | Worker started generating. Shows the triggering message. |
-| \`permission_request\` | Worker needs tool approval. Shows tool name and description. |
-| \`permission_resolved\` | Permission was approved or denied. |
+| \`permission_request\` | Worker needs human approval (only fires after auto-approval defers). |
 | \`quest_update\` | A quest was updated (any session). |
 | \`session_disconnected\` | Worker CLI disconnected. |
 | \`session_error\` | Worker turn ended with an error. |
 | \`user_message\` | New user message arrived in a watched session. |
+
+**Additional events** (shown with \`--all-events\`):
+| Event | Meaning |
+|---|---|
+| \`turn_start\` | Worker started generating (not usually actionable). |
+| \`permission_resolved\` | Permission was approved or denied (already handled). |
 
 **\`--sessions\` is required.** Always specify which sessions you're watching. Use \`takode list\` first to discover session numbers.
 

@@ -339,7 +339,7 @@ function printSessionLine(s: {
 async function handleWatch(base: string, args: string[]): Promise<void> {
   const flags = parseFlags(args);
   let sessionsRaw = flags.sessions as string;
-  if (!sessionsRaw) err("Usage: takode watch --sessions <id1,id2,...> [--timeout <seconds>] [--json]");
+  if (!sessionsRaw) err("Usage: takode watch --sessions <id1,id2,...> [--timeout <seconds>] [--all-events] [--json]");
 
   // Auto-include own session so human messages interrupt watch
   const ownSessionId = process.env.COMPANION_SESSION_ID;
@@ -350,6 +350,14 @@ async function handleWatch(base: string, args: string[]): Promise<void> {
   const timeout = Number(flags.timeout) || DEFAULT_TIMEOUT;
   const jsonMode = flags.json === true;
   const since = Number(flags.since) || 0;
+  const allEvents = flags["all-events"] === true;
+
+  // Default: only actionable events (things a human would be notified about).
+  // Use --all-events to include intermediate events like turn_start, permission_resolved.
+  const actionableEvents = new Set([
+    "turn_end", "permission_request", "quest_update",
+    "session_disconnected", "session_error", "user_message",
+  ]);
 
   const url = `${base}/events/stream?sessions=${encodeURIComponent(sessionsRaw)}&timeout=${timeout * 1000}&since=${since}`;
 
@@ -415,6 +423,8 @@ async function handleWatch(base: string, args: string[]): Promise<void> {
         if (eventType === "event") {
           try {
             const evt = JSON.parse(data);
+            // Filter: unless --all-events, only show actionable events
+            if (!allEvents && !actionableEvents.has(evt.event)) continue;
             events.push(evt);
 
             // If flush is complete, we got a real-time event — print and exit
