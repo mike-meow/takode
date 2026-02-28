@@ -849,6 +849,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
           worktreeDirty: sdkInfo.worktreeDirty,
           askPermission: askPermissionMap?.get(sdkInfo.sessionId),
           idleKilled: cliDisconnectReason.get(sdkInfo.sessionId) === "idle_limit",
+          isOrchestrator: sdkInfo.isOrchestrator || false,
+          herdedBy: sdkInfo.herdedBy,
+          sessionNum: sdkInfo.sessionNum ?? null,
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);
@@ -2736,6 +2739,19 @@ function PickerSessionChip({
               <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-violet-500 bg-violet-500/10">
                 Cron
               </span>
+            )}
+            {s.isOrchestrator && (
+              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Orchestrator session">
+                leader
+              </span>
+            )}
+            {!s.isOrchestrator && s.herdedBy && s.herdedBy.length > 0 && (
+              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by an orchestrator">
+                herd
+              </span>
+            )}
+            {s.sessionNum != null && (
+              <span className="text-[9px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
             )}
             {s.gitBranch && (
               <>
