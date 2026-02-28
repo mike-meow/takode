@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { sendToSession } from "../ws.js";
@@ -513,6 +513,17 @@ export function PermissionBanner({
   const [customEditorOpen, setCustomEditorOpen] = useState(false);
   const removePermission = useStore((s) => s.removePermission);
 
+  // Auto-dismiss auto-approved permissions that the user wasn't actively viewing.
+  // If the user had expanded from evaluating, keep it visible with an indicator.
+  useEffect(() => {
+    if (permission.autoApproved && !expandedFromEvaluating) {
+      const timer = setTimeout(() => {
+        removePermission(sessionId, permission.request_id);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [permission.autoApproved, expandedFromEvaluating, sessionId, permission.request_id, removePermission]);
+
   // Show evaluating collapsed state when permission is being LLM-evaluated,
   // unless the user has already expanded it for manual intervention.
   if (permission.evaluating && !expandedFromEvaluating) {
@@ -520,8 +531,45 @@ export function PermissionBanner({
       <EvaluatingCollapsedChip
         permission={permission}
         sessionId={sessionId}
-        onExpand={() => setExpandedFromEvaluating(true)}
+        onExpand={() => {
+          setExpandedFromEvaluating(true);
+          // Cancel auto-approval so the user can review manually
+          sendToSession(sessionId, {
+            type: "permission_user_viewing",
+            request_id: permission.request_id,
+          });
+        }}
       />
+    );
+  }
+
+  // Auto-approved: user wasn't looking → render nothing while useEffect auto-dismisses
+  if (permission.autoApproved && !expandedFromEvaluating) {
+    return null;
+  }
+
+  // Auto-approved: user had expanded the evaluating dialog → show "auto-approved" indicator
+  if (permission.autoApproved) {
+    return (
+      <div className="px-2 sm:px-4 py-3 border-b border-cc-border bg-green-500/5 animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-green-500 shrink-0">
+              <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.03 5.28a.75.75 0 00-1.06-1.06L7.25 7.94 6.03 6.72a.75.75 0 00-1.06 1.06l1.75 1.75a.75.75 0 001.06 0l3.25-3.25z" />
+            </svg>
+            <span className="text-[13px] text-cc-fg truncate">
+              Auto-approved: <span className="text-cc-muted">{permission.autoApproved}</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => removePermission(sessionId, permission.request_id)}
+            className="text-[12px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer px-2 py-1 rounded hover:bg-cc-hover shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -651,6 +699,13 @@ export function PermissionBanner({
                 </button>
               )}
             </div>
+
+            {/* Show when user took over from auto-approval */}
+            {expandedFromEvaluating && !permission.evaluating && (
+              <div className="text-[11px] text-amber-500/70 italic mb-1">
+                Auto-approval cancelled — you took over
+              </div>
+            )}
 
             {isAskUser ? (
               <AskUserQuestionDisplay

@@ -182,12 +182,13 @@ vi.mock("../store.js", () => {
   // Also support useStore.getState() which Sidebar uses directly
   useStoreFn.getState = () => mockState;
 
-  /** countUserPermissions: count permissions excluding evaluating ones */
+  /** countUserPermissions: count permissions excluding evaluating/auto-approved ones */
   const countUserPermissions = (perms: Map<string, unknown> | undefined): number => {
     if (!perms) return 0;
     let count = 0;
     for (const p of perms.values()) {
-      if (!(p as { evaluating?: boolean })?.evaluating) count++;
+      const perm = p as { evaluating?: boolean; autoApproved?: string };
+      if (!perm?.evaluating && !perm?.autoApproved) count++;
     }
     return count;
   };

@@ -3191,6 +3191,29 @@ export class WsBridge {
     // Heartbeat — keeps the connection alive, no action needed
     if ((msg as { type: string }).type === "ping") return;
 
+    // User opened the permission dialog — cancel in-flight auto-approval
+    // Handled before the Codex/Claude branch since pendingPermissions is shared
+    if (msg.type === "permission_user_viewing") {
+      const reqId = msg.request_id;
+      const perm = session.pendingPermissions.get(reqId);
+      if (perm?.evaluating) {
+        this.abortAutoApproval(session, reqId);
+        perm.evaluating = undefined;
+
+        this.broadcastToBrowsers(session, {
+          type: "permission_needs_attention",
+          request_id: reqId,
+          timestamp: Date.now(),
+        });
+
+        this.setAttention(session, "action");
+
+        console.log(`[ws-bridge] Auto-approval cancelled for ${perm.tool_name} in session ${sessionTag(session.id)} — user opened dialog`);
+        this.persistSession(session);
+      }
+      return;
+    }
+
     if (
       WsBridge.IDEMPOTENT_BROWSER_MESSAGE_TYPES.has(msg.type)
       && "client_msg_id" in msg

@@ -258,7 +258,8 @@ export type BrowserOutgoingMessage =
   | { type: "mcp_toggle"; serverName: string; enabled: boolean; client_msg_id?: string }
   | { type: "mcp_reconnect"; serverName: string; client_msg_id?: string }
   | { type: "mcp_set_servers"; servers: Record<string, McpServerConfig>; client_msg_id?: string }
-  | { type: "set_ask_permission"; askPermission: boolean; client_msg_id?: string };
+  | { type: "set_ask_permission"; askPermission: boolean; client_msg_id?: string }
+  | { type: "permission_user_viewing"; request_id: string };
 
 /** High-level task recognized by the session auto-namer. */
 export interface SessionTaskEntry {
@@ -444,6 +445,10 @@ export interface PermissionRequest {
   /** Auto-approval status: "queued" (waiting for semaphore slot), "evaluating" (LLM call in progress).
    *  Falsy/undefined means not in auto-approval flow — show full Allow/Deny UI. */
   evaluating?: "queued" | "evaluating";
+  /** Set when the LLM auto-approver approved this permission. The reason string explains why.
+   *  PermissionBanner uses this to show a brief "auto-approved" indicator instead of vanishing
+   *  the dialog when the user was actively viewing it. */
+  autoApproved?: string;
 }
 
 // ─── Session Creation Progress (SSE streaming) ──────────────────────────────

@@ -199,6 +199,7 @@ interface AppState {
   addPermission: (sessionId: string, perm: PermissionRequest) => void;
   removePermission: (sessionId: string, requestId: string) => void;
   updatePermissionEvaluating: (sessionId: string, requestId: string, evaluating: "queued" | "evaluating" | undefined) => void;
+  markPermissionAutoApproved: (sessionId: string, requestId: string, reason: string) => void;
   clearPermissions: (sessionId: string) => void;
 
   // Streaming timer pause actions
@@ -894,6 +895,21 @@ export const useStore = create<AppState>((set) => ({
       return { pendingPermissions };
     }),
 
+  markPermissionAutoApproved: (sessionId, requestId, reason) =>
+    set((s) => {
+      const pendingPermissions = new Map(s.pendingPermissions);
+      const sessionPerms = pendingPermissions.get(sessionId);
+      if (sessionPerms) {
+        const perm = sessionPerms.get(requestId);
+        if (perm) {
+          const updated = new Map(sessionPerms);
+          updated.set(requestId, { ...perm, evaluating: undefined, autoApproved: reason });
+          pendingPermissions.set(sessionId, updated);
+        }
+      }
+      return { pendingPermissions };
+    }),
+
   clearPermissions: (sessionId) =>
     set((s) => {
       const pendingPermissions = new Map(s.pendingPermissions);
@@ -1460,12 +1476,13 @@ export const useStore = create<AppState>((set) => ({
     }),
 }));
 
-/** Count permissions that need user attention (excludes those being LLM-evaluated or queued). */
+/** Count permissions that need user attention (excludes those being LLM-evaluated, queued, or auto-approved). */
 export function countUserPermissions(perms: Map<string, unknown> | undefined): number {
   if (!perms) return 0;
   let count = 0;
   for (const p of perms.values()) {
-    if (!(p as { evaluating?: string })?.evaluating) count++;
+    const perm = p as { evaluating?: string; autoApproved?: string };
+    if (!perm?.evaluating && !perm?.autoApproved) count++;
   }
   return count;
 }

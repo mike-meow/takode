@@ -65,7 +65,8 @@ vi.mock("../store.js", () => ({
     if (!perms) return 0;
     let count = 0;
     for (const p of perms.values()) {
-      if (!(p as { evaluating?: boolean })?.evaluating) count++;
+      const perm = p as { evaluating?: boolean; autoApproved?: string };
+      if (!perm?.evaluating && !perm?.autoApproved) count++;
     }
     return count;
   },

@@ -614,9 +614,10 @@ function handleParsedMessage(
     }
 
     case "permission_auto_approved": {
-      // LLM auto-approver approved this permission — remove it and show a brief indicator.
-      // Use the pre-built summary (includes command/file path) when available.
-      store.removePermission(sessionId, data.request_id);
+      // Don't remove — mark as auto-approved so PermissionBanner can decide
+      // whether to dismiss silently or show an "auto-approved" indicator
+      // (depending on whether the user had expanded the evaluating dialog).
+      store.markPermissionAutoApproved(sessionId, data.request_id, data.reason || "Auto-approved");
       store.appendMessage(sessionId, {
         id: nextId(),
         role: "system",
