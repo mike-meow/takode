@@ -3,6 +3,36 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeCopyButton } from "./CodeCopyButton.js";
 
+function parseQuestIdFromHref(href?: string): string | null {
+  if (!href) return null;
+  const trimmed = href.trim();
+
+  const directId = trimmed.match(/^(q-\d+)$/i);
+  if (directId) return directId[1].toLowerCase();
+
+  const questScheme = trimmed.match(/^quest:(q-\d+)$/i);
+  if (questScheme) return questScheme[1].toLowerCase();
+
+  const questUri = trimmed.match(/^quest:\/\/(q-\d+)$/i);
+  if (questUri) return questUri[1].toLowerCase();
+
+  return null;
+}
+
+function transformMarkdownUrl(url: string): string {
+  if (parseQuestIdFromHref(url)) return url;
+  // Block dangerous protocols while preserving normal links.
+  const normalized = url.toLowerCase().replace(/[\u0000-\u001f\u007f\s]+/g, "");
+  if (
+    normalized.startsWith("javascript:")
+    || normalized.startsWith("vbscript:")
+    || normalized.startsWith("data:text/html")
+  ) {
+    return "";
+  }
+  return url;
+}
+
 export function MarkdownContent({ text, size = "default" }: { text: string; size?: "default" | "sm" }) {
   const sizeClass = size === "sm"
     ? "text-xs"
@@ -12,6 +42,7 @@ export function MarkdownContent({ text, size = "default" }: { text: string; size
     <div className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden`}>
       <Markdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={transformMarkdownUrl}
         components={{
           p: ({ children }) => (
             <p className="mb-3 last:mb-0">{children}</p>
@@ -40,11 +71,29 @@ export function MarkdownContent({ text, size = "default" }: { text: string; size
           li: ({ children }) => (
             <li className="text-cc-fg">{children}</li>
           ),
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:underline">
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const questId = parseQuestIdFromHref(href);
+            if (questId) {
+              const questHash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
+              return (
+                <a
+                  href={questHash}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.location.hash = questHash;
+                  }}
+                  className="text-cc-primary hover:underline"
+                >
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:underline">
+                {children}
+              </a>
+            );
+          },
           blockquote: ({ children }) => (
             <blockquote className="border-l-2 border-cc-primary/30 pl-3 my-2 text-cc-muted italic">
               {children}
