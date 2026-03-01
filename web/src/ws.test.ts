@@ -1669,7 +1669,7 @@ describe("handleMessage: assistant clears only completed tool progress", () => {
 // handleMessage: compact_boundary (preserves messages + inserts marker)
 // ===========================================================================
 describe("handleMessage: compact_boundary", () => {
-  it("appends a system compact marker instead of clearing messages", () => {
+  it("appends a system compact marker using server-provided id and timestamp", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
@@ -1688,7 +1688,13 @@ describe("handleMessage: compact_boundary", () => {
     });
 
     // Fire compact_boundary — should preserve existing messages and add a marker
-    fireMessage({ type: "compact_boundary", trigger: "auto", preTokens: 80000 });
+    fireMessage({
+      type: "compact_boundary",
+      id: "compact-boundary-3333",
+      timestamp: 3333,
+      trigger: "auto",
+      preTokens: 80000,
+    });
 
     const msgs = useStore.getState().messages.get("s1")!;
     // Existing messages should still be there
@@ -1700,7 +1706,38 @@ describe("handleMessage: compact_boundary", () => {
     expect(marker.role).toBe("system");
     expect(marker.content).toBe("Conversation compacted");
     expect(marker.variant).toBe("info");
-    expect(marker.id).toMatch(/^compact-boundary-/);
+    expect(marker.id).toBe("compact-boundary-3333");
+    expect(marker.timestamp).toBe(3333);
+  });
+
+  it("does not duplicate compact marker when replay event matches existing history marker id", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "u1", content: "Before compact", timestamp: 1000 },
+        {
+          type: "compact_marker",
+          id: "compact-boundary-5000",
+          timestamp: 5000,
+          summary: "Conversation compacted",
+        },
+      ],
+    });
+
+    fireMessage({
+      type: "compact_boundary",
+      id: "compact-boundary-5000",
+      timestamp: 5000,
+      trigger: "auto",
+      preTokens: 60000,
+    });
+
+    const msgs = useStore.getState().messages.get("s1") ?? [];
+    const markers = msgs.filter((m) => m.id === "compact-boundary-5000");
+    expect(markers).toHaveLength(1);
   });
 });
 

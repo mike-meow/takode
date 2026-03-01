@@ -3080,6 +3080,33 @@ describe("compact_boundary handling", () => {
     expect((markers[0] as any).preTokens).toBe(42000);
   });
 
+  it("deduplicates equivalent replayed compact_boundary even when uuid changes", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 64000 },
+      uuid: "compact-uuid-1",
+      session_id: "cli-123",
+    }));
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 64000 },
+      uuid: "compact-uuid-2",
+      session_id: "cli-123",
+    }));
+
+    const session = bridge.getOrCreateSession("s1");
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers).toHaveLength(1);
+    expect((markers[0] as any).trigger).toBe("auto");
+    expect((markers[0] as any).preTokens).toBe(64000);
+  });
+
   it("broadcasts compact_boundary event with metadata to browsers", () => {
     const cli = makeCliSocket("s1");
     const browser = makeBrowserSocket("s1");
@@ -3107,6 +3134,8 @@ describe("compact_boundary handling", () => {
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const compactMsg = calls.find((m: any) => m.type === "compact_boundary");
     expect(compactMsg).toBeTruthy();
+    expect(compactMsg.id).toMatch(/^compact-boundary-\d+$/);
+    expect(typeof compactMsg.timestamp).toBe("number");
     expect(compactMsg.trigger).toBe("auto");
     expect(compactMsg.preTokens).toBe(80000);
   });

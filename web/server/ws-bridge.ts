@@ -2516,18 +2516,18 @@ export class WsBridge {
       const last = session.messageHistory[session.messageHistory.length - 1] as
         | { type?: string; trigger?: string; preTokens?: number; summary?: string }
         | undefined;
-      const duplicateWithoutUuid = !cliUuid
-        && last?.type === "compact_marker"
+      const duplicateEquivalentBoundary = last?.type === "compact_marker"
         && !last.summary
         && (last.trigger ?? null) === (meta?.trigger ?? null)
         && (last.preTokens ?? null) === (meta?.pre_tokens ?? null);
-      if (duplicateWithoutUuid) return;
+      if (duplicateEquivalentBoundary) return;
 
       const ts = Date.now();
+      const markerId = `compact-boundary-${ts}`;
       session.messageHistory.push({
         type: "compact_marker" as const,
         timestamp: ts,
-        id: `compact-boundary-${ts}`,
+        id: markerId,
         cliUuid,
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
@@ -2535,6 +2535,8 @@ export class WsBridge {
       session.awaitingCompactSummary = true;
       this.broadcastToBrowsers(session, {
         type: "compact_boundary",
+        id: markerId,
+        timestamp: ts,
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
       });

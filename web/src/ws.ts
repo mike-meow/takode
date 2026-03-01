@@ -875,11 +875,13 @@ function handleParsedMessage(
 
     case "compact_boundary": {
       // CLI has compacted — preserve existing messages and insert a compact marker divider
+      const markerTs = typeof data.timestamp === "number" ? data.timestamp : Date.now();
+      const markerId = data.id || `compact-boundary-${markerTs}`;
       store.appendMessage(sessionId, {
-        id: `compact-boundary-${Date.now()}`,
+        id: markerId,
         role: "system",
         content: "Conversation compacted",
-        timestamp: Date.now(),
+        timestamp: markerTs,
         variant: "info",
       });
       break;

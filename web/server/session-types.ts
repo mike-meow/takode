@@ -305,7 +305,7 @@ export type BrowserIncomingMessageBase =
   | { type: "session_task_history"; tasks: SessionTaskEntry[] }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
-  | { type: "compact_boundary"; trigger?: string; preTokens?: number }
+  | { type: "compact_boundary"; id?: string; timestamp?: number; trigger?: string; preTokens?: number }
   | { type: "compact_marker"; timestamp: number; id?: string; cliUuid?: string; summary?: string; trigger?: string; preTokens?: number }
   | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
