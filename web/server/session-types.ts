@@ -280,7 +280,7 @@ export interface SessionTaskEntry {
 export type BrowserIncomingMessageBase =
   | { type: "session_init"; session: SessionState; nextEventSeq?: number }
   | { type: "session_update"; session: Partial<SessionState> }
-  | { type: "assistant"; message: CLIAssistantMessage["message"]; parent_tool_use_id: string | null; timestamp?: number; uuid?: string; tool_start_times?: Record<string, number>; turn_duration_ms?: number }
+  | { type: "assistant"; message: CLIAssistantMessage["message"]; parent_tool_use_id: string | null; timestamp?: number; uuid?: string; tool_start_times?: Record<string, number>; turn_duration_ms?: number; leader_user_addressed?: boolean }
   | { type: "stream_event"; event: unknown; parent_tool_use_id: string | null }
   | { type: "result"; data: CLIResultMessage }
   | { type: "permission_request"; request: PermissionRequest }

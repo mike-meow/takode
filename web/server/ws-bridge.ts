@@ -1553,8 +1553,46 @@ export class WsBridge {
 
   private static readonly ATTENTION_PRIORITY: Record<string, number> = { action: 3, error: 2, review: 1 };
 
+  private isLeaderSession(session: Session): boolean {
+    return this.launcher?.getSession(session.id)?.isOrchestrator === true;
+  }
+
+  private isHerdedWorkerSession(session: Session): boolean {
+    return !!this.launcher?.getSession(session.id)?.herdedBy;
+  }
+
+  /** Find the first non-empty assistant text block in order. */
+  private static getFirstAssistantText(content: ContentBlock[]): string | null {
+    for (const block of content) {
+      if (block.type !== "text") continue;
+      const trimmed = block.text.trim();
+      if (trimmed) return trimmed;
+    }
+    return null;
+  }
+
+  /** Leader messages prefixed with @user: (or @user <text>) are human-addressed. */
+  private isLeaderUserAddressedAssistantMessage(session: Session, content: ContentBlock[]): boolean {
+    if (!this.isLeaderSession(session)) return false;
+    const leadingText = WsBridge.getFirstAssistantText(content);
+    if (!leadingText) return false;
+    return /^@user(?::|\s)/i.test(leadingText);
+  }
+
+  /** Whether a completed turn should surface attention/notifications to the human. */
+  private shouldNotifyHumanOnResult(session: Session): boolean {
+    if (this.isHerdedWorkerSession(session)) return false;
+    if (!this.isLeaderSession(session)) return true;
+
+    const latestAssistant = session.messageHistory.findLast(
+      (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
+    ) as (BrowserIncomingMessage & { type: "assistant"; leader_user_addressed?: boolean }) | undefined;
+    return latestAssistant?.leader_user_addressed === true;
+  }
+
   /** Upgrade attention (never downgrade). Broadcasts + persists. */
   private setAttention(session: Session, reason: "action" | "error" | "review"): void {
+    if (reason === "review" && this.isHerdedWorkerSession(session)) return;
     const current = session.attentionReason;
     const pri = WsBridge.ATTENTION_PRIORITY;
     if (current && pri[current] >= pri[reason]) return; // already equal or higher
@@ -1606,6 +1644,7 @@ export class WsBridge {
   markSessionUnread(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
+    if (this.isHerdedWorkerSession(session)) return true;
     session.attentionReason = "review";
     this.broadcastToBrowsers(session, {
       type: "session_update",
@@ -1762,6 +1801,14 @@ export class WsBridge {
             };
           }
         }
+      }
+
+      if (outgoing?.type === "assistant") {
+        const leaderUserAddressed = this.isLeaderUserAddressedAssistantMessage(session, outgoing.message.content);
+        outgoing = {
+          ...outgoing,
+          ...(leaderUserAddressed ? { leader_user_addressed: true } : {}),
+        };
       }
 
       // Store assistant/result messages in history for replay
@@ -2637,12 +2684,14 @@ export class WsBridge {
 
     // No ID — forward as-is (defensive)
     if (!msgId) {
+      const leaderUserAddressed = this.isLeaderUserAddressedAssistantMessage(session, msg.message.content);
       const browserMsg: BrowserIncomingMessage = {
         type: "assistant",
         message: msg.message,
         parent_tool_use_id: msg.parent_tool_use_id,
         timestamp: Date.now(),
         uuid: msg.uuid,
+        ...(leaderUserAddressed ? { leader_user_addressed: true } : {}),
       };
       session.messageHistory.push(browserMsg);
       this.broadcastToBrowsers(session, browserMsg);
@@ -2681,6 +2730,9 @@ export class WsBridge {
           parent_tool_use_id: msg.parent_tool_use_id,
           timestamp: Date.now(),
           uuid: msg.uuid,
+          ...(this.isLeaderUserAddressedAssistantMessage(session, msg.message.content)
+            ? { leader_user_addressed: true }
+            : {}),
           ...(Object.keys(toolStartTimesMap).length > 0 ? { tool_start_times: toolStartTimesMap } : {}),
         };
 
@@ -2692,7 +2744,7 @@ export class WsBridge {
       // Subsequent occurrence — merge new content blocks into the history entry
       const historyEntry = session.messageHistory.findLast(
         (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
-      ) as { type: "assistant"; message: CLIAssistantMessage["message"]; timestamp?: number } | undefined;
+      ) as { type: "assistant"; message: CLIAssistantMessage["message"]; timestamp?: number; leader_user_addressed?: boolean } | undefined;
 
       if (!historyEntry) return; // shouldn't happen
 
@@ -2725,6 +2777,7 @@ export class WsBridge {
 
       // Treat the latest part as the completion timestamp for this assistant message.
       historyEntry.timestamp = Date.now();
+      historyEntry.leader_user_addressed = this.isLeaderUserAddressedAssistantMessage(session, historyEntry.message.content);
 
       // Re-broadcast the full accumulated message with tool start times
       const rebroadcast: BrowserIncomingMessage = {
@@ -2833,6 +2886,7 @@ export class WsBridge {
     // Turn completed — the user message was processed. Clear the re-queue
     // tracker so we don't re-send it on a subsequent disconnect.
     session.lastOutboundUserNdjson = null;
+    const shouldNotifyHuman = this.shouldNotifyHumanOnResult(session);
 
     // Persist turn duration on the latest top-level assistant message and
     // rebroadcast it so the chat feed can render the completed turn timing.
@@ -2867,8 +2921,10 @@ export class WsBridge {
     this.broadcastToBrowsers(session, browserMsg);
     this.persistSession(session);
 
-    // Set attention state for the completed/errored session
-    this.setAttention(session, msg.is_error ? "error" : "review");
+    // Set attention only when this turn should surface to the human.
+    if (shouldNotifyHuman) {
+      this.setAttention(session, msg.is_error ? "error" : "review");
+    }
 
     // Takode: session_error when the result indicates an error
     if (msg.is_error) {
@@ -2878,7 +2934,7 @@ export class WsBridge {
     }
 
     // Schedule Pushover notification for session completion/error
-    if (this.pushoverNotifier) {
+    if (this.pushoverNotifier && shouldNotifyHuman) {
       if (msg.is_error) {
         this.pushoverNotifier.scheduleNotification(session.id, "error", typeof msg.result === "string" ? msg.result.slice(0, 100) : "Error");
       } else {
@@ -4629,6 +4685,9 @@ export class WsBridge {
         },
         parent_tool_use_id: null,
         timestamp: baseTs + i + 1,
+        ...(this.isLeaderUserAddressedAssistantMessage(session, [{ type: "text", text }])
+          ? { leader_user_addressed: true }
+          : {}),
       };
       session.messageHistory.push(assistant);
       this.broadcastToBrowsers(session, assistant);

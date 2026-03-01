@@ -162,6 +162,20 @@ function sendBrowserNotification(title: string, body: string, tag: string) {
   new Notification(title, { body, tag });
 }
 
+function shouldNotifyOnResult(sessionId: string, store: ReturnType<typeof useStore.getState>): boolean {
+  const sdk = store.sdkSessions.find((s) => s.sessionId === sessionId);
+  if (sdk?.herdedBy) return false;
+  if (!sdk?.isOrchestrator) return true;
+
+  const messages = store.messages.get(sessionId) || [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    return msg.leaderUserAddressed === true;
+  }
+  return false;
+}
+
 let idCounter = 0;
 let clientMsgCounter = 0;
 function nextId(): string {
@@ -375,6 +389,7 @@ function handleParsedMessage(
         stopReason: msg.stop_reason,
         turnDurationMs: data.turn_duration_ms,
         cliUuid: (data as Record<string, unknown>).uuid as string | undefined,
+        leaderUserAddressed: data.leader_user_addressed === true,
       };
       // Server accumulates content blocks for same-ID messages (parallel tool calls).
       // If this ID already exists, merge content blocks rather than replace — this
@@ -389,6 +404,9 @@ function handleParsedMessage(
           contentBlocks: mergedBlocks,
           timestamp: data.timestamp || existing.timestamp,
           stopReason: msg.stop_reason || existing.stopReason,
+          ...(data.leader_user_addressed !== undefined
+            ? { leaderUserAddressed: data.leader_user_addressed === true }
+            : {}),
           ...(typeof data.turn_duration_ms === "number"
             ? { turnDurationMs: data.turn_duration_ms }
             : {}),
@@ -481,11 +499,12 @@ function handleParsedMessage(
       store.clearToolProgress(sessionId);
       store.setSessionStatus(sessionId, "idle");
       store.setSessionStuck(sessionId, false);
+      const notifyOnResult = shouldNotifyOnResult(sessionId, store);
       // Play notification sound if enabled and tab is not focused
-      if (!document.hasFocus() && store.notificationSound) {
+      if (notifyOnResult && !document.hasFocus() && store.notificationSound) {
         playNotificationSound();
       }
-      if (!document.hasFocus() && store.notificationDesktop) {
+      if (notifyOnResult && !document.hasFocus() && store.notificationDesktop) {
         sendBrowserNotification("Session completed", "Claude finished the task", sessionId);
       }
       if (r.is_error) {
@@ -1014,6 +1033,7 @@ function handleParsedMessage(
             model: msg.model,
             stopReason: msg.stop_reason,
             cliUuid: (histMsg as Record<string, unknown>).uuid as string | undefined,
+            leaderUserAddressed: (histMsg as { leader_user_addressed?: boolean }).leader_user_addressed === true,
             ...(typeof (histMsg as Record<string, unknown>).turn_duration_ms === "number"
               ? { turnDurationMs: (histMsg as Record<string, unknown>).turn_duration_ms as number }
               : {}),

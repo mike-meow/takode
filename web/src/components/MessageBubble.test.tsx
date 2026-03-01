@@ -292,6 +292,17 @@ describe("MessageBubble - assistant messages", () => {
     expect(markdown.textContent).toBe("Hello world");
   });
 
+  it("shows @user badge for leaderUserAddressed assistant messages", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "@user: here's the latest status",
+      leaderUserAddressed: true,
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByText("@user")).toBeTruthy();
+  });
+
   it("renders a timestamp for assistant messages", () => {
     const ts = 1700000003000;
     const msg = makeMessage({ role: "assistant", content: "Timed response", timestamp: ts });

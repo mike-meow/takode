@@ -8,12 +8,17 @@ vi.mock("./utils/names.js", () => ({
 }));
 
 const getDiffStatsMock = vi.fn().mockResolvedValue({ stats: {} });
+const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 
 // Mock the API module so PostHog doesn't break in jsdom
 vi.mock("./api.js", () => ({
   api: {
     getDiffStats: getDiffStatsMock,
   },
+}));
+
+vi.mock("./utils/notification-sound.js", () => ({
+  playNotificationSound: playNotificationSoundMock,
 }));
 
 let wsModule: typeof import("./ws.js");
@@ -60,6 +65,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   getDiffStatsMock.mockReset();
   getDiffStatsMock.mockResolvedValue({ stats: {} });
+  playNotificationSoundMock.mockReset();
 
   const storeModule = await import("./store.js");
   useStore = storeModule.useStore;
@@ -372,6 +378,29 @@ describe("handleMessage: assistant", () => {
     expect(msgs[0].id).toBe("msg-1");
     expect(state.streaming.has("s1")).toBe(false);
     expect(state.sessionStatus.get("s1")).toBe("running");
+  });
+
+  it("preserves leader_user_addressed metadata from assistant messages", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "assistant",
+      leader_user_addressed: true,
+      message: {
+        id: "msg-leader-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "@user: Here's the status" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs[0].leaderUserAddressed).toBe(true);
   });
 
   it("updates timestamp when an existing assistant message is re-broadcast with newer data", () => {
@@ -742,6 +771,133 @@ describe("handleMessage: result", () => {
     expect(state.sessionStatus.get("s1")).toBe("idle");
   });
 
+  it("suppresses completion notifications for leader sessions without @user assistant messages", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
+    ]);
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "Internal herd update" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    fireMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "u-leader-internal",
+        session_id: "s1",
+      },
+    });
+
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
+    hasFocusSpy.mockRestore();
+  });
+
+  it("plays completion notifications for leader sessions when latest assistant is @user-addressed", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
+    ]);
+    fireMessage({
+      type: "assistant",
+      leader_user_addressed: true,
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "@user: Please review the PR" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    fireMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "u-leader-user",
+        session_id: "s1",
+      },
+    });
+
+    expect(playNotificationSoundMock).toHaveBeenCalledTimes(1);
+    hasFocusSpy.mockRestore();
+  });
+
+  it("suppresses completion notifications for herded worker sessions", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), herdedBy: "orch-1" },
+    ]);
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [{ type: "text", text: "Worker finished task" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    fireMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "u-herded",
+        session_id: "s1",
+      },
+    });
+
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
+    hasFocusSpy.mockRestore();
+  });
+
   it("does not recompute context_used_percent from result.modelUsage on the client", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
@@ -953,6 +1109,35 @@ describe("handleMessage: message_history", () => {
     expect(msgs[0].content).toBe("What is 2+2?");
     expect(msgs[1].role).toBe("assistant");
     expect(msgs[1].content).toBe("4");
+  });
+
+  it("restores leader_user_addressed metadata from history", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "assistant",
+          leader_user_addressed: true,
+          message: {
+            id: "msg-hist-leader-1",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [{ type: "text", text: "@user: done" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+        },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].leaderUserAddressed).toBe(true);
   });
 
   it("includes error results from history as system messages", () => {

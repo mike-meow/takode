@@ -500,7 +500,7 @@ interface Turn {
   allEntries: FeedEntry[];         // All entries in original order (for expanded rendering)
   agentEntries: FeedEntry[];       // Non-system agent activity (collapsible), excludes responseEntry
   systemEntries: FeedEntry[];      // System messages (always visible, never collapsed)
-  responseEntry: FeedEntry | null; // Last assistant text message (always visible even when collapsed)
+  responseEntry: FeedEntry | null; // Default-visible assistant response entry (leader mode: only @user messages)
   stats: TurnStats;
 }
 
@@ -576,7 +576,7 @@ function getEntryId(entry: FeedEntry): string {
 }
 
 /** Build a Turn from accumulated entries */
-function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: number): Turn {
+function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: number, leaderMode = false): Turn {
   // Separate system messages (always visible) from collapsible agent activity
   const agentEntries: FeedEntry[] = [];
   const systemEntries: FeedEntry[] = [];
@@ -591,13 +591,18 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   // Count stats on ALL agent entries before extracting the response
   const s = countEntryStats(agentEntries);
 
-  // Extract the final assistant text message as the response entry.
-  // This is always visible (even when activity is collapsed) so the user
-  // can see the agent's answer without expanding intermediate tool calls.
+  // Extract the default-visible response entry.
+  // Normal sessions: final assistant text.
+  // Leader sessions: final assistant text explicitly addressed to human (@user:).
   let responseEntry: FeedEntry | null = null;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
-    if (e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trim()) {
+    if (
+      e.kind === "message"
+      && e.msg.role === "assistant"
+      && e.msg.content?.trim()
+      && (!leaderMode || e.msg.leaderUserAddressed === true)
+    ) {
       responseEntry = e;
       agentEntries.splice(i, 1);
       break;
@@ -626,7 +631,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 }
 
 /** Group flat feed entries into turns, splitting on user messages */
-function groupIntoTurns(entries: FeedEntry[]): Turn[] {
+function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
@@ -637,7 +642,7 @@ function groupIntoTurns(entries: FeedEntry[]): Turn[] {
     if (isUser) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
-        turns.push(makeTurn(currentUser, currentEntries, turns.length));
+        turns.push(makeTurn(currentUser, currentEntries, turns.length, leaderMode));
       }
       currentUser = entry;
       currentEntries = [];
@@ -648,7 +653,7 @@ function groupIntoTurns(entries: FeedEntry[]): Turn[] {
 
   // Flush final turn
   if (currentUser !== null || currentEntries.length > 0) {
-    turns.push(makeTurn(currentUser, currentEntries, turns.length));
+    turns.push(makeTurn(currentUser, currentEntries, turns.length, leaderMode));
   }
 
   return turns;
@@ -1262,7 +1267,7 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
 // ─── Turn list (owns collapse state so MessageFeed doesn't re-render on toggle) ─
 
-const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Turn[]; sessionId: string }) {
+const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: { turns: Turn[]; sessionId: string; leaderMode: boolean }) {
   const overrides = useStore((s) => s.turnActivityOverrides.get(sessionId));
   const toggleTurn = useStore((s) => s.toggleTurnActivity);
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
@@ -1278,7 +1283,12 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
       const keepExpandedDuringStreaming =
         sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
       const override = overrides?.get(turn.id);
-      const defaultExpanded = isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming;
+      const defaultExpanded = leaderMode
+        ? (
+            keepExpandedDuringStreaming
+            || (isLastTurn && turn.responseEntry === null && turn.agentEntries.length === 0)
+          )
+        : (isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming);
       const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
       if (turn.userEntry?.kind === "message" && isTimedChatMessage(turn.userEntry.msg)) {
@@ -1308,12 +1318,19 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
         const keepExpandedDuringStreaming =
           sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
         const override = overrides?.get(turn.id);
-        // Default: last turn expanded, older finished turns collapsed.
-        // Keep in-flight turns expanded for both:
-        // 1) turns without a final assistant text
-        // 2) the previous turn while streaming a fresh user-only follow-up turn
-        //    (Codex can be mid-turn with partial text/tool activity already emitted).
-        const defaultExpanded = isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming;
+        const defaultExpanded = leaderMode
+          ? (
+              keepExpandedDuringStreaming
+              || (isLastTurn && turn.responseEntry === null && turn.agentEntries.length === 0)
+            )
+          : (
+              // Default: last turn expanded, older finished turns collapsed.
+              // Keep in-flight turns expanded for both:
+              // 1) turns without a final assistant text
+              // 2) the previous turn while streaming a fresh user-only follow-up turn
+              //    (Codex can be mid-turn with partial text/tool activity already emitted).
+              isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming
+            );
         const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
         return (
@@ -1375,6 +1392,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId }: { turns: Tur
 export function MessageFeed({ sessionId }: { sessionId: string }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
+  const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1411,7 +1429,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   }, [sessionId]);
 
   const grouped = useMemo(() => groupMessages(messages), [messages]);
-  const turns = useMemo(() => groupIntoTurns(grouped), [grouped]);
+  const turns = useMemo(() => groupIntoTurns(grouped, isLeaderSession), [grouped, isLeaderSession]);
 
   const totalTurns = turns.length;
   const hasMore = totalTurns > visibleCount;
@@ -1674,7 +1692,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
               </span>
             </div>
           )}
-          <TurnEntries turns={visibleTurns} sessionId={sessionId} />
+          <TurnEntries turns={visibleTurns} sessionId={sessionId} leaderMode={isLeaderSession} />
           <FeedFooter sessionId={sessionId} />
           <div ref={bottomRef} />
         </div>

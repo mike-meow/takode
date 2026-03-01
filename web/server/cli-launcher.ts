@@ -1649,6 +1649,13 @@ Every user message you receive has a source tag:
 - **\`[Herd HH:MM]\`** — an automatic event summary from your herded sessions
 - **\`[Agent #N name HH:MM]\`** — a message sent by another agent session (via \`takode send\`)
 
+### Human-facing assistant replies
+
+When you want to communicate directly with the human in chat, prefix your assistant message with \`@user:\`.
+
+- Example: \`@user: Worker #7 finished auth middleware. Please review the PR notes.\`
+- Messages without this prefix are treated as internal herd activity and may be collapsed in the leader UI.
+
 ### Reacting to herd events
 
 When you receive a \`[Herd]\` message, it contains a compact event table:

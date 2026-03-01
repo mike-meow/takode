@@ -279,6 +279,14 @@ const MSG_ASSISTANT: ChatMessage = {
   timestamp: Date.now() - 50000,
 };
 
+const MSG_ASSISTANT_LEADER_USER: ChatMessage = {
+  id: "msg-leader-user",
+  role: "assistant",
+  content: "@user: Worker #7 finished q-126 and opened a PR. Please review the leader chat behavior.",
+  leaderUserAddressed: true,
+  timestamp: Date.now() - 48000,
+};
+
 const MSG_ASSISTANT_TOOLS: ChatMessage = {
   id: "msg-4",
   role: "assistant",
@@ -986,6 +994,9 @@ export function Playground() {
             </Card>
             <Card label="Assistant message (markdown)">
               <MessageBubble message={MSG_ASSISTANT} />
+            </Card>
+            <Card label="Assistant message (@user)">
+              <MessageBubble message={MSG_ASSISTANT_LEADER_USER} />
             </Card>
             <Card label="Assistant message (with tool calls)">
               <MessageBubble message={MSG_ASSISTANT_TOOLS} />

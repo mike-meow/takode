@@ -458,6 +458,7 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
   const blocks = message.contentBlocks || [];
   const contentRef = useRef<HTMLDivElement>(null);
   const hidePaw = useContext(HidePawContext);
+  const userAddressed = message.leaderUserAddressed === true;
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
@@ -473,6 +474,11 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
       <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
         {!hidePaw && <PawTrailAvatar />}
         <div ref={contentRef} className="flex-1 min-w-0 pr-6">
+          {userAddressed && (
+            <span className="inline-flex items-center rounded-full border border-cc-primary/35 bg-cc-primary/10 px-2 py-0.5 mb-1 text-[10px] font-mono-code text-cc-primary">
+              @user
+            </span>
+          )}
           <MarkdownContent text={message.content} />
           {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
         </div>
@@ -485,6 +491,11 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
     <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
       {!hidePaw && <PawTrailAvatar />}
       <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
+        {userAddressed && (
+          <span className="inline-flex items-center rounded-full border border-cc-primary/35 bg-cc-primary/10 px-2 py-0.5 -mb-1 text-[10px] font-mono-code text-cc-primary">
+            @user
+          </span>
+        )}
         {shouldRenderContentFallback && <MarkdownContent text={message.content} />}
         {grouped.map((group, i) => {
           if (group.kind === "content") {

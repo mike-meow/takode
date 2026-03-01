@@ -563,6 +563,7 @@ export function createRoutes(
               wsBridge.injectUserMessage(session.sessionId,
                 `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
                 `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
+                `When speaking directly to the human, prefix your assistant response with \`@user:\`. Messages without this prefix are treated as internal coordination activity in the Companion UI.\n\n` +
                 `Events from herded workers arrive automatically — you do NOT need to poll or call \`watch\`. When workers finish turns, need permissions, or hit errors, you'll receive a [Herd] message with a compact summary. React to these events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
                 `**Task queuing:** Workers should only focus on one task at a time. Never send an unrelated new task to a busy worker. Queue new tasks in your own todo list and wait for the worker's turn_end event. Only send the next task after the worker finishes and goes idle. It IS okay to send mid-work messages that steer the current task (refining scope, correcting mistakes) or urgent interventions.\n\n` +
                 `Use \`takode herd <ids>\` to add sessions to your herd, \`takode unherd <id>\` to release them.\n\n` +
@@ -1085,6 +1086,7 @@ export function createRoutes(
                 wsBridge.injectUserMessage(session.sessionId,
                   `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
                   `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
+                  `When speaking directly to the human, prefix your assistant response with \`@user:\`. Messages without this prefix are treated as internal coordination activity in the Companion UI.\n\n` +
                   `Events from herded workers arrive automatically — you do NOT need to poll or call \`watch\`. When workers finish turns, need permissions, or hit errors, you'll receive a [Herd] message with a compact summary. React to these events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
                   `Use \`takode herd <ids>\` to add sessions to your herd, \`takode unherd <id>\` to release them.\n\n` +
                 `Start by running \`takode list --active\` to discover all sessions, then \`takode herd <ids>\` to claim your workers. After herding, \`takode list\` shows only your flock.\n\n` +

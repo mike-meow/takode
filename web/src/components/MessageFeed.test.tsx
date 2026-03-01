@@ -35,6 +35,7 @@ vi.mock("../store.js", () => {
       toolProgress: mockStoreValues.toolProgress ?? new Map(),
       toolResults: mockStoreValues.toolResults ?? new Map(),
       toolStartTimestamps: mockStoreValues.toolStartTimestamps ?? new Map(),
+      sdkSessions: mockStoreValues.sdkSessions ?? [],
       feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
@@ -143,6 +144,20 @@ function setStoreToolResults(
   mockStoreValues.toolResults = map;
 }
 
+function setStoreSdkSessionRole(
+  sessionId: string,
+  overrides: { isOrchestrator?: boolean; herdedBy?: string } = {},
+) {
+  mockStoreValues.sdkSessions = [{
+    sessionId,
+    state: "connected",
+    cwd: "/test",
+    createdAt: Date.now(),
+    ...(overrides.isOrchestrator ? { isOrchestrator: true } : {}),
+    ...(overrides.herdedBy ? { herdedBy: overrides.herdedBy } : {}),
+  }];
+}
+
 function resetStore() {
   mockStoreValues.messages = new Map();
   mockStoreValues.streaming = new Map();
@@ -157,6 +172,7 @@ function resetStore() {
   mockStoreValues.toolStartTimestamps = new Map();
   mockStoreValues.turnActivityOverrides = new Map();
   mockStoreValues.backgroundAgentNotifs = new Map();
+  mockStoreValues.sdkSessions = [];
 }
 
 /** Set explicit overrides for turn activity expansion per session.
@@ -880,6 +896,50 @@ describe("MessageFeed - turn grouping", () => {
 });
 
 describe("MessageFeed - collapsed turns", () => {
+  it("leader mode keeps @user assistant responses visible while collapsing internal activity", () => {
+    const sid = "test-leader-collapse";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Coordinate workers" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-127 to #3" }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "@user: I delegated auth + tests. Waiting for your review.",
+        leaderUserAddressed: true,
+      }),
+      makeMessage({ id: "u2", role: "user", content: "continue" }),
+      makeMessage({ id: "a3", role: "assistant", content: "peeked #3 and nudged #4" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("@user: I delegated auth + tests. Waiting for your review.")).toBeTruthy();
+    expect(screen.queryByText("Assigned q-127 to #3")).toBeNull();
+    expect(screen.queryByText("peeked #3 and nudged #4")).toBeNull();
+    expect(screen.getAllByText(/message/).length).toBeGreaterThan(0);
+  });
+
+  it("leader mode shows internal messages when the activity row is expanded", () => {
+    const sid = "test-leader-expand";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Status?" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-200 to #7" }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "@user: Worker #7 is implementing the fix now.",
+        leaderUserAddressed: true,
+      }),
+    ]);
+    setStoreTurnOverrides(sid, [["u1", true]]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Assigned q-200 to #7")).toBeTruthy();
+  });
+
   it("non-last turns default to collapsed, showing activity bar + response", () => {
     // First turn auto-collapses since it's not the last turn.
     // The collapsed view shows: user msg + activity bar + final response entry.

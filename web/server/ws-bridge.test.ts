@@ -1179,6 +1179,39 @@ describe("CLI message routing", () => {
     expect(assistantBroadcast.parent_tool_use_id).toBeNull();
   });
 
+  it("assistant: tags leader @user messages as leader_user_addressed", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const msg = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-user-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "@user: Please review q-126 output." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "uuid-user-1",
+      session_id: "s1",
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+
+    const session = bridge.getSession("s1")!;
+    const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
+    expect(histAssistant?.leader_user_addressed).toBe(true);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const assistantBroadcast = calls.find((c: any) => c.type === "assistant");
+    expect(assistantBroadcast?.leader_user_addressed).toBe(true);
+  });
+
   it("result: updates cost/turns/context% and computes diff stats from git", async () => {
     // Set up session with a diff_base_branch and tracked files so computeDiffStats runs
     const session = bridge.getSession("s1")!;
@@ -1280,6 +1313,120 @@ describe("CLI message routing", () => {
     const assistantRebroadcast = [...calls].reverse().find((c: any) => c.type === "assistant" && c.message?.id === "msg-turn-1");
     expect(assistantRebroadcast).toBeDefined();
     expect(typeof assistantRebroadcast.turn_duration_ms).toBe("number");
+  });
+
+  it("result: suppresses review attention for leader turns without @user response", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-internal",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Internal herd coordination completed." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    }));
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done",
+      duration_ms: 1000,
+      duration_api_ms: 900,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-internal-result",
+      session_id: "s1",
+    }));
+
+    expect(bridge.getSession("s1")!.attentionReason).toBeNull();
+  });
+
+  it("result: marks review attention for leader turns with @user response", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-user-facing",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "@user: Finished q-126. Please verify." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    }));
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done",
+      duration_ms: 1000,
+      duration_api_ms: 900,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-user-result",
+      session_id: "s1",
+    }));
+
+    expect(bridge.getSession("s1")!.attentionReason).toBe("review");
+  });
+
+  it("result: suppresses review attention for herded worker sessions", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
+    } as any);
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-worker",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Worker turn complete." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    }));
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done",
+      duration_ms: 1000,
+      duration_api_ms: 900,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-worker-result",
+      session_id: "s1",
+    }));
+
+    expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
 
   it("result: refreshes git branch and broadcasts session_update when branch changes", async () => {
@@ -4795,6 +4942,41 @@ describe("Codex adapter result handling", () => {
 
     const session = bridge.getSession("s1")!;
     expect(session.toolResults.get("tool-1")?.content).toContain("Exit code: 2");
+  });
+
+  it("tags codex leader assistant @user messages as leader_user_addressed", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "asst-leader-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: "@user: I have queued tasks for workers." }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const assistantBroadcast = calls.find((c: any) => c.type === "assistant");
+    expect(assistantBroadcast?.leader_user_addressed).toBe(true);
+
+    const histAssistant = bridge.getSession("s1")!.messageHistory.find((m: any) => m.type === "assistant") as any;
+    expect(histAssistant?.leader_user_addressed).toBe(true);
   });
 
   it("reconciles Codex quest claim command into quest chip state and task history", () => {
