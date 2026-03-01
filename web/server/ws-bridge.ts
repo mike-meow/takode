@@ -1841,6 +1841,10 @@ export class WsBridge {
     const session = this.getOrCreateSession(sessionId, "claude-sdk");
     session.backendType = "claude-sdk";
     session.state.backend_type = "claude-sdk";
+    // Disconnect the old adapter if one exists (prevents orphaned processes on relaunch)
+    if (session.claudeSdkAdapter && session.claudeSdkAdapter !== adapter) {
+      session.claudeSdkAdapter.disconnect().catch(() => {});
+    }
     // Copy worktree info from launcher so the UI shows worktree indicators
     const launcherInfo = this.launcher?.getSession(sessionId);
     if (launcherInfo?.isWorktree) {
