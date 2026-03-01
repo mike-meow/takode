@@ -481,6 +481,29 @@ describe("MessageBubble - assistant messages", () => {
     }
   });
 
+  it("does not render duplicate raw content when codex thinking block exists", () => {
+    const thinkingText = "Inspecting session and worktree";
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+
+    try {
+      const msg = makeMessage({
+        role: "assistant",
+        content: thinkingText,
+        contentBlocks: [{ type: "thinking", thinking: thinkingText }],
+      });
+      render(<MessageBubble message={msg} sessionId="codex-session" />);
+
+      // Reasoning should render once in the styled thinking block, not again as fallback markdown.
+      expect(screen.getAllByText(thinkingText)).toHaveLength(1);
+      expect(screen.queryByTestId("markdown")).toBeNull();
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+    }
+  });
+
   it("renders tool_result blocks with string content", () => {
     const msg = makeMessage({
       role: "assistant",

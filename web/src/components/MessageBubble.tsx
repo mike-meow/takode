@@ -461,7 +461,8 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
-  const shouldRenderContentFallback = message.content.trim().length > 0 && !hasTextBlock;
+  const hasThinkingBlock = blocks.some((b) => b.type === "thinking" && b.thinking.trim().length > 0);
+  const shouldRenderContentFallback = message.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = message.content
