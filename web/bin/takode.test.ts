@@ -212,3 +212,26 @@ describe("takode spawn", () => {
     expect(parsed.sessions.map((s) => s.sessionNum)).toEqual([31, 32]);
   });
 });
+
+describe("takode watch deprecation", () => {
+  it("does not advertise watch in help output", async () => {
+    const result = await runTakode(["--help"], {
+      ...process.env,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("watch");
+  });
+
+  it("fails with unknown command for deprecated watch", async () => {
+    const result = await runTakode(["watch", "--sessions", "1"], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Unknown command: watch");
+    expect(result.stdout).toContain("Usage: takode <command>");
+  });
+});

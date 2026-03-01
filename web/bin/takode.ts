@@ -5,7 +5,6 @@
  */
 
 const DEFAULT_PORT = 3456;
-const DEFAULT_TIMEOUT = 120; // seconds
 
 // ─── Port discovery (same pattern as ctl.ts) ────────────────────────────────
 
@@ -161,98 +160,6 @@ function formatRelativeTime(epoch: number): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max) + ` [+${s.length - max} chars]`;
-}
-
-// ─── Event printer ──────────────────────────────────────────────────────────
-
-function printEvents(events: unknown[], jsonMode: boolean): void {
-  if (jsonMode) {
-    console.log(JSON.stringify(events, null, 2));
-    return;
-  }
-
-  for (const evt of events as Array<{
-    event: string;
-    sessionNum: number;
-    sessionName: string;
-    ts: number;
-    data: Record<string, unknown>;
-  }>) {
-    const time = formatTime(evt.ts);
-    const session = `#${evt.sessionNum} "${evt.sessionName}"`;
-
-    switch (evt.event) {
-      case "turn_end": {
-        const duration = evt.data.duration_ms ? ` (${Math.round(Number(evt.data.duration_ms) / 1000)}s)` : "";
-        const interrupted = evt.data.interrupted ? " [INTERRUPTED]" : "";
-        console.log(`[${time}] turn_end  ${session}${duration}${interrupted}`);
-        if (evt.data.tools) {
-          const tools = evt.data.tools as Record<string, number>;
-          const parts = Object.entries(tools).map(([k, v]) => `${k}(${v})`);
-          console.log(`  Tools: ${parts.join(", ")}`);
-        }
-        const range = evt.data.msgRange as { from: number; to: number } | undefined;
-        if (range) {
-          console.log(`  Messages: [${range.from}]-[${range.to}]`);
-        }
-        const qc = evt.data.questChange as { questId: string; from: string; to: string } | undefined;
-        if (qc) {
-          console.log(`  Quest: ${qc.questId}: ${qc.from} → ${qc.to}`);
-        }
-        if (evt.data.resultPreview) {
-          console.log(`  Result: ${truncate(String(evt.data.resultPreview), 120)}`);
-        }
-        break;
-      }
-      case "turn_start": {
-        console.log(`[${time}] turn_start  ${session}`);
-        if (evt.data.userMessage) {
-          console.log(`  Message: ${truncate(String(evt.data.userMessage), 100)}`);
-        }
-        break;
-      }
-      case "permission_request": {
-        console.log(`[${time}] permission_request  ${session}`);
-        console.log(`  ${evt.data.tool_name}: ${truncate(String(evt.data.summary || ""), 100)}`);
-        break;
-      }
-      case "permission_resolved": {
-        const icon = evt.data.outcome === "approved" ? "\u2713" : "\u2717";
-        console.log(`[${time}] permission_resolved  ${session}  ${icon} ${evt.data.tool_name}`);
-        break;
-      }
-      case "session_disconnected": {
-        console.log(`[${time}] session_disconnected  ${session}`);
-        break;
-      }
-      case "session_error": {
-        console.log(`[${time}] session_error  ${session}`);
-        if (evt.data.error) {
-          console.log(`  Error: ${truncate(String(evt.data.error), 120)}`);
-        }
-        break;
-      }
-      case "quest_update": {
-        console.log(`[${time}] quest_update`);
-        break;
-      }
-      case "user_message": {
-        // Show who sent the message
-        const agentSrc = evt.data.agentSource as { sessionId?: string; sessionLabel?: string } | undefined;
-        let sender = "User";
-        if (agentSrc?.sessionId === "herd-events") sender = "Herd";
-        else if (agentSrc?.sessionId) sender = agentSrc.sessionLabel ? `Agent ${agentSrc.sessionLabel}` : "Agent";
-        console.log(`[${time}] user_message [${sender}]  ${session}`);
-        if (evt.data.content) {
-          console.log(`  "${truncate(String(evt.data.content), 100)}"`);
-        }
-        break;
-      }
-      default:
-        console.log(`[${time}] ${evt.event}  ${session}`);
-    }
-    console.log(""); // blank line between events
-  }
 }
 
 // ─── Command handlers ───────────────────────────────────────────────────────
@@ -438,124 +345,6 @@ function printSessionLine(s: {
 
   console.log(`  ${num.padEnd(5)} ${status} ${name}${role}${herd}${quest}${attention}`);
   console.log(`        ${branch}${gitDelta}${diffStats}${wt}  ${activity}${preview}`);
-}
-
-async function handleWatch(base: string, args: string[]): Promise<void> {
-  const flags = parseFlags(args);
-  let sessionsRaw = flags.sessions as string;
-  if (!sessionsRaw) err("Usage: takode watch --sessions <id1,id2,...> [--timeout <seconds>] [--all-events] [--json]");
-
-  // Auto-include own session so human messages interrupt watch
-  const ownSessionId = process.env.COMPANION_SESSION_ID;
-  if (ownSessionId) {
-    sessionsRaw = sessionsRaw + "," + ownSessionId;
-  }
-
-  const timeout = Number(flags.timeout) || DEFAULT_TIMEOUT;
-  const jsonMode = flags.json === true;
-  // Only include --since if explicitly provided. Without it, the server
-  // skips replay and only streams new events (the expected default for watch).
-  const sinceRaw = flags.since;
-  const hasSince = sinceRaw !== undefined && sinceRaw !== false;
-  const since = hasSince ? Number(sinceRaw) : undefined;
-  const allEvents = flags["all-events"] === true;
-
-  // Default: only actionable events (things a human would be notified about).
-  // Use --all-events to include intermediate events like turn_start.
-  const actionableEvents = new Set([
-    "turn_end", "permission_request", "permission_resolved", "quest_update",
-    "session_disconnected", "session_error", "user_message",
-  ]);
-
-  const sinceParam = since !== undefined ? `&since=${since}` : "";
-  const url = `${base}/events/stream?sessions=${encodeURIComponent(sessionsRaw)}&timeout=${timeout * 1000}${sinceParam}`;
-
-  const controller = new AbortController();
-  const res = await fetch(url, {
-    signal: controller.signal,
-    headers: takodeAuthHeaders({ Accept: "text/event-stream" }),
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    err((body as { error?: string }).error || `HTTP ${res.status}`);
-  }
-
-  const events: unknown[] = [];
-  let flushed = false;
-
-  // Parse SSE stream
-  const reader = res.body?.getReader();
-  if (!reader) err("No response body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader!.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || ""; // keep incomplete line
-
-    let eventType = "";
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        eventType = line.slice(7).trim();
-      } else if (line.startsWith("data: ")) {
-        const data = line.slice(6);
-
-        if (eventType === "flush_complete") {
-          flushed = true;
-          // If we already collected events during the flush, print and exit
-          if (events.length > 0) {
-            printEvents(events, jsonMode);
-            controller.abort();
-            return;
-          }
-          // Otherwise, wait for first real event
-          continue;
-        }
-
-        if (eventType === "timeout") {
-          // Timeout with no events
-          if (events.length > 0) {
-            printEvents(events, jsonMode);
-          } else if (jsonMode) {
-            console.log("[]");
-          }
-          controller.abort();
-          return;
-        }
-
-        if (eventType === "event") {
-          try {
-            const evt = JSON.parse(data);
-            // Filter: unless --all-events, only show actionable events
-            if (!allEvents && !actionableEvents.has(evt.event)) continue;
-            events.push(evt);
-
-            // If flush is complete, we got a real-time event — print and exit
-            if (flushed) {
-              printEvents(events, jsonMode);
-              controller.abort();
-              return;
-            }
-          } catch { /* skip malformed */ }
-        }
-      } else if (line === "") {
-        eventType = ""; // reset after blank line (SSE event boundary)
-      }
-    }
-  }
-
-  // Stream closed — print whatever we have
-  if (events.length > 0) {
-    printEvents(events, jsonMode);
-  } else if (jsonMode) {
-    console.log("[]");
-  }
 }
 
 // ─── Tasks handler ───────────────────────────────────────────────────────────
@@ -1508,7 +1297,6 @@ Commands:
   list     List sessions (herded only for leaders, --active for all, --all includes archived)
   search   Search sessions by name, keyword, branch, path, or message
   spawn    Create and auto-herd new worker sessions
-  watch    Wait for events from watched sessions
   tasks    Show task outline of a session (table of contents)
   peek     View session activity (smart overview by default)
   read     Read full content of a specific message
@@ -1536,7 +1324,6 @@ Examples:
   takode search "jwt" --all
   takode spawn --backend codex --count 3 --message "Check flaky tests"
   takode tasks 1
-  takode watch --sessions 1,2,3
   takode peek 1
   takode peek 1 --from 200
   takode peek 1 --detail --turns 3
@@ -1562,7 +1349,6 @@ try {
     "list",
     "search",
     "spawn",
-    "watch",
     "tasks",
     "peek",
     "read",
@@ -1583,9 +1369,6 @@ try {
       break;
     case "search":
       await handleSearch(base, args);
-      break;
-    case "watch":
-      await handleWatch(base, args);
       break;
     case "spawn":
       await handleSpawn(base, args);

@@ -3569,22 +3569,13 @@ describe("Takode server-authoritative auth", () => {
     );
   });
 
-  it("denies watch outside herd scope and allows watching herded workers", async () => {
+  it("removes deprecated takode watch endpoint", async () => {
     setupTakodeSessions();
-    launcher.getHerdedSessions.mockImplementation((id: string) =>
-      id === "orch-1" ? [{ sessionId: "worker-1" }] : []);
-
-    const denied = await app.request("/api/events/stream?sessions=worker-2&timeout=1", {
+    const res = await app.request("/api/events/stream?sessions=worker-1&timeout=1", {
       method: "GET",
       headers: authHeaders("orch-1", "tok-1"),
     });
-    expect(denied.status).toBe(403);
-
-    const allowed = await app.request("/api/events/stream?sessions=worker-1&timeout=1", {
-      method: "GET",
-      headers: authHeaders("orch-1", "tok-1"),
-    });
-    expect(allowed.status).toBe(200);
-    expect(bridge.subscribeTakodeEvents).toHaveBeenCalled();
+    expect(res.status).toBe(404);
+    expect(bridge.subscribeTakodeEvents).not.toHaveBeenCalled();
   });
 });

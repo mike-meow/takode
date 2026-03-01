@@ -1452,40 +1452,6 @@ takode search jwt --all
 
 Searches across: session name, task history titles, auto-extracted keywords, git branch, last message preview, working directory, and repo root.
 
-### \`takode watch --sessions <ids> [--timeout <secs>] [--since <cursor>] [--all-events] [--json]\`
-
-Block and wait for actionable events from specific sessions. Returns when events arrive or timeout (default 120s).
-
-By default, only actionable events are shown (things a human would be notified about). Use \`--all-events\` to include intermediate events.
-
-\`\`\`bash
-# Watch sessions #1 and #2 (actionable events only)
-takode watch --sessions 1,2
-
-# Watch with longer timeout
-takode watch --sessions 1,2,3 --timeout 300
-
-# Resume from last event cursor
-takode watch --sessions 1,2 --since 42
-
-# Include ALL events (turn_start, permission_resolved, etc.)
-takode watch --sessions 1,2 --all-events
-\`\`\`
-
-**Drain-then-block behavior**: If events arrived since your last \`watch\`, they're returned immediately as a batch. Otherwise, blocks until the next event or timeout.
-
-**Default actionable events**:
-| Event | Meaning |
-|---|---|
-| \`turn_end\` | Worker finished generating. Shows tools used and result preview. |
-| \`permission_request\` | Worker needs human approval (only fires after auto-approval defers). |
-| \`quest_update\` | A quest was updated (any session). |
-| \`session_disconnected\` | Worker CLI disconnected. |
-| \`session_error\` | Worker turn ended with an error. |
-| \`user_message\` | New user message arrived in a watched session. |
-
-**\`--sessions\` is required.** Always specify which sessions you're watching. Use \`takode list\` first to discover session numbers.
-
 ### \`takode tasks <session> [--json]\`
 
 Show the task outline (table of contents) for a session's conversation history. Tasks are automatically detected by the session auto-namer and quest system.
@@ -1583,7 +1549,7 @@ The worker will receive this as if the human typed it. It triggers a new turn.
 
 ### How events work
 
-You do NOT need to call \`takode watch\`. The server automatically delivers events from your herded sessions.
+There is no \`takode watch\` command. The server automatically delivers events from your herded sessions.
 
 When workers in your herd have noteworthy events (finished a turn, need permission, hit an error, disconnected), the events accumulate while you're busy. When you finish your current turn and go idle, all accumulated events arrive as a single user message.
 
@@ -1694,15 +1660,13 @@ Bad: \`"Here are the full quest details: [300 lines of quest JSON pasted in]..."
 - **Coordinate, don't implement.** Never do non-trivial work yourself (anything requiring more than a few reads/edits). Delegate larger work to a herded worker session via \`takode send\`, or spin up a sub-agent for smaller tasks. This protects your context window and keeps you responsive to herd events and user requests. Your job is coordination, not implementation.
 - **One task at a time per worker.** Never send an unrelated new task to a worker that is currently busy. When you have a new task for a busy worker, add it to your own todo list and wait for the worker's \`turn_end\` event. Only after the worker finishes and goes idle should you send the next task from your queue. It IS okay to send mid-work messages that steer the *current* task — e.g., refining scope, adding a requirement, or correcting a misunderstanding. Urgent interventions ("stop, critical bug found") are also fine. The rule is: don't send *unrelated* new tasks to a busy worker. This prevents workers from being distracted, dropping current tasks, or burning context window on queued instructions they might forget.
 - **Always use async sub-agents.** When spinning up sub-agents via the Task tool, always use \`run_in_background: true\`. Synchronous sub-agents block your turn and prevent you from receiving and reacting to herd events or user messages until they complete.
-- **Keep your watch loop tight.** Process each event, decide quickly, and go back to watching. Don't do heavy computation between events.
+- **Keep event handling tight.** Process each herd event summary quickly, decide next actions, then return to coordination.
 - **Use \`--json\` for programmatic decisions.** When you need to branch on event data, parse JSON output instead of text.
 - **Don't micro-manage workers.** Send clear instructions and let them work. Only intervene on errors or when they finish a major step.
 - **Batch related messages.** If you need to send context + instructions to a worker, send it as one message rather than multiple.
 - **Don't worry about worker context windows.** Workers auto-compact their context when it gets large — you can't see or control this. Don't avoid assigning work to a session just because it has many turns. Prefer \`peek\` (truncated) over \`read\` (full) to protect your *own* context window.
-- **Track event cursors.** When using \`watch --since\`, pass the last event ID to avoid re-processing events.
 - **Mixed backends work seamlessly.** You can orchestrate both Claude Code and Codex sessions from either backend. The \`takode\` CLI talks to the Companion server, so the worker's backend is transparent to you.
 - **Events are push-based.** You don't need to poll or call \`watch\`. Herd events arrive automatically as user messages when you go idle. Just react to them.
-- **\`takode watch\` still exists** for advanced use cases (debugging, manual monitoring outside the herd system), but you should not need it for normal orchestration.
 ${ORCH_END}`;
 
     const claudeDir = join(cwd, ".claude");
