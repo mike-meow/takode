@@ -1182,6 +1182,28 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   }
 }
 
+// ─── Stop handler ───────────────────────────────────────────────────────────
+
+async function handleStop(base: string, args: string[]): Promise<void> {
+  const sessionRef = args.filter(a => !a.startsWith("--"))[0];
+  const jsonMode = args.includes("--json");
+  if (!sessionRef) err("Usage: takode stop <session>");
+
+  const mySessionId = process.env.COMPANION_SESSION_ID;
+  if (!mySessionId) err("COMPANION_SESSION_ID not set");
+
+  const result = await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/stop`, {
+    callerSessionId: mySessionId,
+  }) as { ok: boolean; sessionId?: string; error?: string };
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`[${formatTime(Date.now())}] \u2713 Stopped session ${sessionRef}`);
+}
+
 // ─── Herd/Unherd handlers ───────────────────────────────────────────────────
 
 async function handleHerd(base: string, args: string[]): Promise<void> {
@@ -1450,6 +1472,7 @@ Commands:
   send     Send a message to a session
   herd     Herd sessions (e.g. takode herd 5,6,7)
   unherd   Release a session from your herd (e.g. takode unherd 5)
+  stop     Gracefully stop a herded session (e.g. takode stop 5)
   pending  Show pending questions/plans from a herded session
   answer   Answer a pending question or approve/reject a plan
 
@@ -1505,6 +1528,9 @@ try {
       break;
     case "spawn":
       await handleSpawn(base, args);
+      break;
+    case "stop":
+      await handleStop(base, args);
       break;
     case "tasks":
       await handleTasks(base, args);

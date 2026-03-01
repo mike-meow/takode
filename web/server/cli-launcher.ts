@@ -1493,6 +1493,16 @@ takode answer <session> reject "please add error handling"
 
 **Important**: Only answer when you have high confidence and enough context. For complex decisions, tell the human to review in the browser UI. Tool permission requests (\`Bash\`, \`Edit\`, etc.) cannot be answered — those are human-only.
 
+### Stopping workers
+
+You can gracefully stop a herded worker session:
+
+\`\`\`bash
+takode stop <session>
+\`\`\`
+
+This sends SIGTERM to the worker's CLI process. Only works for sessions you've herded. Use this for task reassignment or when a worker is stuck.
+
 ### Coordinate with quests
 
 Use the \`quest\` CLI alongside \`takode\` for task tracking:
