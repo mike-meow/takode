@@ -931,6 +931,61 @@ describe("MessageFeed - collapsed turns", () => {
     expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
   });
 
+  it("leader mode splits turns at each @user boundary and keeps post-@user activity separate", () => {
+    const sid = "test-leader-boundaries";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Kick off orchestration" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-600 to #2" }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "@user: First update from the herd.",
+        leaderUserAddressed: true,
+      }),
+      makeMessage({ id: "a3", role: "assistant", content: "Nudged #2 about test coverage" }),
+      makeMessage({
+        id: "a4",
+        role: "assistant",
+        content: "@user: Second update with progress.",
+        leaderUserAddressed: true,
+      }),
+      makeMessage({ id: "a5", role: "assistant", content: "Queued final smoke checks" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Kick off orchestration")).toBeTruthy();
+    expect(screen.getByText("First update from the herd.")).toBeTruthy();
+    expect(screen.getByText("Second update with progress.")).toBeTruthy();
+    expect(screen.queryByText("Assigned q-600 to #2")).toBeNull();
+    expect(screen.queryByText("Nudged #2 about test coverage")).toBeNull();
+    expect(screen.queryByText("Queued final smoke checks")).toBeNull();
+    expect(screen.getAllByText("1 message")).toHaveLength(3);
+  });
+
+  it("passes defaultExpanded=false when expanding the latest collapsed row after an @user boundary", () => {
+    const sid = "test-leader-last-user-boundary";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "status" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-401 to #9" }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "@user: #9 is implementing now.",
+        leaderUserAddressed: true,
+      }),
+      makeMessage({ id: "a3", role: "assistant", content: "Ran follow-up checks on #9" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    const activityRows = screen.getAllByText("1 message");
+    fireEvent.click(activityRows[activityRows.length - 1]);
+    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "a2", false);
+  });
+
   it("leader mode keeps @user assistant responses visible while collapsing internal activity", () => {
     const sid = "test-leader-collapse";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });

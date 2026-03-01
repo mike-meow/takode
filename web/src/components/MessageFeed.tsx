@@ -496,7 +496,7 @@ interface TurnStats {
 
 interface Turn {
   id: string;                      // Stable ID for collapse state (user msg ID or synthetic)
-  userEntry: FeedEntry | null;
+  userEntry: FeedEntry | null;     // Boundary entry (user, or @user assistant in leader mode)
   allEntries: FeedEntry[];         // All entries in original order (for expanded rendering)
   agentEntries: FeedEntry[];       // Non-system agent activity (collapsible), excludes responseEntry
   systemEntries: FeedEntry[];      // System messages (always visible, never collapsed)
@@ -575,6 +575,22 @@ function getEntryId(entry: FeedEntry): string {
   return entry.taskToolUseId;
 }
 
+function isUserBoundaryEntry(entry: FeedEntry | null): boolean {
+  return !!(
+    entry
+    && entry.kind === "message"
+    && entry.msg.role === "user"
+    && entry.msg.agentSource?.sessionId !== "herd-events"
+  );
+}
+
+function isLeaderBoundaryEntry(entry: FeedEntry): boolean {
+  return (
+    isUserBoundaryEntry(entry)
+    || (entry.kind === "message" && entry.msg.role === "assistant" && entry.msg.leaderUserAddressed === true)
+  );
+}
+
 /** Build a Turn from accumulated entries */
 function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: number, leaderMode = false): Turn {
   // Separate system messages (always visible) from collapsible agent activity
@@ -593,7 +609,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 
   // Extract the default-visible response entry.
   // Normal sessions: final assistant text.
-  // Leader sessions: final assistant text explicitly addressed to human (@user:).
+  // Leader sessions: fallback final @user response (most are split by @user boundary).
   let responseEntry: FeedEntry | null = null;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
@@ -630,16 +646,15 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   };
 }
 
-/** Group flat feed entries into turns, splitting on user messages */
+/** Group flat feed entries into turns. Leader mode also splits at @user assistant messages. */
 function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
 
   for (const entry of entries) {
-    const isUser = entry.kind === "message" && entry.msg.role === "user"
-      && entry.msg.agentSource?.sessionId !== "herd-events"; // Herd events don't start new turns
-    if (isUser) {
+    const isBoundary = leaderMode ? isLeaderBoundaryEntry(entry) : isUserBoundaryEntry(entry);
+    if (isBoundary) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
         turns.push(makeTurn(currentUser, currentEntries, turns.length, leaderMode));
@@ -1279,15 +1294,12 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
       const isLastTurn = index === turns.length - 1;
       const isPenultimateTurn = index === turns.length - 2;
       const lastTurn = turns[turns.length - 1];
-      const lastTurnIsFreshUserOnly = !!lastTurn?.userEntry && lastTurn.allEntries.length === 0;
+      const lastTurnIsFreshUserOnly = isUserBoundaryEntry(lastTurn?.userEntry || null) && lastTurn.allEntries.length === 0;
       const keepExpandedDuringStreaming =
         sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
       const override = overrides?.get(turn.id);
       const defaultExpanded = leaderMode
-        ? (
-            keepExpandedDuringStreaming
-            || (isLastTurn && turn.responseEntry === null && turn.agentEntries.length === 0)
-          )
+        ? false
         : (isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming);
       const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
@@ -1314,15 +1326,12 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
         const isLastTurn = index === turns.length - 1;
         const isPenultimateTurn = index === turns.length - 2;
         const lastTurn = turns[turns.length - 1];
-        const lastTurnIsFreshUserOnly = !!lastTurn?.userEntry && lastTurn.allEntries.length === 0;
+        const lastTurnIsFreshUserOnly = isUserBoundaryEntry(lastTurn?.userEntry || null) && lastTurn.allEntries.length === 0;
         const keepExpandedDuringStreaming =
           sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
         const override = overrides?.get(turn.id);
         const defaultExpanded = leaderMode
-          ? (
-              keepExpandedDuringStreaming
-              || (isLastTurn && turn.responseEntry === null && turn.agentEntries.length === 0)
-            )
+          ? false
           : (
               // Default: last turn expanded, older finished turns collapsed.
               // Keep in-flight turns expanded for both:
@@ -1334,7 +1343,12 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
         const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
         return (
-          <div key={turn.id} data-turn-id={turn.id} className="turn-container space-y-3 sm:space-y-5" data-user-turn={turn.userEntry ? "true" : undefined}>
+          <div
+            key={turn.id}
+            data-turn-id={turn.id}
+            className="turn-container space-y-3 sm:space-y-5"
+            data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
+          >
             {/* User message — always visible */}
             {turn.userEntry && (
               <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
