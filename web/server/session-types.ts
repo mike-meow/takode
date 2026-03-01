@@ -338,6 +338,16 @@ export interface BufferedBrowserEvent {
 
 export type BackendType = "claude" | "codex" | "claude-sdk";
 
+/** Exhaustive check — TypeScript errors if a switch doesn't cover all cases. */
+export function assertNever(x: never, msg?: string): never {
+  throw new Error(msg ?? `Unexpected value: ${JSON.stringify(x)}`);
+}
+
+/** True for backends using Claude Code (CLI WebSocket or SDK stdio). */
+export function isClaudeFamily(backend: BackendType): boolean {
+  return backend === "claude" || backend === "claude-sdk";
+}
+
 export interface SessionState {
   session_id: string;
   backend_type?: BackendType;

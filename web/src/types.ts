@@ -11,6 +11,7 @@ import type {
   ToolResultPreview,
   SessionTaskEntry,
 } from "../server/session-types.js";
+import { assertNever, isClaudeFamily } from "../server/session-types.js";
 import type { ImageRef } from "../server/image-store.js";
 import type {
   QuestmasterTask,
@@ -24,6 +25,7 @@ import type {
 } from "../server/quest-types.js";
 
 export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, ImageRef };
+export { assertNever, isClaudeFamily };
 export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
 
 export interface ChatMessage {
