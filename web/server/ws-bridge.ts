@@ -1926,26 +1926,43 @@ export class WsBridge {
         // turn/start never made it to Codex — standard pending queue handles retry.
         session.pendingCodexTurnRecovery = null;
       }
-      session.pendingMessages.push(JSON.stringify(msg));
+      const raw = JSON.stringify(msg);
+      const alreadyQueued = session.pendingMessages.some((queued) => queued === raw);
+      if (!alreadyQueued) {
+        session.pendingMessages.push(raw);
+      }
+
+      // If this callback came from a stale adapter after reconnect, immediately
+      // flush to the currently attached adapter so the message doesn't remain
+      // stranded in session.pendingMessages.
+      const activeAdapter = session.codexAdapter;
+      if (activeAdapter && activeAdapter !== adapter) {
+        this.flushQueuedMessagesToCodexAdapter(session, activeAdapter, "stale_adapter_turn_start_failed");
+      }
     });
 
     // Flush any messages queued while waiting for the adapter
-    if (session.pendingMessages.length > 0) {
-      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) to Codex adapter for session ${sessionTag(sessionId)}`);
-      const queued = session.pendingMessages.splice(0);
-      for (const raw of queued) {
-        try {
-          const msg = JSON.parse(raw) as BrowserOutgoingMessage;
-          adapter.sendBrowserMessage(msg);
-        } catch {
-          console.warn(`[ws-bridge] Failed to parse queued message for Codex: ${raw.substring(0, 100)}`);
-        }
-      }
-    }
+    this.flushQueuedMessagesToCodexAdapter(session, adapter, "adapter_attach");
 
     // Notify browsers that the backend is connected
     this.broadcastToBrowsers(session, { type: "cli_connected" });
     console.log(`[ws-bridge] Codex adapter attached for session ${sessionTag(sessionId)}`);
+  }
+
+  private flushQueuedMessagesToCodexAdapter(session: Session, adapter: CodexAdapter, reason: string): void {
+    if (session.pendingMessages.length === 0) return;
+    console.log(
+      `[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) to Codex adapter for session ${sessionTag(session.id)} (${reason})`,
+    );
+    const queued = session.pendingMessages.splice(0);
+    for (const raw of queued) {
+      try {
+        const msg = JSON.parse(raw) as BrowserOutgoingMessage;
+        adapter.sendBrowserMessage(msg);
+      } catch {
+        console.warn(`[ws-bridge] Failed to parse queued message for Codex: ${raw.substring(0, 100)}`);
+      }
+    }
   }
 
   /** Attach a Claude SDK adapter (stdio transport) for a session.

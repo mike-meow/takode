@@ -5306,6 +5306,24 @@ describe("Codex turn-start failure re-queue", () => {
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages).toHaveLength(0);
   });
+
+  it("flushes stale adapter turn-start failures to the active adapter", () => {
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter1 as any);
+
+    // Attach a replacement adapter before the old adapter reports failure.
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter2 as any);
+
+    const failedMsg = { type: "user_message", content: "replay me" };
+    adapter1.emitTurnStartFailed(failedMsg);
+
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "user_message", content: "replay me" }),
+    );
+    const session = bridge.getSession("s1")!;
+    expect(session.pendingMessages).toHaveLength(0);
+  });
 });
 
 describe("Codex disconnect auto-relaunch", () => {
