@@ -320,6 +320,7 @@ interface Session {
   backendType: BackendType;
   cliSocket: ServerWebSocket<SocketData> | null;
   codexAdapter: CodexAdapter | null;
+  claudeSdkAdapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter | null;
   browserSockets: Set<ServerWebSocket<SocketData>>;
   state: SessionState;
   pendingPermissions: Map<string, PermissionRequest>;
@@ -959,7 +960,7 @@ export class WsBridge {
   isSessionIdle(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
-    return !!(session.cliSocket || session.codexAdapter)
+    return !!(session.cliSocket || session.codexAdapter || session.claudeSdkAdapter)
       && session.cliInitReceived
       && !session.isGenerating;
   }
@@ -971,7 +972,7 @@ export class WsBridge {
     return {
       isGenerating: session.isGenerating,
       generationStartedAt: session.generationStartedAt,
-      cliConnected: !!(session.cliSocket || session.codexAdapter),
+      cliConnected: !!(session.cliSocket || session.codexAdapter || session.claudeSdkAdapter),
       cliInitReceived: session.cliInitReceived,
       pendingMessagesCount: session.pendingMessages.length,
       pendingPermissionsCount: session.pendingPermissions.size,
@@ -1080,6 +1081,7 @@ export class WsBridge {
         backendType: p.state.backend_type || "claude",
         cliSocket: null,
         codexAdapter: null,
+        claudeSdkAdapter: null,
         browserSockets: new Set(),
         state: p.state,
         pendingPermissions: new Map(p.pendingPermissions || []),
@@ -1436,6 +1438,7 @@ export class WsBridge {
         backendType: type,
         cliSocket: null,
         codexAdapter: null,
+        claudeSdkAdapter: null,
         browserSockets: new Set(),
         state: makeDefaultState(sessionId, type),
         pendingPermissions: new Map(),
@@ -1588,6 +1591,9 @@ export class WsBridge {
     if (!session) return false;
     if (session.backendType === "codex") {
       return !!session.codexAdapter?.isConnected();
+    }
+    if (session.backendType === "claude-sdk") {
+      return !!session.claudeSdkAdapter?.isConnected();
     }
     return !!session.cliSocket;
   }
@@ -1827,6 +1833,57 @@ export class WsBridge {
     // Notify browsers that the backend is connected
     this.broadcastToBrowsers(session, { type: "cli_connected" });
     console.log(`[ws-bridge] Codex adapter attached for session ${sessionTag(sessionId)}`);
+  }
+
+  /** Attach a Claude SDK adapter (stdio transport) for a session.
+   *  Mirrors attachCodexAdapter but simpler — SDK messages already match our protocol. */
+  attachClaudeSdkAdapter(sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter): void {
+    const session = this.getOrCreateSession(sessionId, "claude-sdk");
+    session.backendType = "claude-sdk";
+    session.state.backend_type = "claude-sdk";
+    session.claudeSdkAdapter = adapter;
+
+    adapter.onBrowserMessage((msg) => {
+      this.launcher?.touchActivity(session.id);
+      session.lastCliMessageAt = Date.now();
+
+      // SDK messages are already in BrowserIncomingMessage format — process them
+      // through the same handler as CLI WebSocket messages.
+      if (msg.type === "session_init") {
+        const initMsg = msg as any;
+        if (initMsg.session) {
+          session.state = { ...session.state, ...initMsg.session, backend_type: "claude-sdk" };
+        }
+        this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
+        this.persistSession(session);
+      }
+
+      // Forward to all browsers + store in history
+      this.broadcastToBrowsers(session, msg);
+    });
+
+    adapter.onSessionMeta((meta) => {
+      if (meta.cliSessionId) {
+        session.state.session_id = meta.cliSessionId;
+        this.launcher?.setCLISessionId(sessionId, meta.cliSessionId);
+      }
+      if (meta.model) session.state.model = meta.model;
+    });
+
+    adapter.onDisconnect(() => {
+      console.log(`[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}`);
+      session.claudeSdkAdapter = null;
+      this.broadcastToBrowsers(session, { type: "cli_disconnected" });
+      this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+    });
+
+    adapter.onInitError((error) => {
+      console.error(`[ws-bridge] Claude SDK adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
+      session.claudeSdkAdapter = null;
+    });
+
+    this.broadcastToBrowsers(session, { type: "cli_connected" });
+    console.log(`[ws-bridge] Claude SDK adapter attached for session ${sessionTag(sessionId)}`);
   }
 
   // ── CLI WebSocket handlers ──────────────────────────────────────────────
@@ -4587,7 +4644,7 @@ export class WsBridge {
   /** Derive current session status from explicit runtime state. */
   private deriveSessionStatus(session: Session): string | null {
     if (session.state.is_compacting) return "compacting";
-    const hasBackend = !!(session.cliSocket || session.codexAdapter);
+    const hasBackend = !!(session.cliSocket || session.codexAdapter || session.claudeSdkAdapter);
     if (!hasBackend) return null;
     if (session.isGenerating) return "running";
     return "idle";
@@ -4599,7 +4656,7 @@ export class WsBridge {
       type: "state_snapshot",
       sessionStatus: this.deriveSessionStatus(session),
       permissionMode: session.state.permissionMode,
-      cliConnected: !!(session.cliSocket || session.codexAdapter),
+      cliConnected: !!(session.cliSocket || session.codexAdapter || session.claudeSdkAdapter),
       uiMode: session.state.uiMode ?? null,
       askPermission: session.state.askPermission ?? true,
       lastReadAt: session.lastReadAt,

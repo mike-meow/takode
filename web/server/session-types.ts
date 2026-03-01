@@ -333,7 +333,7 @@ export interface BufferedBrowserEvent {
 
 // ─── Session State ────────────────────────────────────────────────────────────
 
-export type BackendType = "claude" | "codex";
+export type BackendType = "claude" | "codex" | "claude-sdk";
 
 export interface SessionState {
   session_id: string;

@@ -143,6 +143,10 @@ launcher.onCodexAdapterCreated((sessionId, adapter) => {
   wsBridge.attachCodexAdapter(sessionId, adapter);
 });
 
+launcher.onClaudeSdkAdapterCreated((sessionId, adapter) => {
+  wsBridge.attachClaudeSdkAdapter(sessionId, adapter);
+});
+
 // Start watching PRs when git info is resolved for a session
 wsBridge.onSessionGitInfoReadyCallback((sessionId, cwd, branch) => {
   prPoller.watch(sessionId, cwd, branch);

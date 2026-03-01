@@ -2044,10 +2044,11 @@ describe("POST /api/fs/diff-stats", () => {
 
 describe("GET /api/backends", () => {
   it("returns both backends with availability status", async () => {
-    // resolveBinary returns a path for both binaries
+    // resolveBinary returns a path for all binaries
     mockResolveBinary
-      .mockReturnValueOnce("/usr/bin/claude")
-      .mockReturnValueOnce("/usr/bin/codex");
+      .mockReturnValueOnce("/usr/bin/claude")   // claude
+      .mockReturnValueOnce("/usr/bin/claude")   // claude-sdk (same binary)
+      .mockReturnValueOnce("/usr/bin/codex");   // codex
 
     const res = await app.request("/api/backends", { method: "GET" });
 
@@ -2055,13 +2056,15 @@ describe("GET /api/backends", () => {
     const json = await res.json();
     expect(json).toEqual([
       { id: "claude", name: "Claude Code", available: true },
+      { id: "claude-sdk", name: "Claude SDK", available: true },
       { id: "codex", name: "Codex", available: true },
     ]);
   });
 
   it("marks backends as unavailable when binary is not found", async () => {
-    // resolveBinary returns null for both
+    // resolveBinary returns null for all
     mockResolveBinary
+      .mockReturnValueOnce(null)
       .mockReturnValueOnce(null)
       .mockReturnValueOnce(null);
 
@@ -2071,6 +2074,7 @@ describe("GET /api/backends", () => {
     const json = await res.json();
     expect(json).toEqual([
       { id: "claude", name: "Claude Code", available: false },
+      { id: "claude-sdk", name: "Claude SDK", available: false },
       { id: "codex", name: "Codex", available: false },
     ]);
   });
@@ -2078,14 +2082,16 @@ describe("GET /api/backends", () => {
   it("handles mixed availability", async () => {
     mockResolveBinary
       .mockReturnValueOnce("/usr/bin/claude") // claude found
+      .mockReturnValueOnce("/usr/bin/claude") // claude-sdk found (same binary)
       .mockReturnValueOnce(null); // codex not found
 
     const res = await app.request("/api/backends", { method: "GET" });
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json[0].available).toBe(true);
-    expect(json[1].available).toBe(false);
+    expect(json[0].available).toBe(true);   // claude
+    expect(json[1].available).toBe(true);   // claude-sdk
+    expect(json[2].available).toBe(false);  // codex
   });
 });
 

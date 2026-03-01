@@ -269,6 +269,7 @@ export class CliLauncher {
   private store: SessionStore | null = null;
   private recorder: RecorderManager | null = null;
   private onCodexAdapter: ((sessionId: string, adapter: CodexAdapter) => void) | null = null;
+  private onClaudeSdkAdapter: ((sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void) | null = null;
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
   /** Callback to resolve env profile variables by slug (set by server bootstrap). */
@@ -296,6 +297,11 @@ export class CliLauncher {
   /** Register a callback for when a CodexAdapter is created (WsBridge needs to attach it). */
   onCodexAdapterCreated(cb: (sessionId: string, adapter: CodexAdapter) => void): void {
     this.onCodexAdapter = cb;
+  }
+
+  /** Register a callback for when a ClaudeSdkAdapter is created (WsBridge needs to attach it). */
+  onClaudeSdkAdapterCreated(cb: (sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void): void {
+    this.onClaudeSdkAdapter = cb;
   }
 
   /** Register a callback for when a CLI/Codex process exits. */
@@ -598,6 +604,10 @@ export class CliLauncher {
       this.spawnCodex(sessionId, info, options).catch((err) => {
         console.error(`[cli-launcher] Codex spawn failed for ${sessionTag(sessionId)}:`, err);
       });
+    } else if (backendType === "claude-sdk") {
+      this.spawnClaudeSdk(sessionId, info, options).catch((err) => {
+        console.error(`[cli-launcher] Claude SDK spawn failed for ${sessionTag(sessionId)}:`, err);
+      });
     } else {
       this.spawnCLI(sessionId, info, {
         ...options,
@@ -736,6 +746,14 @@ export class CliLauncher {
           containerId: info.containerId,
           containerName: info.containerName,
           containerImage: info.containerImage,
+          env: runtimeEnv,
+        });
+      } else if (info.backendType === "claude-sdk") {
+        await this.spawnClaudeSdk(sessionId, info, {
+          model: info.model,
+          permissionMode: info.permissionMode,
+          cwd: info.cwd,
+          claudeBinary: binSettings.claudeBinary || undefined,
           env: runtimeEnv,
         });
       } else {
@@ -986,6 +1004,37 @@ export class CliLauncher {
    * Spawn a Codex app-server subprocess for a session.
    * Unlike Claude Code (which connects back via WebSocket), Codex uses stdio.
    */
+
+  /**
+   * Spawn a Claude Code session using the Agent SDK (stdio transport).
+   * No WebSocket — the SDK manages the process and communicates via stdin/stdout.
+   * Eliminates 5-minute disconnect cycles and all associated reliability issues.
+   */
+  private async spawnClaudeSdk(
+    sessionId: string,
+    info: SdkSessionInfo,
+    options: LaunchOptions,
+  ): Promise<void> {
+    const { ClaudeSdkAdapter } = await import("./claude-sdk-adapter.js");
+    const adapter = new ClaudeSdkAdapter(sessionId, {
+      model: options.model,
+      cwd: info.cwd,
+      permissionMode: options.permissionMode,
+      cliSessionId: info.cliSessionId,
+      env: options.env as Record<string, string | undefined>,
+      claudeBinary: options.claudeBinary,
+      recorder: this.recorder,
+    });
+
+    if (this.onClaudeSdkAdapter) {
+      this.onClaudeSdkAdapter(sessionId, adapter);
+    }
+
+    info.state = "connected";
+    this.persistState();
+    console.log(`[cli-launcher] Claude SDK session ${sessionTag(sessionId)} started`);
+  }
+
   /** Check if a path exists (async). */
   private async pathExists(p: string): Promise<boolean> {
     try { await access(p); return true; } catch { return false; }

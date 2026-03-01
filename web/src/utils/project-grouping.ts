@@ -17,7 +17,7 @@ export interface SessionItem {
   createdAt: number;
   archived: boolean;
   archivedAt?: number;
-  backendType: "claude" | "codex";
+  backendType: "claude" | "codex" | "claude-sdk";
   repoRoot: string;
   permCount: number;
   cronJobId?: string;

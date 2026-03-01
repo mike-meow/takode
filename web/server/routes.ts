@@ -157,7 +157,7 @@ export function createRoutes(
     const body = await c.req.json().catch(() => ({}));
     try {
       const backend = body.backend ?? "claude";
-      if (backend !== "claude" && backend !== "codex") {
+      if (backend !== "claude" && backend !== "codex" && backend !== "claude-sdk") {
         return c.json({ error: `Invalid backend: ${String(backend)}` }, 400);
       }
 
@@ -597,7 +597,7 @@ export function createRoutes(
     return streamSSE(c, async (stream) => {
       try {
         const backend = body.backend ?? "claude";
-        if (backend !== "claude" && backend !== "codex") {
+        if (backend !== "claude" && backend !== "codex" && backend !== "claude-sdk") {
           await stream.writeSSE({
             event: "error",
             data: JSON.stringify({ error: `Invalid backend: ${String(backend)}` }),
@@ -1889,6 +1889,7 @@ export function createRoutes(
     const backends: Array<{ id: string; name: string; available: boolean }> = [];
 
     backends.push({ id: "claude", name: "Claude Code", available: resolveBinary(s.claudeBinary || "claude") !== null });
+    backends.push({ id: "claude-sdk", name: "Claude SDK", available: resolveBinary(s.claudeBinary || "claude") !== null });
     backends.push({ id: "codex", name: "Codex", available: resolveBinary(s.codexBinary || "codex") !== null });
 
     return c.json(backends);

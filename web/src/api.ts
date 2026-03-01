@@ -116,7 +116,7 @@ export interface CreateSessionOpts {
   branch?: string;
   createBranch?: boolean;
   useWorktree?: boolean;
-  backend?: "claude" | "codex";
+  backend?: "claude" | "codex" | "claude-sdk";
   container?: ContainerCreateOpts;
   assistantMode?: boolean;
   askPermission?: boolean;
