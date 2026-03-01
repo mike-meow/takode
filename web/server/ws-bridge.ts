@@ -1812,17 +1812,9 @@ export class WsBridge {
       console.log(`[ws-bridge] CLI reconnected within grace period for session ${sessionTag(sessionId)} (seamless)`);
     }
 
-    // Always flush pending herd events on ANY CLI reconnect — not just grace timer
-    // cancellations. Events accumulate in the inbox while cliSocket is null (during
-    // the disconnect/relaunch cycle), but isSessionIdle returns false so they never
-    // get scheduled for delivery. This catches all reconnect paths: grace period
-    // cancellation, post-relaunch reconnect, and server restart recovery.
-    if (this.herdEventDispatcher) {
-      const info = this.launcher?.getSession(sessionId);
-      if (info?.isOrchestrator) {
-        this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId);
-      }
-    }
+    // NOTE: Herd event flush is NOT done here — it's done after system.init
+    // (in handleSystemMessage) when the CLI is fully ready. Flushing here would
+    // send events before the CLI finishes --resume replay, causing silent drops.
 
     // When a CLI reconnects to an existing session (has history), mark it as
     // resuming. During --resume replay, the CLI sends stale system.status
@@ -2314,6 +2306,17 @@ export class WsBridge {
         const queued = session.pendingMessages.splice(0);
         for (const ndjson of queued) {
           this.sendToCLI(session, ndjson);
+        }
+      }
+
+      // Flush pending herd events AFTER system.init — this is the safe moment
+      // when the CLI has completed --resume replay and is ready for new messages.
+      // Events accumulated in the herd inbox during the disconnect/relaunch cycle
+      // are delivered here, making event loss impossible by construction.
+      if (this.herdEventDispatcher) {
+        const launcherInfo = this.launcher?.getSession(session.id);
+        if (launcherInfo?.isOrchestrator) {
+          this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
         }
       }
     } else if (msg.subtype === "status") {
