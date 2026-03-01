@@ -1830,16 +1830,24 @@ export class WsBridge {
     this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
 
     // Flush any messages queued while waiting for the CLI WebSocket.
-    // Per the SDK protocol, the first user message triggers system.init,
-    // so we must send it as soon as the WebSocket is open — NOT wait for
-    // system.init (which would create a deadlock for slow-starting sessions
-    // like Docker containers where the user message arrives before CLI connects).
-    if (session.pendingMessages.length > 0) {
+    // For NEW sessions: the first user message triggers system.init,
+    // so we must send it as soon as the WebSocket is open.
+    // For RESUMING sessions (reconnecting after disconnect/relaunch): defer
+    // the flush until after system.init — the CLI replays its conversation
+    // history first and may drop messages received before init completes.
+    // The post-init flush at handleSystemMessage handles this case.
+    // We detect resume by checking if the launcher has a cliSessionId
+    // (set during the previous connection's system.init).
+    const launcherInfo = this.launcher?.getSession(sessionId);
+    const isResuming = !!launcherInfo?.cliSessionId;
+    if (session.pendingMessages.length > 0 && !isResuming) {
       console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on CLI connect for session ${sessionTag(sessionId)}`);
       const queued = session.pendingMessages.splice(0);
       for (const ndjson of queued) {
         this.sendToCLI(session, ndjson);
       }
+    } else if (session.pendingMessages.length > 0) {
+      console.log(`[ws-bridge] ${session.pendingMessages.length} queued message(s) deferred until init for session ${sessionTag(sessionId)} (resuming)`);
     }
   }
 
