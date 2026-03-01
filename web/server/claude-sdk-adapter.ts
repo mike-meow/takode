@@ -126,12 +126,18 @@ export class ClaudeSdkAdapter {
     };
 
     const sessionOptions: Record<string, unknown> = {
-      model: this.options.model || "claude-sonnet-4-5-20250929",
       cwd: this.options.cwd,
       permissionMode: this.mapPermissionMode(this.options.permissionMode),
       env: mergedEnv,
       canUseTool: this.handleCanUseTool.bind(this),
     };
+
+    // Only pass model if explicitly specified — empty/undefined means "use default"
+    // which lets the Claude Code binary resolve from settings.json (respecting
+    // the user's mai-agents configuration and LiteLLM proxy routing).
+    if (this.options.model) {
+      sessionOptions.model = this.options.model;
+    }
 
     // bypassPermissions mode: SDK auto-approves everything, no canUseTool needed
     if (this.options.permissionMode === "bypassPermissions") {
