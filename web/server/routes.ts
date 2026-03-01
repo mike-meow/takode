@@ -2877,12 +2877,22 @@ export function createRoutes(
         };
       }
     }
+
+    // Authentication: require a valid caller identity for ALL REST message sends.
+    // Browser messages go through WebSocket (already authenticated by connection).
+    // Cron scheduler calls wsBridge.injectUserMessage() directly (bypasses REST).
+    // This blocks unauthenticated curl calls from injecting messages into any session.
+    if (!agentSource?.sessionId) {
+      return c.json({ error: "agentSource with sessionId is required" }, 403);
+    }
+    const callerSession = launcher.getSession(agentSource.sessionId);
+    if (!callerSession) {
+      return c.json({ error: "Caller session not found" }, 403);
+    }
+
     // Herd guard: if the target session is herded, only its leader can send messages.
-    // Calls without agentSource (e.g. cron scheduler) bypass this — they use
-    // wsBridge.injectUserMessage() directly, not this REST endpoint.
     if (session.herdedBy) {
-      const callerId = agentSource?.sessionId;
-      if (!callerId || callerId !== session.herdedBy) {
+      if (agentSource.sessionId !== session.herdedBy) {
         return c.json({ error: "Session is herded — only its leader can send messages" }, 403);
       }
     }
