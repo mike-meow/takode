@@ -384,6 +384,8 @@ Every quest should have at least one tag. Common patterns: component/area (e.g. 
 Quests can have attached images at \`~/.companion/questmaster/images/\`.
 \`quest show\` displays file paths. Use the Read tool to view them.
 
+**Forward user screenshots.** When the user includes screenshots in their message that are relevant to a quest (bug reports, UI feedback, design references), attach them to the quest feedback using \`--image <path>\`. This gives workers visual context they wouldn't otherwise have.
+
 ## Environment
 
 - \`COMPANION_SESSION_ID\` is set automatically — \`quest claim\` uses it by default
