@@ -163,6 +163,7 @@ beforeEach(() => {
         cwd: "/tmp/project",
         createdAt: Date.now(),
         archived: false,
+        sessionNum: 5,
       },
     ],
     sessionNames: new Map([["session-1", "Session One"]]),
@@ -343,7 +344,7 @@ describe("QuestmasterPage verification inbox", () => {
 
     const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
     expect(within(dialog).getByText("Inbox")).toBeInTheDocument();
-    expect(within(dialog).getByText("Session One")).toBeInTheDocument();
+    expect(within(dialog).getByText("#5")).toBeInTheDocument();
     expect(within(dialog).getByText("0/1")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("1 pending feedback")).toBeInTheDocument();
     expect(within(dialog).getByText("ui")).toBeInTheDocument();
@@ -504,7 +505,7 @@ describe("QuestmasterPage verification inbox", () => {
     window.location.hash = "#/questmaster?quest=q-9";
     render(<QuestmasterPage />);
 
-    expect(screen.getAllByText("Session One").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("#5").length).toBeGreaterThan(0);
   });
 
   it("navigates when clicking codex owner session chip in quest modal", () => {
@@ -527,6 +528,7 @@ describe("QuestmasterPage verification inbox", () => {
         cwd: "/tmp/codex-project",
         createdAt: Date.now(),
         archived: false,
+        sessionNum: 6,
       },
     ];
     mockState.sessionNames = new Map([["codex-session-1", "Codex Session One"]]);

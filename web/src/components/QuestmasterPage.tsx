@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useStore, countUserPermissions } from "../store.js";
 import { api } from "../api.js";
 import { navigateToSession } from "../utils/routing.js";
+import { SessionNumChip } from "./SessionNumChip.js";
 import {
   VERIFICATION_INBOX_COLLAPSE_KEY,
   loadQuestmasterViewState,
@@ -1753,20 +1754,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                         )}
                         {questSessionId && (
                           isKnownSession ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigateToSession(questSessionId);
-                              }}
-                              className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors truncate max-w-[140px]"
-                              aria-label={questSessionName ?? questSessionId}
-                            >
-                              {questSessionName}
-                            </button>
+                            <SessionNumChip sessionId={questSessionId} />
                           ) : (
                             <span className="text-[10px] text-cc-muted/50 truncate max-w-[140px]">
-                              {questSessionId}
+                              {questSessionId.slice(0, 8)}
                             </span>
                           )
                         )}
@@ -1877,22 +1868,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                               )}
                               {questSessionId && (
                                 isKnownSession ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        navigateToSession(questSessionId);
-                                      }}
-                                      className="text-[11px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors truncate max-w-[220px]"
-                                      aria-label={questSessionName ?? questSessionId}
-                                    >
-                                      {questSessionName}
-                                    </button>
-                                  </div>
+                                  <SessionNumChip sessionId={questSessionId} />
                                 ) : (
                                   <span className="text-[10px] text-cc-muted/50 truncate max-w-[220px]">
-                                    {questSessionId}
+                                    {questSessionId.slice(0, 8)}
                                   </span>
                                 )
                               )}
@@ -2215,17 +2194,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                           >
                                             <div className="flex items-center gap-1.5 mb-0.5">
                                               {feedbackSessionId ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    navigateToSession(feedbackSessionId);
-                                                  }}
-                                                  className="text-xs font-medium text-cc-primary hover:text-cc-primary-hover underline-offset-2 hover:underline cursor-pointer"
-                                                  title={`Open session ${feedbackSessionId}`}
-                                                >
-                                                  {feedbackAuthorLabel}
-                                                </button>
+                                                <SessionNumChip
+                                                  sessionId={feedbackSessionId}
+                                                  className="text-xs font-medium font-mono text-cc-primary hover:text-cc-primary-hover cursor-pointer"
+                                                />
                                               ) : (
                                                 <span className={`text-xs font-medium ${
                                                   entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"
