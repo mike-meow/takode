@@ -2161,10 +2161,9 @@ export class WsBridge {
 
     // Notify if backend is not connected and request relaunch
     const backendConnected = session.backendType === "codex"
-      // Treat an attached adapter as "alive" during init.
-      // `isConnected()` flips true only after initialize/thread start, and
-      // relaunching during that window can kill a healthy startup.
       ? !!session.codexAdapter
+      : session.backendType === "claude-sdk"
+      ? !!session.claudeSdkAdapter
       : !!session.cliSocket;
 
     if (!backendConnected) {
@@ -2231,7 +2230,9 @@ export class WsBridge {
     if (!session) return;
 
     session.browserSockets.delete(ws);
-    const hasBackend = session.backendType === "codex" ? !!session.codexAdapter : !!session.cliSocket;
+    const hasBackend = session.backendType === "codex" ? !!session.codexAdapter
+      : session.backendType === "claude-sdk" ? !!session.claudeSdkAdapter
+      : !!session.cliSocket;
     console.log(`[ws-bridge] Browser disconnected for session ${sessionTag(sessionId)} (${session.browserSockets.size} remaining, backend=${hasBackend ? "alive" : "dead"}) | code=${code ?? "?"} reason=${JSON.stringify(reason || "")}`);
   }
 
@@ -3387,8 +3388,8 @@ export class WsBridge {
       }
     }
 
-    // For Codex sessions, delegate entirely to the adapter
-    if (session.backendType === "codex") {
+    // For Codex and Claude SDK sessions, delegate entirely to the adapter
+    if (session.backendType === "codex" || session.backendType === "claude-sdk") {
       let userImageRefs: import("./image-store.js").ImageRef[] | undefined;
       let codexUserMessageId: string | null = null;
 
@@ -3535,13 +3536,12 @@ export class WsBridge {
         };
       }
 
-      if (session.codexAdapter) {
-        session.codexAdapter.sendBrowserMessage(adapterMsg);
+      const adapter = session.codexAdapter || session.claudeSdkAdapter;
+      if (adapter) {
+        adapter.sendBrowserMessage(adapterMsg);
       } else {
         // Adapter not yet attached — queue for when it's ready.
-        // The adapter itself also queues during init, but this covers
-        // the window between session creation and adapter attachment.
-        console.log(`[ws-bridge] Codex adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
+        console.log(`[ws-bridge] Adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
         session.pendingMessages.push(JSON.stringify(adapterMsg));
       }
       return;
