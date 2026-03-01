@@ -1841,6 +1841,12 @@ export class WsBridge {
     const session = this.getOrCreateSession(sessionId, "claude-sdk");
     session.backendType = "claude-sdk";
     session.state.backend_type = "claude-sdk";
+    // Copy worktree info from launcher so the UI shows worktree indicators
+    const launcherInfo = this.launcher?.getSession(sessionId);
+    if (launcherInfo?.isWorktree) {
+      session.state.is_worktree = true;
+      if (launcherInfo.repoRoot) session.state.repo_root = launcherInfo.repoRoot;
+    }
     session.claudeSdkAdapter = adapter;
 
     adapter.onBrowserMessage((msg) => {
@@ -4059,12 +4065,19 @@ export class WsBridge {
   }
 
   private handleSetPermissionMode(session: Session, mode: string) {
-    const ndjson = JSON.stringify({
-      type: "control_request",
-      request_id: randomUUID(),
-      request: { subtype: "set_permission_mode", mode },
-    });
-    this.sendToCLI(session, ndjson);
+    // Route to the appropriate backend
+    if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+      // SDK sessions: the canUseTool callback handles permissions regardless of mode.
+      // Just update server-side state — no need to send to CLI.
+      session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode } as any);
+    } else {
+      const ndjson = JSON.stringify({
+        type: "control_request",
+        request_id: randomUUID(),
+        request: { subtype: "set_permission_mode", mode },
+      });
+      this.sendToCLI(session, ndjson);
+    }
     // Optimistically update server-side state and broadcast to all browsers
     const uiMode = mode === "plan" ? "plan" : "agent";
     session.state.permissionMode = mode;

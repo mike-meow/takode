@@ -133,10 +133,9 @@ export class ClaudeSdkAdapter {
       canUseTool: this.handleCanUseTool.bind(this),
     };
 
-    // bypassPermissions → SDK's allowDangerouslySkipPermissions flag
+    // bypassPermissions mode: SDK auto-approves everything, no canUseTool needed
     if (this.options.permissionMode === "bypassPermissions") {
-      sessionOptions.allowDangerouslySkipPermissions = true;
-      delete sessionOptions.canUseTool; // no permission prompts needed
+      delete sessionOptions.canUseTool;
     }
 
     // Resolve the claude binary path — use the configured binary or find it on PATH
@@ -333,9 +332,16 @@ export class ClaudeSdkAdapter {
       }
 
       case "interrupt": {
-        // The V2 session API doesn't expose interrupt directly.
-        // Close and re-create would be the fallback.
         console.log(`[claude-sdk-adapter] Interrupt requested for session ${this.sessionId}`);
+        return true;
+      }
+
+      case "set_permission_mode": {
+        // The V2 SDK session doesn't expose setPermissionMode directly.
+        // The permission mode change is handled server-side (state update +
+        // browser broadcast) and doesn't need to reach the CLI for SDK sessions.
+        // The canUseTool callback handles all permission decisions regardless of mode.
+        console.log(`[claude-sdk-adapter] Permission mode change to "${(msg as any).mode}" for session ${this.sessionId} (server-side only)`);
         return true;
       }
 
@@ -366,14 +372,15 @@ export class ClaudeSdkAdapter {
   }
 
   private mapPermissionMode(mode?: string): string | undefined {
-    // Map Companion permission modes to SDK permission modes.
-    // Companion's "plan" mode means "ask before executing" — which maps to the
-    // SDK's "default" mode (calls canUseTool for every tool). The SDK's own
-    // "plan" mode is a different concept (planning only, no tool execution).
+    // Direct mapping — Companion modes match SDK modes exactly:
+    //   "plan"              → "plan" (planning only, no tool execution)
+    //   "acceptEdits"       → "acceptEdits" (auto-approve file edits)
+    //   "bypassPermissions" → "bypassPermissions" (auto-approve everything)
+    //   "default" / other   → "default" (canUseTool callback handles permissions)
     switch (mode) {
-      case "bypassPermissions": return "default"; // handled via allowDangerouslySkipPermissions
+      case "bypassPermissions": return "bypassPermissions";
       case "acceptEdits": return "acceptEdits";
-      case "plan": return "default"; // Companion's "plan" = SDK's "default" (ask before doing)
+      case "plan": return "plan";
       default: return "default";
     }
   }
