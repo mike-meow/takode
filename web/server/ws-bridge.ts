@@ -1060,6 +1060,12 @@ export class WsBridge {
     this.routeBrowserMessage(session, msg as BrowserOutgoingMessage);
   }
 
+  /** Route an interrupt from an external source (REST API / CLI).
+   *  This reuses the same interrupt path as the browser stop button. */
+  async routeExternalInterrupt(session: Session): Promise<void> {
+    await this.routeBrowserMessage(session, { type: "interrupt" } as BrowserOutgoingMessage);
+  }
+
   // ── Takode orchestration event methods ──────────────────────────────────
 
   /** Emit a takode event, buffering it and notifying matching subscribers. */

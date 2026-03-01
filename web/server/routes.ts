@@ -1455,9 +1455,8 @@ export function createRoutes(
       wsBridge.broadcastToSession(id, historyEntry as any);
     }
 
-    const killed = await launcher.kill(id);
-    if (!killed)
-      return c.json({ error: "Session not found or already exited" }, 404);
+    const targetSession = session || wsBridge.getOrCreateSession(id, workerInfo.backendType || "claude");
+    await wsBridge.routeExternalInterrupt(targetSession);
 
     return c.json({ ok: true, sessionId: id, stoppedBy: callerSessionId });
   });

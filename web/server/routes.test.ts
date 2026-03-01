@@ -194,6 +194,7 @@ function createMockBridge() {
     injectUserMessage: vi.fn(),
     subscribeTakodeEvents: vi.fn(() => () => {}),
     routeExternalPermissionResponse: vi.fn(),
+    routeExternalInterrupt: vi.fn(async () => {}),
   } as any;
 }
 
@@ -3724,8 +3725,37 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.kill).toHaveBeenCalledWith("worker-1");
+    expect(bridge.routeExternalInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "worker-1" }),
+    );
+    expect(launcher.kill).not.toHaveBeenCalled();
     expect(sessions["worker-1"].repoRoot).toBe("/repo");
+  });
+
+  it("creates bridge session and interrupts when worker session is not loaded", async () => {
+    const sessions = setupTakodeSessions();
+    sessions["worker-1"].backendType = "codex";
+    sessions["worker-1"].repoRoot = "/repo";
+    bridge.getSession.mockReturnValue(null);
+    bridge.getOrCreateSession.mockReturnValue({
+      id: "worker-1",
+      backendType: "codex",
+      messageHistory: [],
+      state: { cwd: "/repo/w1" },
+    });
+
+    const res = await app.request("/api/sessions/worker-1/stop", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ callerSessionId: "orch-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.getOrCreateSession).toHaveBeenCalledWith("worker-1", "codex");
+    expect(bridge.routeExternalInterrupt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "worker-1", backendType: "codex" }),
+    );
+    expect(launcher.kill).not.toHaveBeenCalled();
   });
 
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
