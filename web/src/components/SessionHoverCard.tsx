@@ -1,8 +1,10 @@
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import type { SessionState, SessionTaskEntry } from "../../server/session-types.js";
-import { useRef, useLayoutEffect } from "react";
+import { useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { shortenHome } from "../utils/path-display.js";
+import { useStore } from "../store.js";
+import { navigateToSession } from "../utils/routing.js";
 
 interface SessionHoverCardProps {
   session: SessionItemType;
@@ -47,6 +49,20 @@ export function SessionHoverCard({
   onMouseLeave,
 }: SessionHoverCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // For leader sessions: find which sessions this leader is herding
+  const sdkSessions = useStore((st) => st.sdkSessions);
+  const sessionNames = useStore((st) => st.sessionNames);
+  const herdedSessions = useMemo(() => {
+    if (!s.isOrchestrator) return [];
+    return sdkSessions
+      .filter((sdk) => sdk.herdedBy === s.id && !sdk.archived)
+      .map((sdk) => ({
+        sessionId: sdk.sessionId,
+        sessionNum: sdk.sessionNum,
+        name: sessionNames.get(sdk.sessionId) ?? sdk.name,
+      }));
+  }, [s.isOrchestrator, s.id, sdkSessions, sessionNames]);
 
   // Status info
   const isRunning = s.status === "running";
@@ -176,6 +192,26 @@ export function SessionHoverCard({
             </div>
           )}
         </div>
+
+        {/* Herded sessions — shown for leader/orchestrator sessions */}
+        {herdedSessions.length > 0 && (
+          <div className="px-4 py-2 border-t border-cc-border/50">
+            <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Herding</span>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {herdedSessions.map((hs) => (
+                <button
+                  key={hs.sessionId}
+                  onClick={() => navigateToSession(hs.sessionId)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                  title={`Navigate to ${hs.name || hs.sessionId.slice(0, 8)}`}
+                >
+                  {hs.sessionNum != null && <span className="font-mono text-amber-400/60">#{hs.sessionNum}</span>}
+                  <span className="truncate max-w-[140px]">{hs.name || hs.sessionId.slice(0, 8)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Task history + last message preview */}
         {(taskHistory && taskHistory.length > 0) ? (
