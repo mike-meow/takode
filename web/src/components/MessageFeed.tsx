@@ -749,6 +749,46 @@ function MinuteBoundaryTimestamp({ timestamp, label }: { timestamp: number; labe
   );
 }
 
+function TurnDurationSeparator({ durationMs }: { durationMs: number }) {
+  return (
+    <div className="flex items-center justify-center py-0.5">
+      <span
+        data-testid="turn-duration-separator"
+        className="text-[11px] text-cc-muted/55 font-mono-code select-none"
+      >
+        -- {formatElapsed(durationMs)} --
+      </span>
+    </div>
+  );
+}
+
+function getTurnBoundaryTimestamp(turn: Turn): number | null {
+  const boundary = turn.userEntry;
+  if (!boundary || boundary.kind !== "message") return null;
+  if (!isTimedChatMessage(boundary.msg)) return null;
+  return boundary.msg.timestamp;
+}
+
+function getNormalTurnDurationMs(turn: Turn): number | null {
+  const boundary = turn.userEntry;
+  if (!boundary || boundary.kind !== "message" || boundary.msg.role !== "user" || boundary.msg.agentSource?.sessionId === "herd-events") return null;
+  const userTimestamp = boundary.msg.timestamp;
+  if (!turn.responseEntry || turn.responseEntry.kind !== "message" || turn.responseEntry.msg.role !== "assistant") return null;
+  const responseTimestamp = turn.responseEntry.msg.timestamp;
+  if (responseTimestamp < userTimestamp) return null;
+  return responseTimestamp - userTimestamp;
+}
+
+function getBetweenTurnDurationMs(previousTurn: Turn, currentTurn: Turn, leaderMode: boolean): number | null {
+  if (leaderMode) {
+    const previousBoundary = getTurnBoundaryTimestamp(previousTurn);
+    const currentBoundary = getTurnBoundaryTimestamp(currentTurn);
+    if (previousBoundary == null || currentBoundary == null || currentBoundary < previousBoundary) return null;
+    return currentBoundary - previousBoundary;
+  }
+  return getNormalTurnDurationMs(previousTurn);
+}
+
 const FeedEntries = memo(function FeedEntries({
   entries,
   sessionId,
@@ -1341,58 +1381,63 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
               isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming
             );
         const isActivityExpanded = override !== undefined ? override : defaultExpanded;
+        const betweenTurnDuration = index > 0
+          ? getBetweenTurnDurationMs(turns[index - 1], turn, leaderMode)
+          : null;
 
         return (
-          <div
-            key={turn.id}
-            data-turn-id={turn.id}
-            className="turn-container space-y-3 sm:space-y-5"
-            data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
-          >
-            {/* User message — always visible */}
-            {turn.userEntry && (
-              <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-            )}
+          <div key={turn.id}>
+            {betweenTurnDuration !== null && <TurnDurationSeparator durationMs={betweenTurnDuration} />}
+            <div
+              data-turn-id={turn.id}
+              className="turn-container space-y-3 sm:space-y-5"
+              data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
+            >
+              {/* User message — always visible */}
+              {turn.userEntry && (
+                <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+              )}
 
-            {isActivityExpanded ? (
-              /* Expanded: show all entries with collapse affordance */
-              turn.allEntries.length > 0 && (
-                <TurnEntriesExpanded
-                  turn={turn}
-                  sessionId={sessionId}
-                  minuteBoundaryLabels={minuteBoundaryLabels}
-                  onCollapse={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
-                />
-              )
-            ) : (
-              <>
-                {/* System messages — always visible */}
-                {turn.systemEntries.length > 0 && (
-                  <FeedEntries entries={turn.systemEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-                )}
-                {/* Collapsed: single paw outside, activity bar + response in shared card */}
-                {(turn.agentEntries.length > 0 || turn.responseEntry) && (
-                  <div className="flex items-start gap-3">
-                    <PawTrailAvatar />
-                    <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                      {turn.agentEntries.length > 0 && (
-                        <CollapsedActivityBar
-                          stats={turn.stats}
-                          onClick={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
-                        />
-                      )}
-                      {turn.responseEntry && (
-                        <div className="px-3 py-2.5">
-                          <HidePawContext.Provider value={true}>
-                            <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-                          </HidePawContext.Provider>
-                        </div>
-                      )}
+              {isActivityExpanded ? (
+                /* Expanded: show all entries with collapse affordance */
+                turn.allEntries.length > 0 && (
+                  <TurnEntriesExpanded
+                    turn={turn}
+                    sessionId={sessionId}
+                    minuteBoundaryLabels={minuteBoundaryLabels}
+                    onCollapse={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
+                  />
+                )
+              ) : (
+                <>
+                  {/* System messages — always visible */}
+                  {turn.systemEntries.length > 0 && (
+                    <FeedEntries entries={turn.systemEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                  )}
+                  {/* Collapsed: single paw outside, activity bar + response in shared card */}
+                  {(turn.agentEntries.length > 0 || turn.responseEntry) && (
+                    <div className="flex items-start gap-3">
+                      <PawTrailAvatar />
+                      <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
+                        {turn.agentEntries.length > 0 && (
+                          <CollapsedActivityBar
+                            stats={turn.stats}
+                            onClick={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
+                          />
+                        )}
+                        {turn.responseEntry && (
+                          <div className="px-3 py-2.5">
+                            <HidePawContext.Provider value={true}>
+                              <FeedEntries entries={[turn.responseEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                            </HidePawContext.Provider>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
+            </div>
           </div>
         );
       })}
