@@ -167,23 +167,6 @@ function questIdFromHash(hash: string): string | null {
   return questId && questId.trim() ? questId.trim() : null;
 }
 
-const FEEDBACK_SESSION_NAME_MAX_CHARS = 28;
-
-function truncateLabel(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
-}
-
-function formatAgentFeedbackAuthorLabel(
-  sessionId: string | undefined,
-  sessionName: string | undefined,
-  sessionNum: number | undefined,
-): string {
-  const baseName = truncateLabel(sessionName || sessionId || "agent", FEEDBACK_SESSION_NAME_MAX_CHARS);
-  if (sessionNum != null) return `#${sessionNum} (${baseName})`;
-  return baseName;
-}
-
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
@@ -913,14 +896,6 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       })
       .sort((a, b) => b.createdAt - a.createdAt);
   }, [sdkSessions, sessions, cliConnected, sessionStatus, pendingPermissions, cliDisconnectReason, askPermissionMap]);
-
-  const sessionNumsById = useMemo(() => {
-    const byId = new Map<string, number>();
-    for (const s of sdkSessions) {
-      if (typeof s.sessionNum === "number") byId.set(s.sessionId, s.sessionNum);
-    }
-    return byId;
-  }, [sdkSessions]);
 
   async function handleAssignToSession(
     quest: QuestmasterTask,
@@ -1750,7 +1725,6 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
               const questNotes = "notes" in quest ? (quest as { notes?: string }).notes : undefined;
               const questSessionId = getQuestOwnerSessionId(quest);
               const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
-              const questSessionName = questSessionId ? (sessionNames.get(questSessionId) || (isKnownSession ? questSessionId.slice(0, 8) : questSessionId)) : null;
               const feedbackEntries = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
               const unaddressedFeedbackCount = feedbackEntries?.filter((e) => e.author === "human" && !e.addressed).length ?? 0;
               const addressedFeedbackCount = feedbackEntries?.filter((e) => e.author === "human" && e.addressed).length ?? 0;
@@ -1800,15 +1774,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                             Inbox
                           </span>
                         )}
-                        {questSessionId && (
-                          isKnownSession ? (
-                            <SessionNumChip sessionId={questSessionId} />
-                          ) : (
-                            <span className="text-[10px] text-cc-muted/50 truncate max-w-[140px]">
-                              {questSessionId.slice(0, 8)}
-                            </span>
-                          )
-                        )}
+                        {questSessionId && <SessionNumChip sessionId={questSessionId} />}
                         {vProgress && (
                           <span className="text-[10px] text-cc-muted flex items-center gap-1">
                             <svg
@@ -1914,15 +1880,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                   Inbox
                                 </span>
                               )}
-                              {questSessionId && (
-                                isKnownSession ? (
-                                  <SessionNumChip sessionId={questSessionId} />
-                                ) : (
-                                  <span className="text-[10px] text-cc-muted/50 truncate max-w-[220px]">
-                                    {questSessionId.slice(0, 8)}
-                                  </span>
-                                )
-                              )}
+                              {questSessionId && <SessionNumChip sessionId={questSessionId} />}
                               {vProgress && (
                                 <span className="text-[10px] text-cc-muted flex items-center gap-1">
                                   <svg
@@ -2227,11 +2185,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                       {feedbackEntries.map((entry, i) => {
                                         const isEditing = editingFeedback?.questId === quest.questId && editingFeedback?.index === i;
                                         const feedbackSessionId = entry.author === "agent" ? entry.authorSessionId : undefined;
-                                        const feedbackSessionName = feedbackSessionId ? sessionNames.get(feedbackSessionId) : undefined;
-                                        const feedbackSessionNum = feedbackSessionId ? sessionNumsById.get(feedbackSessionId) : undefined;
-                                        const feedbackAuthorLabel = entry.author === "agent"
-                                          ? formatAgentFeedbackAuthorLabel(feedbackSessionId, feedbackSessionName, feedbackSessionNum)
-                                          : entry.author;
+                                        const feedbackAuthorLabel = entry.author;
                                         return (
                                           <div
                                             key={i}
@@ -2245,17 +2199,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                           >
                                             <div className="flex items-center gap-1.5 mb-0.5">
                                               {feedbackSessionId ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    navigateToSession(feedbackSessionId);
-                                                  }}
-                                                  title={feedbackAuthorLabel}
-                                                  className="text-xs font-medium text-cc-primary hover:text-cc-primary-hover cursor-pointer truncate max-w-[320px] text-left"
-                                                >
-                                                  {feedbackAuthorLabel}
-                                                </button>
+                                                <SessionNumChip
+                                                  sessionId={feedbackSessionId}
+                                                  className="text-xs font-medium font-mono text-cc-primary hover:text-cc-primary-hover cursor-pointer"
+                                                />
                                               ) : (
                                                 <span className={`text-xs font-medium ${
                                                   entry.author === "human" ? "text-amber-400/70" : "text-cc-muted"

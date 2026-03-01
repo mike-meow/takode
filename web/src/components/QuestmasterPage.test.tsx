@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { QuestmasterTask } from "../types.js";
 import { buildQuestReworkDraft } from "./quest-rework.js";
@@ -356,6 +356,25 @@ describe("QuestmasterPage verification inbox", () => {
     expect(within(dialog).getByText("ui")).toBeInTheDocument();
   });
 
+  it("shows full session tooltip when hovering a compact session number chip", async () => {
+    window.location.hash = "#/questmaster?quest=q-1";
+    render(<QuestmasterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: /Quest details: Inbox quest/ });
+    const sessionChip = within(dialog).getByRole("button", { name: "#5" });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseEnter(sessionChip);
+      act(() => {
+        vi.advanceTimersByTime(350);
+      });
+      expect(screen.getByText("Session One")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses harmonious action hierarchy colors for verification inbox UI", () => {
     // Keep status identity subtle on chips, and keep action buttons aligned
     // with a consistent hierarchy (primary orange, secondary neutral).
@@ -385,7 +404,7 @@ describe("QuestmasterPage verification inbox", () => {
     expect(screen.queryByText("Regular verification quest")).toBeNull();
   });
 
-  it("renders agent feedback with session label and opens that session on click", () => {
+  it("renders agent feedback with compact session number and opens that session on click", () => {
     mockState.quests = [{
       id: "q-8-v4",
       questId: "q-8",
@@ -409,12 +428,12 @@ describe("QuestmasterPage verification inbox", () => {
     render(<QuestmasterPage />);
 
     const dialog = screen.getByRole("dialog", { name: /Quest details: Quest with agent feedback/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "#5 (Session One)" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "#5" }));
 
     expect(mockNavigateToSession).toHaveBeenCalledWith("session-1");
   });
 
-  it("truncates long agent session titles in feedback labels", () => {
+  it("keeps feedback session chips compact even with long session titles", () => {
     mockState.sessionNames = new Map([[
       "session-1",
       "Codex web search tool call is not rendered correctly",
@@ -443,8 +462,9 @@ describe("QuestmasterPage verification inbox", () => {
     render(<QuestmasterPage />);
 
     const dialog = screen.getByRole("dialog", { name: /Quest details: Quest with long session title/ });
-    const labelButton = within(dialog).getByRole("button", { name: /^#5 \(.+\)$/ });
-    expect(labelButton).toHaveTextContent(/^#5 \(.+\.\.\.\)$/);
+    const labelButton = within(dialog).getByRole("button", { name: "#5" });
+    expect(labelButton).toHaveTextContent("#5");
+    expect(within(dialog).queryByText(/Codex web search tool call is not rendered correctly/)).toBeNull();
   });
 
   it("prefills and navigates when clicking Rework with unaddressed feedback", () => {
@@ -588,7 +608,7 @@ describe("QuestmasterPage verification inbox", () => {
     });
   });
 
-  it("navigates when clicking codex owner session chip in quest modal", () => {
+  it("navigates when clicking compact codex owner session chip in quest modal", () => {
     mockState.quests = [{
       id: "q-10-v3",
       questId: "q-10",
@@ -617,7 +637,7 @@ describe("QuestmasterPage verification inbox", () => {
     render(<QuestmasterPage />);
 
     const dialog = screen.getByRole("dialog", { name: /Quest details: Codex linked quest/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Codex Session One" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "#6" }));
 
     expect(mockNavigateToSession).toHaveBeenCalledWith("codex-session-1");
   });

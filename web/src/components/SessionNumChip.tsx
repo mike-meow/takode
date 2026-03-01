@@ -24,7 +24,7 @@ export function SessionNumChip({ sessionId, className }: SessionNumChipProps) {
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const num = sdkSession?.sessionNum;
-  const label = num != null ? `#${num}` : sessionId.slice(0, 6);
+  const label = num != null ? `#${num}` : "#?";
 
   const handleMouseEnter = useCallback(() => {
     hoverTimer.current = setTimeout(() => {
@@ -59,12 +59,13 @@ export function SessionNumChip({ sessionId, className }: SessionNumChipProps) {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         className={className || defaultClass}
-        aria-label={sessionName || label}
+        aria-label={label}
       >
         {label}
       </button>
-      {hovered && tooltipPos && sdkSession && (
+      {hovered && tooltipPos && (
         <SessionChipTooltip
+          sessionId={sessionId}
           sdkSession={sdkSession}
           sessionName={sessionName}
           pos={tooltipPos}
@@ -79,13 +80,15 @@ export function SessionNumChip({ sessionId, className }: SessionNumChipProps) {
 // ─── Tooltip ────────────────────────────────────────────────────────────────
 
 function SessionChipTooltip({
+  sessionId,
   sdkSession,
   sessionName,
   pos,
   onMouseEnter,
   onMouseLeave,
 }: {
-  sdkSession: { sessionNum?: number | null; state: string; model?: string; backendType?: string; cliConnected?: boolean; isOrchestrator?: boolean; herdedBy?: string; gitBranch?: string; cwd: string };
+  sessionId: string;
+  sdkSession: { sessionNum?: number | null; state: string; model?: string; backendType?: string; cliConnected?: boolean; isOrchestrator?: boolean; herdedBy?: string; gitBranch?: string; cwd: string } | undefined;
   sessionName: string | undefined;
   pos: { x: number; y: number };
   onMouseEnter: () => void;
@@ -107,14 +110,14 @@ function SessionChipTooltip({
   }, [pos]);
 
   const name = sessionName || "(unnamed)";
-  const num = sdkSession.sessionNum != null ? `#${sdkSession.sessionNum}` : "";
-  const model = sdkSession.model?.replace(/-\d{8}$/, "") || "";
-  const backend = sdkSession.backendType === "codex" ? "Codex" : "Claude";
-  const isConnected = sdkSession.cliConnected;
+  const num = sdkSession?.sessionNum != null ? `#${sdkSession.sessionNum}` : "#?";
+  const model = sdkSession?.model?.replace(/-\d{8}$/, "") || "";
+  const backend = sdkSession?.backendType === "codex" ? "Codex" : "Claude";
+  const isConnected = sdkSession?.cliConnected;
   const statusColor = !isConnected ? "bg-cc-muted/40"
-    : sdkSession.state === "running" ? "bg-cc-success"
+    : sdkSession?.state === "running" ? "bg-cc-success"
     : "bg-cc-muted/60";
-  const branch = sdkSession.gitBranch || "";
+  const branch = sdkSession?.gitBranch || "";
 
   return createPortal(
     <div
@@ -131,11 +134,12 @@ function SessionChipTooltip({
           <span className="text-[12px] font-medium text-cc-fg truncate">{name}</span>
           {num && <span className="text-[10px] font-mono text-cc-muted/60 shrink-0">{num}</span>}
         </div>
+        <div className="mt-1 text-[9px] text-cc-muted/70 font-mono truncate">{sessionId}</div>
         {/* Meta: backend + model + branch */}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-cc-muted bg-cc-muted/10">{backend}</span>
           {model && <span className="text-[9px] text-cc-muted truncate">{model}</span>}
-          {sdkSession.isOrchestrator && (
+          {sdkSession?.isOrchestrator && (
             <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-amber-500 bg-amber-500/10">leader</span>
           )}
         </div>
