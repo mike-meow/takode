@@ -496,11 +496,11 @@ interface TurnStats {
 
 interface Turn {
   id: string;                      // Stable ID for collapse state (user msg ID or synthetic)
-  userEntry: FeedEntry | null;     // Boundary entry (user, or @user assistant in leader mode)
+  userEntry: FeedEntry | null;     // Boundary entry (user, or @to(user): assistant in leader mode)
   allEntries: FeedEntry[];         // All entries in original order (for expanded rendering)
   agentEntries: FeedEntry[];       // Non-system agent activity (collapsible), excludes responseEntry
   systemEntries: FeedEntry[];      // System messages (always visible, never collapsed)
-  responseEntry: FeedEntry | null; // Default-visible assistant response entry (leader mode: only @user messages)
+  responseEntry: FeedEntry | null; // Default-visible assistant response entry (leader mode: only user-addressed messages)
   stats: TurnStats;
 }
 
@@ -609,7 +609,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 
   // Extract the default-visible response entry.
   // Normal sessions: final assistant text.
-  // Leader sessions: fallback final @user response (most are split by @user boundary).
+  // Leader sessions: fallback final user-addressed response.
   let responseEntry: FeedEntry | null = null;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
@@ -646,7 +646,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   };
 }
 
-/** Group flat feed entries into turns. Leader mode also splits at @user assistant messages. */
+/** Group flat feed entries into turns. Leader mode also splits at user-addressed assistant messages. */
 function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;

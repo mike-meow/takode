@@ -60,7 +60,7 @@ export interface ChatMessage {
   agentSource?: { sessionId: string; sessionLabel?: string };
   /** Assistant message UUID from CLI, for revert support */
   cliUuid?: string;
-  /** Leader session assistant message explicitly addressed to the human via @user:. */
+  /** Leader session assistant message explicitly addressed to the human via @to(user):. */
   leaderUserAddressed?: boolean;
 }
 

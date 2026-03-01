@@ -454,19 +454,27 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return groups;
 }
 
-const LEADER_USER_PREFIX_RE = /^\s*@user(?::|\s)+/i;
+const LEADER_USER_TAG = "@to(user):";
+const LEADER_USER_PREFIX_RE = /^@to\(user\):\s*/;
 
 function stripLeaderUserPrefix(text: string): string {
   return text.replace(LEADER_USER_PREFIX_RE, "");
+}
+
+function shouldStripLeaderUserTag(message: ChatMessage): boolean {
+  if (message.content.startsWith(LEADER_USER_TAG)) return true;
+  if (message.content.length > 0) return false;
+  const firstTextBlock = message.contentBlocks?.find((b) => b.type === "text");
+  return firstTextBlock?.text.startsWith(LEADER_USER_TAG) === true;
 }
 
 function LeaderUserAddressedMarker() {
   return (
     <div
       data-testid="leader-user-addressed-marker"
-      className="mb-1.5 flex items-center text-[10px] font-mono-code uppercase tracking-[0.08em] text-cc-primary/80"
+      className="mb-1.5 flex items-center text-[10px] font-mono-code tracking-[0.08em] text-cc-primary/80"
     >
-      @user
+      @to(user):
     </div>
   );
 }
@@ -478,6 +486,7 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
   const userAddressedBodyClass = userAddressed ? "border-l-2 border-cc-primary/35 pl-3" : "";
   const displayMessage = useMemo(() => {
     if (!userAddressed) return message;
+    if (!shouldStripLeaderUserTag(message)) return message;
 
     let strippedTextBlock = false;
     const strippedBlocks = (message.contentBlocks || []).map((block) => {

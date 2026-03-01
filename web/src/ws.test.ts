@@ -392,7 +392,7 @@ describe("handleMessage: assistant", () => {
         type: "message",
         role: "assistant",
         model: "claude-opus-4-20250514",
-        content: [{ type: "text", text: "@user: Here's the status" }],
+        content: [{ type: "text", text: "@to(user): Here's the status" }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
@@ -771,7 +771,7 @@ describe("handleMessage: result", () => {
     expect(state.sessionStatus.get("s1")).toBe("idle");
   });
 
-  it("suppresses completion notifications for leader sessions without @user assistant messages", () => {
+  it("suppresses completion notifications for leader sessions without @to(user): assistant messages", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
     useStore.getState().setSdkSessions([
@@ -813,7 +813,7 @@ describe("handleMessage: result", () => {
     hasFocusSpy.mockRestore();
   });
 
-  it("plays completion notifications for leader sessions when latest assistant is @user-addressed", () => {
+  it("plays completion notifications for leader sessions when latest assistant is @to(user): addressed", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
     useStore.getState().setSdkSessions([
@@ -827,7 +827,7 @@ describe("handleMessage: result", () => {
         type: "message",
         role: "assistant",
         model: "claude-opus-4-20250514",
-        content: [{ type: "text", text: "@user: Please review the PR" }],
+        content: [{ type: "text", text: "@to(user): Please review the PR" }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
@@ -1126,7 +1126,7 @@ describe("handleMessage: message_history", () => {
             type: "message",
             role: "assistant",
             model: "claude-opus-4-20250514",
-            content: [{ type: "text", text: "@user: done" }],
+            content: [{ type: "text", text: "@to(user): done" }],
             stop_reason: "end_turn",
             usage: { input_tokens: 5, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
           },

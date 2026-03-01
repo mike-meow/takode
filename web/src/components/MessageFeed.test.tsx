@@ -940,7 +940,7 @@ describe("MessageFeed - turn grouping", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "@user: First update",
+        content: "@to(user): First update",
         leaderUserAddressed: true,
         timestamp: 121_000,
       }),
@@ -948,7 +948,7 @@ describe("MessageFeed - turn grouping", () => {
       makeMessage({
         id: "a4",
         role: "assistant",
-        content: "@user: Second update",
+        content: "@to(user): Second update",
         leaderUserAddressed: true,
         timestamp: 313_000,
       }),
@@ -999,7 +999,7 @@ describe("MessageFeed - collapsed turns", () => {
     expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
   });
 
-  it("leader mode splits turns at each @user boundary and keeps post-@user activity separate", () => {
+  it("leader mode splits turns at each @to(user): boundary and keeps post-boundary activity separate", () => {
     const sid = "test-leader-boundaries";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -1008,14 +1008,14 @@ describe("MessageFeed - collapsed turns", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "@user: First update from the herd.",
+        content: "@to(user): First update from the herd.",
         leaderUserAddressed: true,
       }),
       makeMessage({ id: "a3", role: "assistant", content: "Nudged #2 about test coverage" }),
       makeMessage({
         id: "a4",
         role: "assistant",
-        content: "@user: Second update with progress.",
+        content: "@to(user): Second update with progress.",
         leaderUserAddressed: true,
       }),
       makeMessage({ id: "a5", role: "assistant", content: "Queued final smoke checks" }),
@@ -1032,7 +1032,7 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getAllByText("1 message")).toHaveLength(3);
   });
 
-  it("passes defaultExpanded=false when expanding the latest collapsed row after an @user boundary", () => {
+  it("passes defaultExpanded=false when expanding the latest collapsed row after an @to(user): boundary", () => {
     const sid = "test-leader-last-user-boundary";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -1041,7 +1041,7 @@ describe("MessageFeed - collapsed turns", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "@user: #9 is implementing now.",
+        content: "@to(user): #9 is implementing now.",
         leaderUserAddressed: true,
       }),
       makeMessage({ id: "a3", role: "assistant", content: "Ran follow-up checks on #9" }),
@@ -1054,7 +1054,7 @@ describe("MessageFeed - collapsed turns", () => {
     expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "a2", false);
   });
 
-  it("leader mode keeps @user assistant responses visible while collapsing internal activity", () => {
+  it("leader mode keeps user-addressed assistant responses visible while collapsing internal activity", () => {
     const sid = "test-leader-collapse";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -1063,7 +1063,7 @@ describe("MessageFeed - collapsed turns", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "@user: I delegated auth + tests. Waiting for your review.",
+        content: "@to(user): I delegated auth + tests. Waiting for your review.",
         leaderUserAddressed: true,
       }),
       makeMessage({ id: "u2", role: "user", content: "continue" }),
@@ -1088,7 +1088,7 @@ describe("MessageFeed - collapsed turns", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "@user: Worker #7 is implementing the fix now.",
+        content: "@to(user): Worker #7 is implementing the fix now.",
         leaderUserAddressed: true,
       }),
     ]);

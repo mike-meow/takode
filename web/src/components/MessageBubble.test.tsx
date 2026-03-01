@@ -295,30 +295,43 @@ describe("MessageBubble - assistant messages", () => {
   it("shows @user badge for leaderUserAddressed assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
-      content: "@user: here's the latest status",
+      content: "@to(user): here's the latest status",
       leaderUserAddressed: true,
     });
     render(<MessageBubble message={msg} />);
 
-    expect(screen.getByTestId("leader-user-addressed-marker")).toBeTruthy();
+    const marker = screen.getByTestId("leader-user-addressed-marker");
+    expect(marker).toBeTruthy();
+    expect(marker.textContent).toBe("@to(user):");
     const body = screen.getByTestId("leader-user-addressed-body");
     expect(body.className).toContain("border-l-2");
     expect(screen.getByTestId("markdown").textContent).toBe("here's the latest status");
   });
 
-  it("strips @user prefix from text content blocks for leaderUserAddressed messages", () => {
+  it("strips @to(user): prefix from clean user-addressed messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
       leaderUserAddressed: true,
       contentBlocks: [
-        { type: "text", text: "@user: Worker #3 finished tests." },
+        { type: "text", text: "@to(user): Worker #3 finished tests." },
       ],
     });
     render(<MessageBubble message={msg} />);
 
     expect(screen.getByTestId("markdown").textContent).toBe("Worker #3 finished tests.");
-    expect(screen.queryByText("@user: Worker #3 finished tests.")).toBeNull();
+    expect(screen.queryByText("@to(user): Worker #3 finished tests.")).toBeNull();
+  });
+
+  it("does not strip @to(user): when it appears on a later line", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "Internal handoff details\n@to(user): Status update starts here.",
+      leaderUserAddressed: true,
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByTestId("markdown").textContent).toContain("@to(user): Status update starts here.");
   });
 
   it("renders a timestamp for assistant messages", () => {

@@ -1179,7 +1179,7 @@ describe("CLI message routing", () => {
     expect(assistantBroadcast.parent_tool_use_id).toBeNull();
   });
 
-  it("assistant: tags leader @user messages as leader_user_addressed", () => {
+  it("assistant: tags leader @to(user): messages as leader_user_addressed", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -1192,7 +1192,7 @@ describe("CLI message routing", () => {
         type: "message",
         role: "assistant",
         model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "@user: Please review q-126 output." }],
+        content: [{ type: "text", text: "@to(user): Please review q-126 output." }],
         stop_reason: "end_turn",
         usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
@@ -1210,6 +1210,35 @@ describe("CLI message routing", () => {
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const assistantBroadcast = calls.find((c: any) => c.type === "assistant");
     expect(assistantBroadcast?.leader_user_addressed).toBe(true);
+  });
+
+  it("assistant: tags leader messages when @to(user): starts on a later line", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const msg = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-user-2",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Internal notes first\n@to(user): Human-facing update follows." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "uuid-user-2",
+      session_id: "s1",
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+
+    const session = bridge.getSession("s1")!;
+    const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
+    expect(histAssistant?.leader_user_addressed).toBe(true);
   });
 
   it("result: updates cost/turns/context% and computes diff stats from git", async () => {
@@ -1315,7 +1344,7 @@ describe("CLI message routing", () => {
     expect(typeof assistantRebroadcast.turn_duration_ms).toBe("number");
   });
 
-  it("result: suppresses review attention for leader turns without @user response", () => {
+  it("result: suppresses review attention for leader turns without @to(user): response", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -1353,7 +1382,7 @@ describe("CLI message routing", () => {
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
 
-  it("result: marks review attention for leader turns with @user response", () => {
+  it("result: marks review attention for leader turns with @to(user): response", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -1366,7 +1395,7 @@ describe("CLI message routing", () => {
         type: "message",
         role: "assistant",
         model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "@user: Finished q-126. Please verify." }],
+        content: [{ type: "text", text: "@to(user): Finished q-126. Please verify." }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
@@ -4944,7 +4973,7 @@ describe("Codex adapter result handling", () => {
     expect(session.toolResults.get("tool-1")?.content).toContain("Exit code: 2");
   });
 
-  it("tags codex leader assistant @user messages as leader_user_addressed", () => {
+  it("tags codex leader assistant @to(user): messages as leader_user_addressed", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -4963,7 +4992,7 @@ describe("Codex adapter result handling", () => {
         type: "message",
         role: "assistant",
         model: "gpt-5-codex",
-        content: [{ type: "text", text: "@user: I have queued tasks for workers." }],
+        content: [{ type: "text", text: "@to(user): I have queued tasks for workers." }],
         stop_reason: null,
         usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },

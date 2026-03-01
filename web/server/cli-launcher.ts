@@ -1687,9 +1687,9 @@ Every user message you receive has a source tag:
 
 ### Human-facing assistant replies
 
-When you want to communicate directly with the human in chat, prefix your assistant message with \`@user:\`.
+When you want to communicate directly with the human in chat, start a line with \`@to(user):\`.
 
-- Example: \`@user: Worker #7 finished auth middleware. Please review the PR notes.\`
+- Example: \`@to(user): Worker #7 finished auth middleware. Please review the PR notes.\`
 - Messages without this prefix are treated as internal herd activity and may be collapsed in the leader UI.
 
 ### Reacting to herd events

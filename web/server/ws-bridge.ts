@@ -1567,22 +1567,14 @@ export class WsBridge {
     return !!this.launcher?.getSession(session.id)?.herdedBy;
   }
 
-  /** Find the first non-empty assistant text block in order. */
-  private static getFirstAssistantText(content: ContentBlock[]): string | null {
-    for (const block of content) {
-      if (block.type !== "text") continue;
-      const trimmed = block.text.trim();
-      if (trimmed) return trimmed;
-    }
-    return null;
-  }
-
-  /** Leader messages prefixed with @user: (or @user <text>) are human-addressed. */
+  /** Leader messages are human-addressed when any line starts with @to(user):. */
   private isLeaderUserAddressedAssistantMessage(session: Session, content: ContentBlock[]): boolean {
     if (!this.isLeaderSession(session)) return false;
-    const leadingText = WsBridge.getFirstAssistantText(content);
-    if (!leadingText) return false;
-    return /^@user(?::|\s)/i.test(leadingText);
+    for (const block of content) {
+      if (block.type !== "text") continue;
+      if (/^@to\(user\):/m.test(block.text)) return true;
+    }
+    return false;
   }
 
   /** Whether a completed turn should surface attention/notifications to the human. */
