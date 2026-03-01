@@ -499,6 +499,32 @@ describe("UI state", () => {
   });
 });
 
+// ─── Turn activity overrides ───────────────────────────────────────────────
+
+describe("Turn activity overrides", () => {
+  it("toggleTurnActivity: expands a default-collapsed turn by setting override=true", () => {
+    useStore.getState().toggleTurnActivity("s1", "turn-1", false);
+
+    const overrides = useStore.getState().turnActivityOverrides.get("s1");
+    expect(overrides?.get("turn-1")).toBe(true);
+  });
+
+  it("toggleTurnActivity: collapses a default-expanded turn by setting override=false", () => {
+    useStore.getState().toggleTurnActivity("s1", "turn-last", true);
+
+    const overrides = useStore.getState().turnActivityOverrides.get("s1");
+    expect(overrides?.get("turn-last")).toBe(false);
+  });
+
+  it("toggleTurnActivity: removes existing override on second toggle", () => {
+    useStore.getState().toggleTurnActivity("s1", "turn-2", false);
+    useStore.getState().toggleTurnActivity("s1", "turn-2", false);
+
+    const overrides = useStore.getState().turnActivityOverrides.get("s1");
+    expect(overrides?.has("turn-2")).toBe(false);
+  });
+});
+
 // ─── Reset ──────────────────────────────────────────────────────────────────
 
 describe("reset", () => {

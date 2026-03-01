@@ -301,7 +301,7 @@ interface AppState {
   // toggle individual turns away from the default (true = expanded, false = collapsed).
   turnActivityOverrides: Map<string, Map<string, boolean>>;
   collapsibleTurnIds: Map<string, string[]>;
-  toggleTurnActivity: (sessionId: string, turnId: string, isLastTurn: boolean) => void;
+  toggleTurnActivity: (sessionId: string, turnId: string, defaultExpanded: boolean) => void;
   collapseAllTurnActivity: (sessionId: string, turnIds: string[]) => void;
   /** Expand only the target turn; all others revert to default (last = expanded, rest = collapsed). */
   focusTurn: (sessionId: string, targetTurnId: string) => void;
@@ -1381,7 +1381,7 @@ export const useStore = create<AppState>((set) => ({
       return { composerDrafts };
     }),
 
-  toggleTurnActivity: (sessionId, turnId, isLastTurn) =>
+  toggleTurnActivity: (sessionId, turnId, defaultExpanded) =>
     set((s) => {
       const overrides = new Map(s.turnActivityOverrides);
       const session = new Map(overrides.get(sessionId) || []);
@@ -1389,8 +1389,8 @@ export const useStore = create<AppState>((set) => ({
         // Has override → remove it (revert to default)
         session.delete(turnId);
       } else {
-        // No override → set opposite of default (last=expanded→false, others=collapsed→true)
-        session.set(turnId, !isLastTurn);
+        // No override → set opposite of this turn's computed default.
+        session.set(turnId, !defaultExpanded);
       }
       overrides.set(sessionId, session);
       return { turnActivityOverrides: overrides };

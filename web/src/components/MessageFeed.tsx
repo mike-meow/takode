@@ -1347,7 +1347,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
                   turn={turn}
                   sessionId={sessionId}
                   minuteBoundaryLabels={minuteBoundaryLabels}
-                  onCollapse={() => toggleTurn(sessionId, turn.id, isLastTurn)}
+                  onCollapse={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
                 />
               )
             ) : (
@@ -1364,7 +1364,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
                       {turn.agentEntries.length > 0 && (
                         <CollapsedActivityBar
                           stats={turn.stats}
-                          onClick={() => toggleTurn(sessionId, turn.id, isLastTurn)}
+                          onClick={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
                         />
                       )}
                       {turn.responseEntry && (
@@ -1563,12 +1563,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     clearScrollToTurn(sessionId);
     const el = containerRef.current;
     if (!el) return;
-    // Expand the target turn's activity if it's collapsed
+    // Expand the target turn's activity if needed.
     const overrides = useStore.getState().turnActivityOverrides.get(sessionId);
     const isExpanded = overrides?.get(scrollToTurnId);
-    if (isExpanded === false || isExpanded === undefined) {
-      // Force expand by toggling (isLastTurn=false so toggle sets true)
-      useStore.getState().toggleTurnActivity(sessionId, scrollToTurnId, false);
+    if (isExpanded !== true) {
+      useStore.getState().keepTurnExpanded(sessionId, scrollToTurnId);
     }
     // Use requestAnimationFrame so uncollapse DOM update settles first
     requestAnimationFrame(() => {

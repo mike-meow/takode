@@ -106,9 +106,9 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
     if (!hasTurns) return;
     const store = useStore.getState();
     if (allCollapsed) {
-      // Expand the last turn by toggling it (removes the false override)
+      // Expand the last turn explicitly, regardless of its default collapse state.
       const lastId = collapsibleTurnIds[collapsibleTurnIds.length - 1];
-      store.toggleTurnActivity(sessionId, lastId, true);
+      store.keepTurnExpanded(sessionId, lastId);
     } else {
       store.collapseAllTurnActivity(sessionId, collapsibleTurnIds);
     }

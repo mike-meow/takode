@@ -19,6 +19,16 @@ vi.mock("remark-gfm", () => ({
 
 // Build a mock for the store that returns configurable values per session
 const mockStoreValues: Record<string, unknown> = {};
+const mockToggleTurnActivity = vi.fn();
+const mockFocusTurn = vi.fn();
+const mockClearScrollToTurn = vi.fn();
+const mockClearScrollToMessage = vi.fn();
+const mockSetActiveTaskTurnId = vi.fn();
+const mockKeepTurnExpanded = vi.fn();
+const mockSetCollapsibleTurnIds = vi.fn();
+const mockSetFeedVisibleCount = vi.fn();
+const mockSetFeedScrollPosition = vi.fn();
+const mockCollapseAllTurnActivity = vi.fn();
 
 vi.mock("../store.js", () => {
   const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
@@ -39,28 +49,29 @@ vi.mock("../store.js", () => {
       feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
-      toggleTurnActivity: vi.fn(),
+      toggleTurnActivity: mockToggleTurnActivity,
       scrollToTurnId: mockStoreValues.scrollToTurnId ?? new Map(),
-      clearScrollToTurn: vi.fn(),
+      clearScrollToTurn: mockClearScrollToTurn,
       scrollToMessageId: mockStoreValues.scrollToMessageId ?? new Map(),
-      clearScrollToMessage: vi.fn(),
+      clearScrollToMessage: mockClearScrollToMessage,
       sessionTaskHistory: mockStoreValues.sessionTaskHistory ?? new Map(),
       activeTaskTurnId: mockStoreValues.activeTaskTurnId ?? new Map(),
-      setActiveTaskTurnId: vi.fn(),
+      setActiveTaskTurnId: mockSetActiveTaskTurnId,
       backgroundAgentNotifs: mockStoreValues.backgroundAgentNotifs ?? new Map(),
     };
     return selector(state);
   };
   useStore.getState = () => ({
     feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
-    setFeedVisibleCount: vi.fn(),
+    setFeedVisibleCount: mockSetFeedVisibleCount,
     feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
-    setFeedScrollPosition: vi.fn(),
-    collapseAllTurnActivity: vi.fn(),
-    setCollapsibleTurnIds: vi.fn(),
+    setFeedScrollPosition: mockSetFeedScrollPosition,
+    collapseAllTurnActivity: mockCollapseAllTurnActivity,
+    setCollapsibleTurnIds: mockSetCollapsibleTurnIds,
     turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
-    toggleTurnActivity: vi.fn(),
-    focusTurn: vi.fn(),
+    toggleTurnActivity: mockToggleTurnActivity,
+    focusTurn: mockFocusTurn,
+    keepTurnExpanded: mockKeepTurnExpanded,
   });
   return { useStore };
 });
@@ -159,6 +170,16 @@ function setStoreSdkSessionRole(
 }
 
 function resetStore() {
+  mockToggleTurnActivity.mockReset();
+  mockFocusTurn.mockReset();
+  mockClearScrollToTurn.mockReset();
+  mockClearScrollToMessage.mockReset();
+  mockSetActiveTaskTurnId.mockReset();
+  mockKeepTurnExpanded.mockReset();
+  mockSetCollapsibleTurnIds.mockReset();
+  mockSetFeedVisibleCount.mockReset();
+  mockSetFeedScrollPosition.mockReset();
+  mockCollapseAllTurnActivity.mockReset();
   mockStoreValues.messages = new Map();
   mockStoreValues.streaming = new Map();
   mockStoreValues.streamingStartedAt = new Map();
@@ -896,6 +917,20 @@ describe("MessageFeed - turn grouping", () => {
 });
 
 describe("MessageFeed - collapsed turns", () => {
+  it("passes defaultExpanded=false when expanding the latest leader activity row", () => {
+    const sid = "test-leader-latest-toggle";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "status" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-400 to #9" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    fireEvent.click(screen.getByText("1 message"));
+    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
+  });
+
   it("leader mode keeps @user assistant responses visible while collapsing internal activity", () => {
     const sid = "test-leader-collapse";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
@@ -914,7 +949,8 @@ describe("MessageFeed - collapsed turns", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getByText("@user: I delegated auth + tests. Waiting for your review.")).toBeTruthy();
+    expect(screen.getByText("I delegated auth + tests. Waiting for your review.")).toBeTruthy();
+    expect(screen.getByTestId("leader-user-addressed-marker")).toBeTruthy();
     expect(screen.queryByText("Assigned q-127 to #3")).toBeNull();
     expect(screen.queryByText("peeked #3 and nudged #4")).toBeNull();
     expect(screen.getAllByText(/message/).length).toBeGreaterThan(0);

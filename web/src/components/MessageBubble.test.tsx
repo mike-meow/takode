@@ -300,7 +300,25 @@ describe("MessageBubble - assistant messages", () => {
     });
     render(<MessageBubble message={msg} />);
 
-    expect(screen.getByText("@user")).toBeTruthy();
+    expect(screen.getByTestId("leader-user-addressed-marker")).toBeTruthy();
+    const body = screen.getByTestId("leader-user-addressed-body");
+    expect(body.className).toContain("border-l-2");
+    expect(screen.getByTestId("markdown").textContent).toBe("here's the latest status");
+  });
+
+  it("strips @user prefix from text content blocks for leaderUserAddressed messages", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "",
+      leaderUserAddressed: true,
+      contentBlocks: [
+        { type: "text", text: "@user: Worker #3 finished tests." },
+      ],
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByTestId("markdown").textContent).toBe("Worker #3 finished tests.");
+    expect(screen.queryByText("@user: Worker #3 finished tests.")).toBeNull();
   });
 
   it("renders a timestamp for assistant messages", () => {

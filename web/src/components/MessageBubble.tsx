@@ -454,35 +454,73 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return groups;
 }
 
+const LEADER_USER_PREFIX_RE = /^\s*@user(?::|\s)+/i;
+
+function stripLeaderUserPrefix(text: string): string {
+  return text.replace(LEADER_USER_PREFIX_RE, "");
+}
+
+function LeaderUserAddressedMarker() {
+  return (
+    <div
+      data-testid="leader-user-addressed-marker"
+      className="mb-1.5 flex items-center text-[10px] font-mono-code uppercase tracking-[0.08em] text-cc-primary/80"
+    >
+      @user
+    </div>
+  );
+}
+
 function AssistantMessage({ message, sessionId, showTimestamp }: { message: ChatMessage; sessionId?: string; showTimestamp: boolean }) {
-  const blocks = message.contentBlocks || [];
   const contentRef = useRef<HTMLDivElement>(null);
   const hidePaw = useContext(HidePawContext);
   const userAddressed = message.leaderUserAddressed === true;
+  const userAddressedBodyClass = userAddressed ? "border-l-2 border-cc-primary/35 pl-3" : "";
+  const displayMessage = useMemo(() => {
+    if (!userAddressed) return message;
+
+    let strippedTextBlock = false;
+    const strippedBlocks = (message.contentBlocks || []).map((block) => {
+      if (block.type !== "text" || strippedTextBlock) return block;
+      const strippedText = stripLeaderUserPrefix(block.text);
+      if (strippedText !== block.text) {
+        strippedTextBlock = true;
+        return { ...block, text: strippedText };
+      }
+      return block;
+    });
+
+    return {
+      ...message,
+      content: stripLeaderUserPrefix(message.content),
+      contentBlocks: strippedBlocks,
+    };
+  }, [message, userAddressed]);
+  const blocks = displayMessage.contentBlocks || [];
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
   const hasThinkingBlock = blocks.some((b) => b.type === "thinking" && b.thinking.trim().length > 0);
-  const shouldRenderContentFallback = message.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
+  const shouldRenderContentFallback = displayMessage.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
 
   // Only show copy-message button when there's actual text content to copy
-  const hasTextContent = message.content
+  const hasTextContent = displayMessage.content
     || blocks.some((b) => b.type === "text" || b.type === "thinking");
 
-  if (blocks.length === 0 && message.content) {
+  if (blocks.length === 0 && displayMessage.content) {
     return (
       <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
         {!hidePaw && <PawTrailAvatar />}
-        <div ref={contentRef} className="flex-1 min-w-0 pr-6">
-          {userAddressed && (
-            <span className="inline-flex items-center rounded-full border border-cc-primary/35 bg-cc-primary/10 px-2 py-0.5 mb-1 text-[10px] font-mono-code text-cc-primary">
-              @user
-            </span>
-          )}
-          <MarkdownContent text={message.content} />
-          {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
+        <div
+          ref={contentRef}
+          data-testid={userAddressed ? "leader-user-addressed-body" : undefined}
+          className={`flex-1 min-w-0 pr-6 ${userAddressedBodyClass}`}
+        >
+          {userAddressed && <LeaderUserAddressedMarker />}
+          <MarkdownContent text={displayMessage.content} />
+          {showTimestamp && <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />}
         </div>
-        <CopyMessageButton message={message} contentRef={contentRef} />
+        <CopyMessageButton message={displayMessage} contentRef={contentRef} />
       </div>
     );
   }
@@ -490,13 +528,13 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
   return (
     <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
       {!hidePaw && <PawTrailAvatar />}
-      <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
-        {userAddressed && (
-          <span className="inline-flex items-center rounded-full border border-cc-primary/35 bg-cc-primary/10 px-2 py-0.5 -mb-1 text-[10px] font-mono-code text-cc-primary">
-            @user
-          </span>
-        )}
-        {shouldRenderContentFallback && <MarkdownContent text={message.content} />}
+      <div
+        ref={contentRef}
+        data-testid={userAddressed ? "leader-user-addressed-body" : undefined}
+        className={`flex-1 min-w-0 space-y-3 pr-6 ${userAddressedBodyClass}`}
+      >
+        {userAddressed && <LeaderUserAddressedMarker />}
+        {shouldRenderContentFallback && <MarkdownContent text={displayMessage.content} />}
         {grouped.map((group, i) => {
           if (group.kind === "content") {
             return <ContentBlockRenderer key={i} block={group.block} sessionId={sessionId} />;
@@ -509,9 +547,9 @@ function AssistantMessage({ message, sessionId, showTimestamp }: { message: Chat
           // Grouped tool_uses
           return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
         })}
-        {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
+        {showTimestamp && <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />}
       </div>
-      {hasTextContent && <CopyMessageButton message={message} contentRef={contentRef} />}
+      {hasTextContent && <CopyMessageButton message={displayMessage} contentRef={contentRef} />}
     </div>
   );
 }
