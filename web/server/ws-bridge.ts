@@ -1802,15 +1802,17 @@ export class WsBridge {
       clearTimeout(session.disconnectGraceTimer);
       session.disconnectGraceTimer = null;
       console.log(`[ws-bridge] CLI reconnected within grace period for session ${sessionTag(sessionId)} (seamless)`);
-      // Flush any herd events that accumulated during the disconnect window.
-      // While cliSocket was null, isSessionIdle returned false, so events were
-      // buffered but never scheduled for delivery. Now that the CLI is back,
-      // trigger delivery of any pending events.
-      if (this.herdEventDispatcher) {
-        const info = this.launcher?.getSession(sessionId);
-        if (info?.isOrchestrator) {
-          this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId);
-        }
+    }
+
+    // Always flush pending herd events on ANY CLI reconnect — not just grace timer
+    // cancellations. Events accumulate in the inbox while cliSocket is null (during
+    // the disconnect/relaunch cycle), but isSessionIdle returns false so they never
+    // get scheduled for delivery. This catches all reconnect paths: grace period
+    // cancellation, post-relaunch reconnect, and server restart recovery.
+    if (this.herdEventDispatcher) {
+      const info = this.launcher?.getSession(sessionId);
+      if (info?.isOrchestrator) {
+        this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId);
       }
     }
 
