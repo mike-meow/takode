@@ -203,7 +203,12 @@ function printEvents(events: unknown[], jsonMode: boolean): void {
         break;
       }
       case "user_message": {
-        console.log(`[${time}] user_message  ${session}`);
+        // Show who sent the message
+        const agentSrc = evt.data.agentSource as { sessionId?: string; sessionLabel?: string } | undefined;
+        let sender = "User";
+        if (agentSrc?.sessionId === "herd-events") sender = "Herd";
+        else if (agentSrc?.sessionId) sender = agentSrc.sessionLabel ? `Agent ${agentSrc.sessionLabel}` : "Agent";
+        console.log(`[${time}] user_message [${sender}]  ${session}`);
         if (evt.data.content) {
           console.log(`  "${truncate(String(evt.data.content), 100)}"`);
         }

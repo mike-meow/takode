@@ -217,7 +217,15 @@ function formatSingleEvent(evt: TakodeEvent): string {
     }
     case "user_message": {
       const content = typeof evt.data.content === "string" ? truncate(evt.data.content, 80) : "";
-      return `${label} | user_message | "${content}"`;
+      // Show who sent the message: [User], [Agent #N name], or [Herd]
+      const agentSource = evt.data.agentSource as { sessionId?: string; sessionLabel?: string } | undefined;
+      let sender = "User";
+      if (agentSource?.sessionId === "herd-events") {
+        sender = "Herd";
+      } else if (agentSource?.sessionId) {
+        sender = agentSource.sessionLabel ? `Agent ${agentSource.sessionLabel}` : "Agent";
+      }
+      return `${label} | user_message [${sender}] | "${content}"`;
     }
     default:
       return `${label} | ${evt.event}`;
