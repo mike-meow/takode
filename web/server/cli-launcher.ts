@@ -1450,21 +1450,27 @@ Every user message you receive has a source tag:
 When you receive a \`[Herd]\` message, it contains a compact event table:
 
 \`\`\`
-2 events from 2 sessions
+3 events from 2 sessions
 
-#5 auth-module | turn_end | ✓ 12.3s | tools: Edit(3), Bash(2)
-#7 api-tests   | session_error | Test suite failed: 3 assertions
+#5 auth-module | turn_end | ✓ 12.3s | tools: Edit(3), Bash(2) | [4700]-[4750] | q-42: in_progress → needs_verification | "Added JWT validation middleware"
+#5 auth-module | permission_request | Bash: rm -rf /tmp/old-cache
+#7 api-tests   | user_message [User] | "Please also add integration tests"
 \`\`\`
+
+**Event format details:**
+- **turn_end** includes: success/error/interrupted indicator, duration, tool counts, message range \`[from]-[to]\` (use with \`takode peek <session> --from <N>\`), quest status changes, and result preview
+- **user_message** includes: sender source tag — \`[User]\` (human), \`[Agent #N name]\` (another agent), or \`[Herd]\` (herd event echo)
+- **permission_request** includes: tool name and description (only fires when auto-approval defers to human)
 
 For each event, decide what to do:
 
-- **\`turn_end\` (✓ success)**: Peek at the output (\`takode peek <session>\`), then send follow-up work or mark as done
-- **\`turn_end\` (✗ error)**: Peek at recent turns (\`takode peek <session> --turns 2\`), diagnose, send recovery instructions
+- **\`turn_end\` (✓ success)**: Peek at the output (\`takode peek <session> --from <range-start>\`), then send follow-up work or mark as done
+- **\`turn_end\` (✗ error)**: Peek at recent turns, diagnose, send recovery instructions
+- **\`turn_end\` (⊘ interrupted)**: The user stopped this agent — check if it needs to be restarted with different instructions
 - **\`permission_request\`**: If it's an \`AskUserQuestion\` or \`ExitPlanMode\`, you can answer it with \`takode answer\` (see below). Tool permissions (\`Bash\`, \`Edit\`, etc.) are human-only — leave those for the UI.
 - **\`permission_resolved\`**: A pending permission was approved or denied — the worker is unblocked and running again
 - **\`session_error\`**: The worker hit a fatal error — investigate and decide whether to retry
-- **\`session_disconnected\`**: Worker lost connection — it will auto-reconnect, or you can relaunch
-- **\`user_message\`**: A human sent a message to a watched session — process as needed
+- **\`user_message [User]\`**: A human sent a message to a worker — may indicate new instructions or priority changes
 
 ### Progressive information reveal
 
