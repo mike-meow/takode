@@ -1905,11 +1905,15 @@ export class WsBridge {
     if (session.claudeSdkAdapter && session.claudeSdkAdapter !== adapter) {
       session.claudeSdkAdapter.disconnect().catch(() => {});
     }
-    // Copy worktree info from launcher so the UI shows worktree indicators
+    // Copy launcher metadata into session state so the UI has it immediately
+    // (before the SDK's system.init arrives with the resolved values).
     const launcherInfo = this.launcher?.getSession(sessionId);
     if (launcherInfo?.isWorktree) {
       session.state.is_worktree = true;
       if (launcherInfo.repoRoot) session.state.repo_root = launcherInfo.repoRoot;
+    }
+    if (launcherInfo?.model && !session.state.model) {
+      session.state.model = launcherInfo.model;
     }
     session.claudeSdkAdapter = adapter;
 
@@ -1928,7 +1932,17 @@ export class WsBridge {
       if (msg.type === "session_init") {
         const initMsg = msg as any;
         if (initMsg.session) {
+          // Merge SDK init data into session state, but PRESERVE the Companion
+          // session ID. The SDK's session_id is the CLI's internal resumable ID
+          // (stored separately in session.state.cliSessionId via onSessionMeta).
+          // Overwriting session.state.session_id would cause the browser to create
+          // a duplicate entry in its sessions Map keyed by the CLI ID.
+          const companionSessionId = session.state.session_id;
           session.state = { ...session.state, ...initMsg.session, backend_type: "claude-sdk" };
+          session.state.session_id = companionSessionId;
+
+          // Also fix the forwarded message so the browser sees the Companion ID
+          initMsg.session = { ...initMsg.session, session_id: companionSessionId, backend_type: "claude-sdk" };
         }
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
         this.persistSession(session);
@@ -1940,7 +1954,11 @@ export class WsBridge {
 
     adapter.onSessionMeta((meta) => {
       if (meta.cliSessionId) {
-        session.state.session_id = meta.cliSessionId;
+        // Store the CLI's internal session ID in the launcher for --resume.
+        // Do NOT overwrite session.state.session_id — that's the Companion's
+        // session ID which the browser uses as its primary key. Overwriting it
+        // causes duplicate entries in the sidebar (same bug as WebSocket path,
+        // see handleSystemMessage comment).
         this.launcher?.setCLISessionId(sessionId, meta.cliSessionId);
       }
       if (meta.model) session.state.model = meta.model;
