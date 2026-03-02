@@ -161,36 +161,35 @@ export class ClaudeSdkAdapter {
       sessionOptions.pathToClaudeCodeExecutable = this.options.claudeBinary;
     }
 
-    // WORKAROUND: The Agent SDK's session API (unstable_v2_createSession /
-    // unstable_v2_resumeSession) does NOT pass `cwd` to the ProcessTransport
-    // that spawns the Claude CLI subprocess. The subprocess inherits
-    // process.cwd() instead, which is the Companion server's own directory
-    // (e.g., companion/web/). We temporarily chdir to the target cwd before
-    // creating the session so the subprocess spawns in the correct directory.
-    // This is safe because the SDK constructor synchronously spawns the
-    // subprocess in the same tick.
-    const originalCwd = process.cwd();
+    // The SDK's session API does NOT pass `cwd` to the ProcessTransport that
+    // spawns the Claude CLI subprocess — it defaults to process.cwd(). Override
+    // the spawn function to inject the target cwd. This is safe for concurrent
+    // sessions because each gets its own callback closure with its own targetCwd.
+    // (The previous approach used process.chdir() which is process-global and
+    // caused race conditions between concurrent SDK sessions.)
     const targetCwd = this.options.cwd;
-    if (targetCwd && targetCwd !== originalCwd) {
-      try {
-        process.chdir(targetCwd);
-      } catch (e) {
-        console.warn(`[claude-sdk-adapter] Failed to chdir to ${targetCwd}: ${e instanceof Error ? e.message : e}`);
-      }
+    if (targetCwd) {
+      sessionOptions.spawnClaudeCodeProcess = (spawnOpts: {
+        command: string; args: string[];
+        cwd?: string; env: Record<string, string | undefined>;
+        signal: AbortSignal;
+      }) => {
+        const { spawn } = require("node:child_process") as typeof import("node:child_process");
+        const proc = spawn(spawnOpts.command, spawnOpts.args, {
+          cwd: targetCwd,
+          env: spawnOpts.env as NodeJS.ProcessEnv,
+          stdio: ["pipe", "pipe", "pipe"],
+          signal: spawnOpts.signal,
+        });
+        return proc;
+      };
     }
 
     // Create or resume session
-    try {
-      if (this.options.cliSessionId) {
-        this.sdkSession = sdk.unstable_v2_resumeSession(this.options.cliSessionId, sessionOptions as any);
-      } else {
-        this.sdkSession = sdk.unstable_v2_createSession(sessionOptions as any);
-      }
-    } finally {
-      // Always restore the original cwd, even if session creation throws
-      if (process.cwd() !== originalCwd) {
-        try { process.chdir(originalCwd); } catch { /* ignore */ }
-      }
+    if (this.options.cliSessionId) {
+      this.sdkSession = sdk.unstable_v2_resumeSession(this.options.cliSessionId, sessionOptions as any);
+    } else {
+      this.sdkSession = sdk.unstable_v2_createSession(sessionOptions as any);
     }
 
     this.connected = true;
