@@ -6,6 +6,7 @@ export interface QuestListFilterOptions {
   tag?: string;
   session?: string;
   text?: string;
+  verification?: string;
 }
 
 function parseCsv(value: string | undefined): string[] {
@@ -24,11 +25,38 @@ export function applyQuestListFilters(
   const tagTokens = new Set(
     [...parseCsv(filters.tags), ...parseCsv(filters.tag)].map((tag) => tag.toLowerCase()),
   );
+  const verificationScopes = new Set(parseCsv(filters.verification).map((scope) => scope.toLowerCase()));
   const sessionId = filters.session?.trim() || "";
   const textQuery = filters.text?.trim().toLowerCase() || "";
 
   return quests.filter((quest) => {
     if (statuses.size > 0 && !statuses.has(quest.status)) return false;
+
+    if (verificationScopes.size > 0) {
+      const isVerification = quest.status === "needs_verification";
+      const inInbox =
+        isVerification && !!(quest as { verificationInboxUnread?: boolean }).verificationInboxUnread;
+      const wantsAnyVerification =
+        verificationScopes.has("all")
+        || verificationScopes.has("verification")
+        || verificationScopes.has("needs_verification");
+      const wantsInbox =
+        verificationScopes.has("inbox")
+        || verificationScopes.has("unread")
+        || verificationScopes.has("new");
+      const wantsReviewed =
+        verificationScopes.has("reviewed")
+        || verificationScopes.has("non-inbox")
+        || verificationScopes.has("non_inbox")
+        || verificationScopes.has("read")
+        || verificationScopes.has("acknowledged");
+
+      let matchesVerificationScope = false;
+      if (wantsAnyVerification && isVerification) matchesVerificationScope = true;
+      if (wantsInbox && inInbox) matchesVerificationScope = true;
+      if (wantsReviewed && isVerification && !inInbox) matchesVerificationScope = true;
+      if (!matchesVerificationScope) return false;
+    }
 
     if (tagTokens.size > 0) {
       const questTags = new Set((quest.tags || []).map((tag) => tag.toLowerCase()));

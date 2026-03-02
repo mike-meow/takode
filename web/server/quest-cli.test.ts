@@ -167,3 +167,126 @@ describe("quest CLI auth fallback", () => {
   });
 });
 
+describe("quest CLI verification inbox commands", () => {
+  it("uses verification/read endpoint for quest later", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-verification-read-"));
+    const companionDir = join(tmp, ".companion");
+    mkdirSync(companionDir, { recursive: true });
+
+    const seenHeaders: Record<string, string | string[] | undefined>[] = [];
+    const seenPaths: string[] = [];
+    const server = createServer(async (req, res) => {
+      seenHeaders.push(req.headers);
+      seenPaths.push(req.url || "");
+      if (req.method === "POST" && req.url === "/api/quests/q-1/verification/read") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          questId: "q-1",
+          title: "Quest",
+          status: "needs_verification",
+          verificationInboxUnread: false,
+          verificationItems: [{ text: "check", checked: false }],
+        }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      join(companionDir, "session-auth.json"),
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["later", "q-1", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: "q-1",
+        verificationInboxUnread: false,
+      });
+      expect(seenPaths).toContain("/api/quests/q-1/verification/read");
+      expect(seenHeaders.some((h) => h["x-companion-session-id"] === "session-file")).toBe(true);
+      expect(seenHeaders.some((h) => h["x-companion-auth-token"] === "file-token")).toBe(true);
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses verification/inbox endpoint for quest inbox", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-verification-inbox-"));
+    const companionDir = join(tmp, ".companion");
+    mkdirSync(companionDir, { recursive: true });
+
+    const seenHeaders: Record<string, string | string[] | undefined>[] = [];
+    const seenPaths: string[] = [];
+    const server = createServer(async (req, res) => {
+      seenHeaders.push(req.headers);
+      seenPaths.push(req.url || "");
+      if (req.method === "POST" && req.url === "/api/quests/q-1/verification/inbox") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          questId: "q-1",
+          title: "Quest",
+          status: "needs_verification",
+          verificationInboxUnread: true,
+          verificationItems: [{ text: "check", checked: false }],
+        }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      join(companionDir, "session-auth.json"),
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["inbox", "q-1", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: "q-1",
+        verificationInboxUnread: true,
+      });
+      expect(seenPaths).toContain("/api/quests/q-1/verification/inbox");
+      expect(seenHeaders.some((h) => h["x-companion-session-id"] === "session-file")).toBe(true);
+      expect(seenHeaders.some((h) => h["x-companion-auth-token"] === "file-token")).toBe(true);
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

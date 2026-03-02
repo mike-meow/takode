@@ -19,6 +19,8 @@
  *   cancel     Cancel a quest from any status
  *   transition Generic status transition
  *   edit       In-place edit (no new version)
+ *   later      Move needs_verification quest out of verification inbox
+ *   inbox      Move needs_verification quest back to verification inbox
  *   check      Toggle a verification checkbox
  *   feedback   Add a feedback entry to a quest's thread
  *   address    Toggle feedback addressed status
@@ -37,6 +39,8 @@ import {
   transitionQuest,
   patchQuest,
   checkVerificationItem,
+  markQuestVerificationRead,
+  markQuestVerificationInboxUnread,
   deleteQuest,
 } from "../server/quest-store.js";
 import type { QuestmasterTask } from "../server/quest-types.js";
@@ -244,6 +248,41 @@ const STATUS_LABELS: Record<string, string> = {
   done: "done",
 };
 
+const VERIFICATION_FILTER_VALUES = new Set([
+  "all",
+  "verification",
+  "needs_verification",
+  "inbox",
+  "unread",
+  "new",
+  "reviewed",
+  "non-inbox",
+  "non_inbox",
+  "read",
+  "acknowledged",
+]);
+
+function parseVerificationFilterTokens(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isVerificationInboxUnreadQuest(q: QuestmasterTask): boolean {
+  return q.status === "needs_verification" && !!(q as { verificationInboxUnread?: boolean }).verificationInboxUnread;
+}
+
+function requireNeedsVerificationQuest(
+  quest: QuestmasterTask,
+  questId: string,
+  action: "later" | "inbox",
+): void {
+  if (quest.status === "needs_verification") return;
+  die(`Quest ${questId} is ${quest.status}; quest ${action} only applies to needs_verification quests.`);
+}
+
 const currentSessionId = getCurrentSessionId();
 const companionPort = getCompanionPort();
 
@@ -293,7 +332,11 @@ function formatQuestLine(q: QuestmasterTask, archivedMap?: Map<string, boolean>)
     if (!previous?.length) return "";
     return `  [prev:${previous.length}]`;
   })();
-  const statusLabel = cancelled ? "cancelled" : (STATUS_LABELS[q.status] ?? q.status);
+  const statusLabel = (() => {
+    if (cancelled) return "cancelled";
+    if (isVerificationInboxUnreadQuest(q)) return "verification_inbox";
+    return STATUS_LABELS[q.status] ?? q.status;
+  })();
   const pad = (s: string, len: number) => s.padEnd(len);
   return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}${ownership}  (${statusLabel}${session})`;
 }
@@ -324,6 +367,7 @@ function formatQuestDetail(q: QuestmasterTask, archivedMap?: Map<string, boolean
       .verificationItems;
     const checked = items.filter((i) => i.checked).length;
     lines.push(`Verification: ${checked}/${items.length}`);
+    lines.push(`Inbox:        ${isVerificationInboxUnreadQuest(q) ? "unread (Verification Inbox)" : "acknowledged (Verification)"}`);
     for (let i = 0; i < items.length; i++) {
       lines.push(`  [${items[i].checked ? "x" : " "}] ${i}: ${items[i].text}`);
     }
@@ -433,13 +477,23 @@ async function uploadQuestImage(port: string, rawPath: string): Promise<QuestIma
 // ─── Commands ───────────────────────────────────────────────────────────────
 
 async function cmdList(): Promise<void> {
-  validateFlags(["status", "tags", "tag", "session", "text", "json"]);
+  validateFlags(["status", "tags", "tag", "session", "text", "verification", "json"]);
+  const verification = option("verification");
+  const verificationTokens = parseVerificationFilterTokens(verification);
+  const invalidVerification = verificationTokens.filter((token) => !VERIFICATION_FILTER_VALUES.has(token));
+  if (invalidVerification.length > 0) {
+    die(
+      `Invalid --verification value(s): ${invalidVerification.join(", ")}. `
+      + "Valid values: all, inbox, reviewed (aliases: verification, needs_verification, unread, new, non-inbox, non_inbox, read, acknowledged).",
+    );
+  }
   const quests = applyQuestListFilters(await listQuests(), {
     status: option("status"),
     tags: option("tags"),
     tag: option("tag"),
     session: option("session"),
     text: option("text"),
+    verification,
   });
   const archivedMap = await getSessionArchivedMap();
 
@@ -706,6 +760,108 @@ async function cmdTransition(): Promise<void> {
   }
 }
 
+async function cmdLater(): Promise<void> {
+  validateFlags(["json"]);
+  const id = positional(0);
+  if (!id) die("Usage: quest later <questId>");
+
+  if (companionPort) {
+    try {
+      const res = await fetch(
+        `http://localhost:${companionPort}/api/quests/${encodeURIComponent(id)}/verification/read`,
+        {
+          method: "POST",
+          headers: companionAuthHeaders(),
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        die((err as { error: string }).error || res.statusText);
+      }
+      const quest = await res.json() as QuestmasterTask;
+      requireNeedsVerificationQuest(quest, id, "later");
+      if (jsonOutput) {
+        out(quest);
+      } else {
+        console.log(`Marked ${quest.questId} as acknowledged (left Verification Inbox, stays in Verification)`);
+      }
+      return;
+    } catch (e) {
+      if ((e as Error).name === "AbortError" || (e as Error).message?.includes("timeout")) {
+        // Server unreachable — fall through to direct filesystem.
+      } else {
+        die((e as Error).message);
+      }
+    }
+  }
+
+  try {
+    const quest = await markQuestVerificationRead(id);
+    if (!quest) die(`Quest ${id} not found`);
+    requireNeedsVerificationQuest(quest, id, "later");
+    await notifyServer();
+    if (jsonOutput) {
+      out(quest);
+    } else {
+      console.log(`Marked ${quest.questId} as acknowledged (left Verification Inbox, stays in Verification)`);
+    }
+  } catch (e) {
+    die((e as Error).message);
+  }
+}
+
+async function cmdInbox(): Promise<void> {
+  validateFlags(["json"]);
+  const id = positional(0);
+  if (!id) die("Usage: quest inbox <questId>");
+
+  if (companionPort) {
+    try {
+      const res = await fetch(
+        `http://localhost:${companionPort}/api/quests/${encodeURIComponent(id)}/verification/inbox`,
+        {
+          method: "POST",
+          headers: companionAuthHeaders(),
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        die((err as { error: string }).error || res.statusText);
+      }
+      const quest = await res.json() as QuestmasterTask;
+      requireNeedsVerificationQuest(quest, id, "inbox");
+      if (jsonOutput) {
+        out(quest);
+      } else {
+        console.log(`Moved ${quest.questId} back to Verification Inbox`);
+      }
+      return;
+    } catch (e) {
+      if ((e as Error).name === "AbortError" || (e as Error).message?.includes("timeout")) {
+        // Server unreachable — fall through to direct filesystem.
+      } else {
+        die((e as Error).message);
+      }
+    }
+  }
+
+  try {
+    const quest = await markQuestVerificationInboxUnread(id);
+    if (!quest) die(`Quest ${id} not found`);
+    requireNeedsVerificationQuest(quest, id, "inbox");
+    await notifyServer();
+    if (jsonOutput) {
+      out(quest);
+    } else {
+      console.log(`Moved ${quest.questId} back to Verification Inbox`);
+    }
+  } catch (e) {
+    die((e as Error).message);
+  }
+}
+
 async function cmdEdit(): Promise<void> {
   validateFlags(["title", "desc", "tags", "json"]);
   const id = positional(0);
@@ -943,7 +1099,7 @@ function showHelp(): void {
 Usage: quest <command> [options]
 
 Commands:
-  list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--json]
+  list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--verification <scope>] [--json]
                                                          List quests with optional filters
   mine   [--json]                                        List quests owned by current session
   show   <id> [--json]                                   Show quest detail
@@ -955,6 +1111,8 @@ Commands:
   done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
   cancel <id> [--notes "reason"] [--json]                Cancel from any status
   transition <id> --status <s> [--desc "..."] [--json]   Change status
+  later  <id> [--json]                                   Move verification quest out of inbox
+  inbox  <id> [--json]                                   Move verification quest back to inbox
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item
   feedback <id> --text "..." [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
@@ -967,7 +1125,12 @@ Environment:
   COMPANION_PORT        Server port for browser notifications
 
 Auth fallback:
-  .companion/session-auth.json (or legacy .codex/.claude paths)`);
+  .companion/session-auth.json (or legacy .codex/.claude paths)
+
+Verification scopes:
+  --verification inbox      needs_verification quests in Verification Inbox
+  --verification reviewed   needs_verification quests in Verification (acknowledged)
+  --verification all        all needs_verification quests`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -996,6 +1159,10 @@ async function main(): Promise<void> {
       return cmdCancel();
     case "transition":
       return cmdTransition();
+    case "later":
+      return cmdLater();
+    case "inbox":
+      return cmdInbox();
     case "edit":
       return cmdEdit();
     case "check":

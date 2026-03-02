@@ -132,4 +132,20 @@ describe("ensureQuestmasterIntegration", () => {
     );
     expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/rg", 0o755);
   });
+
+  it("documents verification inbox commands and filters", () => {
+    ensureQuestmasterIntegration(3456, "/repo/web");
+
+    const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
+      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+    );
+    expect(codexSkillWrite).toBeDefined();
+
+    const skill = String(codexSkillWrite?.[1] ?? "");
+    expect(skill).toContain("quest later  <id> [--json]");
+    expect(skill).toContain("quest inbox  <id> [--json]");
+    expect(skill).toContain("--verification <scope>");
+    expect(skill).toContain("Verification Inbox workflow");
+    expect(skill).toContain("quest list --verification inbox");
+  });
 });

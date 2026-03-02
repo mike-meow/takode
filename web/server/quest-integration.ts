@@ -222,7 +222,7 @@ These are completely different systems. Do NOT confuse them.
 ## Commands (Quick Reference)
 
 \`\`\`
-quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--json]  List quests
+quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--verification <scope>] [--json]  List quests
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts
@@ -231,6 +231,8 @@ quest claim  <id> [--session <sid>] [--json]                  Claim for your ses
 quest complete <id> --items "c1,c2" [--json]                  Submit for verification
 quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
 quest transition <id> --status <s> [--desc "..."] [--json]    Change status
+quest later  <id> [--json]                                    Move quest out of Verification Inbox
+quest inbox  <id> [--json]                                    Move quest back to Verification Inbox
 quest edit   <id> [--title "..."] [--desc "..."] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
 quest feedback <id> --text "..." [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
@@ -274,6 +276,7 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | \`--tag "t1"\` | Filter by single tag (alias for --tags) |
 | \`--session <id>\` | Filter by owning session |
 | \`--text "query"\` | Full-text search |
+| \`--verification <scope>\` | Filter verification split: \`inbox\`, \`reviewed\`, or \`all\` |
 | \`--json\` | Output JSON |
 
 ### quest claim <id> [flags]
@@ -319,7 +322,7 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | \`--session <id>\` | Session ID |
 | \`--json\` | Output JSON |
 
-### quest show <id>, quest history <id>, quest check <id> <n>, quest address <id> <n>, quest delete <id>, quest mine, quest tags
+### quest show <id>, quest history <id>, quest check <id> <n>, quest address <id> <n>, quest later <id>, quest inbox <id>, quest delete <id>, quest mine, quest tags
 These commands accept only \`--json\` for JSON output.
 
 ## Usage Examples
@@ -330,6 +333,10 @@ quest create "Fix mobile sidebar" --desc "Sidebar overflows on screens <400px" -
 
 # List in-progress quests
 quest list --status in_progress
+
+# List verification inbox vs acknowledged verification
+quest list --verification inbox
+quest list --verification reviewed
 
 # Search quests by text
 quest list --text "sidebar"
@@ -346,6 +353,12 @@ quest feedback q-12 --text "Fixed with flex-wrap, see screenshot" --image /tmp/s
 
 # Submit for verification
 quest complete q-12 --items "Sidebar fits on iPhone SE,No horizontal scroll on mobile"
+
+# Acknowledge a verification quest (move it out of inbox)
+quest later q-12
+
+# Move an acknowledged verification quest back to inbox
+quest inbox q-12
 
 # Mark as done with notes
 quest done q-12 --notes "Fixed in commit abc123, tested on iOS Safari"
@@ -430,6 +443,12 @@ idea → refined → in_progress → needs_verification → done
 - Do not claim feedback was addressed unless both happened: (1) you posted the agent reply with \`quest feedback\`, and (2) the corresponding human feedback entries are marked addressed.
 - \`quest complete --items "..."\` — only include items requiring **human** verification. Update the checklist to reflect the new state (e.g. items that were previously failing may need re-verification). Keep each item to one short sentence.
 - **After submitting**, if you can self-verify any checklist items (e.g. unit tests pass, code review confirms the fix), check them off immediately with \`quest check q-N <index>\`. Only leave items unchecked if they genuinely need human eyes (UI appearance, UX judgment, etc.).
+
+### Verification Inbox workflow
+- Newly submitted quests enter **Verification Inbox** (\`verificationInboxUnread=true\`).
+- Use \`quest later q-N\` after triage/review to move a quest out of inbox while keeping it in \`needs_verification\`.
+- Use \`quest inbox q-N\` to re-prioritize a verification quest by moving it back into inbox.
+- Use list filters when triaging: \`quest list --verification inbox\`, \`quest list --verification reviewed\`, \`quest list --verification all\`.
 
 ### Checking off verification items
 
