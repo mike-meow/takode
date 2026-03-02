@@ -93,6 +93,21 @@ function resolveInitialModeState(
   askPermissionRequested: boolean,
 ): InitialModeState {
   if (backend !== "codex") {
+    // If the UI sent an explicit permissionMode, respect it.
+    // Otherwise fall back to the askPermission toggle.
+    const requested = typeof requestedPermissionMode === "string"
+      ? requestedPermissionMode.trim()
+      : "";
+    if (requested === "acceptEdits") {
+      return { permissionMode: "acceptEdits", askPermission: true, uiMode: "agent" };
+    }
+    if (requested === "bypassPermissions") {
+      return { permissionMode: "bypassPermissions", askPermission: false, uiMode: "agent" };
+    }
+    if (requested === "plan") {
+      return { permissionMode: "plan", askPermission: askPermissionRequested, uiMode: "plan" };
+    }
+    // No explicit mode — derive from askPermission (legacy behavior)
     const permissionMode = askPermissionRequested ? "plan" : "bypassPermissions";
     return {
       permissionMode,

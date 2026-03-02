@@ -12,6 +12,7 @@ import {
   getDefaultMode,
   toModelOptions,
   resolveCodexCliMode,
+  resolveClaudeCliMode,
   deriveCodexUiMode,
   deriveCodexAskPermission,
   type ModelOption,
@@ -297,14 +298,14 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       || (useWorktree ? gitRepoInfo?.currentBranch : undefined)
       || undefined;
     const cwdSnapshot = cwd;
-    const codexPermissionMode = backend === "codex"
+    const permissionMode = backend === "codex"
       ? resolveCodexCliMode(mode, askPermission)
-      : undefined;
+      : resolveClaudeCliMode(mode, askPermission);
 
     // Build creation opts (stored in pending session for retry)
     const createOpts = {
       model,
-      permissionMode: codexPermissionMode,
+      permissionMode,
       cwd: cwdSnapshot || undefined,
       envSlug: selectedEnv || undefined,
       branch: branchName,

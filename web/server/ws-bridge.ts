@@ -2506,17 +2506,23 @@ export class WsBridge {
       if (msg.type === "session_init") {
         const initMsg = msg as any;
         if (initMsg.session) {
-          // Merge SDK init data into session state, but PRESERVE the Companion
-          // session ID. The SDK's session_id is the CLI's internal resumable ID
-          // (stored separately in session.state.cliSessionId via onSessionMeta).
-          // Overwriting session.state.session_id would cause the browser to create
-          // a duplicate entry in its sessions Map keyed by the CLI ID.
+          // Merge SDK init data into session state, but PRESERVE:
+          // - session_id: the Companion UUID (not the CLI's internal ID)
+          // - cwd: the launch cwd (worktree path / user-selected dir), not the
+          //   CLI's resolved cwd which may differ (e.g., process.cwd() fallback)
           const companionSessionId = session.state.session_id;
+          const launchCwd = session.state.cwd;
           session.state = { ...session.state, ...initMsg.session, backend_type: "claude-sdk" };
           session.state.session_id = companionSessionId;
+          if (launchCwd) {
+            session.state.cwd = launchCwd;
+          }
 
-          // Also fix the forwarded message so the browser sees the Companion ID
+          // Also fix the forwarded message so the browser sees correct IDs/cwd
           initMsg.session = { ...initMsg.session, session_id: companionSessionId, backend_type: "claude-sdk" };
+          if (launchCwd) {
+            initMsg.session.cwd = launchCwd;
+          }
         }
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
         this.persistSession(session);
