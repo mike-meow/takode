@@ -3090,15 +3090,21 @@ export class WsBridge {
       });
       this.persistSession(session);
 
-      // Force-clear isGenerating on system.init — the CLI just reconnected via
-      // --resume and is definitively NOT generating. Any stale isGenerating=true
-      // from a previous turn interrupted by disconnect is invalid. Use setGenerating()
-      // (not direct assignment) to emit turn_end takode event, which triggers
-      // herd event delivery for orchestrator sessions.
+      // Force-clear isGenerating on system.init for stale reconnect state.
+      // Exception: if we already dispatched a user message and are waiting for
+      // that turn's backend output, preserve running state so we don't emit a
+      // spurious turn_end before the real turn starts producing output.
       if (session.isGenerating) {
-        console.log(`[ws-bridge] Force-clearing stale isGenerating on system.init for session ${sessionTag(session.id)}`);
-        this.setGenerating(session, false, "system_init_reset");
-        this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+        const hasInFlightUserDispatch =
+          typeof session.lastOutboundUserNdjson === "string"
+          && this.isCliUserMessagePayload(session.lastOutboundUserNdjson);
+        if (hasInFlightUserDispatch) {
+          console.log(`[ws-bridge] Preserving running state on system.init for in-flight user dispatch in session ${sessionTag(session.id)}`);
+        } else {
+          console.log(`[ws-bridge] Force-clearing stale isGenerating on system.init for session ${sessionTag(session.id)}`);
+          this.setGenerating(session, false, "system_init_reset");
+          this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+        }
       }
 
       // Flush any messages queued before CLI was initialized (e.g. user sent

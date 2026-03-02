@@ -335,6 +335,38 @@ describe("CLI handlers", () => {
     expect(userMsgAfterInit).toBeUndefined();
   });
 
+  it("handleCLIMessage: system.init does not emit turn_end for an in-flight user dispatch", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    browser.send.mockClear();
+
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    // User message marks the session running immediately.
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "hello",
+    }));
+    expect(bridge.getSession("s1")!.isGenerating).toBe(true);
+
+    // Regression: when system.init arrives before assistant/result output,
+    // we should preserve the in-flight turn instead of emitting a fake turn_end.
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
+    expect(turnEndCalls).toHaveLength(0);
+    expect(bridge.getSession("s1")!.isGenerating).toBe(true);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const idleStatus = calls.find((m: any) => m.type === "status_change" && m.status === "idle");
+    expect(idleStatus).toBeUndefined();
+
+    spy.mockRestore();
+  });
+
   it("handleCLIMessage: parses NDJSON and routes system.init", () => {
     mockExecSync.mockImplementation(() => {
       throw new Error("not a git repo");
