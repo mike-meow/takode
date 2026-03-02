@@ -749,19 +749,6 @@ function MinuteBoundaryTimestamp({ timestamp, label }: { timestamp: number; labe
   );
 }
 
-function TurnDurationSeparator({ durationMs }: { durationMs: number }) {
-  return (
-    <div className="flex items-center justify-center py-0.5">
-      <span
-        data-testid="turn-duration-separator"
-        className="text-[11px] text-cc-muted/55 font-mono-code select-none"
-      >
-        -- {formatElapsed(durationMs)} --
-      </span>
-    </div>
-  );
-}
-
 function getTurnBoundaryTimestamp(turn: Turn): number | null {
   const boundary = turn.userEntry;
   if (!boundary || boundary.kind !== "message") return null;
@@ -779,14 +766,58 @@ function getNormalTurnDurationMs(turn: Turn): number | null {
   return responseTimestamp - userTimestamp;
 }
 
-function getBetweenTurnDurationMs(previousTurn: Turn, currentTurn: Turn, leaderMode: boolean): number | null {
-  if (leaderMode) {
-    const previousBoundary = getTurnBoundaryTimestamp(previousTurn);
-    const currentBoundary = getTurnBoundaryTimestamp(currentTurn);
-    if (previousBoundary == null || currentBoundary == null || currentBoundary < previousBoundary) return null;
-    return currentBoundary - previousBoundary;
-  }
-  return getNormalTurnDurationMs(previousTurn);
+function getLeaderTurnDurationMs(turn: Turn, nextTurn: Turn | null): number | null {
+  if (!nextTurn) return null;
+  const currentBoundary = getTurnBoundaryTimestamp(turn);
+  const nextBoundary = getTurnBoundaryTimestamp(nextTurn);
+  if (currentBoundary == null || nextBoundary == null || nextBoundary < currentBoundary) return null;
+  return nextBoundary - currentBoundary;
+}
+
+function getTurnSummaryDurationMs(turn: Turn, nextTurn: Turn | null, leaderMode: boolean): number | null {
+  if (leaderMode) return getLeaderTurnDurationMs(turn, nextTurn);
+  return getNormalTurnDurationMs(turn);
+}
+
+function TurnSummaryStats({
+  stats,
+  durationMs,
+  separatorClass,
+}: {
+  stats: TurnStats;
+  durationMs: number | null;
+  separatorClass: string;
+}) {
+  const hasMessages = stats.messageCount > 0;
+  const hasTools = stats.toolCount > 0;
+  const hasAgents = stats.subagentCount > 0;
+  const hasDuration = durationMs !== null;
+
+  return (
+    <>
+      {hasMessages && (
+        <span>{stats.messageCount} message{stats.messageCount !== 1 ? "s" : ""}</span>
+      )}
+      {hasTools && (
+        <>
+          {hasMessages && <span className={separatorClass}>·</span>}
+          <span>{stats.toolCount} tool{stats.toolCount !== 1 ? "s" : ""}</span>
+        </>
+      )}
+      {hasAgents && (
+        <>
+          {(hasMessages || hasTools) && <span className={separatorClass}>·</span>}
+          <span>{stats.subagentCount} agent{stats.subagentCount !== 1 ? "s" : ""}</span>
+        </>
+      )}
+      {hasDuration && (
+        <>
+          {(hasMessages || hasTools || hasAgents) && <span className={separatorClass}>·</span>}
+          <span data-testid="turn-summary-duration">{formatElapsed(durationMs)}</span>
+        </>
+      )}
+    </>
+  );
 }
 
 const FeedEntries = memo(function FeedEntries({
@@ -827,7 +858,15 @@ const FeedEntries = memo(function FeedEntries({
 });
 
 /** Compact bar showing agent activity stats. Click to expand the full activity. */
-const CollapsedActivityBar = memo(function CollapsedActivityBar({ stats, onClick }: { stats: TurnStats; onClick: () => void }) {
+const CollapsedActivityBar = memo(function CollapsedActivityBar({
+  stats,
+  durationMs,
+  onClick,
+}: {
+  stats: TurnStats;
+  durationMs: number | null;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -836,27 +875,23 @@ const CollapsedActivityBar = memo(function CollapsedActivityBar({ stats, onClick
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
         <path d="M6 4l4 4-4 4" />
       </svg>
-      {stats.messageCount > 0 && (
-        <span>{stats.messageCount} message{stats.messageCount !== 1 ? "s" : ""}</span>
-      )}
-      {stats.toolCount > 0 && (
-        <>
-          {stats.messageCount > 0 && <span className="text-cc-muted/40">·</span>}
-          <span>{stats.toolCount} tool{stats.toolCount !== 1 ? "s" : ""}</span>
-        </>
-      )}
-      {stats.subagentCount > 0 && (
-        <>
-          {(stats.messageCount > 0 || stats.toolCount > 0) && <span className="text-cc-muted/40">·</span>}
-          <span>{stats.subagentCount} agent{stats.subagentCount !== 1 ? "s" : ""}</span>
-        </>
-      )}
+      <TurnSummaryStats stats={stats} durationMs={durationMs} separatorClass="text-cc-muted/40" />
     </button>
   );
 });
 
 /** Thin clickable bar to collapse an expanded turn's agent activity */
-function TurnCollapseBar({ stats, onClick, ref }: { stats: TurnStats; onClick: () => void; ref?: React.Ref<HTMLButtonElement> }) {
+function TurnCollapseBar({
+  stats,
+  durationMs,
+  onClick,
+  ref,
+}: {
+  stats: TurnStats;
+  durationMs: number | null;
+  onClick: () => void;
+  ref?: React.Ref<HTMLButtonElement>;
+}) {
   return (
     <button
       ref={ref}
@@ -867,15 +902,7 @@ function TurnCollapseBar({ stats, onClick, ref }: { stats: TurnStats; onClick: (
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 transition-transform rotate-90">
         <path d="M6 4l4 4-4 4" />
       </svg>
-      {stats.messageCount > 0 && (
-        <span>{stats.messageCount} message{stats.messageCount !== 1 ? "s" : ""}</span>
-      )}
-      {stats.toolCount > 0 && (
-        <>
-          {stats.messageCount > 0 && <span className="text-cc-muted/30">·</span>}
-          <span>{stats.toolCount} tool{stats.toolCount !== 1 ? "s" : ""}</span>
-        </>
-      )}
+      <TurnSummaryStats stats={stats} durationMs={durationMs} separatorClass="text-cc-muted/30" />
     </button>
   );
 }
@@ -883,11 +910,13 @@ function TurnCollapseBar({ stats, onClick, ref }: { stats: TurnStats; onClick: (
 const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
   turn,
   sessionId,
+  durationMs,
   onCollapse,
   minuteBoundaryLabels,
 }: {
   turn: Turn;
   sessionId: string;
+  durationMs: number | null;
   onCollapse: () => void;
   minuteBoundaryLabels: Map<string, string>;
 }) {
@@ -900,6 +929,7 @@ const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
         <TurnCollapseBar
           ref={headerRef}
           stats={turn.stats}
+          durationMs={durationMs}
           onClick={onCollapse}
         />
       )}
@@ -1381,13 +1411,10 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
               isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming
             );
         const isActivityExpanded = override !== undefined ? override : defaultExpanded;
-        const betweenTurnDuration = index > 0
-          ? getBetweenTurnDurationMs(turns[index - 1], turn, leaderMode)
-          : null;
+        const turnSummaryDuration = getTurnSummaryDurationMs(turn, turns[index + 1] ?? null, leaderMode);
 
         return (
           <div key={turn.id}>
-            {betweenTurnDuration !== null && <TurnDurationSeparator durationMs={betweenTurnDuration} />}
             <div
               data-turn-id={turn.id}
               className="turn-container space-y-3 sm:space-y-5"
@@ -1404,6 +1431,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
                   <TurnEntriesExpanded
                     turn={turn}
                     sessionId={sessionId}
+                    durationMs={turnSummaryDuration}
                     minuteBoundaryLabels={minuteBoundaryLabels}
                     onCollapse={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
                   />
@@ -1422,6 +1450,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
                         {turn.agentEntries.length > 0 && (
                           <CollapsedActivityBar
                             stats={turn.stats}
+                            durationMs={turnSummaryDuration}
                             onClick={() => toggleTurn(sessionId, turn.id, defaultExpanded)}
                           />
                         )}

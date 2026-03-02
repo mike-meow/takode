@@ -915,24 +915,26 @@ describe("MessageFeed - turn grouping", () => {
     expect(screen.getByText("OK")).toBeTruthy();
   });
 
-  it("shows normal-session turn duration label between turns", () => {
-    const sid = "test-turn-duration-separator-normal";
+  it("shows normal-session turn duration inside the collapsed activity row", () => {
+    const sid = "test-turn-duration-summary-normal";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "First question", timestamp: 1_000 }),
-      makeMessage({ id: "a1", role: "assistant", content: "First answer", timestamp: 193_000 }),
+      makeMessage({ id: "a1", role: "assistant", content: "Investigating first question", timestamp: 120_000 }),
+      makeMessage({ id: "a2", role: "assistant", content: "First answer", timestamp: 193_000 }),
       makeMessage({ id: "u2", role: "user", content: "Second question", timestamp: 200_000 }),
-      makeMessage({ id: "a2", role: "assistant", content: "Second answer", timestamp: 260_000 }),
+      makeMessage({ id: "a3", role: "assistant", content: "Second answer", timestamp: 260_000 }),
     ]);
 
     render(<MessageFeed sessionId={sid} />);
 
-    const separators = screen.getAllByTestId("turn-duration-separator");
-    expect(separators).toHaveLength(1);
-    expect(separators[0].textContent).toBe("-- 3m 12s --");
+    const durations = screen.getAllByTestId("turn-summary-duration");
+    expect(durations).toHaveLength(1);
+    expect(durations[0].textContent).toBe("3m 12s");
+    expect(screen.getByText("1 message")).toBeTruthy();
   });
 
-  it("shows leader-session duration labels between major messages", () => {
-    const sid = "test-turn-duration-separator-leader";
+  it("shows leader-session durations inside activity summary rows", () => {
+    const sid = "test-turn-duration-summary-leader";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Coordinate", timestamp: 1_000 }),
@@ -957,14 +959,14 @@ describe("MessageFeed - turn grouping", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    const separators = screen.getAllByTestId("turn-duration-separator");
-    expect(separators).toHaveLength(2);
-    expect(separators[0].textContent).toBe("-- 2m 0s --");
-    expect(separators[1].textContent).toBe("-- 3m 12s --");
+    const durations = screen.getAllByTestId("turn-summary-duration");
+    expect(durations).toHaveLength(2);
+    expect(durations[0].textContent).toBe("2m 0s");
+    expect(durations[1].textContent).toBe("3m 12s");
   });
 
-  it("does not show normal-session turn duration when no final assistant response exists", () => {
-    const sid = "test-turn-duration-separator-no-response";
+  it("does not show normal-session summary duration when no final assistant response exists", () => {
+    const sid = "test-turn-duration-summary-no-response";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "First question", timestamp: 1_000 }),
       makeMessage({
@@ -980,7 +982,7 @@ describe("MessageFeed - turn grouping", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.queryByTestId("turn-duration-separator")).toBeNull();
+    expect(screen.queryByTestId("turn-summary-duration")).toBeNull();
   });
 });
 
