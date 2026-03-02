@@ -27,6 +27,32 @@ describe("MarkdownContent quest links", () => {
     expect(window.location.hash).toBe("#/session/s1?quest=q-77");
   });
 
+  it("shows QuestHoverCard content when hovering a quest link", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      quests: [{
+        id: "q-42-v1",
+        questId: "q-42",
+        version: 1,
+        title: "Fix auth race condition",
+        createdAt: 1,
+        status: "in_progress",
+        description: "Ensure claim state updates atomically.",
+        sessionId: "session-abc",
+        claimedAt: 1,
+        tags: ["ui", "bugfix"],
+      }],
+    }));
+
+    render(<MarkdownContent text="[q-42](quest:q-42)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "q-42" }));
+
+    expect(await screen.findByText("Fix auth race condition")).toBeTruthy();
+    expect(screen.getByText("In Progress")).toBeTruthy();
+    expect(screen.getByText("ui")).toBeTruthy();
+    expect(screen.getByText("bugfix")).toBeTruthy();
+  });
+
   it("keeps external links as normal web links", () => {
     render(<MarkdownContent text="[docs](https://example.com)" />);
 

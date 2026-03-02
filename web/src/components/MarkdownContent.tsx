@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession, sessionHash } from "../utils/routing.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
+import { QuestHoverCard } from "./QuestHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
 import { withQuestIdInHash } from "../utils/routing.js";
@@ -92,18 +93,10 @@ export function MarkdownContent({ text, size = "default" }: { text: string; size
           a: ({ href, children }) => {
             const questId = parseQuestIdFromHref(href);
             if (questId) {
-              const questHash = withQuestIdInHash(window.location.hash, questId);
               return (
-                <a
-                  href={questHash}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.location.hash = questHash.startsWith("#") ? questHash.slice(1) : questHash;
-                  }}
-                  className="text-cc-primary hover:underline"
-                >
+                <QuestMarkdownLink questId={questId}>
                   {children}
-                </a>
+                </QuestMarkdownLink>
               );
             }
             const sessionNum = parseSessionNumFromHref(href);
@@ -169,6 +162,69 @@ export function MarkdownContent({ text, size = "default" }: { text: string; size
         {text}
       </Markdown>
     </div>
+  );
+}
+
+function QuestMarkdownLink({ questId, children }: { questId: string; children: ReactNode }) {
+  const quests = useStore((s) => s.quests);
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+  const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+  }, []);
+
+  const quest = useMemo(
+    () => quests.find((item) => item.questId.toLowerCase() === questId.toLowerCase()) ?? null,
+    [questId, quests],
+  );
+
+  const questHash = withQuestIdInHash(window.location.hash, questId);
+
+  function handleLinkMouseEnter(e: MouseEvent<HTMLAnchorElement>) {
+    if (!quest) return;
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    setHoverRect(e.currentTarget.getBoundingClientRect());
+  }
+
+  function handleLinkMouseLeave() {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    hideHoverTimerRef.current = setTimeout(() => setHoverRect(null), 100);
+  }
+
+  function handleHoverCardEnter() {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+  }
+
+  function handleHoverCardLeave() {
+    setHoverRect(null);
+  }
+
+  return (
+    <>
+      <a
+        href={questHash}
+        onClick={(e) => {
+          e.preventDefault();
+          const nextHash = withQuestIdInHash(window.location.hash, questId);
+          window.location.hash = nextHash.startsWith("#") ? nextHash.slice(1) : nextHash;
+        }}
+        onMouseEnter={handleLinkMouseEnter}
+        onMouseLeave={handleLinkMouseLeave}
+        className="text-cc-primary hover:underline"
+        title={`Open ${questId}`}
+      >
+        {children}
+      </a>
+      {quest && hoverRect && (
+        <QuestHoverCard
+          quest={quest}
+          anchorRect={hoverRect}
+          onMouseEnter={handleHoverCardEnter}
+          onMouseLeave={handleHoverCardLeave}
+        />
+      )}
+    </>
   );
 }
 
