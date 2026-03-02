@@ -6055,6 +6055,130 @@ describe("Codex disconnect auto-relaunch", () => {
   });
 });
 
+describe("Codex user-message-driven relaunch for idle sessions", () => {
+  it("requests relaunch when user message arrives for exited Codex session", async () => {
+    // Scenario: Codex completed a turn, exited (code 0), adapter disconnected.
+    // User sends a new message — should trigger relaunch so the CLI picks it up.
+    const sid = "s-idle-codex";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ state: "exited", killedByIdleManager: false })),
+    } as any);
+
+    // Attach and then disconnect the adapter (simulating normal turn completion)
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    adapter.emitDisconnect();
+    relaunchCb.mockClear();
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    relaunchCb.mockClear(); // clear any relaunch from handleBrowserOpen
+    browser.send.mockClear();
+
+    // Send a user message — should trigger relaunch
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "continue working",
+    }));
+
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+    // Message should be queued in pendingMessages
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingMessages.length).toBeGreaterThan(0);
+  });
+
+  it("resets consecutiveAdapterFailures on user-message-driven relaunch", async () => {
+    // After previous adapter failures, a user message should reset the counter
+    // so the session doesn't stay stuck at the failure cap.
+    const sid = "s-reset-failures";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ state: "exited", killedByIdleManager: false })),
+    } as any);
+
+    // Simulate 3 adapter failures to hit the cap
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    for (let i = 0; i < 3; i++) {
+      const adapter = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter as any);
+      adapter.emitDisconnect();
+    }
+    const session = bridge.getSession(sid)!;
+    expect(session.consecutiveAdapterFailures).toBe(3);
+    relaunchCb.mockClear();
+
+    // Send a user message — should reset failures and trigger relaunch
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "try again",
+    }));
+
+    expect(session.consecutiveAdapterFailures).toBe(0);
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+  });
+
+  it("does not request relaunch for exited sessions killed by idle manager", async () => {
+    const sid = "s-idle-killed";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ state: "exited", killedByIdleManager: true })),
+    } as any);
+
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    adapter.emitDisconnect();
+    relaunchCb.mockClear();
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    relaunchCb.mockClear();
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "hello",
+    }));
+
+    // Should NOT relaunch — session was intentionally killed by idle manager
+    expect(relaunchCb).not.toHaveBeenCalled();
+  });
+
+  it("does not request relaunch when adapter is still connected", async () => {
+    // If the adapter is connected, messages go directly — no relaunch needed
+    const sid = "s-connected";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ state: "connected" })),
+    } as any);
+
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    relaunchCb.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "this should go to the adapter directly",
+    }));
+
+    // Message should go to adapter, not trigger relaunch
+    expect(adapter.sendBrowserMessage).toHaveBeenCalled();
+    expect(relaunchCb).not.toHaveBeenCalled();
+  });
+});
+
 describe("Codex resumed-turn recovery", () => {
   it("recovers assistant text from resumed turn instead of retrying", async () => {
     const sid = "s1";

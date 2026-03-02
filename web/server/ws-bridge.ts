@@ -4433,6 +4433,20 @@ export class WsBridge {
         // Adapter not yet attached — queue for when it's ready.
         console.log(`[ws-bridge] Adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
         session.pendingMessages.push(JSON.stringify(adapterMsg));
+
+        // If the backend process has exited (e.g. Codex exits after each turn),
+        // trigger a relaunch so the queued message gets processed. Without this,
+        // messages sent to idle Codex sessions sit in the queue forever.
+        // Reset consecutiveAdapterFailures since an explicit user message is a
+        // legitimate relaunch trigger, not a crash loop.
+        if (msg.type === "user_message" && this.onCLIRelaunchNeeded) {
+          const launcherInfo = this.launcher?.getSession(session.id);
+          if (launcherInfo && launcherInfo.state === "exited" && !launcherInfo.killedByIdleManager) {
+            session.consecutiveAdapterFailures = 0;
+            console.log(`[ws-bridge] User message queued for exited ${session.backendType} session ${sessionTag(session.id)}, requesting relaunch`);
+            this.onCLIRelaunchNeeded(session.id);
+          }
+        }
       }
       return;
     }
