@@ -2024,6 +2024,59 @@ ${ORCH_END}`;
   }
 
   /**
+   * Upgrade a WebSocket ("claude") session to SDK ("claude-sdk") transport.
+   *
+   * This kills the CLI WebSocket process, changes the backendType to "claude-sdk",
+   * and relaunches using the Agent SDK with the same cliSessionId. The SDK calls
+   * unstable_v2_resumeSession() to resume the conversation, preserving full
+   * history and context from the original WebSocket session.
+   *
+   * Returns { ok, sessionId, cliSessionId, previousBackend } on success.
+   */
+  async upgradeToSdk(sessionId: string): Promise<{ ok: boolean; error?: string; sessionId?: string; cliSessionId?: string; previousBackend?: string }> {
+    const info = this.sessions.get(sessionId);
+    if (!info) return { ok: false, error: "Session not found" };
+    if (info.backendType === "claude-sdk") return { ok: false, error: "Session is already using SDK transport" };
+    if (info.backendType === "codex") return { ok: false, error: "Cannot upgrade Codex sessions to SDK" };
+    if (!info.cliSessionId) return { ok: false, error: "Session has no cliSessionId — cannot resume via SDK" };
+
+    const previousBackend = info.backendType || "claude";
+    const cliSessionId = info.cliSessionId;
+    console.log(`[cli-launcher] Upgrading session ${sessionTag(sessionId)} from ${previousBackend} to claude-sdk (cliSessionId: ${cliSessionId})`);
+
+    // Kill the WebSocket CLI process if running
+    const proc = this.processes.get(sessionId);
+    if (proc) {
+      proc.kill("SIGTERM");
+      await Promise.race([
+        proc.exited.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
+      ]).then((exited) => {
+        if (!exited) proc.kill("SIGKILL");
+      });
+      this.processes.delete(sessionId);
+    }
+
+    // Switch backend type and mark as exited so relaunch() will spawn fresh
+    info.backendType = "claude-sdk";
+    info.state = "exited";
+    this.persistState();
+
+    // Relaunch with new backend — relaunch() reads info.backendType and
+    // routes to spawnClaudeSdk(), which passes info.cliSessionId to the
+    // SDK adapter for resumption via unstable_v2_resumeSession().
+    const result = await this.relaunch(sessionId);
+    if (!result.ok) {
+      // Revert on failure
+      info.backendType = previousBackend as "claude";
+      this.persistState();
+      return { ok: false, error: result.error || "Relaunch failed after transport upgrade" };
+    }
+
+    return { ok: true, sessionId, cliSessionId, previousBackend };
+  }
+
+  /**
    * List all sessions (active + recently exited).
    */
   listSessions(): SdkSessionInfo[] {

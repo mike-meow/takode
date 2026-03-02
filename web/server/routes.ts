@@ -1667,6 +1667,27 @@ export function createRoutes(
     return c.json({ ok: true });
   });
 
+  // ─── Transport Upgrade: WebSocket → SDK ───────────────────────
+  api.post("/sessions/:id/upgrade-transport", async (c) => {
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const result = await launcher.upgradeToSdk(id);
+    if (!result.ok) {
+      const status = result.error?.includes("not found") ? 404 : 400;
+      return c.json({ error: result.error }, status);
+    }
+
+    // Update the ws-bridge session's backendType so it attaches the
+    // SDK adapter (instead of expecting a WebSocket CLI connection).
+    const bridgeSession = wsBridge.getSession(id);
+    if (bridgeSession) {
+      bridgeSession.backendType = "claude-sdk";
+    }
+
+    return c.json(result);
+  });
+
   api.post("/sessions/:id/force-compact", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
