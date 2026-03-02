@@ -1289,8 +1289,15 @@ describe("CLI message routing", () => {
 
     const reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("missing the addressing tag"));
+      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
     expect(reminderSend).toBeDefined();
+    expect(String(reminderSend.message?.content)).toMatch(/^\[System \d{2}:\d{2}(?:\s?[AP]M)?\]/i);
+    expect(String(reminderSend.message?.content)).toContain("must end with @to(user) (if addressing the human) or @to(self)");
+
+    const session = bridge.getSession("s1")!;
+    const injectedUser = session.messageHistory.findLast((m: any) => m.type === "user_message") as any;
+    expect(injectedUser?.agentSource?.sessionId).toBe("system:leader-tag-enforcer");
+    expect(injectedUser?.agentSource?.sessionLabel).toBe("System");
   });
 
   it("assistant: treats tool-only leader messages as internal without reminder", () => {
@@ -1322,7 +1329,7 @@ describe("CLI message routing", () => {
 
     const reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("missing the addressing tag"));
+      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
     expect(reminderSend).toBeUndefined();
   });
 

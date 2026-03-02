@@ -278,6 +278,20 @@ describe("MessageBubble - agent source badge", () => {
     // Cron sources should not have "Open session" option
     expect(screen.queryByText("Open session")).toBeNull();
   });
+
+  it("does not show 'Open session' for system sources", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "System nudge",
+      agentSource: { sessionId: "system:leader-tag-enforcer", sessionLabel: "System" },
+    });
+    render(<MessageBubble message={msg} />);
+
+    const badge = screen.getByTestId("agent-source-badge");
+    fireEvent.click(badge);
+
+    expect(screen.queryByText("Open session")).toBeNull();
+  });
 });
 
 // ─── Assistant messages ──────────────────────────────────────────────────────

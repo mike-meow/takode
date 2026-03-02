@@ -213,6 +213,8 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
 
   const label = source.sessionLabel || source.sessionId.slice(0, 8);
   const isCron = source.sessionId.startsWith("cron:");
+  const isSystem = source.sessionId === "system" || source.sessionId.startsWith("system:");
+  const hasOpenableSession = !isCron && !isSystem;
 
   const toggle = useCallback(() => {
     if (menuPos) {
@@ -225,7 +227,7 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
 
   const items = useMemo(() => {
     const list: ContextMenuItem[] = [];
-    if (!isCron) {
+    if (hasOpenableSession) {
       list.push({
         label: `Open session`,
         onClick: () => { window.location.hash = `#/sessions/${source.sessionId}`; },
@@ -236,7 +238,7 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
       onClick: () => { writeClipboardText(source.sessionId).catch(console.error); },
     });
     return list;
-  }, [source.sessionId, isCron]);
+  }, [source.sessionId, hasOpenableSession]);
 
   return (
     <div className="mb-1.5">

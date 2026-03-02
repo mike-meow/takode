@@ -1630,7 +1630,11 @@ export class WsBridge {
   private static readonly LEADER_TO_USER_SUFFIX = "@to(user)";
   private static readonly LEADER_TO_SELF_SUFFIX = "@to(self)";
   private static readonly LEADER_TAG_ENFORCEMENT_REMINDER =
-    "Your message is missing the addressing tag. Every message must end with @to(user) or @to(self).";
+    "[System] As a leader session, every text message you send must end with @to(user) (if addressing the human) or @to(self) (if internal coordination). Your last message was missing this tag — please resend it with the appropriate suffix.";
+  private static readonly LEADER_TAG_SYSTEM_SOURCE = {
+    sessionId: "system:leader-tag-enforcer",
+    sessionLabel: "System",
+  } as const;
 
   private isLeaderSession(session: Session): boolean {
     return this.launcher?.getSession(session.id)?.isOrchestrator === true;
@@ -1666,7 +1670,7 @@ export class WsBridge {
 
   private maybeInjectLeaderAddressingReminder(session: Session, addressing: LeaderAssistantAddressing): boolean {
     if (addressing !== "missing") return false;
-    this.injectUserMessage(session.id, WsBridge.LEADER_TAG_ENFORCEMENT_REMINDER);
+    this.injectUserMessage(session.id, WsBridge.LEADER_TAG_ENFORCEMENT_REMINDER, WsBridge.LEADER_TAG_SYSTEM_SOURCE);
     return true;
   }
 
@@ -2541,6 +2545,11 @@ export class WsBridge {
       content,
       ...(agentSource ? { agentSource } : {}),
     });
+  }
+
+  private isSystemSourceTag(agentSource: { sessionId: string; sessionLabel?: string } | undefined): boolean {
+    if (!agentSource) return false;
+    return agentSource.sessionId === "system" || agentSource.sessionId.startsWith("system:");
   }
 
   handleBrowserClose(ws: ServerWebSocket<SocketData>, code?: number, reason?: string) {
@@ -4277,12 +4286,14 @@ export class WsBridge {
       content = msg.content;
     }
 
-    // Role-prefix for orchestrator sessions: the CLI sees [User], [Herd], or [Agent] tags
+    // Role-prefix for orchestrator sessions: the CLI sees [User], [Herd], [System], or [Agent] tags
     // so the orchestrator can distinguish message sources. History/browser keep original content.
     const isOrch = this.launcher?.getSession(session.id)?.isOrchestrator;
     if (isOrch && typeof content === "string") {
       const time = new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      if (msg.agentSource?.sessionId === "herd-events") {
+      if (this.isSystemSourceTag(msg.agentSource)) {
+        content = `[System ${time}] ${content}`;
+      } else if (msg.agentSource?.sessionId === "herd-events") {
         content = `[Herd ${time}] ${content}`;
       } else if (msg.agentSource) {
         const label = msg.agentSource.sessionLabel || msg.agentSource.sessionId.slice(0, 8);
