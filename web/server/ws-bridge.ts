@@ -7,7 +7,7 @@ import { GIT_CMD_TIMEOUT } from "./constants.js";
 const execPromise = promisify(execCb);
 
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
-import { resolve, basename } from "node:path";
+import { resolve, basename, join } from "node:path";
 import { homedir } from "node:os";
 import type { PushoverNotifier } from "./pushover.js";
 import type {
@@ -4844,7 +4844,15 @@ export class WsBridge {
           source: { type: "base64", media_type: mediaType, data },
         });
       }
-      blocks.push({ type: "text", text: msg.content });
+      // Append image file paths to the text block so the leader can see them
+      // in real-time and forward to herded workers via takode send.
+      let textContent = msg.content;
+      if (imageRefs?.length) {
+        const imgDir = join(homedir(), ".companion", "images", session.id);
+        const paths = imageRefs.map((ref) => join(imgDir, `${ref.imageId}.transport.jpeg`));
+        textContent += `\n[📎 ${paths.length} image${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}]`;
+      }
+      blocks.push({ type: "text", text: textContent });
       content = blocks;
     } else {
       content = msg.content;
