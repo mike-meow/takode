@@ -343,9 +343,10 @@ export class ClaudeSdkAdapter {
             const updatedInput = (msg as any).updated_input;
             pending.resolve({
               behavior: "allow",
-              // Only include updatedInput when defined — the SDK's Zod schema
-              // rejects explicit `undefined` (expects Record or absent).
-              ...(updatedInput !== undefined ? { updatedInput } : {}),
+              // Always provide updatedInput — the CLI's Zod schema requires
+              // a Record, not undefined or absent. Use the original tool input
+              // from the pending request as fallback.
+              updatedInput: updatedInput ?? {},
             });
           } else {
             pending.resolve({
