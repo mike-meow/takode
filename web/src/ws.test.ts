@@ -1929,6 +1929,81 @@ describe("handleMessage: tool_result_preview", () => {
 });
 
 // ===========================================================================
+// handleMessage: task_notification
+// ===========================================================================
+describe("handleMessage: task_notification", () => {
+  it("stores background agent notification in the store", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "task_notification",
+      task_id: "task-1",
+      tool_use_id: "tu-bg-1",
+      status: "completed",
+      output_file: "/tmp/output.txt",
+      summary: "Found 3 files matching the pattern",
+    });
+
+    const notif = useStore.getState().backgroundAgentNotifs.get("s1")?.get("tu-bg-1");
+    expect(notif).toBeDefined();
+    expect(notif!.status).toBe("completed");
+    expect(notif!.outputFile).toBe("/tmp/output.txt");
+    expect(notif!.summary).toBe("Found 3 files matching the pattern");
+  });
+
+  it("ignores task_notification without tool_use_id", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "task_notification",
+      task_id: "task-1",
+      tool_use_id: "",
+      status: "completed",
+    });
+
+    const sessionNotifs = useStore.getState().backgroundAgentNotifs.get("s1");
+    // Empty string tool_use_id is falsy, so no notification should be stored
+    expect(sessionNotifs?.has("")).toBeFalsy();
+  });
+});
+
+// ===========================================================================
+// message_history: task_notification replay
+// ===========================================================================
+describe("handleMessage: message_history replays task_notification", () => {
+  it("restores background agent notifications from history", () => {
+    // Verifies that task_notification messages persisted in messageHistory
+    // are replayed on reconnect, so background agent completion survives
+    // page refreshes.
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", content: "search for auth", timestamp: 1000 },
+        {
+          type: "task_notification",
+          task_id: "task-1",
+          tool_use_id: "tu-bg-hist",
+          status: "completed",
+          output_file: "/tmp/agent-out.txt",
+          summary: "Agent completed successfully",
+        },
+      ],
+    });
+
+    const notif = useStore.getState().backgroundAgentNotifs.get("s1")?.get("tu-bg-hist");
+    expect(notif).toBeDefined();
+    expect(notif!.status).toBe("completed");
+    expect(notif!.summary).toBe("Agent completed successfully");
+    expect(notif!.outputFile).toBe("/tmp/agent-out.txt");
+  });
+});
+
+// ===========================================================================
 // handleMessage: tool_use_summary
 // ===========================================================================
 describe("handleMessage: tool_use_summary", () => {

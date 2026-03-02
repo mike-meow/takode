@@ -667,6 +667,8 @@ describe("MessageFeed - subagent grouping", () => {
         ],
       }),
     ]);
+    // Session must be "running" so the subagent isn't treated as abandoned
+    setStoreStatus(sid, "running");
 
     render(<MessageFeed sessionId={sid} />);
 
@@ -702,6 +704,8 @@ describe("MessageFeed - subagent grouping", () => {
         }),
       ]);
       setStoreToolStartTimestamps(sid, { "task-live": new Date("2026-01-01T00:00:05.000Z").getTime() });
+      // Session must be "running" so the live timer ticks (not abandoned)
+      setStoreStatus(sid, "running");
 
       render(<MessageFeed sessionId={sid} />);
 
@@ -713,6 +717,38 @@ describe("MessageFeed - subagent grouping", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows 'Agent interrupted' when session is idle and subagent has no result", () => {
+    // When the session goes idle (turn ended) but a subagent never received a
+    // tool_result, the chip should stop spinning and show "Agent interrupted"
+    // instead of "Agent starting..." forever.
+    const sid = "test-subagent-abandoned";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "task-abandoned",
+            name: "Task",
+            input: { description: "Review auth code", subagent_type: "general-purpose" },
+          },
+        ],
+      }),
+    ]);
+    // Session is idle — the turn has ended
+    setStoreStatus(sid, "idle");
+
+    render(<MessageFeed sessionId={sid} />);
+
+    // Expand the subagent card
+    fireEvent.click(screen.getByText("Review auth code"));
+    // Should show "Agent interrupted" instead of "Agent starting..."
+    expect(screen.getByText("Agent interrupted")).toBeTruthy();
+    expect(screen.queryByText("Agent starting...")).toBeNull();
   });
 
   it("shows final subagent duration when the task completes", () => {

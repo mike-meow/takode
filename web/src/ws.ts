@@ -1131,6 +1131,15 @@ function handleParsedMessage(
           for (const preview of histMsg.previews) {
             store.setToolResult(sessionId, preview.tool_use_id, preview);
           }
+        } else if (histMsg.type === "task_notification") {
+          // Replay background agent completion so bgNotif survives reconnects
+          if (histMsg.tool_use_id) {
+            store.setBackgroundAgentNotif(sessionId, histMsg.tool_use_id, {
+              status: histMsg.status,
+              outputFile: histMsg.output_file,
+              summary: histMsg.summary,
+            });
+          }
         } else if (histMsg.type === "result") {
           const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
           if (r.is_error) {

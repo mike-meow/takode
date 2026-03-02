@@ -1734,6 +1734,16 @@ export function Playground() {
                 items={[]}
               />
             </Card>
+            <Card label="Subagent interrupted (session ended without result)">
+              <PlaygroundSubagentGroup
+                description="Review authentication module"
+                agentType="general-purpose"
+                prompt="Audit the auth module for security vulnerabilities and suggest improvements."
+                items={[]}
+                durationSeconds={4.2}
+                interrupted
+              />
+            </Card>
           </div>
         </Section>
 
@@ -2133,6 +2143,7 @@ function PlaygroundSubagentGroup({
   prompt,
   durationSeconds,
   liveStartedAt,
+  interrupted,
 }: {
   description: string;
   agentType: string;
@@ -2141,6 +2152,7 @@ function PlaygroundSubagentGroup({
   prompt?: string;
   durationSeconds?: number;
   liveStartedAt?: number;
+  interrupted?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -2192,7 +2204,7 @@ function PlaygroundSubagentGroup({
               </span>
             )}
             <span className="text-[10px] text-cc-muted bg-cc-hover rounded-full px-1.5 py-0.5 tabular-nums shrink-0 ml-auto">
-              {items.length}
+              {items.length > 0 ? items.length : interrupted ? "—" : "0"}
             </span>
           </button>
 
@@ -2229,10 +2241,17 @@ function PlaygroundSubagentGroup({
               )}
 
               {/* No children yet indicator */}
-              {items.length === 0 && !resultText && (
+              {items.length === 0 && !resultText && !interrupted && (
                 <div className="px-3 py-2 flex items-center gap-1.5 text-[11px] text-cc-muted">
                   <YarnBallSpinner className="w-3.5 h-3.5" />
                   <span>Agent starting...</span>
+                </div>
+              )}
+
+              {/* Interrupted subagent — session ended without completion */}
+              {items.length === 0 && interrupted && (
+                <div className="px-3 py-2 text-[11px] text-cc-muted">
+                  Agent interrupted
                 </div>
               )}
 

@@ -1046,6 +1046,13 @@ const SubagentContainer = memo(function SubagentContainer({
     s.backgroundAgentNotifs.get(sessionId)?.get(group.taskToolUseId)
   );
 
+  // Detect abandoned subagents: session is no longer running but this subagent
+  // never received a result. This happens on CLI disconnect, user interrupt,
+  // compaction, or SDK sessions that don't emit tool_result for Task tools.
+  const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
+  const isEffectivelyComplete = resultPreview != null || bgNotif != null;
+  const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running";
+
   // Get the last visible entry for a compact preview (fallback when no result)
   const lastEntry = group.children[group.children.length - 1];
   const lastPreview = useMemo(() => {
@@ -1106,16 +1113,18 @@ const SubagentContainer = memo(function SubagentContainer({
           finalDurationSeconds={resultPreview?.duration_seconds}
           progressElapsedSeconds={progressElapsedSeconds}
           startTimestamp={startTimestamp}
-          isComplete={resultPreview != null}
+          isComplete={isEffectivelyComplete || isAbandoned}
         />
         <span className="text-[10px] text-cc-muted bg-cc-hover rounded-full px-1.5 py-0.5 tabular-nums shrink-0 ml-auto">
           {childCount > 0
             ? childCount
             : resultPreview
               ? "✓"
-              : group.isBackground
-                ? "bg"
-                : "0"}
+              : isAbandoned
+                ? "—"
+                : group.isBackground
+                  ? "bg"
+                  : "0"}
         </span>
       </button>
 
@@ -1177,10 +1186,17 @@ const SubagentContainer = memo(function SubagentContainer({
           )}
 
           {/* No children yet indicator */}
-          {childCount === 0 && !resultPreview && !bgNotif && (
+          {childCount === 0 && !isEffectivelyComplete && !isAbandoned && (
             <div className="px-3 py-2 flex items-center gap-1.5 text-[11px] text-cc-muted">
               <YarnBallSpinner className="w-3.5 h-3.5" />
               <span>{group.isBackground ? "Running in background..." : "Agent starting..."}</span>
+            </div>
+          )}
+
+          {/* Abandoned subagent — session ended without this subagent completing */}
+          {childCount === 0 && isAbandoned && (
+            <div className="px-3 py-2 text-[11px] text-cc-muted">
+              Agent interrupted
             </div>
           )}
 

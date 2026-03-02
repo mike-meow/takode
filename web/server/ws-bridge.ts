@@ -3204,15 +3204,19 @@ export class WsBridge {
       });
       this.persistSession(session);
     } else if (msg.subtype === "task_notification") {
-      // Forward background agent completion notifications to browsers
-      this.broadcastToBrowsers(session, {
+      // Forward background agent completion notifications to browsers.
+      // Persist in messageHistory so completion survives reconnects/page refreshes.
+      const browserMsg = {
         type: "task_notification" as const,
         task_id: msg.task_id,
         tool_use_id: msg.tool_use_id,
         status: msg.status,
         output_file: msg.output_file,
         summary: msg.summary,
-      });
+      };
+      session.messageHistory.push(browserMsg);
+      this.broadcastToBrowsers(session, browserMsg);
+      this.persistSession(session);
     }
   }
 
