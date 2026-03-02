@@ -42,7 +42,7 @@ import type {
   TakodeEventType,
   TakodeEventSubscriber,
 } from "./session-types.js";
-import { TOOL_RESULT_PREVIEW_LIMIT, assertNever } from "./session-types.js";
+import { TOOL_RESULT_PREVIEW_LIMIT, assertNever, isClaudeFamily } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
 import type { CodexAdapter, CodexResumeSnapshot, CodexResumeTurnSnapshot } from "./codex-adapter.js";
 import type { RecorderManager } from "./recorder.js";
@@ -3214,12 +3214,12 @@ export class WsBridge {
       }
 
       // Check if LLM auto-approval is available for this session's project.
-      // Only for Claude Code sessions and non-NEVER_AUTO_APPROVE tools.
+      // Only for Claude Code sessions (WebSocket or SDK) and non-NEVER_AUTO_APPROVE tools.
       // Sensitive file edits and Bash commands targeting config files always
       // require human review — never sent to the LLM auto-approver.
       const bashCommand = toolName === "Bash" ? String(msg.request.input.command ?? "") : "";
       const autoApprovalConfig = (
-        session.backendType === "claude" &&
+        isClaudeFamily(session.backendType) &&
         !NEVER_AUTO_APPROVE.has(toolName) &&
         !(isFileEdit && WsBridge.isSensitiveConfigPath(filePath)) &&
         !(toolName === "Bash" && WsBridge.isSensitiveBashCommand(bashCommand))

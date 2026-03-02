@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { getEnrichedPath } from "./path-resolver.js";
 import type {
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
@@ -123,9 +124,13 @@ export class ClaudeSdkAdapter {
 
     // Merge process.env (inherits ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN from
     // claude.sh) with session-specific vars (COMPANION_SESSION_ID, etc.)
+    // Enrich PATH so the SDK can find the `claude` binary and companion skills
+    // (e.g., quest CLI in ~/.companion/bin). Without this, SDK sessions can't
+    // find binaries that aren't on the default system PATH.
     const mergedEnv: Record<string, string | undefined> = {
       ...process.env,
       ...(this.options.env || {}),
+      PATH: getEnrichedPath(),
     };
 
     const sessionOptions: Record<string, unknown> = {
@@ -294,13 +299,18 @@ export class ClaudeSdkAdapter {
     } as any);
 
     // Wait for the browser to respond
-    return new Promise((resolve, reject) => {
-      this.pendingPermissions.set(requestId, { resolve, reject, requestId, toolName });
+    return new Promise((resolve) => {
+      this.pendingPermissions.set(requestId, { resolve, reject: (err: Error) => {
+        // On unexpected errors, resolve with deny (never reject — rejected promises
+        // confuse the SDK's retry logic and cause the session to loop through
+        // alternative approaches without permission).
+        resolve({ behavior: "deny", message: err.message || "Permission request failed" });
+      }, requestId, toolName });
 
-      // Handle abort signal
+      // Handle abort signal — resolve with deny, don't reject
       options.signal.addEventListener("abort", () => {
         this.pendingPermissions.delete(requestId);
-        reject(new Error("Permission request aborted"));
+        resolve({ behavior: "deny", message: "Permission request aborted" });
       }, { once: true });
     });
   }
