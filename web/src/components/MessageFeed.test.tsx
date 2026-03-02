@@ -987,7 +987,7 @@ describe("MessageFeed - turn grouping", () => {
 });
 
 describe("MessageFeed - collapsed turns", () => {
-  it("passes defaultExpanded=false when expanding the latest leader activity row", () => {
+  it("passes defaultExpanded=true when collapsing the latest leader activity row", () => {
     const sid = "test-leader-latest-toggle";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -998,7 +998,7 @@ describe("MessageFeed - collapsed turns", () => {
     render(<MessageFeed sessionId={sid} />);
 
     fireEvent.click(screen.getByText("1 message"));
-    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
+    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", true);
   });
 
   it("leader mode splits turns at each @to(user) boundary and keeps post-boundary activity separate", () => {
@@ -1030,7 +1030,7 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getByText("Second update with progress.")).toBeTruthy();
     expect(screen.queryByText("Assigned q-600 to #2")).toBeNull();
     expect(screen.queryByText("Nudged #2 about test coverage")).toBeNull();
-    expect(screen.queryByText("Queued final smoke checks")).toBeNull();
+    expect(screen.getByText("Queued final smoke checks")).toBeTruthy();
     expect(screen.getAllByText("1 message")).toHaveLength(3);
   });
 
@@ -1061,10 +1061,10 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getByTestId("leader-user-addressed-marker")).toBeTruthy();
     expect(screen.queryByText("Root cause confirmed; patch queued. @to(user)")).toBeNull();
     expect(screen.queryByText("Assigned q-777 to #4")).toBeNull();
-    expect(screen.queryByText("Queued follow-up validation for #4")).toBeNull();
+    expect(screen.getByText("Queued follow-up validation for #4")).toBeTruthy();
   });
 
-  it("passes defaultExpanded=false when expanding the latest collapsed row after an @to(user) boundary", () => {
+  it("passes defaultExpanded=true when collapsing the latest row after an @to(user) boundary", () => {
     const sid = "test-leader-last-user-boundary";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -1083,7 +1083,7 @@ describe("MessageFeed - collapsed turns", () => {
 
     const activityRows = screen.getAllByText("1 message");
     fireEvent.click(activityRows[activityRows.length - 1]);
-    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "a2", false);
+    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "a2", true);
   });
 
   it("leader mode keeps user-addressed assistant responses visible while collapsing internal activity", () => {
@@ -1107,8 +1107,38 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getByText("I delegated auth + tests. Waiting for your review.")).toBeTruthy();
     expect(screen.getByTestId("leader-user-addressed-marker")).toBeTruthy();
     expect(screen.queryByText("Assigned q-127 to #3")).toBeNull();
-    expect(screen.queryByText("peeked #3 and nudged #4")).toBeNull();
+    expect(screen.getByText("peeked #3 and nudged #4")).toBeTruthy();
     expect(screen.getAllByText(/message/).length).toBeGreaterThan(0);
+  });
+
+  it("leader mode keeps the latest turn tool activity expanded by default", () => {
+    const sid = "test-leader-latest-tools-expanded";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Status?" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-333 to #6" }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "Worker #6 is implementing now. @to(user)",
+        leaderUserAddressed: true,
+      }),
+      makeMessage({
+        id: "a3",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } },
+        ],
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    // Older internal activity remains collapsed in previous turns.
+    expect(screen.queryByText("Assigned q-333 to #6")).toBeNull();
+    // Latest turn stays expanded so live tool activity remains visible.
+    expect(screen.getByText("npm test")).toBeTruthy();
   });
 
   it("leader mode shows internal messages when the activity row is expanded", () => {

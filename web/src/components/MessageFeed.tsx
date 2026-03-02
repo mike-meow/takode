@@ -779,6 +779,16 @@ function getTurnSummaryDurationMs(turn: Turn, nextTurn: Turn | null, leaderMode:
   return getNormalTurnDurationMs(turn);
 }
 
+function getDefaultTurnExpanded(
+  turn: Turn,
+  isLastTurn: boolean,
+  keepExpandedDuringStreaming: boolean,
+  leaderMode: boolean,
+): boolean {
+  if (leaderMode) return isLastTurn || keepExpandedDuringStreaming;
+  return isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming;
+}
+
 function TurnSummaryStats({
   stats,
   durationMs,
@@ -1368,9 +1378,7 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
       const keepExpandedDuringStreaming =
         sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
       const override = overrides?.get(turn.id);
-      const defaultExpanded = leaderMode
-        ? false
-        : (isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming);
+      const defaultExpanded = getDefaultTurnExpanded(turn, isLastTurn, keepExpandedDuringStreaming, leaderMode);
       const isActivityExpanded = override !== undefined ? override : defaultExpanded;
 
       if (turn.userEntry?.kind === "message" && isTimedChatMessage(turn.userEntry.msg)) {
@@ -1400,16 +1408,10 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
         const keepExpandedDuringStreaming =
           sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
         const override = overrides?.get(turn.id);
-        const defaultExpanded = leaderMode
-          ? false
-          : (
-              // Default: last turn expanded, older finished turns collapsed.
-              // Keep in-flight turns expanded for both:
-              // 1) turns without a final assistant text
-              // 2) the previous turn while streaming a fresh user-only follow-up turn
-              //    (Codex can be mid-turn with partial text/tool activity already emitted).
-              isLastTurn || turn.responseEntry === null || keepExpandedDuringStreaming
-            );
+        // Default: latest turn expanded. Older finished turns collapse.
+        // Keep in-flight turns expanded for the previous-turn streaming case:
+        // when the latest turn is fresh user-only and generation is still on the penultimate turn.
+        const defaultExpanded = getDefaultTurnExpanded(turn, isLastTurn, keepExpandedDuringStreaming, leaderMode);
         const isActivityExpanded = override !== undefined ? override : defaultExpanded;
         const turnSummaryDuration = getTurnSummaryDurationMs(turn, turns[index + 1] ?? null, leaderMode);
 
