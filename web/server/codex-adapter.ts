@@ -325,6 +325,7 @@ export interface CodexAdapterOptions {
   model?: string;
   cwd?: string;
   approvalMode?: string;
+  askPermission?: boolean;
   sandbox?: "workspace-write" | "danger-full-access";
   reasoningEffort?: string;
   /** If provided, resume an existing thread instead of starting a new one. */
@@ -883,7 +884,7 @@ export class CodexAdapter {
             threadId: this.options.threadId,
             model: this.options.model,
             cwd: this.options.cwd,
-            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
+            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
             sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
           }) as { thread: Record<string, unknown> & { id: string } };
           this.threadId = resumeResult.thread.id;
@@ -898,7 +899,7 @@ export class CodexAdapter {
           const threadResult = await this.transport.call("thread/start", {
             model: this.options.model,
             cwd: this.options.cwd,
-            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
+            approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
             sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
           }) as { thread: { id: string } };
           this.threadId = threadResult.thread.id;
@@ -908,7 +909,7 @@ export class CodexAdapter {
         const threadResult = await this.transport.call("thread/start", {
           model: this.options.model,
           cwd: this.options.cwd,
-          approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode),
+          approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
           sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
         }) as { thread: { id: string } };
         this.threadId = threadResult.thread.id;
@@ -2495,7 +2496,8 @@ export class CodexAdapter {
     };
   }
 
-  private mapApprovalPolicy(mode?: string): string {
+  private mapApprovalPolicy(mode?: string, askPermission?: boolean): string {
+    if (askPermission === false) return "never";
     switch (mode) {
       case "bypassPermissions":
         return "never";

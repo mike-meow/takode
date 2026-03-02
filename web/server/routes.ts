@@ -77,6 +77,71 @@ async function execCaptureStdoutAsync(command: string, cwd: string): Promise<str
   }
 }
 
+type UiMode = "plan" | "agent";
+
+interface InitialModeState {
+  permissionMode: string;
+  askPermission: boolean;
+  uiMode: UiMode;
+}
+
+function resolveInitialModeState(
+  backend: "claude" | "codex" | "claude-sdk",
+  requestedPermissionMode: unknown,
+  askPermissionRequested: boolean,
+): InitialModeState {
+  if (backend !== "codex") {
+    const permissionMode = askPermissionRequested ? "plan" : "bypassPermissions";
+    return {
+      permissionMode,
+      askPermission: askPermissionRequested,
+      uiMode: permissionMode === "plan" ? "plan" : "agent",
+    };
+  }
+
+  const requested = typeof requestedPermissionMode === "string"
+    ? requestedPermissionMode.trim()
+    : "";
+
+  switch (requested) {
+    case "plan":
+      return {
+        permissionMode: "plan",
+        askPermission: askPermissionRequested,
+        uiMode: "plan",
+      };
+    case "bypassPermissions":
+      return {
+        permissionMode: "bypassPermissions",
+        askPermission: false,
+        uiMode: "agent",
+      };
+    case "suggest":
+      return {
+        permissionMode: "suggest",
+        askPermission: true,
+        uiMode: "agent",
+      };
+    // Legacy/non-Codex strings can be provided by old clients. Map them to
+    // the closest Codex Agent behavior to preserve backwards compatibility.
+    case "acceptEdits":
+    case "default":
+      return {
+        permissionMode: "suggest",
+        askPermission: true,
+        uiMode: "agent",
+      };
+    case "agent":
+    case "":
+    default:
+      return {
+        permissionMode: askPermissionRequested ? "suggest" : "bypassPermissions",
+        askPermission: askPermissionRequested,
+        uiMode: "agent",
+      };
+  }
+}
+
 export function createRoutes(
   launcher: CliLauncher,
   wsBridge: WsBridge,
@@ -215,12 +280,18 @@ export function createRoutes(
           backendType: "claude",
           resumeCliSessionId: body.resumeCliSessionId,
           permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
+          askPermission: body.askPermission !== false,
         });
         if (body.role === "orchestrator") {
           session.isOrchestrator = true;
         }
         if (body.envSlug) session.envSlug = body.envSlug;
-        wsBridge.setInitialAskPermission(session.sessionId, body.askPermission !== false);
+        const resumeAskPermission = body.askPermission !== false;
+        wsBridge.setInitialAskPermission(
+          session.sessionId,
+          resumeAskPermission,
+          resumeAskPermission ? "plan" : "agent",
+        );
         wsBridge.markResumedFromExternal(session.sessionId);
         const existingNames = new Set(Object.values(sessionNames.getAllNames()));
         sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
@@ -482,13 +553,11 @@ export function createRoutes(
         }
       }
 
-      // Resolve initial permission mode from askPermission for Claude sessions.
+      // Resolve initial mode state from askPermission (+ optional permissionMode).
       // For Codex, default to gpt-5.3-codex if no model provided (Codex requires explicit model).
       // For Claude, undefined is fine — the CLI uses its own configured default.
-      const askPermission = body.askPermission !== false;
-      const initialPermissionMode = backend === "codex"
-        ? (body.permissionMode || "suggest")
-        : (askPermission ? "plan" : "bypassPermissions");
+      const askPermissionRequested = body.askPermission !== false;
+      const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
       const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
       const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
         ? (body.codexReasoningEffort.trim() || undefined)
@@ -501,7 +570,8 @@ export function createRoutes(
       const binarySettings = getSettings();
       const session = await launcher.launch({
         model,
-        permissionMode: initialPermissionMode,
+        permissionMode: initialModeState.permissionMode,
+        askPermission: initialModeState.askPermission,
         cwd,
         claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
         codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
@@ -540,10 +610,12 @@ export function createRoutes(
         });
       }
 
-      // Set initial askPermission state on the session for Claude backends
-      if (backend !== "codex") {
-        wsBridge.setInitialAskPermission(session.sessionId, askPermission);
-      }
+      // Set initial askPermission/uiMode so state_snapshot is consistent on first paint.
+      wsBridge.setInitialAskPermission(
+        session.sessionId,
+        initialModeState.askPermission,
+        initialModeState.uiMode,
+      );
 
       // Mark as assistant session if in assistant mode
       if (isAssistantMode) {
@@ -668,13 +740,19 @@ export function createRoutes(
             backendType: "claude",
             resumeCliSessionId: body.resumeCliSessionId,
             permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
+            askPermission: body.askPermission !== false,
           });
           if (body.role === "orchestrator") {
             session.isOrchestrator = true;
           }
           if (body.envSlug) session.envSlug = body.envSlug;
           wsBridge.setInitialCwd(session.sessionId, body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd());
-          wsBridge.setInitialAskPermission(session.sessionId, body.askPermission !== false);
+          const resumeAskPermission = body.askPermission !== false;
+          wsBridge.setInitialAskPermission(
+            session.sessionId,
+            resumeAskPermission,
+            resumeAskPermission ? "plan" : "agent",
+          );
           wsBridge.markResumedFromExternal(session.sessionId);
           const existingNames = new Set(Object.values(sessionNames.getAllNames()));
           sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
@@ -1003,11 +1081,9 @@ export function createRoutes(
         // --- Step: Launch CLI ---
         await emitProgress(stream, "launching_cli", "Launching Claude Code...", "in_progress");
 
-        // Resolve initial permission mode from askPermission for Claude sessions.
-        const askPermission = body.askPermission !== false;
-        const initialPermissionMode = backend === "codex"
-          ? (body.permissionMode || "suggest")
-          : (askPermission ? "plan" : "bypassPermissions");
+        // Resolve initial mode state from askPermission (+ optional permissionMode).
+        const askPermissionRequested = body.askPermission !== false;
+        const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
         const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
         const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
           ? (body.codexReasoningEffort.trim() || undefined)
@@ -1020,7 +1096,8 @@ export function createRoutes(
         const streamBinarySettings = getSettings();
         const session = await launcher.launch({
           model,
-          permissionMode: initialPermissionMode,
+          permissionMode: initialModeState.permissionMode,
+          askPermission: initialModeState.askPermission,
           cwd,
           claudeBinary: body.claudeBinary || streamBinarySettings.claudeBinary || undefined,
           codexBinary: body.codexBinary || streamBinarySettings.codexBinary || undefined,
@@ -1063,10 +1140,12 @@ export function createRoutes(
         // so setInitialCwd only fills it for plain sessions and pre-fills slash commands.
         wsBridge.setInitialCwd(session.sessionId, cwd);
 
-        // Set initial askPermission state on the session for Claude backends
-        if (backend !== "codex") {
-          wsBridge.setInitialAskPermission(session.sessionId, askPermission);
-        }
+        // Set initial askPermission/uiMode so state_snapshot is consistent on first paint.
+        wsBridge.setInitialAskPermission(
+          session.sessionId,
+          initialModeState.askPermission,
+          initialModeState.uiMode,
+        );
 
         // Mark as assistant session if in assistant mode
         if (isAssistantMode) {

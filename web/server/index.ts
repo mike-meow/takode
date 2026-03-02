@@ -46,6 +46,7 @@ import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
 import { existsSync } from "node:fs";
+import { RelaunchQueue } from "./relaunch-queue.js";
 import {
   shouldAllowUserMessageOverrideOnNameMismatch,
   type NamerMutationRecord,
@@ -154,97 +155,73 @@ wsBridge.onSessionGitInfoReadyCallback((sessionId, cwd, branch) => {
   prPoller.watch(sessionId, cwd, branch);
 });
 
-// Auto-relaunch CLI when a browser connects to a session with no CLI
-const relaunchingSet = new Set<string>();
-wsBridge.onCLIRelaunchNeededCallback(async (sessionId) => {
-  if (relaunchingSet.has(sessionId)) return;
+const relaunchQueue = new RelaunchQueue(async (sessionId) => {
   const info = launcher.getSession(sessionId);
-  if (info?.archived) return;
+  if (!info || info.archived) return;
   // Don't auto-relaunch sessions killed by the idle manager — they were
-  // intentionally stopped to enforce maxKeepAlive. Relaunching would create
-  // a kill/relaunch loop where the relaunched session gets a fresh
-  // lastActivityAt, causing the idle manager to kill other (active) sessions.
-  if (info?.killedByIdleManager) return;
-  if (info && info.state !== "starting") {
-    relaunchingSet.add(sessionId);
+  // intentionally stopped to enforce maxKeepAlive.
+  if (info.killedByIdleManager) return;
 
-    // If cwd doesn't exist, try to recreate worktree (e.g. after migration)
-    if (!existsSync(info.cwd)) { // sync-ok: session launch, not called during message handling
-      if (info.isWorktree && info.repoRoot && info.branch) {
-        try {
-          const wtResult = recreateWorktreeIfMissing(sessionId, info, { launcher, worktreeTracker, wsBridge });
-          if (wtResult.error) {
-            wsBridge.broadcastToSession(sessionId, { type: "error", message: wtResult.error });
-            relaunchingSet.delete(sessionId);
-            return;
-          }
-          if (wtResult.recreated) {
-            console.log(`[server] Recreated worktree for session ${sessionId} before relaunch`);
-          }
-        } catch (e) {
-          wsBridge.broadcastToSession(sessionId, {
-            type: "error",
-            message: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
-          });
-          relaunchingSet.delete(sessionId);
+  // If cwd doesn't exist, try to recreate worktree (e.g. after migration)
+  if (!existsSync(info.cwd)) { // sync-ok: session launch, not called during message handling
+    if (info.isWorktree && info.repoRoot && info.branch) {
+      try {
+        const wtResult = recreateWorktreeIfMissing(sessionId, info, { launcher, worktreeTracker, wsBridge });
+        if (wtResult.error) {
+          wsBridge.broadcastToSession(sessionId, { type: "error", message: wtResult.error });
           return;
         }
-      } else {
+        if (wtResult.recreated) {
+          console.log(`[server] Recreated worktree for session ${sessionId} before relaunch`);
+        }
+      } catch (e) {
         wsBridge.broadcastToSession(sessionId, {
           type: "error",
-          message: `Working directory not found: ${info.cwd}`,
+          message: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
         });
-        relaunchingSet.delete(sessionId);
         return;
       }
+    } else {
+      wsBridge.broadcastToSession(sessionId, {
+        type: "error",
+        message: `Working directory not found: ${info.cwd}`,
+      });
+      return;
     }
+  }
 
-    console.log(`[server] Auto-relaunching CLI for session ${sessionId}`);
-    try {
-      const result = await launcher.relaunch(sessionId);
-      if (!result.ok && result.error) {
-        wsBridge.broadcastToSession(sessionId, { type: "error", message: result.error });
-      }
-    } finally {
-      setTimeout(() => relaunchingSet.delete(sessionId), 5000);
-    }
+  console.log(`[server] Relaunching session ${sessionId}`);
+  const result = await launcher.relaunch(sessionId);
+  if (!result.ok && result.error) {
+    wsBridge.broadcastToSession(sessionId, { type: "error", message: result.error });
   }
 });
 
+// Auto-relaunch CLI when a browser connects to a session with no CLI
+wsBridge.onCLIRelaunchNeededCallback((sessionId) => {
+  const info = launcher.getSession(sessionId);
+  if (!info || info.archived || info.killedByIdleManager) return;
+  if (info.state === "starting") return;
+  console.log(`[server] Auto-relaunch requested for session ${sessionId}`);
+  relaunchQueue.request(sessionId);
+});
+
 // Restart CLI when ask permission mode changes (updates launcher state + relaunches)
-wsBridge.onPermissionModeChangedCallback(async (sessionId, newMode) => {
-  if (relaunchingSet.has(sessionId)) return;
+wsBridge.onPermissionModeChangedCallback((sessionId, newMode) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived) return;
   // Update the launcher's stored permission mode before relaunching
   info.permissionMode = newMode;
-  relaunchingSet.add(sessionId);
-  console.log(`[server] Relaunching CLI for session ${sessionId} with permission mode: ${newMode}`);
-  try {
-    const result = await launcher.relaunch(sessionId);
-    if (!result.ok && result.error) {
-      wsBridge.broadcastToSession(sessionId, { type: "error", message: result.error });
-    }
-  } finally {
-    setTimeout(() => relaunchingSet.delete(sessionId), 5000);
-  }
+  console.log(`[server] Relaunch requested for session ${sessionId} with permission mode: ${newMode}`);
+  relaunchQueue.request(sessionId);
 });
 
 // Relaunch backend when runtime setting changes require process restart (Codex).
-wsBridge.onSessionRelaunchRequestedCallback(async (sessionId) => {
-  if (relaunchingSet.has(sessionId)) return;
+wsBridge.onSessionRelaunchRequestedCallback((sessionId) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived) return;
-  relaunchingSet.add(sessionId);
-  console.log(`[server] Relaunching session ${sessionId} after settings update`);
-  try {
-    const result = await launcher.relaunch(sessionId);
-    if (!result.ok && result.error) {
-      wsBridge.broadcastToSession(sessionId, { type: "error", message: result.error });
-    }
-  } finally {
-    setTimeout(() => relaunchingSet.delete(sessionId), 5000);
-  }
+  console.log(`[server] Relaunch requested for session ${sessionId} after settings update`);
+  relaunchQueue.request(sessionId);
 });
 
 // Track which sessions have had at least one auto-naming evaluation

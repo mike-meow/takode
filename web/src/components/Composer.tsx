@@ -2,19 +2,18 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
 import {
-  CLAUDE_MODES,
-  CODEX_MODES,
   CODEX_REASONING_EFFORTS,
-  getNextMode,
   resolveClaudeCliMode,
   deriveUiMode,
+  resolveCodexCliMode,
+  deriveCodexUiMode,
+  deriveCodexAskPermission,
   formatModel,
   getModelsForBackend,
   toModelOptions,
   type ModelOption,
 } from "../utils/backends.js";
 import { isTouchDevice } from "../utils/mobile.js";
-import type { ModeOption } from "../utils/backends.js";
 import { Lightbox } from "./Lightbox.js";
 import { CatPawAvatar } from "./CatIcons.js";
 import { useVoiceInput } from "../hooks/useVoiceInput.js";
@@ -77,18 +76,18 @@ interface CommandItem {
   type: "command" | "skill";
 }
 
-function parseCodexModeSlashCommand(text: string): "plan" | "suggest" | "bypassPermissions" | null {
+function parseCodexModeSlashCommand(text: string): { uiMode: "plan" | "agent"; askPermission?: boolean } | null {
   const normalized = text.trim().toLowerCase().replace(/\s+/g, "");
   switch (normalized) {
     case "/plan":
-      return "plan";
+      return { uiMode: "plan" };
     case "/suggest":
-      return "suggest";
+      return { uiMode: "agent", askPermission: true };
     case "/accept-edits":
     case "/acceptedits":
-      return "suggest";
+      return { uiMode: "agent", askPermission: true };
     case "/auto":
-      return "bypassPermissions";
+      return { uiMode: "agent", askPermission: false };
     default:
       return null;
   }
@@ -164,7 +163,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showCodexReasoningDropdown, setShowCodexReasoningDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
@@ -174,7 +172,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
@@ -249,17 +246,13 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isConnected = cliConnected.get(sessionId) ?? false;
   const currentMode = sessionData?.permissionMode || "acceptEdits";
   const isCodex = sessionData?.backend_type === "codex";
-  const askPermission = useStore((s) => s.askPermission.get(sessionId) ?? true);
-
-  // For Claude Code: derive UI mode from the CLI mode
-  const uiMode = isCodex ? currentMode : deriveUiMode(currentMode);
+  const askPermission = useStore((s) => {
+    const explicit = s.askPermission.get(sessionId);
+    if (typeof explicit === "boolean") return explicit;
+    return isCodex ? deriveCodexAskPermission(currentMode) : true;
+  });
+  const uiMode = isCodex ? deriveCodexUiMode(currentMode) : deriveUiMode(currentMode);
   const isPlan = uiMode === "plan";
-
-  // Codex uses its own modes; Claude uses the new plan/agent modes
-  const modes: ModeOption[] = isCodex ? CODEX_MODES : CLAUDE_MODES;
-  const modeLabel = isCodex
-    ? (modes.find((m) => m.value === currentMode)?.label?.toLowerCase() || currentMode)
-    : uiMode;
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
 
@@ -333,9 +326,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Close mode dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
-        setShowModeDropdown(false);
-      }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
       }
@@ -414,7 +404,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
     if (isCodex) {
       const targetMode = parseCodexModeSlashCommand(msg);
       if (targetMode) {
-        const switched = sendToSession(sessionId, { type: "set_permission_mode", mode: targetMode });
+        const targetAsk = targetMode.askPermission ?? askPermission;
+        const cliMode = resolveCodexCliMode(targetMode.uiMode, targetAsk);
+        const switched = sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
         if (!switched) return;
         useStore.getState().clearComposerDraft(sessionId);
         setSlashMenuOpen(false);
@@ -544,8 +536,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   function selectMode(mode: string) {
     if (!isConnected) return;
     if (isCodex) {
-      // Server will broadcast the updated permissionMode to all browsers
-      sendToSession(sessionId, { type: "set_permission_mode", mode });
+      const cliMode = resolveCodexCliMode(mode, askPermission);
+      sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
       return;
     }
     // Claude Code: resolve the UI mode + askPermission to the actual CLI mode
@@ -555,7 +547,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }
 
   function toggleAskPermission() {
-    if (!isConnected || isCodex) return;
+    if (!isConnected) return;
     setShowAskConfirm(true);
   }
 
@@ -566,12 +558,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }
 
   function cycleMode() {
-    if (isCodex) {
-      selectMode(getNextMode(currentMode, modes));
-    } else {
-      // Claude: toggle between plan and agent
-      selectMode(uiMode === "plan" ? "agent" : "plan");
-    }
+    selectMode(uiMode === "plan" ? "agent" : "plan");
   }
 
   // Detect pending ExitPlanMode permission for auto-reject and ghost text
@@ -659,7 +646,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                   </svg>
                 )}
-                {isCodex ? modeLabel : isPlan ? "Plan" : "Agent"}
+                {isPlan ? "Plan" : "Agent"}
               </span>
               <span className="flex-1 text-sm text-cc-muted text-left truncate">Type a message...</span>
             </button>
@@ -952,127 +939,86 @@ export function Composer({ sessionId }: { sessionId: string }) {
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between px-2.5 pb-2.5">
             {/* Left: mode indicator */}
-            {isCodex ? (
-              /* Codex sessions: keep the existing dropdown unchanged */
-              <div className="relative" ref={modeDropdownRef}>
-                <button
-                  onClick={() => setShowModeDropdown(!showModeDropdown)}
-                  disabled={!isConnected}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium transition-all select-none ${
-                    !isConnected
-                      ? "opacity-30 cursor-not-allowed text-cc-muted"
-                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                  }`}
-                  title="Change mode"
-                >
+            <div className="flex items-center gap-1">
+              {/* Plan / Agent single toggle */}
+              <button
+                onClick={cycleMode}
+                disabled={!isConnected}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors select-none ${
+                  !isConnected
+                    ? "opacity-30 cursor-not-allowed text-cc-muted"
+                    : isPlan
+                    ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                }`}
+                title={isPlan
+                  ? "Plan mode: agent creates a plan before executing (Shift+Tab to toggle)"
+                  : "Agent mode: executes tools directly (Shift+Tab to toggle)"}
+              >
+                {isPlan ? (
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
+                  </svg>
+                ) : (
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                     <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                     <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                   </svg>
-                  <span>{modeLabel}</span>
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
-                    <path d="M4 6l4 4 4-4" />
-                  </svg>
+                )}
+                <span>{isPlan ? "Plan" : "Agent"}</span>
+              </button>
+
+              {/* Ask Permission toggle (shield icon) + confirmation popover */}
+              <div className="relative" ref={askConfirmRef}>
+                <button
+                  onClick={toggleAskPermission}
+                  disabled={!isConnected}
+                  className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
+                    !isConnected
+                      ? "opacity-30 cursor-not-allowed text-cc-muted"
+                      : "cursor-pointer hover:bg-cc-hover"
+                  }`}
+                  title={askPermission
+                    ? "Permissions: asking before tool use (click to change)"
+                    : "Permissions: auto-approving tool use (click to change)"}
+                >
+                  {askPermission ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                    </svg>
+                  )}
                 </button>
-                {showModeDropdown && (
-                  <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
-                    {modes.map((m) => (
+                {showAskConfirm && (
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 p-3">
+                    <p className="text-xs text-cc-fg mb-1 font-medium">
+                      {askPermission ? "Disable permission prompts?" : "Enable permission prompts?"}
+                    </p>
+                    <p className="text-[11px] text-cc-muted mb-3 leading-relaxed">
+                      This will restart the CLI session. Any in-progress operation will be interrupted. Your conversation will be preserved.
+                    </p>
+                    <div className="flex items-center justify-end gap-2">
                       <button
-                        key={m.value}
-                        onClick={() => { selectMode(m.value); setShowModeDropdown(false); }}
-                        className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                          m.value === currentMode ? "text-cc-primary font-medium" : "text-cc-fg"
-                        }`}
+                        onClick={() => setShowAskConfirm(false)}
+                        className="px-2.5 py-1 text-[11px] rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
                       >
-                        {m.label}
+                        Cancel
                       </button>
-                    ))}
+                      <button
+                        onClick={confirmAskPermissionChange}
+                        className="px-2.5 py-1 text-[11px] rounded-md bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 transition-colors cursor-pointer font-medium"
+                      >
+                        Restart
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            ) : (
-              /* Claude Code sessions: Plan/Agent toggle + Ask Permission switch */
-              <div className="flex items-center gap-1">
-                {/* Plan / Agent single toggle */}
-                <button
-                  onClick={cycleMode}
-                  disabled={!isConnected}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors select-none ${
-                    !isConnected
-                      ? "opacity-30 cursor-not-allowed text-cc-muted"
-                      : isPlan
-                      ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
-                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                  }`}
-                  title={isPlan
-                    ? "Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)"
-                    : "Agent mode: Claude executes tools directly (Shift+Tab to toggle)"}
-                >
-                  {isPlan ? (
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                      <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                      <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                      <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    </svg>
-                  )}
-                  <span>{isPlan ? "Plan" : "Agent"}</span>
-                </button>
-
-                {/* Ask Permission toggle (shield icon) + confirmation popover */}
-                <div className="relative" ref={askConfirmRef}>
-                  <button
-                    onClick={toggleAskPermission}
-                    disabled={!isConnected}
-                    className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
-                      !isConnected
-                        ? "opacity-30 cursor-not-allowed text-cc-muted"
-                        : "cursor-pointer hover:bg-cc-hover"
-                    }`}
-                    title={askPermission
-                      ? "Permissions: asking before tool use (click to change)"
-                      : "Permissions: auto-approving tool use (click to change)"}
-                  >
-                    {askPermission ? (
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      </svg>
-                    )}
-                  </button>
-                  {showAskConfirm && (
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 p-3">
-                      <p className="text-xs text-cc-fg mb-1 font-medium">
-                        {askPermission ? "Disable permission prompts?" : "Enable permission prompts?"}
-                      </p>
-                      <p className="text-[11px] text-cc-muted mb-3 leading-relaxed">
-                        This will restart the CLI session. Any in-progress operation will be interrupted. Your conversation will be preserved.
-                      </p>
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setShowAskConfirm(false)}
-                          className="px-2.5 py-1 text-[11px] rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={confirmAskPermissionChange}
-                          className="px-2.5 py-1 text-[11px] rounded-md bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 transition-colors cursor-pointer font-medium"
-                        >
-                          Restart
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* Center: collapse toggle */}
             <CollapseAllButton sessionId={sessionId} />

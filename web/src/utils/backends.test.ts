@@ -8,6 +8,9 @@ import {
   resolveClaudeCliMode,
   resolvePostPlanMode,
   deriveUiMode,
+  resolveCodexCliMode,
+  deriveCodexUiMode,
+  deriveCodexAskPermission,
   CLAUDE_MODELS,
   CODEX_MODELS,
   CLAUDE_MODES,
@@ -137,9 +140,10 @@ describe("static model/mode lists", () => {
     expect(codexPlan?.label).toBe("Plan");
   });
 
-  it("codex suggest mode is separate from plan mode", () => {
-    const codexSuggest = CODEX_MODES.find((m) => m.value === "suggest");
-    expect(codexSuggest?.label).toBe("Suggest");
+  it("codex modes contain plan and agent virtual modes", () => {
+    const values = CODEX_MODES.map((m) => m.value);
+    expect(values).toContain("plan");
+    expect(values).toContain("agent");
   });
 
   it("claude modes contain plan and agent virtual modes", () => {
@@ -150,6 +154,41 @@ describe("static model/mode lists", () => {
 
   it("default claude mode is agent", () => {
     expect(getDefaultMode("claude")).toBe("agent");
+  });
+});
+
+describe("resolveCodexCliMode", () => {
+  it("plan mode resolves to 'plan' regardless of askPermission", () => {
+    expect(resolveCodexCliMode("plan", true)).toBe("plan");
+    expect(resolveCodexCliMode("plan", false)).toBe("plan");
+  });
+
+  it("agent mode with askPermission=true resolves to 'suggest'", () => {
+    expect(resolveCodexCliMode("agent", true)).toBe("suggest");
+  });
+
+  it("agent mode with askPermission=false resolves to 'bypassPermissions'", () => {
+    expect(resolveCodexCliMode("agent", false)).toBe("bypassPermissions");
+  });
+});
+
+describe("deriveCodexUiMode", () => {
+  it("maps 'plan' to plan UI mode", () => {
+    expect(deriveCodexUiMode("plan")).toBe("plan");
+  });
+
+  it("maps execution modes to agent UI mode", () => {
+    expect(deriveCodexUiMode("suggest")).toBe("agent");
+    expect(deriveCodexUiMode("bypassPermissions")).toBe("agent");
+    expect(deriveCodexUiMode("default")).toBe("agent");
+  });
+});
+
+describe("deriveCodexAskPermission", () => {
+  it("returns false only for bypassPermissions", () => {
+    expect(deriveCodexAskPermission("bypassPermissions")).toBe(false);
+    expect(deriveCodexAskPermission("suggest")).toBe(true);
+    expect(deriveCodexAskPermission("plan")).toBe(true);
   });
 });
 

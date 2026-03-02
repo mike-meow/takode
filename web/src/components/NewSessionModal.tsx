@@ -4,7 +4,18 @@ import { api, type CompanionEnv, type GitRepoInfo, type GitBranchInfo, type Back
 import { getRecentDirs } from "../utils/recent-dirs.js";
 import { navigateToSession } from "../utils/routing.js";
 import { createPendingId, startPendingCreation } from "../utils/pending-creation.js";
-import { CODEX_REASONING_EFFORTS, getModelsForBackend, getModesForBackend, getDefaultModel, getDefaultMode, toModelOptions, type ModelOption } from "../utils/backends.js";
+import {
+  CODEX_REASONING_EFFORTS,
+  getModelsForBackend,
+  getModesForBackend,
+  getDefaultModel,
+  getDefaultMode,
+  toModelOptions,
+  resolveCodexCliMode,
+  deriveCodexUiMode,
+  deriveCodexAskPermission,
+  type ModelOption,
+} from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { EnvManager } from "./EnvManager.js";
@@ -76,7 +87,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const [manualSessionId, setManualSessionId] = useState("");
 
   const MODELS = dynamicModels || getModelsForBackend(backend);
-  const MODES = getModesForBackend(backend);
 
   // Environment state
   const [envs, setEnvs] = useState<CompanionEnv[]>([]);
@@ -86,7 +96,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   // Dropdown states
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
 
@@ -110,7 +119,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const [pullError, setPullError] = useState("");
 
   const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const envDropdownRef = useRef<HTMLDivElement>(null);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
@@ -168,15 +176,24 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     }).catch(() => {});
   }, [open, backend]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Migrate legacy Codex mode values from older builds.
+  useEffect(() => {
+    if (backend !== "codex") return;
+    if (mode !== "suggest" && mode !== "bypassPermissions") return;
+    const uiMode = deriveCodexUiMode(mode);
+    const ask = deriveCodexAskPermission(mode);
+    setMode(uiMode);
+    setAskPermission(ask);
+    scopedSetItem("cc-mode", uiMode);
+    scopedSetItem("cc-ask-permission", String(ask));
+  }, [backend, mode]);
+
   // Close dropdowns on outside click
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
-      }
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
-        setShowModeDropdown(false);
       }
       if (reasoningDropdownRef.current && !reasoningDropdownRef.current.contains(e.target as Node)) {
         setShowReasoningDropdown(false);
@@ -276,11 +293,14 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       || (useWorktree ? gitRepoInfo?.currentBranch : undefined)
       || undefined;
     const cwdSnapshot = cwd;
+    const codexPermissionMode = backend === "codex"
+      ? resolveCodexCliMode(mode, askPermission)
+      : undefined;
 
     // Build creation opts (stored in pending session for retry)
     const createOpts = {
       model,
-      permissionMode: backend === "codex" ? mode : undefined,
+      permissionMode: codexPermissionMode,
       cwd: cwdSnapshot || undefined,
       envSlug: selectedEnv || undefined,
       branch: branchName,
@@ -290,7 +310,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
       codexReasoningEffort: backend === "codex" ? (codexReasoningEffort || undefined) : undefined,
       assistantMode: assistantMode || undefined,
-      askPermission: backend !== "codex" ? askPermission : undefined,
+      askPermission,
       role: sessionRole === "orchestrator" ? "orchestrator" as const : undefined,
     };
 
@@ -617,86 +637,54 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                 </div>
               )}
 
-              {/* Mode selector (Claude: Plan/Agent + Ask) */}
-              {backend === "codex" ? (
-                <div className="relative" ref={modeDropdownRef}>
+              {/* Mode selector: shared Plan/Agent + Ask toggle */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-cc-hover/50 rounded-lg p-0.5">
                   <button
-                    onClick={() => setShowModeDropdown(!showModeDropdown)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-cc-muted hover:text-cc-fg rounded-lg hover:bg-cc-hover transition-colors cursor-pointer"
+                    onClick={() => updateMode("plan")}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer select-none ${
+                      mode === "plan"
+                        ? "bg-cc-primary/15 text-cc-primary"
+                        : "text-cc-muted hover:text-cc-fg"
+                    }`}
+                    title="Plan mode: agent creates a plan before executing"
                   >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                      <path d="M2 4h12M2 8h8M2 12h10" strokeLinecap="round" />
-                    </svg>
-                    {MODES.find((m) => m.value === mode)?.label || mode}
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
-                      <path d="M4 6l4 4 4-4" />
-                    </svg>
+                    Plan
                   </button>
-                  {showModeDropdown && (
-                    <div className="absolute left-0 top-full mt-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
-                      {MODES.map((m) => (
-                        <button
-                          key={m.value}
-                          onClick={() => { updateMode(m.value); setShowModeDropdown(false); }}
-                          className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                            m.value === mode ? "text-cc-primary font-medium" : "text-cc-fg"
-                          }`}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <button
+                    onClick={() => updateMode("agent")}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer select-none ${
+                      mode === "agent"
+                        ? "bg-cc-primary/15 text-cc-primary"
+                        : "text-cc-muted hover:text-cc-fg"
+                    }`}
+                    title="Agent mode: executes tools directly"
+                  >
+                    Agent
+                  </button>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center bg-cc-hover/50 rounded-lg p-0.5">
-                    <button
-                      onClick={() => updateMode("plan")}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer select-none ${
-                        mode === "plan"
-                          ? "bg-cc-primary/15 text-cc-primary"
-                          : "text-cc-muted hover:text-cc-fg"
-                      }`}
-                      title="Plan mode: Claude creates a plan before executing (Shift+Tab to toggle)"
-                    >
-                      Plan
-                    </button>
-                    <button
-                      onClick={() => updateMode("agent")}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer select-none ${
-                        mode === "agent"
-                          ? "bg-cc-primary/15 text-cc-primary"
-                          : "text-cc-muted hover:text-cc-fg"
-                      }`}
-                      title="Agent mode: Claude executes tools directly (Shift+Tab to toggle)"
-                    >
-                      Agent
-                    </button>
-                  </div>
 
-                  <button
-                    onClick={() => {
-                      const next = !askPermission;
-                      setAskPermission(next);
-                      scopedSetItem("cc-ask-permission", String(next));
-                    }}
-                    className="flex items-center justify-center w-7 h-7 rounded-md transition-colors cursor-pointer select-none hover:bg-cc-hover"
-                    title={askPermission ? "Permissions: will ask before tool use" : "Permissions: auto-approving tool use"}
-                  >
-                    {askPermission ? (
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                        <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
-                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              )}
+                <button
+                  onClick={() => {
+                    const next = !askPermission;
+                    setAskPermission(next);
+                    scopedSetItem("cc-ask-permission", String(next));
+                  }}
+                  className="flex items-center justify-center w-7 h-7 rounded-md transition-colors cursor-pointer select-none hover:bg-cc-hover"
+                  title={askPermission ? "Permissions: will ask before tool use" : "Permissions: auto-approving tool use"}
+                >
+                  {askPermission ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
+                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Row 2: Folder + Branch + Worktree + Assistant */}

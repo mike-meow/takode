@@ -57,7 +57,11 @@ function sanitizeSpawnArgsForLog(args: string[]): string {
   return out.join(" ");
 }
 
-function mapCodexApprovalPolicy(permissionMode?: string): "never" | "untrusted" {
+function mapCodexApprovalPolicy(permissionMode?: string, askPermission?: boolean): "never" | "untrusted" {
+  const effectiveAskPermission = typeof askPermission === "boolean"
+    ? askPermission
+    : permissionMode !== "bypassPermissions";
+  if (!effectiveAskPermission) return "never";
   return permissionMode === "bypassPermissions" ? "never" : "untrusted";
 }
 
@@ -164,6 +168,8 @@ export interface SdkSessionInfo {
   exitCode?: number | null;
   model?: string;
   permissionMode?: string;
+  /** Whether permission prompts are enabled (shared UI state; backend-specific mapping). */
+  askPermission?: boolean;
   cwd: string;
   createdAt: number;
   /** Epoch ms of last user or CLI activity (used by idle manager) */
@@ -237,6 +243,8 @@ export interface SdkSessionInfo {
 export interface LaunchOptions {
   model?: string;
   permissionMode?: string;
+  /** Whether permission prompts are enabled (shared UI state; backend-specific mapping). */
+  askPermission?: boolean;
   cwd?: string;
   claudeBinary?: string;
   codexBinary?: string;
@@ -549,6 +557,7 @@ export class CliLauncher {
       state: "starting",
       model: options.model,
       permissionMode: options.permissionMode,
+      askPermission: options.askPermission,
       cwd,
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
@@ -759,6 +768,7 @@ export class CliLauncher {
           await this.spawnCodex(sessionId, info, {
             model: info.model,
             permissionMode: info.permissionMode,
+            askPermission: info.askPermission,
             cwd: info.cwd,
             codexBinary: binSettings.codexBinary || undefined,
             codexSandbox: info.codexSandbox,
@@ -1143,7 +1153,7 @@ export class CliLauncher {
       }
     }
 
-    const approvalPolicy = mapCodexApprovalPolicy(options.permissionMode);
+    const approvalPolicy = mapCodexApprovalPolicy(options.permissionMode, options.askPermission);
     const sandboxMode = resolveCodexSandbox(options.permissionMode, options.codexSandbox);
     // Set process-level defaults so Codex starts in the intended approval mode
     // before any JSON-RPC thread calls are made.
@@ -1262,6 +1272,7 @@ export class CliLauncher {
       model: options.model,
       cwd: info.cwd,
       approvalMode: options.permissionMode,
+      askPermission: options.askPermission,
       threadId: info.cliSessionId,
       sandbox: sandboxMode,
       reasoningEffort: options.codexReasoningEffort,

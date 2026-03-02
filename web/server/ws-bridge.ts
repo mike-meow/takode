@@ -772,10 +772,10 @@ export class WsBridge {
    * Set initial askPermission state on a session at creation time.
    * This ensures the browser receives the correct initial state via state_snapshot.
    */
-  setInitialAskPermission(sessionId: string, askPermission: boolean): void {
+  setInitialAskPermission(sessionId: string, askPermission: boolean, uiMode: "plan" | "agent" = "plan"): void {
     const session = this.getOrCreateSession(sessionId);
     session.state.askPermission = askPermission;
-    session.state.uiMode = "plan"; // New sessions default to plan mode
+    session.state.uiMode = uiMode;
     this.persistSession(session);
   }
 
@@ -3943,6 +3943,10 @@ export class WsBridge {
         this.handleCodexSetReasoningEffort(session, msg.effort);
         return;
       }
+      if (msg.type === "set_ask_permission") {
+        this.handleSetAskPermission(session, msg.askPermission);
+        return;
+      }
 
       // Prefer local image paths for Codex user turns so thread history stores
       // compact local references instead of large data: URLs. If any path can't
@@ -4575,12 +4579,22 @@ export class WsBridge {
       this.clearActionAttentionIfNoPermissions(session);
     }
 
+    const previousAsk = session.state.askPermission !== false;
+    const codexUiMode = mode === "plan" ? "plan" : "agent";
+    const codexAskPermission = mode === "plan"
+      ? previousAsk
+      : mode !== "bypassPermissions";
     session.state.permissionMode = mode;
+    session.state.uiMode = codexUiMode;
+    session.state.askPermission = codexAskPermission;
     const launchInfo = this.launcher?.getSession(session.id);
-    if (launchInfo) launchInfo.permissionMode = mode;
+    if (launchInfo) {
+      launchInfo.permissionMode = mode;
+      launchInfo.askPermission = codexAskPermission;
+    }
     this.broadcastToBrowsers(session, {
       type: "session_update",
-      session: { permissionMode: mode },
+      session: { permissionMode: mode, uiMode: codexUiMode, askPermission: codexAskPermission },
     });
     this.persistSession(session);
 
@@ -4609,6 +4623,27 @@ export class WsBridge {
   }
 
   private handleSetAskPermission(session: Session, askPermission: boolean) {
+    if (session.backendType === "codex") {
+      const uiMode = session.state.uiMode === "plan" ? "plan" : "agent";
+      const newMode = uiMode === "plan" ? "plan" : (askPermission ? "suggest" : "bypassPermissions");
+      if (session.state.askPermission === askPermission && session.state.permissionMode === newMode) return;
+      session.state.askPermission = askPermission;
+      session.state.permissionMode = newMode;
+      session.state.uiMode = uiMode;
+      const launchInfo = this.launcher?.getSession(session.id);
+      if (launchInfo) {
+        launchInfo.permissionMode = newMode;
+        launchInfo.askPermission = askPermission;
+      }
+      this.broadcastToBrowsers(session, {
+        type: "session_update",
+        session: { askPermission, permissionMode: newMode, uiMode },
+      });
+      this.persistSession(session);
+      this.onSessionRelaunchRequested?.(session.id);
+      return;
+    }
+
     session.state.askPermission = askPermission;
     // Resolve the new CLI permission mode based on current UI mode + new ask state
     const uiMode = session.state.uiMode ?? "agent";

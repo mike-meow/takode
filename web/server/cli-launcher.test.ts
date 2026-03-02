@@ -555,6 +555,29 @@ describe("launch", () => {
     expect(cmdAndArgs[sandboxIdx + 1]).toBe("danger-full-access");
   });
 
+  it("uses -a never for codex plan mode when askPermission is false", async () => {
+    mockResolveBinary.mockReturnValue("/opt/fake/codex");
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      permissionMode: "plan",
+      askPermission: false,
+      codexInternetAccess: false,
+      codexSandbox: "workspace-write",
+    });
+    await waitForSpawnCalls(1);
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    const approvalIdx = cmdAndArgs.indexOf("-a");
+    const sandboxIdx = cmdAndArgs.indexOf("-s");
+    expect(approvalIdx).toBeGreaterThan(-1);
+    expect(cmdAndArgs[approvalIdx + 1]).toBe("never");
+    expect(sandboxIdx).toBeGreaterThan(-1);
+    expect(cmdAndArgs[sandboxIdx + 1]).toBe("workspace-write");
+  });
+
   it("maps non-bypass modes to Codex untrusted launch policy", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());

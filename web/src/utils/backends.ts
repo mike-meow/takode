@@ -61,8 +61,7 @@ export const CLAUDE_MODES: ModeOption[] = [
 ];
 
 export const CODEX_MODES: ModeOption[] = [
-  { value: "bypassPermissions", label: "Auto" },
-  { value: "suggest", label: "Suggest" },
+  { value: "agent", label: "Agent" },
   { value: "plan", label: "Plan" },
 ];
 
@@ -189,4 +188,32 @@ export function resolvePostPlanMode(askPermission: boolean): string {
  */
 export function deriveUiMode(cliMode: string): "plan" | "agent" {
   return cliMode === "plan" ? "plan" : "agent";
+}
+
+// ─── Codex mode mapping ────────────────────────────────────────────────────────
+
+/**
+ * Maps the shared UI mode ("plan" or "agent") + askPermission toggle to the
+ * raw Codex mode string consumed by the server/launcher.
+ *
+ * | UI Mode | Ask Permission | Codex Mode          |
+ * |---------|----------------|---------------------|
+ * | plan    | true           | "plan"              |
+ * | plan    | false          | "plan"              |
+ * | agent   | true           | "suggest"           |
+ * | agent   | false          | "bypassPermissions" |
+ */
+export function resolveCodexCliMode(uiMode: string, askPermission: boolean): string {
+  if (uiMode === "plan") return "plan";
+  return askPermission ? "suggest" : "bypassPermissions";
+}
+
+/** Derive the shared UI mode from a raw Codex mode string. */
+export function deriveCodexUiMode(cliMode: string): "plan" | "agent" {
+  return cliMode === "plan" ? "plan" : "agent";
+}
+
+/** Derive askPermission state from a raw Codex mode string. */
+export function deriveCodexAskPermission(cliMode: string): boolean {
+  return cliMode !== "bypassPermissions";
 }

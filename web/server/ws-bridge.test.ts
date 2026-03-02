@@ -5686,6 +5686,50 @@ describe("Codex runtime settings updates", () => {
     expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
     expect(relaunchCb).toHaveBeenCalledWith(sid);
   });
+
+  it("set_ask_permission keeps codex plan mode while updating askPermission", async () => {
+    const sid = "s3";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    const relaunchCb = vi.fn();
+    const launcherInfo = { permissionMode: "plan", askPermission: true };
+    const launcherMock = {
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => launcherInfo),
+    };
+    bridge.setLauncher(launcherMock as any);
+    bridge.onSessionRelaunchRequestedCallback(relaunchCb);
+    bridge.attachCodexAdapter(sid, adapter as any);
+    bridge.handleBrowserOpen(browser, sid);
+    const session = bridge.getSession(sid)!;
+    session.state.permissionMode = "plan";
+    session.state.uiMode = "plan";
+    session.state.askPermission = true;
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "set_ask_permission",
+      askPermission: false,
+    }));
+
+    expect(session.state.permissionMode).toBe("plan");
+    expect(session.state.uiMode).toBe("plan");
+    expect(session.state.askPermission).toBe(false);
+    expect(launcherInfo.permissionMode).toBe("plan");
+    expect(launcherInfo.askPermission).toBe(false);
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const update = calls.find((m: any) => m.type === "session_update");
+    expect(update).toEqual(expect.objectContaining({
+      type: "session_update",
+      session: expect.objectContaining({
+        askPermission: false,
+        permissionMode: "plan",
+        uiMode: "plan",
+      }),
+    }));
+  });
 });
 
 // Regression: switching Codex permission mode while a tool approval is pending

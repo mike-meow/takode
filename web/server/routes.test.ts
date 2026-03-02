@@ -2284,7 +2284,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     expect(launcher.launch).toHaveBeenCalledWith(
       expect.objectContaining({ permissionMode: "plan" }),
     );
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true);
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "plan");
   });
 
   it("launches Claude session with 'bypassPermissions' when askPermission is false", async () => {
@@ -2300,7 +2300,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     expect(launcher.launch).toHaveBeenCalledWith(
       expect.objectContaining({ permissionMode: "bypassPermissions" }),
     );
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false);
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
   });
 
   it("defaults to 'plan' permission mode when askPermission is omitted", async () => {
@@ -2317,8 +2317,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     );
   });
 
-  it("uses 'suggest' permission mode for codex sessions regardless of askPermission", async () => {
-    // Codex sessions always use "suggest" mode; askPermission is irrelevant.
+  it("uses 'suggest' permission mode for codex sessions when askPermission is true", async () => {
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2329,8 +2328,21 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     expect(launcher.launch).toHaveBeenCalledWith(
       expect.objectContaining({ permissionMode: "suggest" }),
     );
-    // Should NOT set askPermission for codex sessions
-    expect(bridge.setInitialAskPermission).not.toHaveBeenCalled();
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "agent");
+  });
+
+  it("uses 'bypassPermissions' permission mode for codex sessions when askPermission is false", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", askPermission: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "bypassPermissions" }),
+    );
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
   });
 
   it("forwards explicit codex permissionMode to launcher", async () => {
@@ -2351,18 +2363,24 @@ describe("POST /api/sessions/create permission mode resolution", () => {
         permissionMode: "bypassPermissions",
       }),
     );
-    expect(bridge.setInitialAskPermission).not.toHaveBeenCalled();
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
   });
 
-  it("does not call setInitialAskPermission for codex sessions", async () => {
+  it("keeps codex plan mode when askPermission is false", async () => {
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: "/test", backend: "codex", askPermission: false }),
+      body: JSON.stringify({ cwd: "/test", backend: "codex", permissionMode: "plan", askPermission: false }),
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.setInitialAskPermission).not.toHaveBeenCalled();
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backendType: "codex",
+        permissionMode: "plan",
+      }),
+    );
+    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "plan");
   });
 });
 

@@ -1366,18 +1366,20 @@ describe("CodexAdapter", () => {
   });
 
   it.each([
-    { approvalMode: "bypassPermissions", expected: "never" },
-    { approvalMode: "suggest", expected: "untrusted" },
-    { approvalMode: "plan", expected: "untrusted" },
-    { approvalMode: "acceptEdits", expected: "untrusted" },
-    { approvalMode: "default", expected: "untrusted" },
-    { approvalMode: undefined, expected: "untrusted" },
-  ])("maps approvalMode=$approvalMode to kebab-case approvalPolicy=$expected", async ({ approvalMode, expected }) => {
+    { approvalMode: "bypassPermissions", askPermission: undefined, expected: "never" },
+    { approvalMode: "suggest", askPermission: undefined, expected: "untrusted" },
+    { approvalMode: "plan", askPermission: undefined, expected: "untrusted" },
+    { approvalMode: "plan", askPermission: false, expected: "never" },
+    { approvalMode: "acceptEdits", askPermission: undefined, expected: "untrusted" },
+    { approvalMode: "default", askPermission: undefined, expected: "untrusted" },
+    { approvalMode: undefined, askPermission: undefined, expected: "untrusted" },
+  ])("maps approvalMode=$approvalMode askPermission=$askPermission to kebab-case approvalPolicy=$expected", async ({ approvalMode, askPermission, expected }) => {
     const mock = createMockProcess();
 
     new CodexAdapter(mock.proc as never, "test-session", {
       model: "gpt-5.3-codex",
       approvalMode,
+      askPermission,
     });
 
     await new Promise((r) => setTimeout(r, 50));
