@@ -1679,11 +1679,12 @@ Every user message you receive has a source tag:
 
 ### Human-facing assistant replies
 
-When you want to communicate directly with the human in chat, end your message with \`@to(user)\`.
-For internal coordination updates, end your message with \`@to(self)\`.
+Every text message must end with \`@to(user)\` or \`@to(self)\`. Companion enforces this — missing tags trigger a resend prompt.
 
+- **\`@to(user)\`** (default): Use for anything the user would want to know — answers, results, status updates, decisions needed, errors, or confirmations of dispatched work.
+- **\`@to(self)\`**: Only for internal bookkeeping with little user relevance — reacting to intermediate herd events, updating your todo list, or noting next steps when nothing changed for the user.
+- **When in doubt, use \`@to(user)\`.** Showing too much is better than hiding something important.
 - Example: \`Worker #7 finished auth middleware. Please review the PR notes. @to(user)\`
-- Every leader message with text must end with one of these suffixes or Companion will ask you to resend with a tag.
 
 ### Reacting to herd events
 
