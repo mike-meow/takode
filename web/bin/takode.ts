@@ -1269,63 +1269,66 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
     keywords?: string[];
   }>;
 
-  // Filter active sessions unless --all
-  const pool = showAll ? sessions : sessions.filter(s => !s.archived && s.state !== "exited");
-
-  // Search across multiple fields (same algorithm as browser sidebar)
-  const q = query.toLowerCase();
-  const results: Array<{ session: typeof pool[0]; matchContext: string }> = [];
-
-  for (const s of pool) {
-    // 1. Session name
-    if (s.name?.toLowerCase().includes(q)) {
-      results.push({ session: s, matchContext: `name match` });
-      continue;
-    }
-
-    // 2. Task history titles
-    const matchedTask = s.taskHistory?.find(t => t.title.toLowerCase().includes(q));
-    if (matchedTask) {
-      results.push({ session: s, matchContext: `task: ${matchedTask.title}` });
-      continue;
-    }
-
-    // 3. Keywords
-    const matchedKw = s.keywords?.find(kw => kw.toLowerCase().includes(q));
-    if (matchedKw) {
-      results.push({ session: s, matchContext: `keyword: ${matchedKw}` });
-      continue;
-    }
-
-    // 4. Git branch
-    if (s.gitBranch?.toLowerCase().includes(q)) {
-      results.push({ session: s, matchContext: `branch: ${s.gitBranch}` });
-      continue;
-    }
-
-    // 5. Last message preview
-    if (s.lastMessagePreview?.toLowerCase().includes(q)) {
-      results.push({ session: s, matchContext: `message: "${truncate(s.lastMessagePreview, 50)}"` });
-      continue;
-    }
-
-    // 6. Working directory
-    if (s.cwd?.toLowerCase().includes(q)) {
-      results.push({ session: s, matchContext: `path: ${s.cwd}` });
-      continue;
-    }
-
-    // 7. Repo root
-    if (s.repoRoot?.toLowerCase().includes(q)) {
-      results.push({ session: s, matchContext: `repo: ${s.repoRoot}` });
-      continue;
-    }
+  const params = new URLSearchParams({ q: query });
+  if (!showAll) {
+    params.set("includeArchived", "false");
   }
+  const searchResp = await apiGet(base, `/sessions/search?${params.toString()}`) as {
+    query: string;
+    tookMs: number;
+    totalMatches: number;
+    results: Array<{
+      sessionId: string;
+      score: number;
+      matchedField: "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
+      matchContext: string | null;
+      matchedAt: number;
+      messageMatch?: {
+        id?: string;
+        timestamp: number;
+        snippet: string;
+      };
+    }>;
+  };
+
+  const sessionsById = new Map(sessions.map((s) => [s.sessionId, s]));
+  const fieldLabel = (field: "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message"): string => {
+    if (field === "user_message") return "message";
+    return field;
+  };
+  const snippetFromContext = (context: string | null): string => {
+    if (!context) return "";
+    const m = context.match(/^[a-z_]+:\s*(.*)$/i);
+    return (m?.[1] ?? context).trim();
+  };
+
+  const results = searchResp.results.map((match) => {
+    const session = sessionsById.get(match.sessionId);
+    const fallbackName = session?.name || "(unnamed)";
+    const snippet = match.messageMatch?.snippet?.trim()
+      || snippetFromContext(match.matchContext)
+      || (match.matchedField === "name" ? fallbackName : "");
+    const matchReason = match.matchContext || `${fieldLabel(match.matchedField)} match`;
+    const messageId = match.matchedField === "user_message" ? (match.messageMatch?.id || null) : null;
+    return {
+      session,
+      match,
+      matchReason,
+      snippet,
+      messageId,
+      matchedFieldLabel: fieldLabel(match.matchedField),
+    };
+  });
 
   if (jsonMode) {
-    console.log(JSON.stringify(results.map(r => ({
-      ...r.session,
-      matchContext: r.matchContext,
+    console.log(JSON.stringify(results.map((r) => ({
+      ...(r.session ?? { sessionId: r.match.sessionId }),
+      matchedField: r.match.matchedField,
+      matchReason: r.matchReason,
+      matchContext: r.match.matchContext,
+      snippet: r.snippet,
+      messageId: r.messageId,
+      matchedAt: r.match.matchedAt,
     })), null, 2));
     return;
   }
@@ -1338,16 +1341,29 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   console.log(`${results.length} session(s) matching "${query}":`);
   console.log("");
 
-  for (const { session: s, matchContext } of results) {
-    const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
-    const name = s.name || "(unnamed)";
-    const status = s.cliConnected
-      ? (s.state === "running" ? "●" : "○")
-      : (s.archived ? "⊘" : "✗");
-    const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
+  for (const row of results) {
+    const s = row.session;
+    const num = s?.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
+    const name = s?.name || "(unnamed)";
+    const status = s
+      ? (s.cliConnected
+        ? (s.state === "running" ? "●" : "○")
+        : (s.archived ? "⊘" : "✗"))
+      : "?";
+    const activity = s?.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
+    const sessionRef = s?.sessionNum != null ? String(s.sessionNum) : row.match.sessionId;
 
     console.log(`  ${num.padEnd(5)} ${status} ${name}`);
-    console.log(`        ${matchContext}  ${activity}`);
+    console.log(`        field: ${row.matchedFieldLabel}  reason: ${row.matchReason}`);
+    if (row.snippet) {
+      console.log(`        snippet: ${truncate(row.snippet, 120)}`);
+    }
+    if (row.messageId) {
+      console.log(`        message id: ${row.messageId} (takode peek ${sessionRef} --from ${row.messageId})`);
+    }
+    if (activity) {
+      console.log(`        activity: ${activity}`);
+    }
     console.log("");
   }
 }
@@ -1360,7 +1376,7 @@ Usage: takode <command> [options]
 
 Commands:
   list     List sessions (herded only for leaders, --active for all, --all includes archived)
-  search   Search sessions by name, keyword, branch, path, or message
+  search   Search sessions via server-side ranking (name/task/path/message, etc.)
   spawn    Create and auto-herd new worker sessions
   tasks    Show task outline of a session (table of contents)
   peek     View session activity (smart overview by default)

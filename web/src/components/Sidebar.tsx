@@ -516,13 +516,18 @@ export function Sidebar() {
     if (!searchResults) return [];
 
     const sessionsById = new Map(allSessionList.map((s) => [s.id, s]));
-    const results: Array<{ session: typeof allSessionList[number]; matchContext: string | null }> = [];
+    const results: Array<{
+      session: typeof allSessionList[number];
+      matchContext: string | null;
+      matchedField: SessionSearchResult["matchedField"];
+    }> = [];
     for (const match of searchResults) {
       const session = sessionsById.get(match.sessionId);
       if (!session) continue;
       results.push({
         session,
         matchContext: match.matchContext,
+        matchedField: match.matchedField,
       });
     }
     return results;
@@ -701,7 +706,7 @@ export function Sidebar() {
             </p>
           ) : (
             <div className="space-y-2 sm:space-y-0.5">
-              {filteredSessions.map(({ session: s, matchContext }) => (
+              {filteredSessions.map(({ session: s, matchContext, matchedField }) => (
                 <SessionItem
                   key={s.id}
                   session={s}
@@ -713,6 +718,8 @@ export function Sidebar() {
                   isRecentlyRenamed={recentlyRenamed.has(s.id)}
                   herdHoverHighlight={herdHoverHighlights.get(s.id)}
                   matchContext={matchContext}
+                  matchedField={matchedField}
+                  matchQuery={searchQuery}
                   {...sessionItemProps}
                 />
               ))}

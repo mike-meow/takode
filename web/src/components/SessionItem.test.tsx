@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, fireEvent } from "@testing-library/react";
+import { render, fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { ComponentProps } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
@@ -110,5 +110,33 @@ describe("SessionItem swipe archive", () => {
     fireEvent.touchEnd(item);
 
     expect(onArchive).not.toHaveBeenCalled();
+  });
+});
+
+describe("SessionItem search match context", () => {
+  it("shows matched field label and highlights matched query text", () => {
+    renderSessionItem({
+      matchContext: "message: fix beta auth bug",
+      matchedField: "user_message",
+      matchQuery: "beta",
+    });
+
+    expect(screen.getByText("message:")).toBeInTheDocument();
+    const highlight = screen.getByText("beta");
+    expect(highlight.tagName).toBe("MARK");
+    expect(screen.getByText(/fix/i)).toBeInTheDocument();
+  });
+
+  it("falls back to session name snippet for name matches without matchContext", () => {
+    renderSessionItem({
+      sessionName: "Beta Session",
+      matchContext: null,
+      matchedField: "name",
+      matchQuery: "beta",
+    });
+
+    expect(screen.getByText("name:")).toBeInTheDocument();
+    const highlight = screen.getByText("Beta");
+    expect(highlight.tagName).toBe("MARK");
   });
 });

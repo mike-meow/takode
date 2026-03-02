@@ -2,6 +2,26 @@ import { useRef, useCallback, useState, type RefObject } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
+import { getHighlightParts } from "../utils/highlight.js";
+
+type SearchMatchedField =
+  | "name"
+  | "task"
+  | "keyword"
+  | "branch"
+  | "path"
+  | "repo"
+  | "user_message";
+
+const SEARCH_MATCH_LABELS: Record<SearchMatchedField, string> = {
+  name: "name",
+  task: "task",
+  keyword: "keyword",
+  branch: "branch",
+  path: "path",
+  repo: "repo",
+  user_message: "message",
+};
 
 function timeAgo(epochMs: number): string {
   const diffMs = Date.now() - epochMs;
@@ -51,6 +71,8 @@ interface SessionItemProps {
   herdHoverHighlight?: "leader" | "worker";
   /** When set, shows why this session matched a search query (e.g. "keyword: zustand") */
   matchContext?: string | null;
+  matchedField?: SearchMatchedField;
+  matchQuery?: string;
 }
 
 export function SessionItem({
@@ -85,6 +107,8 @@ export function SessionItem({
   dragHandleProps,
   herdHoverHighlight,
   matchContext,
+  matchedField,
+  matchQuery,
 }: SessionItemProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,6 +216,40 @@ export function SessionItem({
     : herdHoverHighlight === "worker"
       ? "ring-1 ring-amber-400/45"
       : "";
+  const displayMatch = !isEditing
+    ? (() => {
+      const raw = (matchContext || "").trim();
+      const prefixMatch = raw.match(/^([a-z_]+):\s*(.*)$/i);
+      const snippet = (prefixMatch?.[2] ?? raw).trim();
+      const fieldLabel = matchedField ? SEARCH_MATCH_LABELS[matchedField] : null;
+      const finalFieldLabel = fieldLabel || (prefixMatch?.[1] ? prefixMatch[1].toLowerCase() : null);
+      const fallbackSnippet = matchedField === "name" ? label : "";
+      const finalSnippet = snippet || fallbackSnippet;
+      if (!finalFieldLabel || !finalSnippet) return null;
+      return { fieldLabel: `${finalFieldLabel}:`, snippet: finalSnippet };
+    })()
+    : null;
+
+  const renderHighlightedSnippet = (text: string): React.ReactNode => {
+    const parts = getHighlightParts(text, matchQuery || "");
+    if (!parts.some((part) => part.matched)) return text;
+    return (
+      <>
+        {parts.map((part, index) =>
+          part.matched ? (
+            <mark
+              key={`${part.text}-${index}`}
+              className="bg-amber-300/25 text-amber-100 rounded-[2px] px-0.5"
+            >
+              {part.text}
+            </mark>
+          ) : (
+            <span key={`${part.text}-${index}`}>{part.text}</span>
+          ),
+        )}
+      </>
+    );
+  };
 
   return (
     <div className={`relative group ${archived ? "opacity-50" : ""}`}>
@@ -325,8 +383,13 @@ export function SessionItem({
             </div>
 
             {/* Row 2: Preview — match context during search, or active task / last message */}
-            {!isEditing && (matchContext
-              ? <div className="mt-0.5 text-[10.5px] text-cc-primary/60 leading-tight truncate italic">{matchContext}</div>
+            {!isEditing && (displayMatch
+              ? (
+                <div className="mt-0.5 text-[10.5px] text-cc-muted/80 leading-tight truncate">
+                  <span className="text-cc-primary/70 mr-1">{displayMatch.fieldLabel}</span>
+                  {renderHighlightedSnippet(displayMatch.snippet)}
+                </div>
+              )
               : <SessionPreviewRow sessionId={s.id} userPreview={sessionPreview} />
             )}
 

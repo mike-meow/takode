@@ -262,7 +262,10 @@ describe("Sidebar", () => {
       );
     });
 
-    expect(screen.getByText("message: find beta in archived session")).toBeInTheDocument();
+    expect(screen.getByText("message:")).toBeInTheDocument();
+    const highlight = screen.getByText("beta");
+    expect(highlight.tagName).toBe("MARK");
+    expect(screen.getByText(/find/i)).toBeInTheDocument();
   });
 
   it("aborts the previous in-flight server search when query changes", async () => {
