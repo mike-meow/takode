@@ -241,6 +241,11 @@ export interface SessionOrderResponse {
   sessionOrder: Record<string, string[]>;
 }
 
+export interface GroupOrderResponse {
+  ok: boolean;
+  groupOrder: string[];
+}
+
 export interface TreeNode {
   name: string;
   path: string;
@@ -540,6 +545,9 @@ export const api = {
 
   updateSessionOrder: (groupKey: string, orderedIds: string[]) =>
     patch<SessionOrderResponse>("/sessions/order", { groupKey, orderedIds }),
+
+  updateGroupOrder: (orderedGroupKeys: string[]) =>
+    patch<GroupOrderResponse>("/sessions/groups/order", { orderedGroupKeys }),
 
   markSessionRead: (sessionId: string) =>
     patch<{ ok: boolean }>(

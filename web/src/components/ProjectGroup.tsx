@@ -57,6 +57,11 @@ interface ProjectGroupProps {
   onCancelArchive?: () => void;
   isFirst: boolean;
   sessionAttention?: Map<string, "action" | "error" | "review" | null>;
+  groupDragHandleProps?: {
+    listeners?: Record<string, unknown>;
+    attributes?: Record<string, unknown>;
+  };
+  groupDragging?: boolean;
 }
 
 /** Wrapper that makes a SessionItem draggable via @dnd-kit/sortable */
@@ -122,6 +127,8 @@ export function ProjectGroup({
   onCancelArchive,
   isFirst,
   sessionAttention,
+  groupDragHandleProps,
+  groupDragging,
 }: ProjectGroupProps) {
   // Build summary counts
   const hasStatus = group.runningCount > 0 || group.permCount > 0 || group.unreadCount > 0;
@@ -158,37 +165,54 @@ export function ProjectGroup({
   return (
     <div className={!isFirst ? "mt-1 pt-1 border-t border-cc-border/50" : ""}>
       {/* Group header */}
-      <button
-        onClick={() => onToggleCollapse(group.key)}
-        className="w-full px-2 py-1.5 flex items-center gap-1.5 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          className={`w-3 h-3 text-cc-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+      <div className={`w-full px-2 py-1.5 flex items-center gap-1 rounded-md transition-colors ${groupDragging ? "bg-cc-hover/70" : "hover:bg-cc-hover"}`}>
+        <button
+          onClick={() => onToggleCollapse(group.key)}
+          className="min-w-0 flex-1 flex items-center gap-1.5 cursor-pointer"
         >
-          <path d="M6 4l4 4-4 4" />
-        </svg>
-        <span className="text-[11px] font-semibold text-cc-fg/80 truncate">
-          {group.label}
-        </span>
-        {hasStatus && (
-          <span className="flex items-center gap-1 ml-auto shrink-0 text-[10px] font-medium">
-            {group.runningCount > 0 && (
-              <span className="text-cc-success flex items-center gap-0.5">{group.runningCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" /></span>
-            )}
-            {group.permCount > 0 && (
-              <span className="text-cc-warning flex items-center gap-0.5">{group.permCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" /></span>
-            )}
-            {group.unreadCount > 0 && (
-              <span className="text-blue-500 flex items-center gap-0.5">{group.unreadCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" /></span>
-            )}
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            className={`w-3 h-3 text-cc-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+          >
+            <path d="M6 4l4 4-4 4" />
+          </svg>
+          <span className="text-[11px] font-semibold text-cc-fg/80 truncate">
+            {group.label}
           </span>
+          {hasStatus && (
+            <span className="flex items-center gap-1 ml-auto shrink-0 text-[10px] font-medium">
+              {group.runningCount > 0 && (
+                <span className="text-cc-success flex items-center gap-0.5">{group.runningCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" /></span>
+              )}
+              {group.permCount > 0 && (
+                <span className="text-cc-warning flex items-center gap-0.5">{group.permCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" /></span>
+              )}
+              {group.unreadCount > 0 && (
+                <span className="text-blue-500 flex items-center gap-0.5">{group.unreadCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" /></span>
+              )}
+            </span>
+          )}
+          <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">
+            {group.sessions.length}
+          </span>
+        </button>
+        {groupDragHandleProps && (
+          <button
+            type="button"
+            className="shrink-0 w-5 h-5 inline-flex items-center justify-center text-cc-muted hover:text-cc-fg cursor-grab active:cursor-grabbing touch-none"
+            title="Drag to reorder groups"
+            aria-label={`Drag to reorder group ${group.label}`}
+            onClick={(e) => e.stopPropagation()}
+            {...(groupDragHandleProps.listeners || {})}
+            {...(groupDragHandleProps.attributes || {})}
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-80">
+              <path d="M5 3.5a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0zM5 8a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0zM5 12.5a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0z" />
+            </svg>
+          </button>
         )}
-        <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">
-          {group.sessions.length}
-        </span>
-      </button>
+      </div>
 
       {/* Session list — drag-sortable */}
       {!isCollapsed && (

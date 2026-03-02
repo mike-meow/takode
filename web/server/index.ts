@@ -32,6 +32,7 @@ import { TerminalManager } from "./terminal-manager.js";
 import { generateFirstName, evaluateSessionName } from "./session-namer.js";
 import * as sessionNames from "./session-names.js";
 import * as sessionOrder from "./session-order.js";
+import * as groupOrder from "./group-order.js";
 import { getActiveQuestForSession } from "./quest-store.js";
 import { getSettings, getServerName, initWithPort } from "./settings-manager.js";
 import { PushoverNotifier } from "./pushover.js";
@@ -123,6 +124,7 @@ launcher.setEnvResolver(async (slug) => {
 await launcher.restoreFromDisk();
 await wsBridge.restoreFromDisk();
 wsBridge.setSessionOrderState(await sessionOrder.getAllOrder());
+wsBridge.setGroupOrderState(await groupOrder.getAllOrder());
 containerManager.restoreState(CONTAINER_STATE_PATH);
 
 // Push-based herd event delivery: wire dispatcher after bridge + launcher are ready

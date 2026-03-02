@@ -19,6 +19,7 @@ import * as cronStore from "./cron-store.js";
 import * as gitUtils from "./git-utils.js";
 import * as sessionNames from "./session-names.js";
 import * as sessionOrderStore from "./session-order.js";
+import * as groupOrderStore from "./group-order.js";
 import { getNamerLogIndex, getNamerLogEntry } from "./session-namer.js";
 import * as autoApprovalStore from "./auto-approval-store.js";
 import { getApprovalLogIndex, getApprovalLogEntry } from "./auto-approver.js";
@@ -1519,6 +1520,23 @@ export function createRoutes(
     await sessionOrderStore.setAllOrder(sessionOrder);
     wsBridge.broadcastSessionOrderUpdate();
     return c.json({ ok: true, sessionOrder });
+  });
+
+  api.patch("/sessions/groups/order", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (!Array.isArray(body.orderedGroupKeys)) {
+      return c.json({ error: "orderedGroupKeys must be an array" }, 400);
+    }
+
+    const orderedGroupKeys = body.orderedGroupKeys
+      .filter((value: unknown): value is string => typeof value === "string")
+      .map((value: string) => value.trim())
+      .filter(Boolean);
+
+    const groupOrder = wsBridge.updateGroupOrder(orderedGroupKeys);
+    await groupOrderStore.setAllOrder(groupOrder);
+    wsBridge.broadcastGroupOrderUpdate();
+    return c.json({ ok: true, groupOrder });
   });
 
   api.patch("/sessions/:id/diff-base", async (c) => {

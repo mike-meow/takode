@@ -85,6 +85,13 @@ vi.mock("./session-order.js", () => ({
   _flushForTest: vi.fn(async () => {}),
 }));
 
+vi.mock("./group-order.js", () => ({
+  getAllOrder: vi.fn(async () => []),
+  setAllOrder: vi.fn(async () => {}),
+  _resetForTest: vi.fn(),
+  _flushForTest: vi.fn(async () => {}),
+}));
+
 vi.mock("./settings-manager.js", () => ({
   getSettings: vi.fn(() => ({
     serverName: "",
@@ -136,6 +143,7 @@ import * as gitUtils from "./git-utils.js";
 import * as questStore from "./quest-store.js";
 import * as sessionNames from "./session-names.js";
 import * as sessionOrderStore from "./session-order.js";
+import * as groupOrderStore from "./group-order.js";
 import * as settingsManager from "./settings-manager.js";
 import { containerManager } from "./container-manager.js";
 
@@ -191,6 +199,8 @@ function createMockBridge() {
     broadcastNameUpdate: vi.fn(),
     updateSessionOrder: vi.fn((_groupKey: string, _orderedIds: string[]) => ({})),
     broadcastSessionOrderUpdate: vi.fn(),
+    updateGroupOrder: vi.fn((_orderedGroupKeys: string[]) => []),
+    broadcastGroupOrderUpdate: vi.fn(),
     setSessionClaimedQuest: vi.fn(),
     addTaskEntry: vi.fn(),
     updateQuestTaskEntries: vi.fn(),
@@ -1893,6 +1903,38 @@ describe("PATCH /api/sessions/order", () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({ error: "orderedIds must be an array" });
+  });
+});
+
+describe("PATCH /api/sessions/groups/order", () => {
+  it("updates group order, persists it, and broadcasts to browsers", async () => {
+    vi.mocked(bridge.updateGroupOrder).mockReturnValueOnce(["/repo-b", "/repo-a"]);
+
+    const res = await app.request("/api/sessions/groups/order", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedGroupKeys: ["/repo-b", "/repo-a"] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.updateGroupOrder).toHaveBeenCalledWith(["/repo-b", "/repo-a"]);
+    expect(groupOrderStore.setAllOrder).toHaveBeenCalledWith(["/repo-b", "/repo-a"]);
+    expect(bridge.broadcastGroupOrderUpdate).toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      groupOrder: ["/repo-b", "/repo-a"],
+    });
+  });
+
+  it("returns 400 when orderedGroupKeys is not an array", async () => {
+    const res = await app.request("/api/sessions/groups/order", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedGroupKeys: "/repo-a" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "orderedGroupKeys must be an array" });
   });
 });
 

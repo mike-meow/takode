@@ -304,6 +304,7 @@ export type BrowserIncomingMessageBase =
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_order_update"; sessionOrder: Record<string, string[]> }
+  | { type: "group_order_update"; groupOrder: string[] }
   | { type: "session_name_update"; name: string; source?: "quest" }
   | { type: "session_task_history"; tasks: SessionTaskEntry[] }
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }

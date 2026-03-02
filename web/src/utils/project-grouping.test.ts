@@ -107,6 +107,26 @@ describe("groupSessionsByProject", () => {
     expect(groups[1].label).toBe("zebra");
   });
 
+  it("sorts groups by custom group order when provided", () => {
+    const sessions = [
+      makeItem({ id: "s1", cwd: "/a/zebra", createdAt: 200 }),
+      makeItem({ id: "s2", cwd: "/a/alpha", createdAt: 100 }),
+      makeItem({ id: "s3", cwd: "/a/beta", createdAt: 50 }),
+    ];
+    const groups = groupSessionsByProject(sessions, undefined, undefined, ["/a/beta", "/a/zebra", "/a/alpha"]);
+    expect(groups.map((g) => g.key)).toEqual(["/a/beta", "/a/zebra", "/a/alpha"]);
+  });
+
+  it("keeps unordered groups after ordered groups (alphabetical fallback)", () => {
+    const sessions = [
+      makeItem({ id: "s1", cwd: "/a/zebra", createdAt: 200 }),
+      makeItem({ id: "s2", cwd: "/a/alpha", createdAt: 100 }),
+      makeItem({ id: "s3", cwd: "/a/beta", createdAt: 50 }),
+    ];
+    const groups = groupSessionsByProject(sessions, undefined, undefined, ["/a/zebra"]);
+    expect(groups.map((g) => g.key)).toEqual(["/a/zebra", "/a/alpha", "/a/beta"]);
+  });
+
   it("sorts sessions within group by createdAt desc regardless of status", () => {
     const sessions = [
       makeItem({ id: "s1", cwd: "/a/app", createdAt: 300, status: null }),

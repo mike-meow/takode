@@ -118,6 +118,8 @@ interface AppState {
 
   // Manual session ordering per project group
   sessionOrder: Map<string, string[]>;
+  // Manual ordering for project groups in sidebar
+  groupOrder: string[];
 
   // Sidebar project grouping
   collapsedProjects: Set<string>;
@@ -265,6 +267,8 @@ interface AppState {
 
   // Manual session ordering actions (server-authoritative snapshot)
   setSessionOrderMap: (sessionOrder: Map<string, string[]>) => void;
+  // Manual group ordering action (server-authoritative snapshot)
+  setGroupOrder: (groupOrder: string[]) => void;
 
   // Sidebar project grouping actions
   toggleProjectCollapse: (projectKey: string) => void;
@@ -424,6 +428,7 @@ export const useStore = create<AppState>((set) => ({
   toolStartTimestamps: new Map(),
   sessionAttention: new Map(),
   sessionOrder: new Map(),
+  groupOrder: [],
   collapsedProjects: getInitialCollapsedProjects(),
   quests: [],
   questsLoading: false,
@@ -1245,6 +1250,9 @@ export const useStore = create<AppState>((set) => ({
   setSessionOrderMap: (sessionOrder) =>
     set(() => ({ sessionOrder: new Map(sessionOrder) })),
 
+  setGroupOrder: (groupOrder) =>
+    set(() => ({ groupOrder: [...groupOrder] })),
+
   toggleProjectCollapse: (projectKey) =>
     set((s) => {
       const collapsedProjects = new Set(s.collapsedProjects);
@@ -1463,6 +1471,7 @@ export const useStore = create<AppState>((set) => ({
       prStatus: new Map(),
       sessionAttention: new Map(),
       sessionOrder: new Map(),
+      groupOrder: [],
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),
       feedVisibleCount: new Map(),

@@ -70,6 +70,7 @@ export function groupSessionsByProject(
   sessions: SessionItem[],
   sessionAttention?: Map<string, "action" | "error" | "review" | null>,
   sessionOrder?: Map<string, string[]>,
+  groupOrder?: string[],
 ): ProjectGroup[] {
   const groups = new Map<string, ProjectGroup>();
 
@@ -107,10 +108,24 @@ export function groupSessionsByProject(
     group.mostRecentActivity = Math.max(group.mostRecentActivity, session.createdAt);
   }
 
-  // Sort groups alphabetically by label (stable, predictable order)
-  const sorted = Array.from(groups.values()).sort(
-    (a, b) => a.label.localeCompare(b.label),
-  );
+  // Sort groups by custom group order when available; otherwise alphabetically.
+  const sorted = Array.from(groups.values());
+  const customGroupOrder = Array.isArray(groupOrder) ? groupOrder : [];
+  if (customGroupOrder.length > 0) {
+    const orderMap = new Map(customGroupOrder.map((groupKey, idx) => [groupKey, idx]));
+    sorted.sort((a, b) => {
+      const aIdx = orderMap.get(a.key);
+      const bIdx = orderMap.get(b.key);
+      // Ordered groups stay in explicit user-defined order.
+      // New/unordered groups appear after ordered groups, sorted by label.
+      if (aIdx === undefined && bIdx === undefined) return a.label.localeCompare(b.label);
+      if (aIdx === undefined) return 1;
+      if (bIdx === undefined) return -1;
+      return aIdx - bIdx;
+    });
+  } else {
+    sorted.sort((a, b) => a.label.localeCompare(b.label));
+  }
 
   // Within each group, sort sessions by custom order if available, else by createdAt desc
   for (const group of sorted) {

@@ -768,6 +768,21 @@ describe("Browser handlers", () => {
     });
   });
 
+  it("handleBrowserOpen: sends server-authoritative group order snapshot", () => {
+    bridge.setGroupOrderState(["/repo-b", "/repo-a"]);
+    bridge.getOrCreateSession("s1");
+    const browser = makeBrowserSocket("s1");
+
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const orderMsg = calls.find((m: any) => m.type === "group_order_update");
+    expect(orderMsg).toEqual({
+      type: "group_order_update",
+      groupOrder: ["/repo-b", "/repo-a"],
+    });
+  });
+
   it("handleBrowserOpen: refreshes git branch asynchronously and notifies poller", async () => {
     // resolveGitInfo is now async (fire-and-forget), so session_init sends current state
     // and the git branch is updated asynchronously after the initial snapshot.
@@ -3213,6 +3228,33 @@ describe("session order updates", () => {
     expect(calls2).toContainEqual({
       type: "session_order_update",
       sessionOrder: { "/repo-a": ["s2", "s1"] },
+    });
+  });
+});
+
+describe("group order updates", () => {
+  it("broadcastGroupOrderUpdate sends the latest order to connected browsers", () => {
+    const browser1 = makeBrowserSocket("s1");
+    const browser2 = makeBrowserSocket("s2");
+    bridge.handleBrowserOpen(browser1, "s1");
+    bridge.handleBrowserOpen(browser2, "s2");
+    browser1.send.mockClear();
+    browser2.send.mockClear();
+
+    const snapshot = bridge.updateGroupOrder(["/repo-c", "/repo-a", "/repo-b"]);
+    expect(snapshot).toEqual(["/repo-c", "/repo-a", "/repo-b"]);
+
+    bridge.broadcastGroupOrderUpdate();
+
+    const calls1 = browser1.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const calls2 = browser2.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls1).toContainEqual({
+      type: "group_order_update",
+      groupOrder: ["/repo-c", "/repo-a", "/repo-b"],
+    });
+    expect(calls2).toContainEqual({
+      type: "group_order_update",
+      groupOrder: ["/repo-c", "/repo-a", "/repo-b"],
     });
   });
 });

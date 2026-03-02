@@ -687,6 +687,8 @@ export class WsBridge {
   private slashCommandCache = new Map<string, { slash_commands: string[]; skills: string[] }>();
   /** Server-authoritative custom session ordering by group key. */
   private sessionOrderByGroup = new Map<string, string[]>();
+  /** Server-authoritative ordering for project groups in the sidebar. */
+  private groupOrder: string[] = [];
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   /** Track recent CLI disconnects to detect mass disconnect events. */
   private recentCliDisconnects: number[] = [];
@@ -898,6 +900,53 @@ export class WsBridge {
     const payload: BrowserIncomingMessage = {
       type: "session_order_update",
       sessionOrder: this.getSessionOrderState(),
+    };
+    for (const session of this.sessions.values()) {
+      for (const ws of session.browserSockets) {
+        this.sendToBrowser(ws, payload);
+      }
+    }
+  }
+
+  /** Replace server-side group order snapshot (startup restore path). */
+  setGroupOrderState(order: string[]): void {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const rawKey of order || []) {
+      if (typeof rawKey !== "string") continue;
+      const key = rawKey.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      normalized.push(key);
+    }
+    this.groupOrder = normalized;
+  }
+
+  /** Snapshot the current group order. */
+  getGroupOrderState(): string[] {
+    return [...this.groupOrder];
+  }
+
+  /** Replace group order and return normalized snapshot. */
+  updateGroupOrder(orderedGroupKeys: string[]): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const rawKey of orderedGroupKeys || []) {
+      if (typeof rawKey !== "string") continue;
+      const key = rawKey.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      normalized.push(key);
+    }
+    this.groupOrder = normalized;
+    return this.getGroupOrderState();
+  }
+
+  /** Broadcast latest group order to every connected browser socket. */
+  broadcastGroupOrderUpdate(): void {
+    const payload: BrowserIncomingMessage = {
+      type: "group_order_update",
+      groupOrder: this.getGroupOrderState(),
     };
     for (const session of this.sessions.values()) {
       for (const ws of session.browserSockets) {
@@ -2535,6 +2584,10 @@ export class WsBridge {
     this.sendToBrowser(ws, {
       type: "session_order_update",
       sessionOrder: this.getSessionOrderState(),
+    });
+    this.sendToBrowser(ws, {
+      type: "group_order_update",
+      groupOrder: this.getGroupOrderState(),
     });
 
     // History replay and pending permissions are sent by handleSessionSubscribe

@@ -858,6 +858,14 @@ function handleParsedMessage(
       break;
     }
 
+    case "group_order_update": {
+      const nextOrder = Array.isArray(data.groupOrder)
+        ? data.groupOrder.filter((key): key is string => typeof key === "string")
+        : [];
+      store.setGroupOrder(nextOrder);
+      break;
+    }
+
     case "session_name_update": {
       // Server is authoritative for all name updates (auto-naming, manual rename, etc.)
       const prevName = store.sessionNames.get(sessionId);

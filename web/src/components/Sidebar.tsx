@@ -1,4 +1,21 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, type CSSProperties, type ReactNode } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type Modifier,
+  type DraggableAttributes,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useStore, countUserPermissions, type PendingSession } from "../store.js";
 import { api, type SessionSearchResult } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
@@ -14,6 +31,43 @@ import { SidebarUsageBar } from "./SidebarUsageBar.js";
 import { YarnBallSpinner } from "./CatIcons.js";
 
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
+
+/** Restrict drag movement to vertical axis only. */
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  x: 0,
+});
+
+function SortableProjectGroup({
+  id,
+  children,
+}: {
+  id: string;
+  children: (props: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    style: CSSProperties;
+    listeners: Record<string, Function> | undefined;
+    attributes: DraggableAttributes;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.75 : 1,
+  };
+
+  return <>{children({ setNodeRef, style, listeners, attributes, isDragging })}</>;
+}
 
 export function Sidebar() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -46,6 +100,7 @@ export function Sidebar() {
   const sessionAttention = useStore((s) => s.sessionAttention);
   const askPermissionMap = useStore((s) => s.askPermission);
   const sessionOrder = useStore((s) => s.sessionOrder);
+  const groupOrder = useStore((s) => s.groupOrder);
   const reorderMode = useStore((s) => s.reorderMode);
   const setReorderMode = useStore((s) => s.setReorderMode);
   const pendingSessions = useStore((s) => s.pendingSessions);
@@ -398,9 +453,25 @@ export function Sidebar() {
 
   // Group active sessions by project
   const projectGroups = useMemo(
-    () => groupSessionsByProject(activeSessions, sessionAttention, sessionOrder),
-    [activeSessions, sessionAttention, sessionOrder],
+    () => groupSessionsByProject(activeSessions, sessionAttention, sessionOrder, groupOrder),
+    [activeSessions, sessionAttention, sessionOrder, groupOrder],
   );
+  const groupKeys = useMemo(() => projectGroups.map((group) => group.key), [projectGroups]);
+  const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const groupSensors = useSensors(groupPointerSensor);
+  const handleGroupDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = groupKeys.indexOf(active.id as string);
+    const newIndex = groupKeys.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(groupKeys, oldIndex, newIndex);
+    api.updateGroupOrder(newOrder).catch((err) => {
+      console.warn("[sidebar] failed to update group order:", err);
+    });
+  }, [groupKeys]);
 
   // Server-side session search (debounced, abort on query change).
   useEffect(() => {
@@ -625,21 +696,42 @@ export function Sidebar() {
               </div>
             )}
 
-            {projectGroups.map((group, i) => (
-              <ProjectGroup
-                key={group.key}
-                group={group}
-                isCollapsed={collapsedProjects.has(group.key)}
-                onToggleCollapse={toggleProjectCollapse}
-                currentSessionId={currentSessionId}
-                sessionNames={sessionNames}
-                sessionPreviews={sessionPreviews}
-                pendingPermissions={pendingPermissions}
-                recentlyRenamed={recentlyRenamed}
-                isFirst={i === 0}
-                {...sessionItemProps}
-              />
-            ))}
+            <DndContext
+              sensors={groupSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleGroupDragEnd}
+              modifiers={[restrictToVerticalAxis]}
+            >
+              <SortableContext items={groupKeys} strategy={verticalListSortingStrategy}>
+                {projectGroups.map((group, i) => (
+                  <SortableProjectGroup key={group.key} id={group.key}>
+                    {({ setNodeRef, style, listeners, attributes, isDragging }) => (
+                      <div ref={setNodeRef} style={style}>
+                        <ProjectGroup
+                          group={group}
+                          isCollapsed={collapsedProjects.has(group.key)}
+                          onToggleCollapse={toggleProjectCollapse}
+                          currentSessionId={currentSessionId}
+                          sessionNames={sessionNames}
+                          sessionPreviews={sessionPreviews}
+                          pendingPermissions={pendingPermissions}
+                          recentlyRenamed={recentlyRenamed}
+                          isFirst={i === 0}
+                          groupDragging={isDragging}
+                          groupDragHandleProps={projectGroups.length > 1
+                            ? {
+                                listeners: listeners as Record<string, unknown> | undefined,
+                                attributes: attributes as unknown as Record<string, unknown>,
+                              }
+                            : undefined}
+                          {...sessionItemProps}
+                        />
+                      </div>
+                    )}
+                  </SortableProjectGroup>
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {cronSessions.length > 0 && (
               <div className="mt-2 pt-2 border-t border-cc-border">
