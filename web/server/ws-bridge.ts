@@ -648,6 +648,8 @@ function computeResultContextUsedPercent(
 
 export class WsBridge {
   private static readonly EVENT_BUFFER_LIMIT = 600;
+  private static readonly CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS = 15_000;
+  private static readonly CODEX_ASSISTANT_REPLAY_SCAN_LIMIT = 200;
   private static readonly PROCESSED_CLIENT_MSG_ID_LIMIT = 1000;
   private static readonly IDEMPOTENT_BROWSER_MESSAGE_TYPES = new Set<string>([
     "user_message",
@@ -1640,6 +1642,43 @@ export class WsBridge {
     sessionLabel: "System",
   } as const;
 
+  /**
+   * Codex can replay prior assistant messages after reconnect. Deduplicate only
+   * when timestamp + content + parent tool context all match a recent assistant.
+   * This keeps the filter narrow so legitimate repeated text still appears.
+   */
+  private isDuplicateCodexAssistantReplay(
+    session: Session,
+    msg: Extract<BrowserIncomingMessage, { type: "assistant" }>,
+  ): boolean {
+    if (typeof msg.timestamp !== "number") return false;
+
+    const incomingTimestamp = msg.timestamp;
+    const incomingParentToolUseId = msg.parent_tool_use_id;
+    const incomingContentKey = JSON.stringify(msg.message.content);
+
+    let scannedAssistants = 0;
+    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+      const entry = session.messageHistory[i];
+      if (entry.type !== "assistant") continue;
+      scannedAssistants += 1;
+      if (scannedAssistants > WsBridge.CODEX_ASSISTANT_REPLAY_SCAN_LIMIT) break;
+
+      const existing = entry as Extract<BrowserIncomingMessage, { type: "assistant" }>;
+      if (existing.parent_tool_use_id !== incomingParentToolUseId) continue;
+      if (typeof existing.timestamp !== "number") continue;
+      if (existing.timestamp !== incomingTimestamp) continue;
+      if (Math.abs(existing.timestamp - incomingTimestamp) > WsBridge.CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS) continue;
+
+      const existingContentKey = JSON.stringify(existing.message.content);
+      if (existingContentKey !== incomingContentKey) continue;
+
+      return true;
+    }
+
+    return false;
+  }
+
   private isLeaderSession(session: Session): boolean {
     return this.launcher?.getSession(session.id)?.isOrchestrator === true;
   }
@@ -1915,10 +1954,17 @@ export class WsBridge {
       if (outgoing?.type === "assistant") {
         const addressing = this.classifyLeaderAssistantAddressing(session, outgoing.message.content);
         const leaderUserAddressed = addressing === "user";
-        outgoing = {
+        const normalizedAssistant: Extract<BrowserIncomingMessage, { type: "assistant" }> = {
           ...outgoing,
+          timestamp: outgoing.timestamp || Date.now(),
           ...(leaderUserAddressed ? { leader_user_addressed: true } : {}),
         };
+        // Dedup: Codex may replay assistant messages after reconnect. Keep this
+        // strict (timestamp + content match) to avoid suppressing valid repeats.
+        if (this.isDuplicateCodexAssistantReplay(session, normalizedAssistant)) {
+          return;
+        }
+        outgoing = normalizedAssistant;
         // NOTE: Do NOT inject leader addressing reminder here.
         // Deferred to handleResultMessage (turn end) to avoid false nudges
         // during intermediate tool-call gaps.
@@ -1926,7 +1972,7 @@ export class WsBridge {
 
       // Store assistant/result messages in history for replay
       if (outgoing?.type === "assistant") {
-        session.messageHistory.push({ ...outgoing, timestamp: outgoing.timestamp || Date.now() });
+        session.messageHistory.push(outgoing);
         this.persistSession(session);
       } else if (outgoing?.type === "result") {
         session.pendingCodexTurnRecovery = null;

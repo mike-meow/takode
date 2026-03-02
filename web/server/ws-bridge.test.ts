@@ -5167,6 +5167,101 @@ describe("Codex adapter result handling", () => {
     expect(histAssistant?.leader_user_addressed).toBe(true);
   });
 
+  it("deduplicates replayed Codex assistant messages with identical timestamp and content", () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    const replayTimestamp = 1700000000123;
+    const replayedText = "Investigating reconnect behavior.";
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-replay-original",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: replayedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: replayTimestamp,
+    });
+
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-replay-duplicate",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: replayedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: replayTimestamp,
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.filter((c: any) => c.type === "assistant")).toHaveLength(0);
+
+    const assistantHistory = bridge.getSession("s1")!.messageHistory.filter((m: any) => m.type === "assistant");
+    expect(assistantHistory).toHaveLength(1);
+  });
+
+  it("does not deduplicate legitimate repeated Codex text when timestamp differs", () => {
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    const repeatedText = "Checking reconnect status.";
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-repeat-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: repeatedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: 1700000001000,
+    });
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-repeat-2",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: repeatedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: 1700000001001,
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.filter((c: any) => c.type === "assistant")).toHaveLength(2);
+
+    const assistantHistory = bridge.getSession("s1")!.messageHistory.filter((m: any) => m.type === "assistant");
+    expect(assistantHistory).toHaveLength(2);
+  });
+
   it("reconciles Codex quest claim command into quest chip state and task history", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
