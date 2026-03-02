@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useStore, countUserPermissions, type PendingSession } from "../store.js";
-import { api } from "../api.js";
+import { api, type SessionSearchResult } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
 import { connectSession, connectAllSessions, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
@@ -45,7 +45,6 @@ export function Sidebar() {
   const toggleProjectCollapse = useStore((s) => s.toggleProjectCollapse);
   const sessionAttention = useStore((s) => s.sessionAttention);
   const askPermissionMap = useStore((s) => s.askPermission);
-  const sessionKeywords = useStore((s) => s.sessionKeywords);
   const sessionOrder = useStore((s) => s.sessionOrder);
   const reorderMode = useStore((s) => s.reorderMode);
   const setReorderMode = useStore((s) => s.setReorderMode);
@@ -54,6 +53,8 @@ export function Sidebar() {
   const setServerName = useStore((s) => s.setServerName);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const route = parseHash(hash);
   const isSettingsPage = route.page === "settings";
@@ -401,56 +402,59 @@ export function Sidebar() {
     [activeSessions, sessionAttention, sessionOrder],
   );
 
-  // Search filtering: when query is non-empty, filter all sessions and track why each matched
+  // Server-side session search (debounced, abort on query change).
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await api.searchSessions(q, {
+          includeArchived: true,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setSearchResults(resp.results);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.warn("[sidebar] session search failed:", err);
+        setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery]);
+
+  // Search filtering: map server-side results back to current session rows.
   const filteredSessions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return null;
+    if (!searchQuery.trim()) return null;
+    if (!searchResults) return [];
 
+    const sessionsById = new Map(allSessionList.map((s) => [s.id, s]));
     const results: Array<{ session: typeof allSessionList[number]; matchContext: string | null }> = [];
-    for (const s of allSessionList) {
-      const name = (sessionNames.get(s.id) || "").toLowerCase();
-      if (name.includes(q)) {
-        // Name match — visible in the title, no extra context needed
-        results.push({ session: s, matchContext: null });
-        continue;
-      }
-
-      const tasks = sessionTaskHistory.get(s.id);
-      const matchedTask = tasks?.find((t) => t.title.toLowerCase().includes(q));
-      if (matchedTask) {
-        results.push({ session: s, matchContext: `task: ${matchedTask.title}` });
-        continue;
-      }
-
-      const kws = sessionKeywords.get(s.id);
-      const matchedKw = kws?.find((kw) => kw.includes(q));
-      if (matchedKw) {
-        results.push({ session: s, matchContext: `keyword: ${matchedKw}` });
-        continue;
-      }
-
-      if (s.gitBranch.toLowerCase().includes(q)) {
-        results.push({ session: s, matchContext: `branch: ${s.gitBranch}` });
-        continue;
-      }
-
-      const preview = (sessionPreviews.get(s.id) || "").toLowerCase();
-      if (preview.includes(q)) {
-        results.push({ session: s, matchContext: `message: ${sessionPreviews.get(s.id)}` });
-        continue;
-      }
-
-      if (s.cwd.toLowerCase().includes(q)) {
-        results.push({ session: s, matchContext: `path: ${s.cwd}` });
-        continue;
-      }
-      if (s.repoRoot.toLowerCase().includes(q)) {
-        results.push({ session: s, matchContext: `repo: ${s.repoRoot}` });
-        continue;
-      }
+    for (const match of searchResults) {
+      const session = sessionsById.get(match.sessionId);
+      if (!session) continue;
+      results.push({
+        session,
+        matchContext: match.matchContext,
+      });
     }
     return results;
-  }, [searchQuery, allSessionList, sessionNames, sessionPreviews, sessionTaskHistory, sessionKeywords]);
+  }, [searchQuery, searchResults, allSessionList]);
 
   // Shared props for SessionItem / ProjectGroup
   const sessionItemProps = {
@@ -576,7 +580,7 @@ export function Sidebar() {
           /* Search results: flat list across all sessions */
           filteredSessions.length === 0 ? (
             <p className="px-3 py-8 text-xs text-cc-muted text-center leading-relaxed">
-              No matching sessions.
+              {isSearching ? "Searching..." : "No matching sessions."}
             </p>
           ) : (
             <div className="space-y-2 sm:space-y-0.5">

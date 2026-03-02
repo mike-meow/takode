@@ -135,6 +135,35 @@ export interface CliSession {
   sizeBytes: number;
 }
 
+export type SessionSearchMatchedField =
+  | "name"
+  | "task"
+  | "keyword"
+  | "branch"
+  | "path"
+  | "repo"
+  | "user_message";
+
+export interface SessionSearchResult {
+  sessionId: string;
+  score: number;
+  matchedField: SessionSearchMatchedField;
+  matchContext: string | null;
+  matchedAt: number;
+  messageMatch?: {
+    id?: string;
+    timestamp: number;
+    snippet: string;
+  };
+}
+
+export interface SessionSearchResponse {
+  query: string;
+  tookMs: number;
+  totalMatches: number;
+  results: SessionSearchResult[];
+}
+
 export interface BackendInfo {
   id: string;
   name: string;
@@ -445,6 +474,37 @@ export const api = {
     ),
 
   listSessions: () => get<SdkSessionInfo[]>("/sessions"),
+
+  searchSessions: async (
+    query: string,
+    options?: {
+      limit?: number;
+      includeArchived?: boolean;
+      messageLimitPerSession?: number;
+      signal?: AbortSignal;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    params.set("q", query);
+    if (typeof options?.limit === "number") {
+      params.set("limit", String(options.limit));
+    }
+    if (typeof options?.includeArchived === "boolean") {
+      params.set("includeArchived", options.includeArchived ? "true" : "false");
+    }
+    if (typeof options?.messageLimitPerSession === "number") {
+      params.set("messageLimitPerSession", String(options.messageLimitPerSession));
+    }
+
+    const res = await fetch(`${BASE}/sessions/search?${params.toString()}`, {
+      signal: options?.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json() as Promise<SessionSearchResponse>;
+  },
 
   killSession: (sessionId: string) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/kill`),

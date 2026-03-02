@@ -17,6 +17,7 @@ vi.mock("../ws.js", () => ({
 
 const mockApi = {
   listSessions: vi.fn().mockResolvedValue([]),
+  searchSessions: vi.fn().mockResolvedValue({ query: "", tookMs: 0, totalMatches: 0, results: [] }),
   deleteSession: vi.fn().mockResolvedValue({}),
   archiveSession: vi.fn().mockResolvedValue({}),
   unarchiveSession: vi.fn().mockResolvedValue({}),
@@ -26,6 +27,7 @@ const mockApi = {
 vi.mock("../api.js", () => ({
   api: {
     listSessions: (...args: unknown[]) => mockApi.listSessions(...args),
+    searchSessions: (...args: unknown[]) => mockApi.searchSessions(...args),
     deleteSession: (...args: unknown[]) => mockApi.deleteSession(...args),
     archiveSession: (...args: unknown[]) => mockApi.archiveSession(...args),
     unarchiveSession: (...args: unknown[]) => mockApi.unarchiveSession(...args),
@@ -217,6 +219,76 @@ describe("Sidebar", () => {
   it("renders 'No sessions yet.' when no sessions exist", () => {
     render(<Sidebar />);
     expect(screen.getByText("No sessions yet.")).toBeInTheDocument();
+  });
+
+  it("uses server-side session search when query is non-empty", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const session2 = makeSession("s2", { cwd: "/repo/b" });
+    const sdk1 = makeSdkSession("s1", { archived: false, createdAt: 1000 });
+    const sdk2 = makeSdkSession("s2", { archived: true, createdAt: 900 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sdkSessions: [sdk1, sdk2],
+      sessionNames: new Map([["s1", "Alpha"], ["s2", "Archived beta"]]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "beta",
+      tookMs: 3,
+      totalMatches: 1,
+      results: [
+        {
+          sessionId: "s2",
+          score: 500,
+          matchedField: "user_message",
+          matchContext: "message: find beta in archived session",
+          matchedAt: 12345,
+        },
+      ],
+    });
+
+    render(<Sidebar />);
+    const input = screen.getByPlaceholderText("Search...");
+    fireEvent.change(input, { target: { value: "beta" } });
+
+    await waitFor(() => {
+      expect(mockApi.searchSessions).toHaveBeenCalledWith(
+        "beta",
+        expect.objectContaining({
+          includeArchived: true,
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    expect(screen.getByText("message: find beta in archived session")).toBeInTheDocument();
+  });
+
+  it("aborts the previous in-flight server search when query changes", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const sdk1 = makeSdkSession("s1", { createdAt: 1000 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session1]]),
+      sdkSessions: [sdk1],
+    });
+
+    const signals: AbortSignal[] = [];
+    mockApi.searchSessions.mockImplementation(async (_q: string, opts?: { signal?: AbortSignal }) => {
+      if (opts?.signal) signals.push(opts.signal);
+      // Keep request briefly in-flight so next keystroke aborts it.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return { query: "", tookMs: 1, totalMatches: 0, results: [] };
+    });
+
+    render(<Sidebar />);
+    const input = screen.getByPlaceholderText("Search...");
+
+    fireEvent.change(input, { target: { value: "alph" } });
+    await waitFor(() => expect(mockApi.searchSessions).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(input, { target: { value: "alpha" } });
+    await waitFor(() => expect(mockApi.searchSessions).toHaveBeenCalledTimes(2));
+
+    await waitFor(() => expect(signals[0]?.aborted).toBe(true));
   });
 
   it("renders session items for active sessions", () => {

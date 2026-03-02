@@ -31,6 +31,7 @@ import { getSettings, updateSettings, getServerName, setServerName, getServerId,
 import { getLogPath } from "./server-logger.js";
 import { getUsageLimits } from "./usage-limits.js";
 import { buildPeekResponse, buildPeekDefault, buildPeekRange, buildReadResponse } from "./takode-messages.js";
+import { searchSessionDocuments, type SessionSearchDocument } from "./session-search.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends } from "./transcription.js";
@@ -1411,6 +1412,63 @@ export function createRoutes(
   api.get("/sessions", async (c) => {
     const enriched = await buildEnrichedSessions();
     return c.json(enriched);
+  });
+
+  api.get("/sessions/search", (c) => {
+    const rawQuery = (c.req.query("q") || "").trim();
+    if (!rawQuery) {
+      return c.json({ error: "q is required" }, 400);
+    }
+
+    const limitParam = Number.parseInt(c.req.query("limit") || "50", 10);
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 200)) : 50;
+
+    const msgLimitParam = Number.parseInt(c.req.query("messageLimitPerSession") || "400", 10);
+    const messageLimitPerSession = Number.isFinite(msgLimitParam)
+      ? Math.max(50, Math.min(msgLimitParam, 2000))
+      : 400;
+
+    const includeArchivedRaw = c.req.query("includeArchived");
+    const includeArchived = includeArchivedRaw === undefined
+      ? true
+      : !["0", "false", "no"].includes(includeArchivedRaw.toLowerCase());
+
+    const startedAt = Date.now();
+    const sessions = launcher.listSessions();
+    const names = sessionNames.getAllNames();
+    const bridgeStates = wsBridge.getAllSessions();
+    const bridgeMap = new Map(bridgeStates.map((s) => [s.session_id, s]));
+
+    const docs: SessionSearchDocument[] = sessions.map((s) => {
+      const bridge = bridgeMap.get(s.sessionId);
+      return {
+        sessionId: s.sessionId,
+        archived: !!s.archived,
+        createdAt: s.createdAt || 0,
+        lastActivityAt: s.lastActivityAt,
+        name: names[s.sessionId] ?? s.name ?? "",
+        taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
+        keywords: wsBridge.getSessionKeywords(s.sessionId),
+        gitBranch: bridge?.git_branch || "",
+        cwd: bridge?.cwd || s.cwd || "",
+        repoRoot: bridge?.repo_root || s.repoRoot || "",
+        messageHistory: wsBridge.getMessageHistory(s.sessionId) || [],
+      };
+    });
+
+    const { results, totalMatches } = searchSessionDocuments(docs, {
+      query: rawQuery,
+      limit,
+      includeArchived,
+      messageLimitPerSession,
+    });
+
+    return c.json({
+      query: rawQuery,
+      tookMs: Date.now() - startedAt,
+      totalMatches,
+      results,
+    });
   });
 
   api.get("/takode/sessions", async (c) => {

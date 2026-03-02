@@ -198,6 +198,7 @@ function createMockBridge() {
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),
     getSessionKeywords: vi.fn(() => []),
+    getMessageHistory: vi.fn(() => []),
     markSessionRead: vi.fn(() => true),
     markSessionUnread: vi.fn(() => true),
     markAllSessionsRead: vi.fn(),
@@ -883,6 +884,81 @@ describe("GET /api/sessions", () => {
     expect(json[0].worktreeDirty).toBeUndefined();
     // s2: non-archived worktree — no worktree status fields
     expect(json[1].worktreeExists).toBeUndefined();
+  });
+});
+
+describe("GET /api/sessions/search", () => {
+  it("returns 400 when q is missing", async () => {
+    const res = await app.request("/api/sessions/search", { method: "GET" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "q is required" });
+  });
+
+  it("searches metadata + user messages and includes archived sessions by default", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s-active", state: "running", cwd: "/active", createdAt: 1, archived: false },
+      { sessionId: "s-archived", state: "exited", cwd: "/archived", createdAt: 2, archived: true },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({
+      "s-active": "General session",
+      "s-archived": "Old archived session",
+    });
+    bridge.getAllSessions.mockReturnValue([
+      { session_id: "s-active", cwd: "/active", repo_root: "/repo/active", git_branch: "main" },
+      { session_id: "s-archived", cwd: "/archived", repo_root: "/repo/archived", git_branch: "archive/fix" },
+    ]);
+    bridge.getMessageHistory.mockImplementation((id: string) => {
+      if (id === "s-archived") {
+        return [
+          { type: "user_message", content: "find me from archived history", timestamp: 1234, id: "u-1" },
+        ];
+      }
+      return [];
+    });
+
+    const res = await app.request("/api/sessions/search?q=archived", { method: "GET" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.totalMatches).toBeGreaterThanOrEqual(1);
+    expect(json.results.some((r: any) => r.sessionId === "s-archived")).toBe(true);
+  });
+
+  it("applies ranking and includeArchived=false filter", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s-meta", state: "running", cwd: "/meta", createdAt: 1, archived: false, lastActivityAt: 10 },
+      { sessionId: "s-msg", state: "running", cwd: "/msg", createdAt: 2, archived: false, lastActivityAt: 999 },
+      { sessionId: "s-archived", state: "exited", cwd: "/archived", createdAt: 3, archived: true, lastActivityAt: 1000 },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({
+      "s-meta": "Needle session",
+      "s-msg": "General session",
+      "s-archived": "Needle archived",
+    });
+    bridge.getAllSessions.mockReturnValue([
+      { session_id: "s-meta", cwd: "/meta", repo_root: "/repo/meta", git_branch: "main" },
+      { session_id: "s-msg", cwd: "/msg", repo_root: "/repo/msg", git_branch: "main" },
+      { session_id: "s-archived", cwd: "/archived", repo_root: "/repo/archived", git_branch: "main" },
+    ]);
+    bridge.getMessageHistory.mockImplementation((id: string) => {
+      if (id === "s-msg") {
+        return [{ type: "user_message", content: "contains needle in user message", timestamp: 9999, id: "u-msg" }];
+      }
+      if (id === "s-archived") {
+        return [{ type: "user_message", content: "contains needle in archived message", timestamp: 11111, id: "u-arch" }];
+      }
+      return [];
+    });
+
+    const res = await app.request("/api/sessions/search?q=needle&includeArchived=false", { method: "GET" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    // Metadata match should outrank user-message match.
+    expect(json.results[0]).toMatchObject({
+      sessionId: "s-meta",
+      matchedField: "name",
+    });
+    expect(json.results.some((r: any) => r.sessionId === "s-archived")).toBe(false);
   });
 });
 
