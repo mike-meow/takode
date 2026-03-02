@@ -40,12 +40,12 @@ export interface LauncherHandle {
  *  session_disconnected is excluded — disconnects are transient (CLI reconnects
  *  every 5 minutes for token refresh) and auto-relaunch handles recovery.
  *  Delivering disconnect events would flood the leader with noise.
- *  user_message is included so the leader knows when a human directly steers
- *  a worker. Leader-echo suppression (below) prevents the leader's own
- *  injected messages from bouncing back. */
+ *  user_message is excluded — individual messages are noisy and truncated.
+ *  Instead, user message count + IDs are included in the turn_end event
+ *  so the leader can peek at specific messages via [msg-id] if needed. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "turn_end", "permission_request", "permission_resolved",
-  "session_error", "user_message",
+  "session_error",
 ]);
 
 const DEBOUNCE_MS = 500;
@@ -150,13 +150,6 @@ export class HerdEventDispatcher {
   /** Called by the event subscription when a herded worker emits an event. */
   private onWorkerEvent(orchId: string, event: TakodeEvent): void {
     if (!ACTIONABLE_EVENTS.has(event.event)) return;
-
-    // Suppress user_message echo: when the leader sends a message to a worker,
-    // the event fires back — the leader already knows what it sent.
-    if (event.event === "user_message") {
-      const source = event.data.agentSource as { sessionId?: string } | undefined;
-      if (source?.sessionId === orchId) return;
-    }
 
     const inbox = this.inboxes.get(orchId);
     if (!inbox) return;

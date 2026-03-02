@@ -179,9 +179,9 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
-  it("delivers direct human user_message events to the leader", () => {
-    // When a human sends a message directly to a worker via the browser,
-    // the leader should be notified so it can adjust coordination.
+  it("defers user_message to turn_end (not delivered individually)", () => {
+    // user_message events are excluded from ACTIONABLE_EVENTS — they're
+    // summarized in turn_end instead (count + IDs for peek navigation).
     const { bridge, launcher } = createMocks();
     const dispatcher = new HerdEventDispatcher(bridge, launcher);
     dispatcher.setupForOrchestrator("orch-1");
@@ -191,32 +191,6 @@ describe("HerdEventDispatcher", () => {
     triggerEvent(makeEvent({
       event: "user_message",
       data: { content: "please check latest logs" },
-    }));
-    vi.advanceTimersByTime(600);
-
-    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
-    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
-    expect(content).toContain("user_message");
-    expect(content).toContain("please check latest logs");
-
-    dispatcher.destroy();
-  });
-
-  it("suppresses leader-echo user_message events", () => {
-    // When the leader sends a message to a worker, the event fires back —
-    // suppress it since the leader already knows what it sent.
-    const { bridge, launcher } = createMocks();
-    const dispatcher = new HerdEventDispatcher(bridge, launcher);
-    dispatcher.setupForOrchestrator("orch-1");
-
-    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
-
-    triggerEvent(makeEvent({
-      event: "user_message",
-      data: {
-        content: "run focused tests",
-        agentSource: { sessionId: "orch-1", sessionLabel: "#1 Leader" },
-      },
     }));
     vi.advanceTimersByTime(600);
 
