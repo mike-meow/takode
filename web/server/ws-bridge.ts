@@ -108,6 +108,14 @@ const NEVER_AUTO_APPROVE: ReadonlySet<string> = new Set(["AskUserQuestion", "Exi
 /** Tools whose approvals appear as chat messages (same set — interactive tools need visible records). */
 const NOTABLE_APPROVALS = NEVER_AUTO_APPROVE;
 
+/** MIME type to file extension mapping for image file path derivation (must match image-store.ts). */
+const MIME_TO_EXT: Record<string, string> = {
+  "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpg",
+  "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg",
+  "image/bmp": "bmp", "image/tiff": "tiff", "image/avif": "avif",
+  "image/heic": "heic", "image/heif": "heif",
+};
+
 const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
 const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
 const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
@@ -4849,7 +4857,10 @@ export class WsBridge {
       let textContent = msg.content;
       if (imageRefs?.length) {
         const imgDir = join(homedir(), ".companion", "images", session.id);
-        const paths = imageRefs.map((ref) => join(imgDir, `${ref.imageId}.transport.jpeg`));
+        const paths = imageRefs.map((ref) => {
+          const ext = MIME_TO_EXT[ref.media_type] || "bin";
+          return join(imgDir, `${ref.imageId}.orig.${ext}`);
+        });
         textContent += `\n[📎 ${paths.length} image${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}]`;
       }
       blocks.push({ type: "text", text: textContent });

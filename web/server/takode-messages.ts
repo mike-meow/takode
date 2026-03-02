@@ -43,7 +43,7 @@ export interface TakodePeekMessage {
   /** Source of the message if injected programmatically (user_message only) */
   agentSource?: { sessionId: string; sessionLabel?: string };
   /** Disk paths of images attached to this message (user_message only).
-   *  Points to the transport-optimized JPEG files in ~/.companion/images/. */
+   *  Points to the full-quality original files in ~/.companion/images/. */
   imagePaths?: string[];
 }
 
@@ -121,12 +121,23 @@ export interface TakodeReadResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Derive transport image file paths from ImageRefs stored in message history.
- *  Transport images are pre-processed JPEGs (≤1536px, normalized orientation)
- *  suitable for passing to herded workers via file path references. */
+/** MIME type to file extension mapping (must match image-store.ts). */
+const MIME_TO_EXT: Record<string, string> = {
+  "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpg",
+  "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg",
+  "image/bmp": "bmp", "image/tiff": "tiff", "image/avif": "avif",
+  "image/heic": "heic", "image/heif": "heif",
+};
+
+/** Derive original image file paths from ImageRefs stored in message history.
+ *  Original images preserve full quality and metadata — preferred over the
+ *  compressed transport JPEGs for downstream consumption. */
 function deriveImagePaths(sessionId: string, images: ImageRef[]): string[] {
   const dir = join(IMAGE_STORE_BASE, sessionId);
-  return images.map((ref) => join(dir, `${ref.imageId}.transport.jpeg`));
+  return images.map((ref) => {
+    const ext = MIME_TO_EXT[ref.media_type] || "bin";
+    return join(dir, `${ref.imageId}.orig.${ext}`);
+  });
 }
 
 /** Extract image paths from a user_message in message history, if present. */
