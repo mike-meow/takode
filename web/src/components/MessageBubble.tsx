@@ -437,6 +437,12 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   const groups: GroupedBlock[] = [];
 
   for (const block of blocks) {
+    // Skip Task blocks — they render as SubagentContainers in MessageFeed,
+    // not as standalone ToolBlocks. Without this filter, every subagent would
+    // appear twice: once as an inline Agent chip (SubagentContainer) and once
+    // as a "Subagent" ToolBlock chip.
+    if (block.type === "tool_use" && block.name === "Task") continue;
+
     if (block.type === "tool_use") {
       const last = groups[groups.length - 1];
       if (last?.kind === "tool_group" && last.name === block.name) {

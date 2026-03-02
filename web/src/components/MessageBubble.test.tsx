@@ -420,6 +420,23 @@ describe("MessageBubble - assistant messages", () => {
     expect(screen.getByText("pwd")).toBeTruthy();
   });
 
+  it("does not render Task tool_use blocks (they render as SubagentContainers in MessageFeed)", () => {
+    // Task tool_use blocks must be filtered out in MessageBubble to prevent
+    // duplicate subagent chips: one from SubagentContainer (correct) and one
+    // from ToolBlock with label "Subagent" (incorrect).
+    const msg = makeMessage({
+      role: "assistant",
+      content: "",
+      contentBlocks: [
+        { type: "tool_use", id: "tu-task-1", name: "Task", input: { description: "Explore auth", subagent_type: "Explore" } },
+      ],
+    });
+    render(<MessageBubble message={msg} />);
+
+    // "Subagent" is getToolLabel("Task") — should NOT appear
+    expect(screen.queryByText("Subagent")).toBeNull();
+  });
+
   it("renders thinking blocks with 'Thinking' label and char count", () => {
     const thinkingText = "Let me analyze this problem step by step...";
     const msg = makeMessage({

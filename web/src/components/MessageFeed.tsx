@@ -1348,19 +1348,23 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
   return (
     <>
-      {/* Tool progress indicator */}
-      {toolProgress && toolProgress.size > 0 && !streamingText && !isCodexSession && (
-        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
-          <YarnBallDot className="text-cc-primary animate-pulse" />
-          {Array.from(toolProgress.values()).map((p, i) => (
-            <span key={i} className="flex items-center gap-1">
-              {i > 0 && <span className="text-cc-muted/40">·</span>}
-              <span>{getToolLabel(p.toolName)}</span>
-              <span className="text-cc-muted/60">{p.elapsedSeconds}s</span>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Tool progress indicator — skip Task tools since SubagentContainers show their own progress */}
+      {toolProgress && toolProgress.size > 0 && !streamingText && !isCodexSession && (() => {
+        const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => p.toolName !== "Task");
+        if (nonTaskProgress.length === 0) return null;
+        return (
+          <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
+            <YarnBallDot className="text-cc-primary animate-pulse" />
+            {nonTaskProgress.map((p, i) => (
+              <span key={i} className="flex items-center gap-1">
+                {i > 0 && <span className="text-cc-muted/40">·</span>}
+                <span>{getToolLabel(p.toolName)}</span>
+                <span className="text-cc-muted/60">{p.elapsedSeconds}s</span>
+              </span>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Streaming indicator */}
       {streamingText && (
