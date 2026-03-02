@@ -371,6 +371,8 @@ interface Session {
   lastCliMessageAt: number;
   /** Last keep_alive or WebSocket ping from CLI (epoch ms), for disconnect diagnostics */
   lastCliPingAt: number;
+  /** Optimistic running rollback timer started when a user message is dispatched. */
+  optimisticRunningTimer: ReturnType<typeof setTimeout> | null;
   /**
    * The last user message NDJSON sent to the CLI. Set when a user message is
    * forwarded to the CLI, cleared when the turn completes (result message).
@@ -657,6 +659,7 @@ export class WsBridge {
   private static readonly CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS = 15_000;
   private static readonly CODEX_ASSISTANT_REPLAY_SCAN_LIMIT = 200;
   private static readonly LEADER_GROUP_IDLE_NOTIFY_DELAY_MS = 10_000;
+  private static readonly USER_MESSAGE_RUNNING_TIMEOUT_MS = 30_000;
   private static readonly PROCESSED_CLIENT_MSG_ID_LIMIT = 1000;
   private static readonly IDEMPOTENT_BROWSER_MESSAGE_TYPES = new Set<string>([
     "user_message",
@@ -1419,6 +1422,7 @@ export class WsBridge {
         cliInitReceived: false,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
+        optimisticRunningTimer: null,
         lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
@@ -1775,6 +1779,7 @@ export class WsBridge {
         cliInitReceived: false,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
+        optimisticRunningTimer: null,
         lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
         lastReadAt: 0,
@@ -2017,6 +2022,10 @@ export class WsBridge {
   }
 
   removeSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      this.clearOptimisticRunningTimer(session, "remove_session");
+    }
     this.sessions.delete(sessionId);
     this.store?.remove(sessionId);
     // Fire-and-forget: image cleanup is non-critical
@@ -2029,6 +2038,7 @@ export class WsBridge {
   closeSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    this.clearOptimisticRunningTimer(session, "close_session");
 
     // Close CLI socket (Claude)
     if (session.cliSocket) {
@@ -2072,6 +2082,7 @@ export class WsBridge {
       // Track Codex CLI activity for idle management and stuck detection
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
+      this.clearOptimisticRunningTimer(session, `codex_output:${msg.type}`);
       let outgoing: BrowserIncomingMessage | null = msg;
 
       if (msg.type === "session_init") {
@@ -2284,6 +2295,9 @@ export class WsBridge {
     for (const raw of queued) {
       try {
         const msg = JSON.parse(raw) as BrowserOutgoingMessage;
+        if (msg.type === "user_message") {
+          this.markRunningFromUserDispatch(session, "queued_user_message_dispatch");
+        }
         adapter.sendBrowserMessage(msg);
       } catch {
         console.warn(`[ws-bridge] Failed to parse queued message for Codex: ${raw.substring(0, 100)}`);
@@ -2316,6 +2330,7 @@ export class WsBridge {
     adapter.onBrowserMessage((msg) => {
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
+      this.clearOptimisticRunningTimer(session, `sdk_output:${msg.type}`);
 
       // Track generation state for SDK sessions
       if (msg.type === "result") {
@@ -2822,6 +2837,7 @@ export class WsBridge {
     if (msg.type !== "keep_alive") {
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
+      this.clearOptimisticRunningTimer(session, `cli_output:${msg.type}`);
     }
 
     switch (msg.type) {
@@ -4164,9 +4180,7 @@ export class WsBridge {
         if (session.backendType === "codex" && wasGenerating) {
           session.interruptedDuringTurn = true;
         }
-        this.setGenerating(session, true, "user_message");
-        this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-        this.persistSession(session);
+        this.markRunningFromUserDispatch(session, "user_message");
 
         // Trigger auto-naming evaluation (async, fire-and-forget)
         if (this.onUserMessage) {
@@ -4590,17 +4604,12 @@ export class WsBridge {
       parent_tool_use_id: null,
       session_id: msg.session_id || session.state.session_id || "",
     });
+    const wasGenerating = session.isGenerating;
     this.sendToCLI(session, ndjson);
     // Track the outbound user message so we can re-queue it if the CLI
     // disconnects mid-turn (before sending a result). On --resume reconnect,
     // the CLI's internal checkpoint won't include the in-flight message.
     session.lastOutboundUserNdjson = ndjson;
-    const wasGenerating = session.isGenerating;
-    this.setGenerating(session, true, "user_message");
-    // Notify all browsers immediately so the UI shows "Thinking" without
-    // waiting for the CLI's first assistant response.
-    this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-    this.persistSession(session);
 
     // Trigger auto-naming evaluation (async, fire-and-forget)
     if (this.onUserMessage) {
@@ -5017,6 +5026,9 @@ export class WsBridge {
   // ── Transport helpers ───────────────────────────────────────────────────
 
   private sendToCLI(session: Session, ndjson: string) {
+    if (this.isCliUserMessagePayload(ndjson)) {
+      this.markRunningFromUserDispatch(session, "user_message_dispatch");
+    }
     if (!session.cliSocket) {
       // Queue the message — CLI might still be starting up.
       // Don't record here; the message will be recorded when flushed.
@@ -5254,8 +5266,7 @@ export class WsBridge {
       disconnectedAt: null,
     };
     session.pendingCodexTurnRecovery = nextPending;
-    this.setGenerating(session, true, "codex_resume_retry");
-    this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
+    this.markRunningFromUserDispatch(session, "codex_resume_retry");
 
     if (session.codexAdapter) {
       const ok = session.codexAdapter.sendBrowserMessage(pending.adapterMsg);
@@ -5319,6 +5330,56 @@ export class WsBridge {
     return recovered;
   }
 
+  /**
+   * Optimistically mark a session running as soon as a user message is
+   * dispatched, then roll back after a safety timeout if no backend output
+   * arrives. This closes the idle-race window between dispatch and first token.
+   */
+  private markRunningFromUserDispatch(session: Session, reason: string): void {
+    this.restartOptimisticRunningTimer(session, reason);
+    this.setGenerating(session, true, reason);
+    this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
+    this.persistSession(session);
+  }
+
+  private restartOptimisticRunningTimer(session: Session, reason: string): void {
+    this.clearOptimisticRunningTimer(session, `${reason}:restart`);
+    const timer = setTimeout(() => {
+      const current = this.sessions.get(session.id);
+      if (!current) return;
+      if (current.optimisticRunningTimer !== timer) return;
+      current.optimisticRunningTimer = null;
+      if (!current.isGenerating) return;
+
+      console.warn(
+        `[ws-bridge] Reverting optimistic running state after ${WsBridge.USER_MESSAGE_RUNNING_TIMEOUT_MS}ms for session ${sessionTag(current.id)} (${reason})`,
+      );
+      this.setGenerating(current, false, "user_message_timeout");
+      this.broadcastToBrowsers(current, { type: "status_change", status: "idle" });
+      this.persistSession(current);
+    }, WsBridge.USER_MESSAGE_RUNNING_TIMEOUT_MS);
+    session.optimisticRunningTimer = timer;
+  }
+
+  private clearOptimisticRunningTimer(session: Session, _reason: string): void {
+    if (!session.optimisticRunningTimer) return;
+    clearTimeout(session.optimisticRunningTimer);
+    session.optimisticRunningTimer = null;
+  }
+
+  private isCliUserMessagePayload(ndjson: string): boolean {
+    if (!ndjson.includes("\"type\":\"user\"")) return false;
+    try {
+      const parsed = JSON.parse(ndjson) as {
+        type?: unknown;
+        message?: { role?: unknown };
+      };
+      return parsed.type === "user" && parsed.message?.role === "user";
+    } catch {
+      return false;
+    }
+  }
+
   /** Centralized generation state setter with logging and recording. */
   private setGenerating(session: Session, generating: boolean, reason: string): void {
     if (session.isGenerating === generating) return;
@@ -5340,6 +5401,7 @@ export class WsBridge {
         userMessage: session.lastUserMessage?.slice(0, 120),
       });
     } else {
+      this.clearOptimisticRunningTimer(session, `generation_end:${reason}`);
       const elapsed = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
       session.generationStartedAt = null;
       session.stuckNotifiedAt = null;

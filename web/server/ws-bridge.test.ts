@@ -4286,6 +4286,71 @@ describe("status_change: running on user_message", () => {
     expect(statusChange.status).toBe("running");
   });
 
+  it("reverts optimistic running to idle after 30s without backend output", () => {
+    vi.useFakeTimers();
+    try {
+      bridge.handleBrowserMessage(browser, JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }));
+      browser.send.mockClear();
+
+      vi.advanceTimersByTime(30_000);
+
+      const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+      const statusChange = calls.find((m: any) => m.type === "status_change");
+      expect(statusChange).toBeDefined();
+      expect(statusChange.status).toBe("idle");
+      expect(bridge.getSession("s1")?.isGenerating).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels optimistic running timeout when backend output arrives", () => {
+    vi.useFakeTimers();
+    try {
+      bridge.handleBrowserMessage(browser, JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }));
+
+      // First backend output should cancel the timeout.
+      bridge.handleCLIMessage(cli, JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-timeout-cancel",
+          role: "assistant",
+          content: [{ type: "text", text: "Working..." }],
+          model: "claude-sonnet-4-5-20250929",
+          stop_reason: null,
+        },
+      }));
+      browser.send.mockClear();
+
+      vi.advanceTimersByTime(30_000);
+
+      const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+      const idleStatus = calls.find((m: any) => m.type === "status_change" && m.status === "idle");
+      expect(idleStatus).toBeUndefined();
+      expect(bridge.getSession("s1")?.isGenerating).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks injected herd/takode user messages as running immediately", () => {
+    bridge.injectUserMessage("s1", "2 events from 1 session", {
+      sessionId: "herd-events",
+      sessionLabel: "Herd",
+    });
+
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const statusChange = calls.find((m: any) => m.type === "status_change");
+    expect(statusChange).toBeDefined();
+    expect(statusChange.status).toBe("running");
+  });
+
   it("broadcasts user_message to all connected browsers", () => {
     // Connect a second browser to the same session
     const browser2 = makeBrowserSocket("s1");
