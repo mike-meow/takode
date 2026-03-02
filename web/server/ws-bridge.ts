@@ -362,6 +362,9 @@ interface Session {
   messageCountAtTurnStart: number;
   /** Set when handleInterrupt is called during generation, cleared at turn end */
   interruptedDuringTurn: boolean;
+  /** Consecutive SDK/adapter disconnect count without a successful turn completion.
+   *  Used to cap auto-relaunch attempts and prevent infinite respawn loops. */
+  consecutiveAdapterFailures: number;
   /** Message history indices of user messages received during the current turn (for turn_end herd events) */
   userMessageIdsThisTurn: number[];
   /** Whether system.init has been received since the last CLI connect.
@@ -1418,6 +1421,7 @@ export class WsBridge {
         questStatusAtTurnStart: null,
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
+        consecutiveAdapterFailures: 0,
         userMessageIdsThisTurn: [],
         cliInitReceived: false,
         lastCliMessageAt: 0,
@@ -1775,6 +1779,7 @@ export class WsBridge {
         questStatusAtTurnStart: null,
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
+        consecutiveAdapterFailures: 0,
         userMessageIdsThisTurn: [],
         cliInitReceived: false,
         lastCliMessageAt: 0,
@@ -2086,6 +2091,8 @@ export class WsBridge {
       let outgoing: BrowserIncomingMessage | null = msg;
 
       if (msg.type === "session_init") {
+        // Codex connected successfully — reset failure counter
+        session.consecutiveAdapterFailures = 0;
         const sanitized = this.sanitizeCodexSessionPatch(msg.session);
         session.state = { ...session.state, ...sanitized, backend_type: "codex" };
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
@@ -2229,10 +2236,11 @@ export class WsBridge {
       this.onSessionActivityStateChanged(session.id, "codex_disconnect_permissions_cleared");
       session.pendingQuestCommands.clear();
       session.codexAdapter = null;
+      session.consecutiveAdapterFailures++;
       this.setGenerating(session, false, "codex_disconnect");
       this.persistSession(session);
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
-      console.log(`[ws-bridge] Codex adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""}`);
+      console.log(`[ws-bridge] Codex adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} (consecutive failures: ${session.consecutiveAdapterFailures})`);
       this.broadcastToBrowsers(session, {
         type: "cli_disconnected",
         ...(idleKilled ? { reason: "idle_limit" as const } : {}),
@@ -2244,15 +2252,19 @@ export class WsBridge {
       // Recover faster from unexpected Codex transport drops while a browser is
       // actively connected. Without this, the UI can remain disconnected until
       // either the process exits by itself or the browser reconnects.
+      const MAX_CONSECUTIVE_FAILURES = 3;
       if (
         !idleKilled
         && this.onCLIRelaunchNeeded
         && session.browserSockets.size > 0
         // Suppress relaunch for intentional teardown (session closed/removed).
         && this.sessions.get(sessionId) === session
+        && session.consecutiveAdapterFailures <= MAX_CONSECUTIVE_FAILURES
       ) {
-        console.log(`[ws-bridge] Codex adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)}`);
+        console.log(`[ws-bridge] Codex adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_CONSECUTIVE_FAILURES})`);
         this.onCLIRelaunchNeeded(sessionId);
+      } else if (session.consecutiveAdapterFailures > MAX_CONSECUTIVE_FAILURES) {
+        console.error(`[ws-bridge] Codex adapter for session ${sessionTag(sessionId)} exceeded ${MAX_CONSECUTIVE_FAILURES} consecutive failures — stopping auto-relaunch`);
       }
     });
 
@@ -2350,6 +2362,8 @@ export class WsBridge {
       // SDK messages are already in BrowserIncomingMessage format — process them
       // through the same handler as CLI WebSocket messages.
       if (msg.type === "session_init") {
+        // SDK connected successfully — reset failure counter
+        session.consecutiveAdapterFailures = 0;
         const initMsg = msg as any;
         if (initMsg.session) {
           // Merge SDK init data into session state, but PRESERVE the Companion
@@ -2414,7 +2428,8 @@ export class WsBridge {
 
     adapter.onDisconnect(() => {
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
-      console.log(`[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""}`);
+      session.consecutiveAdapterFailures++;
+      console.log(`[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} (consecutive failures: ${session.consecutiveAdapterFailures})`);
       session.claudeSdkAdapter = null;
       this.setGenerating(session, false, "sdk_disconnect");
       this.broadcastToBrowsers(session, {
@@ -2423,15 +2438,24 @@ export class WsBridge {
       });
       this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
 
-      // Auto-relaunch when a browser is actively connected (mirrors Codex behaviour).
+      // Auto-relaunch when a browser is actively connected, but cap retries
+      // to prevent infinite respawn loops (e.g., "conversation ID not found").
+      const MAX_CONSECUTIVE_FAILURES = 3;
       if (
         !idleKilled
         && this.onCLIRelaunchNeeded
         && session.browserSockets.size > 0
         && this.sessions.get(sessionId) === session
+        && session.consecutiveAdapterFailures <= MAX_CONSECUTIVE_FAILURES
       ) {
-        console.log(`[ws-bridge] SDK adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)}`);
+        console.log(`[ws-bridge] SDK adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_CONSECUTIVE_FAILURES})`);
         this.onCLIRelaunchNeeded(sessionId);
+      } else if (session.consecutiveAdapterFailures > MAX_CONSECUTIVE_FAILURES) {
+        console.error(`[ws-bridge] SDK adapter for session ${sessionTag(sessionId)} exceeded ${MAX_CONSECUTIVE_FAILURES} consecutive failures — stopping auto-relaunch`);
+        this.broadcastToBrowsers(session, {
+          type: "error",
+          message: `Session stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive launch failures. Use the relaunch button to try again.`,
+        });
       }
     });
 
