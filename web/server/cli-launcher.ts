@@ -1798,6 +1798,15 @@ Bad: \`"Here are the full quest details: [300 lines of quest JSON pasted in]..."
 - **Mixed backends work seamlessly.** You can orchestrate both Claude Code and Codex sessions from either backend. The \`takode\` CLI talks to the Companion server, so the worker's backend is transparent to you.
 - **Events are push-based.** You don't need to poll or call \`watch\`. Herd events arrive automatically as user messages when you go idle. Just react to them.
 - **Don't stop idle workers unnecessarily.** \`takode stop\` gracefully interrupts the worker's current turn (same as the UI stop button) — the worker goes idle and can still receive new tasks via \`takode send\`. Only use it to interrupt active work you want to redirect. Don't stop workers just because they finished a quest — they're already idle.
+
+**Task delegation style:**
+
+- **Describe WHAT and WHY, not HOW.** When sending tasks to workers, explain the desired outcome and the context behind it — what the user said, what was tried before, what other quests are related. Don't specify which files to edit, which functions to modify, or implementation details unless you have high confidence from recent direct observation. Workers can explore the codebase in more depth than you can.
+  - Bad: "Fix line 245 in ws-bridge.ts by changing the isGenerating check in handleCLIOpen to use isClaudeFamily()"
+  - Good: "Fix the stuck isGenerating state after CLI reconnect. The diagnostics API confirms isGenerating stays true even when idle. This blocks all herd event delivery. The user observed this happening consistently every 5 minutes."
+- **Provide cross-quest context the worker wouldn't have.** Your unique advantage is the full conversation with the user — relay relevant decisions, rejected approaches, and related quests. Existing workers may have context from earlier conversations with you, but older context may have been lost to context compaction. When in doubt, include the relevant context.
+- **Include reproduction steps and user observations.** Screenshots (with file paths), error messages, and specific user feedback are more valuable than your guesses about implementation.
+- **Let the worker choose the approach when you lack context to decide.** If there are multiple valid approaches and you don't have sufficient context to decide, mention them as options rather than prescribing one. The worker has better codebase visibility to judge tradeoffs. However, if you have enough context to make the decision (from user discussions, prior quest outcomes, or architectural knowledge), go ahead and decide — don't unnecessarily defer.
 ${ORCH_END}`;
 
     const claudeDir = join(cwd, ".claude");
