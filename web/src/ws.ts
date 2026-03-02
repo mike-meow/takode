@@ -680,6 +680,20 @@ function handleParsedMessage(
       break;
     }
 
+    case "leader_group_idle": {
+      if (!document.hasFocus() && store.notificationSound) {
+        playNotificationSound();
+      }
+      if (!document.hasFocus() && store.notificationDesktop) {
+        sendBrowserNotification(
+          "Leader group idle",
+          `${data.leader_label} is idle and waiting for attention`,
+          `leader-group-idle:${data.leader_session_id}`,
+        );
+      }
+      break;
+    }
+
     case "permission_evaluating_status": {
       // Auto-approver status transition (e.g., "queued" → "evaluating")
       store.updatePermissionEvaluating(sessionId, data.request_id, data.evaluating);

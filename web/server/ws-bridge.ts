@@ -412,6 +412,12 @@ interface Session {
   cliResuming: boolean;
 }
 
+interface LeaderGroupIdleTimerState {
+  timer: ReturnType<typeof setTimeout> | null;
+  idleSince: number | null;
+  notifiedWhileIdle: boolean;
+}
+
 type GitSessionKey =
   | "git_branch"
   | "git_default_branch"
@@ -650,6 +656,7 @@ export class WsBridge {
   private static readonly EVENT_BUFFER_LIMIT = 600;
   private static readonly CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS = 15_000;
   private static readonly CODEX_ASSISTANT_REPLAY_SCAN_LIMIT = 200;
+  private static readonly LEADER_GROUP_IDLE_NOTIFY_DELAY_MS = 10_000;
   private static readonly PROCESSED_CLIENT_MSG_ID_LIMIT = 1000;
   private static readonly IDEMPOTENT_BROWSER_MESSAGE_TYPES = new Set<string>([
     "user_message",
@@ -700,6 +707,7 @@ export class WsBridge {
   private static readonly TAKODE_EVENT_LOG_LIMIT = 1000;
   private sessionNameGetter: ((sessionId: string) => string) | null = null;
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
+  private leaderGroupIdleStates = new Map<string, LeaderGroupIdleTimerState>();
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
     "git_branch",
     "git_default_branch",
@@ -1137,6 +1145,11 @@ export class WsBridge {
     this.herdEventDispatcher = dispatcher;
   }
 
+  /** Re-evaluate leader-group idle notifications when herd membership changes. */
+  onHerdMembershipChanged(orchId: string): void {
+    this.updateLeaderGroupIdleState(orchId, "herd_membership_changed");
+  }
+
   /** Check if a session is idle AND ready to receive messages.
    *  Requires: CLI connected, system.init received, not generating. */
   isSessionIdle(sessionId: string): boolean {
@@ -1162,6 +1175,115 @@ export class WsBridge {
       disconnectWasGenerating: session.disconnectWasGenerating,
       ...(this.herdEventDispatcher ? { herdDispatcher: this.herdEventDispatcher.getDiagnostics(sessionId) } : {}),
     };
+  }
+
+  /** Re-check group-idle state for any leader affected by this session's activity change. */
+  private onSessionActivityStateChanged(sessionId: string, reason: string): void {
+    const info = this.launcher?.getSession?.(sessionId);
+    if (!info) return;
+
+    if (info.isOrchestrator) {
+      this.updateLeaderGroupIdleState(sessionId, `${reason}:leader`);
+    }
+    if (info.herdedBy) {
+      this.updateLeaderGroupIdleState(info.herdedBy, `${reason}:worker`);
+    }
+  }
+
+  private getLeaderGroupMembers(leaderId: string): string[] {
+    const workerIds = this.launcher?.getHerdedSessions?.(leaderId)?.map((w) => w.sessionId) ?? [];
+    return [leaderId, ...workerIds];
+  }
+
+  private isIdleForLeaderGroup(session: Session): boolean {
+    return this.deriveSessionStatus(session) === "idle" && session.pendingPermissions.size === 0;
+  }
+
+  private clearLeaderGroupIdleTimer(state: LeaderGroupIdleTimerState): void {
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+  }
+
+  private getOrCreateLeaderGroupIdleState(leaderId: string): LeaderGroupIdleTimerState {
+    let state = this.leaderGroupIdleStates.get(leaderId);
+    if (!state) {
+      state = { timer: null, idleSince: null, notifiedWhileIdle: false };
+      this.leaderGroupIdleStates.set(leaderId, state);
+    }
+    return state;
+  }
+
+  private updateLeaderGroupIdleState(leaderId: string, reason: string): void {
+    const leaderInfo = this.launcher?.getSession?.(leaderId);
+    if (!leaderInfo?.isOrchestrator) {
+      const stale = this.leaderGroupIdleStates.get(leaderId);
+      if (stale) {
+        this.clearLeaderGroupIdleTimer(stale);
+        this.leaderGroupIdleStates.delete(leaderId);
+      }
+      return;
+    }
+
+    const members = this.getLeaderGroupMembers(leaderId);
+    const allIdle = members.every((memberId) => {
+      const session = this.sessions.get(memberId);
+      if (!session) return false;
+      return this.isIdleForLeaderGroup(session);
+    });
+
+    const state = this.getOrCreateLeaderGroupIdleState(leaderId);
+    if (!allIdle) {
+      this.clearLeaderGroupIdleTimer(state);
+      state.idleSince = null;
+      state.notifiedWhileIdle = false;
+      return;
+    }
+
+    if (state.notifiedWhileIdle || state.timer) return;
+    state.idleSince = Date.now();
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      const latestMembers = this.getLeaderGroupMembers(leaderId);
+      const stillIdle = latestMembers.every((memberId) => {
+        const session = this.sessions.get(memberId);
+        if (!session) return false;
+        return this.isIdleForLeaderGroup(session);
+      });
+      if (!stillIdle || state.notifiedWhileIdle) return;
+      this.emitLeaderGroupIdleNotification(leaderId, latestMembers, state.idleSince);
+      state.notifiedWhileIdle = true;
+    }, WsBridge.LEADER_GROUP_IDLE_NOTIFY_DELAY_MS);
+    this.recorder?.recordServerEvent(leaderId, "leader_group_idle_timer_started", { reason, members: members.length }, leaderInfo.backendType ?? "claude", leaderInfo.cwd);
+  }
+
+  private buildLeaderGroupLabel(leaderId: string): string {
+    const num = this.launcher?.getSessionNum?.(leaderId);
+    const name = this.sessionNameGetter?.(leaderId);
+    if (num !== undefined && name) return `#${num} ${name}`;
+    if (num !== undefined) return `#${num}`;
+    if (name) return name;
+    return leaderId.slice(0, 8);
+  }
+
+  private emitLeaderGroupIdleNotification(leaderId: string, members: string[], idleSince: number | null): void {
+    const session = this.sessions.get(leaderId);
+    if (!session) return;
+    const now = Date.now();
+    const idleForMs = idleSince ? Math.max(0, now - idleSince) : WsBridge.LEADER_GROUP_IDLE_NOTIFY_DELAY_MS;
+    const leaderLabel = this.buildLeaderGroupLabel(leaderId);
+    const detail = `${leaderLabel} is idle and waiting for attention`;
+    this.setAttention(session, "review");
+    this.pushoverNotifier?.scheduleNotification(leaderId, "completed", detail);
+    this.broadcastToBrowsers(session, {
+      type: "leader_group_idle",
+      leader_session_id: leaderId,
+      leader_label: leaderLabel,
+      member_count: members.length,
+      idle_for_ms: idleForMs,
+      timestamp: now,
+    });
   }
 
   setPerfTracer(tracer: PerfTracer): void {
@@ -2044,6 +2166,7 @@ export class WsBridge {
       if (outgoing?.type === "permission_request") {
         const perm = outgoing.request;
         session.pendingPermissions.set(perm.request_id, perm);
+        this.onSessionActivityStateChanged(session.id, "codex_permission_request");
         this.setAttention(session, "action");
         this.persistSession(session);
 
@@ -2092,6 +2215,7 @@ export class WsBridge {
         this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
       }
       session.pendingPermissions.clear();
+      this.onSessionActivityStateChanged(session.id, "codex_disconnect_permissions_cleared");
       session.pendingQuestCommands.clear();
       session.codexAdapter = null;
       this.setGenerating(session, false, "codex_disconnect");
@@ -2357,6 +2481,7 @@ export class WsBridge {
     } else if (session.pendingMessages.length > 0) {
       console.log(`[ws-bridge] ${session.pendingMessages.length} queued message(s) deferred until init for session ${sessionTag(sessionId)} (resuming)`);
     }
+    this.onSessionActivityStateChanged(session.id, "cli_open");
   }
 
   handleCLIMessage(ws: ServerWebSocket<SocketData>, raw: string | Buffer) {
@@ -2405,6 +2530,7 @@ export class WsBridge {
     // that emits turn_end/turn_start takode events which we want to defer.
     session.isGenerating = false;
     session.generationStartedAt = null;
+    this.onSessionActivityStateChanged(session.id, "cli_close");
     const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
 
     // Diagnostic: time since last CLI activity for disconnect analysis
@@ -2508,6 +2634,7 @@ export class WsBridge {
     }
     session.pendingPermissions.clear();
     session.assistantAccumulator.clear();
+    this.onSessionActivityStateChanged(session.id, "full_disconnect");
 
     // Re-queue the in-flight user message if the CLI disconnected mid-turn.
     if (wasGenerating && !idleKilled) {
@@ -2874,6 +3001,7 @@ export class WsBridge {
           this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
         }
       }
+      this.onSessionActivityStateChanged(session.id, "system_init");
     } else if (msg.subtype === "status") {
       session.state.is_compacting = msg.status === "compacting";
       // Compaction pauses generation; clear the flag so deriveSessionStatus is accurate
@@ -2908,6 +3036,7 @@ export class WsBridge {
         type: "status_change",
         status: msg.status ?? null,
       });
+      this.onSessionActivityStateChanged(session.id, "system_status");
     } else if (msg.subtype === "compact_boundary") {
       // CLI has compacted its context — append a compact marker as a divider.
       // Old messages are preserved for browser display; the marker visually separates
@@ -3214,6 +3343,7 @@ export class WsBridge {
       }
       console.log(`[ws-bridge] Cleared ${session.pendingPermissions.size} stale pending permission(s) on result for session ${sessionTag(session.id)}`);
       session.pendingPermissions.clear();
+      this.onSessionActivityStateChanged(session.id, "result_cleared_permissions");
     }
 
     const browserMsg: BrowserIncomingMessage = {
@@ -3389,6 +3519,7 @@ export class WsBridge {
         ...(autoApprovalConfig ? { evaluating: "queued" as const } : {}),
       };
       session.pendingPermissions.set(msg.request_id, perm);
+      this.onSessionActivityStateChanged(session.id, "permission_request");
 
       this.broadcastToBrowsers(session, {
         type: "permission_request",
@@ -3491,6 +3622,7 @@ export class WsBridge {
 
     // Track in ws-bridge's pending permissions (for attention state, diagnostics)
     session.pendingPermissions.set(perm.request_id, perm);
+    this.onSessionActivityStateChanged(session.id, "sdk_permission_request");
 
     // Broadcast to browsers
     this.broadcastToBrowsers(session, {
@@ -3566,6 +3698,7 @@ export class WsBridge {
       if (result?.decision === "approve") {
         // LLM approved — auto-approve the permission
         session.pendingPermissions.delete(requestId);
+        this.onSessionActivityStateChanged(session.id, "auto_approved_permission");
         this.pushoverNotifier?.cancelPermission(session.id, requestId);
         this.clearActionAttentionIfNoPermissions(session);
 
@@ -3947,6 +4080,7 @@ export class WsBridge {
         const pending = session.pendingPermissions.get(requestId);
         if (pending) {
           session.pendingPermissions.delete(requestId);
+          this.onSessionActivityStateChanged(session.id, "sdk_permission_response");
           this.pushoverNotifier?.cancelPermission(session.id, requestId);
           this.clearActionAttentionIfNoPermissions(session);
 
@@ -4042,6 +4176,7 @@ export class WsBridge {
       if (msg.type === "permission_response") {
         const pending = session.pendingPermissions.get(msg.request_id);
         session.pendingPermissions.delete(msg.request_id);
+        this.onSessionActivityStateChanged(session.id, "codex_permission_response");
         if (msg.behavior === "allow" && pending && NOTABLE_APPROVALS.has(pending.tool_name)) {
           const answers = pending.tool_name === "AskUserQuestion"
             ? extractAskUserAnswers(pending.input, msg.updated_input)
@@ -4480,6 +4615,7 @@ export class WsBridge {
     // Remove from pending
     const pending = session.pendingPermissions.get(msg.request_id);
     session.pendingPermissions.delete(msg.request_id);
+    this.onSessionActivityStateChanged(session.id, "permission_response");
 
     // Abort any in-flight LLM auto-approval evaluation
     this.abortAutoApproval(session, msg.request_id);
@@ -5229,6 +5365,7 @@ export class WsBridge {
         }
       }
     }
+    this.onSessionActivityStateChanged(session.id, `generating:${reason}`);
   }
 
   /** Build a preview of a permission request for inclusion in takode events.
@@ -5336,7 +5473,8 @@ export class WsBridge {
   private shouldBufferForReplay(msg: BrowserIncomingMessage): msg is ReplayableBrowserIncomingMessage {
     return msg.type !== "session_init"
       && msg.type !== "message_history"
-      && msg.type !== "event_replay";
+      && msg.type !== "event_replay"
+      && msg.type !== "leader_group_idle";
   }
 
   private isHistoryBackedEvent(msg: ReplayableBrowserIncomingMessage): boolean {

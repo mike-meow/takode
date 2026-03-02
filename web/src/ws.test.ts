@@ -898,6 +898,46 @@ describe("handleMessage: result", () => {
     hasFocusSpy.mockRestore();
   });
 
+  it("sends leader-group idle notifications when unfocused", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setNotificationDesktop(true);
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+    const notificationCalls: Array<{ title: string; options: NotificationOptions }> = [];
+    const OriginalNotification = (globalThis as any).Notification;
+    class MockNotification {
+      static permission = "granted";
+      constructor(title: string, options: NotificationOptions) {
+        notificationCalls.push({ title, options });
+      }
+    }
+    (globalThis as any).Notification = MockNotification;
+
+    fireMessage({
+      type: "leader_group_idle",
+      leader_session_id: "s1",
+      leader_label: "#7 Orchestrator",
+      member_count: 3,
+      idle_for_ms: 10_500,
+      timestamp: Date.now(),
+    });
+
+    expect(playNotificationSoundMock).toHaveBeenCalledTimes(1);
+    expect(notificationCalls).toEqual([
+      {
+        title: "Leader group idle",
+        options: {
+          body: "#7 Orchestrator is idle and waiting for attention",
+          tag: "leader-group-idle:s1",
+        },
+      },
+    ]);
+
+    (globalThis as any).Notification = OriginalNotification;
+    hasFocusSpy.mockRestore();
+  });
+
   it("does not recompute context_used_percent from result.modelUsage on the client", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });

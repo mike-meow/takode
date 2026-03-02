@@ -130,11 +130,15 @@ containerManager.restoreState(CONTAINER_STATE_PATH);
 // Push-based herd event delivery: wire dispatcher after bridge + launcher are ready
 const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher);
 wsBridge.setHerdEventDispatcher(herdEventDispatcher);
-launcher.onHerdChanged = (orchId) => herdEventDispatcher.onHerdChanged(orchId);
+launcher.onHerdChanged = (orchId) => {
+  herdEventDispatcher.onHerdChanged(orchId);
+  wsBridge.onHerdMembershipChanged(orchId);
+};
 // Bootstrap for existing orchestrators (server restart recovery)
 for (const s of launcher.listSessions()) {
   if (s.isOrchestrator && launcher.getHerdedSessions(s.sessionId).length > 0) {
     herdEventDispatcher.setupForOrchestrator(s.sessionId);
+    wsBridge.onHerdMembershipChanged(s.sessionId);
   }
 }
 

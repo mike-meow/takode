@@ -1605,6 +1605,127 @@ describe("CLI message routing", () => {
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
 
+  it("notifies leader browser when the entire herd group stays idle for 10s", () => {
+    vi.useFakeTimers();
+    const leaderId = "orch-1";
+    const workerId = "worker-1";
+    const launcherSessions = new Map<string, any>([
+      [leaderId, { sessionId: leaderId, isOrchestrator: true, backendType: "claude", cwd: "/test" }],
+      [workerId, { sessionId: workerId, herdedBy: leaderId, backendType: "claude", cwd: "/test" }],
+    ]);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn((id: string) => launcherSessions.get(id)),
+      getHerdedSessions: vi.fn((id: string) => (id === leaderId ? [{ sessionId: workerId }] : [])),
+      getSessionNum: vi.fn((id: string) => (id === leaderId ? 7 : undefined)),
+    } as any);
+    const scheduleNotification = vi.fn();
+    bridge.setPushoverNotifier({ scheduleNotification } as any);
+
+    const leaderCli = makeCliSocket(leaderId);
+    const workerCli = makeCliSocket(workerId);
+    const leaderBrowser = makeBrowserSocket(leaderId);
+    const workerBrowser = makeBrowserSocket(workerId);
+
+    bridge.handleCLIOpen(leaderCli, leaderId);
+    bridge.handleCLIOpen(workerCli, workerId);
+    bridge.handleBrowserOpen(leaderBrowser, leaderId);
+    bridge.handleBrowserOpen(workerBrowser, workerId);
+    leaderBrowser.send.mockClear();
+    workerBrowser.send.mockClear();
+
+    bridge.handleCLIMessage(leaderCli, makeInitMsg({ session_id: "cli-orch" }));
+    bridge.handleCLIMessage(workerCli, makeInitMsg({ session_id: "cli-worker" }));
+
+    vi.advanceTimersByTime(9_000);
+    let leaderIdleEvents = leaderBrowser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .filter((msg: any) => msg.type === "leader_group_idle");
+    expect(leaderIdleEvents).toHaveLength(0);
+
+    vi.advanceTimersByTime(1_500);
+    leaderIdleEvents = leaderBrowser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .filter((msg: any) => msg.type === "leader_group_idle");
+    expect(leaderIdleEvents).toHaveLength(1);
+    expect(leaderIdleEvents[0]).toEqual(expect.objectContaining({
+      leader_session_id: leaderId,
+      member_count: 2,
+      leader_label: expect.stringContaining("#7"),
+    }));
+    expect(bridge.getSession(leaderId)!.attentionReason).toBe("review");
+    expect(scheduleNotification).toHaveBeenCalledWith(
+      leaderId,
+      "completed",
+      expect.stringContaining("idle and waiting for attention"),
+    );
+
+    const workerIdleEvents = workerBrowser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .filter((msg: any) => msg.type === "leader_group_idle");
+    expect(workerIdleEvents).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("cancels leader idle timer when a group member becomes active before threshold", () => {
+    vi.useFakeTimers();
+    const leaderId = "orch-2";
+    const workerId = "worker-2";
+    const launcherSessions = new Map<string, any>([
+      [leaderId, { sessionId: leaderId, isOrchestrator: true, backendType: "claude", cwd: "/test" }],
+      [workerId, { sessionId: workerId, herdedBy: leaderId, backendType: "claude", cwd: "/test" }],
+    ]);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn((id: string) => launcherSessions.get(id)),
+      getHerdedSessions: vi.fn((id: string) => (id === leaderId ? [{ sessionId: workerId }] : [])),
+      getSessionNum: vi.fn((id: string) => (id === leaderId ? 8 : undefined)),
+    } as any);
+
+    const leaderCli = makeCliSocket(leaderId);
+    const workerCli = makeCliSocket(workerId);
+    const leaderBrowser = makeBrowserSocket(leaderId);
+
+    bridge.handleCLIOpen(leaderCli, leaderId);
+    bridge.handleCLIOpen(workerCli, workerId);
+    bridge.handleBrowserOpen(leaderBrowser, leaderId);
+    leaderBrowser.send.mockClear();
+
+    bridge.handleCLIMessage(leaderCli, makeInitMsg({ session_id: "cli-orch-2" }));
+    bridge.handleCLIMessage(workerCli, makeInitMsg({ session_id: "cli-worker-2" }));
+
+    vi.advanceTimersByTime(5_000);
+    bridge.injectUserMessage(workerId, "Continue with validation");
+
+    vi.advanceTimersByTime(6_000);
+    let leaderIdleEvents = leaderBrowser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .filter((msg: any) => msg.type === "leader_group_idle");
+    expect(leaderIdleEvents).toHaveLength(0);
+
+    bridge.handleCLIMessage(workerCli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done",
+      duration_ms: 1000,
+      duration_api_ms: 900,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-worker-2-result",
+      session_id: workerId,
+    }));
+
+    vi.advanceTimersByTime(10_500);
+    leaderIdleEvents = leaderBrowser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .filter((msg: any) => msg.type === "leader_group_idle");
+    expect(leaderIdleEvents).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it("result: refreshes git branch and broadcasts session_update when branch changes", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/new-branch\n";
