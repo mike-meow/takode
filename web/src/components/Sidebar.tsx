@@ -527,6 +527,33 @@ export function Sidebar() {
     return results;
   }, [searchQuery, searchResults, allSessionList]);
 
+  const herdHoverHighlights = useMemo(() => {
+    const highlights = new Map<string, "leader" | "worker">();
+    const hoveredId = hoveredSession?.sessionId;
+    if (!hoveredId) return highlights;
+
+    const hovered = allSessionList.find((session) => session.id === hoveredId);
+    if (!hovered) return highlights;
+
+    // Hovering a leader highlights all active workers in that herd.
+    if (hovered.isOrchestrator) {
+      for (const candidate of allSessionList) {
+        if (candidate.archived) continue;
+        if (!candidate.isOrchestrator && candidate.herdedBy === hovered.id) {
+          highlights.set(candidate.id, "worker");
+        }
+      }
+      return highlights;
+    }
+
+    // Hovering a worker highlights its leader session.
+    if (hovered.herdedBy) {
+      highlights.set(hovered.herdedBy, "leader");
+    }
+
+    return highlights;
+  }, [hoveredSession?.sessionId, allSessionList]);
+
   // Shared props for SessionItem / ProjectGroup
   const sessionItemProps = {
     onSelect: handleSelectSession,
@@ -548,6 +575,7 @@ export function Sidebar() {
     onConfirmArchive: confirmArchive,
     onCancelArchive: cancelArchive,
     sessionAttention,
+    herdHoverHighlights,
   };
 
   return (
@@ -665,6 +693,7 @@ export function Sidebar() {
                   sessionPreview={sessionPreviews.get(s.id)}
                   permCount={countUserPermissions(pendingPermissions.get(s.id))}
                   isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                  herdHoverHighlight={herdHoverHighlights.get(s.id)}
                   matchContext={matchContext}
                   {...sessionItemProps}
                 />
@@ -757,6 +786,7 @@ export function Sidebar() {
                         sessionName={sessionNames.get(s.id)}
                         permCount={countUserPermissions(pendingPermissions.get(s.id))}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                        herdHoverHighlight={herdHoverHighlights.get(s.id)}
                         {...sessionItemProps}
                       />
                     ))}
@@ -788,6 +818,7 @@ export function Sidebar() {
                         sessionPreview={sessionPreviews.get(s.id)}
                         permCount={countUserPermissions(pendingPermissions.get(s.id))}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                        herdHoverHighlight={herdHoverHighlights.get(s.id)}
                         {...sessionItemProps}
                       />
                     ))}

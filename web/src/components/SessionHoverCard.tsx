@@ -63,6 +63,15 @@ export function SessionHoverCard({
         name: sessionNames.get(sdk.sessionId) ?? sdk.name,
       }));
   }, [s.isOrchestrator, s.id, sdkSessions, sessionNames]);
+  const leaderSession = useMemo(() => {
+    if (s.isOrchestrator || !s.herdedBy) return null;
+    const leader = sdkSessions.find((sdk) => sdk.sessionId === s.herdedBy && !sdk.archived);
+    return {
+      sessionId: s.herdedBy,
+      sessionNum: leader?.sessionNum,
+      name: sessionNames.get(s.herdedBy) ?? leader?.name,
+    };
+  }, [s.isOrchestrator, s.herdedBy, sdkSessions, sessionNames]);
 
   // Status info
   const isRunning = s.status === "running";
@@ -209,6 +218,21 @@ export function SessionHoverCard({
                   <span className="truncate max-w-[140px]">{hs.name || hs.sessionId.slice(0, 8)}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+        {leaderSession && (
+          <div className="px-4 py-2 border-t border-cc-border/50">
+            <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Herded by</span>
+            <div className="mt-1">
+              <button
+                onClick={() => navigateToSession(leaderSession.sessionId)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                title={`Navigate to ${leaderSession.name || leaderSession.sessionId.slice(0, 8)}`}
+              >
+                {leaderSession.sessionNum != null && <span className="font-mono text-amber-400/60">#{leaderSession.sessionNum}</span>}
+                <span className="truncate max-w-[200px]">{leaderSession.name || leaderSession.sessionId.slice(0, 8)}</span>
+              </button>
             </div>
           </div>
         )}

@@ -57,6 +57,7 @@ interface ProjectGroupProps {
   onCancelArchive?: () => void;
   isFirst: boolean;
   sessionAttention?: Map<string, "action" | "error" | "review" | null>;
+  herdHoverHighlights?: Map<string, "leader" | "worker">;
   groupDragHandleProps?: {
     listeners?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
@@ -127,6 +128,7 @@ export function ProjectGroup({
   onCancelArchive,
   isFirst,
   sessionAttention,
+  herdHoverHighlights,
   groupDragHandleProps,
   groupDragging,
 }: ProjectGroupProps) {
@@ -262,6 +264,7 @@ export function ProjectGroup({
                           onCancelArchive={onCancelArchive}
                           attention={attention}
                           hasUnread={!!attention}
+                          herdHoverHighlight={herdHoverHighlights?.get(s.id)}
                           reorderMode={reorderMode}
                           dragHandleProps={reorderMode && touchDevice
                             ? {

@@ -47,6 +47,8 @@ interface SessionItemProps {
     listeners?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
   };
+  /** Hover-linked herd relationship highlight in sidebar. */
+  herdHoverHighlight?: "leader" | "worker";
   /** When set, shows why this session matched a search query (e.g. "keyword: zustand") */
   matchContext?: string | null;
 }
@@ -81,6 +83,7 @@ export function SessionItem({
   hasUnread,
   reorderMode,
   dragHandleProps,
+  herdHoverHighlight,
   matchContext,
 }: SessionItemProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -184,6 +187,11 @@ export function SessionItem({
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
   const showingSwipeBackdrop = canSwipeToArchive && Math.abs(swipeOffsetPx) > 0;
+  const herdHighlightClass = herdHoverHighlight === "leader"
+    ? "ring-1 ring-amber-400/70"
+    : herdHoverHighlight === "worker"
+      ? "ring-1 ring-amber-400/45"
+      : "";
 
   return (
     <div className={`relative group ${archived ? "opacity-50" : ""}`}>
@@ -238,7 +246,7 @@ export function SessionItem({
             : reorderMode
               ? "bg-cc-hover/50 border-cc-border/80"
               : "bg-cc-hover/20 border-cc-border/80 hover:bg-cc-hover/35 sm:bg-transparent sm:hover:bg-cc-hover"
-        }`}
+        } ${herdHighlightClass}`}
       >
         {/* Left accent border */}
         <span

@@ -925,4 +925,45 @@ describe("Sidebar", () => {
       expect(screen.getByTitle(new Date(createdAt).toLocaleString())).toBeInTheDocument();
     });
   });
+
+  it("hovering a herded worker highlights its leader and shows leader info in hover card", async () => {
+    const leaderSessionId = "leader-1";
+    const workerSessionId = "worker-1";
+    const leaderSession = makeSession(leaderSessionId, { model: "leader-model" });
+    const workerSession = makeSession(workerSessionId, { model: "worker-model" });
+    const leaderSdk = makeSdkSession(leaderSessionId, {
+      isOrchestrator: true,
+      sessionNum: 7,
+      createdAt: 1700000000000,
+    });
+    const workerSdk = makeSdkSession(workerSessionId, {
+      herdedBy: leaderSessionId,
+      sessionNum: 11,
+      createdAt: 1700000001000,
+    });
+    mockState = createMockState({
+      sessions: new Map([
+        [leaderSessionId, leaderSession],
+        [workerSessionId, workerSession],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+      sessionNames: new Map([
+        [leaderSessionId, "Leader Session"],
+        [workerSessionId, "Worker Session"],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const workerButton = screen.getByText("Worker Session").closest("button")!;
+    fireEvent.mouseEnter(workerButton);
+
+    await waitFor(() => {
+      const leaderButton = document.querySelector("button.ring-amber-400\\/70");
+      expect(leaderButton).not.toBeNull();
+      expect(leaderButton).toHaveTextContent("Leader Session");
+      expect(leaderButton).toHaveClass("ring-amber-400/70");
+      expect(screen.getByText("Herded by")).toBeInTheDocument();
+      expect(screen.getByTitle("Navigate to Leader Session")).toBeInTheDocument();
+    });
+  });
 });
