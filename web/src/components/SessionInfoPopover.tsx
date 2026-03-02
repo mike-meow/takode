@@ -18,6 +18,7 @@ export function SessionInfoPopover({
   const model = session?.model || "";
   const backendType = session?.backend_type || sdkSession?.backendType || "claude";
   const popoverRef = useRef<HTMLDivElement>(null);
+  const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll cwd to the right end so the last path segment is visible
   const cwdScrollRef = useCallback((el: HTMLDivElement | null) => {
@@ -65,6 +66,13 @@ export function SessionInfoPopover({
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
+
+  // Keep task history anchored to newest entry so long histories open at the latest item.
+  useEffect(() => {
+    const container = taskHistoryScrollRef.current;
+    if (!container || !taskHistory || taskHistory.length === 0) return;
+    container.scrollTop = container.scrollHeight;
+  }, [sessionId, taskHistory]);
 
   const backendLabel = backendType === "codex" ? "Codex" : "Claude";
   const hasGit = gitBranch || gitAhead > 0 || gitBehind > 0 || linesAdded > 0 || linesRemoved > 0;
@@ -126,29 +134,35 @@ export function SessionInfoPopover({
         {taskHistory && taskHistory.length > 0 && (
           <div className="px-4 py-2 border-t border-cc-border/50 space-y-1">
             <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Tasks</span>
-            {taskHistory.map((task, i) => {
-              const questId = task.questId;
-              return (
-                <div key={i} className="flex items-start gap-1.5">
-                  <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
-                  {task.source === "quest" && questId ? (
-                    <button
-                      type="button"
-                      className="text-[11px] leading-snug line-clamp-1 text-amber-400 hover:text-amber-300 underline decoration-dotted underline-offset-2 cursor-pointer"
-                      title={`Open ${questId} in Questmaster`}
-                      onClick={() => {
-                        window.location.hash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
-                        onClose();
-                      }}
-                    >
-                      {task.title}
-                    </button>
-                  ) : (
-                    <span className={`text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
-                  )}
-                </div>
-              );
-            })}
+            <div
+              ref={taskHistoryScrollRef}
+              data-testid="task-history-scroll"
+              className="max-h-40 overflow-y-auto pr-1 space-y-1"
+            >
+              {taskHistory.map((task, i) => {
+                const questId = task.questId;
+                return (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
+                    {task.source === "quest" && questId ? (
+                      <button
+                        type="button"
+                        className="text-[11px] leading-snug line-clamp-1 text-amber-400 hover:text-amber-300 underline decoration-dotted underline-offset-2 cursor-pointer"
+                        title={`Open ${questId} in Questmaster`}
+                        onClick={() => {
+                          window.location.hash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
+                          onClose();
+                        }}
+                      >
+                        {task.title}
+                      </button>
+                    ) : (
+                      <span className={`text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

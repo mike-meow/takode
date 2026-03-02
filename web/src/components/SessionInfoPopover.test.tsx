@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 interface MockStoreState {
@@ -86,6 +86,25 @@ describe("SessionInfoPopover", () => {
 
     expect(screen.queryByRole("button", { name: "Quest without id" })).toBeNull();
     expect(screen.getByText("Quest without id")).toBeInTheDocument();
+  });
+
+  it("keeps task history compact and auto-scrolls to newest task", async () => {
+    const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(420);
+    try {
+      resetStore(
+        Array.from({ length: 20 }, (_, i) => ({ title: `Task ${i + 1}` })),
+      );
+      render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+      const scroller = screen.getByTestId("task-history-scroll");
+      expect(scroller).toHaveClass("max-h-40");
+      expect(scroller).toHaveClass("overflow-y-auto");
+      await waitFor(() => {
+        expect(scroller.scrollTop).toBe(420);
+      });
+    } finally {
+      scrollHeightSpy.mockRestore();
+    }
   });
 
   it("does not close when clicking inside ClaudeMdEditor portal content", () => {
