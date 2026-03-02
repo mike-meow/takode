@@ -2141,6 +2141,16 @@ export class WsBridge {
         this.persistSession(session);
       }
 
+      // Intercept permission_request from SDK adapter — route through auto-approver
+      // before broadcasting to browser. This mirrors the NDJSON permission flow.
+      if (msg.type === "permission_request") {
+        const permMsg = msg as { type: "permission_request"; request: PermissionRequest };
+        this.handleSdkPermissionRequest(session, permMsg.request).catch((err) => {
+          console.error(`[ws-bridge] SDK auto-approval error for session ${sessionTag(session.id)}:`, err);
+        });
+        return; // Don't broadcast yet — handleSdkPermissionRequest will broadcast
+      }
+
       // Forward to all browsers + store in history
       this.broadcastToBrowsers(session, msg);
     });
@@ -3303,6 +3313,65 @@ export class WsBridge {
     return calls.reverse();
   }
 
+  /**
+   * Handle a permission request from the Claude SDK adapter.
+   * Routes through the auto-approver (same logic as NDJSON sessions),
+   * then broadcasts to browsers. If auto-approved, sends the response
+   * directly back to the SDK adapter.
+   */
+  private async handleSdkPermissionRequest(session: Session, perm: PermissionRequest): Promise<void> {
+    const toolName = perm.tool_name;
+    const filePath = typeof perm.input?.file_path === "string" ? perm.input.file_path : "";
+    const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "NotebookEdit";
+    const bashCommand = toolName === "Bash" ? String(perm.input?.command ?? "") : "";
+
+    // Check if LLM auto-approval is available for this session's project
+    const autoApprovalConfig = (
+      !NEVER_AUTO_APPROVE.has(toolName) &&
+      !(isFileEdit && WsBridge.isSensitiveConfigPath(filePath)) &&
+      !(toolName === "Bash" && WsBridge.isSensitiveBashCommand(bashCommand))
+    ) ? await shouldAttemptAutoApproval(
+      session.state.cwd,
+      session.state.repo_root ? [session.state.repo_root] : undefined,
+    ) : null;
+
+    // Add evaluating flag if auto-approval is available
+    if (autoApprovalConfig) {
+      perm.evaluating = "queued" as const;
+    }
+
+    // Track in ws-bridge's pending permissions (for attention state, diagnostics)
+    session.pendingPermissions.set(perm.request_id, perm);
+
+    // Broadcast to browsers
+    this.broadcastToBrowsers(session, {
+      type: "permission_request",
+      request: perm,
+    });
+
+    if (autoApprovalConfig) {
+      // Path A: LLM auto-approval — defer attention until evaluation completes
+      this.persistSession(session);
+      this.tryLlmAutoApproval(session, perm.request_id, perm, autoApprovalConfig);
+    } else {
+      // Path B: No auto-approval — immediate attention
+      this.setAttention(session, "action");
+      this.persistSession(session);
+
+      // Takode: emit permission_request for herd event delivery
+      this.emitTakodeEvent(session.id, "permission_request", {
+        tool_name: perm.tool_name,
+        summary: perm.description || perm.tool_name,
+      });
+
+      if (this.pushoverNotifier) {
+        const eventType = toolName === "AskUserQuestion" ? "question" as const : "permission" as const;
+        const detail = toolName + (perm.description ? `: ${perm.description}` : "");
+        this.pushoverNotifier.scheduleNotification(session.id, eventType, detail, perm.request_id);
+      }
+    }
+  }
+
   private async tryLlmAutoApproval(
     session: Session,
     requestId: string,
@@ -3362,7 +3431,17 @@ export class WsBridge {
             },
           },
         });
-        this.sendToCLI(session, ndjson);
+        // Route approval through the correct backend
+        if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+          session.claudeSdkAdapter.sendBrowserMessage({
+            type: "permission_response",
+            request_id: requestId,
+            behavior: "allow",
+            updated_input: perm.input,
+          } as any);
+        } else {
+          this.sendToCLI(session, ndjson);
+        }
 
         this.broadcastToBrowsers(session, {
           type: "permission_auto_approved",
@@ -3712,6 +3791,52 @@ export class WsBridge {
 
     // For Codex and Claude SDK sessions, delegate entirely to the adapter
     if (session.backendType === "codex" || session.backendType === "claude-sdk") {
+      // Clean up ws-bridge permission tracking for SDK sessions when browser resolves
+      if (msg.type === "permission_response" && session.backendType === "claude-sdk") {
+        const requestId = (msg as any).request_id;
+        const behavior = (msg as any).behavior;
+        const pending = session.pendingPermissions.get(requestId);
+        if (pending) {
+          session.pendingPermissions.delete(requestId);
+          this.pushoverNotifier?.cancelPermission(session.id, requestId);
+          this.clearActionAttentionIfNoPermissions(session);
+
+          // Emit takode event for herd monitoring
+          this.emitTakodeEvent(session.id, "permission_resolved", {
+            tool_name: pending.tool_name,
+            outcome: behavior === "allow" ? "approved" : "denied",
+          });
+
+          // Record in message history
+          if (behavior === "allow") {
+            const approvedMsg: BrowserIncomingMessage = {
+              type: "permission_approved",
+              id: `approval-${requestId}`,
+              request_id: requestId,
+              tool_name: pending.tool_name,
+              tool_use_id: pending.tool_use_id,
+              summary: `Approved: ${pending.tool_name}${pending.description ? ` — ${pending.description}` : ""}`,
+              timestamp: Date.now(),
+            };
+            session.messageHistory.push(approvedMsg);
+            this.broadcastToBrowsers(session, approvedMsg);
+          } else {
+            const deniedMsg: BrowserIncomingMessage = {
+              type: "permission_denied",
+              id: `denial-${requestId}`,
+              request_id: requestId,
+              tool_name: pending.tool_name,
+              tool_use_id: pending.tool_use_id,
+              summary: `Denied: ${pending.tool_name}${pending.description ? ` — ${pending.description}` : ""}`,
+              timestamp: Date.now(),
+            };
+            session.messageHistory.push(deniedMsg);
+            this.broadcastToBrowsers(session, deniedMsg);
+          }
+          this.persistSession(session);
+        }
+      }
+
       let userImageRefs: import("./image-store.js").ImageRef[] | undefined;
       let codexUserMessageId: string | null = null;
 
