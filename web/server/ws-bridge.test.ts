@@ -5947,6 +5947,7 @@ describe("Codex disconnect auto-relaunch", () => {
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
+    relaunchCb.mockClear();
 
     adapter.emitDisconnect();
 
@@ -5988,6 +5989,34 @@ describe("Codex disconnect auto-relaunch", () => {
     expect(relaunchCb).not.toHaveBeenCalled();
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual(expect.objectContaining({ type: "cli_disconnected", reason: "idle_limit" }));
+  });
+
+  it("stops auto-relaunch after repeated reconnect failures even across session_init", () => {
+    const sid = "s1";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+    relaunchCb.mockClear();
+
+    for (let i = 0; i < 4; i++) {
+      const adapter = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter as any);
+      adapter.emitBrowserMessage({
+        type: "session_init",
+        session: { model: "gpt-5.3-codex" },
+      });
+      adapter.emitDisconnect();
+    }
+
+    expect(relaunchCb).toHaveBeenCalledTimes(3);
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({
+      type: "error",
+      message: expect.stringContaining("Session stopped after 3 consecutive launch failures"),
+    }));
   });
 });
 
@@ -6088,6 +6117,56 @@ describe("Codex resumed-turn recovery", () => {
     );
     const session = bridge.getSession(sid)!;
     expect(session.pendingCodexTurnRecovery).not.toBeNull();
+  });
+
+  it("retries when resumed turn contains only reasoning items", async () => {
+    const sid = "s1";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "plan this safely",
+    }));
+
+    adapter1.emitDisconnect("turn-789");
+
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-3",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-3",
+        turnCount: 13,
+        lastTurn: {
+          id: "turn-789",
+          status: "completed",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "plan this safely" }] },
+            { type: "reasoning", summary: ["thinking"] },
+          ],
+        },
+      },
+    });
+
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "user_message", content: "plan this safely" }),
+    );
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexTurnRecovery).not.toBeNull();
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const retrySkipError = calls.find((c: any) =>
+      c.type === "error"
+      && typeof c.message === "string"
+      && c.message.includes("non-text tool activity"));
+    expect(retrySkipError).toBeUndefined();
   });
 });
 

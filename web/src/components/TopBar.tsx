@@ -6,6 +6,7 @@ import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { parseHash, navigateToSession } from "../utils/routing.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
+import { deriveUiMode, deriveCodexUiMode } from "../utils/backends.js";
 
 export function TopBar() {
   const hash = useSyncExternalStore(
@@ -195,6 +196,18 @@ export function TopBar() {
   const sessionNum = currentSessionId
     ? sdkSessions.find((s) => s.sessionId === currentSessionId)?.sessionNum
     : null;
+  const currentSessionData = useStore((s) => currentSessionId ? s.sessions.get(currentSessionId) : null);
+  const currentBackendType = currentSessionData?.backend_type
+    || sdkSessions.find((s) => s.sessionId === currentSessionId)?.backendType
+    || null;
+  const currentPermissionMode = currentSessionData?.permissionMode
+    || sdkSessions.find((s) => s.sessionId === currentSessionId)?.permissionMode
+    || null;
+  const modeLabel = currentPermissionMode
+    ? ((currentBackendType === "codex"
+      ? deriveCodexUiMode(currentPermissionMode)
+      : deriveUiMode(currentPermissionMode)) === "plan" ? "Plan" : "Agent")
+    : null;
   const isQuestNamed = useStore((s) => currentSessionId ? s.questNamedSessions.has(currentSessionId) : false);
   const questStatus = useStore((s) => currentSessionId ? s.sessions.get(currentSessionId)?.claimedQuestStatus : undefined);
 
@@ -236,6 +249,18 @@ export function TopBar() {
               {sessionName && (
                 <span className={`text-[11px] font-medium truncate ${isQuestNamed && questStatus !== "needs_verification" ? "text-amber-400" : "text-cc-fg"}`} title={sessionName}>
                   {isQuestNamed && questStatus === "needs_verification" ? `☑ ${sessionName}` : sessionName}
+                </span>
+              )}
+              {modeLabel && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
+                    modeLabel === "Plan"
+                      ? "text-cc-warning border-cc-warning/40 bg-cc-warning/10"
+                      : "text-cc-muted border-cc-border bg-cc-hover/40"
+                  }`}
+                  title={`Current mode: ${modeLabel}`}
+                >
+                  {modeLabel}
                 </span>
               )}
             </button>

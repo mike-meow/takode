@@ -108,6 +108,10 @@ const NEVER_AUTO_APPROVE: ReadonlySet<string> = new Set(["AskUserQuestion", "Exi
 /** Tools whose approvals appear as chat messages (same set — interactive tools need visible records). */
 const NOTABLE_APPROVALS = NEVER_AUTO_APPROVE;
 
+const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
+const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
+const CODEX_RETRY_SAFE_RESUME_ITEM_TYPES: ReadonlySet<string> = new Set(["reasoning", "contextCompaction"]);
+
 /** Extract structured Q&A pairs from an AskUserQuestion approval. */
 function extractAskUserAnswers(
   originalInput: Record<string, unknown>,
@@ -365,6 +369,8 @@ interface Session {
   /** Consecutive SDK/adapter disconnect count without a successful turn completion.
    *  Used to cap auto-relaunch attempts and prevent infinite respawn loops. */
   consecutiveAdapterFailures: number;
+  /** Timestamp of the latest adapter disconnect failure for decay/reset windows. */
+  lastAdapterFailureAt: number | null;
   /** Message history indices of user messages received during the current turn (for turn_end herd events) */
   userMessageIdsThisTurn: number[];
   /** Whether system.init has been received since the last CLI connect.
@@ -1437,6 +1443,7 @@ export class WsBridge {
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
         consecutiveAdapterFailures: 0,
+        lastAdapterFailureAt: null,
         userMessageIdsThisTurn: [],
         cliInitReceived: false,
         lastCliMessageAt: 0,
@@ -1795,6 +1802,7 @@ export class WsBridge {
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
         consecutiveAdapterFailures: 0,
+        lastAdapterFailureAt: null,
         userMessageIdsThisTurn: [],
         cliInitReceived: false,
         lastCliMessageAt: 0,
@@ -2121,8 +2129,6 @@ export class WsBridge {
       let outgoing: BrowserIncomingMessage | null = msg;
 
       if (msg.type === "session_init") {
-        // Codex connected successfully — reset failure counter
-        session.consecutiveAdapterFailures = 0;
         const sanitized = this.sanitizeCodexSessionPatch(msg.session);
         session.state = { ...session.state, ...sanitized, backend_type: "codex" };
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
@@ -2194,6 +2200,8 @@ export class WsBridge {
         session.messageHistory.push(outgoing);
         this.persistSession(session);
       } else if (outgoing?.type === "result") {
+        session.consecutiveAdapterFailures = 0;
+        session.lastAdapterFailureAt = null;
         session.pendingCodexTurnRecovery = null;
         // Route through the unified result handler so Codex gets the same
         // post-turn state refresh (git + diff stats + attention) as Claude.
@@ -2266,6 +2274,14 @@ export class WsBridge {
       this.onSessionActivityStateChanged(session.id, "codex_disconnect_permissions_cleared");
       session.pendingQuestCommands.clear();
       session.codexAdapter = null;
+      const now = Date.now();
+      if (
+        session.lastAdapterFailureAt !== null
+        && now - session.lastAdapterFailureAt > ADAPTER_FAILURE_RESET_WINDOW_MS
+      ) {
+        session.consecutiveAdapterFailures = 0;
+      }
+      session.lastAdapterFailureAt = now;
       session.consecutiveAdapterFailures++;
       this.setGenerating(session, false, "codex_disconnect");
       this.persistSession(session);
@@ -2282,19 +2298,22 @@ export class WsBridge {
       // Recover faster from unexpected Codex transport drops while a browser is
       // actively connected. Without this, the UI can remain disconnected until
       // either the process exits by itself or the browser reconnects.
-      const MAX_CONSECUTIVE_FAILURES = 3;
       if (
         !idleKilled
         && this.onCLIRelaunchNeeded
         && session.browserSockets.size > 0
         // Suppress relaunch for intentional teardown (session closed/removed).
         && this.sessions.get(sessionId) === session
-        && session.consecutiveAdapterFailures <= MAX_CONSECUTIVE_FAILURES
+        && session.consecutiveAdapterFailures <= MAX_ADAPTER_RELAUNCH_FAILURES
       ) {
-        console.log(`[ws-bridge] Codex adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_CONSECUTIVE_FAILURES})`);
+        console.log(`[ws-bridge] Codex adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_ADAPTER_RELAUNCH_FAILURES})`);
         this.onCLIRelaunchNeeded(sessionId);
-      } else if (session.consecutiveAdapterFailures > MAX_CONSECUTIVE_FAILURES) {
-        console.error(`[ws-bridge] Codex adapter for session ${sessionTag(sessionId)} exceeded ${MAX_CONSECUTIVE_FAILURES} consecutive failures — stopping auto-relaunch`);
+      } else if (session.consecutiveAdapterFailures > MAX_ADAPTER_RELAUNCH_FAILURES) {
+        console.error(`[ws-bridge] Codex adapter for session ${sessionTag(sessionId)} exceeded ${MAX_ADAPTER_RELAUNCH_FAILURES} consecutive failures — stopping auto-relaunch`);
+        this.broadcastToBrowsers(session, {
+          type: "error",
+          message: `Session stopped after ${MAX_ADAPTER_RELAUNCH_FAILURES} consecutive launch failures. Use the relaunch button to try again.`,
+        });
       }
     });
 
@@ -2376,6 +2395,8 @@ export class WsBridge {
 
       // Track generation state for SDK sessions
       if (msg.type === "result") {
+        session.consecutiveAdapterFailures = 0;
+        session.lastAdapterFailureAt = null;
         this.setGenerating(session, false, "result");
         this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
       }
@@ -2392,8 +2413,6 @@ export class WsBridge {
       // SDK messages are already in BrowserIncomingMessage format — process them
       // through the same handler as CLI WebSocket messages.
       if (msg.type === "session_init") {
-        // SDK connected successfully — reset failure counter
-        session.consecutiveAdapterFailures = 0;
         const initMsg = msg as any;
         if (initMsg.session) {
           // Merge SDK init data into session state, but PRESERVE the Companion
@@ -2458,6 +2477,14 @@ export class WsBridge {
 
     adapter.onDisconnect(() => {
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
+      const now = Date.now();
+      if (
+        session.lastAdapterFailureAt !== null
+        && now - session.lastAdapterFailureAt > ADAPTER_FAILURE_RESET_WINDOW_MS
+      ) {
+        session.consecutiveAdapterFailures = 0;
+      }
+      session.lastAdapterFailureAt = now;
       session.consecutiveAdapterFailures++;
       console.log(`[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} (consecutive failures: ${session.consecutiveAdapterFailures})`);
       session.claudeSdkAdapter = null;
@@ -2470,21 +2497,20 @@ export class WsBridge {
 
       // Auto-relaunch when a browser is actively connected, but cap retries
       // to prevent infinite respawn loops (e.g., "conversation ID not found").
-      const MAX_CONSECUTIVE_FAILURES = 3;
       if (
         !idleKilled
         && this.onCLIRelaunchNeeded
         && session.browserSockets.size > 0
         && this.sessions.get(sessionId) === session
-        && session.consecutiveAdapterFailures <= MAX_CONSECUTIVE_FAILURES
+        && session.consecutiveAdapterFailures <= MAX_ADAPTER_RELAUNCH_FAILURES
       ) {
-        console.log(`[ws-bridge] SDK adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_CONSECUTIVE_FAILURES})`);
+        console.log(`[ws-bridge] SDK adapter disconnected for active browser; requesting relaunch for session ${sessionTag(sessionId)} (attempt ${session.consecutiveAdapterFailures}/${MAX_ADAPTER_RELAUNCH_FAILURES})`);
         this.onCLIRelaunchNeeded(sessionId);
-      } else if (session.consecutiveAdapterFailures > MAX_CONSECUTIVE_FAILURES) {
-        console.error(`[ws-bridge] SDK adapter for session ${sessionTag(sessionId)} exceeded ${MAX_CONSECUTIVE_FAILURES} consecutive failures — stopping auto-relaunch`);
+      } else if (session.consecutiveAdapterFailures > MAX_ADAPTER_RELAUNCH_FAILURES) {
+        console.error(`[ws-bridge] SDK adapter for session ${sessionTag(sessionId)} exceeded ${MAX_ADAPTER_RELAUNCH_FAILURES} consecutive failures — stopping auto-relaunch`);
         this.broadcastToBrowsers(session, {
           type: "error",
-          message: `Session stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive launch failures. Use the relaunch button to try again.`,
+          message: `Session stopped after ${MAX_ADAPTER_RELAUNCH_FAILURES} consecutive launch failures. Use the relaunch button to try again.`,
         });
       }
     });
@@ -5278,12 +5304,23 @@ export class WsBridge {
     }
 
     const recovered = this.recoverAgentMessagesFromResumedTurn(session, lastTurn, pending);
-    session.pendingCodexTurnRecovery = null;
     if (recovered > 0) {
+      session.consecutiveAdapterFailures = 0;
+      session.lastAdapterFailureAt = null;
+      session.pendingCodexTurnRecovery = null;
       this.persistSession(session);
       return;
     }
 
+    if (this.hasOnlyRetrySafeCodexResumedItems(nonUserItems)) {
+      console.log(
+        `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} contains reasoning-only items; retrying pending user message`,
+      );
+      this.retryPendingCodexTurn(session, pending);
+      return;
+    }
+
+    session.pendingCodexTurnRecovery = null;
     console.warn(
       `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} has non-user items but no recoverable agentMessage text; skipping auto-retry to avoid duplicate side effects`,
     );
@@ -5294,6 +5331,14 @@ export class WsBridge {
         "Automatic retry was skipped to avoid duplicate side effects.",
     });
     this.persistSession(session);
+  }
+
+  private hasOnlyRetrySafeCodexResumedItems(items: Array<Record<string, unknown>>): boolean {
+    if (items.length === 0) return false;
+    return items.every((item) => {
+      const itemType = typeof item.type === "string" ? item.type : "";
+      return CODEX_RETRY_SAFE_RESUME_ITEM_TYPES.has(itemType);
+    });
   }
 
   private extractUserTextFromResumedTurn(turn: CodexResumeTurnSnapshot): string {
