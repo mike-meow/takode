@@ -4236,6 +4236,24 @@ export class WsBridge {
             session.messageHistory.push(deniedMsg);
             this.broadcastToBrowsers(session, deniedMsg);
           }
+
+          // ExitPlanMode post-approval: transition out of plan mode
+          // (mirrors handlePermissionResponse logic for regular Claude sessions)
+          if (behavior === "allow" && pending.tool_name === "ExitPlanMode") {
+            const askPerm = session.state.askPermission !== false;
+            const postPlanMode = askPerm ? "acceptEdits" : "bypassPermissions";
+            this.handleSetPermissionMode(session, postPlanMode);
+            this.setGenerating(session, true, "exit_plan_mode");
+            this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
+            console.log(`[ws-bridge] ExitPlanMode approved for SDK session ${sessionTag(session.id)}, switching to ${postPlanMode} (askPermission=${askPerm})`);
+          }
+
+          // ExitPlanMode denial: interrupt the SDK session
+          if (behavior === "deny" && pending.tool_name === "ExitPlanMode") {
+            this.handleInterrupt(session);
+            console.log(`[ws-bridge] ExitPlanMode denied for SDK session ${sessionTag(session.id)}, sending interrupt`);
+          }
+
           this.persistSession(session);
         }
       }
