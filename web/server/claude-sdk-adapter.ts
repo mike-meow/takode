@@ -486,11 +486,36 @@ export class ClaudeSdkAdapter {
       }
 
       case "set_permission_mode": {
-        // The V2 SDK session doesn't expose setPermissionMode directly.
-        // The permission mode change is handled server-side (state update +
-        // browser broadcast) and doesn't need to reach the CLI for SDK sessions.
-        // The canUseTool callback handles all permission decisions regardless of mode.
-        console.log(`[claude-sdk-adapter] Permission mode change to "${(msg as any).mode}" for session ${this.sessionId} (server-side only)`);
+        // Forward the mode change to the CLI subprocess via the internal v1 Query.
+        // The v2 SDKSession doesn't expose setPermissionMode(), but the underlying
+        // Query (U4) does — same pattern as interrupt().
+        // Without this, the CLI subprocess stays in its original mode (e.g. "plan")
+        // even after ExitPlanMode approval, causing spurious permission prompts.
+        const newMode = (msg as any).mode;
+        const query = (this.sdkSession as any)?.query;
+        if (query?.setPermissionMode) {
+          query.setPermissionMode(newMode).catch((err: Error) => {
+            console.error(`[claude-sdk-adapter] setPermissionMode failed for session ${this.sessionId}:`, err);
+          });
+          console.log(`[claude-sdk-adapter] Permission mode changed to "${newMode}" for session ${this.sessionId}`);
+        } else {
+          console.warn(`[claude-sdk-adapter] No setPermissionMode method available for session ${this.sessionId} — mode "${newMode}" is server-side only`);
+        }
+        return true;
+      }
+
+      case "set_model": {
+        // Forward model change to the CLI subprocess via the internal v1 Query.
+        const model = (msg as any).model;
+        const queryForModel = (this.sdkSession as any)?.query;
+        if (queryForModel?.setModel) {
+          queryForModel.setModel(model).catch((err: Error) => {
+            console.error(`[claude-sdk-adapter] setModel failed for session ${this.sessionId}:`, err);
+          });
+          console.log(`[claude-sdk-adapter] Model changed to "${model}" for session ${this.sessionId}`);
+        } else {
+          console.warn(`[claude-sdk-adapter] No setModel method available for session ${this.sessionId}`);
+        }
         return true;
       }
 

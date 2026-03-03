@@ -4411,7 +4411,11 @@ export class WsBridge {
 
           // ExitPlanMode denial: interrupt the SDK session
           if (behavior === "deny" && pending.tool_name === "ExitPlanMode") {
-            this.handleInterrupt(session);
+            if (session.claudeSdkAdapter) {
+              session.claudeSdkAdapter.sendBrowserMessage({ type: "interrupt" } as any);
+            } else {
+              this.handleInterrupt(session);
+            }
             console.log(`[ws-bridge] ExitPlanMode denied for SDK session ${sessionTag(session.id)}, sending interrupt`);
           }
 
@@ -4516,11 +4520,23 @@ export class WsBridge {
       }
 
       if (msg.type === "set_model") {
-        this.handleCodexSetModel(session, msg.model);
+        if (session.backendType === "claude-sdk") {
+          // SDK sessions: forward model change to CLI subprocess via the adapter.
+          this.handleSetModel(session, msg.model);
+        } else {
+          this.handleCodexSetModel(session, msg.model);
+        }
         return;
       }
       if (msg.type === "set_permission_mode") {
-        this.handleCodexSetPermissionMode(session, msg.mode);
+        if (session.backendType === "claude-sdk") {
+          // SDK sessions: use the same handler as ExitPlanMode, which forwards
+          // the mode change to the CLI subprocess via the adapter (query.setPermissionMode).
+          // Codex sessions need a full relaunch since mode is set at process spawn.
+          this.handleSetPermissionMode(session, msg.mode);
+        } else {
+          this.handleCodexSetPermissionMode(session, msg.mode);
+        }
         return;
       }
       if (msg.type === "set_codex_reasoning_effort") {
@@ -5082,12 +5098,18 @@ export class WsBridge {
   }
 
   private handleSetModel(session: Session, model: string) {
-    const ndjson = JSON.stringify({
-      type: "control_request",
-      request_id: randomUUID(),
-      request: { subtype: "set_model", model },
-    });
-    this.sendToCLI(session, ndjson);
+    if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+      // SDK sessions: forward model change to CLI subprocess via the adapter
+      // (query.setModel), same pattern as permission mode changes.
+      session.claudeSdkAdapter.sendBrowserMessage({ type: "set_model", model } as any);
+    } else {
+      const ndjson = JSON.stringify({
+        type: "control_request",
+        request_id: randomUUID(),
+        request: { subtype: "set_model", model },
+      });
+      this.sendToCLI(session, ndjson);
+    }
     // Optimistically update server-side state and broadcast to all browsers
     session.state.model = model;
     this.broadcastToBrowsers(session, {
@@ -5114,8 +5136,8 @@ export class WsBridge {
   private handleSetPermissionMode(session: Session, mode: string) {
     // Route to the appropriate backend
     if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
-      // SDK sessions: the canUseTool callback handles permissions regardless of mode.
-      // Just update server-side state — no need to send to CLI.
+      // SDK sessions: the adapter forwards the mode change to the CLI subprocess
+      // via query.setPermissionMode() — no process restart needed.
       session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode } as any);
     } else {
       const ndjson = JSON.stringify({
@@ -5262,8 +5284,16 @@ export class WsBridge {
       session: { askPermission, permissionMode: newMode, uiMode },
     });
     this.persistSession(session);
-    // Trigger CLI restart with the new permission mode
-    this.onPermissionModeChanged?.(session.id, newMode);
+    if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+      // SDK sessions: forward the resolved mode to the CLI subprocess inline
+      // instead of restarting the process. The adapter calls query.setPermissionMode().
+      session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode: newMode } as any);
+      const launchInfo = this.launcher?.getSession(session.id);
+      if (launchInfo) launchInfo.permissionMode = newMode;
+    } else {
+      // WebSocket Claude sessions: trigger CLI restart with the new permission mode
+      this.onPermissionModeChanged?.(session.id, newMode);
+    }
   }
 
   private requestCodexIntentionalRelaunch(session: Session, reason: string, delayMs = 0): void {
