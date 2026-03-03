@@ -2597,8 +2597,23 @@ export class WsBridge {
             initMsg.session.cwd = launchCwd;
           }
         }
+        // Mark SDK session as initialized — mirrors cliInitReceived for WebSocket
+        // sessions (set in handleSystemMessage on system.init). Without this,
+        // isSessionIdle() always returns false for SDK sessions, blocking herd
+        // event delivery entirely.
+        session.cliInitReceived = true;
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
         this.persistSession(session);
+
+        // Flush pending herd events after SDK init — mirrors the WebSocket path
+        // at system.init. Events accumulated during disconnect/relaunch are
+        // delivered here now that isSessionIdle() can return true.
+        if (this.herdEventDispatcher) {
+          const launcherInfo = this.launcher?.getSession(session.id);
+          if (launcherInfo?.isOrchestrator) {
+            this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+          }
+        }
       }
 
       // Intercept permission_request from SDK adapter — route through auto-approver
@@ -2658,6 +2673,7 @@ export class WsBridge {
       session.consecutiveAdapterFailures++;
       console.log(`[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} (consecutive failures: ${session.consecutiveAdapterFailures})`);
       session.claudeSdkAdapter = null;
+      session.cliInitReceived = false; // Reset — next adapter must send session_init before we deliver
       this.markTurnInterrupted(session, "system");
       this.setGenerating(session, false, "sdk_disconnect");
       this.broadcastToBrowsers(session, {
