@@ -1404,7 +1404,7 @@ describe("CLI message routing", () => {
     expect(assistantBroadcast?.leader_user_addressed).toBe(true);
   });
 
-  it("assistant: uses suffix on the last text block for leader addressing", () => {
+  it("assistant: marks as user-addressed if ANY text block ends with @to(user)", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -1434,7 +1434,8 @@ describe("CLI message routing", () => {
 
     const session = bridge.getSession("s1")!;
     const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
-    expect(histAssistant?.leader_user_addressed).not.toBe(true);
+    // @to(user) in any text block makes the entire message user-addressed
+    expect(histAssistant?.leader_user_addressed).toBe(true);
   });
 
   it("assistant: injects a reminder when leader text message is missing suffix", () => {

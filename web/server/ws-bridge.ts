@@ -1982,27 +1982,32 @@ export class WsBridge {
   }
 
   /**
-   * Leader assistant addressing is inferred from the suffix on the last text block:
-   * - ...@to(user) => human-addressed
-   * - ...@to(self) => internal activity
+   * Leader assistant addressing is inferred from @to() suffixes on text blocks.
+   * If ANY non-empty text block ends with @to(user), the message is user-addressed.
+   * Otherwise, the last non-empty text block determines self/@to(self) or missing.
    * - no text blocks => treated as self/internal (tool-only assistant message)
    * - text present but no recognized suffix => missing tag (enforcement trigger)
    */
   private classifyLeaderAssistantAddressing(session: Session, content: ContentBlock[]): LeaderAssistantAddressing {
     if (!this.isLeaderSession(session)) return "not_leader";
 
-    let lastText: string | null = null;
+    let hasText = false;
+    let lastClassification: LeaderAssistantAddressing = "self";
     for (const block of content) {
       if (block.type !== "text") continue;
       if (block.text.trim().length === 0) continue;
-      lastText = block.text;
+      hasText = true;
+      const trimmed = block.text.trimEnd();
+      // Any text block ending with @to(user) makes the whole message user-addressed
+      if (trimmed.endsWith(WsBridge.LEADER_TO_USER_SUFFIX)) return "user";
+      if (trimmed.endsWith(WsBridge.LEADER_TO_SELF_SUFFIX)) {
+        lastClassification = "self";
+      } else {
+        lastClassification = "missing";
+      }
     }
-    if (lastText === null) return "self";
-
-    const trimmed = lastText.trimEnd();
-    if (trimmed.endsWith(WsBridge.LEADER_TO_USER_SUFFIX)) return "user";
-    if (trimmed.endsWith(WsBridge.LEADER_TO_SELF_SUFFIX)) return "self";
-    return "missing";
+    if (!hasText) return "self";
+    return lastClassification;
   }
 
   private maybeInjectLeaderAddressingReminder(session: Session, addressing: LeaderAssistantAddressing): boolean {

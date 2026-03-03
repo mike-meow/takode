@@ -462,30 +462,22 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return groups;
 }
 
-const LEADER_TAG_SUFFIX_RE = /\s*@to\((?:user|self)\)\s*$/;
+const LEADER_TAG_SUFFIX_RE = /\s*@to\((?:user|self)\)\s*$/gm;
 
 function stripLeaderAddressSuffix(text: string): string {
   return text.replace(LEADER_TAG_SUFFIX_RE, "");
 }
 
 function stripLeaderSuffixFromLastTextBlock(blocks: ContentBlock[]): ContentBlock[] {
-  let lastTextIndex = -1;
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].type === "text") {
-      lastTextIndex = i;
-      break;
-    }
-  }
-  if (lastTextIndex < 0) return blocks;
-
-  const lastTextBlock = blocks[lastTextIndex];
-  if (lastTextBlock.type !== "text") return blocks;
-  const strippedText = stripLeaderAddressSuffix(lastTextBlock.text);
-  if (strippedText === lastTextBlock.text) return blocks;
-
-  const next = blocks.slice();
-  next[lastTextIndex] = { ...lastTextBlock, text: strippedText };
-  return next;
+  let changed = false;
+  const result = blocks.map((block) => {
+    if (block.type !== "text") return block;
+    const stripped = stripLeaderAddressSuffix(block.text);
+    if (stripped === block.text) return block;
+    changed = true;
+    return { ...block, text: stripped };
+  });
+  return changed ? result : blocks;
 }
 
 function LeaderUserAddressedMarker() {
