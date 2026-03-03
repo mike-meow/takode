@@ -23,7 +23,7 @@ const MAX_USER_MSG_CHARS = 500;
 const MAX_ASSISTANT_TEXT_CHARS = 500;
 
 /** Timeout for the enhancement LLM call. */
-const ENHANCEMENT_TIMEOUT_MS = 10_000;
+const ENHANCEMENT_TIMEOUT_MS = 30_000;
 
 /** If enhanced text is this many times longer than raw, discard as hallucination. */
 const HALLUCINATION_LENGTH_RATIO = 3;
