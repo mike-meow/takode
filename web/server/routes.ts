@@ -1838,6 +1838,14 @@ export function createRoutes(
   api.delete("/sessions/:id", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
+
+    // Emit herd event BEFORE killing — after removal the session info
+    // (including herdedBy) is no longer accessible.
+    const deletedSessionInfo = launcher.getSession(id);
+    if (deletedSessionInfo?.herdedBy) {
+      wsBridge.emitTakodeEvent(id, "session_deleted", {});
+    }
+
     await launcher.kill(id);
 
     // Clean up container if any
@@ -1859,6 +1867,13 @@ export function createRoutes(
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
+
+    // Emit herd event before killing — the leader needs to know a worker was archived.
+    const archivedSessionInfo = launcher.getSession(id);
+    if (archivedSessionInfo?.herdedBy) {
+      wsBridge.emitTakodeEvent(id, "session_archived", {});
+    }
+
     await launcher.kill(id);
 
     // Clean up container if any
@@ -4084,11 +4099,12 @@ export function createRoutes(
 
   api.post("/quests/:questId/done", async (c) => {
     try {
-      const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean };
+      const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean; force?: boolean };
       const quest = await transitionQuestAndSync(c.req.param("questId"), {
         status: "done",
         ...(body.notes ? { notes: body.notes } : {}),
         ...(body.cancelled ? { cancelled: true } : {}),
+        ...(body.force ? { force: true } : {}),
       });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       c.header("X-Companion-Deprecated", "Use /api/quests/:questId/transition with {status:\"done\"}");

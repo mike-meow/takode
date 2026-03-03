@@ -45,7 +45,7 @@ export interface LauncherHandle {
  *  so the leader can peek at specific messages via [msg-id] if needed. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "turn_end", "compaction_started", "compaction_finished", "permission_request", "permission_resolved",
-  "session_error",
+  "session_error", "session_archived", "session_deleted",
 ]);
 
 const DEBOUNCE_MS = 500;

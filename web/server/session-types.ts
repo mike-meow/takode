@@ -505,6 +505,8 @@ export type TakodeEventType =
   | "quest_update"
   | "session_disconnected"
   | "session_error"
+  | "session_archived"
+  | "session_deleted"
   | "user_message";
 
 export interface TakodeEvent {
