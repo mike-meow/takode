@@ -41,7 +41,21 @@ export interface CompanionSettings {
   namerConfig: NamerConfig;
   /** Whether the AI session auto-namer is enabled (default: true) */
   autoNamerEnabled: boolean;
+  /** Voice transcription configuration */
+  transcriptionConfig: TranscriptionConfig;
   updatedAt: number;
+}
+
+/** Configuration for voice transcription (STT + optional LLM enhancement). */
+export interface TranscriptionConfig {
+  /** OpenAI-compatible API key (used for both Whisper STT and enhancement) */
+  apiKey: string;
+  /** Base URL for the enhancement LLM (default: OpenAI) */
+  baseUrl: string;
+  /** Whether context-aware LLM enhancement is enabled */
+  enhancementEnabled: boolean;
+  /** Model to use for enhancement (e.g. "gpt-4o-mini", "gpt-4o") */
+  enhancementModel: string;
 }
 
 /** Discriminated union for session auto-namer backend. */
@@ -73,6 +87,7 @@ let settings: CompanionSettings = {
   autoApprovalTimeoutSeconds: 45,
   namerConfig: { backend: "claude" },
   autoNamerEnabled: true,
+  transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-4o-mini" },
   updatedAt: 0,
 };
 
@@ -104,6 +119,20 @@ function normalizeNamerConfig(raw: Record<string, unknown> | null | undefined): 
   return { backend: "claude" };
 }
 
+function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | undefined): TranscriptionConfig {
+  const cfg = raw?.transcriptionConfig;
+  if (cfg && typeof cfg === "object" && !Array.isArray(cfg)) {
+    const c = cfg as Record<string, unknown>;
+    return {
+      apiKey: typeof c.apiKey === "string" ? c.apiKey : "",
+      baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : "https://api.openai.com/v1",
+      enhancementEnabled: typeof c.enhancementEnabled === "boolean" ? c.enhancementEnabled : true,
+      enhancementModel: typeof c.enhancementModel === "string" ? c.enhancementModel : "gpt-4o-mini",
+    };
+  }
+  return { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-4o-mini" };
+}
+
 function normalize(raw: Partial<CompanionSettings> | null | undefined): CompanionSettings {
   return {
     serverName: typeof raw?.serverName === "string" ? raw.serverName : "",
@@ -122,6 +151,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     autoApprovalTimeoutSeconds: typeof raw?.autoApprovalTimeoutSeconds === "number" && raw.autoApprovalTimeoutSeconds >= 5 ? Math.floor(raw.autoApprovalTimeoutSeconds) : 45,
     namerConfig: normalizeNamerConfig(raw),
     autoNamerEnabled: typeof raw?.autoNamerEnabled === "boolean" ? raw.autoNamerEnabled : true,
+    transcriptionConfig: normalizeTranscriptionConfig(raw),
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -157,7 +187,7 @@ export function getSettings(): CompanionSettings {
 
 export function updateSettings(
   patch: Partial<Pick<CompanionSettings,
-    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive" | "autoApprovalEnabled" | "autoApprovalModel" | "autoApprovalMaxConcurrency" | "autoApprovalTimeoutSeconds" | "namerConfig" | "autoNamerEnabled"
+    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive" | "autoApprovalEnabled" | "autoApprovalModel" | "autoApprovalMaxConcurrency" | "autoApprovalTimeoutSeconds" | "namerConfig" | "autoNamerEnabled" | "transcriptionConfig"
   >>,
 ): CompanionSettings {
   ensureLoaded();

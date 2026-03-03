@@ -280,6 +280,7 @@ export interface AppSettings {
   autoApprovalTimeoutSeconds: number;
   namerConfig: NamerConfig;
   autoNamerEnabled: boolean;
+  transcriptionConfig: TranscriptionConfig;
   restartSupported: boolean;
 }
 
@@ -287,6 +288,14 @@ export interface AppSettings {
 export type NamerConfig =
   | { backend: "claude"; model?: string }
   | { backend: "openai"; apiKey: string; baseUrl: string; model: string };
+
+/** Voice transcription configuration (STT + optional LLM enhancement). */
+export interface TranscriptionConfig {
+  apiKey: string;
+  baseUrl: string;
+  enhancementEnabled: boolean;
+  enhancementModel: string;
+}
 
 // ─── Auto-Approval Types ─────────────────────────────────────────────────────
 
@@ -650,6 +659,7 @@ export const api = {
     autoApprovalMaxConcurrency?: number; autoApprovalTimeoutSeconds?: number;
     namerConfig?: NamerConfig;
     autoNamerEnabled?: boolean;
+    transcriptionConfig?: TranscriptionConfig;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),
@@ -750,10 +760,14 @@ export const api = {
     put<{ ok: boolean; path: string }>("/fs/claude-md", { path, content }),
 
   // Audio transcription
-  transcribe: async (audio: Blob, backend?: "gemini" | "openai"): Promise<{ text: string; backend: string }> => {
+  transcribe: async (
+    audio: Blob,
+    options?: { backend?: "gemini" | "openai"; sessionId?: string },
+  ): Promise<{ text: string; rawText?: string; backend: string; enhanced: boolean }> => {
     const form = new FormData();
     form.append("audio", audio, "recording.webm");
-    if (backend) form.append("backend", backend);
+    if (options?.backend) form.append("backend", options.backend);
+    if (options?.sessionId) form.append("sessionId", options.sessionId);
     const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -763,7 +777,7 @@ export const api = {
   },
 
   getTranscriptionStatus: () =>
-    get<{ backends: string[]; default: string | null }>("/transcribe/status"),
+    get<{ available: boolean; enhancementEnabled: boolean; backend: string | null }>("/transcribe/status"),
 
   // Usage limits
   getUsageLimits: () => get<UsageLimits>("/usage-limits"),

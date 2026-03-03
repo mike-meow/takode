@@ -186,7 +186,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     onAudioReady: async (blob) => {
       setIsTranscribing(true);
       try {
-        const { text: transcript } = await api.transcribe(blob);
+        const { text: transcript } = await api.transcribe(blob, { sessionId });
         const prefix = preRecordingTextRef.current;
         const separator = prefix && !prefix.endsWith(" ") && !prefix.endsWith("\n") ? " " : "";
         setText(prefix + separator + transcript);

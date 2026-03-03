@@ -28,14 +28,15 @@ import { containerManager, ContainerManager, type ContainerConfig, type Containe
 import type { CreationStepId } from "./session-types.js";
 import { hasContainerClaudeAuth } from "./claude-container-auth.js";
 import { hasContainerCodexAuth } from "./codex-container-auth.js";
-import { getSettings, updateSettings, getServerName, setServerName, getServerId, type NamerConfig } from "./settings-manager.js";
+import { getSettings, updateSettings, getServerName, setServerName, getServerId, type NamerConfig, type TranscriptionConfig } from "./settings-manager.js";
 import { getLogPath } from "./server-logger.js";
 import { getUsageLimits } from "./usage-limits.js";
 import { buildPeekResponse, buildPeekDefault, buildPeekRange, buildReadResponse } from "./takode-messages.js";
 import { searchSessionDocuments, type SessionSearchDocument } from "./session-search.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
-import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends } from "./transcription.js";
+import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends, getTranscriptionStatus, resolveOpenAIKey } from "./transcription.js";
+import { enhanceTranscript } from "./transcription-enhancer.js";
 import { getLegacyCodexHome } from "./codex-home.js";
 import type { PerfTracer } from "./perf-tracer.js";
 import { GIT_CMD_TIMEOUT } from "./constants.js";
@@ -2684,6 +2685,26 @@ export function createRoutes(
     return { backend: "claude" };
   }
 
+  /** Mask sensitive fields in TranscriptionConfig for API responses. */
+  function maskTranscriptionConfig(config: TranscriptionConfig): TranscriptionConfig {
+    return { ...config, apiKey: config.apiKey ? "***" : "" };
+  }
+
+  /** Parse a transcriptionConfig from a request body.
+   *  If apiKey is "***" (masked sentinel), preserve the existing key from settings. */
+  function parseTranscriptionConfigFromBody(tc: Record<string, unknown>): TranscriptionConfig {
+    let apiKey = typeof tc.apiKey === "string" ? tc.apiKey.trim() : "";
+    if (apiKey === "***") {
+      apiKey = getSettings().transcriptionConfig.apiKey;
+    }
+    return {
+      apiKey,
+      baseUrl: typeof tc.baseUrl === "string" ? tc.baseUrl.trim() : "https://api.openai.com/v1",
+      enhancementEnabled: typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : true,
+      enhancementModel: typeof tc.enhancementModel === "string" ? tc.enhancementModel.trim() : "gpt-4o-mini",
+    };
+  }
+
   api.get("/settings", (c) => {
     const settings = getSettings();
     return c.json({
@@ -2700,6 +2721,7 @@ export function createRoutes(
       autoApprovalModel: settings.autoApprovalModel,
       namerConfig: maskNamerConfig(settings.namerConfig),
       autoNamerEnabled: settings.autoNamerEnabled,
+      transcriptionConfig: maskTranscriptionConfig(settings.transcriptionConfig),
       restartSupported: !!process.env.COMPANION_SUPERVISED,
       logFile: getLogPath(),
     });
@@ -2828,6 +2850,7 @@ export function createRoutes(
         typeof body.autoNamerEnabled === "boolean"
           ? body.autoNamerEnabled
           : undefined,
+      transcriptionConfig: body.transcriptionConfig ? parseTranscriptionConfigFromBody(body.transcriptionConfig) : undefined,
     });
 
     return c.json({
@@ -2844,6 +2867,7 @@ export function createRoutes(
       autoApprovalModel: settings.autoApprovalModel,
       namerConfig: maskNamerConfig(settings.namerConfig),
       autoNamerEnabled: settings.autoNamerEnabled,
+      transcriptionConfig: maskTranscriptionConfig(settings.transcriptionConfig),
     });
   });
 
@@ -2890,24 +2914,24 @@ export function createRoutes(
   // ─── Audio transcription ─────────────────────────────────────────────
 
   api.get("/transcribe/status", (c) => {
-    return c.json(getAvailableBackends());
+    return c.json(getTranscriptionStatus());
   });
 
   api.post("/transcribe", async (c) => {
-
     const body = await c.req.parseBody();
     const audioFile = body["audio"];
     if (!audioFile || typeof audioFile === "string") {
       return c.json({ error: "audio field is required (multipart)" }, 400);
     }
 
+    const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"] : undefined;
     const requestedBackend = typeof body["backend"] === "string" ? body["backend"] : undefined;
     const { default: defaultBackend } = getAvailableBackends();
     const backend = requestedBackend || defaultBackend;
 
     if (!backend) {
       return c.json(
-        { error: "No transcription backend available. Set GOOGLE_API_KEY (Gemini) or OPENAI_API_KEY (Whisper) in your environment." },
+        { error: "No transcription backend available. Configure an OpenAI API key in Settings → Voice Transcription, or set OPENAI_API_KEY / GOOGLE_API_KEY in your environment." },
         400,
       );
     }
@@ -2916,24 +2940,42 @@ export function createRoutes(
     const mimeType = audioFile.type || "audio/webm";
 
     try {
-      let text: string;
+      let rawText: string;
+      let usedBackend = backend;
+
       if (backend === "gemini") {
         const apiKey = process.env.GOOGLE_API_KEY;
         if (!apiKey) {
           return c.json({ error: "GOOGLE_API_KEY not set in environment" }, 400);
         }
-        text = await transcribeWithGemini(buf, mimeType, apiKey);
+        rawText = await transcribeWithGemini(buf, mimeType, apiKey);
       } else if (backend === "openai") {
-        const apiKey = process.env.OPENAI_API_KEY;
+        const apiKey = resolveOpenAIKey();
         if (!apiKey) {
-          return c.json({ error: "OPENAI_API_KEY not set in environment" }, 400);
+          return c.json({ error: "No OpenAI API key configured. Set it in Settings → Voice Transcription, or set OPENAI_API_KEY in your environment." }, 400);
         }
-        text = await transcribeWithOpenai(buf, mimeType, apiKey);
+        rawText = await transcribeWithOpenai(buf, mimeType, apiKey);
       } else {
         return c.json({ error: `Unknown backend: ${backend}` }, 400);
       }
 
-      return c.json({ text, backend });
+      // Tier 2: Context-aware enhancement (OpenAI backend only)
+      if (sessionId && usedBackend === "openai") {
+        const settings = getSettings();
+        const enhancementKey = resolveOpenAIKey();
+        if (enhancementKey && settings.transcriptionConfig.enhancementEnabled) {
+          const history = wsBridge.getMessageHistory(sessionId);
+          const result = await enhanceTranscript(rawText, history, settings.transcriptionConfig, enhancementKey);
+          return c.json({
+            text: result.text,
+            rawText: result.rawText,
+            backend: usedBackend,
+            enhanced: result.enhanced,
+          });
+        }
+      }
+
+      return c.json({ text: rawText, backend: usedBackend, enhanced: false });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[transcription] ${backend} failed:`, msg);

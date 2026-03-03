@@ -2,8 +2,10 @@
  * Audio transcription service supporting Gemini and OpenAI Whisper backends.
  *
  * Both functions accept raw audio as a Buffer and return the transcription text.
- * API keys are resolved from process.env at call time.
+ * API keys are resolved via resolveOpenAIKey() (settings → env var → namer key).
  */
+
+import { getSettings } from "./settings-manager.js";
 
 /**
  * Transcribe audio using Google Gemini API (inline base64 audio).
@@ -112,16 +114,47 @@ export async function transcribeWithOpenai(
   return data.text.trim();
 }
 
-/** Check which transcription backends are available based on env vars. */
+/**
+ * Resolve an OpenAI API key from multiple sources, in priority order:
+ * 1. transcriptionConfig.apiKey (dedicated setting)
+ * 2. OPENAI_API_KEY env var
+ * 3. namerConfig.apiKey (if namer uses OpenAI — reuse existing key)
+ */
+export function resolveOpenAIKey(): string | null {
+  const settings = getSettings();
+  if (settings.transcriptionConfig.apiKey) return settings.transcriptionConfig.apiKey;
+  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
+  if (settings.namerConfig.backend === "openai" && settings.namerConfig.apiKey) {
+    return settings.namerConfig.apiKey;
+  }
+  return null;
+}
+
+/** Check which transcription backends are available (settings + env vars). */
 export function getAvailableBackends(): {
   backends: string[];
   default: string | null;
 } {
   const backends: string[] = [];
   if (process.env.GOOGLE_API_KEY) backends.push("gemini");
-  if (process.env.OPENAI_API_KEY) backends.push("openai");
+  if (resolveOpenAIKey()) backends.push("openai");
   return {
     backends,
     default: backends[0] ?? null,
+  };
+}
+
+/** Get transcription status for the new API shape. */
+export function getTranscriptionStatus(): {
+  available: boolean;
+  enhancementEnabled: boolean;
+  backend: string | null;
+} {
+  const key = resolveOpenAIKey();
+  const settings = getSettings();
+  return {
+    available: !!key || !!process.env.GOOGLE_API_KEY,
+    enhancementEnabled: !!key && settings.transcriptionConfig.enhancementEnabled,
+    backend: key ? "openai" : process.env.GOOGLE_API_KEY ? "gemini" : null,
   };
 }

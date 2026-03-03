@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, checkHealth, type ImportStats, type AutoApprovalConfig, type NamerConfig } from "../api.js";
+import { api, checkHealth, type ImportStats, type AutoApprovalConfig, type NamerConfig, type TranscriptionConfig } from "../api.js";
 import { useStore } from "../store.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
@@ -97,6 +97,15 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [namerSaved, setNamerSaved] = useState(false);
   const [namerError, setNamerError] = useState("");
 
+  // Voice transcription state
+  const [transcriptionApiKey, setTranscriptionApiKey] = useState("");
+  const [transcriptionBaseUrl, setTranscriptionBaseUrl] = useState("");
+  const [transcriptionModel, setTranscriptionModel] = useState("");
+  const [transcriptionEnhancement, setTranscriptionEnhancement] = useState(false);
+  const [transcriptionSaving, setTranscriptionSaving] = useState(false);
+  const [transcriptionSaved, setTranscriptionSaved] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState("");
+
   // Session export/import state
   const importInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -140,6 +149,12 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           setNamerModel(s.namerConfig.model || "");
         }
         setNamerEnabled(s.autoNamerEnabled ?? true);
+        if (s.transcriptionConfig) {
+          setTranscriptionApiKey(s.transcriptionConfig.apiKey === "***" ? "***" : (s.transcriptionConfig.apiKey || ""));
+          setTranscriptionBaseUrl(s.transcriptionConfig.baseUrl || "");
+          setTranscriptionModel(s.transcriptionConfig.enhancementModel || "");
+          setTranscriptionEnhancement(s.transcriptionConfig.enhancementEnabled ?? false);
+        }
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -774,6 +789,117 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </div>
 
             <NamerDebugPanel />
+          </div>
+
+          {/* Voice Transcription config */}
+          <div className="border-t border-cc-border pt-3 space-y-3">
+            <div>
+              <span className="text-sm font-medium text-cc-fg">Voice Transcription</span>
+              <p className="mt-1 text-xs text-cc-muted">
+                Configure the OpenAI-compatible Whisper API for voice-to-text input.
+                Optionally enable LLM enhancement to clean up transcribed text before sending.
+              </p>
+            </div>
+
+            <div className="space-y-3 pl-3 border-l-2 border-cc-border">
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-api-key">
+                  API Key
+                </label>
+                <input
+                  id="transcription-api-key"
+                  type="password"
+                  value={transcriptionApiKey}
+                  onChange={(e) => setTranscriptionApiKey(e.target.value)}
+                  onFocus={() => { if (transcriptionApiKey === "***") setTranscriptionApiKey(""); }}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-base-url">
+                  Base URL
+                </label>
+                <input
+                  id="transcription-base-url"
+                  type="text"
+                  value={transcriptionBaseUrl}
+                  onChange={(e) => setTranscriptionBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+                <p className="mt-1 text-xs text-cc-muted">
+                  Leave empty for OpenAI. Use a custom URL for Groq, local Whisper, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-model">
+                  Enhancement Model
+                </label>
+                <input
+                  id="transcription-model"
+                  type="text"
+                  value={transcriptionModel}
+                  onChange={(e) => setTranscriptionModel(e.target.value)}
+                  placeholder="gpt-4o-mini"
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={transcriptionEnhancement}
+                  onChange={(e) => setTranscriptionEnhancement(e.target.checked)}
+                  className="accent-cc-primary"
+                />
+                Enable Enhancement
+              </label>
+            </div>
+
+            {transcriptionError && (
+              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                {transcriptionError}
+              </div>
+            )}
+            {transcriptionSaved && (
+              <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+                Voice transcription settings saved.
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={transcriptionSaving || loading}
+                onClick={async () => {
+                  setTranscriptionSaving(true);
+                  setTranscriptionError("");
+                  setTranscriptionSaved(false);
+                  try {
+                    const config: TranscriptionConfig = {
+                      apiKey: transcriptionApiKey === "***" ? "***" : transcriptionApiKey,
+                      baseUrl: transcriptionBaseUrl,
+                      enhancementEnabled: transcriptionEnhancement,
+                      enhancementModel: transcriptionModel,
+                    };
+                    await api.updateSettings({ transcriptionConfig: config });
+                    setTranscriptionSaved(true);
+                    setTimeout(() => setTranscriptionSaved(false), 3000);
+                  } catch (err: unknown) {
+                    setTranscriptionError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setTranscriptionSaving(false);
+                  }
+                }}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  transcriptionSaving || loading
+                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                    : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                }`}
+              >
+                {transcriptionSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
           </div>
 
           {/* Session Data — export/import */}

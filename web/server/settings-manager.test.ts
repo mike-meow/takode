@@ -46,6 +46,7 @@ describe("settings-manager", () => {
       autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
+      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-4o-mini" },
       updatedAt: 0,
     });
   });
@@ -123,6 +124,7 @@ describe("settings-manager", () => {
       autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
+      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-4o-mini" },
       updatedAt: 0,
     });
   });
