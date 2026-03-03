@@ -442,6 +442,11 @@ interface Session {
    *  overwrite uiMode — the replayed mode is stale and would revert
    *  user-approved mode transitions (e.g. ExitPlanMode → agent). */
   cliResuming: boolean;
+  /** Debounce timer for clearing cliResuming after the last replayed system.init.
+   *  The CLI replays ALL historical system.init messages (one per subagent),
+   *  so we can't clear cliResuming on the first one — must wait for the replay
+   *  to finish (no more system.init within the debounce window). */
+  cliResumingClearTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface LeaderGroupIdleTimerState {
@@ -1554,6 +1559,7 @@ export class WsBridge {
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliResuming: false,
+        cliResumingClearTimer: null,
       };
       session.state.backend_type = session.backendType;
 
@@ -1918,6 +1924,7 @@ export class WsBridge {
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliResuming: false,
+        cliResumingClearTimer: null,
       };
       this.sessions.set(sessionId, session);
     } else if (backendType) {
@@ -2710,9 +2717,15 @@ export class WsBridge {
     // When a CLI reconnects to an existing session (has history), mark it as
     // resuming. During --resume replay, the CLI sends stale system.status
     // messages with old permissionMode that would incorrectly overwrite uiMode
-    // (e.g. reverting an ExitPlanMode approval). The flag is cleared on
-    // system.init (which always follows replay completion).
+    // (e.g. reverting an ExitPlanMode approval). The flag is cleared via a
+    // debounced timer after the last system.init (replay includes multiple
+    // historical system.init messages, one per subagent invocation).
     if (session.messageHistory.length > 0) {
+      // Cancel any pending clear timer from a previous connection.
+      if (session.cliResumingClearTimer) {
+        clearTimeout(session.cliResumingClearTimer);
+        session.cliResumingClearTimer = null;
+      }
       session.cliResuming = true;
     }
     console.log(`[ws-bridge] CLI connected for session ${sessionTag(sessionId)}${session.cliResuming ? " (resuming)" : ""}`);
@@ -3203,13 +3216,23 @@ export class WsBridge {
         session.state.permissionMode = msg.permissionMode;
       }
       session.state.claude_code_version = msg.claude_code_version;
-      // system.init marks the end of --resume replay. Clear the resuming flag
-      // so subsequent real-time system.status updates can change uiMode again.
-      session.cliResuming = false;
-      // Reset stale compaction state — a fresh CLI connection is never mid-compaction.
-      // Persisted is_compacting=true from a previous run would cause false
-      // "compacting" status in the UI until the next real status message arrives.
-      session.state.is_compacting = false;
+      // During --resume replay, the CLI replays ALL historical system.init
+      // messages (one per subagent/Task invocation). We can't clear cliResuming
+      // on the first system.init because the replay isn't done — later replayed
+      // system.status messages would slip through the compaction/uiMode guards.
+      // Instead, debounce: clear cliResuming 2s after the LAST system.init.
+      if (session.cliResuming) {
+        if (session.cliResumingClearTimer) clearTimeout(session.cliResumingClearTimer);
+        session.cliResumingClearTimer = setTimeout(() => {
+          session.cliResumingClearTimer = null;
+          session.cliResuming = false;
+          // Reset stale compaction state now that replay is truly done.
+          session.state.is_compacting = false;
+        }, 2000);
+      } else {
+        // Not resuming — clear compaction state immediately.
+        session.state.is_compacting = false;
+      }
       session.state.mcp_servers = msg.mcp_servers;
       session.state.agents = msg.agents ?? [];
       session.state.slash_commands = msg.slash_commands ?? [];

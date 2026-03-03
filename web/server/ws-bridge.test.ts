@@ -7301,3 +7301,115 @@ describe("SDK disconnect auto-relaunch", () => {
     expect(calls).toContainEqual(expect.objectContaining({ type: "cli_connected" }));
   });
 });
+
+describe("cliResuming debounce prevents false compaction events on --resume replay", () => {
+  // During --resume, the CLI replays ALL historical system.init messages (one
+  // per subagent/Task invocation). The old code cleared cliResuming on every
+  // system.init, allowing later replayed system.status "compacting" messages
+  // to slip through the guard and emit false compaction_started events.
+  // The fix debounces the cliResuming clear — it stays true until 2s after
+  // the LAST replayed system.init.
+
+  it("does not emit compaction_started for replayed compacting status after a replayed system.init", () => {
+    vi.useFakeTimers();
+
+    // Create a session with existing message history (simulates restore from disk).
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    // cliResuming should be true because messageHistory is non-empty.
+    expect(session.cliResuming).toBe(true);
+
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    // Simulate replayed system.init (from a subagent) — should NOT clear cliResuming.
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    expect(session.cliResuming).toBe(true); // still true — debounced
+
+    // Simulate replayed system.status with compacting — should be suppressed.
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+    }));
+
+    // No compaction_started event should have been emitted.
+    const compactionCalls = spy.mock.calls.filter(([, event]) => event === "compaction_started");
+    expect(compactionCalls).toHaveLength(0);
+
+    // After the debounce window (2s), cliResuming should be cleared.
+    vi.advanceTimersByTime(2100);
+    expect(session.cliResuming).toBe(false);
+    expect(session.state.is_compacting).toBe(false);
+
+    spy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("allows real compaction events after the debounce window expires", () => {
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    // Replayed system.init
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    expect(session.cliResuming).toBe(true);
+
+    // Wait for debounce to expire.
+    vi.advanceTimersByTime(2100);
+    expect(session.cliResuming).toBe(false);
+
+    // Now a REAL compaction status arrives — should emit event.
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+    }));
+
+    const compactionCalls = spy.mock.calls.filter(([, event]) => event === "compaction_started");
+    expect(compactionCalls).toHaveLength(1);
+
+    spy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("resets debounce timer on each replayed system.init", () => {
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    // First replayed system.init at t=0
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    expect(session.cliResuming).toBe(true);
+
+    // Advance 1.5s (less than 2s debounce)
+    vi.advanceTimersByTime(1500);
+    expect(session.cliResuming).toBe(true); // still resuming
+
+    // Second replayed system.init resets the timer
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    expect(session.cliResuming).toBe(true);
+
+    // Advance another 1.5s — first timer would have fired, but it was reset
+    vi.advanceTimersByTime(1500);
+    expect(session.cliResuming).toBe(true); // still resuming (timer reset)
+
+    // Advance past the second timer
+    vi.advanceTimersByTime(600);
+    expect(session.cliResuming).toBe(false); // now cleared
+
+    vi.useRealTimers();
+  });
+});
