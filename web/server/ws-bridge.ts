@@ -4735,7 +4735,11 @@ export class WsBridge {
 
         let localImagePaths: string[] | undefined;
 
-        if (this.imageStore && userImageRefs?.length === msg.images.length) {
+        // local_images (file paths on disk) only works for Codex which has a
+        // native localImage content type. The Claude SDK doesn't support file
+        // paths — it needs base64 image data. For SDK sessions, skip the
+        // local_images optimization and always use compressed base64.
+        if (session.backendType === "codex" && this.imageStore && userImageRefs?.length === msg.images.length) {
           const paths: string[] = [];
           const imageStoreForCodex = this.imageStore as ImageStore & {
             getTransportPath?: (sessionId: string, imageId: string) => Promise<string | null>;
