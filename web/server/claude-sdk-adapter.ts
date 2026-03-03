@@ -163,13 +163,25 @@ export class ClaudeSdkAdapter {
 
     // WORKAROUND: The SDK's v2 session API hardcodes settingSources: [] which
     // passes --setting-sources "" to the CLI, disabling all settings loading
-    // (including CLAUDE.md). We read CLAUDE.md files ourselves and inject them
-    // via --append-system-prompt in executableArgs.
-    const claudeMdContent = await this.loadClaudeMdFiles(this.options.cwd);
-    if (claudeMdContent) {
-      const execArgs = (sessionOptions.executableArgs as string[] | undefined) || [];
-      execArgs.push("--append-system-prompt", claudeMdContent);
-      sessionOptions.executableArgs = execArgs;
+    // (including CLAUDE.md). We inject CLAUDE.md content via a SessionStart hook
+    // that returns additionalContext — the SDK appends this to the system prompt.
+    if (!this.options.cliSessionId) {
+      // Only for fresh sessions — resumed sessions already have the context
+      const claudeMdContent = await this.loadClaudeMdFiles(this.options.cwd);
+      if (claudeMdContent) {
+        const existingHooks = (sessionOptions.hooks as Record<string, unknown[]> | undefined) || {};
+        const sessionStartHooks = (existingHooks.SessionStart as unknown[] | undefined) || [];
+        sessionStartHooks.push({
+          hooks: [async () => ({
+            hookSpecificOutput: {
+              hookEventName: "SessionStart",
+              additionalContext: claudeMdContent,
+            },
+          })],
+        });
+        existingHooks.SessionStart = sessionStartHooks;
+        sessionOptions.hooks = existingHooks;
+      }
     }
 
     // WORKAROUND: The SDK's v2 session API (SDKSessionOptions) does NOT expose
