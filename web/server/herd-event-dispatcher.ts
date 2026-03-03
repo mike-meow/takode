@@ -387,6 +387,7 @@ export function formatHerdEventBatch(events: TakodeEvent[], nowTs: number = Date
 function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
   const label = `#${evt.sessionNum} ${evt.sessionName}`;
   const age = formatRelativeAge(evt.ts, nowTs);
+  const ageSuffix = age ? ` | ${age}` : "";
   switch (evt.event) {
     case "turn_end": {
       const duration = typeof evt.data.duration_ms === "number"
@@ -412,26 +413,26 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       // Quest status change during this turn
       const qc = evt.data.questChange as { questId: string; from: string; to: string } | undefined;
       const questStr = qc ? ` | ${qc.questId}: ${qc.from} → ${qc.to}` : "";
-      return `${label} | turn_end | ${success} ${duration}${compacted}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview} | ${age}`;
+      return `${label} | turn_end | ${success} ${duration}${compacted}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview}${ageSuffix}`;
     }
     case "compaction_started": {
       const pct = typeof evt.data.context_used_percent === "number"
         ? ` | context ${Math.round(evt.data.context_used_percent)}% full`
         : "";
-      return `${label} | compaction_started${pct} | ${age}`;
+      return `${label} | compaction_started${pct}${ageSuffix}`;
     }
     case "permission_request": {
       const tool = evt.data.tool_name || "unknown";
       const summary = typeof evt.data.summary === "string" ? `: ${truncate(evt.data.summary, 60)}` : "";
-      return `${label} | permission_request | ${tool}${summary} | ${age}`;
+      return `${label} | permission_request | ${tool}${summary}${ageSuffix}`;
     }
     case "session_error": {
       const error = typeof evt.data.error === "string" ? truncate(evt.data.error, 80) : "unknown error";
-      return `${label} | session_error | ${error} | ${age}`;
+      return `${label} | session_error | ${error}${ageSuffix}`;
     }
     case "session_disconnected": {
       const reason = typeof evt.data.reason === "string" ? evt.data.reason : "unknown";
-      return `${label} | session_disconnected | ${reason} | ${age}`;
+      return `${label} | session_disconnected | ${reason}${ageSuffix}`;
     }
     case "user_message": {
       const content = typeof evt.data.content === "string" ? truncate(evt.data.content, 80) : "";
@@ -443,10 +444,10 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       } else if (agentSource?.sessionId) {
         sender = agentSource.sessionLabel ? `Agent ${agentSource.sessionLabel}` : "Agent";
       }
-      return `${label} | user_message [${sender}] | "${content}" | ${age}`;
+      return `${label} | user_message [${sender}] | "${content}"${ageSuffix}`;
     }
     default:
-      return `${label} | ${evt.event} | ${age}`;
+      return `${label} | ${evt.event}${ageSuffix}`;
   }
 }
 
@@ -472,6 +473,9 @@ function truncate(s: string, max: number): string {
 function formatRelativeAge(ts: number, nowTs: number): string {
   const deltaMs = Math.max(0, nowTs - ts);
   const deltaSec = Math.floor(deltaMs / 1000);
+  // Skip "0s ago" — it provides no useful information and clutters the output.
+  // Events delivered within 1 second of emission are effectively "just now".
+  if (deltaSec < 1) return "";
   if (deltaSec < 60) return `${deltaSec}s ago`;
   const deltaMin = Math.floor(deltaSec / 60);
   if (deltaMin < 60) return `${deltaMin}m ago`;
