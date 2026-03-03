@@ -811,19 +811,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </div>
             </div>
           )}
-          {/* Cursor insertion preview — shows where voice text will be inserted when cursor is mid-text */}
-          {isRecording && preRecordingTextRef.current.after && (
-            <div className="flex items-center px-4 pt-1 text-[11px] font-mono-code text-cc-muted/60 overflow-hidden whitespace-nowrap">
-              {preRecordingTextRef.current.before && (
-                <span>{preRecordingTextRef.current.before.replace(/\n/g, " ").slice(-30)}</span>
-              )}
-              <span
-                className="inline-block w-[2px] h-3.5 rounded-full mx-0.5 shrink-0 animate-pulse"
-                style={{ backgroundColor: "rgb(239 68 68 / 0.7)" }}
-              />
-              <span>{preRecordingTextRef.current.after.replace(/\n/g, " ").slice(0, 30)}</span>
-            </div>
-          )}
           {isTranscribing && !isRecording && (
             <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
               <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
@@ -834,24 +821,39 @@ export function Composer({ sessionId }: { sessionId: string }) {
             <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
           )}
 
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            enterKeyHint={isTouchDevice() ? "send" : undefined}
-            placeholder={
-              pendingAskUserPerm
-                ? "Type your answer..."
-                : pendingPlanPerm
-                  ? "Type to reject plan and send new instructions..."
-                  : "Type a message... (/ for commands)"
-            }
-            rows={1}
-            className="w-full px-4 pt-3 pb-1 text-base sm:text-sm bg-transparent resize-none focus:outline-none text-cc-fg font-sans-ui placeholder:text-cc-muted disabled:opacity-50 overflow-y-auto"
-            style={{ minHeight: "36px", maxHeight: "200px" }}
-          />
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              enterKeyHint={isTouchDevice() ? "send" : undefined}
+              placeholder={
+                pendingAskUserPerm
+                  ? "Type your answer..."
+                  : pendingPlanPerm
+                    ? "Type to reject plan and send new instructions..."
+                    : "Type a message... (/ for commands)"
+              }
+              rows={1}
+              className={`w-full px-4 pt-3 pb-1 text-base sm:text-sm bg-transparent resize-none focus:outline-none font-sans-ui placeholder:text-cc-muted disabled:opacity-50 overflow-y-auto ${
+                isRecording && preRecordingTextRef.current.after ? "text-transparent caret-transparent" : "text-cc-fg"
+              }`}
+              style={{ minHeight: "36px", maxHeight: "200px" }}
+            />
+            {/* Inline cursor overlay — renders text with a pulsing red bar at the insertion point */}
+            {isRecording && preRecordingTextRef.current.after && (
+              <div className="absolute inset-0 px-4 pt-3 pb-1 text-base sm:text-sm font-sans-ui text-cc-fg pointer-events-none overflow-y-auto whitespace-pre-wrap break-words">
+                <span>{preRecordingTextRef.current.before}</span>
+                <span
+                  className="inline-block w-[2px] rounded-full animate-pulse mx-px"
+                  style={{ height: "1.15em", backgroundColor: "rgb(239 68 68 / 0.8)", verticalAlign: "text-bottom" }}
+                />
+                <span>{preRecordingTextRef.current.after}</span>
+              </div>
+            )}
+          </div>
 
           {/* Git branch + model + lines info */}
           {(sessionData?.git_branch || sessionData?.model) && (
