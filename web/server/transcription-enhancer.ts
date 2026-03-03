@@ -7,7 +7,7 @@
  *   Tier 2: LLM correction using session context
  */
 
-import type { BrowserIncomingMessage, ContentBlock } from "./session-types.js";
+import type { BrowserIncomingMessage, ContentBlock, SessionTaskEntry } from "./session-types.js";
 import type { TranscriptionConfig } from "./settings-manager.js";
 
 // ─── Tunable limits ─────────────────────────────────────────────────────────
@@ -29,6 +29,12 @@ const HALLUCINATION_LENGTH_RATIO = 3;
 
 /** Minimum word count to attempt enhancement (very short utterances don't benefit). */
 const MIN_WORDS_FOR_ENHANCEMENT = 3;
+
+/** Max total characters for the STT prompt (~1024 tokens ≈ 4000 chars). */
+const STT_PROMPT_MAX_CHARS = 3800;
+
+/** Max characters per user message included in the STT prompt. */
+const STT_PROMPT_MAX_MSG_CHARS = 300;
 
 // ─── System prompt ──────────────────────────────────────────────────────────
 
@@ -166,6 +172,108 @@ export function buildEnhancementPrompt(rawTranscript: string, context: string): 
   }
 
   parts.push(`<TRANSCRIPT>\n${rawTranscript}\n</TRANSCRIPT>`);
+
+  return parts.join("\n");
+}
+
+// ─── STT prompt construction ─────────────────────────────────────────────────
+
+export interface SttPromptInput {
+  /** Task titles from the session auto-namer (highest priority context). */
+  taskHistory?: SessionTaskEntry[];
+  /** Session display name. */
+  sessionName?: string;
+  /** Text before the cursor in the composer (for mid-prompt voice insertion). */
+  composerBefore?: string;
+  /** Text after the cursor in the composer. */
+  composerAfter?: string;
+  /** Full message history for extracting recent user messages. */
+  messageHistory?: BrowserIncomingMessage[] | null;
+}
+
+/**
+ * Build a prompt string for the STT model (gpt-4o-mini-transcribe).
+ *
+ * The prompt parameter guides vocabulary recognition — the model is more likely
+ * to recognize terms that appear in the prompt. We fill greedily in priority order:
+ *   1. Session task titles (high density of file names, feature names, libraries)
+ *   2. Session title
+ *   3. Composer surrounding text (critical for mid-prompt voice insertion)
+ *   4. Recent user messages (greedy fill until budget exhausted)
+ *
+ * Returns empty string if no useful context is available.
+ */
+export function buildSttPrompt(input: SttPromptInput): string {
+  const parts: string[] = [];
+  let remaining = STT_PROMPT_MAX_CHARS;
+
+  const addPart = (label: string, content: string): boolean => {
+    const line = `${label}: ${content}`;
+    if (line.length > remaining) {
+      // Try to fit a truncated version
+      if (remaining > label.length + 10) {
+        parts.push(trunc(line, remaining));
+        remaining = 0;
+        return false;
+      }
+      return false;
+    }
+    parts.push(line);
+    remaining -= line.length + 1; // +1 for newline
+    return remaining > 0;
+  };
+
+  // 1. Task titles — high information density
+  if (input.taskHistory && input.taskHistory.length > 0) {
+    // Deduplicate and take unique titles (latest first since revisions update in-place)
+    const seen = new Set<string>();
+    const titles: string[] = [];
+    for (let i = input.taskHistory.length - 1; i >= 0; i--) {
+      const t = input.taskHistory[i].title;
+      if (!seen.has(t)) {
+        seen.add(t);
+        titles.push(t);
+      }
+    }
+    const tasksText = titles.join("; ");
+    if (!addPart("Tasks", trunc(tasksText, 800))) return parts.join("\n");
+  }
+
+  // 2. Session title
+  if (input.sessionName) {
+    if (!addPart("Session", input.sessionName)) return parts.join("\n");
+  }
+
+  // 3. Composer surrounding text
+  if (input.composerBefore || input.composerAfter) {
+    const composerParts: string[] = [];
+    if (input.composerBefore) composerParts.push(trunc(input.composerBefore.trim(), 500));
+    if (input.composerAfter) composerParts.push(trunc(input.composerAfter.trim(), 500));
+    if (!addPart("Context", composerParts.join(" [...] "))) return parts.join("\n");
+  }
+
+  // 4. Recent user messages — greedy fill
+  if (input.messageHistory && remaining > 50) {
+    const userMessages: string[] = [];
+    // Walk backwards to get most recent first
+    for (let i = input.messageHistory.length - 1; i >= 0 && remaining > 50; i--) {
+      const msg = input.messageHistory[i];
+      if (msg.type !== "user_message") continue;
+      const content = typeof (msg as { content?: unknown }).content === "string"
+        ? (msg as { content: string }).content
+        : "";
+      if (!content.trim()) continue;
+      const truncated = trunc(content.trim(), STT_PROMPT_MAX_MSG_CHARS);
+      if (truncated.length + 2 > remaining) break;
+      userMessages.push(truncated);
+      remaining -= truncated.length + 2;
+    }
+    if (userMessages.length > 0) {
+      // Reverse back to chronological order
+      userMessages.reverse();
+      parts.push("Recent messages: " + userMessages.join(" | "));
+    }
+  }
 
   return parts.join("\n");
 }
@@ -311,6 +419,8 @@ export interface TranscriptionLogEntry {
   sttDurationMs: number;
   rawTranscript: string;
   audioSizeBytes: number;
+  /** Prompt sent to the STT model to guide vocabulary recognition. */
+  sttPrompt: string;
   /** Enhancement phase (null if not attempted) */
   enhancement: {
     model: string;
@@ -336,13 +446,13 @@ export function addTranscriptionLogEntry(entry: Omit<TranscriptionLogEntry, "id"
   return full;
 }
 
-/** List all log entries (lightweight: no system prompt or user message). Newest first. */
-export function getTranscriptionLogIndex(): Array<Omit<TranscriptionLogEntry, "enhancement"> & {
+/** List all log entries (lightweight: no sttPrompt, system prompt, or user message). Newest first. */
+export function getTranscriptionLogIndex(): Array<Omit<TranscriptionLogEntry, "sttPrompt" | "enhancement"> & {
   enhancement: Omit<NonNullable<TranscriptionLogEntry["enhancement"]>, "systemPrompt" | "userMessage"> | null;
 }> {
   return transcriptionLog
     .map((entry) => {
-      const { enhancement, ...rest } = entry;
+      const { sttPrompt: _p, enhancement, ...rest } = entry;
       if (!enhancement) return { ...rest, enhancement: null };
       const { systemPrompt: _s, userMessage: _u, ...enhRest } = enhancement;
       return { ...rest, enhancement: enhRest };
@@ -364,8 +474,11 @@ export const _testHelpers = {
   MAX_ASSISTANT_TEXT_CHARS,
   MIN_WORDS_FOR_ENHANCEMENT,
   HALLUCINATION_LENGTH_RATIO,
+  STT_PROMPT_MAX_CHARS,
+  STT_PROMPT_MAX_MSG_CHARS,
   trunc,
   extractAssistantText,
   buildTranscriptionContext,
   buildEnhancementPrompt,
+  buildSttPrompt,
 };
