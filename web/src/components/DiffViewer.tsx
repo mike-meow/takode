@@ -255,15 +255,8 @@ export function DiffViewer({
     return [{ fileName: fileName || "", hunks }];
   }, [oldText, newText, unifiedDiff, fileName]);
 
-  // Nothing to show
-  if (data.length === 0 || data.every((f) => f.hunks.length === 0)) {
-    return (
-      <div className="diff-viewer diff-empty">
-        <span className="text-cc-muted text-xs">No changes</span>
-      </div>
-    );
-  }
-
+  // Escape key handler for modal — must be above the early return to satisfy
+  // React's Rules of Hooks (hooks must run in the same order every render).
   useEffect(() => {
     if (!expanded) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -272,6 +265,15 @@ export function DiffViewer({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [expanded]);
+
+  // Nothing to show
+  if (data.length === 0 || data.every((f) => f.hunks.length === 0)) {
+    return (
+      <div className="diff-viewer diff-empty">
+        <span className="text-cc-muted text-xs">No changes</span>
+      </div>
+    );
+  }
 
   const renderedDiff = (
     <div className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"}`}>

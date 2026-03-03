@@ -148,4 +148,23 @@ diff --git a/b.ts b/b.ts
     expect(screen.getByText("a.ts")).toBeTruthy();
     expect(screen.getByText("b.ts")).toBeTruthy();
   });
+
+  it("does not crash when re-rendering from empty to non-empty data (hooks order)", () => {
+    // Regression: useEffect was placed after an early return for empty data,
+    // violating React's Rules of Hooks. When the component re-rendered from
+    // empty → non-empty data, React threw error #310 ("Rendered more hooks
+    // than during the previous render").
+    const { rerender, container } = render(<DiffViewer unifiedDiff="" />);
+    expect(screen.getByText("No changes")).toBeTruthy();
+
+    // Re-render with actual diff data — this would crash before the fix
+    const diff = `diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1 +1 @@
+-old
++new`;
+    rerender(<DiffViewer unifiedDiff={diff} />);
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+  });
 });
