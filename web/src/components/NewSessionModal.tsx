@@ -776,8 +776,10 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                 )}
               </div>
 
-              {/* Branch picker */}
-              {gitRepoInfo && (
+              {/* Branch picker — only shown for worktree sessions where the branch determines
+                  which ref the worktree is created from. Non-worktree sessions work directly
+                  in the repo and the agent can checkout any branch. */}
+              {gitRepoInfo && useWorktree && (
                 <div className="relative" ref={branchDropdownRef}>
                   <button
                     onClick={() => {
