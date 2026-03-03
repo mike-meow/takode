@@ -1810,6 +1810,42 @@ Bad: \`"Here are the full quest details: [300 lines of quest JSON pasted in]..."
 - **Provide cross-quest context the worker wouldn't have.** Your unique advantage is the full conversation with the user — relay relevant decisions, rejected approaches, and related quests. Existing workers may have context from earlier conversations with you, but older context may have been lost to context compaction. When in doubt, include the relevant context.
 - **Include reproduction steps and user observations.** Screenshots (with file paths), error messages, and specific user feedback are more valuable than your guesses about implementation.
 - **Let the worker choose the approach when you lack context to decide.** If there are multiple valid approaches and you don't have sufficient context to decide, mention them as options rather than prescribing one. The worker has better codebase visibility to judge tradeoffs. However, if you have enough context to make the decision (from user discussions, prior quest outcomes, or architectural knowledge), go ahead and decide — don't unnecessarily defer.
+
+## Scheduling Strategy
+
+When deciding which worker to assign a task to, follow these principles:
+
+### 1. Worker Affinity by Backend
+- **Claude Code workers** are more reliable for complex, multi-step, or ambiguous work — they handle plan mode, long turns, and deep context better.
+- **Codex workers** are better suited for shorter, well-scoped tasks with clear requirements.
+- Route complex or exploratory work to Claude workers; route well-defined, bounded tasks to Codex workers.
+
+### 2. Worker Specialization & Context Reuse
+- When a worker has recently worked on a related area, prefer sending follow-up work to the same worker — it already has relevant context loaded.
+- Avoid sending unrelated tasks to a worker with deep context in a different area unless all other workers are busy.
+- Sometimes it is better to wait for a highly relevant worker to finish its current task rather than dispatching to an unrelated worker — especially if the new work is a natural follow-up to what that worker just completed or has a high risk of merge conflicts with the worker's in-flight changes.
+
+### 3. One Task at a Time, Queue the Rest
+- Never send a new unrelated task to a busy worker. Track pending tasks in your own todo list and dispatch when the worker goes idle.
+- Mid-task steering (scope refinement, corrections, urgent interventions) is fine — the rule is against sending *unrelated* new tasks to busy workers.
+
+### 4. Load Balancing with Health Awareness
+- Before dispatching, check worker health: how long since last activity? Did the last turn succeed or error? Is the worktree stale (many commits behind)?
+- A worker that has been idle for a long time or is many commits behind may need a sync before receiving new work.
+- Check \`takode list\` freshness before dispatching; sync stale workers before giving them tasks.
+
+### 5. Parallel Dispatch for Independent Work
+- When multiple independent tasks are available, dispatch to multiple workers simultaneously rather than sequentially.
+- Group related tasks (e.g., "fix bug A" and "write test for A") to the same worker; split truly independent tasks across workers.
+- Maximize parallelism for independent work; keep coupled tasks on the same worker.
+
+### 6. Verify Worker Output
+- Always read the worker's response to check whether the work was completed reasonably — don't blindly trust a turn_end event.
+- If the work is complex or tricky, use async sub-agents (Task tool) for deeper verification when you are a Claude Code leader. If you are a Codex leader (no sub-agent access), delegate verification to another idle worker.
+
+### 7. Sync Before Verify
+- Always sync a worker's changes to the main repo before marking a quest as \`needs_verification\` — the user tests from the main repo.
+- Sync → push → then transition quest status.
 ${ORCH_END}`;
 
     const claudeDir = join(cwd, ".claude");
