@@ -357,16 +357,9 @@ function buildEntries(
       continue;
     }
 
-    // Case B: Mixed message (text + Task tool_use) — filter Task blocks from contentBlocks
-    // (they render as SubagentContainers instead), then push SubagentGroups
-    if (entry.kind === "message") {
-      const filteredBlocks = entry.msg.contentBlocks?.filter(
-        (b) => !(b.type === "tool_use" && b.name === "Task")
-      );
-      result.push({ kind: "message", msg: { ...entry.msg, contentBlocks: filteredBlocks } });
-    } else {
-      result.push(entry);
-    }
+    // Case B: Mixed message (text + Task tool_use) — emit SubagentGroups FIRST,
+    // then the cleaned message. This ensures SubagentContainers appear inline
+    // above the text response rather than being "stuck at the bottom" of the turn.
     for (const taskId of taskIds) {
       const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
       const children = childrenByParent.get(taskId);
@@ -382,6 +375,14 @@ function buildEntries(
         children: childEntries,
         isBackground: !!info.input?.run_in_background,
       });
+    }
+    if (entry.kind === "message") {
+      const filteredBlocks = entry.msg.contentBlocks?.filter(
+        (b) => !(b.type === "tool_use" && b.name === "Task")
+      );
+      result.push({ kind: "message", msg: { ...entry.msg, contentBlocks: filteredBlocks } });
+    } else {
+      result.push(entry);
     }
   }
 
