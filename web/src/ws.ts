@@ -808,6 +808,22 @@ function handleParsedMessage(
       break;
     }
 
+    case "session_created": {
+      // Another browser or the API created a session — refresh the session
+      // list so the sidebar shows it immediately without a manual page refresh.
+      const createdId = data.session_id;
+      if (createdId && typeof createdId === "string") {
+        console.log(`[ws] session_created: refreshing session list for ${createdId}`);
+        api.listSessions().then((list) => {
+          store.setSdkSessions(list);
+          connectAllSessions(list);
+        }).catch((err) => {
+          console.warn("[ws] Failed to refresh sessions after session_created:", err);
+        });
+      }
+      break;
+    }
+
     case "permissions_cleared": {
       store.clearPermissions(sessionId);
       break;

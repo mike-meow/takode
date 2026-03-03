@@ -321,6 +321,7 @@ export function createRoutes(
             launcher.herdSessions(creator.sessionId, [session.sessionId]);
           }
         }
+        wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
         return c.json(session);
       }
 
@@ -691,6 +692,7 @@ export function createRoutes(
         }
       }
 
+      wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
       return c.json(session);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -778,6 +780,7 @@ export function createRoutes(
           sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
           await emitProgress(stream, "launching_cli", "Session resumed", "done");
 
+          wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
           await stream.writeSSE({
             event: "done",
             data: JSON.stringify({
@@ -1216,6 +1219,7 @@ export function createRoutes(
         await emitProgress(stream, "launching_cli", "Session started", "done");
 
         // --- Done ---
+        wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({

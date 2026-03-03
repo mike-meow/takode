@@ -325,7 +325,8 @@ export type BrowserIncomingMessageBase =
   | { type: "quest_list_updated" }
   | { type: "session_quest_claimed"; quest: { id: string; title: string; status?: string } | null }
   | { type: "task_notification"; task_id: string; tool_use_id: string; status: string; output_file?: string; summary?: string }
-  | { type: "session_deleted"; session_id: string };
+  | { type: "session_deleted"; session_id: string }
+  | { type: "session_created"; session_id: string };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 
