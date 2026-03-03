@@ -1506,9 +1506,9 @@ export class WsBridge {
 
   /** Check if a session is actively generating or has pending permission requests. */
   isSessionBusy(sessionId: string): boolean {
-    const s = this.sessions.get(sessionId);
-    if (!s) return false;
-    return s.isGenerating || s.pendingPermissions.size > 0;
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    return session.isGenerating || session.pendingPermissions.size > 0;
   }
 
   /** Restore sessions from disk (call once at startup). */
@@ -2993,12 +2993,7 @@ export class WsBridge {
 
     // Auto-relaunch after full disconnect (CLI didn't reconnect within grace period)
     if (!idleKilled && this.onCLIRelaunchNeeded) {
-      const sid = sessionId;
-      // No additional delay needed — the 15s grace period already passed
-      const s = this.sessions.get(sid);
-      if (s && !s.cliSocket) {
-        this.onCLIRelaunchNeeded(sid);
-      }
+      this.onCLIRelaunchNeeded(sessionId);
     }
   }
 
@@ -3040,12 +3035,12 @@ export class WsBridge {
     // Sending them here too would cause double delivery, leading to duplicate
     // or tangled messages across sessions during reconnects.
 
-    // Notify if backend is not connected and request relaunch.
+    // Notify if backend is not attached and request relaunch.
     // Use backendAttached (not backendConnected) to avoid relaunching sessions
     // where the adapter exists but is still initializing.
-    const backendConnected = this.backendAttached(session);
+    const hasBackendAttached = this.backendAttached(session);
 
-    if (!backendConnected) {
+    if (!hasBackendAttached) {
       const launcherInfo = this.launcher?.getSession(sessionId);
       // For SDK sessions during an active relaunch, the adapter attaches
       // synchronously so it should be ready within seconds — send cli_connected
