@@ -519,9 +519,8 @@ describe("Sidebar", () => {
     expect(archiveButton).toHaveClass("sm:opacity-0");
     expect(archiveButton).toHaveClass("sm:group-hover:opacity-100");
     expect(archiveButton).toHaveClass("right-2");
-    expect(archiveButton).toHaveClass("sm:left-2");
-    expect(archiveButton).toHaveClass("sm:right-auto");
-    expect(sessionButton).toHaveClass("sm:pl-8");
+    // Archive button overlays on the right side on desktop (no reserved left padding)
+    expect(sessionButton).toHaveClass("sm:pl-3.5");
   });
 
   it("permission badge uses mobile-friendly positioning and hover behavior", () => {

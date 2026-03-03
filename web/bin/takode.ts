@@ -983,6 +983,10 @@ type SpawnedSession = {
   name?: string;
   backendType?: string;
   cwd?: string;
+  isWorktree?: boolean;
+  actualBranch?: string;
+  branch?: string;
+  permissionMode?: string;
 };
 
 async function handleSpawn(base: string, args: string[]): Promise<void> {
@@ -1085,9 +1089,19 @@ Examples:
   }
 
   for (const session of spawned) {
-    const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId;
+    const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId.slice(0, 8);
     const name = session.name || "(unnamed)";
-    console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"`);
+    const backend = session.backendType === "claude-sdk" ? " [sdk]"
+      : session.backendType === "codex" ? " [codex]"
+      : " [claude]";
+    const wt = session.isWorktree ? " wt" : "";
+    const branch = session.actualBranch || session.branch || "";
+    const branchLabel = branch ? `  ${branch}` : "";
+    const cwdLabel = session.cwd
+      ? session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd
+      : "";
+    console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"${backend}${wt}`);
+    console.log(`        ${cwdLabel}${branchLabel}  ${session.sessionId}`);
   }
 }
 
@@ -1462,7 +1476,10 @@ try {
     "pending",
     "answer",
   ]);
-  if (command && requiresAuth.has(command)) {
+  // Skip auth when asking for help — user should be able to read usage without
+  // being in an orchestrator session.
+  const wantsHelp = args.includes("--help") || args.includes("-h");
+  if (command && requiresAuth.has(command) && !wantsHelp) {
     await ensureOrchestratorAccess(base);
   }
 
