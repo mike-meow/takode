@@ -110,7 +110,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       return stored === null ? true : stored === "true";
     },
   );
-  const [assistantMode, setAssistantMode] = useState(false);
   const [sessionRole, setSessionRole] = useState<"worker" | "orchestrator">("worker");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
@@ -314,7 +313,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       backend,
       codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
       codexReasoningEffort: backend === "codex" ? (codexReasoningEffort || undefined) : undefined,
-      assistantMode: assistantMode || undefined,
+      assistantMode: undefined,
       askPermission,
       role: sessionRole === "orchestrator" ? "orchestrator" as const : undefined,
     };
@@ -937,28 +936,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
                   <span>Worktree</span>
                 </button>
               )}
-
-              {/* Assistant mode toggle */}
-              <button
-                onClick={() => {
-                  const next = !assistantMode;
-                  setAssistantMode(next);
-                  if (next) {
-                    if (backend !== "claude") switchBackend("claude");
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
-                  assistantMode
-                    ? "bg-cc-primary/15 text-cc-primary font-medium"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-                }`}
-                title="Create an assistant session (Takode) with a dedicated workspace"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-70">
-                  <path d="M8 1l1.545 4.752h4.997l-4.043 2.938 1.545 4.752L8 10.504l-4.044 2.938 1.545-4.752L1.458 5.752h4.997z" />
-                </svg>
-                <span>Assistant</span>
-              </button>
 
               {/* Orchestrator role toggle */}
               <button
