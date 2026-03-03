@@ -468,27 +468,6 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             <span>Usage Bars in Sidebar</span>
             <span className="text-xs text-cc-muted">{showUsageBars ? "On" : "Off"}</span>
           </button>
-          <button
-            type="button"
-            disabled={namerToggleSaving}
-            onClick={async () => {
-              const newVal = !namerEnabled;
-              setNamerEnabled(newVal);
-              setNamerToggleSaving(true);
-              try {
-                const res = await api.updateSettings({ autoNamerEnabled: newVal });
-                setNamerEnabled(res.autoNamerEnabled);
-              } catch {
-                setNamerEnabled(!newVal);
-              } finally {
-                setNamerToggleSaving(false);
-              }
-            }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
-          >
-            <span>AI Session Naming</span>
-            <span className="text-xs text-cc-muted">{namerToggleSaving ? "..." : namerEnabled ? "On" : "Off"}</span>
-          </button>
         </CollapsibleSection>
 
         {/* ── 2. Notifications ─────────────────────────────────── */}
@@ -688,263 +667,6 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             {lifecycleSaving && (
               <p className="text-xs text-cc-muted">Saving...</p>
             )}
-          </div>
-
-          {/* Session Auto-Namer backend */}
-          <div className="border-t border-cc-border pt-3 space-y-3">
-            <div>
-              <span className="text-sm font-medium text-cc-fg">Auto-Namer Backend</span>
-              <p className="mt-1 text-xs text-cc-muted">
-                Choose how sessions are automatically named. Defaults to Claude CLI (<code className="font-mono bg-cc-hover px-1 py-0.5 rounded">claude -p</code>).
-                Use OpenAI-compatible API on machines without Claude CLI.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-cc-muted mb-1.5">Backend</label>
-              <select
-                value={namerBackend}
-                onChange={(e) => setNamerBackend(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
-              >
-                <option value="claude">Claude CLI (default)</option>
-                <option value="openai">OpenAI-compatible API</option>
-              </select>
-            </div>
-
-            {(namerBackend === "claude") && (
-              <div className="space-y-3 pl-3 border-l-2 border-cc-border">
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-claude-model">
-                    Model
-                  </label>
-                  <input
-                    id="namer-claude-model"
-                    type="text"
-                    value={namerModel}
-                    onChange={(e) => setNamerModel(e.target.value)}
-                    placeholder="haiku"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                  <p className="mt-1 text-xs text-cc-muted">
-                    Claude CLI model name passed to <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">--model</code>. Defaults to haiku.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {(namerBackend === "openai") && (
-              <div className="space-y-3 pl-3 border-l-2 border-cc-border">
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-api-key">
-                    API Key
-                  </label>
-                  <input
-                    id="namer-api-key"
-                    type="password"
-                    value={namerApiKey}
-                    onChange={(e) => setNamerApiKey(e.target.value)}
-                    onFocus={() => { if (namerApiKey === "***") setNamerApiKey(""); }}
-                    placeholder="sk-..."
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-base-url">
-                    Base URL
-                  </label>
-                  <input
-                    id="namer-base-url"
-                    type="text"
-                    value={namerBaseUrl}
-                    onChange={(e) => setNamerBaseUrl(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                  <p className="mt-1 text-xs text-cc-muted">
-                    Leave empty for OpenAI. Use a custom URL for LiteLLM, Ollama, etc.
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-model">
-                    Model
-                  </label>
-                  <input
-                    id="namer-model"
-                    type="text"
-                    value={namerModel}
-                    onChange={(e) => setNamerModel(e.target.value)}
-                    placeholder="gpt-4o-mini"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                </div>
-              </div>
-            )}
-
-            {namerError && (
-              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-                {namerError}
-              </div>
-            )}
-            {namerSaved && (
-              <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
-                Auto-namer settings saved.
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={namerSaving || loading}
-                onClick={async () => {
-                  setNamerSaving(true);
-                  setNamerError("");
-                  setNamerSaved(false);
-                  try {
-                    let config: NamerConfig;
-                    if (namerBackend === "openai") {
-                      config = {
-                        backend: "openai",
-                        apiKey: namerApiKey === "***" ? "***" : namerApiKey,
-                        baseUrl: namerBaseUrl,
-                        model: namerModel,
-                      };
-                    } else {
-                      config = { backend: "claude", model: namerModel || undefined };
-                    }
-                    await api.updateSettings({ namerConfig: config });
-                    setNamerSaved(true);
-                    setTimeout(() => setNamerSaved(false), 3000);
-                  } catch (err: unknown) {
-                    setNamerError(err instanceof Error ? err.message : String(err));
-                  } finally {
-                    setNamerSaving(false);
-                  }
-                }}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  namerSaving || loading
-                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                    : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                }`}
-              >
-                {namerSaving ? "Saving..." : "Save"}
-              </button>
-            </div>
-
-            <NamerDebugPanel />
-          </div>
-
-          {/* Voice Transcription config */}
-          <div className="border-t border-cc-border pt-3 space-y-3">
-            <div>
-              <span className="text-sm font-medium text-cc-fg">Voice Transcription</span>
-              <p className="mt-1 text-xs text-cc-muted">
-                Configure the OpenAI-compatible Whisper API for voice-to-text input.
-                Optionally enable LLM enhancement to clean up transcribed text before sending.
-              </p>
-            </div>
-
-            <div className="space-y-3 pl-3 border-l-2 border-cc-border">
-              <div>
-                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-api-key">
-                  API Key
-                </label>
-                <input
-                  id="transcription-api-key"
-                  type="password"
-                  value={transcriptionApiKey}
-                  onChange={(e) => setTranscriptionApiKey(e.target.value)}
-                  onFocus={() => { if (transcriptionApiKey === "***") setTranscriptionApiKey(""); }}
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-base-url">
-                  Base URL
-                </label>
-                <input
-                  id="transcription-base-url"
-                  type="text"
-                  value={transcriptionBaseUrl}
-                  onChange={(e) => setTranscriptionBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1"
-                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                />
-                <p className="mt-1 text-xs text-cc-muted">
-                  Leave empty for OpenAI. Use a custom URL for Groq, local Whisper, etc.
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-model">
-                  Enhancement Model
-                </label>
-                <input
-                  id="transcription-model"
-                  type="text"
-                  value={transcriptionModel}
-                  onChange={(e) => setTranscriptionModel(e.target.value)}
-                  placeholder="gpt-5-mini"
-                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                />
-              </div>
-              <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={transcriptionEnhancement}
-                  onChange={(e) => setTranscriptionEnhancement(e.target.checked)}
-                  className="accent-cc-primary"
-                />
-                Enable Enhancement
-              </label>
-            </div>
-
-            {transcriptionError && (
-              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-                {transcriptionError}
-              </div>
-            )}
-            {transcriptionSaved && (
-              <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
-                Voice transcription settings saved.
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={transcriptionSaving || loading}
-                onClick={async () => {
-                  setTranscriptionSaving(true);
-                  setTranscriptionError("");
-                  setTranscriptionSaved(false);
-                  try {
-                    const config: TranscriptionConfig = {
-                      apiKey: transcriptionApiKey === "***" ? "***" : transcriptionApiKey,
-                      baseUrl: transcriptionBaseUrl,
-                      enhancementEnabled: transcriptionEnhancement,
-                      enhancementModel: transcriptionModel,
-                    };
-                    await api.updateSettings({ transcriptionConfig: config });
-                    setTranscriptionSaved(true);
-                    setTimeout(() => setTranscriptionSaved(false), 3000);
-                  } catch (err: unknown) {
-                    setTranscriptionError(err instanceof Error ? err.message : String(err));
-                  } finally {
-                    setTranscriptionSaving(false);
-                  }
-                }}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  transcriptionSaving || loading
-                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                    : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                }`}
-              >
-                {transcriptionSaving ? "Saving..." : "Save"}
-              </button>
-            </div>
-
-            <TranscriptionDebugPanel />
           </div>
 
           {/* Session Data — export/import */}
@@ -1456,7 +1178,278 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           </div>
         </CollapsibleSection>
 
-        {/* ── 7. Server & Diagnostics ──────────────────────────── */}
+        {/* ── 7. Session Namer ─────────────────────────────────── */}
+        <CollapsibleSection
+          id="session-namer"
+          title="Session Namer"
+          description="Automatically name sessions based on their content. Choose Claude CLI or an OpenAI-compatible API as the naming backend."
+        >
+          <button
+            type="button"
+            disabled={namerToggleSaving}
+            onClick={async () => {
+              const newVal = !namerEnabled;
+              setNamerEnabled(newVal);
+              setNamerToggleSaving(true);
+              try {
+                const res = await api.updateSettings({ autoNamerEnabled: newVal });
+                setNamerEnabled(res.autoNamerEnabled);
+              } catch {
+                setNamerEnabled(!newVal);
+              } finally {
+                setNamerToggleSaving(false);
+              }
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+          >
+            <span>Enabled</span>
+            <span className="text-xs text-cc-muted">{namerToggleSaving ? "..." : namerEnabled ? "On" : "Off"}</span>
+          </button>
+
+          <div>
+            <label className="block text-xs font-medium text-cc-muted mb-1.5">Backend</label>
+            <select
+              value={namerBackend}
+              onChange={(e) => setNamerBackend(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+            >
+              <option value="claude">Claude CLI (default)</option>
+              <option value="openai">OpenAI-compatible API</option>
+            </select>
+          </div>
+
+          {(namerBackend === "claude") && (
+            <div className="space-y-3 pl-3 border-l-2 border-cc-border">
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-claude-model">
+                  Model
+                </label>
+                <input
+                  id="namer-claude-model"
+                  type="text"
+                  value={namerModel}
+                  onChange={(e) => setNamerModel(e.target.value)}
+                  placeholder="haiku"
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+                <p className="mt-1 text-xs text-cc-muted">
+                  Claude CLI model name passed to <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">--model</code>. Defaults to haiku.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(namerBackend === "openai") && (
+            <div className="space-y-3 pl-3 border-l-2 border-cc-border">
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-api-key">
+                  API Key
+                </label>
+                <input
+                  id="namer-api-key"
+                  type="password"
+                  value={namerApiKey}
+                  onChange={(e) => setNamerApiKey(e.target.value)}
+                  onFocus={() => { if (namerApiKey === "***") setNamerApiKey(""); }}
+                  placeholder="sk-..."
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-base-url">
+                  Base URL
+                </label>
+                <input
+                  id="namer-base-url"
+                  type="text"
+                  value={namerBaseUrl}
+                  onChange={(e) => setNamerBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+                <p className="mt-1 text-xs text-cc-muted">
+                  Leave empty for OpenAI. Use a custom URL for LiteLLM, Ollama, etc.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-model">
+                  Model
+                </label>
+                <input
+                  id="namer-model"
+                  type="text"
+                  value={namerModel}
+                  onChange={(e) => setNamerModel(e.target.value)}
+                  placeholder="gpt-4o-mini"
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+                />
+              </div>
+            </div>
+          )}
+
+          {namerError && (
+            <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+              {namerError}
+            </div>
+          )}
+          {namerSaved && (
+            <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+              Auto-namer settings saved.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={namerSaving || loading}
+              onClick={async () => {
+                setNamerSaving(true);
+                setNamerError("");
+                setNamerSaved(false);
+                try {
+                  let config: NamerConfig;
+                  if (namerBackend === "openai") {
+                    config = {
+                      backend: "openai",
+                      apiKey: namerApiKey === "***" ? "***" : namerApiKey,
+                      baseUrl: namerBaseUrl,
+                      model: namerModel,
+                    };
+                  } else {
+                    config = { backend: "claude", model: namerModel || undefined };
+                  }
+                  await api.updateSettings({ namerConfig: config });
+                  setNamerSaved(true);
+                  setTimeout(() => setNamerSaved(false), 3000);
+                } catch (err: unknown) {
+                  setNamerError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setNamerSaving(false);
+                }
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                namerSaving || loading
+                  ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                  : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+              }`}
+            >
+              {namerSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+
+          <NamerDebugPanel />
+        </CollapsibleSection>
+
+        {/* ── 8. Voice Transcription ──────────────────────────── */}
+        <CollapsibleSection
+          id="voice-transcription"
+          title="Voice Transcription"
+          description="Configure the OpenAI-compatible Whisper API for voice-to-text input. Optionally enable LLM enhancement to clean up transcribed text before sending."
+        >
+          <div className="space-y-3 pl-3 border-l-2 border-cc-border">
+            <div>
+              <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-api-key">
+                API Key
+              </label>
+              <input
+                id="transcription-api-key"
+                type="password"
+                value={transcriptionApiKey}
+                onChange={(e) => setTranscriptionApiKey(e.target.value)}
+                onFocus={() => { if (transcriptionApiKey === "***") setTranscriptionApiKey(""); }}
+                placeholder="sk-..."
+                className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-base-url">
+                Base URL
+              </label>
+              <input
+                id="transcription-base-url"
+                type="text"
+                value={transcriptionBaseUrl}
+                onChange={(e) => setTranscriptionBaseUrl(e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+              />
+              <p className="mt-1 text-xs text-cc-muted">
+                Leave empty for OpenAI. Use a custom URL for Groq, local Whisper, etc.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-model">
+                Enhancement Model
+              </label>
+              <input
+                id="transcription-model"
+                type="text"
+                value={transcriptionModel}
+                onChange={(e) => setTranscriptionModel(e.target.value)}
+                placeholder="gpt-5-mini"
+                className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={transcriptionEnhancement}
+                onChange={(e) => setTranscriptionEnhancement(e.target.checked)}
+                className="accent-cc-primary"
+              />
+              Enable Enhancement
+            </label>
+          </div>
+
+          {transcriptionError && (
+            <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+              {transcriptionError}
+            </div>
+          )}
+          {transcriptionSaved && (
+            <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+              Voice transcription settings saved.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={transcriptionSaving || loading}
+              onClick={async () => {
+                setTranscriptionSaving(true);
+                setTranscriptionError("");
+                setTranscriptionSaved(false);
+                try {
+                  const config: TranscriptionConfig = {
+                    apiKey: transcriptionApiKey === "***" ? "***" : transcriptionApiKey,
+                    baseUrl: transcriptionBaseUrl,
+                    enhancementEnabled: transcriptionEnhancement,
+                    enhancementModel: transcriptionModel,
+                  };
+                  await api.updateSettings({ transcriptionConfig: config });
+                  setTranscriptionSaved(true);
+                  setTimeout(() => setTranscriptionSaved(false), 3000);
+                } catch (err: unknown) {
+                  setTranscriptionError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setTranscriptionSaving(false);
+                }
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                transcriptionSaving || loading
+                  ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                  : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+              }`}
+            >
+              {transcriptionSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+
+          <TranscriptionDebugPanel />
+        </CollapsibleSection>
+
+        {/* ── 9. Server & Diagnostics ──────────────────────────── */}
         <CollapsibleSection id="server" title="Server & Diagnostics">
           <div className="space-y-3">
             <p className="text-xs text-cc-muted">
