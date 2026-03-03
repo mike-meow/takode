@@ -3324,8 +3324,9 @@ export function createRoutes(
         return c.json({ error: "Session is herded — only its leader can send messages" }, 403);
       }
     }
-    wsBridge.injectUserMessage(id, body.content, agentSource);
-    return c.json({ ok: true, sessionId: id });
+    const delivery = wsBridge.injectUserMessage(id, body.content, agentSource);
+    if (delivery === "no_session") return c.json({ error: "Session not found in bridge" }, 404);
+    return c.json({ ok: true, sessionId: id, delivery });
   });
 
   // ─── Cat herding (orchestrator→worker relationships) ──────────────

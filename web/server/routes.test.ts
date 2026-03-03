@@ -216,7 +216,7 @@ function createMockBridge() {
     markSessionRead: vi.fn(() => true),
     markSessionUnread: vi.fn(() => true),
     markAllSessionsRead: vi.fn(),
-    injectUserMessage: vi.fn(),
+    injectUserMessage: vi.fn(() => "sent" as const),
     subscribeTakodeEvents: vi.fn(() => () => {}),
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),

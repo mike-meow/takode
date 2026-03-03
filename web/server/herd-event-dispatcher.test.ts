@@ -37,6 +37,7 @@ function createMockBridge(): WsBridgeHandle & {
     }),
     injectUserMessage: vi.fn((sessionId, content, agentSource) => {
       (bridge as any)._lastInjected = { sessionId, content, agentSource };
+      return "sent" as const;
     }),
     isSessionIdle: vi.fn(() => false),
     _triggerEvent: (evt: TakodeEvent) => { callback?.(evt); },
@@ -57,7 +58,7 @@ function createMocks() {
       eventCallback = cb;
       return vi.fn(); // unsubscribe
     }),
-    injectUserMessage: vi.fn(),
+    injectUserMessage: vi.fn(() => "sent" as const),
     isSessionIdle: vi.fn(() => false),
   };
   const launcher: LauncherHandle = {

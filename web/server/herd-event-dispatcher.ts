@@ -26,7 +26,7 @@ import type { TakodeEvent, TakodeEventType } from "./session-types.js";
 
 export interface WsBridgeHandle {
   subscribeTakodeEvents(sessions: Set<string>, cb: (e: TakodeEvent) => void, since?: number): () => void;
-  injectUserMessage(sessionId: string, content: string, agentSource?: { sessionId: string; sessionLabel?: string }): void;
+  injectUserMessage(sessionId: string, content: string, agentSource?: { sessionId: string; sessionLabel?: string }): "sent" | "queued" | "no_session";
   isSessionIdle(sessionId: string): boolean;
 }
 

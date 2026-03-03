@@ -3096,18 +3096,23 @@ export class WsBridge {
   }
 
   /** Send a user message into a session programmatically (no browser required).
-   *  Used by the cron scheduler and takode CLI to send prompts. */
-  injectUserMessage(sessionId: string, content: string, agentSource?: { sessionId: string; sessionLabel?: string }): void {
+   *  Used by the cron scheduler and takode CLI to send prompts.
+   *  Returns delivery status so callers can distinguish live delivery from queuing. */
+  injectUserMessage(sessionId: string, content: string, agentSource?: { sessionId: string; sessionLabel?: string }): "sent" | "queued" | "no_session" {
     const session = this.sessions.get(sessionId);
     if (!session) {
       console.error(`[ws-bridge] Cannot inject message: session ${sessionId} not found`);
-      return;
+      return "no_session";
     }
+    // Check backend connectivity BEFORE routing — if the backend is dead,
+    // routeBrowserMessage will queue the message but the caller should know.
+    const backendLive = this.backendConnected(session);
     this.routeBrowserMessage(session, {
       type: "user_message",
       content,
       ...(agentSource ? { agentSource } : {}),
     });
+    return backendLive ? "sent" : "queued";
   }
 
   private isSystemSourceTag(agentSource: { sessionId: string; sessionLabel?: string } | undefined): boolean {
