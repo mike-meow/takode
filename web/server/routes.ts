@@ -36,7 +36,7 @@ import { searchSessionDocuments, type SessionSearchDocument } from "./session-se
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "./assistant-workspace.js";
 import { generateUniqueSessionName } from "../src/utils/names.js";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends, getTranscriptionStatus, resolveOpenAIKey } from "./transcription.js";
-import { enhanceTranscript, addTranscriptionLogEntry, getTranscriptionLogIndex, getTranscriptionLogEntry } from "./transcription-enhancer.js";
+import { enhanceTranscript, buildSttPrompt, addTranscriptionLogEntry, getTranscriptionLogIndex, getTranscriptionLogEntry } from "./transcription-enhancer.js";
 import { getLegacyCodexHome } from "./codex-home.js";
 import type { PerfTracer } from "./perf-tracer.js";
 import { GIT_CMD_TIMEOUT } from "./constants.js";
@@ -2926,6 +2926,8 @@ export function createRoutes(
     }
 
     const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"] : undefined;
+    const composerBefore = typeof body["composerBefore"] === "string" ? body["composerBefore"] : undefined;
+    const composerAfter = typeof body["composerAfter"] === "string" ? body["composerAfter"] : undefined;
     const requestedBackend = typeof body["backend"] === "string" ? body["backend"] : undefined;
     const { default: defaultBackend } = getAvailableBackends();
     const backend = requestedBackend || defaultBackend;
@@ -2944,6 +2946,16 @@ export function createRoutes(
       let rawText: string;
       let usedBackend = backend;
       let sttModel = "unknown";
+
+      // Build context-aware STT prompt (guides vocabulary recognition)
+      const sttPrompt = sessionId ? buildSttPrompt({
+        taskHistory: wsBridge.getSessionTaskHistory(sessionId),
+        sessionName: sessionNames.getName(sessionId),
+        composerBefore: composerBefore,
+        composerAfter: composerAfter,
+        messageHistory: wsBridge.getMessageHistory(sessionId),
+      }) : "";
+
       const sttStart = Date.now();
 
       if (backend === "gemini") {
@@ -2958,7 +2970,7 @@ export function createRoutes(
         if (!apiKey) {
           return c.json({ error: "No OpenAI API key configured. Set it in Settings → Voice Transcription, or set OPENAI_API_KEY in your environment." }, 400);
         }
-        rawText = await transcribeWithOpenai(buf, mimeType, apiKey);
+        rawText = await transcribeWithOpenai(buf, mimeType, apiKey, sttPrompt || undefined);
         sttModel = "gpt-4o-mini-transcribe";
       } else {
         return c.json({ error: `Unknown backend: ${backend}` }, 400);
@@ -2979,6 +2991,7 @@ export function createRoutes(
             sessionId,
             sttModel,
             sttDurationMs,
+            sttPrompt,
             rawTranscript: rawText,
             audioSizeBytes: buf.length,
             enhancement: result._debug ? {
@@ -3005,6 +3018,7 @@ export function createRoutes(
         sessionId: sessionId ?? null,
         sttModel,
         sttDurationMs,
+        sttPrompt,
         rawTranscript: rawText,
         audioSizeBytes: buf.length,
         enhancement: null,

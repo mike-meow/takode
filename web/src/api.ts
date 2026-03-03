@@ -405,6 +405,7 @@ export interface TranscriptionLogIndexEntry {
 }
 
 export interface TranscriptionLogEntry extends TranscriptionLogIndexEntry {
+  sttPrompt: string;
   enhancement: {
     model: string;
     systemPrompt: string;
@@ -791,12 +792,19 @@ export const api = {
   // Audio transcription
   transcribe: async (
     audio: Blob,
-    options?: { backend?: "gemini" | "openai"; sessionId?: string },
+    options?: {
+      backend?: "gemini" | "openai";
+      sessionId?: string;
+      composerBefore?: string;
+      composerAfter?: string;
+    },
   ): Promise<{ text: string; rawText?: string; backend: string; enhanced: boolean }> => {
     const form = new FormData();
     form.append("audio", audio, "recording.webm");
     if (options?.backend) form.append("backend", options.backend);
     if (options?.sessionId) form.append("sessionId", options.sessionId);
+    if (options?.composerBefore) form.append("composerBefore", options.composerBefore);
+    if (options?.composerAfter) form.append("composerAfter", options.composerAfter);
     const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));

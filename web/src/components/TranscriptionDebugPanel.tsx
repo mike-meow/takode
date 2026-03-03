@@ -220,6 +220,15 @@ export function TranscriptionDebugPanel() {
                     </pre>
                   </div>
 
+                  {expandedEntry.sttPrompt && (
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">STT Prompt (sent to {expandedEntry.sttModel})</span>
+                      <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                        {expandedEntry.sttPrompt}
+                      </pre>
+                    </div>
+                  )}
+
                   {/* Enhancement section */}
                   {expandedEntry.enhancement ? (
                     <>

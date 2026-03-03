@@ -1,13 +1,15 @@
 import { describe, it, expect } from "vitest";
 import type { BrowserIncomingMessage } from "./session-types.js";
+import type { SessionTaskEntry } from "./session-types.js";
 import {
   _testHelpers,
   buildTranscriptionContext,
   buildEnhancementPrompt,
+  buildSttPrompt,
   enhanceTranscript,
 } from "./transcription-enhancer.js";
 
-const { trunc, extractAssistantText, MAX_TURNS, MIN_WORDS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO } = _testHelpers;
+const { trunc, extractAssistantText, MAX_TURNS, MIN_WORDS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
 
 // ─── Helper to build mock messages ──────────────────────────────────────────
 
@@ -280,5 +282,125 @@ describe("enhanceTranscript", () => {
       "key",
     );
     expect(result.enhanced).toBe(false);
+  });
+});
+
+// ─── buildSttPrompt ──────────────────────────────────────────────────────────
+
+function makeTask(title: string): SessionTaskEntry {
+  return { title, action: "name", timestamp: Date.now(), triggerMessageId: "msg-1" };
+}
+
+describe("buildSttPrompt", () => {
+  it("returns empty string with no input", () => {
+    expect(buildSttPrompt({})).toBe("");
+  });
+
+  it("includes task titles", () => {
+    const prompt = buildSttPrompt({
+      taskHistory: [makeTask("Fix WsBridge reconnect"), makeTask("Add useVoiceInput hook")],
+    });
+    expect(prompt).toContain("Tasks:");
+    expect(prompt).toContain("Fix WsBridge reconnect");
+    expect(prompt).toContain("Add useVoiceInput hook");
+  });
+
+  it("deduplicates task titles (keeps unique only)", () => {
+    const prompt = buildSttPrompt({
+      taskHistory: [
+        makeTask("Fix auth bug"),
+        makeTask("Fix auth bug"),  // duplicate
+        makeTask("Add tests"),
+      ],
+    });
+    // "Fix auth bug" should appear only once
+    const matches = prompt.match(/Fix auth bug/g);
+    expect(matches).toHaveLength(1);
+    expect(prompt).toContain("Add tests");
+  });
+
+  it("includes session name", () => {
+    const prompt = buildSttPrompt({ sessionName: "Debug voice transcription" });
+    expect(prompt).toContain("Session:");
+    expect(prompt).toContain("Debug voice transcription");
+  });
+
+  it("includes composer context", () => {
+    const prompt = buildSttPrompt({
+      composerBefore: "Fix the bug in",
+      composerAfter: "and add tests",
+    });
+    expect(prompt).toContain("Context:");
+    expect(prompt).toContain("Fix the bug in");
+    expect(prompt).toContain("[...]");
+    expect(prompt).toContain("and add tests");
+  });
+
+  it("includes only composerBefore when composerAfter is empty", () => {
+    const prompt = buildSttPrompt({ composerBefore: "Implement the" });
+    expect(prompt).toContain("Context:");
+    expect(prompt).toContain("Implement the");
+    expect(prompt).not.toContain("[...]");
+  });
+
+  it("includes recent user messages", () => {
+    const prompt = buildSttPrompt({
+      messageHistory: [
+        userMsg("Fix the auth token refresh in middleware"),
+        assistantMsg("Done, fixed it"),
+        userMsg("Now add unit tests for WsBridge"),
+      ],
+    });
+    expect(prompt).toContain("Recent messages:");
+    expect(prompt).toContain("Fix the auth token refresh");
+    expect(prompt).toContain("Now add unit tests for WsBridge");
+  });
+
+  it("fills in priority order: tasks > session > composer > messages", () => {
+    const prompt = buildSttPrompt({
+      taskHistory: [makeTask("Fix auth bug")],
+      sessionName: "Debug session",
+      composerBefore: "Add a test for",
+      messageHistory: [userMsg("Some earlier message")],
+    });
+    const lines = prompt.split("\n");
+    // Tasks first
+    expect(lines[0]).toMatch(/^Tasks:/);
+    // Session second
+    expect(lines[1]).toMatch(/^Session:/);
+    // Composer third
+    expect(lines[2]).toMatch(/^Context:/);
+    // Messages last
+    expect(lines[3]).toMatch(/^Recent messages:/);
+  });
+
+  it("respects the character budget", () => {
+    const prompt = buildSttPrompt({
+      taskHistory: [makeTask("A".repeat(100))],
+      sessionName: "B".repeat(100),
+      composerBefore: "C".repeat(100),
+      messageHistory: [
+        userMsg("D".repeat(500)),
+        userMsg("E".repeat(500)),
+        userMsg("F".repeat(500)),
+        userMsg("G".repeat(500)),
+      ],
+    });
+    // Should not exceed the budget
+    expect(prompt.length).toBeLessThanOrEqual(STT_PROMPT_MAX_CHARS + 50); // small margin for labels
+  });
+
+  it("skips assistant messages when extracting user messages", () => {
+    const prompt = buildSttPrompt({
+      messageHistory: [
+        userMsg("Fix the bug"),
+        assistantMsg("I fixed it"),
+        userMsg("Add tests"),
+      ],
+    });
+    // Only user messages in the "Recent messages" section
+    expect(prompt).toContain("Fix the bug");
+    expect(prompt).toContain("Add tests");
+    expect(prompt).not.toContain("I fixed it");
   });
 });

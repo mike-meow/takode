@@ -177,7 +177,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const askConfirmRef = useRef<HTMLDivElement>(null);
 
   // Voice input — records audio via MediaRecorder, transcribes server-side
-  const preRecordingTextRef = useRef("");
+  const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
     isRecording, isSupported: voiceSupported, isTranscribing,
     error: voiceError, volumeLevel, setIsTranscribing, setError: setVoiceError,
@@ -186,10 +186,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
     onAudioReady: async (blob) => {
       setIsTranscribing(true);
       try {
-        const { text: transcript } = await api.transcribe(blob, { sessionId });
-        const prefix = preRecordingTextRef.current;
-        const separator = prefix && !prefix.endsWith(" ") && !prefix.endsWith("\n") ? " " : "";
-        setText(prefix + separator + transcript);
+        const { before, after } = preRecordingTextRef.current;
+        const { text: transcript } = await api.transcribe(blob, {
+          sessionId,
+          composerBefore: before || undefined,
+          composerAfter: after || undefined,
+        });
+        const separator = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+        const afterSep = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
+        setText(before + separator + transcript + afterSep + after);
       } catch (err) {
         setVoiceError(err instanceof Error ? err.message : "Transcription failed");
       } finally {
@@ -200,7 +205,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   const handleMicClick = useCallback(() => {
     if (!isRecording) {
-      preRecordingTextRef.current = text;
+      const el = textareaRef.current;
+      const cursorPos = el?.selectionStart ?? text.length;
+      preRecordingTextRef.current = {
+        before: text.slice(0, cursorPos),
+        after: text.slice(cursorPos),
+      };
     }
     toggleRecording();
   }, [isRecording, text, toggleRecording]);

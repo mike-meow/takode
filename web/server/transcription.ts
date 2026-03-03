@@ -64,11 +64,13 @@ export async function transcribeWithGemini(
 
 /**
  * Transcribe audio using OpenAI Whisper API (multipart form upload).
+ * @param sttPrompt Optional prompt to guide the STT model's vocabulary recognition (up to 1024 tokens).
  */
 export async function transcribeWithOpenai(
   audioBuffer: Buffer,
   mimeType: string,
   apiKey: string,
+  sttPrompt?: string,
 ): Promise<string> {
   // Map MIME type to a file extension Whisper expects
   const extMap: Record<string, string> = {
@@ -89,6 +91,9 @@ export async function transcribeWithOpenai(
     new Blob([new Uint8Array(audioBuffer)], { type: mimeType }),
     `recording.${ext}`,
   );
+  if (sttPrompt) {
+    form.append("prompt", sttPrompt);
+  }
 
   const response = await fetch(
     "https://api.openai.com/v1/audio/transcriptions",
