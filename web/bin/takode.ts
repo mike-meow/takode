@@ -348,6 +348,8 @@ function printSessionLine(s: {
   isAssistant?: boolean;
   herdedBy?: string;
   model?: string;
+  backendType?: string;
+  cwd?: string;
   gitBranch?: string;
   gitAhead?: number;
   gitBehind?: number;
@@ -364,6 +366,10 @@ function printSessionLine(s: {
   const name = s.name || "(unnamed)";
   const role = s.isOrchestrator ? " [leader]" : s.isAssistant ? " [asst]" : "";
   const herd = s.herdedBy ? " [herd]" : "";
+  // Backend type tag: only show for non-default types (sdk, codex)
+  const backend = s.backendType === "claude-sdk" ? " [sdk]"
+    : s.backendType === "codex" ? " [codex]"
+    : "";
   const status = s.cliConnected
     ? (s.state === "running" ? "●" : "○")
     : (s.archived ? "⊘" : "✗");
@@ -387,11 +393,13 @@ function printSessionLine(s: {
   const diffStats = (added || removed) ? ` ${[added, removed].filter(Boolean).join(" ")}` : "";
 
   const wt = s.isWorktree ? " wt" : "";
+  // Show cwd as the last directory component (folder name) for brevity
+  const cwdLabel = s.cwd ? truncate(s.cwd.replace(/\/$/, "").split("/").pop() || s.cwd, 30) : "";
   const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
   const preview = s.lastMessagePreview ? `  "${truncate(s.lastMessagePreview, 50)}"` : "";
 
-  console.log(`  ${num.padEnd(5)} ${status} ${name}${role}${herd}${quest}${attention}`);
-  console.log(`        ${branch}${gitDelta}${diffStats}${wt}  ${activity}${preview}`);
+  console.log(`  ${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${attention}`);
+  console.log(`        ${cwdLabel}${branch}${gitDelta}${diffStats}${wt}  ${activity}${preview}`);
 }
 
 // ─── Tasks handler ───────────────────────────────────────────────────────────
