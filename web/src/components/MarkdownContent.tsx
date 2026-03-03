@@ -1,6 +1,22 @@
 import { useRef, useCallback, useMemo, useState, useEffect, type ComponentProps, type MouseEvent, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import hljs from "highlight.js/lib/core";
+import python from "highlight.js/lib/languages/python";
+import javascript from "highlight.js/lib/languages/javascript";
+import typescript from "highlight.js/lib/languages/typescript";
+import bash from "highlight.js/lib/languages/bash";
+import json from "highlight.js/lib/languages/json";
+import xml from "highlight.js/lib/languages/xml";
+import css from "highlight.js/lib/languages/css";
+import go from "highlight.js/lib/languages/go";
+import rust from "highlight.js/lib/languages/rust";
+import java from "highlight.js/lib/languages/java";
+import cpp from "highlight.js/lib/languages/cpp";
+import yaml from "highlight.js/lib/languages/yaml";
+import sql from "highlight.js/lib/languages/sql";
+import diff from "highlight.js/lib/languages/diff";
+import markdown from "highlight.js/lib/languages/markdown";
 import { api, type EditorKind } from "../api.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession, sessionHash } from "../utils/routing.js";
@@ -9,6 +25,33 @@ import { QuestHoverCard } from "./QuestHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
 import { withQuestIdInHash } from "../utils/routing.js";
+
+// Register languages with highlight.js (tree-shakeable core import)
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("shell", bash);
+hljs.registerLanguage("sh", bash);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("html", xml);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("css", css);
+hljs.registerLanguage("go", go);
+hljs.registerLanguage("rust", rust);
+hljs.registerLanguage("java", java);
+hljs.registerLanguage("cpp", cpp);
+hljs.registerLanguage("c", cpp);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("yml", yaml);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("diff", diff);
+hljs.registerLanguage("markdown", markdown);
+hljs.registerLanguage("md", markdown);
+// Aliases for common fence tags
+hljs.registerLanguage("js", javascript);
+hljs.registerLanguage("ts", typescript);
+hljs.registerLanguage("py", python);
 
 function parseQuestIdFromHref(href?: string): string | null {
   if (!href) return null;
@@ -461,6 +504,20 @@ function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
   const codeRef = useRef<HTMLElement>(null);
   const getText = useCallback(() => codeRef.current?.textContent ?? "", []);
 
+  // Syntax highlight when a supported language is specified
+  const highlighted = useMemo(() => {
+    if (!lang) return null;
+    const raw = typeof children === "string" ? children : String(children ?? "");
+    // Strip trailing newline that react-markdown appends to fenced code
+    const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+    try {
+      if (hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+    } catch { /* fall through to plain text */ }
+    return null;
+  }, [lang, children]);
+
   return (
     <div className="group/code my-2 rounded-lg overflow-hidden border border-cc-border relative">
       {lang ? (
@@ -476,7 +533,11 @@ function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
         </div>
       )}
       <pre className="px-2 sm:px-3 py-2 sm:py-2.5 bg-cc-code-bg text-cc-code-fg text-[12px] sm:text-[13px] font-mono-code leading-relaxed overflow-x-auto">
-        <code ref={codeRef}>{children}</code>
+        {highlighted ? (
+          <code ref={codeRef} dangerouslySetInnerHTML={{ __html: highlighted }} />
+        ) : (
+          <code ref={codeRef}>{children}</code>
+        )}
       </pre>
     </div>
   );

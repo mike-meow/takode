@@ -46,6 +46,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "croner": "^10.0.1",
     "diff": "^8.0.3",
+    "highlight.js": "^11.11.1",
     "hono": "^4.7.0",
     "sharp": "^0.34.5"
   },

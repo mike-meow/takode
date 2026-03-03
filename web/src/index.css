@@ -227,6 +227,33 @@ html, body {
   --color-cc-warning: #f6e05e;
 }
 
+/* ─── Syntax highlighting tokens (highlight.js) ───────────────────────────── */
+/* Minimal dark theme — matches the app's dark code block background.
+   Only colors the tokens highlight.js emits; background comes from Tailwind. */
+.hljs-keyword,
+.hljs-built_in { color: #c586c0; }          /* purple — keywords, builtins */
+.hljs-string,
+.hljs-regexp { color: #ce9178; }            /* warm tan — strings, regex */
+.hljs-number,
+.hljs-literal { color: #b5cea8; }           /* soft green — numbers, booleans */
+.hljs-title.function_,
+.hljs-title.class_ { color: #dcdcaa; }      /* yellow — function/class names */
+.hljs-comment,
+.hljs-doctag { color: #6a9955; }            /* green — comments */
+.hljs-variable,
+.hljs-params { color: #9cdcfe; }            /* light blue — variables, params */
+.hljs-type { color: #4ec9b0; }              /* teal — type names */
+.hljs-attr,
+.hljs-attribute { color: #9cdcfe; }         /* light blue — attributes */
+.hljs-meta,
+.hljs-meta .hljs-keyword { color: #569cd6; } /* blue — decorators, pragmas */
+.hljs-selector-tag,
+.hljs-selector-class { color: #d7ba7d; }    /* gold — CSS selectors */
+.hljs-addition { color: #b5cea8; }          /* green — diff additions */
+.hljs-deletion { color: #ce9178; }          /* tan — diff deletions */
+.hljs-operator { color: #d4d4d4; }          /* default fg — operators */
+.hljs-punctuation { color: #d4d4d4; }       /* default fg — punctuation */
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
