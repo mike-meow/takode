@@ -1374,6 +1374,36 @@ describe("CLI message routing", () => {
     expect(assistantBroadcast.parent_tool_use_id).toBeNull();
   });
 
+  it("assistant: updates context_used_percent mid-turn from assistant usage", () => {
+    const session = bridge.getSession("s1")!;
+    session.state.model = "claude-opus-4-6";
+    session.state.context_used_percent = 12;
+
+    const msg = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-context-mid-turn",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-6",
+        content: [{ type: "text", text: "Working..." }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 4000, output_tokens: 2000, cache_creation_input_tokens: 5000, cache_read_input_tokens: 30000 },
+      },
+      parent_tool_use_id: null,
+      uuid: "uuid-context-mid-turn",
+      session_id: "s1",
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+
+    // (4000 + 2000 + 5000 + 30000) / 200000 * 100 = 21
+    expect(bridge.getSession("s1")!.state.context_used_percent).toBe(21);
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const contextUpdate = calls.find((c: any) => c.type === "session_update" && c.session?.context_used_percent === 21);
+    expect(contextUpdate).toBeDefined();
+  });
+
   it("assistant: tags leader @to(user) messages as leader_user_addressed", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
@@ -3826,6 +3856,31 @@ describe("compact_boundary handling", () => {
     expect(marker.trigger).toBe("manual");
     expect(marker.preTokens).toBe(50000);
     expect(marker.id).toMatch(/^compact-boundary-/);
+  });
+
+  it("updates context_used_percent from compact_boundary pre_tokens", () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ model: "claude-opus-4-6" }));
+    browser.send.mockClear();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.state.context_used_percent = 68;
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 167048 },
+      uuid: "u-ctx-compact",
+      session_id: "cli-123",
+    }));
+
+    // 167048 / 200000 * 100 = 84
+    expect(bridge.getOrCreateSession("s1").state.context_used_percent).toBe(84);
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const contextUpdate = calls.find((m: any) => m.type === "session_update" && m.session?.context_used_percent === 84);
+    expect(contextUpdate).toBeDefined();
   });
 
   it("supports multiple compactions creating multiple compact_markers in history", () => {

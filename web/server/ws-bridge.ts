@@ -713,6 +713,17 @@ function computeResultContextUsedPercent(
   return computeContextUsedPercent(msg.usage, contextWindow);
 }
 
+function computePreTokenContextUsedPercent(
+  model: string | undefined,
+  preTokens: number | undefined,
+): number | undefined {
+  if (!Number.isFinite(preTokens) || Number(preTokens) <= 0) return undefined;
+  const contextWindow = resolveResultContextWindow(model, undefined);
+  if (!contextWindow) return undefined;
+  const pct = Math.round((Number(preTokens) / contextWindow) * 100);
+  return clampPercent(pct);
+}
+
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
 export class WsBridge {
@@ -3384,6 +3395,17 @@ export class WsBridge {
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
       });
+      const preTokenContextPct = computePreTokenContextUsedPercent(
+        session.state.model,
+        meta?.pre_tokens,
+      );
+      if (typeof preTokenContextPct === "number" && preTokenContextPct !== session.state.context_used_percent) {
+        session.state.context_used_percent = preTokenContextPct;
+        this.broadcastToBrowsers(session, {
+          type: "session_update",
+          session: { context_used_percent: preTokenContextPct },
+        });
+      }
       session.awaitingCompactSummary = true;
       this.broadcastToBrowsers(session, {
         type: "compact_boundary",
@@ -3427,6 +3449,7 @@ export class WsBridge {
       };
       session.messageHistory.push(browserMsg);
       this.broadcastToBrowsers(session, browserMsg);
+      this.maybeUpdateContextUsedPercentFromAssistantUsage(session, msg.message.usage, msg.message.model);
       // NOTE: Do NOT inject leader addressing reminder here.
       // Deferred to handleResultMessage (turn end).
       this.persistSession(session);
@@ -3557,7 +3580,27 @@ export class WsBridge {
       }
     }
 
+    this.maybeUpdateContextUsedPercentFromAssistantUsage(session, msg.message.usage, msg.message.model);
     this.persistSession(session);
+  }
+
+  private maybeUpdateContextUsedPercentFromAssistantUsage(
+    session: Session,
+    usage: TokenUsage | undefined,
+    modelHint: string | undefined,
+  ) {
+    if (!usage) return;
+    const model = session.state.model || modelHint;
+    const contextWindow = resolveResultContextWindow(model, undefined);
+    if (!contextWindow) return;
+    const nextContextPct = computeContextUsedPercent(usage, contextWindow);
+    if (typeof nextContextPct !== "number") return;
+    if (session.state.context_used_percent === nextContextPct) return;
+    session.state.context_used_percent = nextContextPct;
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { context_used_percent: nextContextPct },
+    });
   }
 
   /**
