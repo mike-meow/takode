@@ -161,6 +161,17 @@ export class ClaudeSdkAdapter {
       sessionOptions.pathToClaudeCodeExecutable = this.options.claudeBinary;
     }
 
+    // WORKAROUND: The SDK's v2 session API hardcodes settingSources: [] which
+    // passes --setting-sources "" to the CLI, disabling all settings loading
+    // (including CLAUDE.md). We read CLAUDE.md files ourselves and inject them
+    // via --append-system-prompt in executableArgs.
+    const claudeMdContent = await this.loadClaudeMdFiles(this.options.cwd);
+    if (claudeMdContent) {
+      const execArgs = (sessionOptions.executableArgs as string[] | undefined) || [];
+      execArgs.push("--append-system-prompt", claudeMdContent);
+      sessionOptions.executableArgs = execArgs;
+    }
+
     // WORKAROUND: The SDK's v2 session API (SDKSessionOptions) does NOT expose
     // `cwd` or `spawnClaudeCodeProcess` — those exist only on the query() API's
     // Options type. The Session constructor (SQ) never forwards them to
@@ -462,5 +473,45 @@ export class ClaudeSdkAdapter {
       // settings.json doesn't exist or is malformed — SDK will use its default
     }
     return undefined;
+  }
+
+  /** Read CLAUDE.md files that the CLI would normally load from settings sources.
+   *  The SDK's v2 session API hardcodes settingSources: [] which disables all
+   *  settings loading. We read the files ourselves and return them as a single
+   *  string for injection via --append-system-prompt. */
+  private async loadClaudeMdFiles(cwd: string): Promise<string | undefined> {
+    const sections: string[] = [];
+
+    // User-level: ~/.claude/CLAUDE.md
+    try {
+      const userPath = join(homedir(), ".claude", "CLAUDE.md");
+      const content = await readFile(userPath, "utf-8");
+      if (content.trim()) {
+        sections.push(`# User CLAUDE.md (~/.claude/CLAUDE.md)\n\n${content.trim()}`);
+      }
+    } catch { /* file doesn't exist */ }
+
+    // Project-level: <cwd>/CLAUDE.md
+    try {
+      const projectPath = join(cwd, "CLAUDE.md");
+      const content = await readFile(projectPath, "utf-8");
+      if (content.trim()) {
+        sections.push(`# Project CLAUDE.md (${projectPath})\n\n${content.trim()}`);
+      }
+    } catch { /* file doesn't exist */ }
+
+    // Project .claude dir: <cwd>/.claude/CLAUDE.md
+    try {
+      const dotClaudePath = join(cwd, ".claude", "CLAUDE.md");
+      const content = await readFile(dotClaudePath, "utf-8");
+      if (content.trim()) {
+        sections.push(`# Project .claude/CLAUDE.md (${dotClaudePath})\n\n${content.trim()}`);
+      }
+    } catch { /* file doesn't exist */ }
+
+    if (sections.length === 0) return undefined;
+
+    console.log(`[claude-sdk-adapter] Loaded ${sections.length} CLAUDE.md file(s) for session ${this.sessionId}`);
+    return sections.join("\n\n---\n\n");
   }
 }
