@@ -367,7 +367,6 @@ async function callEnhancementLLM(
           { role: "user", content: prompt },
         ],
         max_completion_tokens: 1000,
-        temperature: 0,
       }),
       signal: controller.signal,
     });
