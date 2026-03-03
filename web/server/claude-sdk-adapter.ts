@@ -370,13 +370,17 @@ export class ClaudeSdkAdapter {
           this.pendingPermissions.delete(requestId);
           if (behavior === "allow") {
             const updatedInput = (msg as any).updated_input;
-            pending.resolve({
-              behavior: "allow",
-              // Always provide updatedInput — the CLI's Zod schema requires
-              // a Record, not undefined or absent. Use the original tool input
-              // from the pending request as fallback.
-              updatedInput: updatedInput ?? {},
-            });
+            // Only include updatedInput when the browser actually sent modified
+            // input. Omitting it means "approve with original input unchanged."
+            // Including an empty {} causes the CLI to persist it in the session
+            // transcript, and on --resume the CLI validates it against the tool's
+            // Zod schema — an empty object fails validation for tools with
+            // required fields (e.g. Bash requires 'command'), crashing the session.
+            const result: { behavior: "allow"; updatedInput?: Record<string, unknown> } = { behavior: "allow" };
+            if (updatedInput && Object.keys(updatedInput).length > 0) {
+              result.updatedInput = updatedInput;
+            }
+            pending.resolve(result);
           } else {
             pending.resolve({
               behavior: "deny",
