@@ -207,7 +207,8 @@ export class ClaudeSdkAdapter {
 
     // Start streaming messages
     this.streamMessages().catch((err) => {
-      console.error(`[claude-sdk-adapter] Stream error for session ${this.sessionId}:`, err);
+      const errMsg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+      console.error(`[claude-sdk-adapter] Stream error for session ${this.sessionId}: ${errMsg}`);
       this.handleDisconnect();
     });
   }
@@ -229,7 +230,8 @@ export class ClaudeSdkAdapter {
         // just waiting for the next send(). Don't disconnect.
       } catch (err) {
         if (this.connected) {
-          console.error(`[claude-sdk-adapter] Stream error for session ${this.sessionId}:`, err);
+          const errMsg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+          console.error(`[claude-sdk-adapter] Stream error for session ${this.sessionId}: ${errMsg}`);
           this.handleDisconnect();
           return;
         }
