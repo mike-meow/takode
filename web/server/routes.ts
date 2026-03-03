@@ -62,6 +62,17 @@ function execCaptureStdout(
 
 const execPromise = promisify(execCb);
 
+/** Initial system prompt injected into leader/orchestrator sessions on startup. */
+const ORCHESTRATOR_SYSTEM_PROMPT =
+  `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
+  `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
+  `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
+  `When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.\n\n` +
+  `**On startup**: Acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
+  `**Events**: Herd events arrive automatically — no polling needed. React to events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
+  `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +
+  `Read your project CLAUDE.md for full orchestration documentation and workflow guidelines.`;
+
 /** Non-blocking exec — runs a shell command without stalling the event loop. */
 async function execAsync(command: string, cwd: string): Promise<string> {
   const { stdout } = await execPromise(command, { cwd, timeout: GIT_CMD_TIMEOUT });
@@ -653,16 +664,7 @@ export function createRoutes(
             const info = launcher.getSession(session.sessionId);
             if (info && (info.state === "connected" || info.state === "running")) {
               wsBridge.injectUserMessage(session.sessionId,
-                `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
-                `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
-                `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know — answers, results, status updates, decisions needed, errors, or confirmations of dispatched work. **@to(self)**: only for internal bookkeeping with little user relevance. When in doubt, use @to(user).\n\n` +
-                `When mentioning quests in chat, always use clickable links like \`[q-42](quest:q-42)\` (not plain \`q-42\`).\n` +
-                `When referencing files, always use clickable editor links like \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`.\n\n` +
-                `Events from herded workers arrive automatically — you do NOT need to poll or call \`watch\`. When workers finish turns, need permissions, or hit errors, you'll receive a [Herd] message with a compact summary. React to these events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
-                `**Task queuing:** Workers should only focus on one task at a time. Never send an unrelated new task to a busy worker. Queue new tasks in your own todo list and wait for the worker's turn_end event. Only send the next task after the worker finishes and goes idle. It IS okay to send mid-work messages that steer the current task (refining scope, correcting mistakes) or urgent interventions.\n\n` +
-                `Use \`takode herd <ids>\` to add sessions to your herd, \`takode unherd <id>\` to release them.\n\n` +
-                `Start by running \`takode list --active\` to discover all sessions, then \`takode herd <ids>\` to claim your workers. After herding, \`takode list\` shows only your flock.\n\n` +
-                `Read your project CLAUDE.md for full documentation of the takode CLI and orchestration workflow.`
+                ORCHESTRATOR_SYSTEM_PROMPT
               );
               return;
             }
@@ -1187,15 +1189,7 @@ export function createRoutes(
               const info = launcher.getSession(session.sessionId);
               if (info && (info.state === "connected" || info.state === "running")) {
                 wsBridge.injectUserMessage(session.sessionId,
-                  `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
-                  `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
-                  `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know — answers, results, status updates, decisions needed, errors, or confirmations of dispatched work. **@to(self)**: only for internal bookkeeping with little user relevance. When in doubt, use @to(user).\n\n` +
-                  `When mentioning quests in chat, always use clickable links like \`[q-42](quest:q-42)\` (not plain \`q-42\`).\n` +
-                  `When referencing files, always use clickable editor links like \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`.\n\n` +
-                  `Events from herded workers arrive automatically — you do NOT need to poll or call \`watch\`. When workers finish turns, need permissions, or hit errors, you'll receive a [Herd] message with a compact summary. React to these events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
-                  `Use \`takode herd <ids>\` to add sessions to your herd, \`takode unherd <id>\` to release them.\n\n` +
-                `Start by running \`takode list --active\` to discover all sessions, then \`takode herd <ids>\` to claim your workers. After herding, \`takode list\` shows only your flock.\n\n` +
-                  `Read your project CLAUDE.md for full documentation of the takode CLI and orchestration workflow.`
+                  ORCHESTRATOR_SYSTEM_PROMPT
                 );
                 return;
               }
