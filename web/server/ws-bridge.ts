@@ -3858,7 +3858,7 @@ export class WsBridge {
   private static readonly ACCEPT_EDITS_AUTO_APPROVE = new Set([
     "Edit", "Write", "Read", "MultiEdit", "NotebookEdit",
     "Glob", "Grep", "WebFetch", "WebSearch",
-    "TodoWrite", "Task", "Skill",
+    "TodoWrite", "Task", "Agent", "Skill",
   ]);
 
   private async handleControlRequest(session: Session, msg: CLIControlRequestMessage) {

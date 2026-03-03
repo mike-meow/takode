@@ -355,7 +355,8 @@ function computeTurnStats(
       for (const block of msg.message.content) {
         if (block.type === "tool_use") {
           tools++;
-          if ((block as { name: string }).name === "Task") subagents++;
+          const toolName = (block as { name: string }).name;
+          if (toolName === "Task" || toolName === "Agent") subagents++;
         }
       }
     }

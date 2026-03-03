@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
+import { isSubagentToolName } from "../types.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
@@ -18,6 +19,7 @@ const TOOL_ICONS: Record<string, string> = {
   WebSearch: "globe",
   NotebookEdit: "notebook",
   Task: "agent",
+  Agent: "agent",
   TodoWrite: "checklist",
   TaskCreate: "list",
   TaskUpdate: "list",
@@ -43,7 +45,7 @@ export function getToolLabel(name: string): string {
   if (name === "Grep") return "Search Content";
   if (name === "WebSearch") return "Web Search";
   if (name === "WebFetch") return "Web Fetch";
-  if (name === "Task") return "Subagent";
+  if (name === "Task" || name === "Agent") return "Subagent";
   if (name === "TodoWrite") return "Tasks";
   if (name === "NotebookEdit") return "Notebook";
   if (name === "SendMessage") return "Message";
@@ -181,7 +183,7 @@ export const ToolBlock = memo(function ToolBlock({
           <div className="mt-2">
             <ToolDetail name={name} input={input} />
           </div>
-          {sessionId && name !== "Task" && (
+          {sessionId && !isSubagentToolName(name) && (
             <ToolResultSection
               toolUseId={toolUseId}
               sessionId={sessionId}
@@ -422,6 +424,7 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
     case "WebFetch":
       return <WebFetchDetail input={input} />;
     case "Task":
+    case "Agent":
       return <TaskDetail input={input} />;
     case "TodoWrite":
       return <TodoWriteDetail input={input} />;
@@ -885,7 +888,7 @@ export function getPreview(name: string, input: Record<string, unknown>): string
       return String(input.url).slice(0, 60);
     }
   }
-  if (name === "Task" && input.description) return String(input.description);
+  if (isSubagentToolName(name) && input.description) return String(input.description);
   if (name === "TodoWrite" && Array.isArray(input.todos)) {
     const todos = input.todos as Array<{ content?: string; activeForm?: string; status?: string }>;
     const completed = todos.filter((t) => t.status === "completed").length;

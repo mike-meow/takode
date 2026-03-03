@@ -278,7 +278,7 @@ function buildConversationBlock(history: BrowserIncomingMessage[], cwd?: string,
             if (block.name === "ExitPlanMode") {
               currentTurn.hasExitPlanMode = true;
               // Don't count as a tool — it's a plan approval signal
-            } else if (block.name === "Task") {
+            } else if (block.name === "Task" || block.name === "Agent") {
               currentTurn.subagentCount++;
             } else {
               // Capture Write content — plan text lives here when ExitPlanMode follows

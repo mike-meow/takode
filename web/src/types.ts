@@ -28,6 +28,11 @@ export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMess
 export { assertNever, isClaudeFamily };
 export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
 
+/** Tool names that spawn subagent sessions. Older CLI versions use "Task",
+ *  newer ones use "Agent". Both must be recognized for grouping and filtering. */
+export const SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(["Task", "Agent"]);
+export function isSubagentToolName(name: string): boolean { return SUBAGENT_TOOL_NAMES.has(name); }
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";

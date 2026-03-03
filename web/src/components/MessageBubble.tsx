@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useContext, useLayoutEffect, memo } from "react";
 import type { ChatMessage, ContentBlock } from "../types.js";
+import { isSubagentToolName } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CollapseFooter } from "./CollapseFooter.js";
@@ -441,7 +442,7 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
     // not as standalone ToolBlocks. Without this filter, every subagent would
     // appear twice: once as an inline Agent chip (SubagentContainer) and once
     // as a "Subagent" ToolBlock chip.
-    if (block.type === "tool_use" && block.name === "Task") continue;
+    if (block.type === "tool_use" && isSubagentToolName(block.name)) continue;
 
     if (block.type === "tool_use") {
       const last = groups[groups.length - 1];

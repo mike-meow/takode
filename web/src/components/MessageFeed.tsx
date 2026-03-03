@@ -6,6 +6,7 @@ import { MarkdownContent } from "./MarkdownContent.js";
 import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
 import type { ChatMessage, ContentBlock } from "../types.js";
+import { isSubagentToolName } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
 import { isTouchDevice } from "../utils/mobile.js";
@@ -280,10 +281,10 @@ function getTaskIdsFromEntry(entry: FeedEntry): string[] {
     const blocks = entry.msg.contentBlocks || [];
     return blocks
       .filter((b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use")
-      .filter(b => b.name === "Task")
+      .filter(b => isSubagentToolName(b.name))
       .map(b => b.id);
   }
-  if (entry.kind === "tool_msg_group" && entry.toolName === "Task") {
+  if (entry.kind === "tool_msg_group" && isSubagentToolName(entry.toolName)) {
     return entry.items.map(item => item.id);
   }
   return [];
@@ -337,7 +338,7 @@ function buildEntries(
     }
 
     // Case A: Pure Task ToolMsgGroup — absorb entirely into SubagentGroups
-    if (entry.kind === "tool_msg_group" && entry.toolName === "Task") {
+    if (entry.kind === "tool_msg_group" && isSubagentToolName(entry.toolName)) {
       for (const taskId of taskIds) {
         const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
         const children = childrenByParent.get(taskId);
@@ -378,7 +379,7 @@ function buildEntries(
     }
     if (entry.kind === "message") {
       const filteredBlocks = entry.msg.contentBlocks?.filter(
-        (b) => !(b.type === "tool_use" && b.name === "Task")
+        (b) => !(b.type === "tool_use" && isSubagentToolName(b.name))
       );
       result.push({ kind: "message", msg: { ...entry.msg, contentBlocks: filteredBlocks } });
     } else {
@@ -395,7 +396,7 @@ function groupMessages(messages: ChatMessage[]): FeedEntry[] {
   for (const msg of messages) {
     if (!msg.contentBlocks) continue;
     for (const b of msg.contentBlocks) {
-      if (b.type === "tool_use" && b.name === "Task") {
+      if (b.type === "tool_use" && isSubagentToolName(b.name)) {
         const { input, id } = b;
         taskInfo.set(id, {
           description: String(input?.description || "Subagent"),
@@ -1407,7 +1408,7 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
       {/* Tool progress indicator — skip Task tools since SubagentContainers show their own progress */}
       {toolProgress && toolProgress.size > 0 && !streamingText && !isCodexSession && (() => {
-        const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => p.toolName !== "Task");
+        const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => !isSubagentToolName(p.toolName));
         if (nonTaskProgress.length === 0) return null;
         return (
           <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
