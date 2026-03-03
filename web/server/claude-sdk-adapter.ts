@@ -434,7 +434,32 @@ export class ClaudeSdkAdapter {
     switch (msgType) {
       case "user_message": {
         const content = (msg as any).content;
-        if (content) {
+        const images = (msg as any).images as { media_type: string; data: string }[] | undefined;
+        if (!content && !images?.length) return true;
+
+        if (images?.length) {
+          // Build content blocks: image blocks + text block (with annotation).
+          // Uses the SDKUserMessage format: { type: "user", message: { role: "user", content: [...] }, ... }
+          const blocks: unknown[] = [];
+          for (const img of images) {
+            blocks.push({
+              type: "image",
+              source: { type: "base64", media_type: img.media_type, data: img.data },
+            });
+          }
+          if (content) {
+            blocks.push({ type: "text", text: content });
+          }
+          const sdkMsg = {
+            type: "user" as const,
+            message: { role: "user" as const, content: blocks },
+            parent_tool_use_id: null,
+            session_id: this.sessionId,
+          };
+          this.sdkSession.send(sdkMsg).catch((err: Error) => {
+            console.error(`[claude-sdk-adapter] Send (with images) failed for session ${this.sessionId}:`, err);
+          });
+        } else {
           this.sdkSession.send(content).catch((err: Error) => {
             console.error(`[claude-sdk-adapter] Send failed for session ${this.sessionId}:`, err);
           });

@@ -4719,6 +4719,20 @@ export class WsBridge {
       // be resolved, fall back to compressed inline base64 payloads.
       let adapterMsg: BrowserOutgoingMessage = msg;
       if (msg.type === "user_message" && msg.images?.length) {
+        // Append image file path annotation so the agent can see/reference images.
+        // Mirrors the annotation logic in handleUserMessage for CLI sessions.
+        let annotatedContent = msg.content || "";
+        if (userImageRefs?.length) {
+          const imgDir = join(homedir(), ".companion", "images", session.id);
+          const paths = userImageRefs.map((ref) => {
+            const ext = MIME_TO_EXT[ref.media_type] || "bin";
+            return join(imgDir, `${ref.imageId}.orig.${ext}`);
+          });
+          annotatedContent += `\n[📎 ${paths.length} image${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}]`;
+        }
+        // Start with the annotated content
+        adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
+
         let localImagePaths: string[] | undefined;
 
         if (this.imageStore && userImageRefs?.length === msg.images.length) {
@@ -4740,7 +4754,7 @@ export class WsBridge {
         }
 
         if (localImagePaths?.length) {
-          const localMsg = { ...msg, local_images: localImagePaths } as BrowserOutgoingMessage;
+          const localMsg = { ...adapterMsg, local_images: localImagePaths } as BrowserOutgoingMessage;
           delete (localMsg as { images?: unknown }).images;
           adapterMsg = localMsg;
         } else if (this.imageStore) {
@@ -4749,7 +4763,7 @@ export class WsBridge {
             const { base64, mediaType } = await this.imageStore.compressForTransport(img.data, img.media_type);
             compressedImages.push({ media_type: mediaType, data: base64 });
           }
-          adapterMsg = { ...msg, images: compressedImages };
+          adapterMsg = { ...adapterMsg, images: compressedImages } as BrowserOutgoingMessage;
         }
       }
 
