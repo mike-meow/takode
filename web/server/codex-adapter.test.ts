@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodexAdapter } from "./codex-adapter.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage } from "./session-types.js";
 
+/** Minimal event-loop yield so the ReadableStream reader can process chunks.
+ *  Replaces the original 20-50ms setTimeout calls — 1ms is sufficient. */
+const tick = () => new Promise<void>((r) => setTimeout(r, 1));
+
 // ─── Mock Subprocess ──────────────────────────────────────────────────────────
 
 class MockWritableStream {
@@ -78,7 +82,7 @@ describe("CodexAdapter", () => {
     new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
 
     // Give the adapter time to write the initialize request
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Check stdin received the initialize request
     const allWritten = stdin.chunks.join("");
@@ -92,14 +96,14 @@ describe("CodexAdapter", () => {
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
     // Wait for initialize to be sent
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate server responses: initialize response, then initialized, then thread/start
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate streaming: item/started -> item/agentMessage/delta -> item/completed
     stdout.push(JSON.stringify({
@@ -107,7 +111,7 @@ describe("CodexAdapter", () => {
       params: { item: { type: "agentMessage", id: "item_1" } },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/agentMessage/delta",
@@ -119,7 +123,7 @@ describe("CodexAdapter", () => {
       params: { itemId: "item_1", delta: "world!" },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Find content_block_delta events
     const deltas = messages.filter(
@@ -141,30 +145,30 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "agentMessage", id: "item_1" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/agentMessage/delta",
       params: { itemId: "item_1", delta: "Hello world" },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/completed",
       params: { item: { type: "agentMessage", id: "item_1" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const assistantMsgs = messages.filter((m) => m.type === "assistant");
     expect(assistantMsgs.length).toBeGreaterThan(0);
@@ -181,13 +185,13 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send init responses
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate an approval request (this is a JSON-RPC *request* from server with an id)
     stdout.push(JSON.stringify({
@@ -203,7 +207,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
@@ -218,12 +222,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "turn/completed",
@@ -232,7 +236,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const results = messages.filter((m) => m.type === "result");
     expect(results.length).toBe(1);
@@ -247,12 +251,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -267,7 +271,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Should emit content_block_start stream_event BEFORE the assistant message
     const blockStartEvents = messages.filter(
@@ -304,13 +308,13 @@ describe("CodexAdapter", () => {
     });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send init responses
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     const initMsgs = messages.filter((m) => m.type === "session_init");
     expect(initMsgs.length).toBe(1);
@@ -324,13 +328,13 @@ describe("CodexAdapter", () => {
   it("sends turn/start when receiving user_message", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Complete initialization
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Clear written chunks to focus on turn/start
     stdin.chunks = [];
@@ -340,7 +344,7 @@ describe("CodexAdapter", () => {
       content: "Fix the bug",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"method":"turn/start"');
@@ -354,15 +358,15 @@ describe("CodexAdapter", () => {
       approvalMode: "plan",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
@@ -376,15 +380,15 @@ describe("CodexAdapter", () => {
       approvalMode: "bypassPermissions",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
@@ -398,15 +402,15 @@ describe("CodexAdapter", () => {
       approvalMode: "suggest",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "legacy mode mapping" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
@@ -420,24 +424,24 @@ describe("CodexAdapter", () => {
       approvalMode: "plan",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "fallback test" });
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     // id=4 is turn/start here (initialize=1, thread/start=2, rateLimits/read=3)
     stdout.push(JSON.stringify({
       id: 4,
       error: { code: -32602, message: "invalid params: unknown field `collaborationMode`" },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
     stdout.push(JSON.stringify({ id: 5, result: { turn: { id: "turn_1" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const turnStarts = lines.filter((line) => line.method === "turn/start");
@@ -449,13 +453,13 @@ describe("CodexAdapter", () => {
   it("sends localImage user inputs when local_images are provided", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Complete initialization
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
 
@@ -465,7 +469,7 @@ describe("CodexAdapter", () => {
       local_images: ["/tmp/image-a.png", "/tmp/image-b.png"],
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"method":"turn/start"');
@@ -479,13 +483,13 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Complete initialization
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate approval request
     stdout.push(JSON.stringify({
@@ -497,7 +501,7 @@ describe("CodexAdapter", () => {
         parsedCmd: "npm test",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Get the generated request_id
     const permRequest = messages.find((m) => m.type === "permission_request") as { request: { request_id: string } };
@@ -513,7 +517,7 @@ describe("CodexAdapter", () => {
       behavior: "allow",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"decision":"accept"');
@@ -525,19 +529,19 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/commandExecution/requestApproval",
       id: 200,
       params: { itemId: "item_cmd_2", command: ["rm", "-rf", "/"], parsedCmd: "rm -rf /" },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequest = messages.find((m) => m.type === "permission_request") as { request: { request_id: string } };
     stdin.chunks = [];
@@ -548,7 +552,7 @@ describe("CodexAdapter", () => {
       behavior: "deny",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"decision":"decline"');
@@ -562,11 +566,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -574,7 +578,7 @@ describe("CodexAdapter", () => {
         item: { type: "commandExecution", id: "cmd_timer", command: ["echo", "hi"], status: "inProgress" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolUseMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -594,12 +598,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // fileChange with "create" kind → Write tool
     // item/started without diff is deferred; item/completed provides the diff.
@@ -616,7 +620,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const assistantMsgs = messages.filter((m) => m.type === "assistant");
     const writeMsg = assistantMsgs.find((m) => {
@@ -639,7 +643,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const editMsg = messages.filter((m) => m.type === "assistant").find((m) => {
       const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
@@ -653,12 +657,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -676,7 +680,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const assistant = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -697,11 +701,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "codex/event/patch_apply_begin",
@@ -731,7 +735,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const assistant = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -752,11 +756,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -769,7 +773,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const earlyToolUse = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -793,7 +797,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolUseAfterComplete = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -810,11 +814,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // item/started with path and kind, but NO diff
     stdout.push(JSON.stringify({
@@ -828,7 +832,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     // tool_use should NOT have been emitted yet (no diff data)
     const earlyToolUse = messages.find((m) => {
@@ -854,7 +858,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Now tool_use should exist with the diff from completed
     const toolUse = messages.find((m) => {
@@ -868,28 +872,28 @@ describe("CodexAdapter", () => {
   it("sends turn/interrupt on interrupt message", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     // Respond to account/rateLimits/read (id: 3, fired after init)
     stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send a user message first to establish a turn
     adapter.sendBrowserMessage({ type: "user_message", content: "Do something" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate turn/start response (provides a turn ID — id bumped to 4 due to rateLimits/read)
     stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_1" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
 
     adapter.sendBrowserMessage({ type: "interrupt" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"method":"turn/interrupt"');
@@ -902,12 +906,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "turn/completed",
@@ -916,7 +920,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const results = messages.filter((m) => m.type === "result");
     expect(results.length).toBe(1);
@@ -935,11 +939,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "turn/completed",
@@ -947,7 +951,7 @@ describe("CodexAdapter", () => {
         turn: { id: "turn_1", status: "interrupted", items: [], error: null },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const results = messages.filter((m) => m.type === "result");
     expect(results).toHaveLength(1);
@@ -960,12 +964,12 @@ describe("CodexAdapter", () => {
   it("returns false for unsupported outgoing message types", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     expect(adapter.sendBrowserMessage({ type: "set_model", model: "gpt-5.3-codex" })).toBe(false);
     expect(adapter.sendBrowserMessage({ type: "set_permission_mode", mode: "plan" })).toBe(false);
@@ -976,12 +980,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -990,7 +994,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolMsg = messages.filter((m) => m.type === "assistant").find((m) => {
       const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
@@ -1008,12 +1012,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -1026,7 +1030,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolMsg = messages.filter((m) => m.type === "assistant").find((m) => {
       const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
@@ -1044,12 +1048,12 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "gpt-5.2-codex", cwd: "/project" });
     adapter.onSessionMeta((meta) => metaCalls.push(meta));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_456" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     expect(metaCalls.length).toBe(1);
     expect(metaCalls[0].cliSessionId).toBe("thr_456");
@@ -1063,18 +1067,18 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // item/started for webSearch
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "webSearch", id: "ws_1", query: "typescript guide" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // item/completed for webSearch
     stdout.push(JSON.stringify({
@@ -1088,7 +1092,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolResults = messages.filter((m) => {
       if (m.type !== "assistant") return false;
@@ -1110,11 +1114,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -1126,7 +1130,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/completed",
@@ -1145,7 +1149,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolResults = messages.filter((m) => {
       if (m.type !== "assistant") return false;
@@ -1173,11 +1177,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // item/started
     stdout.push(JSON.stringify({
@@ -1186,7 +1190,7 @@ describe("CodexAdapter", () => {
         item: { type: "webSearch", id: "ws_echo", query: "Codex CLI skills documentation" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // item/completed — only has query, no real result fields. The adapter's
     // extractWebSearchResultText falls through to "Web search completed" or
@@ -1201,7 +1205,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // No tool_result should be emitted — the only result would be the query
     const toolResults = messages.filter((m) => {
@@ -1217,25 +1221,25 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // item/started for reasoning (opens thinking block)
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // item/completed for reasoning (should close thinking block)
     stdout.push(JSON.stringify({
       method: "item/completed",
       params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const blockStops = messages.filter(
       (m) => m.type === "stream_event" && (m as { event: { type: string } }).event?.type === "content_block_stop",
@@ -1252,17 +1256,17 @@ describe("CodexAdapter", () => {
     adapter.onBrowserMessage((msg) => messages.push(msg));
     adapter.onDisconnect(onDisconnect);
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "reasoning", id: "r_obj" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/completed",
@@ -1274,7 +1278,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const thinkingMsgs = messages.filter((m) =>
       m.type === "assistant"
@@ -1289,33 +1293,34 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     adapter.sendBrowserMessage({ type: "user_message", content: "Think about this" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Resolve rateLimits/read + turn/start
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_1" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
-    // First reasoning summary arrives after a longer idle window from user send.
+    // First reasoning summary arrives after a measurable gap from turn/start.
+    // Real delay needed here — this test validates wall-clock thinking_time_ms measurement.
     await new Promise((r) => setTimeout(r, 80));
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     stdout.push(JSON.stringify({
       method: "item/completed",
       params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     // Second reasoning summary arrives shortly after the first one completed.
     await new Promise((r) => setTimeout(r, 20));
@@ -1323,12 +1328,12 @@ describe("CodexAdapter", () => {
       method: "item/started",
       params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     stdout.push(JSON.stringify({
       method: "item/completed",
       params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 40));
+    await tick();
 
     const reasoningAssistants = messages.filter((m) =>
       m.type === "assistant"
@@ -1353,9 +1358,9 @@ describe("CodexAdapter", () => {
   it("sends kebab-case sandbox value", async () => {
     new CodexAdapter(proc as never, "test-session", { model: "gpt-5.3-codex", cwd: "/tmp" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"sandbox":"workspace-write"');
@@ -1382,9 +1387,9 @@ describe("CodexAdapter", () => {
       askPermission,
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = mock.stdin.chunks.join("");
     expect(allWritten).toContain(`"approvalPolicy":"${expected}"`);
@@ -1403,12 +1408,12 @@ describe("CodexAdapter", () => {
     });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_789" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     const initMsg = messages.find((m) => m.type === "session_init");
     expect(initMsg).toBeDefined();
@@ -1426,10 +1431,10 @@ describe("CodexAdapter", () => {
       cwd: "/workspace/app",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"model":"gpt-5.2-codex"');
@@ -1443,7 +1448,7 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onInitError((err) => errors.push(err));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send an error response to the initialize request
     stdout.push(JSON.stringify({
@@ -1451,7 +1456,7 @@ describe("CodexAdapter", () => {
       error: { code: -1, message: "server not ready" },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     expect(errors.length).toBe(1);
     expect(errors[0]).toContain("initialization failed");
@@ -1464,7 +1469,7 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Queue a message before init completes — should be accepted
     const queued = adapter.sendBrowserMessage({ type: "user_message", content: "hello" } as any);
@@ -1476,7 +1481,7 @@ describe("CodexAdapter", () => {
       error: { code: -1, message: "no rollout found" },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     // After init failure, new messages should be rejected
     const rejected = adapter.sendBrowserMessage({ type: "user_message", content: "world" } as any);
@@ -1498,16 +1503,16 @@ describe("CodexAdapter", () => {
       threadId: "thr_existing_456",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Respond to initialize
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // The second call should be thread/resume, not thread/start
     // Respond to thread/resume
     mock.stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_existing_456" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = mock.stdin.chunks.join("");
     expect(allWritten).toContain('"method":"thread/resume"');
@@ -1528,22 +1533,22 @@ describe("CodexAdapter", () => {
     adapter.onBrowserMessage((msg) => messages.push(msg));
     adapter.onInitError((err) => errors.push(err));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // initialize response
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // thread/resume error from stale thread/rollout
     mock.stdout.push(JSON.stringify({
       id: 2,
       error: { code: -1, message: "no rollout found for thread id thr_stale_123" },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // fallback thread/start success
     mock.stdout.push(JSON.stringify({ id: 3, result: { thread: { id: "thr_new_789" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 80));
+    await tick();
 
     const allWritten = mock.stdin.chunks.join("");
     expect(allWritten).toContain('"method":"thread/resume"');
@@ -1560,13 +1565,13 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Initialize
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Skip item/started — go directly to item/completed for a commandExecution
     stdout.push(JSON.stringify({
@@ -1583,7 +1588,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Should have both a tool_use (backfilled) and a tool_result
     const toolUseMsg = messages.find((m) => {
@@ -1606,13 +1611,13 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Initialize
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send item/started first
     stdout.push(JSON.stringify({
@@ -1621,7 +1626,7 @@ describe("CodexAdapter", () => {
         item: { type: "commandExecution", id: "cmd_2", command: ["echo", "hi"], status: "inProgress" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Then item/completed
     stdout.push(JSON.stringify({
@@ -1637,7 +1642,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Count tool_use messages for cmd_2 — should be exactly 1 (from item/started only)
     const toolUseMessages = messages.filter((m) => {
@@ -1658,11 +1663,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Codex sends command as a single string, not an array
     stdout.push(JSON.stringify({
@@ -1676,7 +1681,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolUseMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -1696,11 +1701,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Skip item/started — go directly to item/completed with string command
     stdout.push(JSON.stringify({
@@ -1716,7 +1721,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Should have both a backfilled tool_use and a tool_result
     const toolUseMsg = messages.find((m) => {
@@ -1743,11 +1748,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Codex sends command as string in approval requests too
     stdout.push(JSON.stringify({
@@ -1761,7 +1766,7 @@ describe("CodexAdapter", () => {
         cwd: "/home/user",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
@@ -1777,11 +1782,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -1795,7 +1800,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolUseMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -1824,14 +1829,14 @@ describe("CodexAdapter", () => {
     expect(accepted).toBe(true); // accepted into queue
 
     // Now complete initialization (initialize → thread/start → rateLimits)
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     // Rate limits response is awaited before flushing queued messages
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     // The queued message should have been flushed — check that turn/start was called
     const allWritten = stdin.chunks.join("");
@@ -1844,25 +1849,25 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Test commandExecution
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "commandExecution", id: "cmd_x", command: ["echo", "hi"], status: "inProgress" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Test webSearch
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "webSearch", id: "ws_x", query: "test" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Test fileChange (deferred until completed provides diff)
     stdout.push(JSON.stringify({
@@ -1873,7 +1878,7 @@ describe("CodexAdapter", () => {
       method: "item/completed",
       params: { item: { type: "fileChange", id: "fc_x", changes: [{ path: "/tmp/f.ts", kind: "modify", diff: "@@ -1 +1 @@\n-a\n+b" }], status: "completed" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // All three should have content_block_start stream events
     const blockStarts = messages.filter(
@@ -1888,25 +1893,25 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Start agent message
     stdout.push(JSON.stringify({
       method: "item/started",
       params: { item: { type: "agentMessage", id: "am_1" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Complete it
     stdout.push(JSON.stringify({
       method: "item/completed",
       params: { item: { type: "agentMessage", id: "am_1", text: "Hello" } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Find the message_delta stream event
     const messageDelta = messages.find(
@@ -1925,11 +1930,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate MCP tool call approval request
     stdout.push(JSON.stringify({
@@ -1945,7 +1950,7 @@ describe("CodexAdapter", () => {
         reason: "MCP tool wants to search files",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Should emit a permission_request to the browser (NOT auto-accept)
     const permRequests = messages.filter((m) => m.type === "permission_request");
@@ -1965,11 +1970,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/mcpToolCall/requestApproval",
@@ -1981,7 +1986,7 @@ describe("CodexAdapter", () => {
         arguments: { sql: "SELECT * FROM users" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequest = messages.find((m) => m.type === "permission_request") as {
       request: { request_id: string };
@@ -1995,7 +2000,7 @@ describe("CodexAdapter", () => {
       request_id: permRequest.request.request_id,
       behavior: "allow",
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"decision":"accept"');
@@ -2009,11 +2014,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate file change approval with changes array
     stdout.push(JSON.stringify({
@@ -2029,7 +2034,7 @@ describe("CodexAdapter", () => {
         ],
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
@@ -2056,11 +2061,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate file change approval without changes array
     stdout.push(JSON.stringify({
@@ -2071,7 +2076,7 @@ describe("CodexAdapter", () => {
         reason: "Updating configuration",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
@@ -2091,10 +2096,10 @@ describe("CodexAdapter", () => {
       cwd: "/workspace",
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = mock.stdin.chunks.join("");
     expect(allWritten).toContain('"method":"thread/start"');
@@ -2106,11 +2111,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Simulate item/tool/call request from Codex
     stdout.push(JSON.stringify({
@@ -2122,7 +2127,7 @@ describe("CodexAdapter", () => {
         arguments: { query: "test input" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
@@ -2140,11 +2145,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/tool/call",
@@ -2155,7 +2160,7 @@ describe("CodexAdapter", () => {
         arguments: { code: "print('hello')" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const perm = messages.find((m) => m.type === "permission_request") as {
       request: { request_id: string };
@@ -2172,7 +2177,7 @@ describe("CodexAdapter", () => {
         contentItems: [{ type: "inputText", text: "custom tool output" }],
       },
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     const responseLines = allWritten.split("\n").filter((l) => l.includes('"id":601'));
@@ -2239,11 +2244,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Command completed with no stdout/stderr and exit code 0
     stdout.push(JSON.stringify({
@@ -2258,7 +2263,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Should still emit tool_use so the command is visible
     const toolUseMsg = messages.find((m) => {
@@ -2282,11 +2287,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/completed",
@@ -2301,7 +2306,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolResultMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -2319,11 +2324,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -2331,7 +2336,7 @@ describe("CodexAdapter", () => {
         item: { type: "commandExecution", id: "cmd_fail", command: "sed -n '1,260p' missing.ts", status: "inProgress" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Simulate codex sending streamed terminal output but no final stdout/stderr fields.
     stdout.push(JSON.stringify({
@@ -2341,7 +2346,7 @@ describe("CodexAdapter", () => {
         delta: "sed: can't read missing.ts: No such file or directory\n",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/completed",
@@ -2355,7 +2360,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const toolResultMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -2374,11 +2379,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/started",
@@ -2386,7 +2391,7 @@ describe("CodexAdapter", () => {
         item: { type: "commandExecution", id: "cmd_live", command: "long-running.sh", status: "inProgress" },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/commandExecution/outputDelta",
@@ -2395,7 +2400,7 @@ describe("CodexAdapter", () => {
         delta: "step 1/3 complete\n",
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const progressMsg = messages.find(
       (m) => m.type === "tool_progress" && (m as { tool_use_id?: string }).tool_use_id === "cmd_live",
@@ -2410,11 +2415,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "turn/plan/updated",
@@ -2428,7 +2433,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const todoToolUse = messages.find((m) => {
       if (m.type !== "assistant") return false;
@@ -2450,11 +2455,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const payload = {
       method: "turn/plan/updated",
@@ -2470,7 +2475,7 @@ describe("CodexAdapter", () => {
     };
     stdout.push(JSON.stringify(payload) + "\n");
     stdout.push(JSON.stringify(payload) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const todoToolUses = messages.filter((m) => {
       if (m.type !== "assistant") return false;
@@ -2483,13 +2488,13 @@ describe("CodexAdapter", () => {
   it("fetches rate limits after initialization via account/rateLimits/read", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // id:1 = initialize, id:2 = thread/start
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // id:3 = account/rateLimits/read response
     stdout.push(JSON.stringify({
@@ -2501,7 +2506,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2512,12 +2517,12 @@ describe("CodexAdapter", () => {
   it("updates rate limits on account/rateLimits/updated notification", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send account/rateLimits/updated notification (no id = notification)
     stdout.push(JSON.stringify({
@@ -2529,7 +2534,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2540,11 +2545,11 @@ describe("CodexAdapter", () => {
   it("normalizes fractional usedPercent (0..1) into percentage values", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "account/rateLimits/updated",
@@ -2555,7 +2560,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2568,11 +2573,11 @@ describe("CodexAdapter", () => {
     // and multiplied by 100, displaying 100% when actual usage was 1%.
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "account/rateLimits/updated",
@@ -2583,7 +2588,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2594,11 +2599,11 @@ describe("CodexAdapter", () => {
   it("parses resetsAt when provided as numeric or ISO strings", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "account/rateLimits/updated",
@@ -2609,7 +2614,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2624,11 +2629,11 @@ describe("CodexAdapter", () => {
   it("prefers canonical codex limits from rateLimitsByLimitId over model-specific zero buckets", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.push(JSON.stringify({
       id: 3,
@@ -2652,7 +2657,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2663,11 +2668,11 @@ describe("CodexAdapter", () => {
   it("does not regress to model-specific zero limits after canonical codex limits are known", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "account/rateLimits/updated",
@@ -2679,7 +2684,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "account/rateLimits/updated",
@@ -2691,7 +2696,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const rl = adapter.getRateLimits();
     expect(rl).toBeDefined();
@@ -2706,11 +2711,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "item/tool/requestUserInput",
@@ -2734,7 +2739,7 @@ describe("CodexAdapter", () => {
         ],
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
     expect(permReqs.length).toBe(1);
@@ -2753,11 +2758,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send requestUserInput
     stdout.push(JSON.stringify({
@@ -2773,7 +2778,7 @@ describe("CodexAdapter", () => {
         ],
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Get the request_id from the emitted permission_request
     const permReq = messages.find((m) => m.type === "permission_request") as unknown as {
@@ -2788,7 +2793,7 @@ describe("CodexAdapter", () => {
       behavior: "allow",
       updated_input: { answers: { "0": "Yes", "1": "No" } },
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Check what was sent to Codex (should be ToolRequestUserInputResponse format)
     const allWritten = stdin.chunks.join("");
@@ -2808,11 +2813,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "applyPatchApproval",
@@ -2831,7 +2836,7 @@ describe("CodexAdapter", () => {
         grantRoot: null,
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
     expect(permReqs.length).toBe(1);
@@ -2860,11 +2865,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "applyPatchApproval",
@@ -2877,7 +2882,7 @@ describe("CodexAdapter", () => {
         grantRoot: null,
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permReq = messages.find((m) => m.type === "permission_request") as unknown as {
       request: { request_id: string };
@@ -2889,7 +2894,7 @@ describe("CodexAdapter", () => {
       request_id: permReq.request.request_id,
       behavior: "allow",
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     const responseLine = allWritten.split("\n").find((l) => l.includes('"id":801'));
@@ -2906,11 +2911,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "execCommandApproval",
@@ -2924,7 +2929,7 @@ describe("CodexAdapter", () => {
         parsedCmd: [],
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
     expect(permReqs.length).toBe(1);
@@ -2943,11 +2948,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdout.push(JSON.stringify({
       method: "execCommandApproval",
@@ -2961,7 +2966,7 @@ describe("CodexAdapter", () => {
         parsedCmd: [],
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const permReq = messages.find((m) => m.type === "permission_request") as unknown as {
       request: { request_id: string };
@@ -2973,7 +2978,7 @@ describe("CodexAdapter", () => {
       request_id: permReq.request.request_id,
       behavior: "deny",
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     const responseLine = allWritten.split("\n").find((l) => l.includes('"id":901'));
@@ -2990,15 +2995,15 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks.length = 0;
     adapter.sendBrowserMessage({ type: "mcp_get_status" });
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // id:4 = mcpServerStatus/list (id:3 is account/rateLimits/read)
     stdout.push(JSON.stringify({
@@ -3021,7 +3026,7 @@ describe("CodexAdapter", () => {
         nextCursor: null,
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // id:5 = config/read
     stdout.push(JSON.stringify({
@@ -3035,7 +3040,7 @@ describe("CodexAdapter", () => {
         },
       },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const mcpStatus = messages.find((m) => m.type === "mcp_status") as
       | { type: "mcp_status"; servers: Array<{ name: string; status: string; tools?: unknown[]; error?: string }> }
@@ -3052,15 +3057,15 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks.length = 0;
     adapter.sendBrowserMessage({ type: "mcp_toggle", serverName: "alpha", enabled: false });
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     const writeLine = allWritten.split("\n").find((l) => l.includes('"method":"config/value/write"'));
@@ -3071,14 +3076,14 @@ describe("CodexAdapter", () => {
 
     // Respond to config/value/write with the actual request ID.
     stdout.push(JSON.stringify({ id: writeReq.id, result: { status: "updated" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const afterWrite = stdin.chunks.join("");
     const reloadLine = afterWrite.split("\n").find((l) => l.includes('"method":"config/mcpServer/reload"'));
     expect(reloadLine).toBeDefined();
     const reloadReq = JSON.parse(reloadLine!);
     stdout.push(JSON.stringify({ id: reloadReq.id, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const afterReload = stdin.chunks.join("");
     const listLine = afterReload.split("\n").find((l) => l.includes('"method":"mcpServerStatus/list"'));
@@ -3088,7 +3093,7 @@ describe("CodexAdapter", () => {
       id: listReq.id,
       result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const afterList = stdin.chunks.join("");
     const readLine = afterList.split("\n").find((l) => l.includes('"method":"config/read"'));
@@ -3098,7 +3103,7 @@ describe("CodexAdapter", () => {
       id: readReq.id,
       result: { config: { mcp_servers: { alpha: { url: "http://localhost:8080/mcp", enabled: false } } } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWrittenAfter = stdin.chunks.join("");
     expect(allWrittenAfter).toContain('"method":"config/mcpServer/reload"');
@@ -3115,11 +3120,11 @@ describe("CodexAdapter", () => {
   it("handles mcp_set_servers by merging with existing config", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks.length = 0;
     adapter.sendBrowserMessage({
@@ -3132,7 +3137,7 @@ describe("CodexAdapter", () => {
         },
       },
     });
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     const writeLine = allWritten.split("\n").find((l) => l.includes('"method":"config/batchWrite"'));
@@ -3146,33 +3151,33 @@ describe("CodexAdapter", () => {
 
     // Complete in-flight requests
     stdout.push(JSON.stringify({ id: 4, result: { status: "updated" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 5, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 6, result: { data: [], nextCursor: null } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 7, result: { config: { mcp_servers: { memory: writeReq.params.edits[0].value } } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
   });
 
   it("mcp_toggle fallback removes server entry when reload fails with invalid transport", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks.length = 0;
     adapter.sendBrowserMessage({ type: "mcp_toggle", serverName: "context7", enabled: false });
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // First write ok, then reload fails with invalid transport
     stdout.push(JSON.stringify({ id: 4, result: { status: "updated" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 5, error: { code: -32603, message: "Invalid configuration: invalid transport in `mcp_servers.context7`" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 30));
+    await tick();
 
     const written = stdin.chunks.join("");
     const lines = written.split("\n").filter(Boolean);
@@ -3187,26 +3192,26 @@ describe("CodexAdapter", () => {
   it("handles mcp_reconnect by calling reload and then refreshing status", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks.length = 0;
     adapter.sendBrowserMessage({ type: "mcp_reconnect", serverName: "alpha" });
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"method":"config/mcpServer/reload"');
 
     // id:4 = reload, id:5 = mcpServerStatus/list, id:6 = config/read
     stdout.push(JSON.stringify({ id: 4, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 5, result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 6, result: { config: { mcp_servers: { alpha: { enabled: true, url: "http://localhost:8080/mcp" } } } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 40));
+    await tick();
   });
 
   it("computes context_used_percent from last turn, not cumulative total", async () => {
@@ -3217,11 +3222,11 @@ describe("CodexAdapter", () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send a tokenUsage/updated with large cumulative totals but small last-turn
     stdout.push(JSON.stringify({
@@ -3249,7 +3254,7 @@ describe("CodexAdapter", () => {
       },
     }) + "\n");
 
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Find the session_update message
     const sessionUpdates = messages.filter((m) => m.type === "session_update") as Array<{
@@ -3288,12 +3293,12 @@ describe("onTurnStartFailed callback", () => {
 
   async function initAdapter(): Promise<CodexAdapter> {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     // Initialize response + thread/start response
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     return adapter;
   }
 
@@ -3306,13 +3311,13 @@ describe("onTurnStartFailed callback", () => {
     adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
 
     // Give a moment for the async handleOutgoingUserMessage to start the transport.call
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Close stdout — this rejects all pending RPC promises with "Transport closed"
     stdout.close();
 
     // Wait for the catch block to execute (microtask + setTimeout)
-    await new Promise((r) => setTimeout(r, 150));
+    await tick();
 
     expect(failedCb).toHaveBeenCalledOnce();
     expect(failedCb).toHaveBeenCalledWith(
@@ -3328,10 +3333,10 @@ describe("onTurnStartFailed callback", () => {
     adapter.onTurnStartFailed(failedCb);
 
     adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.close();
-    await new Promise((r) => setTimeout(r, 150));
+    await tick();
 
     expect(failedCb).toHaveBeenCalledOnce();
     const startErrors = emitted.filter((m) =>
@@ -3345,10 +3350,10 @@ describe("onTurnStartFailed callback", () => {
     adapter.onBrowserMessage((msg) => emitted.push(msg));
 
     adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     stdout.close();
-    await new Promise((r) => setTimeout(r, 150));
+    await tick();
 
     const startErrors = emitted.filter((m) =>
       m.type === "error" && m.message.includes("Failed to start turn"));
@@ -3362,13 +3367,13 @@ describe("onTurnStartFailed callback", () => {
 
     // Send a user message
     adapter.sendBrowserMessage({ type: "user_message", content: "test message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Respond to rateLimits/read (id=3) and turn/start (id=4) successfully
     // rateLimits is fire-and-forget from init, turn/start is from the user message
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
     stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_1" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     expect(failedCb).not.toHaveBeenCalled();
   });
@@ -3392,21 +3397,21 @@ describe("interrupt before new turn/start", () => {
 
   async function initAdapterWithTurn(): Promise<CodexAdapter> {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     // Initialize response + thread/start response
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Send first user message to start a turn
     adapter.sendBrowserMessage({ type: "user_message", content: "first message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Respond to rateLimits/read (id=3) and turn/start (id=4)
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
     stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_active" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     // Clear stdin for clean assertion later
     stdin.chunks = [];
@@ -3421,22 +3426,22 @@ describe("interrupt before new turn/start", () => {
 
     // Send second message while turn_active is still running
     adapter.sendBrowserMessage({ type: "user_message", content: "second message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Respond to turn/interrupt (id=5 — next RPC)
     stdout.push(JSON.stringify({ id: 5, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
 
     // Simulate turn completing after interrupt
     stdout.push(JSON.stringify({
       method: "turn/completed",
       params: { turn: { id: "turn_active", status: "interrupted", items: [], error: null } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 100));
+    await tick();
 
     // Respond to the new turn/start (id=6)
     stdout.push(JSON.stringify({ id: 6, result: { turn: { id: "turn_new" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     // Should see turn/interrupt before the second turn/start
@@ -3450,15 +3455,15 @@ describe("interrupt before new turn/start", () => {
     // Verify that when no turn is in progress, the adapter sends turn/start
     // directly without an interrupt.
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "only message" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).not.toContain('"method":"turn/interrupt"');
@@ -3514,17 +3519,17 @@ describe("interrupt before new turn/start", () => {
     // The second message should wait until the first turn has a turnId, then
     // interrupt/complete that turn before starting the next one.
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 50));
+    await tick();
 
     stdin.chunks = [];
 
     adapter.sendBrowserMessage({ type: "user_message", content: "first rapid" } as BrowserOutgoingMessage);
     adapter.sendBrowserMessage({ type: "user_message", content: "second rapid" } as BrowserOutgoingMessage);
-    await new Promise((r) => setTimeout(r, 40));
+    await tick();
 
     const earlyWrites = stdin.chunks.join("");
     const earlyTurnStarts = (earlyWrites.match(/\"method\":\"turn\/start\"/g) || []).length;
@@ -3535,7 +3540,7 @@ describe("interrupt before new turn/start", () => {
     // Complete rateLimits/read + first turn/start so the queued second message can continue.
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
     stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_first" } } }) + "\n");
-    await new Promise((r) => setTimeout(r, 40));
+    await tick();
 
     const midWrites = stdin.chunks.join("");
     expect(midWrites).toContain("\"method\":\"turn/interrupt\"");
@@ -3543,12 +3548,12 @@ describe("interrupt before new turn/start", () => {
 
     // Resolve interrupt, then complete the first turn to allow second turn/start.
     stdout.push(JSON.stringify({ id: 5, result: {} }) + "\n");
-    await new Promise((r) => setTimeout(r, 20));
+    await tick();
     stdout.push(JSON.stringify({
       method: "turn/completed",
       params: { turn: { id: "turn_first", status: "interrupted", items: [], error: null } },
     }) + "\n");
-    await new Promise((r) => setTimeout(r, 80));
+    await tick();
 
     const finalWrites = stdin.chunks.join("");
     const finalTurnStarts = (finalWrites.match(/\"method\":\"turn\/start\"/g) || []).length;

@@ -1108,6 +1108,8 @@ describe("relaunch", () => {
     mockIsContainerAlive.mockReturnValueOnce("running");
     mockHasBinaryInContainer.mockReturnValueOnce(false);
 
+    // Resolve mock process exit so relaunch doesn't wait the 2s kill timeout
+    exitResolve(0);
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("claude-enterprise");
@@ -1132,6 +1134,8 @@ describe("relaunch", () => {
     mockIsContainerAlive.mockReturnValueOnce("running");
     mockHasBinaryInContainer.mockReturnValueOnce(false);
 
+    // Resolve mock process exit so relaunch doesn't wait the 2s kill timeout
+    exitResolve(0);
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("codex-enterprise");
