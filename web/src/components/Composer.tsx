@@ -180,7 +180,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const preRecordingTextRef = useRef("");
   const {
     isRecording, isSupported: voiceSupported, isTranscribing,
-    error: voiceError, setIsTranscribing, setError: setVoiceError,
+    error: voiceError, volumeLevel, setIsTranscribing, setError: setVoiceError,
     toggleRecording,
   } = useVoiceInput({
     onAudioReady: async (blob) => {
@@ -756,8 +756,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
           {/* Voice recording / transcribing indicator */}
           {isRecording && (
             <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span>Recording...</span>
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+              <span className="shrink-0">Recording</span>
+              {/* Volume bars */}
+              <div className="flex items-center gap-[2px] h-3">
+                {[0.05, 0.15, 0.25, 0.35, 0.45].map((threshold, i) => (
+                  <div
+                    key={i}
+                    className="w-[3px] rounded-full transition-all duration-75"
+                    style={{
+                      height: volumeLevel > threshold ? `${Math.min(12, 4 + (volumeLevel - threshold) * 40)}px` : "3px",
+                      backgroundColor: volumeLevel > threshold ? "rgb(239 68 68)" : "rgb(239 68 68 / 0.3)",
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           )}
           {isTranscribing && !isRecording && (
