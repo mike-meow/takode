@@ -1,7 +1,6 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "../store.js";
 import { GitHubPRSection, McpCollapsible, ClaudeMdCollapsible, HerdDiagnosticsSection } from "./TaskPanel.js";
-import { QuestHoverCard } from "./QuestHoverCard.js";
 import { shortenHome } from "../utils/path-display.js";
 import { formatModel } from "../utils/backends.js";
 
@@ -78,6 +77,10 @@ export function SessionInfoPopover({
   const backendLabel = backendType === "codex" ? "Codex" : "Claude";
   const hasGit = gitBranch || gitAhead > 0 || gitBehind > 0 || linesAdded > 0 || linesRemoved > 0;
   const hasStats = turns > 0 || cost > 0 || contextPercent > 0;
+  const taskEntries = (taskHistory ?? []).map((task) => ({
+    ...task,
+    title: task.title.trim(),
+  }));
 
   return (
     <div
@@ -132,23 +135,24 @@ export function SessionInfoPopover({
         </div>
 
         {/* Task history */}
-        {taskHistory && taskHistory.length > 0 && (
+        {taskEntries.length > 0 && (
           <div className="px-4 py-2 border-t border-cc-border/50 space-y-1">
             <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Tasks</span>
             <div
               ref={taskHistoryScrollRef}
               data-testid="task-history-scroll"
-              className="max-h-40 overflow-y-auto pr-1 space-y-1"
+              className="max-h-40 overflow-y-auto pr-2 pb-1 space-y-1.5"
+              style={{ scrollbarGutter: "stable both-edges" }}
             >
-              {taskHistory.map((task, i) => {
+              {taskEntries.map((task, i) => {
                 const questId = task.questId;
                 return (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
+                  <div key={i} className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-1.5">
+                    <span className="text-[10px] tabular-nums text-right text-cc-muted/60 mt-px">{i + 1}.</span>
                     {task.source === "quest" && questId ? (
                       <QuestTaskChip questId={questId} title={task.title} onNavigate={onClose} />
                     ) : (
-                      <span className={`text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
+                      <span className={`text-left text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
                     )}
                   </div>
                 );
@@ -231,48 +235,18 @@ export function SessionInfoPopover({
   );
 }
 
-/** Quest chip in task history with hover card support. */
+/** Quest chip in task history; hover popups are intentionally disabled here to keep scrolling smooth. */
 function QuestTaskChip({ questId, title, onNavigate }: { questId: string; title: string; onNavigate: () => void }) {
-  const quests = useStore((s) => s.quests) ?? [];
-  const quest = useMemo(
-    () => quests.find((q) => q.questId.toLowerCase() === questId.toLowerCase()) ?? null,
-    [questId, quests],
-  );
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }, []);
-
   return (
-    <>
-      <button
-        type="button"
-        className="text-[11px] leading-snug line-clamp-1 text-amber-400 hover:text-amber-300 underline decoration-dotted underline-offset-2 cursor-pointer"
-        title={`Open ${questId} in Questmaster`}
-        onClick={() => {
-          window.location.hash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
-          onNavigate();
-        }}
-        onMouseEnter={(e) => {
-          if (!quest) return;
-          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-          setHoverRect(e.currentTarget.getBoundingClientRect());
-        }}
-        onMouseLeave={() => {
-          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-          hideTimerRef.current = setTimeout(() => setHoverRect(null), 100);
-        }}
-      >
-        {title}
-      </button>
-      {quest && hoverRect && (
-        <QuestHoverCard
-          quest={quest}
-          anchorRect={hoverRect}
-          onMouseEnter={() => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }}
-          onMouseLeave={() => setHoverRect(null)}
-        />
-      )}
-    </>
+    <button
+      type="button"
+      className="text-left text-[11px] leading-snug line-clamp-1 text-amber-400 hover:text-amber-300 hover:underline decoration-dotted underline-offset-2 cursor-pointer"
+      onClick={() => {
+        window.location.hash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
+        onNavigate();
+      }}
+    >
+      {title}
+    </button>
   );
 }

@@ -931,6 +931,32 @@ describe("Sidebar", () => {
     });
   });
 
+  it("shows a bounded task-history scroller in session hover card", async () => {
+    const session = makeSession("s1");
+    const sdk = makeSdkSession("s1");
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+      sessionTaskHistory: new Map([
+        ["s1", Array.from({ length: 20 }, (_, i) => ({
+          title: ` Task ${i + 1} `,
+          action: "claim",
+          timestamp: Date.now() + i,
+        }))],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button")!;
+    fireEvent.mouseEnter(sessionButton);
+
+    await waitFor(() => {
+      const scroller = screen.getByTestId("session-hover-task-history-scroll");
+      expect(scroller).toHaveClass("max-h-40");
+      expect(scroller).toHaveClass("overflow-y-auto");
+    });
+  });
+
   it("hovering a herded worker highlights its leader and shows leader info in hover card", async () => {
     const leaderSessionId = "leader-1";
     const workerSessionId = "worker-1";

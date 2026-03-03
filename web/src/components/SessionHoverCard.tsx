@@ -1,6 +1,6 @@
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import type { SessionState, SessionTaskEntry } from "../../server/session-types.js";
-import { useRef, useLayoutEffect, useMemo } from "react";
+import { useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { shortenHome } from "../utils/path-display.js";
 import { useStore } from "../store.js";
@@ -49,6 +49,7 @@ export function SessionHoverCard({
   onMouseLeave,
 }: SessionHoverCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
 
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);
@@ -103,6 +104,10 @@ export function SessionHoverCard({
   const model = sessionState?.model || s.model || "";
   const backendLabel = s.backendType === "codex" ? "Codex" : s.backendType === "claude-sdk" ? "Claude SDK" : "Claude";
   const createdAtLabel = s.createdAt > 0 ? new Date(s.createdAt).toLocaleString() : "Unknown";
+  const taskEntries = (taskHistory ?? []).map((task) => ({
+    ...task,
+    title: task.title.trim(),
+  }));
 
   // Stats from sessionState
   const turns = sessionState?.num_turns ?? 0;
@@ -138,6 +143,12 @@ export function SessionHoverCard({
       el.style.top = "8px";
     }
   }, [anchorRect, cardWidth]);
+
+  useEffect(() => {
+    const container = taskHistoryScrollRef.current;
+    if (!container || taskEntries.length === 0) return;
+    container.scrollTop = container.scrollHeight;
+  }, [taskHistory, s.id, taskEntries.length]);
 
   // Render via portal to escape sidebar wrapper's overflow:hidden clipping.
   // The sidebar wrapper uses overflow-hidden for collapse animation, which
@@ -238,14 +249,22 @@ export function SessionHoverCard({
         )}
 
         {/* Task history + last message preview */}
-        {(taskHistory && taskHistory.length > 0) ? (
+        {taskEntries.length > 0 ? (
           <div className="px-4 py-2 border-t border-cc-border/50 space-y-1.5">
-            {taskHistory.map((task, i) => (
-              <div key={i} className="flex items-start gap-1.5">
-                <span className="text-[10px] text-cc-muted/60 shrink-0 mt-px">{i + 1}.</span>
-                <span className="text-[12px] text-cc-fg leading-snug line-clamp-1">{task.title}</span>
-              </div>
-            ))}
+            <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Tasks</span>
+            <div
+              ref={taskHistoryScrollRef}
+              data-testid="session-hover-task-history-scroll"
+              className="max-h-40 overflow-y-auto pr-2 pb-1 space-y-1.5"
+              style={{ scrollbarGutter: "stable both-edges" }}
+            >
+              {taskEntries.map((task, i) => (
+                <div key={i} className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-1.5">
+                  <span className="text-[10px] tabular-nums text-right text-cc-muted/60 mt-px">{i + 1}.</span>
+                  <span className="text-[12px] text-cc-fg leading-snug line-clamp-1">{task.title}</span>
+                </div>
+              ))}
+            </div>
             {sessionPreview && (
               <div className="pt-1 border-t border-cc-border/30">
                 <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Last message</span>

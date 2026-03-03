@@ -88,6 +88,14 @@ describe("SessionInfoPopover", () => {
     expect(screen.getByText("Quest without id")).toBeInTheDocument();
   });
 
+  it("renders quest task rows without native hover tooltips", () => {
+    resetStore([{ title: "Open q-42", source: "quest", questId: "q-42" }]);
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const questButton = screen.getByRole("button", { name: "Open q-42" });
+    expect(questButton).not.toHaveAttribute("title");
+  });
+
   it("keeps task history compact and auto-scrolls to newest task", async () => {
     const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(420);
     try {
