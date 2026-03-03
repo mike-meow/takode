@@ -497,6 +497,7 @@ export interface CreationProgressEvent {
 export type TakodeEventType =
   | "turn_end"
   | "turn_start"
+  | "compaction_started"
   | "permission_request"
   | "permission_resolved"
   | "quest_update"

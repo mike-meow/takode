@@ -179,6 +179,28 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("delivers compaction_started events to orchestrator", () => {
+    // compaction_started is an actionable event — the leader should see it
+    // immediately so they know the worker is compacting, not stuck.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(makeEvent({
+      event: "compaction_started",
+      data: { context_used_percent: 92 },
+    }));
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
+    expect(content).toContain("compaction_started");
+
+    dispatcher.destroy();
+  });
+
   it("defers user_message to turn_end (not delivered individually)", () => {
     // user_message events are excluded from ACTIONABLE_EVENTS — they're
     // summarized in turn_end instead (count + IDs for peek navigation).
@@ -351,6 +373,36 @@ describe("formatHerdEventBatch", () => {
     })];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("⊘ interrupted");
+  });
+
+  it("formats turn_end with compacted annotation when context was compacted", () => {
+    const events = [makeEvent({
+      event: "turn_end",
+      data: { duration_ms: 30000, compacted: true },
+    })];
+    const result = formatHerdEventBatch(events);
+    // Should show "(compacted)" after the duration so the leader knows the agent was busy compacting
+    expect(result).toContain("30.0s (compacted)");
+  });
+
+  it("formats compaction_started event with context percentage", () => {
+    const events = [makeEvent({
+      event: "compaction_started",
+      data: { context_used_percent: 89 },
+    })];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("compaction_started");
+    expect(result).toContain("context 89% full");
+  });
+
+  it("formats compaction_started event without context percentage", () => {
+    const events = [makeEvent({
+      event: "compaction_started",
+      data: {},
+    })];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("compaction_started");
+    expect(result).not.toContain("context");
   });
 
   it("appends relative age for recent events", () => {

@@ -1295,6 +1295,7 @@ function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
 const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }) {
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
   const streamingText = useStore((s) => s.streaming.get(sessionId));
+  const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
   const [codexStreamingText, setCodexStreamingText] = useState("");
   const codexPendingTextRef = useRef("");
@@ -1359,6 +1360,14 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
   return (
     <>
+      {/* Compaction indicator — shown prominently in the feed when agent is compacting context */}
+      {sessionStatus === "compacting" && !streamingText && (
+        <div className="flex items-center gap-2 text-[12px] text-cc-muted font-mono-code pl-9 py-1 animate-[fadeSlideIn_0.2s_ease-out]">
+          <YarnBallDot className="text-cc-primary animate-pulse" />
+          <span>Compacting conversation...</span>
+        </div>
+      )}
+
       {/* Tool progress indicator — skip Task tools since SubagentContainers show their own progress */}
       {toolProgress && toolProgress.size > 0 && !streamingText && !isCodexSession && (() => {
         const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => p.toolName !== "Task");

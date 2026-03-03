@@ -44,7 +44,7 @@ export interface LauncherHandle {
  *  Instead, user message count + IDs are included in the turn_end event
  *  so the leader can peek at specific messages via [msg-id] if needed. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
-  "turn_end", "permission_request", "permission_resolved",
+  "turn_end", "compaction_started", "permission_request", "permission_resolved",
   "session_error",
 ]);
 
@@ -372,6 +372,7 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       const resultPreview = typeof evt.data.resultPreview === "string"
         ? ` | "${truncate(evt.data.resultPreview, 60)}"`
         : "";
+      const compacted = evt.data.compacted ? " (compacted)" : "";
       const success = evt.data.interrupted ? "⊘ interrupted" : evt.data.is_error ? "✗" : "✓";
       // Message ID range for quick peek navigation
       const range = evt.data.msgRange as { from: number; to: number } | undefined;
@@ -382,7 +383,13 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       // Quest status change during this turn
       const qc = evt.data.questChange as { questId: string; from: string; to: string } | undefined;
       const questStr = qc ? ` | ${qc.questId}: ${qc.from} → ${qc.to}` : "";
-      return `${label} | turn_end | ${success} ${duration}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview} | ${age}`;
+      return `${label} | turn_end | ${success} ${duration}${compacted}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview} | ${age}`;
+    }
+    case "compaction_started": {
+      const pct = typeof evt.data.context_used_percent === "number"
+        ? ` | context ${Math.round(evt.data.context_used_percent)}% full`
+        : "";
+      return `${label} | compaction_started${pct} | ${age}`;
     }
     case "permission_request": {
       const tool = evt.data.tool_name || "unknown";

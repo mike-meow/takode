@@ -384,6 +384,8 @@ interface Session {
   intentionalCodexRelaunchUntil: number | null;
   /** Debug label for the current intentional Codex relaunch guard. */
   intentionalCodexRelaunchReason: string | null;
+  /** Whether context compaction occurred during the current turn (for turn_end herd events) */
+  compactedDuringTurn: boolean;
   /** Message history indices of user messages received during the current turn (for turn_end herd events) */
   userMessageIdsThisTurn: number[];
   /** Whether system.init has been received since the last CLI connect.
@@ -1526,6 +1528,7 @@ export class WsBridge {
         questStatusAtTurnStart: null,
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
+        compactedDuringTurn: false,
         consecutiveAdapterFailures: 0,
         lastAdapterFailureAt: null,
         intentionalCodexRelaunchUntil: null,
@@ -1888,6 +1891,7 @@ export class WsBridge {
         questStatusAtTurnStart: null,
         messageCountAtTurnStart: 0,
         interruptedDuringTurn: false,
+        compactedDuringTurn: false,
         consecutiveAdapterFailures: 0,
         lastAdapterFailureAt: null,
         intentionalCodexRelaunchUntil: null,
@@ -2236,6 +2240,12 @@ export class WsBridge {
         this.persistSession(session);
       } else if (msg.type === "status_change") {
         session.state.is_compacting = msg.status === "compacting";
+        if (msg.status === "compacting") {
+          session.compactedDuringTurn = true;
+          this.emitTakodeEvent(session.id, "compaction_started", {
+            context_used_percent: session.state.context_used_percent ?? undefined,
+          });
+        }
         this.persistSession(session);
       } else if (msg.type === "assistant") {
         const content = msg.message.content || [];
@@ -3260,7 +3270,12 @@ export class WsBridge {
       session.state.is_compacting = msg.status === "compacting";
       // Compaction pauses generation; clear the flag so deriveSessionStatus is accurate
       if (msg.status === "compacting") {
+        session.compactedDuringTurn = true;
         this.setGenerating(session, false, "compaction");
+        // Emit takode event so orchestrators know immediately
+        this.emitTakodeEvent(session.id, "compaction_started", {
+          context_used_percent: session.state.context_used_percent ?? undefined,
+        });
       }
 
       if (msg.permissionMode) {
@@ -5715,6 +5730,7 @@ export class WsBridge {
       session.questStatusAtTurnStart = session.state.claimedQuestStatus ?? null;
       session.messageCountAtTurnStart = session.messageHistory.length;
       session.interruptedDuringTurn = false; // Reset for new turn
+      session.compactedDuringTurn = false; // Reset compaction tracking for new turn
       session.userMessageIdsThisTurn = []; // Reset user message tracking for new turn
       console.log(`[ws-bridge] Generation started for session ${sessionTag(session.id)} (${reason})`);
       this.recorder?.recordServerEvent(session.id, "generation_started", { reason }, session.backendType, session.state.cwd);
@@ -5735,11 +5751,14 @@ export class WsBridge {
       // Takode: turn_end with tool summary from the last turn
       const toolSummary = this.buildTurnToolSummary(session);
       const interrupted = session.interruptedDuringTurn;
+      const compacted = session.compactedDuringTurn;
       session.interruptedDuringTurn = false; // Clear for next turn
+      session.compactedDuringTurn = false; // Clear for next turn
       this.emitTakodeEvent(session.id, "turn_end", {
         reason,
         duration_ms: elapsed,
         ...(interrupted ? { interrupted: true } : {}),
+        ...(compacted ? { compacted: true } : {}),
         ...toolSummary,
       });
 
