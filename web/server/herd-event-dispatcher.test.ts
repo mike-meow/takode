@@ -81,7 +81,7 @@ describe("HerdEventDispatcher", () => {
     vi.useRealTimers();
   });
 
-  it("accumulates events while orchestrator is generating, flushes on turnEnd", () => {
+  it("accumulates events while orchestrator is generating, flushes on turnEnd", async () => {
     const { bridge, launcher } = createMocks();
     const dispatcher = new HerdEventDispatcher(bridge, launcher);
     dispatcher.setupForOrchestrator("orch-1");
@@ -100,8 +100,8 @@ describe("HerdEventDispatcher", () => {
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
     dispatcher.onOrchestratorTurnEnd("orch-1");
 
-    // After debounce
-    vi.advanceTimersByTime(600);
+    // onOrchestratorTurnEnd flushes immediately via queueMicrotask (no 500ms debounce)
+    await Promise.resolve();
     expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
 
     // Verify message content includes both events
@@ -314,6 +314,88 @@ describe("HerdEventDispatcher", () => {
     dispatcher.onHerdChanged("orch-1");
 
     expect(dispatcher._getInbox("orch-1")).toBeUndefined();
+
+    dispatcher.destroy();
+  });
+
+  it("retries delivery when flushInbox finds the leader busy", () => {
+    // Regression: flushInbox used to silently return when the leader was not idle,
+    // leaving events permanently stranded until the next onOrchestratorTurnEnd call.
+    // Now it schedules a retry at RETRY_MS (2s) to prevent event loss.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    // Leader starts idle → event triggers debounce
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    triggerEvent(makeEvent({ event: "turn_end" }));
+
+    // Leader becomes busy before debounce fires
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(false);
+    vi.advanceTimersByTime(600);
+
+    // Flush attempted but leader was busy — should NOT be delivered yet
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
+
+    // Retry timer should be active — leader becomes idle before retry fires
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    vi.advanceTimersByTime(2100);
+
+    // Retry flush succeeds
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.destroy();
+  });
+
+  it("flushes immediately on turnEnd via microtask, not 500ms debounce", async () => {
+    // Regression: onOrchestratorTurnEnd used scheduleDelivery (500ms debounce),
+    // giving a window where the leader could start a new turn before events
+    // were delivered. Now it flushes via queueMicrotask for immediate delivery.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(false);
+    triggerEvent(makeEvent({ event: "turn_end" }));
+
+    // Leader finishes turn
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+
+    // Events should be delivered immediately (microtask), not after 500ms
+    await Promise.resolve();
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    // No pending debounce timer should exist
+    const inbox = dispatcher._getInbox("orch-1");
+    expect(inbox?.debounceTimer).toBeNull();
+
+    dispatcher.destroy();
+  });
+
+  it("cancels debounce timer when turnEnd triggers immediate flush", async () => {
+    // If a debounce timer was already pending when onOrchestratorTurnEnd fires,
+    // it should be cancelled to avoid double-delivery.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    // Leader idle → event arrives → debounce timer starts
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    triggerEvent(makeEvent({ event: "turn_end" }));
+    const inbox = dispatcher._getInbox("orch-1");
+    expect(inbox?.debounceTimer).not.toBeNull(); // Timer is active
+
+    // Before debounce fires, turnEnd triggers immediate flush
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+    await Promise.resolve();
+
+    // Should be delivered exactly once (not doubled by the old debounce timer)
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    // Advance past the old debounce time — no second delivery
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
 
     dispatcher.destroy();
   });

@@ -49,6 +49,9 @@ const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
 ]);
 
 const DEBOUNCE_MS = 500;
+/** Retry interval when flush finds the leader busy — longer than DEBOUNCE_MS
+ *  to avoid tight polling loops, but short enough for reasonable latency. */
+const RETRY_MS = 2000;
 const INBOX_CAP = 200;
 const HISTORY_CAP = 50;
 
@@ -204,9 +207,16 @@ export class HerdEventDispatcher {
       }
     }
 
-    // If there are new pending events, schedule delivery
+    // If there are new pending events, flush immediately (on the next microtask).
+    // The orchestrator is idle RIGHT NOW — going through the 500ms debounce risks
+    // the leader becoming busy again (from user input, auto-approval, etc.) before
+    // the timer fires. Cancel any existing debounce timer to avoid double-delivery.
     if (this.pendingCount(inbox) > 0) {
-      this.scheduleDelivery(orchId);
+      if (inbox.debounceTimer) {
+        clearTimeout(inbox.debounceTimer);
+        inbox.debounceTimer = null;
+      }
+      queueMicrotask(() => this.flushInbox(orchId));
     }
   }
 
@@ -247,6 +257,17 @@ export class HerdEventDispatcher {
     }, DEBOUNCE_MS);
   }
 
+  /** Schedule a retry flush at a longer interval. Called when flushInbox finds
+   *  the leader busy — prevents events from being permanently stranded. */
+  private scheduleRetry(orchId: string): void {
+    const inbox = this.inboxes.get(orchId);
+    if (!inbox || inbox.debounceTimer) return; // already has a pending timer
+    inbox.debounceTimer = setTimeout(() => {
+      inbox.debounceTimer = null;
+      this.flushInbox(orchId);
+    }, RETRY_MS);
+  }
+
   /** Deliver pending events to the orchestrator's CLI. */
   private flushInbox(orchId: string): void {
     const inbox = this.inboxes.get(orchId);
@@ -257,7 +278,10 @@ export class HerdEventDispatcher {
 
     // Re-check idle — orchestrator may have started generating during debounce
     if (!this.wsBridge.isSessionIdle(orchId)) {
-      // Events stay in inbox, delivered on next onOrchestratorTurnEnd
+      // Leader became busy — schedule a retry instead of silently dropping.
+      // onOrchestratorTurnEnd also triggers delivery, but the retry is a safety
+      // net to ensure events are never permanently stranded.
+      this.scheduleRetry(orchId);
       return;
     }
 
