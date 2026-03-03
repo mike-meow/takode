@@ -1701,32 +1701,38 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     scrollTimeoutRef.current = setTimeout(() => setIsScrolling(false), 1500);
   }
 
-  // Auto-scroll: on initial render, restore saved scroll position or jump to
-  // bottom. On subsequent renders, keep "sticky to bottom" behavior if the
+  // Restore scroll position synchronously before the first paint.
+  // useLayoutEffect runs before the browser paints, preventing the flash
+  // where the feed appears at scrollTop=0 for one frame before jumping.
+  useLayoutEffect(() => {
+    const pos = useStore.getState().feedScrollPosition.get(sessionId);
+    if (pos && !pos.isAtBottom) {
+      const el = containerRef.current;
+      if (el) {
+        if (el.scrollHeight === pos.scrollHeight) {
+          el.scrollTop = pos.scrollTop;
+        } else if (pos.scrollHeight > 0) {
+          el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
+        }
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      }
+    } else {
+      const el = containerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [sessionId]);
+
+  // Auto-scroll: on subsequent renders, keep "sticky to bottom" behavior if the
   // user is near bottom:
   // - during streaming: use immediate alignment to avoid smooth-scroll lag
   // - otherwise: keep smooth scrolling for non-streaming message arrivals
   // Throttled to avoid layout thrashing on heavy feeds.
   const lastScrollTime = useRef(0);
   useEffect(() => {
+    // Skip the first effect run — initial scroll was handled by useLayoutEffect above
     if (isInitialRender.current) {
       isInitialRender.current = false;
-      const pos = useStore.getState().feedScrollPosition.get(sessionId);
-      if (pos && !pos.isAtBottom) {
-        const el = containerRef.current;
-        if (el) {
-          if (el.scrollHeight === pos.scrollHeight) {
-            el.scrollTop = pos.scrollTop;
-          } else if (pos.scrollHeight > 0) {
-            el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
-          }
-          isNearBottom.current = false;
-          setShowScrollButton(true);
-        }
-      } else {
-        const el = containerRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      }
       return;
     }
     if (isNearBottom.current) {
