@@ -486,26 +486,22 @@ export class ClaudeSdkAdapter {
       }
 
       case "set_permission_mode": {
-        // Forward the mode change to the CLI subprocess via the internal v1 Query.
-        // The v2 SDKSession doesn't expose setPermissionMode(), but the underlying
-        // Query (U4) does — same pattern as interrupt().
-        // Without this, the CLI subprocess stays in its original mode (e.g. "plan")
-        // even after ExitPlanMode approval, causing spurious permission prompts.
-        const newMode = (msg as any).mode;
-        const query = (this.sdkSession as any)?.query;
-        if (query?.setPermissionMode) {
-          query.setPermissionMode(newMode).catch((err: Error) => {
-            console.error(`[claude-sdk-adapter] setPermissionMode failed for session ${this.sessionId}:`, err);
-          });
-          console.log(`[claude-sdk-adapter] Permission mode changed to "${newMode}" for session ${this.sessionId}`);
-        } else {
-          console.warn(`[claude-sdk-adapter] No setPermissionMode method available for session ${this.sessionId} — mode "${newMode}" is server-side only`);
-        }
+        // SDK sessions use --permission-prompt-tool stdio, so ALL tool permission
+        // decisions go through the canUseTool callback — the CLI's internal mode
+        // is irrelevant. Mode-based auto-approval is handled server-side in
+        // ws-bridge's handleSdkPermissionRequest().
+        //
+        // DO NOT send setPermissionMode to the CLI subprocess — it corrupts the
+        // SDK's stdin/stdout stream, breaking subsequent tool calls with
+        // "Stream closed" errors.
+        console.log(`[claude-sdk-adapter] Permission mode change to "${(msg as any).mode}" for session ${this.sessionId} (server-side only)`);
         return true;
       }
 
       case "set_model": {
         // Forward model change to the CLI subprocess via the internal v1 Query.
+        // Unlike permission mode, the model must reach the CLI so it uses the
+        // correct model for the next API call.
         const model = (msg as any).model;
         const queryForModel = (this.sdkSession as any)?.query;
         if (queryForModel?.setModel) {

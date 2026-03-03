@@ -4009,7 +4009,46 @@ export class WsBridge {
     const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "NotebookEdit";
     const bashCommand = toolName === "Bash" ? String(perm.input?.command ?? "") : "";
 
-    // Check if LLM auto-approval is available for this session's project
+    // ── Mode-based auto-approval ────────────────────────────────────────────
+    // SDK sessions use --permission-prompt-tool stdio, so the CLI delegates ALL
+    // tool permission decisions to the server. The server enforces the current
+    // permission mode here (bypassPermissions → approve everything,
+    // acceptEdits → approve file edits but prompt for Bash).
+    // This mirrors handleControlRequest() for WebSocket sessions.
+    const mode = session.state.permissionMode;
+    const modeAutoApprove = !NEVER_AUTO_APPROVE.has(toolName) && (
+      mode === "bypassPermissions" ||
+      (mode === "acceptEdits"
+        && toolName !== "Bash"
+        && WsBridge.ACCEPT_EDITS_AUTO_APPROVE.has(toolName)
+        && !(isFileEdit && WsBridge.isSensitiveConfigPath(filePath))));
+
+    if (modeAutoApprove) {
+      // Auto-approve: send response directly back to the SDK adapter
+      if (session.claudeSdkAdapter) {
+        session.claudeSdkAdapter.sendBrowserMessage({
+          type: "permission_response",
+          request_id: perm.request_id,
+          behavior: "allow",
+        } as any);
+      }
+      // Broadcast approval to browsers for UI consistency
+      const approvedMsg: BrowserIncomingMessage = {
+        type: "permission_approved",
+        id: `approval-${perm.request_id}`,
+        request_id: perm.request_id,
+        tool_name: toolName,
+        tool_use_id: perm.tool_use_id,
+        summary: getApprovalSummary(toolName, perm.input),
+        timestamp: Date.now(),
+      };
+      session.messageHistory.push(approvedMsg);
+      this.broadcastToBrowsers(session, approvedMsg);
+      this.persistSession(session);
+      return;
+    }
+
+    // ── LLM auto-approval check ─────────────────────────────────────────────
     const autoApprovalConfig = (
       !NEVER_AUTO_APPROVE.has(toolName) &&
       !(isFileEdit && WsBridge.isSensitiveConfigPath(filePath)) &&
@@ -5229,7 +5268,8 @@ export class WsBridge {
   private handleSetModel(session: Session, model: string) {
     if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
       // SDK sessions: forward model change to CLI subprocess via the adapter
-      // (query.setModel), same pattern as permission mode changes.
+      // (query.setModel). Unlike permission mode (which is server-side only),
+      // the model must reach the CLI so it uses the correct model for API calls.
       session.claudeSdkAdapter.sendBrowserMessage({ type: "set_model", model } as any);
     } else {
       const ndjson = JSON.stringify({
@@ -5265,8 +5305,11 @@ export class WsBridge {
   private handleSetPermissionMode(session: Session, mode: string) {
     // Route to the appropriate backend
     if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
-      // SDK sessions: the adapter forwards the mode change to the CLI subprocess
-      // via query.setPermissionMode() — no process restart needed.
+      // SDK sessions: mode change is server-side only. The adapter logs it
+      // but does NOT forward to the CLI — the CLI's internal mode is irrelevant
+      // because --permission-prompt-tool stdio routes all permission decisions
+      // through canUseTool → handleSdkPermissionRequest, which checks the
+      // server-side mode for auto-approval.
       session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode } as any);
     } else {
       const ndjson = JSON.stringify({
