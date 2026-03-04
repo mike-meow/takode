@@ -332,6 +332,8 @@ export interface CodexAdapterOptions {
   threadId?: string;
   /** Optional recorder for raw message capture. */
   recorder?: RecorderManager;
+  /** Companion instructions injected via developer_instructions in turn/start. */
+  instructions?: string;
 }
 
 export interface CodexResumeTurnSnapshot {
@@ -2520,7 +2522,7 @@ export class CodexAdapter {
   }
 
   private buildCollaborationModeOverride():
-    { mode: "default" | "plan"; settings: { model: string; reasoning_effort: string | null; developer_instructions: null } }
+    { mode: "default" | "plan"; settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null } }
     | null {
     const mode = this.options.approvalMode === "plan" ? "plan" : "default";
     return {
@@ -2528,7 +2530,7 @@ export class CodexAdapter {
       settings: {
         model: this.options.model?.trim() || "gpt-5.3-codex",
         reasoning_effort: this.normalizeReasoningEffort(this.options.reasoningEffort),
-        developer_instructions: null,
+        developer_instructions: this.options.instructions ?? null,
       },
     };
   }

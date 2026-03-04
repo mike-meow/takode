@@ -279,6 +279,77 @@ export interface LaunchOptions {
   pluginDirs?: string[];
 }
 
+// ─── Companion instruction injection (system prompt) ────────────────────────
+
+/**
+ * Build the Companion-specific instructions string injected into every session
+ * via the system prompt. This is the single source of truth for all backends
+ * (Claude CLI, SDK, Codex). Worktree-specific guardrails are included when
+ * the session runs in a git worktree.
+ */
+function buildCompanionInstructions(opts?: {
+  worktree?: { branch: string; repoRoot: string; parentBranch?: string };
+}): string {
+  const parts: string[] = [];
+
+  if (opts?.worktree) {
+    const { branch, repoRoot, parentBranch } = opts.worktree;
+    const branchLabel = parentBranch
+      ? `\`${branch}\` (created from \`${parentBranch}\`)`
+      : `\`${branch}\``;
+    const syncBaseBranch = parentBranch || branch;
+
+    parts.push(`# Worktree Session — Branch Guardrails
+
+You are working on branch: ${branchLabel}
+This is a git worktree. The main repository is at: \`${repoRoot}\`
+
+**Rules:**
+1. DO NOT run \`git checkout\`, \`git switch\`, or any command that changes the current branch
+2. All your work MUST stay on the \`${branch}\` branch
+3. When committing, commit to \`${branch}\` only
+4. If you need to reference code from another branch, use \`git show other-branch:path/to/file\`
+
+## Porting Commits to the Main Repo
+
+When asked to port/sync commits from this worktree to the main repository at \`${repoRoot}\`, follow this workflow **exactly**:
+
+### Sync Context (Critical)
+
+Use this context for "sync to main repo" requests in this session:
+- Base repo checkout: \`${repoRoot}\`
+- Base branch: \`${syncBaseBranch}\`
+
+By default, "sync to main repo" means syncing to the base branch above.
+Only sync to a different remote branch if the user explicitly names it (for example: \`origin/main\`).
+
+1. **Check the main repo first.** Pull remote changes first: \`git -C ${repoRoot} fetch origin ${syncBaseBranch} && git -C ${repoRoot} pull --rebase origin ${syncBaseBranch}\` (development may happen on multiple machines). Then run \`git -C ${repoRoot} status\` — if there are uncommitted changes, **stop and tell the user** — another agent may have work in progress. Never run \`git reset --hard\`, \`git checkout .\`, or \`git clean\` on the main repo without explicit user approval. Read any new commits briefly to understand what changed since your branch diverged.
+2. **Rebase in the worktree.** Rebase your worktree branch onto the main repo's local base branch. Since all worktrees share the same git object store, the main repo's local branch is directly visible as a ref — no fetch needed. Use \`git rebase ${syncBaseBranch}\`. Resolve all merge conflicts here in the worktree — this is the safe place to do it without affecting other agents.
+3. **Cherry-pick clean commits to main.** Once the worktree branch is cleanly rebased with your new commits on top, cherry-pick only your new commits into the main repo using \`git -C ${repoRoot} cherry-pick <commit-hash>\`. Cherry-pick one at a time in chronological order.
+4. **Handle unexpected conflicts.** If cherry-pick still conflicts (it shouldn't after a clean rebase), tell the user the conflicting files and ask how to proceed. Do not force-resolve or abort without asking.
+5. **Verify and push.** Run \`git -C ${repoRoot} log --oneline -5\` to confirm the commits landed correctly, then \`git -C ${repoRoot} push origin ${syncBaseBranch}\` to push to the remote.
+6. **Sync both worktree and local main branch.**
+   - Reset this worktree branch to match local base branch: \`git reset --hard ${syncBaseBranch}\`.
+   - Also fast-forward local base branch in the main repo checkout: \`git -C ${repoRoot} checkout ${syncBaseBranch} && git -C ${repoRoot} merge --ff-only origin/${syncBaseBranch}\`.
+7. **Run tests post-merge.** After resetting, run the project's unit tests in the worktree to verify nothing broke from merging with main. If tests fail: (a) if the fix is straightforward, fix it in the worktree, commit, and re-sync following steps 1–6 above; (b) otherwise, explain the failures to the user and ask how to proceed.
+
+### Completion Checklist
+
+Do NOT report the sync as complete until ALL of the following are true:
+- [ ] Main repo log shows the cherry-picked commits
+- [ ] Worktree has been reset to match the main repo branch
+- [ ] Tests have been run **after the reset** AND passed (or failures reported to user)
+- [ ] Changes have been pushed to the remote`);
+  }
+
+  // Link syntax — always included (useful for all sessions)
+  parts.push(`## Link Syntax
+
+When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.`);
+
+  return parts.join("\n\n");
+}
+
 /**
  * Manages CLI backend processes (Claude Code via --sdk-url WebSocket,
  * or Codex via app-server stdio).
@@ -931,6 +1002,22 @@ export class CliLauncher {
     }
     args.push("-p", "");
 
+    // Inject Companion-specific instructions via system prompt (link syntax,
+    // worktree branch guardrails, sync workflow). This replaces the old approach
+    // of writing .claude/CLAUDE.md files into worktree directories.
+    const companionInstructions = buildCompanionInstructions(
+      info.isWorktree && info.branch ? {
+        worktree: {
+          branch: info.actualBranch || info.branch,
+          repoRoot: info.repoRoot || "",
+          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+        },
+      } : undefined,
+    );
+    if (companionInstructions) {
+      args.push("--append-system-prompt", companionInstructions);
+    }
+
     let spawnCmd: string[];
     let spawnEnv: Record<string, string | undefined>;
     let spawnCwd: string | undefined;
@@ -1061,6 +1148,15 @@ export class CliLauncher {
     options: LaunchOptions,
   ): Promise<void> {
     const { ClaudeSdkAdapter } = await import("./claude-sdk-adapter.js");
+    const sdkInstructions = buildCompanionInstructions(
+      info.isWorktree && info.branch ? {
+        worktree: {
+          branch: info.actualBranch || info.branch,
+          repoRoot: info.repoRoot || "",
+          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+        },
+      } : undefined,
+    );
     const adapter = new ClaudeSdkAdapter(sessionId, {
       model: options.model,
       cwd: info.cwd,
@@ -1070,6 +1166,7 @@ export class CliLauncher {
       claudeBinary: options.claudeBinary,
       recorder: this.recorder,
       pluginDirs: options.pluginDirs,
+      instructions: sdkInstructions || undefined,
     });
 
     if (this.onClaudeSdkAdapter) {
@@ -1278,6 +1375,15 @@ export class CliLauncher {
 
     // Create the CodexAdapter which handles JSON-RPC and message translation
     // Pass the raw permission mode — the adapter maps it to Codex's approval policy
+    const codexInstructions = buildCompanionInstructions(
+      info.isWorktree && info.branch ? {
+        worktree: {
+          branch: info.actualBranch || info.branch,
+          repoRoot: info.repoRoot || "",
+          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+        },
+      } : undefined,
+    );
     const adapter = new CodexAdapter(proc, sessionId, {
       model: options.model,
       cwd: info.cwd,
@@ -1287,6 +1393,7 @@ export class CliLauncher {
       sandbox: sandboxMode,
       reasoningEffort: options.codexReasoningEffort,
       recorder: this.recorder ?? undefined,
+      instructions: codexInstructions || undefined,
     });
 
     // Handle init errors — mark session as exited so UI shows failure.
@@ -1331,167 +1438,42 @@ export class CliLauncher {
   }
 
   /**
-   * Inject worktree branch guardrails into backend-appropriate instruction files.
-   * Claude: .claude/CLAUDE.md
-   * Codex: AGENTS.md (worktree root)
+   * Set up worktree environment: symlink project settings.
+   * Guardrails content is now injected via system prompt (--append-system-prompt,
+   * developer_instructions, appendSystemPrompt) instead of writing files.
    *
-   * Only injects into actual worktree directories, never the main repo.
+   * Only runs for actual worktree directories, never the main repo.
    */
   private async injectWorktreeGuardrails(
     worktreePath: string,
     branch: string,
     repoRoot: string,
     backendType: BackendType,
-    parentBranch?: string,
+    _parentBranch?: string,
   ): Promise<void> {
-    // Safety: never inject guardrails into the main repository itself
+    // Safety: never inject into the main repository itself
     if (worktreePath === repoRoot) {
-      console.warn(`[cli-launcher] Skipping guardrails injection: worktree path is the main repo (${repoRoot})`);
+      console.warn(`[cli-launcher] Skipping worktree setup: worktree path is the main repo (${repoRoot})`);
       return;
     }
 
-    // Safety: only inject if the worktree directory actually exists (created by git worktree add)
+    // Safety: only run if the worktree directory actually exists
     if (!(await fileExists(worktreePath))) {
-      console.warn(`[cli-launcher] Skipping guardrails injection: worktree path does not exist (${worktreePath})`);
+      console.warn(`[cli-launcher] Skipping worktree setup: worktree path does not exist (${worktreePath})`);
       return;
     }
 
-    const branchLabel = parentBranch
-      ? `\`${branch}\` (created from \`${parentBranch}\`)`
-      : `\`${branch}\``;
-    const syncBaseBranch = parentBranch || branch;
-
-    const MARKER_START = "<!-- WORKTREE_GUARDRAILS_START -->";
-    const MARKER_END = "<!-- WORKTREE_GUARDRAILS_END -->";
-    const guardrails = `${MARKER_START}
-# Worktree Session — Branch Guardrails
-
-You are working on branch: ${branchLabel}
-This is a git worktree. The main repository is at: \`${repoRoot}\`
-
-**Rules:**
-1. DO NOT run \`git checkout\`, \`git switch\`, or any command that changes the current branch
-2. All your work MUST stay on the \`${branch}\` branch
-3. When committing, commit to \`${branch}\` only
-4. If you need to reference code from another branch, use \`git show other-branch:path/to/file\`
-
-## Porting Commits to the Main Repo
-
-When asked to port/sync commits from this worktree to the main repository at \`${repoRoot}\`, follow this workflow **exactly**:
-
-### Sync Context (Critical)
-
-Use this context for "sync to main repo" requests in this session:
-- Base repo checkout: \`${repoRoot}\`
-- Base branch: \`${syncBaseBranch}\`
-
-By default, "sync to main repo" means syncing to the base branch above.
-Only sync to a different remote branch if the user explicitly names it (for example: \`origin/main\`).
-
-1. **Check the main repo first.** Pull remote changes first: \`git -C ${repoRoot} fetch origin ${syncBaseBranch} && git -C ${repoRoot} pull --rebase origin ${syncBaseBranch}\` (development may happen on multiple machines). Then run \`git -C ${repoRoot} status\` — if there are uncommitted changes, **stop and tell the user** — another agent may have work in progress. Never run \`git reset --hard\`, \`git checkout .\`, or \`git clean\` on the main repo without explicit user approval. Read any new commits briefly to understand what changed since your branch diverged.
-2. **Rebase in the worktree.** Rebase your worktree branch onto the main repo's local base branch. Since all worktrees share the same git object store, the main repo's local branch is directly visible as a ref — no fetch needed. Use \`git rebase ${syncBaseBranch}\`. Resolve all merge conflicts here in the worktree — this is the safe place to do it without affecting other agents.
-3. **Cherry-pick clean commits to main.** Once the worktree branch is cleanly rebased with your new commits on top, cherry-pick only your new commits into the main repo using \`git -C ${repoRoot} cherry-pick <commit-hash>\`. Cherry-pick one at a time in chronological order.
-4. **Handle unexpected conflicts.** If cherry-pick still conflicts (it shouldn't after a clean rebase), tell the user the conflicting files and ask how to proceed. Do not force-resolve or abort without asking.
-5. **Verify and push.** Run \`git -C ${repoRoot} log --oneline -5\` to confirm the commits landed correctly, then \`git -C ${repoRoot} push origin ${syncBaseBranch}\` to push to the remote.
-6. **Sync both worktree and local main branch.**
-   - Reset this worktree branch to match local base branch: \`git reset --hard ${syncBaseBranch}\`.
-   - Also fast-forward local base branch in the main repo checkout: \`git -C ${repoRoot} checkout ${syncBaseBranch} && git -C ${repoRoot} merge --ff-only origin/${syncBaseBranch}\`.
-7. **Run tests post-merge.** After resetting, run the project's unit tests in the worktree to verify nothing broke from merging with main. If tests fail: (a) if the fix is straightforward, fix it in the worktree, commit, and re-sync following steps 1–6 above; (b) otherwise, explain the failures to the user and ask how to proceed.
-
-### Completion Checklist
-
-Do NOT report the sync as complete until ALL of the following are true:
-- [ ] Main repo log shows the cherry-picked commits
-- [ ] Worktree has been reset to match the main repo branch
-- [ ] Tests have been run **after the reset** AND passed (or failures reported to user)
-- [ ] Changes have been pushed to the remote
-
-## Link Syntax
-
-When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.
-${MARKER_END}`;
-
-    // Claude and Claude SDK both use .claude/CLAUDE.md for guardrails;
-    // Codex uses AGENTS.md. Exhaustive check ensures new backends get covered.
-    switch (backendType) {
-      case "claude":
-      case "claude-sdk": {
-        const claudeDir = join(worktreePath, ".claude");
-        const claudeMdPath = join(claudeDir, "CLAUDE.md");
-
-        try {
-          await mkdir(claudeDir, { recursive: true });
-
-          if (await fileExists(claudeMdPath)) {
-            const existing = await readFile(claudeMdPath, "utf-8");
-            // Replace existing guardrails section or append
-            if (existing.includes(MARKER_START)) {
-              const before = existing.substring(0, existing.indexOf(MARKER_START));
-              const afterIdx = existing.indexOf(MARKER_END);
-              const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
-              await writeFile(claudeMdPath, before + guardrails + after, "utf-8");
-            } else {
-              await writeFile(claudeMdPath, existing + "\n\n" + guardrails, "utf-8");
-            }
-          } else {
-            await writeFile(claudeMdPath, guardrails, "utf-8");
-          }
-          console.log(`[cli-launcher] Injected worktree guardrails into .claude/CLAUDE.md for branch ${branch}`);
-
-          await this.addWorktreeGitExclude(worktreePath, ".claude/CLAUDE.md");
-          try {
-            await execPromise("git --no-optional-locks update-index --skip-worktree .claude/CLAUDE.md", {
-              cwd: worktreePath, timeout: 5000,
-            });
-          } catch { /* file may not be tracked in this repo — ignore */ }
-
-          await this.symlinkProjectSettings(worktreePath, repoRoot);
-        } catch (e) {
-          console.warn(`[cli-launcher] Failed to inject .claude/CLAUDE.md guardrails:`, e);
-        }
-        break;
+    // Claude and Claude SDK: symlink project settings (.claude/settings.json)
+    // so the worktree inherits the main repo's settings.
+    if (backendType === "claude" || backendType === "claude-sdk") {
+      try {
+        await this.symlinkProjectSettings(worktreePath, repoRoot);
+        console.log(`[cli-launcher] Worktree setup complete for branch ${branch} (settings symlinked, guardrails via system prompt)`);
+      } catch (e) {
+        console.warn(`[cli-launcher] Failed to symlink project settings for worktree:`, e);
       }
-      case "codex": {
-        // Codex auto-discovers AGENTS.md by walking from git root to cwd.
-        // If AGENTS.md is a symlink (commonly to CLAUDE.md), materialize a real
-        // worktree-local AGENTS.md so Codex-specific instructions live in AGENTS.md.
-        const agentsMdPath = join(worktreePath, "AGENTS.md");
-        try {
-          let existing = "";
-          if (await fileExists(agentsMdPath)) {
-            const stat = await lstat(agentsMdPath);
-            if (stat.isSymbolicLink()) {
-              existing = await readFile(agentsMdPath, "utf-8");
-              await unlink(agentsMdPath);
-              console.log("[cli-launcher] Replaced symlinked AGENTS.md with worktree-local file");
-            } else {
-              existing = await readFile(agentsMdPath, "utf-8");
-            }
-          }
-          if (existing.includes(MARKER_START)) {
-            const before = existing.substring(0, existing.indexOf(MARKER_START));
-            const afterIdx = existing.indexOf(MARKER_END);
-            const after = afterIdx >= 0 ? existing.substring(afterIdx + MARKER_END.length) : "";
-            await writeFile(agentsMdPath, before + guardrails + after, "utf-8");
-          } else {
-            await writeFile(agentsMdPath, existing ? (existing + "\n\n" + guardrails) : guardrails, "utf-8");
-          }
-          console.log(`[cli-launcher] Injected worktree guardrails into AGENTS.md for branch ${branch}`);
-
-          await this.addWorktreeGitExclude(worktreePath, "AGENTS.md");
-          try {
-            await execPromise("git --no-optional-locks update-index --skip-worktree AGENTS.md", {
-              cwd: worktreePath, timeout: 5000,
-            });
-          } catch { /* file may not be tracked in this repo — ignore */ }
-        } catch (e) {
-          console.warn(`[cli-launcher] Failed to inject AGENTS.md guardrails:`, e);
-        }
-        break;
-      }
-      default:
-        assertNever(backendType);
     }
+    // Codex: no file setup needed — instructions go via developer_instructions in turn/start
   }
 
   /**

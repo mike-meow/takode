@@ -1622,86 +1622,10 @@ describe("symlinkProjectSettings", () => {
     expect(excludeCalls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("does not inject .claude/CLAUDE.md for Codex worktree sessions", async () => {
-    mockExistsSync.mockImplementation((path: string) => path === WORKTREE);
-    mockSpawn.mockReturnValueOnce(createMockCodexProc());
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: WORKTREE,
-      worktreeInfo: {
-        isWorktree: true,
-        repoRoot: REPO_ROOT,
-        branch: "feature-x",
-        actualBranch: "feature-x",
-        worktreePath: WORKTREE,
-      },
-    });
-
-    const writeTargets = mockWriteFileSync.mock.calls.map((c: any[]) => String(c[0]));
-    expect(writeTargets.some((p) => p.endsWith("/.claude/CLAUDE.md"))).toBe(false);
-    expect(writeTargets.some((p) => p.endsWith("/AGENTS.md"))).toBe(true);
-    expect(mockSymlinkSync).not.toHaveBeenCalled();
-  });
-
-  it("injects repo-agnostic sync context into Codex AGENTS.md guardrails", async () => {
-    mockExistsSync.mockImplementation((path: string) => path === WORKTREE);
-    mockSpawn.mockReturnValueOnce(createMockCodexProc());
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: WORKTREE,
-      worktreeInfo: {
-        isWorktree: true,
-        repoRoot: REPO_ROOT,
-        branch: "feature-x",
-        actualBranch: "feature-x",
-        worktreePath: WORKTREE,
-      },
-    });
-
-    const agentsWrite = mockWriteFileSync.mock.calls.find(
-      (c: any[]) => String(c[0]).endsWith("/AGENTS.md"),
-    );
-    expect(agentsWrite).toBeDefined();
-    const content = String(agentsWrite![1]);
-    expect(content).toContain("sync to main repo");
-    expect(content).toContain(`Base repo checkout: \`${REPO_ROOT}\``);
-    expect(content).toContain("Base branch: `feature-x`");
-    expect(content).toContain(`git -C ${REPO_ROOT} fetch origin feature-x`);
-    expect(content).toContain(`git -C ${REPO_ROOT} push origin feature-x`);
-  });
-
-  it("materializes AGENTS.md when AGENTS.md is a symlink in Codex worktree sessions", async () => {
-    const agentsPath = join(WORKTREE, "AGENTS.md");
-    mockExistsSync.mockImplementation((path: string) => path === WORKTREE || path === agentsPath);
-    mockLstatSync.mockImplementation((path?: string) => {
-      if (path === agentsPath) return { isSymbolicLink: () => true };
-      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    });
-    mockReadFileSync.mockImplementation((path?: string) => {
-      if (path === agentsPath) return "# Existing shared instructions";
-      return "";
-    });
-    mockSpawn.mockReturnValueOnce(createMockCodexProc());
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: WORKTREE,
-      worktreeInfo: {
-        isWorktree: true,
-        repoRoot: REPO_ROOT,
-        branch: "feature-x",
-        actualBranch: "feature-x",
-        worktreePath: WORKTREE,
-      },
-    });
-
-    const writeTargets = mockWriteFileSync.mock.calls.map((c: any[]) => String(c[0]));
-    expect(mockUnlinkSync).toHaveBeenCalledWith(agentsPath);
-    expect(writeTargets.some((p) => p.endsWith("/AGENTS.md"))).toBe(true);
-    expect(writeTargets.some((p) => p.endsWith("/.claude/CLAUDE.md"))).toBe(false);
-  });
+  // NOTE: Tests for CLAUDE.md/AGENTS.md file injection were removed because
+  // worktree instructions now go through the system prompt (--append-system-prompt
+  // for Claude, developer_instructions for Codex, appendSystemPrompt for SDK)
+  // instead of file-based injection. See q-124.
 });
 
 describe("injectOrchestratorGuardrails", () => {

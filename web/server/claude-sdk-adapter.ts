@@ -36,6 +36,8 @@ export interface ClaudeSdkAdapterOptions {
   recorder?: RecorderManager | null;
   /** Plugin directories to pass to Claude Code */
   pluginDirs?: string[];
+  /** Companion instructions injected via appendSystemPrompt in the control init. */
+  instructions?: string;
 }
 
 interface SessionMeta {
@@ -223,11 +225,16 @@ export class ClaudeSdkAdapter {
     if (v4Class && originalInitialize) {
       const patchedSettingSources = sessionOptions.settingSources as string[];
       const patchedPlugins = plugins;
+      const patchedAppendSystemPrompt = this.options.instructions;
       v4Class.prototype.initialize = function patchedInitialize(this: any) {
         // Override the values SQ hardcoded so V4 builds correct CLI args
         this.options.settingSources = patchedSettingSources;
         if (patchedPlugins.length > 0) {
           this.options.plugins = patchedPlugins;
+        }
+        // Inject Companion instructions via appendSystemPrompt
+        if (patchedAppendSystemPrompt) {
+          this.options.appendSystemPrompt = patchedAppendSystemPrompt;
         }
         return originalInitialize.call(this);
       };
