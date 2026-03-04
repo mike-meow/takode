@@ -402,12 +402,13 @@ export class ClaudeSdkAdapter {
       ...(options.suggestions ? { permission_suggestions: options.suggestions } : {}),
     };
 
-    this.emitBrowserMessage({
-      type: "permission_request",
-      request: permRequest,
-    } as any);
-
-    // Wait for the browser to respond
+    // Wait for the browser/server to respond.
+    // IMPORTANT: Register the pending promise BEFORE emitting the permission
+    // request. The server may auto-approve mode-based permissions (Write in
+    // acceptEdits mode) synchronously within the emitBrowserMessage call chain,
+    // which calls sendBrowserMessage → dispatchOutgoing → pendingPermissions.get().
+    // If the promise isn't registered yet, the approval is silently dropped and
+    // the tool hangs until the SDK's abort signal fires (~3.5 minutes).
     return new Promise((resolve) => {
       this.pendingPermissions.set(requestId, { resolve, reject: (err: Error) => {
         // On unexpected errors, resolve with deny (never reject — rejected promises
@@ -421,6 +422,12 @@ export class ClaudeSdkAdapter {
         this.pendingPermissions.delete(requestId);
         resolve({ behavior: "deny", message: "Permission request aborted" });
       }, { once: true });
+
+      // Now emit the permission request — this may trigger synchronous auto-approval
+      this.emitBrowserMessage({
+        type: "permission_request",
+        request: permRequest,
+      } as any);
     });
   }
 
