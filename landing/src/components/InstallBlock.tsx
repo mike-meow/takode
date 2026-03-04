@@ -1,6 +1,7 @@
 import { CopyButton } from "./CopyButton";
 
 const COMMAND = "bunx the-companion";
+// TODO: Switch this command to `bunx takode` when the package name is renamed.
 
 export function InstallBlock({ large }: { large?: boolean }) {
   return (
