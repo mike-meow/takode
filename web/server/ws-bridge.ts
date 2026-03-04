@@ -2552,6 +2552,21 @@ export class WsBridge {
     }
     session.claudeSdkAdapter = adapter;
 
+    // Mark session as initialized immediately when the adapter attaches.
+    // Resumed SDK sessions (unstable_v2_resumeSession) do NOT re-emit
+    // system.init, so the session_init handler below never fires. Without
+    // this, cliInitReceived stays false after server restart → isSessionIdle()
+    // returns false → herd events are never delivered.
+    session.cliInitReceived = true;
+
+    // Flush pending herd events now that isSessionIdle() can return true.
+    if (this.herdEventDispatcher) {
+      const orchInfo = this.launcher?.getSession(session.id);
+      if (orchInfo?.isOrchestrator) {
+        this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+      }
+    }
+
     adapter.onBrowserMessage((msg) => {
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
