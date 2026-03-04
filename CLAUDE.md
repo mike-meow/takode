@@ -4,8 +4,8 @@ This file provides guidance to Claude Code & Codex when working with code in thi
 
 ## What This Is
 
-The Companion — a web UI for Claude Code & Codex. 
-It reverse-engineers the undocumented `--sdk-url` WebSocket protocol in the Claude Code CLI to provide a browser-based interface for running multiple Claude Code sessions with streaming, tool call visibility, and permission control.
+Takode — a web orchestration UI for Claude Code & Codex.
+It began as a Companion fork and now provides a multi-session workspace with cross-session coordination, Questmaster workflows, tool-call visibility, and permission control.
 
 ## Project Progress
 
@@ -26,7 +26,7 @@ cd web && bun run typecheck
 # Production build + serve
 cd web && bun run build && bun run start
 
-# Landing page (thecompanion.sh) — idempotent: starts if down, no-op if up
+# Landing page (takode.sh) — idempotent: starts if down, no-op if up
 # IMPORTANT: Always use this script to run the landing page. Never cd into landing/ and run bun/vite manually.
 ./scripts/landing-start.sh          # start
 ./scripts/landing-start.sh --stop   # stop
@@ -103,7 +103,7 @@ Browser (React) ←→ WebSocket ←→ Hono Server (Bun) ←→ WebSocket (NDJS
   - `App.tsx` — Root layout with sidebar, chat view, task panel. Hash routing (`#/playground`).
   - `components/` — UI: `ChatView`, `MessageFeed`, `MessageBubble`, `ToolBlock`, `Composer`, `Sidebar`, `TopBar`, `TaskPanel`, `PermissionBanner`, `EnvManager`, `SessionCreationView`, `QuestmasterPage`, `CronManager`, `Playground`.
 
-- **`web/bin/cli.ts`** — CLI entry point (`bunx the-companion`). Sets `__COMPANION_PACKAGE_ROOT` and imports the server.
+- **`web/bin/cli.ts`** — Main CLI entry point (currently invoked as `bunx the-companion`). Sets `__COMPANION_PACKAGE_ROOT` and imports the server.
 
 ### WebSocket Protocol
 
@@ -140,19 +140,11 @@ Each entry captures:
 
 **Code**: `web/server/recorder.ts` (recorder + manager), `web/server/replay.ts` (load & filter utilities).
 
-## Fork Policy: Git Worktree as Primary Workflow
+## Fork Policy: Takode + Worktrees
 
-This is a fork of [The-Vibe-Company/companion](https://github.com/The-Vibe-Company/companion). Upstream has switched to Docker container-based session isolation. This fork keeps the container code working but intentionally maintains **git worktree as the primary workflow**. Containers add too much friction for certain applications that need direct access to host resources (files, network services, GPU, etc.).
+Takode was originally forked from [The-Vibe-Company/companion](https://github.com/The-Vibe-Company/companion), but it has since heavily diverged in architecture and features.
 
-When syncing with upstream: fast-forward `main` to `upstream/main`, then rebase the `jiayi` branch on top. Do not remove upstream container code — just don't extend it.
-
-### Branch naming convention for "main repo" requests
-
-- In this fork, when the user says **"sync to main repo"**, it means **sync to `origin/jiayi`** (the primary working branch), **not** `origin/main`.
-- Only sync to `origin/main` when the user explicitly says `main branch` or `origin/main`.
-- User testing usually happens by restarting the server from `/home/jiayiwei/companion` on branch `jiayi`. After implementing a fix in a worktree branch, land it in the main repo (`jiayi`) before asking the user to restart and verify.
-- For Questmaster workflow, do not transition a quest to `needs_verification` until the sync to the main repo is complete and pushed.
-- If a quest was submitted early, transition it back to `in_progress`, sync first, then resubmit for verification.
+Git worktrees are the preferred isolation model for this project. Container support remains available for compatibility, but new workflow guidance should continue to prioritize worktree-based development.
 
 ## Key Architectural Principles
 (please keep these updated as you work on the codebase)
