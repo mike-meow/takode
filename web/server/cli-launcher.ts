@@ -1405,6 +1405,10 @@ Do NOT report the sync as complete until ALL of the following are true:
 - [ ] Worktree has been reset to match the main repo branch
 - [ ] Tests have been run **after the reset** AND passed (or failures reported to user)
 - [ ] Changes have been pushed to the remote
+
+## Link Syntax
+
+When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.
 ${MARKER_END}`;
 
     // Claude and Claude SDK both use .claude/CLAUDE.md for guardrails;
