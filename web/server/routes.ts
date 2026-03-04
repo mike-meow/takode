@@ -1514,7 +1514,10 @@ export function createRoutes(
     if (!id) return c.json({ error: "Session not found" }, 404);
     const session = launcher.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
-    return c.json(session);
+    return c.json({
+      ...session,
+      isGenerating: wsBridge.isSessionBusy(id),
+    });
   });
 
   api.patch("/sessions/:id/name", async (c) => {

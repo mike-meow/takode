@@ -220,6 +220,7 @@ function createMockBridge() {
     subscribeTakodeEvents: vi.fn(() => () => {}),
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),
+    isSessionBusy: vi.fn(() => false),
   } as any;
 }
 
@@ -985,7 +986,9 @@ describe("GET /api/sessions/:id", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual(session);
+    // Response includes launcher session fields + isGenerating from ws-bridge
+    expect(json).toMatchObject(session);
+    expect(typeof json.isGenerating).toBe("boolean");
   });
 
   it("returns 404 when session not found", async () => {

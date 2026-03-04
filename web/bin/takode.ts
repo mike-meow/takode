@@ -915,18 +915,33 @@ async function handleSend(base: string, args: string[]): Promise<void> {
   const content = args.slice(1).join(" ");
 
   // Strip flags from content
-  const cleanContent = content.replace(/\s*--json\s*/, "").trim();
+  const cleanContent = content.replace(/\s*--json\s*/, "").replace(/\s*--correction\s*/, "").trim();
   const jsonMode = args.includes("--json");
+  const isCorrection = args.includes("--correction");
 
-  if (!sessionRef || !cleanContent) err("Usage: takode send <session> <message>");
+  if (!sessionRef || !cleanContent) err("Usage: takode send <session> <message> [--correction]");
 
   // Guard: orchestrators can only send to herded sessions
   const callerSessionId = getCredentials()?.sessionId;
   if (callerSessionId) {
     try {
       // Resolve target to a full UUID
-      const targetSession = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}`) as { sessionId: string };
+      const targetSession = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}`) as {
+        sessionId: string; sessionNum?: number; name?: string; isGenerating?: boolean;
+      };
       const targetId = targetSession.sessionId;
+
+      // Guard: block sends to running sessions unless --correction is used
+      if (targetSession.isGenerating && !isCorrection) {
+        const label = targetSession.name
+          ? `#${targetSession.sessionNum ?? "?"} ${targetSession.name}`
+          : `#${targetSession.sessionNum ?? sessionRef}`;
+        err(
+          `Session ${label} is currently working. ` +
+          `Queue this task and send it after the session finishes. ` +
+          `Use "takode send --correction" if this is a steering message for the current task.`,
+        );
+      }
 
       // Check herd membership
       const herdList = await apiGet(base, `/sessions/${encodeURIComponent(callerSessionId)}/herd`) as Array<{ sessionId: string }>;
@@ -935,8 +950,8 @@ async function handleSend(base: string, args: string[]): Promise<void> {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // If error is from our own herd check (the err() call above), re-throw
-      if (msg.includes("not in your herd")) throw e;
+      // If error is from our own guards (herd check, running check), re-throw
+      if (msg.includes("not in your herd") || msg.includes("currently working")) throw e;
       // Other errors (session not found, etc.) — let the send call handle it
     }
   }
