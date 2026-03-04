@@ -4395,6 +4395,31 @@ export class WsBridge {
   }
 
   /**
+   * Strip duplicated stderr output from Claude Code CLI error results.
+   *
+   * The CLI captures stdout and stderr separately and concatenates both into the
+   * tool_result content. For failed commands this produces:
+   *   "Exit code N\n<output>\n\n<output>"
+   * where <output> (the combined stdout+stderr) appears twice, separated by a
+   * blank line. We detect this pattern and keep only the first copy.
+   */
+  private static deduplicateCliErrorOutput(content: string): string {
+    const nlIdx = content.indexOf("\n");
+    if (nlIdx < 0 || !content.startsWith("Exit code ")) return content;
+
+    const body = content.slice(nlIdx + 1);
+    // Scan for a "\n\n" separator where the text before and after are identical
+    let sepIdx = body.indexOf("\n\n");
+    while (sepIdx >= 0) {
+      if (body.slice(0, sepIdx) === body.slice(sepIdx + 2)) {
+        return content.slice(0, nlIdx + 1) + body.slice(0, sepIdx);
+      }
+      sepIdx = body.indexOf("\n\n", sepIdx + 1);
+    }
+    return content;
+  }
+
+  /**
    * Convert tool_result blocks into ToolResultPreview entries and index full payloads.
    * Shared by Claude and Codex paths to keep Terminal result rendering consistent.
    */
@@ -4405,9 +4430,17 @@ export class WsBridge {
     const previews: ToolResultPreview[] = [];
 
     for (const block of toolResults) {
-      const resultContent = typeof block.content === "string"
+      let resultContent = typeof block.content === "string"
         ? block.content
         : JSON.stringify(block.content);
+
+      // Claude Code CLI duplicates stderr in error results: the content arrives
+      // as "Exit code N\n<body>\n\n<body>" where <body> is repeated verbatim.
+      // Strip the duplicate second half so the UI shows the error only once.
+      if (block.is_error && typeof block.content === "string") {
+        resultContent = WsBridge.deduplicateCliErrorOutput(resultContent);
+      }
+
       const totalSize = resultContent.length;
       const isTruncated = totalSize > TOOL_RESULT_PREVIEW_LIMIT;
 
