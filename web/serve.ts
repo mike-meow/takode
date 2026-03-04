@@ -20,6 +20,16 @@ let shuttingDown = false;
 let serverProc: ReturnType<typeof spawn> | null = null;
 
 async function build(): Promise<boolean> {
+  // Install deps first — no-op when up to date, but catches new packages
+  // added by commits pulled between restarts (e.g. highlight.js).
+  console.log("\x1b[36m[serve] Installing dependencies...\x1b[0m");
+  const install = spawn(["bun", "install"], {
+    cwd: webDir,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  await install.exited;
+
   console.log("\x1b[36m[serve] Building...\x1b[0m");
   const proc = spawn(["bun", "run", "build"], {
     cwd: webDir,
