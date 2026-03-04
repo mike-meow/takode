@@ -4,9 +4,11 @@ import { api } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
 import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
 import { YarnBallDot } from "./CatIcons.js";
-import { parseHash, navigateToSession } from "../utils/routing.js";
+import { parseHash } from "../utils/routing.js";
+import { navigateTo, navigateToSession } from "../utils/navigation.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
 import { deriveUiMode, deriveCodexUiMode } from "../utils/backends.js";
+import { coalesceSessionViewModel, toSessionViewModel } from "../utils/session-view-model.js";
 
 export function TopBar() {
   const hash = useSyncExternalStore(
@@ -31,6 +33,14 @@ export function TopBar() {
   const setActiveTab = useStore((s) => s.setActiveTab);
   const [copiedCliId, setCopiedCliId] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const currentSession = useStore((s) => currentSessionId ? (s.sessions.get(currentSessionId) ?? null) : null);
+  const currentSdkSession = useStore((s) =>
+    currentSessionId ? (s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId) ?? null) : null,
+  );
+  const currentSessionVm = useMemo(
+    () => coalesceSessionViewModel(currentSession, currentSdkSession),
+    [currentSession, currentSdkSession],
+  );
 
   useEffect(() => {
     const openSessionId = infoOpen && isSessionView ? currentSessionId : null;
@@ -61,10 +71,7 @@ export function TopBar() {
     };
   }, []);
 
-  const cliSessionId = useStore((s) => {
-    if (!currentSessionId) return null;
-    return s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cliSessionId ?? null;
-  });
+  const cliSessionId = currentSessionVm?.cliSessionId ?? null;
 
   const handleCopyCliSessionId = useCallback(() => {
     if (!cliSessionId) return;
@@ -76,15 +83,17 @@ export function TopBar() {
   const changedFilesCount = useStore((s) => {
     if (!currentSessionId) return 0;
     const session = s.sessions.get(currentSessionId);
-    const sessionCwd =
-      session?.cwd ||
-      s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cwd;
+    const sdk = s.sdkSessions.find((item) => item.sessionId === currentSessionId);
+    const sessionVm = session
+      ? toSessionViewModel(session)
+      : (sdk ? toSessionViewModel(sdk) : null);
+    const sessionCwd = sessionVm?.cwd;
     const files = s.changedFiles.get(currentSessionId);
     if (!files) return 0;
     if (!sessionCwd) return files.size;
     // Use repo_root only when it's an ancestor of cwd (worktrees have a different root)
-    const scope = (session?.repo_root && sessionCwd.startsWith(session.repo_root + "/"))
-      ? session.repo_root
+    const scope = (sessionVm?.repoRoot && sessionCwd.startsWith(sessionVm.repoRoot + "/"))
+      ? sessionVm.repoRoot
       : sessionCwd;
     const prefix = `${scope}/`;
     const scopedFiles = [...files].filter((fp) => fp === scope || fp.startsWith(prefix));
@@ -170,46 +179,37 @@ export function TopBar() {
       // Toggle back to previous view (or home)
       const prev = prevHashRef.current;
       if (prev && prev !== "#/questmaster") {
-        window.location.hash = prev.startsWith("#") ? prev.slice(1) : prev;
+        navigateTo(prev);
       } else {
-        window.location.hash = "";
+        navigateTo("");
       }
     } else {
       // Save current hash before navigating to questmaster
       prevHashRef.current = window.location.hash;
-      window.location.hash = "#/questmaster";
+      navigateTo("/questmaster");
     }
   }, [isQuestmasterPage]);
 
   const isConnected = currentSessionId ? (cliConnected.get(currentSessionId) ?? false) : false;
   const status = currentSessionId ? (sessionStatus.get(currentSessionId) ?? null) : null;
   const currentPermCount = currentSessionId ? countUserPermissions(pendingPermissions.get(currentSessionId)) : 0;
-  const currentSdkState = currentSessionId
-    ? (sdkSessions.find((s) => s.sessionId === currentSessionId)?.state ?? null)
-    : null;
+  const currentSdkState = currentSessionVm?.state ?? null;
   const currentHasUnread = currentSessionId ? !!(sessionAttention.get(currentSessionId)) : false;
   const sessionName = currentSessionId
     ? (sessionNames?.get(currentSessionId) ||
-      sdkSessions.find((s) => s.sessionId === currentSessionId)?.name ||
+      currentSessionVm?.name ||
       `Session ${currentSessionId.slice(0, 8)}`)
     : null;
-  const sessionNum = currentSessionId
-    ? sdkSessions.find((s) => s.sessionId === currentSessionId)?.sessionNum
-    : null;
-  const currentSessionData = useStore((s) => currentSessionId ? s.sessions.get(currentSessionId) : null);
-  const currentBackendType = currentSessionData?.backend_type
-    || sdkSessions.find((s) => s.sessionId === currentSessionId)?.backendType
-    || null;
-  const currentPermissionMode = currentSessionData?.permissionMode
-    || sdkSessions.find((s) => s.sessionId === currentSessionId)?.permissionMode
-    || null;
+  const sessionNum = currentSessionVm?.sessionNum ?? null;
+  const currentBackendType = currentSessionVm?.backendType ?? null;
+  const currentPermissionMode = currentSessionVm?.permissionMode ?? null;
   const modeLabel = currentPermissionMode
     ? ((currentBackendType === "codex"
       ? deriveCodexUiMode(currentPermissionMode)
       : deriveUiMode(currentPermissionMode)) === "plan" ? "Plan" : "Agent")
     : null;
   const isQuestNamed = useStore((s) => currentSessionId ? s.questNamedSessions.has(currentSessionId) : false);
-  const questStatus = useStore((s) => currentSessionId ? s.sessions.get(currentSessionId)?.claimedQuestStatus : undefined);
+  const questStatus = currentSessionVm?.claimedQuestStatus;
 
   return (
     <header className="shrink-0 flex items-center justify-between px-2 sm:px-4 py-2 sm:py-2.5 bg-cc-card border-b border-cc-border">

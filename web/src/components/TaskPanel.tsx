@@ -11,6 +11,8 @@ import {
   SEVEN_DAYS_MS,
   usageBarColor,
 } from "../utils/usage-bars.js";
+import { coalesceSessionViewModel } from "../utils/session-view-model.js";
+import { navigateToSession } from "../utils/navigation.js";
 
 const EMPTY_TASKS: TaskItem[] = [];
 
@@ -441,9 +443,10 @@ export function GitHubPRSection({ sessionId }: { sessionId: string }) {
   const session = useStore((s) => s.sessions.get(sessionId));
   const sdk = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
   const prStatus = useStore((s) => s.prStatus.get(sessionId));
+  const sessionVm = coalesceSessionViewModel(session, sdk);
 
-  const cwd = session?.cwd || sdk?.cwd;
-  const branch = session?.git_branch || sdk?.gitBranch;
+  const cwd = sessionVm?.cwd;
+  const branch = sessionVm?.gitBranch ?? undefined;
 
   // One-time REST fallback on mount if no pushed data yet
   useEffect(() => {
@@ -665,7 +668,7 @@ function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
                   <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${dotColor} bg-current`} />
                   <button
                     className="flex-1 text-left text-[11px] text-cc-fg truncate hover:underline cursor-pointer"
-                    onClick={() => { window.location.hash = `#/sessions/${s.sessionId}`; }}
+                    onClick={() => navigateToSession(s.sessionId)}
                     title={name}
                   >
                     {s.sessionNum != null && <span className="text-cc-muted font-mono mr-1">#{s.sessionNum}</span>}
@@ -784,16 +787,16 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
   const tasks = useStore((s) => s.sessionTasks.get(sessionId) || EMPTY_TASKS);
   const session = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
-  const sdkBackendType = sdkSession?.backendType;
+  const sessionVm = coalesceSessionViewModel(session, sdkSession);
   const taskPanelOpen = useStore((s) => s.taskPanelOpen);
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen);
 
   if (!taskPanelOpen) return null;
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
-  const isCodex = (session?.backend_type || sdkBackendType) === "codex";
+  const isCodex = sessionVm?.backendType === "codex";
   const showTasks = !!session;
-  const cwd = session?.cwd || sdkSession?.cwd || null;
+  const cwd = sessionVm?.cwd ?? null;
 
   return (
     <aside className="w-[280px] h-full flex flex-col overflow-hidden bg-cc-card border-l border-cc-border">
@@ -829,7 +832,7 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
         <McpCollapsible sessionId={sessionId} />
 
         {/* CLAUDE.md files */}
-        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={session?.repo_root || undefined} />}
+        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={sessionVm?.repoRoot} />}
 
         {/* Session-level tasks recognized by the auto-namer */}
         {showTasks && <SessionTasksSection sessionId={sessionId} />}

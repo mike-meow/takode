@@ -3,6 +3,8 @@ import { useStore } from "../store.js";
 import { GitHubPRSection, McpCollapsible, ClaudeMdCollapsible, HerdDiagnosticsSection } from "./TaskPanel.js";
 import { shortenHome } from "../utils/path-display.js";
 import { formatModel } from "../utils/backends.js";
+import { coalesceSessionViewModel } from "../utils/session-view-model.js";
+import { navigateTo } from "../utils/navigation.js";
 
 export function SessionInfoPopover({
   sessionId,
@@ -14,9 +16,10 @@ export function SessionInfoPopover({
   const session = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
   const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
-  const cwd = session?.cwd || sdkSession?.cwd || null;
-  const model = session?.model || "";
-  const backendType = session?.backend_type || sdkSession?.backendType || "claude";
+  const sessionVm = coalesceSessionViewModel(session, sdkSession);
+  const cwd = sessionVm?.cwd ?? null;
+  const model = sessionVm?.model ?? "";
+  const backendType = sessionVm?.backendType ?? "claude";
   const popoverRef = useRef<HTMLDivElement>(null);
   const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
 
@@ -26,17 +29,17 @@ export function SessionInfoPopover({
   }, []);
 
   // Stats
-  const turns = session?.num_turns ?? 0;
-  const cost = session?.total_cost_usd ?? 0;
-  const contextPercent = session?.context_used_percent ?? 0;
+  const turns = sessionVm?.numTurns ?? 0;
+  const cost = sessionVm?.totalCostUsd ?? 0;
+  const contextPercent = sessionVm?.contextUsedPercent ?? 0;
 
   // Git
-  const gitBranch = session?.git_branch || null;
-  const isWorktree = session?.is_worktree ?? false;
-  const gitAhead = session?.git_ahead ?? 0;
-  const gitBehind = session?.git_behind ?? 0;
-  const linesAdded = session?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
-  const linesRemoved = session?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
+  const gitBranch = sessionVm?.gitBranch ?? null;
+  const isWorktree = sessionVm?.isWorktree ?? false;
+  const gitAhead = sessionVm?.gitAhead ?? 0;
+  const gitBehind = sessionVm?.gitBehind ?? 0;
+  const linesAdded = sessionVm?.totalLinesAdded ?? 0;
+  const linesRemoved = sessionVm?.totalLinesRemoved ?? 0;
 
   // Close on click outside
   useEffect(() => {
@@ -229,7 +232,7 @@ export function SessionInfoPopover({
         {/* GitHub PR, MCP, CLAUDE.md */}
         <GitHubPRSection sessionId={sessionId} />
         <McpCollapsible sessionId={sessionId} />
-        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={session?.repo_root || undefined} />}
+        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={sessionVm?.repoRoot} />}
       </div>
     </div>
   );
@@ -242,7 +245,7 @@ function QuestTaskChip({ questId, title, onNavigate }: { questId: string; title:
       type="button"
       className="text-left text-[11px] leading-snug line-clamp-1 text-amber-400 hover:text-amber-300 hover:underline decoration-dotted underline-offset-2 cursor-pointer"
       onClick={() => {
-        window.location.hash = `#/questmaster?quest=${encodeURIComponent(questId)}`;
+        navigateTo(`/questmaster?quest=${encodeURIComponent(questId)}`);
         onNavigate();
       }}
     >
