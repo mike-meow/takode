@@ -5,7 +5,7 @@ import { readFile, writeFile, stat, readdir, access as accessAsync } from "node:
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import type { CliLauncher } from "../cli-launcher.js";
+import type { CliLauncher, LaunchOptions } from "../cli-launcher.js";
 import * as envManager from "../env-manager.js";
 import * as gitUtils from "../git-utils.js";
 import * as sessionNames from "../session-names.js";
@@ -77,128 +77,265 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return { cleaned: result.removed, path: mapping.worktreePath };
   }
   // ─── SDK Sessions (--sdk-url) ─────────────────────────────────────
+  type SessionBackend = "claude" | "codex" | "claude-sdk";
+  type CreationProgressStatus = "in_progress" | "done" | "error";
+  type SessionPreparationStatus = 400 | 503;
+  type EmitCreationProgress = (
+    step: CreationStepId,
+    label: string,
+    status: CreationProgressStatus,
+    detail?: string,
+  ) => Promise<void>;
 
-  api.post("/sessions/create", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    try {
-      const backend = body.backend ?? "claude";
-      if (backend !== "claude" && backend !== "codex" && backend !== "claude-sdk") {
-        return c.json({ error: `Invalid backend: ${String(backend)}` }, 400);
+  interface WorktreeSessionInfo {
+    isWorktree: boolean;
+    repoRoot: string;
+    branch: string;
+    actualBranch: string;
+    worktreePath: string;
+    defaultBranch: string;
+  }
+
+  interface SessionConfig {
+    launchOptions: LaunchOptions;
+    initialModeState: ReturnType<RouteContext["resolveInitialModeState"]>;
+    initialCwd: string;
+    isAssistantMode: boolean;
+    isOrchestrator: boolean;
+    envSlug?: string;
+    createdBy?: unknown;
+    worktreeInfo?: WorktreeSessionInfo;
+    containerInfo?: ContainerInfo;
+    resumeCliSessionId?: string;
+  }
+
+  class SessionPreparationError extends Error {
+    constructor(
+      message: string,
+      public status: SessionPreparationStatus,
+      public step?: CreationStepId,
+    ) {
+      super(message);
+      this.name = "SessionPreparationError";
+    }
+  }
+
+  const resolveBackend = (raw: unknown): SessionBackend | null => {
+    if (raw === "claude" || raw === "codex" || raw === "claude-sdk") return raw;
+    return null;
+  };
+
+  const throwPreparationError = (
+    message: string,
+    status: SessionPreparationStatus,
+    step?: CreationStepId,
+  ): never => {
+    throw new SessionPreparationError(message, status, step);
+  };
+
+  const markOrchestratorSession = (sessionId: string) => {
+    // Fire-and-forget: wait for CLI to connect, then send identity message
+    (async () => {
+      const maxWait = 30_000;
+      const pollMs = 200;
+      const start = Date.now();
+      while (Date.now() - start < maxWait) {
+        const info = launcher.getSession(sessionId);
+        if (info && (info.state === "connected" || info.state === "running")) {
+          wsBridge.injectUserMessage(sessionId, ORCHESTRATOR_SYSTEM_PROMPT);
+          return;
+        }
+        if (info?.state === "exited") return; // CLI crashed, don't inject
+        await new Promise((r) => setTimeout(r, pollMs));
+      }
+    })().catch((e) => console.error(`[routes] Failed to inject orchestrator message:`, e));
+  };
+
+  const applySessionPostLaunch = (
+    session: Awaited<ReturnType<CliLauncher["launch"]>>,
+    sessionConfig: SessionConfig,
+  ) => {
+    if (sessionConfig.containerInfo) {
+      containerManager.retrack(sessionConfig.containerInfo.containerId, session.sessionId);
+      wsBridge.markContainerized(session.sessionId, sessionConfig.initialCwd);
+    }
+
+    if (sessionConfig.worktreeInfo) {
+      wsBridge.markWorktree(
+        session.sessionId,
+        sessionConfig.worktreeInfo.repoRoot,
+        sessionConfig.initialCwd,
+        sessionConfig.worktreeInfo.defaultBranch,
+        sessionConfig.worktreeInfo.branch,
+      );
+      worktreeTracker.addMapping({
+        sessionId: session.sessionId,
+        repoRoot: sessionConfig.worktreeInfo.repoRoot,
+        branch: sessionConfig.worktreeInfo.branch,
+        actualBranch: sessionConfig.worktreeInfo.actualBranch,
+        worktreePath: sessionConfig.worktreeInfo.worktreePath,
+        createdAt: Date.now(),
+      });
+    }
+
+    wsBridge.setInitialCwd(session.sessionId, sessionConfig.initialCwd);
+    wsBridge.setInitialAskPermission(
+      session.sessionId,
+      sessionConfig.initialModeState.askPermission,
+      sessionConfig.initialModeState.uiMode,
+    );
+    if (sessionConfig.resumeCliSessionId) {
+      wsBridge.markResumedFromExternal(session.sessionId);
+    }
+
+    if (sessionConfig.isAssistantMode) {
+      session.isAssistant = true;
+    }
+    if (sessionConfig.isOrchestrator) {
+      session.isOrchestrator = true;
+      markOrchestratorSession(session.sessionId);
+    }
+    if (sessionConfig.envSlug) session.envSlug = sessionConfig.envSlug;
+
+    if (sessionConfig.isAssistantMode) {
+      sessionNames.setName(session.sessionId, "Takode");
+    } else {
+      const existingNames = new Set(Object.values(sessionNames.getAllNames()));
+      sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
+    }
+
+    if (sessionConfig.createdBy) {
+      const creatorId = resolveId(String(sessionConfig.createdBy));
+      const creator = creatorId ? launcher.getSession(creatorId) : null;
+      if (creator?.isOrchestrator) {
+        launcher.herdSessions(creator.sessionId, [session.sessionId]);
+      }
+    }
+
+    wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
+  };
+
+  const prepareSession = async (
+    body: any,
+    backend: SessionBackend,
+    emitProgress?: EmitCreationProgress,
+  ): Promise<SessionConfig> => {
+    const emit = async (
+      step: CreationStepId,
+      label: string,
+      status: CreationProgressStatus,
+      detail?: string,
+    ) => {
+      if (!emitProgress) return;
+      await emitProgress(step, label, status, detail);
+    };
+
+    const isOrchestrator = body.role === "orchestrator";
+
+    if (body.resumeCliSessionId) {
+      if (backend !== "claude") {
+        throwPreparationError("Resuming CLI sessions is only supported for Claude backend", 400);
       }
 
-      // ── Resume fast-path: skip git/worktree/container logic ──
-      if (body.resumeCliSessionId) {
-        if (backend !== "claude") {
-          return c.json({ error: "Resuming CLI sessions is only supported for Claude backend" }, 400);
-        }
-        let envVars: Record<string, string> | undefined = body.env;
-        if (body.envSlug) {
-          const companionEnv = await envManager.getEnv(body.envSlug);
-          if (companionEnv) envVars = { ...companionEnv.variables, ...body.env };
-        }
-        // Inject COMPANION_PORT so resumed sessions can call the local API.
-        envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
-        // Add orchestrator env vars if role is specified
-        if (body.role === "orchestrator") {
-          envVars.TAKODE_ROLE = "orchestrator";
-          envVars.TAKODE_API_PORT = String(launcher.getPort());
-        }
-        const binarySettings = getSettings();
-        const session = await launcher.launch({
-          cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
-          claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
-          env: envVars,
-          backendType: "claude",
-          resumeCliSessionId: body.resumeCliSessionId,
-          permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
-          askPermission: body.askPermission !== false,
-        });
-        if (body.role === "orchestrator") {
-          session.isOrchestrator = true;
-        }
-        if (body.envSlug) session.envSlug = body.envSlug;
-        const resumeAskPermission = body.askPermission !== false;
-        wsBridge.setInitialAskPermission(
-          session.sessionId,
-          resumeAskPermission,
-          resumeAskPermission ? "plan" : "agent",
-        );
-        wsBridge.markResumedFromExternal(session.sessionId);
-        const existingNames = new Set(Object.values(sessionNames.getAllNames()));
-        sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
-        // Auto-herd: if creator is an orchestrator, herd the new session
-        if (body.createdBy) {
-          const creatorId = resolveId(String(body.createdBy));
-          const creator = creatorId ? launcher.getSession(creatorId) : null;
-          if (creator?.isOrchestrator) {
-            launcher.herdSessions(creator.sessionId, [session.sessionId]);
-          }
-        }
-        wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
-        return c.json(session);
-      }
-
-      // Resolve environment variables from envSlug
+      await emit("resolving_env", "Resolving environment...", "in_progress");
       let envVars: Record<string, string> | undefined = body.env;
       if (body.envSlug) {
         const companionEnv = await envManager.getEnv(body.envSlug);
-        if (companionEnv) {
-          console.log(
-            `[routes] Injecting env "${companionEnv.name}" (${Object.keys(companionEnv.variables).length} vars):`,
-            Object.keys(companionEnv.variables).join(", "),
-          );
-          envVars = { ...companionEnv.variables, ...body.env };
-        } else {
-          console.warn(
-            `[routes] Environment "${body.envSlug}" not found, ignoring`,
-          );
-        }
+        if (companionEnv) envVars = { ...companionEnv.variables, ...body.env };
       }
-
-      let cwd = body.cwd;
-      const isAssistantMode = body.assistantMode === true;
-      let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
-
-      // Expand tilde and validate cwd before any downstream use
-      if (cwd) {
-        cwd = resolve(expandTilde(cwd));
-        if (!existsSync(cwd)) { // sync-ok: route handler, not called during message handling
-          return c.json({ error: `Directory does not exist: ${cwd}` }, 400);
-        }
-      }
-
-      // Inject COMPANION_PORT so agents in any session can call the REST API
       envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
-      // Add orchestrator env vars if role is specified
-      if (body.role === "orchestrator") {
+      if (isOrchestrator) {
         envVars.TAKODE_ROLE = "orchestrator";
         envVars.TAKODE_API_PORT = String(launcher.getPort());
       }
+      await emit("resolving_env", "Environment resolved", "done");
 
-      // Assistant mode: override cwd and ensure workspace exists
-      if (isAssistantMode) {
-        ensureAssistantWorkspace();
-        cwd = ASSISTANT_DIR;
+      const resumeAskPermission = body.askPermission !== false;
+      const initialModeState: ReturnType<RouteContext["resolveInitialModeState"]> = {
+        permissionMode: resumeAskPermission ? "plan" : "bypassPermissions",
+        askPermission: resumeAskPermission,
+        uiMode: resumeAskPermission ? "plan" : "agent",
+      };
+      const initialCwd = body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd();
+      const binarySettings = getSettings();
+      const launchOptions: LaunchOptions = {
+        cwd: initialCwd,
+        claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
+        env: envVars,
+        backendType: "claude",
+        resumeCliSessionId: body.resumeCliSessionId,
+        permissionMode: initialModeState.permissionMode,
+        askPermission: initialModeState.askPermission,
+      };
+      return {
+        launchOptions,
+        initialModeState,
+        initialCwd,
+        isAssistantMode: false,
+        isOrchestrator,
+        envSlug: body.envSlug,
+        createdBy: body.createdBy,
+        resumeCliSessionId: body.resumeCliSessionId,
+      };
+    }
+
+    await emit("resolving_env", "Resolving environment...", "in_progress");
+
+    let envVars: Record<string, string> | undefined = body.env;
+    const companionEnv = body.envSlug ? await envManager.getEnv(body.envSlug) : null;
+    if (body.envSlug) {
+      if (companionEnv) {
+        console.log(
+          `[routes] Injecting env "${companionEnv.name}" (${Object.keys(companionEnv.variables).length} vars):`,
+          Object.keys(companionEnv.variables).join(", "),
+        );
+        envVars = { ...companionEnv.variables, ...body.env };
+      } else {
+        console.warn(`[routes] Environment "${body.envSlug}" not found, ignoring`);
       }
+    }
 
-      // Validate branch name to prevent command injection via shell metacharacters
-      if (body.branch && !/^[a-zA-Z0-9/_.\-]+$/.test(body.branch)) {
-        return c.json({ error: "Invalid branch name" }, 400);
+    let cwd = body.cwd as string | undefined;
+    const isAssistantMode = body.assistantMode === true;
+    let worktreeInfo: WorktreeSessionInfo | undefined;
+
+    if (cwd) {
+      cwd = resolve(expandTilde(cwd));
+      if (!existsSync(cwd)) { // sync-ok: route handler, not called during message handling
+        throwPreparationError(`Directory does not exist: ${cwd}`, 400, "resolving_env");
       }
+    }
 
-      if (body.useWorktree) {
-        if (!cwd) {
-          return c.json({ error: "Worktree mode requires a cwd" }, 400);
-        }
-        // Worktree isolation: create/reuse a worktree for the selected branch.
-        // If the UI hasn't loaded branch metadata yet, fall back to current branch.
-        const repoInfo = gitUtils.getRepoInfo(cwd);
-        if (!repoInfo) {
-          return c.json({ error: "Worktree mode requires a git repository" }, 400);
-        }
+    envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
+    if (isOrchestrator) {
+      envVars.TAKODE_ROLE = "orchestrator";
+      envVars.TAKODE_API_PORT = String(launcher.getPort());
+    }
+
+    if (isAssistantMode) {
+      ensureAssistantWorkspace();
+      cwd = ASSISTANT_DIR;
+    }
+
+    await emit("resolving_env", "Environment resolved", "done");
+
+    if (body.branch && !/^[a-zA-Z0-9/_.\-]+$/.test(body.branch)) {
+      throwPreparationError("Invalid branch name", 400, "checkout_branch");
+    }
+
+    if (body.useWorktree) {
+      const worktreeBaseCwd = cwd;
+      if (!worktreeBaseCwd) {
+        throwPreparationError("Worktree mode requires a cwd", 400, "creating_worktree");
+      }
+      await emit("creating_worktree", "Creating worktree...", "in_progress");
+      const repoInfo = gitUtils.getRepoInfo(worktreeBaseCwd as string);
+      if (!repoInfo) {
+        throwPreparationError("Worktree mode requires a git repository", 400, "creating_worktree");
+      } else {
         const targetBranch = body.branch || repoInfo.currentBranch;
         if (!targetBranch) {
-          return c.json({ error: "Unable to determine branch for worktree session" }, 400);
+          throwPreparationError("Unable to determine branch for worktree session", 400, "creating_worktree");
         }
         const result = gitUtils.ensureWorktree(repoInfo.repoRoot, targetBranch, {
           baseBranch: repoInfo.defaultBranch,
@@ -214,298 +351,278 @@ export function createSessionsRoutes(ctx: RouteContext) {
           worktreePath: result.worktreePath,
           defaultBranch: repoInfo.defaultBranch,
         };
-      } else if (body.branch && cwd) {
-        // Non-worktree: attempt to checkout the selected branch in-place.
-        // All git operations are non-fatal — dirty repos, auth failures, or missing
-        // branches just proceed with the current state. The session will use whatever
-        // branch the repo is currently on.
-        const repoInfo = gitUtils.getRepoInfo(cwd);
-        if (repoInfo) {
-          const fetchResult = gitUtils.gitFetch(repoInfo.repoRoot);
-          if (!fetchResult.success) {
-            console.warn(`[routes] git fetch warning (non-fatal): ${fetchResult.output}`);
-          }
-
-          if (repoInfo.currentBranch !== body.branch) {
-            try {
-              gitUtils.checkoutBranch(repoInfo.repoRoot, body.branch);
-            } catch (err) {
-              console.warn(`[routes] git checkout warning (non-fatal, repo may have uncommitted changes): ${err}`);
-            }
-          }
-
-          const pullResult = gitUtils.gitPull(repoInfo.repoRoot);
-          if (!pullResult.success) {
-            console.warn(`[routes] git pull warning (non-fatal): ${pullResult.output}`);
-          }
-        }
       }
-
-      // Resolve Docker image from environment or explicit container config
-      const companionEnv = body.envSlug ? await envManager.getEnv(body.envSlug) : null;
-      let effectiveImage = companionEnv
-        ? (body.envSlug ? await envManager.getEffectiveImage(body.envSlug) : null)
-        : (body.container?.image || null);
-
-      let containerInfo: ContainerInfo | undefined;
-      let containerId: string | undefined;
-      let containerName: string | undefined;
-      let containerImage: string | undefined;
-
-      // Containers cannot use host keychain auth.
-      // Fail fast with a clear error when no container-compatible auth is present.
-      if (effectiveImage && backend === "claude" && !hasContainerClaudeAuth(envVars)) {
-        return c.json({
-          error:
-            "Containerized Claude requires auth available inside the container. " +
-            "Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_AUTH_TOKEN) in the selected environment.",
-        }, 400);
-      }
-      if (effectiveImage && backend === "codex" && !hasContainerCodexAuth(envVars)) {
-        return c.json({
-          error:
-            "Containerized Codex requires auth available inside the container. " +
-            "Set OPENAI_API_KEY in the selected environment, or ensure ~/.codex/auth.json exists on the host.",
-        }, 400);
-      }
-
-      // Create container if a Docker image is available.
-      // Do not silently fall back to host execution: if container startup fails,
-      // return an explicit error.
-      if (effectiveImage) {
-        if (!containerManager.imageExists(effectiveImage)) {
-          // Auto-build for default images (the-companion or legacy companion-dev)
-          const isDefaultImage = effectiveImage === "the-companion:latest" || effectiveImage === "companion-dev:latest";
-          if (isDefaultImage) {
-            // Try fallback: if the-companion requested but companion-dev exists, use it
-            if (effectiveImage === "the-companion:latest" && containerManager.imageExists("companion-dev:latest")) {
-              console.warn("[routes] the-companion:latest not found, falling back to companion-dev:latest (deprecated)");
-              effectiveImage = "companion-dev:latest";
-            } else {
-              // Try pulling from Docker Hub first, fall back to local build
-              const registryImage = ContainerManager.getRegistryImage(effectiveImage);
-              let pulled = false;
-              if (registryImage) {
-                console.log(`[routes] ${effectiveImage} missing locally, trying docker pull ${registryImage}...`);
-                pulled = await containerManager.pullImage(registryImage, effectiveImage);
-              }
-
-              if (!pulled) {
-                // Fall back to local Dockerfile build
-                const dockerfileName = effectiveImage === "the-companion:latest"
-                  ? "Dockerfile.the-companion"
-                  : "Dockerfile.companion-dev";
-                const dockerfilePath = join(WEB_DIR, "docker", dockerfileName);
-                if (!existsSync(dockerfilePath)) { // sync-ok: route handler, not called during message handling
-                  return c.json({
-                    error:
-                      `Docker image ${effectiveImage} is missing, pull failed, and Dockerfile not found at ${dockerfilePath}`,
-                  }, 503);
-                }
-                try {
-                  console.log(`[routes] Pull failed/unavailable, building ${effectiveImage} from Dockerfile...`);
-                  containerManager.buildImage(dockerfilePath, effectiveImage);
-                } catch (err) {
-                  const reason = err instanceof Error ? err.message : String(err);
-                  return c.json({
-                    error:
-                      `Docker image ${effectiveImage} is missing: pull and build both failed: ${reason}`,
-                  }, 503);
-                }
-              }
-            }
-          } else {
-            return c.json({
-              error:
-                `Docker image not found locally: ${effectiveImage}. ` +
-                "Build/pull the image first, then retry.",
-            }, 503);
-          }
+      await emit("creating_worktree", "Worktree ready", "done");
+    } else if (body.branch && cwd) {
+      const repoInfo = gitUtils.getRepoInfo(cwd);
+      if (repoInfo) {
+        await emit("fetching_git", "Fetching from remote...", "in_progress");
+        const fetchResult = gitUtils.gitFetch(repoInfo.repoRoot);
+        if (!fetchResult.success) {
+          console.warn(`[routes] git fetch warning (non-fatal): ${fetchResult.output}`);
+          await emit("fetching_git", "Fetch skipped (offline or auth issue)", "done");
+        } else {
+          await emit("fetching_git", "Fetch complete", "done");
         }
 
-        const tempId = crypto.randomUUID().slice(0, 8);
-        const cConfig: ContainerConfig = {
-          image: effectiveImage,
-          ports: companionEnv?.ports
-            ?? (Array.isArray(body.container?.ports)
-              ? body.container.ports.map(Number).filter((n: number) => n > 0)
-              : []),
-          volumes: companionEnv?.volumes ?? body.container?.volumes,
-          env: envVars,
-        };
-        try {
-          containerInfo = containerManager.createContainer(tempId, cwd, cConfig);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          return c.json({
-            error:
-              `Docker is required to run this environment image (${effectiveImage}) ` +
-              `but container startup failed: ${reason}`,
-          }, 503);
-        }
-        containerId = containerInfo.containerId;
-        containerName = containerInfo.name;
-        containerImage = effectiveImage;
-
-        // Copy workspace files into the container's isolated volume
-        try {
-          await containerManager.copyWorkspaceToContainer(containerInfo.containerId, cwd);
-          containerManager.reseedGitAuth(containerInfo.containerId);
-        } catch (err) {
-          containerManager.removeContainer(tempId);
-          const reason = err instanceof Error ? err.message : String(err);
-          return c.json({
-            error: `Failed to copy workspace to container: ${reason}`,
-          }, 503);
-        }
-
-        // Run per-environment init script if configured
-        if (companionEnv?.initScript?.trim()) {
+        if (repoInfo.currentBranch !== body.branch) {
+          await emit("checkout_branch", `Checking out ${body.branch}...`, "in_progress");
           try {
-            console.log(`[routes] Running init script for env "${companionEnv.name}" in container ${containerInfo.name}...`);
-            const initTimeout = Number(process.env.COMPANION_INIT_SCRIPT_TIMEOUT) || 120_000;
-            const result = await containerManager.execInContainerAsync(
-              containerInfo.containerId,
-              ["sh", "-lc", companionEnv.initScript],
-              { timeout: initTimeout },
+            gitUtils.checkoutBranch(repoInfo.repoRoot, body.branch);
+            await emit("checkout_branch", `On branch ${body.branch}`, "done");
+          } catch (err) {
+            console.warn(
+              `[routes] git checkout warning (non-fatal, repo may have uncommitted changes): ${err}`,
             );
-            if (result.exitCode !== 0) {
-              console.error(
-                `[routes] Init script failed for env "${companionEnv.name}" (exit ${result.exitCode}):\n${result.output}`,
-              );
-              containerManager.removeContainer(tempId);
-              const truncated = result.output.length > 2000
-                ? result.output.slice(0, 500) + "\n...[truncated]...\n" + result.output.slice(-1500)
-                : result.output;
-              return c.json({
-                error: `Init script failed (exit ${result.exitCode}):\n${truncated}`,
-              }, 503);
-            }
-            console.log(`[routes] Init script completed successfully for env "${companionEnv.name}"`);
-          } catch (e) {
-            containerManager.removeContainer(tempId);
-            const reason = e instanceof Error ? e.message : String(e);
-            return c.json({
-              error: `Init script execution failed: ${reason}`,
-            }, 503);
+            await emit("checkout_branch", "Checkout skipped (uncommitted changes)", "done");
           }
         }
+
+        await emit("pulling_git", "Pulling latest changes...", "in_progress");
+        const pullResult = gitUtils.gitPull(repoInfo.repoRoot);
+        if (!pullResult.success) {
+          console.warn(`[routes] git pull warning (non-fatal): ${pullResult.output}`);
+        }
+        await emit("pulling_git", "Up to date", "done");
       }
+    }
 
-      // Resolve initial mode state from askPermission (+ optional permissionMode).
-      // For Codex, default to gpt-5.3-codex if no model provided (Codex requires explicit model).
-      // For Claude, undefined is fine — the CLI uses its own configured default.
-      const askPermissionRequested = body.askPermission !== false;
-      const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
-      const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
-      const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
-        ? (body.codexReasoningEffort.trim() || undefined)
-        : undefined;
-      // Inject orchestrator guardrails into .claude/CLAUDE.md before launch
-      if (body.role === "orchestrator" && cwd) {
-        await launcher.injectOrchestratorGuardrails(cwd, launcher.getPort());
-      }
+    let effectiveImage = companionEnv
+      ? (body.envSlug ? await envManager.getEffectiveImage(body.envSlug) : null)
+      : (body.container?.image || null);
 
-      const binarySettings = getSettings();
-      const session = await launcher.launch({
-        model,
-        permissionMode: initialModeState.permissionMode,
-        askPermission: initialModeState.askPermission,
-        cwd,
-        claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
-        codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
-        codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
-        codexSandbox: backend === "codex" && body.codexInternetAccess === true
-          ? "danger-full-access"
-          : "workspace-write",
-        codexReasoningEffort,
-        allowedTools: body.allowedTools,
-        env: envVars,
-        backendType: backend,
-        containerId,
-        containerName,
-        containerImage,
-        worktreeInfo,
-      });
+    let containerInfo: ContainerInfo | undefined;
+    let containerId: string | undefined;
+    let containerName: string | undefined;
+    let containerImage: string | undefined;
 
-      // Re-track container with real session ID and mark session as containerized
-      // so the bridge preserves the host cwd for sidebar grouping
-      if (containerInfo) {
-        containerManager.retrack(containerInfo.containerId, session.sessionId);
-        wsBridge.markContainerized(session.sessionId, cwd);
-      }
-
-      // Track the worktree mapping and pre-populate session state
-      // so the browser gets correct sidebar grouping immediately
-      if (worktreeInfo) {
-        wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd, worktreeInfo.defaultBranch, worktreeInfo.branch);
-        worktreeTracker.addMapping({
-          sessionId: session.sessionId,
-          repoRoot: worktreeInfo.repoRoot,
-          branch: worktreeInfo.branch,
-          actualBranch: worktreeInfo.actualBranch,
-          worktreePath: worktreeInfo.worktreePath,
-          createdAt: Date.now(),
-        });
-      }
-
-      // Set initial askPermission/uiMode so state_snapshot is consistent on first paint.
-      wsBridge.setInitialAskPermission(
-        session.sessionId,
-        initialModeState.askPermission,
-        initialModeState.uiMode,
+    if (effectiveImage && backend === "claude" && !hasContainerClaudeAuth(envVars)) {
+      throwPreparationError(
+        "Containerized Claude requires auth available inside the container. " +
+        "Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_AUTH_TOKEN) in the selected environment.",
+        400,
       );
+    }
+    if (effectiveImage && backend === "codex" && !hasContainerCodexAuth(envVars)) {
+      throwPreparationError(
+        "Containerized Codex requires auth available inside the container. " +
+        "Set OPENAI_API_KEY in the selected environment, or ensure ~/.codex/auth.json exists on the host.",
+        400,
+      );
+    }
 
-      // Mark as assistant session if in assistant mode
-      if (isAssistantMode) {
-        session.isAssistant = true;
-      }
-
-      // Mark as orchestrator session if role is specified
-      if (body.role === "orchestrator") {
-        session.isOrchestrator = true;
-        // Fire-and-forget: wait for CLI to connect, then send identity message
-        (async () => {
-          const maxWait = 30_000;
-          const pollMs = 200;
-          const start = Date.now();
-          while (Date.now() - start < maxWait) {
-            const info = launcher.getSession(session.sessionId);
-            if (info && (info.state === "connected" || info.state === "running")) {
-              wsBridge.injectUserMessage(session.sessionId,
-                ORCHESTRATOR_SYSTEM_PROMPT
+    if (effectiveImage) {
+      const containerWorkspaceCwd = cwd || process.cwd();
+      if (!containerManager.imageExists(effectiveImage)) {
+        const isDefaultImage = effectiveImage === "the-companion:latest" || effectiveImage === "companion-dev:latest";
+        if (isDefaultImage) {
+          if (effectiveImage === "the-companion:latest" && containerManager.imageExists("companion-dev:latest")) {
+            console.warn(
+              "[routes] the-companion:latest not found, falling back to companion-dev:latest (deprecated)",
+            );
+            effectiveImage = "companion-dev:latest";
+          } else {
+            const registryImage = ContainerManager.getRegistryImage(effectiveImage);
+            let pulled = false;
+            if (registryImage) {
+              console.log(
+                `[routes] ${effectiveImage} missing locally, trying docker pull ${registryImage}...`,
               );
-              return;
+              await emit("pulling_image", "Pulling Docker image...", "in_progress");
+              pulled = await containerManager.pullImage(registryImage, effectiveImage);
+              if (pulled) {
+                await emit("pulling_image", "Image pulled", "done");
+              } else {
+                await emit("pulling_image", "Pull failed, falling back to build", "error");
+              }
             }
-            if (info?.state === "exited") return; // CLI crashed, don't inject
-            await new Promise(r => setTimeout(r, pollMs));
+            if (!pulled) {
+              const dockerfileName = effectiveImage === "the-companion:latest"
+                ? "Dockerfile.the-companion"
+                : "Dockerfile.companion-dev";
+              const dockerfilePath = join(WEB_DIR, "docker", dockerfileName);
+              if (!existsSync(dockerfilePath)) { // sync-ok: route handler, not called during message handling
+                throwPreparationError(
+                  `Docker image ${effectiveImage} is missing, pull failed, and Dockerfile not found at ${dockerfilePath}`,
+                  503,
+                  "building_image",
+                );
+              }
+              try {
+                await emit("building_image", "Building Docker image (this may take a minute)...", "in_progress");
+                containerManager.buildImage(dockerfilePath, effectiveImage);
+                await emit("building_image", "Image built", "done");
+              } catch (err) {
+                const reason = err instanceof Error ? err.message : String(err);
+                throwPreparationError(
+                  `Docker image ${effectiveImage} is missing: pull and build both failed: ${reason}`,
+                  503,
+                  "building_image",
+                );
+              }
+            }
           }
-        })().catch(e => console.error(`[routes] Failed to inject orchestrator message:`, e));
-      }
-
-      if (body.envSlug) session.envSlug = body.envSlug;
-
-      // Generate a session name so all creation paths (browser, CLI, API) get names
-      if (isAssistantMode) {
-        sessionNames.setName(session.sessionId, "Takode");
-      } else {
-        const existingNames = new Set(Object.values(sessionNames.getAllNames()));
-        const generatedName = generateUniqueSessionName(existingNames);
-        sessionNames.setName(session.sessionId, generatedName);
-      }
-
-      // Auto-herd: if creator is an orchestrator, herd the new session
-      if (body.createdBy) {
-        const creatorId = resolveId(String(body.createdBy));
-        const creator = creatorId ? launcher.getSession(creatorId) : null;
-        if (creator?.isOrchestrator) {
-          launcher.herdSessions(creator.sessionId, [session.sessionId]);
+        } else {
+          throwPreparationError(
+            `Docker image not found locally: ${effectiveImage}. Build/pull the image first, then retry.`,
+            503,
+          );
         }
       }
 
-      wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
+      await emit("creating_container", "Starting container...", "in_progress");
+      const tempId = crypto.randomUUID().slice(0, 8);
+      const cConfig: ContainerConfig = {
+        image: effectiveImage,
+        ports: companionEnv?.ports
+          ?? (Array.isArray(body.container?.ports)
+            ? body.container.ports.map(Number).filter((n: number) => n > 0)
+            : []),
+        volumes: companionEnv?.volumes ?? body.container?.volumes,
+        env: envVars,
+      };
+      let createdContainerInfo: ContainerInfo | null = null;
+      try {
+        createdContainerInfo = containerManager.createContainer(tempId, containerWorkspaceCwd, cConfig);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throwPreparationError(
+          `Docker is required to run this environment image (${effectiveImage}) ` +
+          `but container startup failed: ${reason}`,
+          503,
+          "creating_container",
+        );
+      }
+      if (!createdContainerInfo) {
+        throwPreparationError(
+          `Docker is required to run this environment image (${effectiveImage}) but container startup failed`,
+          503,
+          "creating_container",
+        );
+      }
+      const activeContainerInfo = createdContainerInfo as ContainerInfo;
+      containerInfo = activeContainerInfo;
+      containerId = activeContainerInfo.containerId;
+      containerName = activeContainerInfo.name;
+      containerImage = effectiveImage;
+      await emit("creating_container", "Container running", "done");
+
+      await emit("copying_workspace", "Copying workspace files...", "in_progress");
+      try {
+        await containerManager.copyWorkspaceToContainer(activeContainerInfo.containerId, containerWorkspaceCwd);
+        containerManager.reseedGitAuth(activeContainerInfo.containerId);
+        await emit("copying_workspace", "Workspace copied", "done");
+      } catch (err) {
+        containerManager.removeContainer(tempId);
+        const reason = err instanceof Error ? err.message : String(err);
+        throwPreparationError(
+          `Failed to copy workspace to container: ${reason}`,
+          503,
+          "copying_workspace",
+        );
+      }
+
+      if (companionEnv?.initScript?.trim()) {
+        await emit("running_init_script", "Running init script...", "in_progress");
+        try {
+          console.log(
+            `[routes] Running init script for env "${companionEnv.name}" in container ${activeContainerInfo.name}...`,
+          );
+          const initTimeout = Number(process.env.COMPANION_INIT_SCRIPT_TIMEOUT) || 120_000;
+          const result = await containerManager.execInContainerAsync(
+            activeContainerInfo.containerId,
+            ["sh", "-lc", companionEnv.initScript],
+            { timeout: initTimeout },
+          );
+          if (result.exitCode !== 0) {
+            console.error(
+              `[routes] Init script failed for env "${companionEnv.name}" (exit ${result.exitCode}):\n${result.output}`,
+            );
+            containerManager.removeContainer(tempId);
+            const truncated = result.output.length > 2000
+              ? result.output.slice(0, 500) + "\n...[truncated]...\n" + result.output.slice(-1500)
+              : result.output;
+            throwPreparationError(
+              `Init script failed (exit ${result.exitCode}):\n${truncated}`,
+              503,
+              "running_init_script",
+            );
+          }
+          await emit("running_init_script", "Init script complete", "done");
+        } catch (e) {
+          if (!(e instanceof SessionPreparationError)) {
+            containerManager.removeContainer(tempId);
+          }
+          const reason = e instanceof Error ? e.message : String(e);
+          if (e instanceof SessionPreparationError) throw e;
+          throwPreparationError(`Init script execution failed: ${reason}`, 503, "running_init_script");
+        }
+      }
+    }
+
+    const askPermissionRequested = body.askPermission !== false;
+    const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
+    const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+    const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
+      ? (body.codexReasoningEffort.trim() || undefined)
+      : undefined;
+    if (isOrchestrator && cwd) {
+      await launcher.injectOrchestratorGuardrails(cwd, launcher.getPort());
+    }
+
+    const initialCwd = cwd || process.cwd();
+    const binarySettings = getSettings();
+    const launchOptions: LaunchOptions = {
+      model,
+      permissionMode: initialModeState.permissionMode,
+      askPermission: initialModeState.askPermission,
+      cwd: initialCwd,
+      claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
+      codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
+      codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
+      codexSandbox: backend === "codex" && body.codexInternetAccess === true
+        ? "danger-full-access"
+        : "workspace-write",
+      codexReasoningEffort,
+      allowedTools: body.allowedTools,
+      env: envVars,
+      backendType: backend,
+      containerId,
+      containerName,
+      containerImage,
+      worktreeInfo,
+    };
+
+    return {
+      launchOptions,
+      initialModeState,
+      initialCwd,
+      isAssistantMode,
+      isOrchestrator,
+      envSlug: body.envSlug,
+      createdBy: body.createdBy,
+      worktreeInfo,
+      containerInfo,
+    };
+  };
+
+  api.post("/sessions/create", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const backendRaw = body.backend ?? "claude";
+      const backend = resolveBackend(backendRaw);
+      if (!backend) {
+        return c.json({ error: `Invalid backend: ${String(backendRaw)}` }, 400);
+      }
+
+      const sessionConfig = await prepareSession(body, backend);
+      const session = await launcher.launch(sessionConfig.launchOptions);
+      applySessionPostLaunch(session, sessionConfig);
       return c.json(session);
     } catch (e: unknown) {
+      if (e instanceof SessionPreparationError) {
+        return c.json({ error: e.message }, e.status);
+      }
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[routes] Failed to create session:", msg);
       return c.json({ error: msg }, 500);
@@ -521,7 +638,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       stream: SSEStreamingApi,
       step: CreationStepId,
       label: string,
-      status: "in_progress" | "done" | "error",
+      status: CreationProgressStatus,
       detail?: string,
     ) =>
       stream.writeSSE({
@@ -531,503 +648,39 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     return streamSSE(c, async (stream) => {
       try {
-        const backend = body.backend ?? "claude";
-        if (backend !== "claude" && backend !== "codex" && backend !== "claude-sdk") {
+        const backendRaw = body.backend ?? "claude";
+        const backend = resolveBackend(backendRaw);
+        if (!backend) {
           await stream.writeSSE({
             event: "error",
-            data: JSON.stringify({ error: `Invalid backend: ${String(backend)}` }),
+            data: JSON.stringify({ error: `Invalid backend: ${String(backendRaw)}` }),
           });
           return;
         }
 
-        // ── Resume fast-path: skip git/worktree/container logic ──
-        if (body.resumeCliSessionId) {
-          if (backend !== "claude") {
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ error: "Resuming CLI sessions is only supported for Claude backend" }),
-            });
-            return;
-          }
-          await emitProgress(stream, "resolving_env", "Resolving environment...", "in_progress");
-          let envVars: Record<string, string> | undefined = body.env;
-          if (body.envSlug) {
-            const companionEnv = await envManager.getEnv(body.envSlug);
-            if (companionEnv) envVars = { ...companionEnv.variables, ...body.env };
-          }
-          // Inject COMPANION_PORT so resumed sessions can call the local API.
-          envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
-          // Add orchestrator env vars if role is specified
-          if (body.role === "orchestrator") {
-            envVars.TAKODE_ROLE = "orchestrator";
-            envVars.TAKODE_API_PORT = String(launcher.getPort());
-          }
-          await emitProgress(stream, "resolving_env", "Environment resolved", "done");
-
-          await emitProgress(stream, "launching_cli", "Resuming CLI session...", "in_progress");
-          const binarySettings = getSettings();
-          const session = await launcher.launch({
-            cwd: body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd(),
-            claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
-            env: envVars,
-            backendType: "claude",
-            resumeCliSessionId: body.resumeCliSessionId,
-            permissionMode: body.askPermission !== false ? "plan" : "bypassPermissions",
-            askPermission: body.askPermission !== false,
-          });
-          if (body.role === "orchestrator") {
-            session.isOrchestrator = true;
-          }
-          if (body.envSlug) session.envSlug = body.envSlug;
-          wsBridge.setInitialCwd(session.sessionId, body.cwd ? resolve(expandTilde(body.cwd)) : process.cwd());
-          const resumeAskPermission = body.askPermission !== false;
-          wsBridge.setInitialAskPermission(
-            session.sessionId,
-            resumeAskPermission,
-            resumeAskPermission ? "plan" : "agent",
-          );
-          wsBridge.markResumedFromExternal(session.sessionId);
-          const existingNames = new Set(Object.values(sessionNames.getAllNames()));
-          sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
-          await emitProgress(stream, "launching_cli", "Session resumed", "done");
-
-          wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
-          await stream.writeSSE({
-            event: "done",
-            data: JSON.stringify({
-              sessionId: session.sessionId,
-              state: session.state,
-              cwd: session.cwd,
-            }),
-          });
-          return;
-        }
-
-        // --- Step: Resolve environment ---
-        await emitProgress(stream, "resolving_env", "Resolving environment...", "in_progress");
-
-        let envVars: Record<string, string> | undefined = body.env;
-        const companionEnv = body.envSlug ? await envManager.getEnv(body.envSlug) : null;
-        if (body.envSlug && companionEnv) {
-          envVars = { ...companionEnv.variables, ...body.env };
-        }
-
-        await emitProgress(stream, "resolving_env", "Environment resolved", "done");
-
-        let cwd = body.cwd;
-        const isAssistantMode = body.assistantMode === true;
-        let worktreeInfo: { isWorktree: boolean; repoRoot: string; branch: string; actualBranch: string; worktreePath: string; defaultBranch: string } | undefined;
-
-        // Expand tilde and validate cwd before any downstream use
-        if (cwd) {
-          cwd = resolve(expandTilde(cwd));
-          if (!existsSync(cwd)) { // sync-ok: route handler, not called during message handling
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ error: `Directory does not exist: ${cwd}`, step: "resolving_env" }),
-            });
-            return;
-          }
-        }
-
-        // Inject COMPANION_PORT so agents in any session can call the REST API
-        envVars = { ...envVars, COMPANION_PORT: String(launcher.getPort()) };
-        // Add orchestrator env vars if role is specified
-        if (body.role === "orchestrator") {
-          envVars.TAKODE_ROLE = "orchestrator";
-          envVars.TAKODE_API_PORT = String(launcher.getPort());
-        }
-
-        // Assistant mode: override cwd and ensure workspace exists
-        if (isAssistantMode) {
-          ensureAssistantWorkspace();
-          cwd = ASSISTANT_DIR;
-        }
-
-        // Validate branch name
-        if (body.branch && !/^[a-zA-Z0-9/_.\-]+$/.test(body.branch)) {
-          await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({ error: "Invalid branch name", step: "checkout_branch" }),
-          });
-          return;
-        }
-
-        // --- Step: Git operations ---
-        if (body.useWorktree) {
-          if (!cwd) {
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ error: "Worktree mode requires a cwd", step: "creating_worktree" }),
-            });
-            return;
-          }
-          await emitProgress(stream, "creating_worktree", "Creating worktree...", "in_progress");
-          const repoInfo = gitUtils.getRepoInfo(cwd);
-          if (!repoInfo) {
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ error: "Worktree mode requires a git repository", step: "creating_worktree" }),
-            });
-            return;
-          }
-          // If branch metadata hasn't loaded in the client yet, default to current branch.
-          const targetBranch = body.branch || repoInfo.currentBranch;
-          if (!targetBranch) {
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({ error: "Unable to determine branch for worktree session", step: "creating_worktree" }),
-            });
-            return;
-          }
-          const result = gitUtils.ensureWorktree(repoInfo.repoRoot, targetBranch, {
-            baseBranch: repoInfo.defaultBranch,
-            createBranch: body.createBranch,
-            forceNew: true,
-          });
-          cwd = result.worktreePath;
-          worktreeInfo = {
-            isWorktree: true,
-            repoRoot: repoInfo.repoRoot,
-            branch: targetBranch,
-            actualBranch: result.actualBranch,
-            worktreePath: result.worktreePath,
-            defaultBranch: repoInfo.defaultBranch,
-          };
-          await emitProgress(stream, "creating_worktree", "Worktree ready", "done");
-        } else if (body.branch && cwd) {
-          const repoInfo = gitUtils.getRepoInfo(cwd);
-          if (repoInfo) {
-            await emitProgress(stream, "fetching_git", "Fetching from remote...", "in_progress");
-            const fetchResult = gitUtils.gitFetch(repoInfo.repoRoot);
-            if (!fetchResult.success) {
-              console.warn(`[routes] git fetch warning (non-fatal): ${fetchResult.output}`);
-              await emitProgress(stream, "fetching_git", "Fetch skipped (offline or auth issue)", "done");
-            } else {
-              await emitProgress(stream, "fetching_git", "Fetch complete", "done");
-            }
-
-            if (repoInfo.currentBranch !== body.branch) {
-              await emitProgress(stream, "checkout_branch", `Checking out ${body.branch}...`, "in_progress");
-              try {
-                gitUtils.checkoutBranch(repoInfo.repoRoot, body.branch);
-                await emitProgress(stream, "checkout_branch", `On branch ${body.branch}`, "done");
-              } catch (err) {
-                console.warn(`[routes] git checkout warning (non-fatal, repo may have uncommitted changes): ${err}`);
-                await emitProgress(stream, "checkout_branch", `Checkout skipped (uncommitted changes)`, "done");
-              }
-            }
-
-            await emitProgress(stream, "pulling_git", "Pulling latest changes...", "in_progress");
-            const pullResult = gitUtils.gitPull(repoInfo.repoRoot);
-            if (!pullResult.success) {
-              console.warn(`[routes] git pull warning (non-fatal): ${pullResult.output}`);
-            }
-            await emitProgress(stream, "pulling_git", "Up to date", "done");
-          }
-        }
-
-        // --- Step: Docker image resolution ---
-        let effectiveImage = companionEnv
-          ? (body.envSlug ? await envManager.getEffectiveImage(body.envSlug) : null)
-          : (body.container?.image || null);
-
-        let containerInfo: ContainerInfo | undefined;
-        let containerId: string | undefined;
-        let containerName: string | undefined;
-        let containerImage: string | undefined;
-
-        // Auth check for containerized sessions
-        if (effectiveImage && backend === "claude" && !hasContainerClaudeAuth(envVars)) {
-          await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({
-              error:
-                "Containerized Claude requires auth available inside the container. " +
-                "Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_AUTH_TOKEN) in the selected environment.",
-            }),
-          });
-          return;
-        }
-        if (effectiveImage && backend === "codex" && !hasContainerCodexAuth(envVars)) {
-          await stream.writeSSE({
-            event: "error",
-            data: JSON.stringify({
-              error:
-                "Containerized Codex requires auth available inside the container. " +
-                "Set OPENAI_API_KEY in the selected environment, or ensure ~/.codex/auth.json exists on the host.",
-            }),
-          });
-          return;
-        }
-
-        if (effectiveImage) {
-          if (!containerManager.imageExists(effectiveImage)) {
-            const isDefaultImage = effectiveImage === "the-companion:latest" || effectiveImage === "companion-dev:latest";
-            if (isDefaultImage) {
-              if (effectiveImage === "the-companion:latest" && containerManager.imageExists("companion-dev:latest")) {
-                effectiveImage = "companion-dev:latest";
-              } else {
-                // Try pulling from Docker Hub first
-                const registryImage = ContainerManager.getRegistryImage(effectiveImage);
-                let pulled = false;
-                if (registryImage) {
-                  await emitProgress(stream, "pulling_image", "Pulling Docker image...", "in_progress");
-                  pulled = await containerManager.pullImage(registryImage, effectiveImage);
-                  if (pulled) {
-                    await emitProgress(stream, "pulling_image", "Image pulled", "done");
-                  } else {
-                    await emitProgress(stream, "pulling_image", "Pull failed, falling back to build", "error");
-                  }
-                }
-
-                // Fall back to local build if pull failed
-                if (!pulled) {
-                  const dockerfileName = effectiveImage === "the-companion:latest"
-                    ? "Dockerfile.the-companion"
-                    : "Dockerfile.companion-dev";
-                  const dockerfilePath = join(WEB_DIR, "docker", dockerfileName);
-                  if (!existsSync(dockerfilePath)) { // sync-ok: route handler, not called during message handling
-                    await stream.writeSSE({
-                      event: "error",
-                      data: JSON.stringify({
-                        error: `Docker image ${effectiveImage} is missing, pull failed, and Dockerfile not found at ${dockerfilePath}`,
-                        step: "building_image",
-                      }),
-                    });
-                    return;
-                  }
-                  try {
-                    await emitProgress(stream, "building_image", "Building Docker image (this may take a minute)...", "in_progress");
-                    containerManager.buildImage(dockerfilePath, effectiveImage);
-                    await emitProgress(stream, "building_image", "Image built", "done");
-                  } catch (err) {
-                    const reason = err instanceof Error ? err.message : String(err);
-                    await stream.writeSSE({
-                      event: "error",
-                      data: JSON.stringify({
-                        error: `Docker image build failed: ${reason}`,
-                        step: "building_image",
-                      }),
-                    });
-                    return;
-                  }
-                }
-              }
-            } else {
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({
-                  error: `Docker image not found locally: ${effectiveImage}. Build/pull the image first, then retry.`,
-                }),
-              });
-              return;
-            }
-          }
-
-          // --- Step: Create container ---
-          await emitProgress(stream, "creating_container", "Starting container...", "in_progress");
-          const tempId = crypto.randomUUID().slice(0, 8);
-          const cConfig: ContainerConfig = {
-            image: effectiveImage,
-            ports: companionEnv?.ports
-              ?? (Array.isArray(body.container?.ports)
-                ? body.container.ports.map(Number).filter((n: number) => n > 0)
-                : []),
-            volumes: companionEnv?.volumes ?? body.container?.volumes,
-            env: envVars,
-          };
-          try {
-            containerInfo = containerManager.createContainer(tempId, cwd, cConfig);
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err);
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({
-                error: `Container startup failed: ${reason}`,
-                step: "creating_container",
-              }),
-            });
-            return;
-          }
-          containerId = containerInfo.containerId;
-          containerName = containerInfo.name;
-          containerImage = effectiveImage;
-          await emitProgress(stream, "creating_container", "Container running", "done");
-
-          // --- Step: Copy workspace into isolated volume ---
-          await emitProgress(stream, "copying_workspace", "Copying workspace files...", "in_progress");
-          try {
-            await containerManager.copyWorkspaceToContainer(containerInfo.containerId, cwd);
-            containerManager.reseedGitAuth(containerInfo.containerId);
-            await emitProgress(stream, "copying_workspace", "Workspace copied", "done");
-          } catch (err) {
-            containerManager.removeContainer(tempId);
-            const reason = err instanceof Error ? err.message : String(err);
-            await stream.writeSSE({
-              event: "error",
-              data: JSON.stringify({
-                error: `Failed to copy workspace: ${reason}`,
-                step: "copying_workspace",
-              }),
-            });
-            return;
-          }
-
-          // --- Step: Init script ---
-          if (companionEnv?.initScript?.trim()) {
-            await emitProgress(stream, "running_init_script", "Running init script...", "in_progress");
-            try {
-              const initTimeout = Number(process.env.COMPANION_INIT_SCRIPT_TIMEOUT) || 120_000;
-              const result = await containerManager.execInContainerAsync(
-                containerInfo.containerId,
-                ["sh", "-lc", companionEnv.initScript],
-                { timeout: initTimeout },
-              );
-              if (result.exitCode !== 0) {
-                console.error(
-                  `[routes] Init script failed for env "${companionEnv.name}" (exit ${result.exitCode}):\n${result.output}`,
-                );
-                containerManager.removeContainer(tempId);
-                const truncated = result.output.length > 2000
-                  ? result.output.slice(0, 500) + "\n...[truncated]...\n" + result.output.slice(-1500)
-                  : result.output;
-                await stream.writeSSE({
-                  event: "error",
-                  data: JSON.stringify({
-                    error: `Init script failed (exit ${result.exitCode}):\n${truncated}`,
-                    step: "running_init_script",
-                  }),
-                });
-                return;
-              }
-              await emitProgress(stream, "running_init_script", "Init script complete", "done");
-            } catch (e) {
-              containerManager.removeContainer(tempId);
-              const reason = e instanceof Error ? e.message : String(e);
-              await stream.writeSSE({
-                event: "error",
-                data: JSON.stringify({
-                  error: `Init script execution failed: ${reason}`,
-                  step: "running_init_script",
-                }),
-              });
-              return;
-            }
-          }
-        }
-
-        // --- Step: Launch CLI ---
-        await emitProgress(stream, "launching_cli", "Launching Claude Code...", "in_progress");
-
-        // Resolve initial mode state from askPermission (+ optional permissionMode).
-        const askPermissionRequested = body.askPermission !== false;
-        const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
-        const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
-        const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
-          ? (body.codexReasoningEffort.trim() || undefined)
-          : undefined;
-        // Inject orchestrator guardrails into .claude/CLAUDE.md before launch
-        if (body.role === "orchestrator" && cwd) {
-          await launcher.injectOrchestratorGuardrails(cwd, launcher.getPort());
-        }
-
-        const streamBinarySettings = getSettings();
-        const session = await launcher.launch({
-          model,
-          permissionMode: initialModeState.permissionMode,
-          askPermission: initialModeState.askPermission,
-          cwd,
-          claudeBinary: body.claudeBinary || streamBinarySettings.claudeBinary || undefined,
-          codexBinary: body.codexBinary || streamBinarySettings.codexBinary || undefined,
-          codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
-          codexSandbox: backend === "codex" && body.codexInternetAccess === true
-            ? "danger-full-access"
-            : "workspace-write",
-          codexReasoningEffort,
-          allowedTools: body.allowedTools,
-          env: envVars,
-          backendType: backend,
-          containerId,
-          containerName,
-          containerImage,
-          worktreeInfo,
-        });
-
-        // Re-track container and mark session as containerized
-        if (containerInfo) {
-          containerManager.retrack(containerInfo.containerId, session.sessionId);
-          wsBridge.markContainerized(session.sessionId, cwd);
-        }
-
-        // Track worktree mapping and pre-populate session state
-        // so the browser gets correct sidebar grouping immediately
-        if (worktreeInfo) {
-          wsBridge.markWorktree(session.sessionId, worktreeInfo.repoRoot, cwd, worktreeInfo.defaultBranch, worktreeInfo.branch);
-          worktreeTracker.addMapping({
-            sessionId: session.sessionId,
-            repoRoot: worktreeInfo.repoRoot,
-            branch: worktreeInfo.branch,
-            actualBranch: worktreeInfo.actualBranch,
-            worktreePath: worktreeInfo.worktreePath,
-            createdAt: Date.now(),
-          });
-        }
-
-        // Set cwd early so slash command cache lookup works before CLI sends system/init.
-        // For worktree/container sessions markWorktree/markContainerized already set cwd,
-        // so setInitialCwd only fills it for plain sessions and pre-fills slash commands.
-        wsBridge.setInitialCwd(session.sessionId, cwd);
-
-        // Set initial askPermission/uiMode so state_snapshot is consistent on first paint.
-        wsBridge.setInitialAskPermission(
-          session.sessionId,
-          initialModeState.askPermission,
-          initialModeState.uiMode,
+        const sessionConfig = await prepareSession(
+          body,
+          backend,
+          (step, label, status, detail) => emitProgress(stream, step, label, status, detail),
         );
 
-        // Mark as assistant session if in assistant mode
-        if (isAssistantMode) {
-          session.isAssistant = true;
-        }
+        await emitProgress(
+          stream,
+          "launching_cli",
+          sessionConfig.resumeCliSessionId ? "Resuming CLI session..." : "Launching Claude Code...",
+          "in_progress",
+        );
 
-        // Mark as orchestrator session if role is specified
-        if (body.role === "orchestrator") {
-          session.isOrchestrator = true;
-          // Fire-and-forget: wait for CLI to connect, then send identity message
-          (async () => {
-            const maxWait = 30_000;
-            const pollMs = 200;
-            const start = Date.now();
-            while (Date.now() - start < maxWait) {
-              const info = launcher.getSession(session.sessionId);
-              if (info && (info.state === "connected" || info.state === "running")) {
-                wsBridge.injectUserMessage(session.sessionId,
-                  ORCHESTRATOR_SYSTEM_PROMPT
-                );
-                return;
-              }
-              if (info?.state === "exited") return; // CLI crashed, don't inject
-              await new Promise(r => setTimeout(r, pollMs));
-            }
-          })().catch(e => console.error(`[routes] Failed to inject orchestrator message:`, e));
-        }
+        const session = await launcher.launch(sessionConfig.launchOptions);
+        applySessionPostLaunch(session, sessionConfig);
 
-        if (body.envSlug) session.envSlug = body.envSlug;
+        await emitProgress(
+          stream,
+          "launching_cli",
+          sessionConfig.resumeCliSessionId ? "Session resumed" : "Session started",
+          "done",
+        );
 
-        // Generate a session name so all creation paths (browser, CLI, API) get names
-        if (isAssistantMode) {
-          sessionNames.setName(session.sessionId, "Takode");
-        } else {
-          const existingNames = new Set(Object.values(sessionNames.getAllNames()));
-          const generatedName = generateUniqueSessionName(existingNames);
-          sessionNames.setName(session.sessionId, generatedName);
-        }
-
-        await emitProgress(stream, "launching_cli", "Session started", "done");
-
-        // --- Done ---
-        wsBridge.broadcastGlobal({ type: "session_created", session_id: session.sessionId });
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
@@ -1037,6 +690,15 @@ export function createSessionsRoutes(ctx: RouteContext) {
           }),
         });
       } catch (e: unknown) {
+        if (e instanceof SessionPreparationError) {
+          const payload: Record<string, unknown> = { error: e.message };
+          if (e.step) payload.step = e.step;
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify(payload),
+          });
+          return;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         console.error("[routes] Failed to create session (stream):", msg);
         await stream.writeSSE({
