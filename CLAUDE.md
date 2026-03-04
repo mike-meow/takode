@@ -79,32 +79,41 @@ Browser (React) ←→ WebSocket ←→ Hono Server (Bun) ←→ WebSocket (NDJS
 
 - **`web/server/`** — Hono + Bun backend (runs on port 3456)
   - `index.ts` — Server bootstrap, Bun.serve with dual WebSocket upgrade (CLI vs browser)
-  - `ws-bridge.ts` — Core message router. Maintains per-session state (CLI socket, browser sockets, message history, pending permissions). Parses NDJSON from CLI, translates to typed JSON for browsers.
+  - `ws-bridge.ts` — Core message router. Maintains per-session state (backend socket, browser sockets, message history, pending permissions) and broadcasts canonical session updates.
+  - `bridge/` — Extracted bridge subsystems (permission pipeline, generation lifecycle, quest detection) shared by `ws-bridge.ts`.
   - `cli-launcher.ts` — Spawns/kills/relaunches Claude Code CLI processes. Handles `--resume` for session recovery. Persists session state across server restarts.
-  - `session-store.ts` — JSON file persistence to `$TMPDIR/vibe-sessions/`. Debounced writes.
+  - `claude-sdk-adapter.ts` / `codex-adapter.ts` — Backend protocol adapters (Claude NDJSON and Codex JSON-RPC) normalized into the bridge's common event format.
+  - `session-store.ts` — JSON file persistence to `~/.companion/sessions/` (port-scoped subdirectories when needed). Debounced writes.
   - `session-types.ts` — All TypeScript types for CLI messages (NDJSON), browser messages, session state, permissions.
-  - `routes.ts` — REST API: session CRUD, filesystem browsing, environment management.
+  - `routes.ts` — Thin API entrypoint that mounts domain route modules from `routes/`.
+  - `routes/` — Domain-specific REST modules (`sessions`, `quests`, `settings`, `filesystem`, `git`, `takode`, `recordings`, `system`, `transcription`, plus shared auth/helpers).
+  - `quest-store.ts` / `quest-integration.ts` / `quest-cli.ts` — Quest persistence and lifecycle integration with session activity.
+  - `takode-integration.ts` / `takode-messages.ts` — Takode orchestration integration and event/message handling.
+  - `container-manager.ts` — Optional containerized session runtime setup and lifecycle.
+  - `idle-manager.ts` — Idle-time monitoring and automatic session cleanup behavior.
+  - `perf-tracer.ts` — Lightweight server-side performance tracing utilities.
+  - `transcription.ts` / `transcription-enhancer.ts` — Speech-to-text endpoint and transcript post-processing pipeline.
   - `env-manager.ts` — CRUD for environment profiles stored in `~/.companion/envs/`.
 
 - **`web/src/`** — React 19 frontend
   - `store.ts` — Zustand store. All state keyed by session ID (messages, streaming text, permissions, tasks, connection status).
-  - `ws.ts` — Browser WebSocket client. Connects per-session, handles all incoming message types, auto-reconnects. Extracts task items from `TaskCreate`/`TaskUpdate`/`TodoWrite` tool calls.
+  - `ws-transport.ts` / `ws-handlers.ts` / `ws.ts` — Browser WebSocket transport + message handlers, with `ws.ts` as compatibility facade.
   - `types.ts` — Re-exports server types + client-only types (`ChatMessage`, `TaskItem`, `SdkSessionInfo`).
   - `api.ts` — REST client for session management.
   - `App.tsx` — Root layout with sidebar, chat view, task panel. Hash routing (`#/playground`).
-  - `components/` — UI: `ChatView`, `MessageFeed`, `MessageBubble`, `ToolBlock`, `Composer`, `Sidebar`, `TopBar`, `HomePage`, `TaskPanel`, `PermissionBanner`, `EnvManager`, `Playground`.
+  - `components/` — UI: `ChatView`, `MessageFeed`, `MessageBubble`, `ToolBlock`, `Composer`, `Sidebar`, `TopBar`, `TaskPanel`, `PermissionBanner`, `EnvManager`, `SessionCreationView`, `QuestmasterPage`, `CronManager`, `Playground`.
 
 - **`web/bin/cli.ts`** — CLI entry point (`bunx the-companion`). Sets `__COMPANION_PACKAGE_ROOT` and imports the server.
 
 ### WebSocket Protocol
 
-The CLI uses NDJSON (newline-delimited JSON). Key message types from CLI: `system` (init/status), `assistant`, `result`, `stream_event`, `control_request`, `tool_progress`, `tool_use_summary`, `keep_alive`. Messages to CLI: `user`, `control_response`, `control_request` (for interrupt/set_model/set_permission_mode).
+Claude Code uses NDJSON (newline-delimited JSON), while Codex uses JSON-RPC through `codex-adapter.ts`; both are normalized by the bridge. Common message categories include `system` (init/status), `assistant`, `result`, `stream_event`, `control_request`/`control_response`, tool progress/summary updates, and `keep_alive`.
 
 Full protocol documentation is in `WEBSOCKET_PROTOCOL_REVERSED.md`.
 
 ### Session Lifecycle
 
-Sessions persist to disk (`$TMPDIR/vibe-sessions/`) and survive server restarts. On restart, live CLI processes are detected by PID and given a grace period to reconnect their WebSocket. If they don't, they're killed and relaunched with `--resume` using the CLI's internal session ID.
+Sessions persist to disk (`~/.companion/sessions/`) and survive server restarts. On restart, live CLI processes are detected by PID and given a grace period to reconnect their WebSocket. If they don't, they're killed and relaunched with `--resume` using the CLI's internal session ID.
 
 ### Raw Protocol Recordings
 
@@ -167,7 +176,7 @@ When syncing with upstream: fast-forward `main` to `upstream/main`, then rebase 
   - **Recordings** default to `$TMPDIR/companion-recordings/` (local tmpfs, ~37× faster than NFS). They are ephemeral debugging data — never read by production code.
   - **Session data** stays on the home directory for persistence across reboots — it is critical user data. Optimize with async writes and debouncing, not by moving to tmpfs.
 - **CLI connection liveness is maintained through three layers:**
-  1. **Heartbeat pings (10s):** The server pings all CLI WebSockets every 10s via `ws.ping()`. Bun doesn't expose pong callbacks, so this is polling-based — if `ping()` throws, the socket is dead. Claude Code CLI does NOT send application-level `keep_alive` messages (confirmed via protocol recordings), so WebSocket-level ping/pong is the only liveness signal.
+  1. **Heartbeat pings (10s):** The server pings all CLI WebSockets every 10s via `ws.ping()`. Bun doesn't expose pong callbacks, so this is polling-based — if `ping()` throws, the socket is dead. The protocol also includes application-level `keep_alive` messages, but heartbeat ping/pong + send-failure detection remain the primary liveness signals.
   2. **Send failure detection:** When the server tries to send a message to a dead CLI socket, `ws.send()` throws. The catch handler closes the socket, which triggers `handleCLIClose` and the auto-relaunch mechanism. This gives instant detection on the next outbound message.
   3. **Auto-relaunch on disconnect:** When a CLI disconnects (via `handleCLIClose`), the server proactively requests a relaunch after a 2-second delay — no need to wait for a browser to connect and discover the dead session. The delay avoids relaunching during transient network blips. Safety: `relaunchingSet` (5s throttle) prevents concurrent relaunches, `killedByIdleManager` check skips intentional kills, and cli-launcher's fast-exit retry handles crash loops.
   - **Worktree setup must be fully async.** Creating a new worktree session involves file I/O (guardrails injection, git exclude, settings symlinks) and git commands (`update-index --skip-worktree`). On NFS, synchronous versions of these operations can block the event loop for 10+ seconds, killing all CLI WebSocket connections. All worktree setup methods in `cli-launcher.ts` (`injectWorktreeGuardrails`, `addWorktreeGitExclude`, `symlinkProjectSettings`) must use async I/O.
