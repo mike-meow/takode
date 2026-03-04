@@ -4673,9 +4673,7 @@ export class WsBridge {
           ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
         });
 
-        // Track user message index for deferred turn_end herd event
-        session.userMessageIdsThisTurn.push(session.messageHistory.length - 1);
-
+        const userMsgIdx = session.messageHistory.length - 1;
         const wasGenerating = session.isGenerating;
         // Codex auto-interrupts an active turn before starting the next one.
         // Mark the current turn as interrupted so the worker herd turn_end
@@ -4687,6 +4685,10 @@ export class WsBridge {
           this.markTurnInterrupted(session, source);
         }
         this.markRunningFromUserDispatch(session, "user_message");
+        // Track user message for turn_end herd event AFTER markRunningFromUserDispatch,
+        // which calls setGenerating(true) → resets userMessageIdsThisTurn for new turns.
+        // Tracking after ensures the message that triggered the turn isn't erased.
+        session.userMessageIdsThisTurn.push(userMsgIdx);
 
         // Trigger auto-naming evaluation (async, fire-and-forget)
         if (this.onUserMessage) {
@@ -5096,6 +5098,7 @@ export class WsBridge {
       ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
     };
     session.messageHistory.push(userHistoryEntry);
+    const userMsgHistoryIdx = session.messageHistory.length - 1;
     // Broadcast user message to all browsers (server-authoritative: browsers
     // never add user messages locally, they render only what the server sends)
     this.broadcastToBrowsers(session, userHistoryEntry);
@@ -5104,9 +5107,6 @@ export class WsBridge {
       content: (msg.content || "").slice(0, 120),
       ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
     });
-
-    // Track user message index for deferred turn_end herd event
-    session.userMessageIdsThisTurn.push(session.messageHistory.length - 1);
 
     // Build content: if images are present, convert unsupported formats and use
     // content block array; otherwise plain string. Conversion operates on copies
@@ -5169,6 +5169,10 @@ export class WsBridge {
     });
     const wasGenerating = session.isGenerating;
     this.sendToCLI(session, ndjson);
+    // Track user message for turn_end herd event AFTER sendToCLI, which calls
+    // setGenerating(true) → resets userMessageIdsThisTurn for new turns. Tracking
+    // after ensures the message that triggered the turn isn't erased by the reset.
+    session.userMessageIdsThisTurn.push(userMsgHistoryIdx);
     // Track the outbound user message so we can re-queue it if the CLI
     // disconnects mid-turn (before sending a result). On --resume reconnect,
     // the CLI's internal checkpoint won't include the in-flight message.
