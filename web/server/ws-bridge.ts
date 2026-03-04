@@ -39,8 +39,12 @@ import type {
   McpServerConfig,
   SessionTaskEntry,
   TakodeEvent,
+  TakodeEventDataByType,
+  TakodeEventFor,
   TakodeEventType,
+  TakodePermissionRequestEventData,
   TakodeEventSubscriber,
+  TakodeTurnEndEventData,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT, assertNever } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
@@ -1320,8 +1324,12 @@ export class WsBridge {
   // ── Takode orchestration event methods ──────────────────────────────────
 
   /** Emit a takode event, buffering it and notifying matching subscribers. */
-  emitTakodeEvent(sessionId: string, event: TakodeEventType, data: Record<string, unknown>): void {
-    const takodeEvent: TakodeEvent = {
+  emitTakodeEvent<E extends TakodeEventType>(
+    sessionId: string,
+    event: E,
+    data: TakodeEventDataByType[E],
+  ): void {
+    const takodeEvent = {
       id: this.takodeEventNextId++,
       event,
       sessionId,
@@ -1329,7 +1337,7 @@ export class WsBridge {
       sessionName: this.sessionNameGetter?.(sessionId) ?? sessionId.slice(0, 8),
       ts: Date.now(),
       data,
-    };
+    } as TakodeEventFor<E>;
 
     // Ring buffer: evict oldest when full
     this.takodeEventLog.push(takodeEvent);
@@ -2148,7 +2156,9 @@ export class WsBridge {
         if (msg.status === "compacting" && !wasCompacting) {
           session.compactedDuringTurn = true;
           this.emitTakodeEvent(session.id, "compaction_started", {
-            context_used_percent: session.state.context_used_percent ?? undefined,
+            ...(typeof session.state.context_used_percent === "number"
+              ? { context_used_percent: session.state.context_used_percent }
+              : {}),
           });
           // Synthesize compact marker for the chat UI (Codex doesn't emit compact_boundary)
           const ts = Date.now();
@@ -2166,7 +2176,9 @@ export class WsBridge {
         }
         if (wasCompacting && msg.status !== "compacting") {
           this.emitTakodeEvent(session.id, "compaction_finished", {
-            context_used_percent: session.state.context_used_percent ?? undefined,
+            ...(typeof session.state.context_used_percent === "number"
+              ? { context_used_percent: session.state.context_used_percent }
+              : {}),
           });
         }
         this.persistSession(session);
@@ -3277,12 +3289,16 @@ export class WsBridge {
         session.compactedDuringTurn = true;
         this.setGenerating(session, false, "compaction");
         this.emitTakodeEvent(session.id, "compaction_started", {
-          context_used_percent: session.state.context_used_percent ?? undefined,
+          ...(typeof session.state.context_used_percent === "number"
+            ? { context_used_percent: session.state.context_used_percent }
+            : {}),
         });
       }
       if (wasCompacting && msg.status !== "compacting" && !session.cliResuming) {
         this.emitTakodeEvent(session.id, "compaction_finished", {
-          context_used_percent: session.state.context_used_percent ?? undefined,
+          ...(typeof session.state.context_used_percent === "number"
+            ? { context_used_percent: session.state.context_used_percent }
+            : {}),
         });
       }
 
@@ -5860,13 +5876,16 @@ export class WsBridge {
 
   /** Build a preview of a permission request for inclusion in takode events.
    *  For AskUserQuestion: first question text. For ExitPlanMode: truncated plan. */
-  private buildPermissionPreview(perm: PermissionRequest): Record<string, unknown> {
+  private buildPermissionPreview(
+    perm: PermissionRequest,
+  ): Pick<TakodePermissionRequestEventData, "question" | "options" | "planPreview"> {
     if (perm.tool_name === "AskUserQuestion") {
       const questions = perm.input.questions as Array<{ question: string; options?: Array<{ label: string }> }> | undefined;
       if (questions?.[0]) {
+        const options = questions[0].options?.map(o => o.label);
         return {
           question: questions[0].question,
-          options: questions[0].options?.map(o => o.label),
+          ...(options ? { options } : {}),
         };
       }
     }
@@ -5878,7 +5897,9 @@ export class WsBridge {
   }
 
   /** Scan backwards through messageHistory to build a tool usage summary for the last turn. */
-  private buildTurnToolSummary(session: Session): Record<string, unknown> {
+  private buildTurnToolSummary(
+    session: Session,
+  ): Pick<TakodeTurnEndEventData, "tools" | "resultPreview" | "msgRange" | "questChange" | "userMsgs"> {
     const toolCounts: Record<string, number> = {};
     let resultPreview: string | undefined;
     const history = session.messageHistory;
@@ -5928,11 +5949,11 @@ export class WsBridge {
       : undefined;
 
     return {
-      tools: Object.keys(toolCounts).length > 0 ? toolCounts : undefined,
-      resultPreview,
-      msgRange,
-      questChange,
-      userMsgs,
+      ...(Object.keys(toolCounts).length > 0 ? { tools: toolCounts } : {}),
+      ...(resultPreview ? { resultPreview } : {}),
+      ...(msgRange ? { msgRange } : {}),
+      ...(questChange ? { questChange } : {}),
+      ...(userMsgs ? { userMsgs } : {}),
     };
   }
 

@@ -508,11 +508,95 @@ export type TakodeEventType =
   | "session_deleted"
   | "user_message";
 
-export interface TakodeEvent {
+export interface TakodeTurnEndMsgRange {
+  from: number;
+  to: number;
+}
+
+export interface TakodeTurnEndQuestChange {
+  questId: string;
+  from: string;
+  to: string;
+}
+
+export interface TakodeTurnEndUserMessages {
+  count: number;
+  ids: number[];
+}
+
+export interface TakodeTurnStartEventData {
+  reason?: string;
+  userMessage?: string;
+}
+
+export interface TakodeTurnEndEventData {
+  reason?: string;
+  duration_ms: number;
+  is_error?: boolean;
+  interrupted?: boolean;
+  interrupt_source?: "user" | "leader" | "system";
+  compacted?: boolean;
+  tools?: Record<string, number>;
+  resultPreview?: string;
+  msgRange?: TakodeTurnEndMsgRange;
+  questChange?: TakodeTurnEndQuestChange;
+  userMsgs?: TakodeTurnEndUserMessages;
+}
+
+export interface TakodeCompactionEventData {
+  context_used_percent?: number;
+}
+
+export interface TakodePermissionRequestEventData {
+  tool_name: string;
+  request_id?: string;
+  summary?: string;
+  question?: string;
+  options?: string[];
+  planPreview?: string;
+}
+
+export interface TakodePermissionResolvedEventData {
+  tool_name: string;
+  outcome: "approved" | "denied";
+}
+
+export interface TakodeSessionDisconnectedEventData {
+  wasGenerating: boolean;
+  reason: string;
+}
+
+export interface TakodeSessionErrorEventData {
+  error: string;
+}
+
+export type TakodeSessionLifecycleEventData = Record<string, never>;
+
+export interface TakodeUserMessageEventData {
+  content: string;
+  agentSource?: {
+    sessionId: string;
+    sessionLabel?: string;
+  };
+}
+
+export interface TakodeEventDataByType {
+  turn_end: TakodeTurnEndEventData;
+  turn_start: TakodeTurnStartEventData;
+  compaction_started: TakodeCompactionEventData;
+  compaction_finished: TakodeCompactionEventData;
+  permission_request: TakodePermissionRequestEventData;
+  permission_resolved: TakodePermissionResolvedEventData;
+  session_disconnected: TakodeSessionDisconnectedEventData;
+  session_error: TakodeSessionErrorEventData;
+  session_archived: TakodeSessionLifecycleEventData;
+  session_deleted: TakodeSessionLifecycleEventData;
+  user_message: TakodeUserMessageEventData;
+}
+
+interface TakodeEventBase {
   /** Monotonic event ID for cursor-based catchup */
   id: number;
-  /** Event type */
-  event: TakodeEventType;
   /** Full session UUID */
   sessionId: string;
   /** Short integer session ID */
@@ -521,9 +605,18 @@ export interface TakodeEvent {
   sessionName: string;
   /** Epoch ms timestamp */
   ts: number;
-  /** Event-specific payload */
-  data: Record<string, unknown>;
 }
+
+export type TakodeEvent = {
+  [E in TakodeEventType]: TakodeEventBase & {
+    /** Event type */
+    event: E;
+    /** Event-specific payload */
+    data: TakodeEventDataByType[E];
+  }
+}[TakodeEventType];
+
+export type TakodeEventFor<E extends TakodeEventType> = Extract<TakodeEvent, { event: E }>;
 
 /** Subscriber handle for the takode event stream */
 export interface TakodeEventSubscriber {

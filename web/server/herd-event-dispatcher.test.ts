@@ -19,9 +19,9 @@ function makeEvent(overrides: Partial<TakodeEvent> = {}): TakodeEvent {
     sessionNum: 5,
     sessionName: "auth-module",
     ts: Date.now(),
-    data: {},
+    data: { duration_ms: 1000, reason: "test" },
     ...overrides,
-  };
+  } as TakodeEvent;
 }
 
 function createMockBridge(): WsBridgeHandle & {

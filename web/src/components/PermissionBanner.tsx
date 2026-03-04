@@ -99,12 +99,10 @@ export function PlanReviewOverlay({
       updated_input: updatedInput,
       ...(updatedPermissions?.length ? { updated_permissions: updatedPermissions } : {}),
     });
-    // Safety net: if the server already resolved this permission, clean up locally
+    // Safety net cleanup. removePermission is idempotent, so this is safe even
+    // if the server broadcast already removed the permission.
     setTimeout(() => {
-      const perms = useStore.getState().pendingPermissions.get(sessionId);
-      if (perms?.has(permission.request_id)) {
-        removePermission(sessionId, permission.request_id);
-      }
+      removePermission(sessionId, permission.request_id);
     }, 3000);
   }
 
@@ -614,10 +612,7 @@ export function PermissionBanner({
     // auto-approver won the race), the broadcast will never come. Clean
     // up locally after a timeout to prevent a stuck zombie dialog.
     setTimeout(() => {
-      const perms = useStore.getState().pendingPermissions.get(sessionId);
-      if (perms?.has(permission.request_id)) {
-        removePermission(sessionId, permission.request_id);
-      }
+      removePermission(sessionId, permission.request_id);
     }, 3000);
   }
 

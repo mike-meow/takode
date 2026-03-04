@@ -390,28 +390,24 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
   const ageSuffix = age ? ` | ${age}` : "";
   switch (evt.event) {
     case "turn_end": {
-      const duration = typeof evt.data.duration_ms === "number"
-        ? formatDuration(evt.data.duration_ms)
-        : "?";
-      const tools = formatToolCounts(evt.data.tools as Record<string, number> | undefined);
+      const duration = formatDuration(evt.data.duration_ms);
+      const tools = formatToolCounts(evt.data.tools);
       const resultPreview = typeof evt.data.resultPreview === "string"
         ? ` | "${truncate(evt.data.resultPreview, 60)}"`
         : "";
       const compacted = evt.data.compacted ? " (compacted)" : "";
-      const interruptSource = typeof evt.data.interrupt_source === "string"
-        ? evt.data.interrupt_source
-        : null;
+      const interruptSource = evt.data.interrupt_source ?? null;
       const success = evt.data.interrupted
         ? `interrupted${interruptSource ? ` (by ${interruptSource})` : ""}`
         : evt.data.is_error ? "✗" : "✓";
       // Message ID range for quick peek navigation
-      const range = evt.data.msgRange as { from: number; to: number } | undefined;
+      const range = evt.data.msgRange;
       const rangeStr = range ? ` | [${range.from}]-[${range.to}]` : "";
       // User messages received during this turn (deferred from individual delivery)
-      const um = evt.data.userMsgs as { count: number; ids: number[] } | undefined;
+      const um = evt.data.userMsgs;
       const userMsgStr = um ? ` | ${um.count} user msg${um.count === 1 ? "" : "s"} [${um.ids.join(", ")}]` : "";
       // Quest status change during this turn
-      const qc = evt.data.questChange as { questId: string; from: string; to: string } | undefined;
+      const qc = evt.data.questChange;
       const questStr = qc ? ` | ${qc.questId}: ${qc.from} → ${qc.to}` : "";
       return `${label} | turn_end | ${success} ${duration}${compacted}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview}${ageSuffix}`;
     }
@@ -431,13 +427,13 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       return `${label} | session_error | ${error}${ageSuffix}`;
     }
     case "session_disconnected": {
-      const reason = typeof evt.data.reason === "string" ? evt.data.reason : "unknown";
+      const reason = evt.data.reason;
       return `${label} | session_disconnected | ${reason}${ageSuffix}`;
     }
     case "user_message": {
-      const content = typeof evt.data.content === "string" ? truncate(evt.data.content, 80) : "";
+      const content = truncate(evt.data.content, 80);
       // Show who sent the message: [User], [Agent #N name], or [Herd]
-      const agentSource = evt.data.agentSource as { sessionId?: string; sessionLabel?: string } | undefined;
+      const agentSource = evt.data.agentSource;
       let sender = "User";
       if (agentSource?.sessionId === "herd-events") {
         sender = "Herd";
