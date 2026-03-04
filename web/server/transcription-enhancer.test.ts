@@ -9,7 +9,7 @@ import {
   enhanceTranscript,
 } from "./transcription-enhancer.js";
 
-const { trunc, extractAssistantText, isOrchestratorNoise, MAX_TURNS, MIN_WORDS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
+const { trunc, extractAssistantText, isInjectedMessage, MAX_TURNS, MIN_WORDS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
 
 // ─── Helper to build mock messages ──────────────────────────────────────────
 
@@ -95,30 +95,30 @@ describe("extractAssistantText", () => {
   });
 });
 
-// ─── isOrchestratorNoise ─────────────────────────────────────────────────────
+// ─── isInjectedMessage ──────────────────────────────────────────────────────
 
-describe("isOrchestratorNoise", () => {
-  it("detects herd event summaries", () => {
-    expect(isOrchestratorNoise("[Herd event from session #121")).toBe(true);
-    expect(isOrchestratorNoise("1 event from 1 session\n\n#121 Add interrupt...")).toBe(true);
-    expect(isOrchestratorNoise("3 events from 2 sessions")).toBe(true);
+describe("isInjectedMessage", () => {
+  it("detects system-injected messages", () => {
+    const msg = userMsg("some system nudge");
+    (msg as any).agentSource = { sessionId: "system", sessionLabel: "System" };
+    expect(isInjectedMessage(msg)).toBe(true);
   });
 
-  it("detects @to(self) orchestrator routing", () => {
-    expect(isOrchestratorNoise("@to(self) Check status")).toBe(true);
-    expect(isOrchestratorNoise("@to(worker-1) Start task")).toBe(true);
+  it("detects herd event messages", () => {
+    const msg = userMsg("1 event from 1 session");
+    (msg as any).agentSource = { sessionId: "herd-events", sessionLabel: "Herd Events" };
+    expect(isInjectedMessage(msg)).toBe(true);
   });
 
-  it("detects event notification tables", () => {
-    expect(isOrchestratorNoise("session | turn_end | details")).toBe(true);
-    expect(isOrchestratorNoise("something | compaction_started | foo")).toBe(true);
-    expect(isOrchestratorNoise("sess | idle | bar")).toBe(true);
+  it("detects inter-agent messages", () => {
+    const msg = userMsg("do the task");
+    (msg as any).agentSource = { sessionId: "abc-123", sessionLabel: "Worker #5" };
+    expect(isInjectedMessage(msg)).toBe(true);
   });
 
-  it("does not flag normal user messages", () => {
-    expect(isOrchestratorNoise("Fix the auth bug")).toBe(false);
-    expect(isOrchestratorNoise("Now add tests for the WsBridge class")).toBe(false);
-    expect(isOrchestratorNoise("What's the status of the sidebar fix?")).toBe(false);
+  it("does not flag human-typed messages", () => {
+    expect(isInjectedMessage(userMsg("Fix the auth bug"))).toBe(false);
+    expect(isInjectedMessage(userMsg("Now add tests for WsBridge"))).toBe(false);
   });
 });
 
@@ -239,14 +239,18 @@ describe("buildTranscriptionContext", () => {
     expect(ctx).toMatch(/\s{4}Fixed it/);
   });
 
-  it("filters out orchestrator noise from user messages", () => {
-    // Orchestrator herd events, @to(self) messages, and event tables should be excluded
+  it("filters out injected messages from user messages", () => {
+    // Programmatically-injected messages (system, herd, agent) should be excluded
+    const herdMsg = userMsg("1 event from 1 session\n\n#121 Add interrupt source");
+    (herdMsg as any).agentSource = { sessionId: "herd-events" };
+    const systemMsg = userMsg("[System] Tag your messages");
+    (systemMsg as any).agentSource = { sessionId: "system" };
     const history = [
       userMsg("Fix the auth bug"),
       assistantMsg("Working on it"),
-      userMsg("1 event from 1 session\n\n#121 Add interrupt source"),
+      herdMsg,
       assistantMsg("I see the herd event"),
-      userMsg("@to(self) Check worker status"),
+      systemMsg,
       userMsg("Now add tests"),
       assistantMsg("Tests added"),
     ];
@@ -254,9 +258,9 @@ describe("buildTranscriptionContext", () => {
     expect(ctx).toContain("Fix the auth bug");
     expect(ctx).toContain("Now add tests");
     expect(ctx).toContain("Tests added");
-    // Orchestrator noise should be excluded
+    // Injected messages should be excluded
     expect(ctx).not.toContain("event from 1 session");
-    expect(ctx).not.toContain("@to(self)");
+    expect(ctx).not.toContain("[System]");
   });
 });
 
@@ -547,21 +551,25 @@ describe("buildSttPrompt", () => {
     expect(prompt).not.toContain("subagent work");
   });
 
-  it("filters orchestrator noise from conversation turns", () => {
-    // Herd events and @to(self) messages should be excluded from the STT prompt
+  it("filters injected messages from conversation turns", () => {
+    // Programmatically-injected messages should be excluded from the STT prompt
+    const herdMsg = userMsg("1 event from 1 session\n\n#121 Add interrupt source");
+    (herdMsg as any).agentSource = { sessionId: "herd-events" };
+    const systemMsg = userMsg("[System] Tag your messages");
+    (systemMsg as any).agentSource = { sessionId: "system" };
     const prompt = buildSttPrompt({
       messageHistory: [
         userMsg("Fix the auth bug"),
         assistantMsg("Working on it"),
-        userMsg("1 event from 1 session\n\n#121 Add interrupt source"),
-        userMsg("@to(self) Check worker status"),
+        herdMsg,
+        systemMsg,
         userMsg("Now add tests"),
       ],
     });
     expect(prompt).toContain("Fix the auth bug");
     expect(prompt).toContain("Now add tests");
     expect(prompt).not.toContain("event from 1 session");
-    expect(prompt).not.toContain("@to(self)");
+    expect(prompt).not.toContain("[System]");
   });
 
   it("passes through session names as-is (caller handles filtering)", () => {

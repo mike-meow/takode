@@ -51,25 +51,17 @@ const STT_MSG_CHAR_LIMITS = [800, 500, 300, 200, 200, 150, 150, 100];
 /** Max characters per session name in the STT prompt. */
 const MAX_SESSION_NAME_CHARS = 100;
 
-// ─── Orchestrator noise filtering ──────────────────────────────────────────
+// ─── Injected message filtering ───────────────────────────────────────────
 
 /**
- * Check if a user message is orchestrator noise (herd events, internal routing, etc.).
- * These messages have no value for transcription context.
+ * Check if a user message was injected programmatically (not typed by the human).
+ * Uses the agentSource metadata — set by the server for all programmatic injections
+ * (system nudges, herd events, inter-agent messages, cron jobs).
+ * Only messages with no agentSource are from the actual human user.
  */
-function isOrchestratorNoise(text: string): boolean {
-  const trimmed = text.trim();
-  // System-injected messages: "[System]", "[System HH:MM]"
-  if (trimmed.startsWith("[System")) return true;
-  // Herd event summaries: "[Herd", "1 event from", "N events from"
-  if (trimmed.startsWith("[Herd") || /^\d+ events? from \d+ sessions?/.test(trimmed)) return true;
-  // Internal orchestrator routing notes
-  if (trimmed.startsWith("@to(")) return true;
-  // Agent-injected messages: "[Agent"
-  if (trimmed.startsWith("[Agent")) return true;
-  // Event notification tables: lines with "| turn_end |", "| compaction_started |", etc.
-  if (/\|\s*(turn_end|compaction_started|idle|turn_start|exit)\s*\|/.test(trimmed)) return true;
-  return false;
+function isInjectedMessage(msg: BrowserIncomingMessage): boolean {
+  const source = (msg as { agentSource?: { sessionId: string } }).agentSource;
+  return !!source;
 }
 
 // ─── System prompt ──────────────────────────────────────────────────────────
@@ -139,8 +131,8 @@ export function buildTranscriptionContext(history: BrowserIncomingMessage[]): st
       const content = typeof (msg as { content?: unknown }).content === "string"
         ? (msg as { content: string }).content
         : "";
-      // Skip orchestrator noise (herd events, @to(self), event notifications)
-      if (content && isOrchestratorNoise(content)) {
+      // Skip programmatically-injected messages (system nudges, herd events, agent msgs)
+      if (isInjectedMessage(msg)) {
         currentTurn = null;
         continue;
       }
@@ -385,7 +377,7 @@ export function buildSttPrompt(input: SttPromptInput): string {
         if (currentTurn) turns.push(currentTurn);
         const content = typeof (msg as { content?: unknown }).content === "string"
           ? (msg as { content: string }).content : "";
-        if (content && isOrchestratorNoise(content)) {
+        if (isInjectedMessage(msg)) {
           currentTurn = null;
           continue;
         }
@@ -665,7 +657,7 @@ export const _testHelpers = {
   MAX_SESSION_NAME_CHARS,
   trunc,
   extractAssistantText,
-  isOrchestratorNoise,
+  isInjectedMessage,
   buildTranscriptionContext,
   buildEnhancementPrompt,
   buildSttPrompt,
