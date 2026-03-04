@@ -2039,6 +2039,11 @@ export class WsBridge {
 
   private maybeInjectLeaderAddressingReminder(session: Session, addressing: LeaderAssistantAddressing): boolean {
     if (addressing !== "missing") return false;
+    // Don't nudge when the turn was interrupted — the assistant didn't get a chance
+    // to finish its response (and add the @to() tag). Without this guard, the nudge
+    // injects a new user message that triggers another turn, making it impossible to
+    // actually stop a leader session.
+    if (session.interruptedDuringTurn) return false;
     this.injectUserMessage(session.id, WsBridge.LEADER_TAG_ENFORCEMENT_REMINDER, WsBridge.LEADER_TAG_SYSTEM_SOURCE);
     return true;
   }

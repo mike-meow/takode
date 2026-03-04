@@ -1163,17 +1163,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 </button>
               )}
 
-              {/* Stop button — always rendered to reserve space; visibility toggles
-                   so the voice button and send button never shift position. */}
+              {/* Stop button — always rendered so the voice/send buttons never shift.
+                   Disabled (greyed out) when idle, active when running. */}
               <button
                 onClick={handleInterrupt}
+                disabled={!isRunning}
                 className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
                   isRunning
                     ? "bg-cc-error/10 hover:bg-cc-error/20 text-cc-error cursor-pointer"
-                    : "invisible pointer-events-none"
+                    : "text-cc-muted/30 cursor-not-allowed"
                 }`}
                 title="Stop generation"
-                aria-hidden={!isRunning}
                 tabIndex={isRunning ? 0 : -1}
               >
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 sm:w-3.5 sm:h-3.5">

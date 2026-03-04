@@ -452,10 +452,10 @@ describe("Composer interrupt button", () => {
     render(<Composer sessionId="s1" />);
 
     expect(screen.getByTitle("Send message")).toBeTruthy();
-    // Stop button is always rendered (to reserve space) but invisible when idle
-    const stopBtn = screen.getByTitle("Stop generation");
+    // Stop button is always rendered (disabled when idle) so layout doesn't shift
+    const stopBtn = screen.getByTitle("Stop generation") as HTMLButtonElement;
     expect(stopBtn).toBeTruthy();
-    expect(stopBtn.classList.contains("invisible")).toBe(true);
+    expect(stopBtn.disabled).toBe(true);
   });
 });
 
