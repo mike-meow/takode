@@ -39,7 +39,7 @@ quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts
-quest create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest (auto-assigns ID)
+quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> --items "c1,c2" [--json]                  Submit for verification
 quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
@@ -71,6 +71,8 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 |------|-------------|
 | `--desc "..."` | Quest description (markdown supported) |
 | `--tags "t1,t2"` | Comma-separated tags |
+| `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
+| `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
 | `--json` | Output JSON |
 
 ### quest edit <id> [flags]
@@ -210,7 +212,7 @@ Every quest should have at least one tag. Common patterns: component/area (e.g. 
 Quests can have attached images at `~/.companion/questmaster/images/`.
 `quest show` displays file paths. Use the Read tool to view them.
 
-**Forward user screenshots.** When the user includes screenshots in their message that are relevant to a quest (bug reports, UI feedback, design references), attach them to the quest feedback using `--image <path>`. This gives workers visual context they wouldn't otherwise have.
+**Forward user screenshots.** When the user includes screenshots in their message that are relevant to a quest (bug reports, UI feedback, design references), attach them either on creation (`quest create ... --image <path>`) or in follow-up feedback (`quest feedback ... --image <path>`). This gives workers visual context they wouldn't otherwise have.
 
 ## Environment
 

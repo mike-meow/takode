@@ -167,6 +167,104 @@ describe("quest CLI auth fallback", () => {
   });
 });
 
+describe("quest CLI create image attachments", () => {
+  it("attaches uploaded images on create via --image and --images", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-create-images-"));
+    const imgA = join(tmp, "a.png");
+    const imgB = join(tmp, "b.png");
+    const imgC = join(tmp, "c.png");
+    writeFileSync(imgA, "a", "utf-8");
+    writeFileSync(imgB, "b", "utf-8");
+    writeFileSync(imgC, "c", "utf-8");
+
+    let uploadCount = 0;
+    const server = createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/_images") {
+        req.resume();
+        req.on("end", () => {
+          uploadCount += 1;
+          res.writeHead(201, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            id: `img-${uploadCount}`,
+            filename: `img-${uploadCount}.png`,
+            mimeType: "image/png",
+            path: `/tmp/img-${uploadCount}.png`,
+          }));
+        });
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runQuest(
+        [
+          "create",
+          "Quest with images",
+          "--image",
+          imgA,
+          "--images",
+          `${imgB}, ${imgC}`,
+          "--json",
+        ],
+        {
+          ...process.env,
+          COMPANION_PORT: String(port),
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(uploadCount).toBe(3);
+      const quest = JSON.parse(result.stdout) as {
+        title: string;
+        images?: { id: string; filename: string; mimeType: string; path: string }[];
+      };
+      expect(quest.title).toBe("Quest with images");
+      expect(quest.images).toHaveLength(3);
+      expect(quest.images?.map((img) => img.id).sort()).toEqual(["img-1", "img-2", "img-3"]);
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("fails create when image flags are used without Companion port", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-create-images-no-port-"));
+    const img = join(tmp, "no-port.png");
+    writeFileSync(img, "x", "utf-8");
+
+    try {
+      const result = await runQuest(
+        ["create", "Quest no port", "--image", img],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Companion server port not found");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("quest CLI verification inbox commands", () => {
   it("uses verification/read endpoint for quest later", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "quest-verification-read-"));

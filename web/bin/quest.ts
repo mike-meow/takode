@@ -545,21 +545,41 @@ async function cmdHistory(): Promise<void> {
 }
 
 async function cmdCreate(): Promise<void> {
-  validateFlags(["desc", "tags", "json"]);
+  validateFlags(["desc", "tags", "image", "images", "json"]);
   const title = positional(0);
-  if (!title) die("Usage: quest create <title> [--desc \"...\"] [--tags \"t1,t2\"]");
+  if (!title) die("Usage: quest create <title> [--desc \"...\"] [--tags \"t1,t2\"] [--image <path>] [--images \"p1,p2\"]");
 
   const description = option("desc");
   const tagsStr = option("tags");
   const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
+  const imagePaths = [
+    ...options("image"),
+    ...options("images").flatMap((group) => group.split(",").map((p) => p.trim())),
+  ].filter(Boolean);
 
   try {
-    const quest = await createQuest({ title, description, tags });
+    const uploadedImages = imagePaths.length > 0
+      ? (() => {
+        const port = companionPort;
+        if (!port) {
+          die("Companion server port not found. Set COMPANION_PORT or use .companion/session-auth.json.");
+        }
+        return Promise.all(imagePaths.map((p) => uploadQuestImage(port, p)));
+      })()
+      : undefined;
+    const resolvedImages = uploadedImages ? await uploadedImages : undefined;
+    const quest = await createQuest({
+      title,
+      description,
+      tags,
+      ...(resolvedImages?.length ? { images: resolvedImages } : {}),
+    });
     await notifyServer();
     if (jsonOutput) {
       out(quest);
     } else {
-      console.log(`Created ${quest.questId}: "${quest.title}" (${quest.status})`);
+      const imageNote = resolvedImages?.length ? `, ${resolvedImages.length} image(s)` : "";
+      console.log(`Created ${quest.questId}: "${quest.title}" (${quest.status}${imageNote})`);
     }
   } catch (e) {
     die((e as Error).message);
@@ -1108,7 +1128,7 @@ Commands:
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history
   tags   [--json]                                        List all existing tags with counts
-  create <title> [--desc "..."] [--tags "t1,t2"] [--json] Create a quest
+  create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
   complete <id> --items "c1,c2" [--json]                 Submit for verification
   done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
