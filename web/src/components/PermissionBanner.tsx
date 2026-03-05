@@ -1063,7 +1063,7 @@ function EditDisplay({ input }: { input: Record<string, unknown> }) {
       <DiffViewer
         unifiedDiff={unifiedDiff}
         fileName={filePath}
-        mode="compact"
+        mode="full"
       />
     );
   }
@@ -1085,7 +1085,7 @@ function EditDisplay({ input }: { input: Record<string, unknown> }) {
       oldText={oldStr}
       newText={newStr}
       fileName={filePath}
-      mode="compact"
+      mode="full"
     />
   );
 }
@@ -1097,7 +1097,7 @@ function WriteDisplay({ input }: { input: Record<string, unknown> }) {
     <DiffViewer
       newText={content}
       fileName={filePath}
-      mode="compact"
+      mode="full"
     />
   );
 }

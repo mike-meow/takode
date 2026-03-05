@@ -483,7 +483,7 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
   } = parseEditToolInput(input);
 
   if (!oldStr && !newStr && unifiedDiff) {
-    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="compact" />;
+    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="full" />;
   }
 
   if (!oldStr && !newStr && changes.length > 0) {
@@ -511,7 +511,7 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
           replace all
         </span>
       )}
-      <DiffViewer oldText={oldStr} newText={newStr} fileName={filePath} mode="compact" />
+      <DiffViewer oldText={oldStr} newText={newStr} fileName={filePath} mode="full" />
     </div>
   );
 }
@@ -519,7 +519,7 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
 function WriteToolDetail({ input }: { input: Record<string, unknown> }) {
   const { filePath, content } = parseWriteToolInput(input);
 
-  return <DiffViewer newText={content} fileName={filePath} mode="compact" />;
+  return <DiffViewer newText={content} fileName={filePath} mode="full" />;
 }
 
 function ReadToolDetail({ input }: { input: Record<string, unknown> }) {

@@ -64,7 +64,7 @@ index 1234567..abcdefg 100644
     );
     expect(container.querySelector(".diff-compact")).toBeTruthy();
     expect(container.querySelector(".diff-gutter")).toBeNull();
-    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
   });
 
   it("renders full mode with line numbers", () => {
@@ -84,7 +84,7 @@ index 1234567..abcdefg 100644
     const { container } = render(
       <DiffViewer oldText="a" newText="b" mode="compact" fileName="src/file.ts" />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     expect(container.ownerDocument.querySelector(".diff-modal-backdrop")).toBeTruthy();
     expect(container.ownerDocument.querySelector(".diff-modal-panel")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -237,5 +237,27 @@ diff --git a/b.ts b/b.ts
       return element.textContent?.includes("const line20 = 20;") ?? false;
     });
     expect(expandedLineMatches.length).toBeGreaterThan(0);
+  });
+
+  it("expands hidden context in 50-line chunks", () => {
+    const oldLines = Array.from({ length: 220 }, (_, i) => `const line${i + 1} = ${i + 1};`);
+    const newLines = [...oldLines];
+    newLines[2] = "const line3 = 300;";
+    newLines[199] = "const line200 = 20000;";
+
+    render(
+      <DiffViewer
+        oldText={oldLines.join("\n")}
+        newText={newLines.join("\n")}
+        fileName="src/chunked-expand.ts"
+        mode="full"
+      />,
+    );
+
+    const [expandButton] = screen.getAllByRole("button", { name: /Show 50 unchanged lines/ });
+    fireEvent.click(expandButton);
+
+    expect(screen.queryByText("const line120 = 120;")).toBeNull();
+    expect(screen.getByRole("button", { name: /Show 50 more unchanged lines \(\d+ remaining\)/ })).toBeTruthy();
   });
 });

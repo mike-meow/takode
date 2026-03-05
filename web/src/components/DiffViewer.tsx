@@ -58,6 +58,8 @@ interface HighlightedLineMaps {
   newLines: string[] | null;
 }
 
+const GAP_EXPAND_CHUNK = 50;
+
 function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
   const patch = Diff.structuredPatch("", "", oldText, newText, "", "", { context: 3 });
   return patch.hunks.map((hunk) => {
@@ -388,12 +390,12 @@ export function DiffViewer({
   fileStatsLabel,
   mode = "compact",
   showLineNumbers: showLineNumbersProp,
-  expandButtonLabel = "Open",
+  expandButtonLabel = "Expand",
 }: DiffViewerProps) {
   const isCompact = mode === "compact";
   const showLineNumbers = showLineNumbersProp ?? !isCompact;
   const [expanded, setExpanded] = useState(false);
-  const [expandedGaps, setExpandedGaps] = useState<Record<string, boolean>>({});
+  const [expandedGaps, setExpandedGaps] = useState<Record<string, number>>({});
 
   const hasSource = oldText !== undefined || newText !== undefined;
   const normalizedOldText = oldText ?? "";
@@ -457,16 +459,14 @@ export function DiffViewer({
   const renderedDiff = (
     <div className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"}`}>
       {isCompact && (
-        <div className="diff-toolbar">
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="diff-expand-btn"
-            title="Open full-screen diff"
-          >
-            {expandButtonLabel}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="diff-inline-expand-btn"
+          title="Expand diff"
+        >
+          {expandButtonLabel}
+        </button>
       )}
       {data.map((file, fi) => {
         const blocks = buildRenderBlocks(file.hunks, oldSourceLines, newSourceLines);
@@ -491,18 +491,25 @@ export function DiffViewer({
               }
 
               const gapId = `${fi}-${block.key}`;
-              const isGapExpanded = !!expandedGaps[gapId];
-              if (!isGapExpanded) {
+              const expandedCount = expandedGaps[gapId] ?? 0;
+              const visibleCount = Math.min(expandedCount, block.lines.length);
+              const remainingCount = block.lines.length - visibleCount;
+              const nextChunkCount = Math.min(GAP_EXPAND_CHUNK, remainingCount);
+
+              if (visibleCount === 0) {
                 return (
                   <div key={gapId} className="diff-gap-row">
                     <button
                       type="button"
                       className="diff-gap-btn"
                       onClick={() => {
-                        setExpandedGaps((prev) => ({ ...prev, [gapId]: true }));
+                        setExpandedGaps((prev) => ({
+                          ...prev,
+                          [gapId]: Math.min(block.lines.length, (prev[gapId] ?? 0) + GAP_EXPAND_CHUNK),
+                        }));
                       }}
                     >
-                      Show {block.lines.length} unchanged line{block.lines.length === 1 ? "" : "s"}
+                      Show {nextChunkCount} unchanged line{nextChunkCount === 1 ? "" : "s"}
                     </button>
                   </div>
                 );
@@ -510,7 +517,7 @@ export function DiffViewer({
 
               return (
                 <div key={gapId} className="diff-gap-expanded">
-                  {block.lines.map((line) => (
+                  {block.lines.slice(0, visibleCount).map((line) => (
                     <DiffLineRow
                       key={`${gapId}-${line.oldLineNo}-${line.newLineNo}`}
                       line={line}
@@ -518,6 +525,22 @@ export function DiffViewer({
                       highlightedHtml={getLineHtml(line, highlighted)}
                     />
                   ))}
+                  {remainingCount > 0 && (
+                    <div className="diff-gap-row">
+                      <button
+                        type="button"
+                        className="diff-gap-btn"
+                        onClick={() => {
+                          setExpandedGaps((prev) => ({
+                            ...prev,
+                            [gapId]: Math.min(block.lines.length, (prev[gapId] ?? 0) + GAP_EXPAND_CHUNK),
+                          }));
+                        }}
+                      >
+                        Show {nextChunkCount} more unchanged line{nextChunkCount === 1 ? "" : "s"} ({remainingCount} remaining)
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
