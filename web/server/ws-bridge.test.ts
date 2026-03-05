@@ -1525,6 +1525,56 @@ describe("CLI message routing", () => {
     expect(injectedUser?.agentSource?.sessionLabel).toBe("System");
   });
 
+  it("assistant: does not recursively re-inject reminder on system-triggered turns", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    // Simulate a prior system reminder being injected (turn trigger source = system).
+    bridge.injectUserMessage("s1", "[System] prior reminder", {
+      sessionId: "system:leader-tag-enforcer",
+      sessionLabel: "System",
+    });
+
+    const reminderCountBefore = cli.send.mock.calls
+      .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
+      .filter((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"))
+      .length;
+
+    // Assistant still forgets the suffix on this reminder-triggered turn.
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-missing-tag-system-turn",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Still missing suffix on a system-triggered turn." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      session_id: "s1",
+    }));
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      result: "",
+      is_error: false,
+      total_cost_usd: 0.01,
+      num_turns: 1,
+      session_id: "s1",
+    }));
+
+    const reminderCountAfter = cli.send.mock.calls
+      .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
+      .filter((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"))
+      .length;
+
+    expect(reminderCountAfter).toBe(reminderCountBefore);
+  });
+
   it("assistant: treats tool-only leader messages as internal without reminder", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),

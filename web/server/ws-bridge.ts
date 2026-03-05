@@ -1954,8 +1954,15 @@ export class WsBridge {
     return lastClassification;
   }
 
-  private maybeInjectLeaderAddressingReminder(session: Session, addressing: LeaderAssistantAddressing): boolean {
+  private maybeInjectLeaderAddressingReminder(
+    session: Session,
+    addressing: LeaderAssistantAddressing,
+    turnTriggerSource: TurnTriggerSource,
+  ): boolean {
     if (addressing !== "missing") return false;
+    // Never chain reminders off system-injected reminder turns; this avoids
+    // recursive nudge loops when the model keeps omitting @to() tags.
+    if (turnTriggerSource === "system") return false;
     // Don't nudge when the turn was interrupted — the assistant didn't get a chance
     // to finish its response (and add the @to() tag). Without this guard, the nudge
     // injects a new user message that triggers another turn, making it impossible to
@@ -3743,7 +3750,7 @@ export class WsBridge {
     ) as (BrowserIncomingMessage & { type: "assistant"; message: { content: ContentBlock[] } }) | undefined;
     if (latestTopLevelAssistant) {
       const addressing = this.classifyLeaderAssistantAddressing(session, latestTopLevelAssistant.message.content);
-      this.maybeInjectLeaderAddressingReminder(session, addressing);
+      this.maybeInjectLeaderAddressingReminder(session, addressing, turnTriggerSource);
     }
 
     // Set attention only when this turn should surface to the human.
