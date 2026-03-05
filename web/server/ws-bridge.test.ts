@@ -7165,7 +7165,7 @@ describe("Codex runtime settings updates", () => {
     const browser = makeBrowserSocket(sid);
     const adapter = makeCodexAdapterMock();
     const relaunchCb = vi.fn();
-    const launcherInfo = { model: "gpt-5.2-codex", permissionMode: "plan" };
+    const launcherInfo = { model: "gpt-5.4", permissionMode: "plan" };
     const launcherMock = {
       touchActivity: vi.fn(),
       getSession: vi.fn(() => launcherInfo),
@@ -7200,7 +7200,7 @@ describe("Codex runtime settings updates", () => {
     const browser = makeBrowserSocket(sid);
     const adapter = makeCodexAdapterMock();
     const relaunchCb = vi.fn();
-    const launcherInfo = { model: "gpt-5.2-codex", codexReasoningEffort: undefined };
+    const launcherInfo = { model: "gpt-5.4", codexReasoningEffort: undefined };
     const launcherMock = {
       touchActivity: vi.fn(),
       getSession: vi.fn(() => launcherInfo),

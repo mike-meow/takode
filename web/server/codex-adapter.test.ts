@@ -1073,7 +1073,7 @@ describe("CodexAdapter", () => {
 
   it("calls onSessionMeta with thread ID after initialization", async () => {
     const metaCalls: Array<{ cliSessionId?: string; model?: string }> = [];
-    const adapter = new CodexAdapter(proc as never, "test-session", { model: "gpt-5.2-codex", cwd: "/project" });
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "gpt-5.4", cwd: "/project" });
     adapter.onSessionMeta((meta) => metaCalls.push(meta));
 
     await tick();
@@ -1085,7 +1085,7 @@ describe("CodexAdapter", () => {
 
     expect(metaCalls.length).toBe(1);
     expect(metaCalls[0].cliSessionId).toBe("thr_456");
-    expect(metaCalls[0].model).toBe("gpt-5.2-codex");
+    expect(metaCalls[0].model).toBe("gpt-5.4");
   });
 
   // ── Item completion handlers ───────────────────────────────────────────────
@@ -1455,7 +1455,7 @@ describe("CodexAdapter", () => {
 
   it("passes model and cwd in thread/start request", async () => {
     new CodexAdapter(proc as never, "test-session", {
-      model: "gpt-5.2-codex",
+      model: "gpt-5.4",
       cwd: "/workspace/app",
     });
 
@@ -1465,7 +1465,7 @@ describe("CodexAdapter", () => {
     await tick();
 
     const allWritten = stdin.chunks.join("");
-    expect(allWritten).toContain('"model":"gpt-5.2-codex"');
+    expect(allWritten).toContain('"model":"gpt-5.4"');
     expect(allWritten).toContain('"cwd":"/workspace/app"');
   });
 

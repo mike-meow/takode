@@ -20,29 +20,29 @@ import {
 describe("toModelOptions", () => {
   it("converts server model info to frontend ModelOption with icons", () => {
     const models = [
-      { value: "gpt-5.2-codex", label: "gpt-5.2-codex", description: "Frontier" },
-      { value: "gpt-5.1-codex-mini", label: "gpt-5.1-codex-mini", description: "Fast" },
+      { value: "gpt-5.4", label: "gpt-5.4", description: "Frontier" },
+      { value: "gpt-5.3-codex-spark", label: "gpt-5.3-codex-spark", description: "Fast" },
     ];
 
     const options = toModelOptions(models);
 
     expect(options).toHaveLength(2);
-    expect(options[0].value).toBe("gpt-5.2-codex");
-    expect(options[0].label).toBe("gpt-5.2-codex");
+    expect(options[0].value).toBe("gpt-5.4");
+    expect(options[0].label).toBe("gpt-5.4");
     expect(options[0].icon).toBeTruthy();
-    expect(options[1].value).toBe("gpt-5.1-codex-mini");
+    expect(options[1].value).toBe("gpt-5.3-codex-spark");
   });
 
   it("assigns codex icon to codex-containing slugs", () => {
     const options = toModelOptions([
-      { value: "gpt-5.2-codex", label: "GPT-5.2 Codex", description: "" },
+      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", description: "" },
     ]);
     expect(options[0].icon).toBe("\u2733"); // ✳
   });
 
   it("assigns max icon to max-containing slugs", () => {
     const options = toModelOptions([
-      { value: "gpt-5.1-codex-max", label: "GPT-5.1 Max", description: "" },
+      { value: "gpt-5.4-codex-max", label: "GPT-5.4 Max", description: "" },
     ]);
     // "codex" appears before "max" in the slug, so codex icon wins
     expect(options[0].icon).toBe("\u2733");
@@ -50,14 +50,14 @@ describe("toModelOptions", () => {
 
   it("assigns mini icon to mini-only slugs", () => {
     const options = toModelOptions([
-      { value: "gpt-5.1-mini", label: "GPT-5.1 Mini", description: "" },
+      { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", description: "" },
     ]);
     expect(options[0].icon).toBe("\u26A1"); // ⚡
   });
 
   it("uses fallback icon for generic model slugs", () => {
     const options = toModelOptions([
-      { value: "gpt-5.2", label: "GPT-5.2", description: "" },
+      { value: "gpt-5.4", label: "GPT-5.4", description: "" },
     ]);
     // Should use one of the fallback icons
     expect(options[0].icon).toBeTruthy();

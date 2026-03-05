@@ -2410,8 +2410,8 @@ describe("GET /api/backends/:id/models", () => {
   it("returns codex models from cache file sorted by priority", async () => {
     const cacheContent = JSON.stringify({
       models: [
-        { slug: "gpt-5.1-codex-mini", display_name: "gpt-5.1-codex-mini", description: "Fast model", visibility: "list", priority: 10 },
-        { slug: "gpt-5.2-codex", display_name: "gpt-5.2-codex", description: "Frontier model", visibility: "list", priority: 0 },
+        { slug: "gpt-5.3-codex-spark", display_name: "gpt-5.3-codex-spark", description: "Fast model", visibility: "list", priority: 10 },
+        { slug: "gpt-5.4", display_name: "gpt-5.4", description: "Frontier model", visibility: "list", priority: 0 },
         { slug: "gpt-5-codex", display_name: "gpt-5-codex", description: "Old model", visibility: "hide", priority: 8 },
       ],
     });
@@ -2424,8 +2424,8 @@ describe("GET /api/backends/:id/models", () => {
     const json = await res.json();
     // Should only include visible models, sorted by priority
     expect(json).toEqual([
-      { value: "gpt-5.2-codex", label: "gpt-5.2-codex", description: "Frontier model" },
-      { value: "gpt-5.1-codex-mini", label: "gpt-5.1-codex-mini", description: "Fast model" },
+      { value: "gpt-5.4", label: "gpt-5.4", description: "Frontier model" },
+      { value: "gpt-5.3-codex-spark", label: "gpt-5.3-codex-spark", description: "Fast model" },
     ]);
   });
 
@@ -2464,12 +2464,12 @@ describe("POST /api/sessions/create with backend", () => {
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.2-codex", cwd: "/test", backend: "codex" }),
+      body: JSON.stringify({ model: "gpt-5.4", cwd: "/test", backend: "codex" }),
     });
 
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-5.2-codex", backendType: "codex" }),
+      expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }),
     );
   });
 

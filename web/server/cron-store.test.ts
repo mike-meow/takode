@@ -346,7 +346,7 @@ describe("edge cases", () => {
       schedule: "0 12 * * *",
       recurring: false,
       backendType: "codex",
-      model: "gpt-5.2",
+      model: "gpt-5.4",
       cwd: "/new/path",
       envSlug: "staging",
       enabled: false,
@@ -364,7 +364,7 @@ describe("edge cases", () => {
     expect(result!.schedule).toBe("0 12 * * *");
     expect(result!.recurring).toBe(false);
     expect(result!.backendType).toBe("codex");
-    expect(result!.model).toBe("gpt-5.2");
+    expect(result!.model).toBe("gpt-5.4");
     expect(result!.cwd).toBe("/new/path");
     expect(result!.envSlug).toBe("staging");
     expect(result!.enabled).toBe(false);
