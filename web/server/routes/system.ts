@@ -19,6 +19,28 @@ import { getLegacyCodexHome } from "../codex-home.js";
 import { getTranscriptionLogIndex, getTranscriptionLogEntry } from "../transcription-enhancer.js";
 import type { RouteContext } from "./context.js";
 
+function getCodexModelVariantRank(slug: string): number {
+  if (slug.includes("-codex-spark")) return 2;
+  if (slug.includes("-codex")) return 0;
+  return 1;
+}
+
+function compareCodexModelSlugs(a: string, b: string): number {
+  const aMatch = a.match(/^gpt-(\d+)\.(\d+)(?:\.(\d+))?/);
+  const bMatch = b.match(/^gpt-(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!aMatch || !bMatch) return a.localeCompare(b);
+
+  const aVersion = [Number(aMatch[1]), Number(aMatch[2]), Number(aMatch[3] ?? 0)];
+  const bVersion = [Number(bMatch[1]), Number(bMatch[2]), Number(bMatch[3] ?? 0)];
+  for (let i = 0; i < aVersion.length; i += 1) {
+    if (aVersion[i] !== bVersion[i]) return bVersion[i] - aVersion[i];
+  }
+
+  const variantDelta = getCodexModelVariantRank(a) - getCodexModelVariantRank(b);
+  if (variantDelta !== 0) return variantDelta;
+  return a.localeCompare(b);
+}
+
 export function createSystemRoutes(ctx: RouteContext) {
   const api = new Hono();
   const {
@@ -80,10 +102,11 @@ export function createSystemRoutes(ctx: RouteContext) {
             priority?: number;
           }>;
         };
-        // Only return visible models, sorted by priority
+        // Keep only current visible models and enforce a stable Takode-facing order.
         const models = cache.models
           .filter((m) => m.visibility === "list")
-          .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+          .filter((m) => !m.slug.startsWith("gpt-5.2") && !m.slug.startsWith("gpt-5.1"))
+          .sort((a, b) => compareCodexModelSlugs(a.slug, b.slug))
           .map((m) => ({
             value: m.slug,
             label: m.display_name || m.slug,

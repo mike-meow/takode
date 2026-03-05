@@ -2407,11 +2407,14 @@ describe("GET /api/backends", () => {
 });
 
 describe("GET /api/backends/:id/models", () => {
-  it("returns codex models from cache file sorted by priority", async () => {
+  it("filters old codex models and sorts current models by version descending", async () => {
     const cacheContent = JSON.stringify({
       models: [
-        { slug: "gpt-5.3-codex-spark", display_name: "gpt-5.3-codex-spark", description: "Fast model", visibility: "list", priority: 10 },
+        { slug: "gpt-5.3-codex-spark", display_name: "gpt-5.3-codex-spark", description: "Fast model", visibility: "list", priority: 0 },
+        { slug: "gpt-5.3-codex", display_name: "gpt-5.3-codex", description: "Main codex model", visibility: "list", priority: 50 },
         { slug: "gpt-5.4", display_name: "gpt-5.4", description: "Frontier model", visibility: "list", priority: 0 },
+        { slug: "gpt-5.2-codex", display_name: "gpt-5.2-codex", description: "Old model", visibility: "list", priority: 0 },
+        { slug: "gpt-5.1-codex-mini", display_name: "gpt-5.1-codex-mini", description: "Older model", visibility: "list", priority: 0 },
         { slug: "gpt-5-codex", display_name: "gpt-5-codex", description: "Old model", visibility: "hide", priority: 8 },
       ],
     });
@@ -2422,9 +2425,10 @@ describe("GET /api/backends/:id/models", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    // Should only include visible models, sorted by priority
+    // Should only include visible 5.3+ models, ordered by version then variant.
     expect(json).toEqual([
       { value: "gpt-5.4", label: "gpt-5.4", description: "Frontier model" },
+      { value: "gpt-5.3-codex", label: "gpt-5.3-codex", description: "Main codex model" },
       { value: "gpt-5.3-codex-spark", label: "gpt-5.3-codex-spark", description: "Fast model" },
     ]);
   });
