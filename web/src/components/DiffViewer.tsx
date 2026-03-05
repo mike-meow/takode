@@ -90,7 +90,7 @@ function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
   });
 }
 
-function parseUnifiedDiffToFiles(diffStr: string): ParsedFileDiff[] {
+function parseUnifiedDiffToFiles(diffStr: string, fallbackFileName = ""): ParsedFileDiff[] {
   const files: ParsedFileDiff[] = [];
   const diffLines = diffStr.split("\n");
   let currentFile: ParsedFileDiff | null = null;
@@ -107,13 +107,16 @@ function parseUnifiedDiffToFiles(diffStr: string): ParsedFileDiff[] {
       continue;
     }
     if (line.startsWith("--- a/") || line.startsWith("--- /dev/null")) {
+      if (!currentFile) currentFile = { fileName: fallbackFileName, hunks: [] };
       continue;
     }
     if (line.startsWith("+++ b/")) {
+      if (!currentFile) currentFile = { fileName: fallbackFileName, hunks: [] };
       if (currentFile) currentFile.fileName = line.slice(6);
       continue;
     }
     if (line.startsWith("+++ /dev/null")) {
+      if (!currentFile) currentFile = { fileName: fallbackFileName, hunks: [] };
       continue;
     }
     if (
@@ -132,6 +135,7 @@ function parseUnifiedDiffToFiles(diffStr: string): ParsedFileDiff[] {
 
     const hunkMatch = line.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)$/);
     if (hunkMatch) {
+      if (!currentFile) currentFile = { fileName: fallbackFileName, hunks: [] };
       if (currentHunk && currentFile) currentFile.hunks.push(currentHunk);
       const oldStart = parseInt(hunkMatch[1], 10);
       const oldLines = hunkMatch[2] ? parseInt(hunkMatch[2], 10) : 1;
@@ -157,7 +161,10 @@ function parseUnifiedDiffToFiles(diffStr: string): ParsedFileDiff[] {
   }
 
   if (currentHunk && currentFile) currentFile.hunks.push(currentHunk);
-  if (currentFile) files.push(currentFile);
+  if (currentFile) {
+    if (!currentFile.fileName && fallbackFileName) currentFile.fileName = fallbackFileName;
+    files.push(currentFile);
+  }
 
   // Add word highlights.
   for (const file of files) {
@@ -416,7 +423,7 @@ export function DiffViewer({
     }
 
     if (unifiedDiff) {
-      return parseUnifiedDiffToFiles(unifiedDiff);
+      return parseUnifiedDiffToFiles(unifiedDiff, fileName || "");
     }
 
     return [];

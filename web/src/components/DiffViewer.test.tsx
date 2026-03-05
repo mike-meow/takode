@@ -38,6 +38,22 @@ index 1234567..abcdefg 100644
     expect(screen.getByText("utils.ts")).toBeTruthy();
   });
 
+  it("renders a diff from headerless unified hunks (Codex format)", () => {
+    const codexHunkOnlyDiff = `@@ -1,3 +1,3 @@
+ const a = 1;
+-const b = 2;
++const b = 42;
+ const c = 3;`;
+
+    const { container } = render(
+      <DiffViewer unifiedDiff={codexHunkOnlyDiff} fileName="src/utils.ts" />,
+    );
+    expect(container.querySelector(".diff-viewer")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+    expect(screen.getByText("utils.ts")).toBeTruthy();
+  });
+
   it("renders compact mode without line numbers", () => {
     const { container } = render(
       <DiffViewer

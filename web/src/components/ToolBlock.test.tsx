@@ -400,6 +400,37 @@ describe("ToolBlock", () => {
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
 
+  it("renders Edit diff for Codex headerless hunk patches", () => {
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/src/app.ts",
+          changes: [
+            {
+              path: "/home/user/src/app.ts",
+              kind: "update",
+              diff: [
+                "@@ -1,3 +1,3 @@",
+                " const a = 1;",
+                "-const b = 2;",
+                "+const b = 42;",
+                " const c = 3;",
+              ].join("\n"),
+            },
+          ],
+        }}
+        toolUseId="tool-7h"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("app.ts")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+    expect(screen.queryByText("No changes")).toBeNull();
+  });
+
   it("renders non-empty fallback summary for Edit changes without patch text", () => {
     render(
       <ToolBlock
