@@ -140,6 +140,24 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/heic": "heic", "image/heif": "heif",
 };
 
+type ImageRefForAttachmentPath = { imageId: string; media_type: string };
+
+function deriveAttachmentPaths(sessionId: string, imageRefs: ImageRefForAttachmentPath[]): string[] {
+  const imgDir = join(homedir(), ".companion", "images", sessionId);
+  return imageRefs.map((ref) => {
+    const ext = MIME_TO_EXT[ref.media_type] || "bin";
+    return join(imgDir, `${ref.imageId}.orig.${ext}`);
+  });
+}
+
+function formatAttachmentPathAnnotation(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const numbered = paths
+    .map((path, idx) => `Attachment ${idx + 1}: ${path}`)
+    .join("\n");
+  return `\n[📎 Inline image file paths (same order as images above):\n${numbered}]`;
+}
+
 const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
 const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
 const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
@@ -4590,12 +4608,8 @@ export class WsBridge {
         // Mirrors the annotation logic in handleUserMessage for CLI sessions.
         let annotatedContent = msg.content || "";
         if (userImageRefs?.length) {
-          const imgDir = join(homedir(), ".companion", "images", session.id);
-          const paths = userImageRefs.map((ref) => {
-            const ext = MIME_TO_EXT[ref.media_type] || "bin";
-            return join(imgDir, `${ref.imageId}.orig.${ext}`);
-          });
-          annotatedContent += `\n[📎 ${paths.length} image${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}]`;
+          const paths = deriveAttachmentPaths(session.id, userImageRefs);
+          annotatedContent += formatAttachmentPathAnnotation(paths);
         }
         // Start with the annotated content
         adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
@@ -4999,12 +5013,8 @@ export class WsBridge {
       // in real-time and forward to herded workers via takode send.
       let textContent = msg.content;
       if (imageRefs?.length) {
-        const imgDir = join(homedir(), ".companion", "images", session.id);
-        const paths = imageRefs.map((ref) => {
-          const ext = MIME_TO_EXT[ref.media_type] || "bin";
-          return join(imgDir, `${ref.imageId}.orig.${ext}`);
-        });
-        textContent += `\n[📎 ${paths.length} image${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}]`;
+        const paths = deriveAttachmentPaths(session.id, imageRefs);
+        textContent += formatAttachmentPathAnnotation(paths);
       }
       blocks.push({ type: "text", text: textContent });
       content = blocks;

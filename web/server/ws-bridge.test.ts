@@ -10,7 +10,7 @@ import { SessionStore } from "./session-store.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 function createMockSocket(data: SocketData) {
   return {
@@ -2448,6 +2448,48 @@ describe("Browser message routing", () => {
     // Second block should be the text
     expect(sent.message.content[1].type).toBe("text");
     expect(sent.message.content[1].text).toBe("What's in this image?");
+  });
+
+  it("user_message with images: non-SDK Claude keeps inline image blocks when imageStore is enabled", async () => {
+    const mockImageStore = {
+      store: vi.fn()
+        .mockResolvedValueOnce({ imageId: "img-1", media_type: "image/png" })
+        .mockResolvedValueOnce({ imageId: "img-2", media_type: "image/jpeg" }),
+      convertForApi: vi.fn((data: string, mediaType: string) => Promise.resolve({
+        base64: `${data}-converted`,
+        mediaType,
+      })),
+    };
+    bridge.setImageStore(mockImageStore as any);
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Please compare these",
+      images: [
+        { media_type: "image/png", data: "img1-base64" },
+        { media_type: "image/jpeg", data: "img2-base64" },
+      ],
+    }));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(cli.send).toHaveBeenCalledTimes(1);
+    const sentRaw = cli.send.mock.calls[0][0] as string;
+    const sent = JSON.parse(sentRaw.trim());
+    expect(Array.isArray(sent.message.content)).toBe(true);
+    expect(sent.message.content).toHaveLength(3);
+    expect(sent.message.content[0].type).toBe("image");
+    expect(sent.message.content[1].type).toBe("image");
+    expect(sent.message.content[2].type).toBe("text");
+    expect(sent.message.content[0].source.data).toBe("img1-base64-converted");
+    expect(sent.message.content[1].source.data).toBe("img2-base64-converted");
+
+    const expectedPath1 = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    const expectedPath2 = join(homedir(), ".companion", "images", "s1", "img-2.orig.jpeg");
+    expect(sent.message.content[2].text).toContain(`Attachment 1: ${expectedPath1}`);
+    expect(sent.message.content[2].text).toContain(`Attachment 2: ${expectedPath2}`);
+
+    expect(mockImageStore.store).toHaveBeenCalledTimes(2);
+    expect(mockImageStore.convertForApi).toHaveBeenCalledTimes(2);
   });
 
   it("permission_response allow: sends control_response to CLI", async () => {
@@ -7518,6 +7560,8 @@ describe("Codex image transport", () => {
     // Adapter should receive local paths and skip inline payload compression.
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
+    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath}`);
     expect(sentMsg.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
     expect(sentMsg.images).toBeUndefined();
     expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
@@ -7550,6 +7594,8 @@ describe("Codex image transport", () => {
 
     // Adapter receives compressed inline data and no local_images.
     const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
+    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath}`);
     expect(mockImageStore.compressForTransport).toHaveBeenCalledWith("small-data", "image/png", undefined);
     expect(sentMsg.images[0].data).toBe("compressed-fallback-data");
     expect(sentMsg.images[0].media_type).toBe("image/jpeg");
