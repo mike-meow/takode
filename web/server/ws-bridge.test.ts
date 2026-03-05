@@ -1737,11 +1737,17 @@ describe("CLI message routing", () => {
     expect(bridge.getSession("s1")!.attentionReason).toBe("review");
   });
 
-  it("result: suppresses review attention for herded worker sessions", () => {
+  it("result: suppresses review attention for herded worker turns triggered by leader messages", async () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
     } as any);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Please fix this quickly",
+      agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
+    }));
 
     bridge.handleCLIMessage(cli, JSON.stringify({
       type: "assistant",
@@ -1769,6 +1775,75 @@ describe("CLI message routing", () => {
       stop_reason: "end_turn",
       usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       uuid: "uuid-worker-result",
+      session_id: "s1",
+    }));
+
+    expect(bridge.getSession("s1")!.attentionReason).toBeNull();
+  });
+
+  it("result: keeps user-triggered herded turns unread even with leader follow-up messages", async () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
+    } as any);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Human request: investigate failing test",
+    }));
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Leader follow-up: include stack traces",
+      agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
+    }));
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-worker-user-turn",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Initial user-triggered turn complete." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    }));
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done-user-turn",
+      duration_ms: 1000,
+      duration_api_ms: 900,
+      num_turns: 1,
+      total_cost_usd: 0.01,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-worker-result-user-trigger",
+      session_id: "s1",
+    }));
+
+    expect(bridge.getSession("s1")!.attentionReason).toBe("review");
+    expect(bridge.getSession("s1")!.isGenerating).toBe(true);
+
+    bridge.markSessionRead("s1");
+
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done-leader-turn",
+      duration_ms: 900,
+      duration_api_ms: 850,
+      num_turns: 2,
+      total_cost_usd: 0.02,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 8, output_tokens: 4, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "uuid-worker-result-leader-trigger",
       session_id: "s1",
     }));
 
@@ -4965,7 +5040,7 @@ describe("status_change: running on user_message", () => {
     vi.useRealTimers();
   });
 
-  it("state_snapshot suppresses attention for herded worker sessions", () => {
+  it("state_snapshot includes attention for herded worker sessions when set", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
@@ -4980,7 +5055,7 @@ describe("status_change: running on user_message", () => {
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const snapshot = calls.find((m: any) => m.type === "state_snapshot");
     expect(snapshot).toBeDefined();
-    expect(snapshot.attentionReason).toBeNull();
+    expect(snapshot.attentionReason).toBe("review");
   });
 });
 

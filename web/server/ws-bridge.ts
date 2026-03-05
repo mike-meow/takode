@@ -205,6 +205,7 @@ interface PendingCodexTurnRecovery {
 }
 
 type LeaderAssistantAddressing = "not_leader" | "user" | "self" | "missing";
+type TurnTriggerSource = "user" | "leader" | "system" | "unknown";
 type InterruptSource = GenerationInterruptSource;
 type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta>
   & TurnStartFailedAwareAdapter
@@ -1946,9 +1947,24 @@ export class WsBridge {
     return true;
   }
 
+  private getCurrentTurnTriggerSource(session: Session): TurnTriggerSource {
+    for (const historyIndex of session.userMessageIdsThisTurn) {
+      const entry = session.messageHistory[historyIndex] as
+        | (Extract<BrowserIncomingMessage, { type: "user_message" }>)
+        | undefined;
+      if (!entry || entry.type !== "user_message") continue;
+      if (!entry.agentSource) return "user";
+      if (this.isSystemSourceTag(entry.agentSource)) return "system";
+      return "leader";
+    }
+    return "unknown";
+  }
+
   /** Whether a completed turn should surface attention/notifications to the human. */
-  private shouldNotifyHumanOnResult(session: Session): boolean {
-    if (this.isHerdedWorkerSession(session)) return false;
+  private shouldNotifyHumanOnResult(session: Session, turnTriggerSource: TurnTriggerSource): boolean {
+    if (this.isHerdedWorkerSession(session)) {
+      return turnTriggerSource === "user";
+    }
     if (!this.isLeaderSession(session)) return true;
 
     const latestAssistant = session.messageHistory.findLast(
@@ -1958,20 +1974,12 @@ export class WsBridge {
   }
 
   /** Upgrade attention (never downgrade). Broadcasts + persists. */
-  private setAttention(session: Session, reason: "action" | "error" | "review"): void {
-    // Herded workers should never surface local unread/action/error badges.
-    // Their noteworthy events are delivered to the orchestrator via herd events.
-    if (this.isHerdedWorkerSession(session)) {
-      if (session.attentionReason !== null) {
-        session.attentionReason = null;
-        this.broadcastToBrowsers(session, {
-          type: "session_update",
-          session: { attentionReason: null },
-        });
-        this.persistSession(session);
-      }
-      return;
-    }
+  private setAttention(
+    session: Session,
+    reason: "action" | "error" | "review",
+    options?: { allowHerdedWorker?: boolean },
+  ): void {
+    if (this.isHerdedWorkerSession(session) && !options?.allowHerdedWorker) return;
     const current = session.attentionReason;
     const pri = WsBridge.ATTENTION_PRIORITY;
     if (current && pri[current] >= pri[reason]) return; // already equal or higher
@@ -2039,7 +2047,7 @@ export class WsBridge {
     if (!session) return null;
     return {
       lastReadAt: session.lastReadAt,
-      attentionReason: this.isHerdedWorkerSession(session) ? null : session.attentionReason,
+      attentionReason: session.attentionReason,
     };
   }
 
@@ -3666,11 +3674,12 @@ export class WsBridge {
         ? Math.max(0, Date.now() - session.generationStartedAt)
         : undefined;
 
+    const turnTriggerSource = this.getCurrentTurnTriggerSource(session);
     this.setGenerating(session, false, "result");
     // Turn completed — the user message was processed. Clear the re-queue
     // tracker so we don't re-send it on a subsequent disconnect.
     session.lastOutboundUserNdjson = null;
-    const shouldNotifyHuman = this.shouldNotifyHumanOnResult(session);
+    const shouldNotifyHuman = this.shouldNotifyHumanOnResult(session, turnTriggerSource);
 
     // Persist turn duration on the latest top-level assistant message and
     // rebroadcast it so the chat feed can render the completed turn timing.
@@ -3721,7 +3730,11 @@ export class WsBridge {
 
     // Set attention only when this turn should surface to the human.
     if (shouldNotifyHuman) {
-      this.setAttention(session, msg.is_error ? "error" : "review");
+      this.setAttention(
+        session,
+        msg.is_error ? "error" : "review",
+        { allowHerdedWorker: this.isHerdedWorkerSession(session) && turnTriggerSource === "user" },
+      );
     }
 
     // Takode: session_error when the result indicates an error
@@ -5998,7 +6011,7 @@ export class WsBridge {
       uiMode: session.state.uiMode ?? null,
       askPermission: session.state.askPermission ?? true,
       lastReadAt: session.lastReadAt,
-      attentionReason: this.isHerdedWorkerSession(session) ? null : session.attentionReason,
+      attentionReason: session.attentionReason,
       generationStartedAt: session.generationStartedAt ?? null,
     });
   }
