@@ -162,6 +162,7 @@ const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
 const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
 const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
 const CODEX_RETRY_SAFE_RESUME_ITEM_TYPES: ReadonlySet<string> = new Set(["reasoning", "contextCompaction"]);
+const CODEX_TOOL_RESULT_WATCHDOG_MS = 120_000;
 
 /** Extract structured Q&A pairs from an AskUserQuestion approval. */
 function extractAskUserAnswers(
@@ -266,6 +267,8 @@ interface Session {
   assistantAccumulator: Map<string, { contentBlockIds: Set<string> }>;
   /** Wall-clock start times for tool calls (tool_use_id → Date.now()). Transient, not persisted. */
   toolStartTimes: Map<string, number>;
+  /** Codex-only watchdog timers for tool calls that started but never produced tool_result. */
+  codexToolResultWatchdogs: Map<string, ReturnType<typeof setTimeout>>;
   /** Whether the CLI is actively generating a response (transient, not persisted) */
   isGenerating: boolean;
   /** When isGenerating became true (epoch ms), for stuck detection + timer restore */
@@ -1453,6 +1456,7 @@ export class WsBridge {
         pendingQuestCommands: new Map(),
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
+        codexToolResultWatchdogs: new Map(),
         isGenerating: false,
         generationStartedAt: null,
         questStatusAtTurnStart: null,
@@ -1821,6 +1825,7 @@ export class WsBridge {
         pendingQuestCommands: new Map(),
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
+        codexToolResultWatchdogs: new Map(),
         isGenerating: false,
         generationStartedAt: null,
         questStatusAtTurnStart: null,
@@ -2126,6 +2131,7 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (session) {
       this.clearOptimisticRunningTimer(session, "remove_session");
+      this.clearAllCodexToolResultWatchdogs(session, "remove_session");
     }
     this.sessions.delete(sessionId);
     this.store?.remove(sessionId);
@@ -2140,6 +2146,7 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.clearOptimisticRunningTimer(session, "close_session");
+    this.clearAllCodexToolResultWatchdogs(session, "close_session");
 
     // Close CLI socket (Claude)
     if (session.backendSocket) {
@@ -2232,6 +2239,12 @@ export class WsBridge {
         this.persistSession(session);
       } else if (msg.type === "assistant") {
         const content = msg.message.content || [];
+        const now = Date.now();
+        for (const block of content) {
+          if (block.type === "tool_use" && block.id && !session.toolStartTimes.has(block.id)) {
+            session.toolStartTimes.set(block.id, now);
+          }
+        }
         this.trackCodexQuestCommands(session, content);
         const toolResults = content.filter((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
         if (toolResults.length > 0) {
@@ -2401,6 +2414,7 @@ export class WsBridge {
       }
       this.markTurnInterrupted(session, "system");
       this.setGenerating(session, false, "codex_disconnect");
+      this.scheduleCodexToolResultWatchdogs(session, "codex_disconnect");
       this.persistSession(session);
       const idleKilled = this.launcher?.getSession(sessionId)?.killedByIdleManager;
       console.log(
@@ -4278,6 +4292,182 @@ export class WsBridge {
     this.persistSession(session);
   }
 
+  private clearCodexToolResultWatchdog(session: Session, toolUseId: string): void {
+    const timer = session.codexToolResultWatchdogs.get(toolUseId);
+    if (!timer) return;
+    clearTimeout(timer);
+    session.codexToolResultWatchdogs.delete(toolUseId);
+  }
+
+  private clearAllCodexToolResultWatchdogs(session: Session, _reason: string): void {
+    for (const timer of session.codexToolResultWatchdogs.values()) {
+      clearTimeout(timer);
+    }
+    session.codexToolResultWatchdogs.clear();
+  }
+
+  private emitSyntheticToolResultPreview(
+    session: Session,
+    toolUseId: string,
+    content: string,
+    isError: boolean,
+    reason: string,
+  ): void {
+    if (!session.toolStartTimes.has(toolUseId)) return;
+    this.clearCodexToolResultWatchdog(session, toolUseId);
+
+    const totalSize = content.length;
+    const isTruncated = totalSize > TOOL_RESULT_PREVIEW_LIMIT;
+    const startedAt = session.toolStartTimes.get(toolUseId);
+    const durationSeconds = startedAt != null
+      ? Math.round((Date.now() - startedAt) / 100) / 10
+      : undefined;
+    session.toolStartTimes.delete(toolUseId);
+    session.toolResults.set(toolUseId, {
+      content,
+      is_error: isError,
+      timestamp: Date.now(),
+    });
+
+    const preview: ToolResultPreview = {
+      tool_use_id: toolUseId,
+      content: isTruncated ? content.slice(-TOOL_RESULT_PREVIEW_LIMIT) : content,
+      is_error: isError,
+      total_size: totalSize,
+      is_truncated: isTruncated,
+      duration_seconds: durationSeconds,
+    };
+    const browserMsg: BrowserIncomingMessage = {
+      type: "tool_result_preview",
+      previews: [preview],
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+    this.persistSession(session);
+    console.warn(
+      `[ws-bridge] Synthesized tool_result_preview for orphaned tool ${toolUseId} in session ${sessionTag(session.id)} (${reason})`,
+    );
+  }
+
+  private scheduleCodexToolResultWatchdogs(session: Session, reason: string): void {
+    if (session.backendType !== "codex") return;
+    for (const toolUseId of session.toolStartTimes.keys()) {
+      if (session.codexToolResultWatchdogs.has(toolUseId)) continue;
+      const timer = setTimeout(() => {
+        session.codexToolResultWatchdogs.delete(toolUseId);
+        if (!session.toolStartTimes.has(toolUseId)) return;
+
+        // Keep waiting while Codex is connected; this avoids timing out
+        // legitimate long-running commands that continue after reconnect.
+        if (session.codexAdapter?.isConnected()) {
+          this.scheduleCodexToolResultWatchdogs(session, "backend_connected");
+          return;
+        }
+
+        this.emitSyntheticToolResultPreview(
+          session,
+          toolUseId,
+          "Tool call was interrupted by backend disconnect; final result was not recovered.",
+          true,
+          reason,
+        );
+      }, CODEX_TOOL_RESULT_WATCHDOG_MS);
+      session.codexToolResultWatchdogs.set(toolUseId, timer);
+    }
+  }
+
+  private synthesizeCodexToolResultsFromResumedTurn(
+    session: Session,
+    turn: CodexResumeTurnSnapshot,
+    pending: PendingCodexTurnRecovery,
+  ): number {
+    const turnStatus = typeof turn.status === "string" ? turn.status : null;
+    if (!turnStatus || turnStatus === "inProgress") return 0;
+
+    const disconnectedAt = pending.disconnectedAt ?? Date.now();
+    const unresolvedToolIds = new Set<string>();
+    for (const [toolUseId, startedAt] of session.toolStartTimes) {
+      if (startedAt <= disconnectedAt) unresolvedToolIds.add(toolUseId);
+    }
+    if (unresolvedToolIds.size === 0) return 0;
+
+    let synthesized = 0;
+    const firstNonEmptyString = (obj: Record<string, unknown>, fields: string[]): string => {
+      for (const field of fields) {
+        const value = obj[field];
+        if (typeof value === "string" && value.trim().length > 0) return value.trim();
+      }
+      return "";
+    };
+
+    for (const rawItem of turn.items) {
+      if (!rawItem || typeof rawItem !== "object") continue;
+      const item = rawItem as Record<string, unknown>;
+      const itemId = typeof item.id === "string" ? item.id : "";
+      if (!itemId || !unresolvedToolIds.has(itemId)) continue;
+
+      const itemType = typeof item.type === "string" ? item.type : "";
+      const itemStatus = typeof item.status === "string" ? item.status : turnStatus;
+      let isError = itemStatus === "failed" || itemStatus === "declined";
+      let content = "";
+
+      if (itemType === "commandExecution") {
+        const output = firstNonEmptyString(item, [
+          "stdout",
+          "aggregatedOutput",
+          "aggregated_output",
+          "formatted_output",
+          "output",
+        ]);
+        const stderr = firstNonEmptyString(item, [
+          "stderr",
+          "errorOutput",
+          "error_output",
+        ]);
+        const combinedOutput = [output, stderr].filter(Boolean).join("\n").trim();
+        const exitCode = typeof item.exitCode === "number" ? item.exitCode : null;
+        if (exitCode !== null && exitCode !== 0) isError = true;
+        if (combinedOutput) {
+          content = combinedOutput;
+          if (exitCode !== null && exitCode !== 0) {
+            content = `${content}\nExit code: ${exitCode}`;
+          }
+        } else if (exitCode !== null) {
+          content = `Command ${isError ? "failed" : "completed"} before reconnect recovery finished.\nExit code: ${exitCode}`;
+        } else {
+          content = `Command ${isError ? "failed" : "completed"} before reconnect recovery finished.`;
+        }
+      } else {
+        content = `Tool call ${isError ? "failed" : "completed"} before reconnect recovery finished.`;
+      }
+
+      this.emitSyntheticToolResultPreview(
+        session,
+        itemId,
+        content,
+        isError,
+        "resume_snapshot",
+      );
+      unresolvedToolIds.delete(itemId);
+      synthesized++;
+    }
+
+    // Fallback: if the resumed turn is terminal but omitted item details, do not
+    // leave tool_use cards running forever in the UI.
+    for (const toolUseId of unresolvedToolIds) {
+      this.emitSyntheticToolResultPreview(
+        session,
+        toolUseId,
+        `Tool call ${turnStatus} before reconnect recovery finished; final output was not recovered.`,
+        turnStatus === "failed" || turnStatus === "declined",
+        "resume_snapshot_fallback",
+      );
+      synthesized++;
+    }
+
+    return synthesized;
+  }
+
   /**
    * Strip duplicated stderr output from Claude Code CLI error results.
    *
@@ -4333,6 +4523,7 @@ export class WsBridge {
       const durationSeconds = startTime != null
         ? Math.round((Date.now() - startTime) / 100) / 10
         : undefined;
+      this.clearCodexToolResultWatchdog(session, block.tool_use_id);
       session.toolStartTimes.delete(block.tool_use_id);
 
       // Store full result for lazy fetch
@@ -5724,6 +5915,15 @@ export class WsBridge {
 
     const recovered = this.recoverAgentMessagesFromResumedTurn(session, lastTurn, pending);
     if (recovered > 0) {
+      session.consecutiveAdapterFailures = 0;
+      session.lastAdapterFailureAt = null;
+      session.pendingCodexTurnRecovery = null;
+      this.persistSession(session);
+      return;
+    }
+
+    const synthesizedToolResults = this.synthesizeCodexToolResultsFromResumedTurn(session, lastTurn, pending);
+    if (synthesizedToolResults > 0) {
       session.consecutiveAdapterFailures = 0;
       session.lastAdapterFailureAt = null;
       session.pendingCodexTurnRecovery = null;

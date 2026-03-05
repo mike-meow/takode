@@ -6978,6 +6978,164 @@ describe("Codex resumed-turn recovery", () => {
       expect.objectContaining({ type: "user_message", content: "retry unmatched turn" }),
     );
   });
+
+  it("synthesizes missing tool result previews from terminal resumed turns", async () => {
+    const sid = "s-terminal-resume";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run terminal command",
+    }));
+    adapter1.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "assistant-cmd-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_use", id: "cmd_1", name: "Bash", input: { command: "echo hi" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+    expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_1")).toBe(true);
+
+    adapter1.emitDisconnect("turn-cmd-1");
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    browser.send.mockClear();
+
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-terminal",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-terminal",
+        turnCount: 42,
+        lastTurn: {
+          id: "turn-cmd-1",
+          status: "completed",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "run terminal command" }] },
+            { type: "commandExecution", id: "cmd_1", status: "completed", aggregatedOutput: "hi", exitCode: 0 },
+          ],
+        },
+      },
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const preview = calls.find((c: any) =>
+      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_1"));
+    expect(preview).toBeDefined();
+    expect(preview.previews[0].content).toContain("hi");
+
+    const session = bridge.getSession(sid)!;
+    expect(session.toolStartTimes.has("cmd_1")).toBe(false);
+    expect(session.pendingCodexTurnRecovery).toBeNull();
+  });
+
+  it("watchdog synthesizes interruption when codex stays disconnected", async () => {
+    vi.useFakeTimers();
+    try {
+      const sid = "s-watchdog-disconnected";
+      const adapter = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter as any);
+
+      const browser = makeBrowserSocket(sid);
+      bridge.handleBrowserOpen(browser, sid);
+      browser.send.mockClear();
+
+      await bridge.handleBrowserMessage(browser, JSON.stringify({
+        type: "user_message",
+        content: "run command",
+      }));
+      adapter.emitBrowserMessage({
+        type: "assistant",
+        message: {
+          id: "assistant-cmd-watch",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.3-codex",
+          content: [{ type: "tool_use", id: "cmd_watch", name: "Bash", input: { command: "sleep 999" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: Date.now(),
+      });
+      browser.send.mockClear();
+
+      adapter.emitDisconnect("turn-watch");
+      vi.advanceTimersByTime(120_000);
+
+      const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+      const preview = calls.find((c: any) =>
+        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_watch"));
+      expect(preview).toBeDefined();
+      expect(preview.previews[0].is_error).toBe(true);
+      expect(preview.previews[0].content).toContain("interrupted");
+      expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_watch")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("watchdog does not synthesize while codex is connected", async () => {
+    vi.useFakeTimers();
+    try {
+      const sid = "s-watchdog-connected";
+      const adapter1 = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter1 as any);
+
+      const browser = makeBrowserSocket(sid);
+      bridge.handleBrowserOpen(browser, sid);
+      browser.send.mockClear();
+
+      await bridge.handleBrowserMessage(browser, JSON.stringify({
+        type: "user_message",
+        content: "run long command",
+      }));
+      adapter1.emitBrowserMessage({
+        type: "assistant",
+        message: {
+          id: "assistant-cmd-live",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.3-codex",
+          content: [{ type: "tool_use", id: "cmd_live", name: "Bash", input: { command: "sleep 36000" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: Date.now(),
+      });
+      browser.send.mockClear();
+      adapter1.emitDisconnect("turn-live");
+
+      const adapter2 = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter2 as any);
+      browser.send.mockClear();
+
+      vi.advanceTimersByTime(120_000);
+
+      const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+      const preview = calls.find((c: any) =>
+        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_live"));
+      expect(preview).toBeUndefined();
+      expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_live")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Codex runtime settings updates", () => {
