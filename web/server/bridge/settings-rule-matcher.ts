@@ -80,13 +80,59 @@ export function parseToolRule(rule: string): ParsedToolRule | null {
   return { toolName, ruleContent };
 }
 
+// ─── Shell Command Preprocessing ────────────────────────────────────────────
+
+/**
+ * Strip shell comments from a command string. A `#` that appears after
+ * whitespace (or at the start) outside of any quoting context begins a
+ * comment that extends to end-of-line. For single-line commands (the common
+ * case for Bash tool calls) this means everything after the `#` is removed.
+ */
+export function stripShellComments(command: string): string {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let parenDepth = 0;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+
+    // Backslash escaping (outside single quotes)
+    if (ch === "\\" && !inSingleQuote && i + 1 < command.length) {
+      i++; // skip next char
+      continue;
+    }
+
+    // Quote tracking
+    if (ch === "'" && !inDoubleQuote && !inBacktick && parenDepth === 0) { inSingleQuote = !inSingleQuote; continue; }
+    if (ch === '"' && !inSingleQuote && !inBacktick && parenDepth === 0) { inDoubleQuote = !inDoubleQuote; continue; }
+    if (ch === "`" && !inSingleQuote) { inBacktick = !inBacktick; continue; }
+    if (ch === "$" && command[i + 1] === "(" && !inSingleQuote && !inBacktick) { parenDepth++; i++; continue; }
+    if (ch === ")" && parenDepth > 0 && !inSingleQuote && !inBacktick) { parenDepth--; continue; }
+
+    // Comment detection (outside all quoting)
+    if (ch === "#" && !inSingleQuote && !inDoubleQuote && !inBacktick && parenDepth === 0) {
+      const prev = i > 0 ? command[i - 1] : " ";
+      if (prev === " " || prev === "\t" || i === 0) {
+        return command.slice(0, i).trimEnd();
+      }
+    }
+  }
+
+  return command;
+}
+
 // ─── Shell Command Splitting ────────────────────────────────────────────────
 
 /**
  * Split a Bash command on shell operators (&&, ||, ;, |) while respecting
- * quoting. Conservative: if quoting is unclosed, returns the whole command.
+ * quoting. Comments are stripped first. Conservative: if quoting is unclosed,
+ * returns the whole command.
  */
 export function splitShellCommand(command: string): string[] {
+  // Preprocess: strip comments before splitting
+  const cleaned = stripShellComments(command);
+
   const parts: string[] = [];
   let current = "";
   let inSingleQuote = false;
@@ -95,25 +141,15 @@ export function splitShellCommand(command: string): string[] {
   let parenDepth = 0;
   let i = 0;
 
-  while (i < command.length) {
-    const ch = command[i];
-    const next = command[i + 1];
+  while (i < cleaned.length) {
+    const ch = cleaned[i];
+    const next = cleaned[i + 1];
 
     // Backslash escaping (outside single quotes)
-    if (ch === "\\" && !inSingleQuote && i + 1 < command.length) {
+    if (ch === "\\" && !inSingleQuote && i + 1 < cleaned.length) {
       current += ch + next;
       i += 2;
       continue;
-    }
-
-    // Shell comments: # at the start or after whitespace (outside quotes)
-    // means everything until end-of-line is a comment. Since Bash tool calls
-    // are single-line, we can stop processing entirely.
-    if (ch === "#" && !inSingleQuote && !inDoubleQuote && !inBacktick && parenDepth === 0) {
-      const prev = i > 0 ? command[i - 1] : " ";
-      if (prev === " " || prev === "\t" || i === 0) {
-        break; // rest of command is a comment
-      }
     }
 
     // Quote tracking

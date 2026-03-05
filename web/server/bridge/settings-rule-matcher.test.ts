@@ -13,6 +13,7 @@ vi.mock("node:fs/promises", () => ({
 
 import {
   parseToolRule,
+  stripShellComments,
   splitShellCommand,
   matchesBashRule,
   matchesFileGlob,
@@ -88,6 +89,38 @@ describe("parseToolRule", () => {
     expect(parseToolRule("mcp__slack__send_message")).toEqual({
       toolName: "mcp__slack__send_message",
     });
+  });
+});
+
+// ─── stripShellComments ────────────────────────────────────────────────────
+
+describe("stripShellComments", () => {
+  it("strips trailing comment", () => {
+    expect(stripShellComments("grep foo # search")).toBe("grep foo");
+  });
+
+  it("preserves # inside single quotes", () => {
+    expect(stripShellComments("echo 'hello # world'")).toBe("echo 'hello # world'");
+  });
+
+  it("preserves # inside double quotes", () => {
+    expect(stripShellComments('echo "hello # world"')).toBe('echo "hello # world"');
+  });
+
+  it("preserves # mid-word (not preceded by whitespace)", () => {
+    expect(stripShellComments("echo foo#bar")).toBe("echo foo#bar");
+  });
+
+  it("returns original when no comment present", () => {
+    expect(stripShellComments("ls -la")).toBe("ls -la");
+  });
+
+  it("handles # at the very start of the string", () => {
+    expect(stripShellComments("# this is all comment")).toBe("");
+  });
+
+  it("handles tab before #", () => {
+    expect(stripShellComments("ls\t# comment")).toBe("ls");
   });
 });
 
