@@ -1040,14 +1040,13 @@ export class CodexAdapter
       }
     }
 
-    // Add inline data URLs as fallback when local paths aren't available.
+    // Inline base64 image transport is intentionally disabled for Codex.
+    // Oversized data: URLs can silently drop whole turns; ws-bridge should
+    // provide local_images paths instead.
     if (msg.images?.length) {
-      for (const img of msg.images) {
-        input.push({
-          type: "image",
-          url: `data:${img.media_type};base64,${img.data}`,
-        });
-      }
+      console.warn(
+        `[codex-adapter] Ignoring inline images for session ${this.sessionId}; expected local_images path references`,
+      );
     }
 
     // Add text

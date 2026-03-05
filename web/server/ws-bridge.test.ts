@@ -2476,7 +2476,9 @@ describe("Browser message routing", () => {
     expect(userMessages).toHaveLength(1);
   });
 
-  it("user_message with images: builds content blocks", () => {
+  it("user_message with images: emits error and does not send when imageStore is not set", () => {
+    browser.send.mockClear();
+
     bridge.handleBrowserMessage(browser, JSON.stringify({
       type: "user_message",
       content: "What's in this image?",
@@ -2485,19 +2487,12 @@ describe("Browser message routing", () => {
       ],
     }));
 
-    const sentRaw = cli.send.mock.calls[0][0] as string;
-    const sent = JSON.parse(sentRaw.trim());
-    expect(sent.type).toBe("user");
-    expect(Array.isArray(sent.message.content)).toBe(true);
-    expect(sent.message.content).toHaveLength(2);
-    // First block should be the image
-    expect(sent.message.content[0].type).toBe("image");
-    expect(sent.message.content[0].source.type).toBe("base64");
-    expect(sent.message.content[0].source.media_type).toBe("image/png");
-    expect(sent.message.content[0].source.data).toBe("base64data==");
-    // Second block should be the text
-    expect(sent.message.content[1].type).toBe("text");
-    expect(sent.message.content[1].text).toBe("What's in this image?");
+    expect(cli.send).not.toHaveBeenCalled();
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({
+      type: "error",
+      message: expect.stringContaining("Image failed to send"),
+    }));
   });
 
   it("user_message with images: non-SDK Claude keeps inline image blocks when imageStore is enabled", async () => {
@@ -2540,6 +2535,32 @@ describe("Browser message routing", () => {
 
     expect(mockImageStore.store).toHaveBeenCalledTimes(2);
     expect(mockImageStore.convertForApi).toHaveBeenCalledTimes(2);
+  });
+
+  it("user_message with images: emits error and does not send turn when upload to imageStore fails", async () => {
+    const mockImageStore = {
+      store: vi.fn().mockRejectedValue(new Error("ENOENT: image file not found")),
+      convertForApi: vi.fn(),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "Please inspect this screenshot",
+      images: [{ media_type: "image/png", data: "broken-base64" }],
+    }));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(cli.send).not.toHaveBeenCalled();
+    const session = bridge.getSession("s1")!;
+    expect(session.messageHistory).toHaveLength(0);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({
+      type: "error",
+      message: expect.stringContaining("Image failed to send: image couldn't be found on server"),
+    }));
   });
 
   it("permission_response allow: sends control_response to CLI", async () => {
@@ -7856,13 +7877,14 @@ describe("Codex image transport", () => {
     expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
 
-  it("skips compression when imageStore is not set", async () => {
+  it("emits an error and does not send Codex image turn when imageStore is not set", async () => {
     const adapter = makeCodexAdapterMock();
     // No imageStore set on bridge
     bridge.attachCodexAdapter("s1", adapter as any);
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
 
     bridge.handleBrowserMessage(browser, JSON.stringify({
       type: "user_message",
@@ -7871,9 +7893,46 @@ describe("Codex image transport", () => {
     }));
     await flush();
 
-    // Adapter receives original message (no compression without imageStore)
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(browserCalls).toContainEqual(expect.objectContaining({
+      type: "error",
+      message: expect.stringContaining("Image failed to send"),
+    }));
+  });
+});
+
+describe("Claude SDK image transport", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 20));
+
+  it("appends numbered attachment paths to Claude SDK user message text", async () => {
+    const adapter = makeClaudeSdkAdapterMock();
+
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+      compressForTransport: vi.fn().mockResolvedValue({
+        base64: "compressed-sdk-base64",
+        mediaType: "image/jpeg",
+      }),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "describe this image",
+      images: [{ media_type: "image/png", data: "large-base64-data" }],
+    }));
+    await flush();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const sentMsg = adapter.sendBrowserMessage.mock.calls[0][0];
-    expect(sentMsg.images[0].data).toBe("raw-data");
+    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath}`);
+    expect(sentMsg.images).toEqual([{ media_type: "image/jpeg", data: "compressed-sdk-base64" }]);
   });
 });
 

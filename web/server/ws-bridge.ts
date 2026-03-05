@@ -3076,7 +3076,17 @@ export class WsBridge {
       return;
     }
 
-    this.routeBrowserMessage(session, msg, ws);
+    void this.routeBrowserMessage(session, msg, ws).catch((err) => {
+      if (msg.type === "user_message" && msg.images?.length) {
+        this.notifyImageSendFailure(session, err);
+        return;
+      }
+      console.error(`[ws-bridge] Failed to route browser message for session ${sessionTag(session.id)}:`, err);
+      this.broadcastToBrowsers(session, {
+        type: "error",
+        message: "Failed to process message. Please retry.",
+      });
+    });
 
     if (this.perfTracer) {
       const perfMs = performance.now() - perfStart;
@@ -4573,6 +4583,29 @@ export class WsBridge {
     });
   }
 
+  private static isImageNotFoundError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const withCode = err as { code?: unknown; message?: unknown };
+    if (withCode.code === "ENOENT") return true;
+    const msg = typeof withCode.message === "string" ? withCode.message.toLowerCase() : "";
+    return msg.includes("enoent") || msg.includes("no such file") || msg.includes("not found");
+  }
+
+  private notifyImageSendFailure(session: Session, err?: unknown): void {
+    const detail = WsBridge.isImageNotFoundError(err)
+      ? "image couldn't be found on server"
+      : "the server couldn't store the image";
+    if (err) {
+      console.warn(`[ws-bridge] Image send failed for session ${sessionTag(session.id)}:`, err);
+    } else {
+      console.warn(`[ws-bridge] Image send failed for session ${sessionTag(session.id)}: ${detail}`);
+    }
+    this.broadcastToBrowsers(session, {
+      type: "error",
+      message: `Image failed to send: ${detail}. Please reattach and retry.`,
+    });
+  }
+
   // ── Browser message routing ─────────────────────────────────────────────
 
   private async routeBrowserMessage(
@@ -4636,6 +4669,13 @@ export class WsBridge {
       if (activityTypes.has(msg.type)) {
         this.launcher.touchActivity(session.id);
       }
+    }
+
+    // Image turns require backend image-store persistence so we can provide
+    // stable attachment paths and avoid silently dropped payloads.
+    if (msg.type === "user_message" && msg.images?.length && !this.imageStore) {
+      this.notifyImageSendFailure(session, new Error("image store unavailable"));
+      return;
     }
 
     // For Codex/Claude SDK sessions, route CLI-bound messages through the adapter,
@@ -4714,8 +4754,23 @@ export class WsBridge {
       let codexUserMessageId: string | null = null;
 
       if (msg.type === "user_message") {
-        const maybeIngested = this.ingestUserMessage(session, msg, "adapter");
-        const ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
+        let ingested: {
+          timestamp: number;
+          historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
+          historyIndex: number;
+          imageRefs?: import("./image-store.js").ImageRef[];
+          wasGenerating: boolean;
+        };
+        try {
+          const maybeIngested = this.ingestUserMessage(session, msg, "adapter");
+          ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
+        } catch (err) {
+          if (msg.images?.length) {
+            this.notifyImageSendFailure(session, err);
+            return;
+          }
+          throw err;
+        }
         userImageRefs = ingested.imageRefs;
         codexUserMessageId = ingested.historyEntry.id || null;
         // Trigger auto-naming evaluation (async, fire-and-forget).
@@ -4814,35 +4869,38 @@ export class WsBridge {
         // local_images (file paths on disk) only works for Codex which has a
         // native localImage content type. The Claude SDK doesn't support file
         // paths and still needs base64 image data.
-        if (session.backendType === "codex" && this.imageStore && userImageRefs?.length === msg.images.length) {
-          const paths: string[] = [];
-          const imageStoreForCodex = this.imageStore as ImageStore & {
-            getTransportPath?: (sessionId: string, imageId: string) => Promise<string | null>;
-            getOriginalPath?: (sessionId: string, imageId: string) => Promise<string | null>;
-          };
-          for (const ref of userImageRefs) {
-            const transportPath = imageStoreForCodex.getTransportPath
-              ? await imageStoreForCodex.getTransportPath(session.id, ref.imageId)
-              : null;
-            if (transportPath) {
-              paths.push(transportPath);
-              continue;
+        if (session.backendType === "codex") {
+          if (this.imageStore && userImageRefs?.length === msg.images.length) {
+            const paths: string[] = [];
+            const imageStoreForCodex = this.imageStore as ImageStore & {
+              getTransportPath?: (sessionId: string, imageId: string) => Promise<string | null>;
+              getOriginalPath?: (sessionId: string, imageId: string) => Promise<string | null>;
+            };
+            for (const ref of userImageRefs) {
+              const transportPath = imageStoreForCodex.getTransportPath
+                ? await imageStoreForCodex.getTransportPath(session.id, ref.imageId)
+                : null;
+              if (transportPath) {
+                paths.push(transportPath);
+                continue;
+              }
+              const originalPath = imageStoreForCodex.getOriginalPath
+                ? await imageStoreForCodex.getOriginalPath(session.id, ref.imageId)
+                : null;
+              if (originalPath) {
+                paths.push(originalPath);
+                continue;
+              }
+              this.notifyImageSendFailure(session, new Error(`image ${ref.imageId} not found after upload`));
+              return;
             }
-            const originalPath = imageStoreForCodex.getOriginalPath
-              ? await imageStoreForCodex.getOriginalPath(session.id, ref.imageId)
-              : null;
-            if (originalPath) {
-              paths.push(originalPath);
-              continue;
-            }
-            // Last-resort deterministic fallback — if store() succeeded, this
-            // should exist on disk and avoids large inline data payloads.
-            const [derivedPath] = deriveAttachmentPaths(session.id, [ref]);
-            paths.push(derivedPath);
+            const localMsg = { ...adapterMsg, local_images: paths } as BrowserOutgoingMessage;
+            delete (localMsg as { images?: unknown }).images;
+            adapterMsg = localMsg;
+          } else {
+            this.notifyImageSendFailure(session, new Error("uploaded images missing from image store"));
+            return;
           }
-          const localMsg = { ...adapterMsg, local_images: paths } as BrowserOutgoingMessage;
-          delete (localMsg as { images?: unknown }).images;
-          adapterMsg = localMsg;
         } else if (this.imageStore && session.backendType === "claude-sdk") {
           // SDK sessions can handle larger payloads (~1MB) than Codex (~500KB)
           const maxChars = session.backendType === "claude-sdk" ? 1_000_000 : undefined;
@@ -4895,7 +4953,15 @@ export class WsBridge {
     // Claude Code path (existing logic)
     switch (msg.type) {
       case "user_message":
-        await this.handleUserMessage(session, msg);
+        try {
+          await this.handleUserMessage(session, msg);
+        } catch (err) {
+          if (msg.images?.length) {
+            this.notifyImageSendFailure(session, err);
+            break;
+          }
+          throw err;
+        }
         break;
 
       case "permission_response":

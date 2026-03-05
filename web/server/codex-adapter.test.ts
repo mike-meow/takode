@@ -478,6 +478,34 @@ describe("CodexAdapter", () => {
     expect(allWritten).toContain("/tmp/image-b.png");
   });
 
+  it("ignores inline image payloads and sends text-only turn input", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+
+    await tick();
+
+    // Complete initialization
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+
+    adapter.sendBrowserMessage({
+      type: "user_message",
+      content: "Inline images should be ignored",
+      images: [{ media_type: "image/png", data: "abc123base64" }],
+    });
+
+    await tick();
+
+    const allWritten = stdin.chunks.join("");
+    expect(allWritten).toContain('"method":"turn/start"');
+    expect(allWritten).toContain("Inline images should be ignored");
+    expect(allWritten).not.toContain('"type":"image"');
+    expect(allWritten).not.toContain("data:image/");
+  });
+
   it("sends approval response when receiving permission_response", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
