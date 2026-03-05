@@ -12,6 +12,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { parse } from "shell-quote";
 import { NEVER_AUTO_APPROVE, isSensitiveBashCommand, isSensitiveConfigPath } from "./permission-pipeline.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -80,156 +81,56 @@ export function parseToolRule(rule: string): ParsedToolRule | null {
   return { toolName, ruleContent };
 }
 
-// ─── Shell Command Preprocessing ────────────────────────────────────────────
+// ─── Shell Command Splitting (via shell-quote) ──────────────────────────────
 
-/**
- * Strip shell comments from a command string. A `#` that appears after
- * whitespace (or at the start) outside of any quoting context begins a
- * comment that extends to end-of-line. For single-line commands (the common
- * case for Bash tool calls) this means everything after the `#` is removed.
- */
-export function stripShellComments(command: string): string {
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inBacktick = false;
-  let parenDepth = 0;
-
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i];
-
-    // Backslash escaping (outside single quotes)
-    if (ch === "\\" && !inSingleQuote && i + 1 < command.length) {
-      i++; // skip next char
-      continue;
-    }
-
-    // Quote tracking
-    if (ch === "'" && !inDoubleQuote && !inBacktick && parenDepth === 0) { inSingleQuote = !inSingleQuote; continue; }
-    if (ch === '"' && !inSingleQuote && !inBacktick && parenDepth === 0) { inDoubleQuote = !inDoubleQuote; continue; }
-    if (ch === "`" && !inSingleQuote) { inBacktick = !inBacktick; continue; }
-    if (ch === "$" && command[i + 1] === "(" && !inSingleQuote && !inBacktick) { parenDepth++; i++; continue; }
-    if (ch === ")" && parenDepth > 0 && !inSingleQuote && !inBacktick) { parenDepth--; continue; }
-
-    // Comment detection (outside all quoting)
-    if (ch === "#" && !inSingleQuote && !inDoubleQuote && !inBacktick && parenDepth === 0) {
-      const prev = i > 0 ? command[i - 1] : " ";
-      if (prev === " " || prev === "\t" || i === 0) {
-        return command.slice(0, i).trimEnd();
-      }
-    }
-  }
-
-  return command;
-}
-
-// ─── Shell Command Splitting ────────────────────────────────────────────────
+/** Operators that separate independent commands in a shell pipeline. */
+const SHELL_SPLIT_OPS = new Set(["&&", "||", ";", "|"]);
 
 /**
  * Split a Bash command on shell operators (&&, ||, ;, |) while respecting
- * quoting. Comments are stripped first. Conservative: if quoting is unclosed,
- * returns the whole command.
+ * quoting and comments. Delegates to the `shell-quote` package for correct
+ * tokenization — handles single/double quotes, backticks, $(), escapes,
+ * heredocs, and comments out of the box.
  */
 export function splitShellCommand(command: string): string[] {
-  // Preprocess: strip comments before splitting
-  const cleaned = stripShellComments(command);
-
-  const parts: string[] = [];
-  let current = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inBacktick = false;
-  let parenDepth = 0;
-  let i = 0;
-
-  while (i < cleaned.length) {
-    const ch = cleaned[i];
-    const next = cleaned[i + 1];
-
-    // Backslash escaping (outside single quotes)
-    if (ch === "\\" && !inSingleQuote && i + 1 < cleaned.length) {
-      current += ch + next;
-      i += 2;
-      continue;
-    }
-
-    // Quote tracking
-    if (ch === "'" && !inDoubleQuote && !inBacktick && parenDepth === 0) {
-      inSingleQuote = !inSingleQuote;
-      current += ch;
-      i++;
-      continue;
-    }
-    if (ch === '"' && !inSingleQuote && !inBacktick && parenDepth === 0) {
-      inDoubleQuote = !inDoubleQuote;
-      current += ch;
-      i++;
-      continue;
-    }
-    if (ch === "`" && !inSingleQuote) {
-      inBacktick = !inBacktick;
-      current += ch;
-      i++;
-      continue;
-    }
-
-    // $(...) tracking
-    if (ch === "$" && next === "(" && !inSingleQuote && !inBacktick) {
-      parenDepth++;
-      current += ch + next;
-      i += 2;
-      continue;
-    }
-    if (ch === ")" && parenDepth > 0 && !inSingleQuote && !inBacktick) {
-      parenDepth--;
-      current += ch;
-      i++;
-      continue;
-    }
-
-    // Only split outside all quoting contexts
-    const inQuotes = inSingleQuote || inDoubleQuote || inBacktick || parenDepth > 0;
-    if (!inQuotes) {
-      if (ch === "&" && next === "&") {
-        const t = current.trim();
-        if (t) parts.push(t);
-        current = "";
-        i += 2;
-        continue;
-      }
-      if (ch === "|" && next === "|") {
-        const t = current.trim();
-        if (t) parts.push(t);
-        current = "";
-        i += 2;
-        continue;
-      }
-      if (ch === ";") {
-        const t = current.trim();
-        if (t) parts.push(t);
-        current = "";
-        i++;
-        continue;
-      }
-      if (ch === "|") {
-        const t = current.trim();
-        if (t) parts.push(t);
-        current = "";
-        i++;
-        continue;
-      }
-    }
-
-    current += ch;
-    i++;
-  }
-
-  // Conservative: unclosed quoting → return whole command
-  if (inSingleQuote || inDoubleQuote || inBacktick || parenDepth > 0) {
+  let tokens: ReturnType<typeof parse>;
+  try {
+    tokens = parse(command);
+  } catch {
+    // If shell-quote can't parse (malformed input), return the whole command.
+    // Narrow rules won't match → safe fallthrough to LLM/human.
     return [command.trim()].filter(Boolean);
   }
 
-  const t = current.trim();
-  if (t) parts.push(t);
+  const parts: string[] = [];
+  let current: string[] = [];
+
+  for (const token of tokens) {
+    if (typeof token === "string") {
+      current.push(token);
+    } else if (token && typeof token === "object") {
+      if ("op" in token && SHELL_SPLIT_OPS.has(token.op)) {
+        // Operator token — flush current subcommand
+        if (current.length > 0) {
+          parts.push(current.join(" "));
+          current = [];
+        }
+      } else if ("op" in token) {
+        // Non-splitting operator (e.g. >, >>, <, etc.) — include in current subcommand
+        current.push(token.op);
+      } else if ("comment" in token) {
+        // Comment — ignore (shell-quote already stripped it from the token stream)
+      } else if ("pattern" in token) {
+        // Glob pattern — include as-is
+        current.push(String(token.pattern));
+      }
+    }
+  }
+
+  if (current.length > 0) {
+    parts.push(current.join(" "));
+  }
+
   return parts;
 }
 

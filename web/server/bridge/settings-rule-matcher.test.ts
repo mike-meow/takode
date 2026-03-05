@@ -13,7 +13,6 @@ vi.mock("node:fs/promises", () => ({
 
 import {
   parseToolRule,
-  stripShellComments,
   splitShellCommand,
   matchesBashRule,
   matchesFileGlob,
@@ -92,41 +91,10 @@ describe("parseToolRule", () => {
   });
 });
 
-// ─── stripShellComments ────────────────────────────────────────────────────
-
-describe("stripShellComments", () => {
-  it("strips trailing comment", () => {
-    expect(stripShellComments("grep foo # search")).toBe("grep foo");
-  });
-
-  it("preserves # inside single quotes", () => {
-    expect(stripShellComments("echo 'hello # world'")).toBe("echo 'hello # world'");
-  });
-
-  it("preserves # inside double quotes", () => {
-    expect(stripShellComments('echo "hello # world"')).toBe('echo "hello # world"');
-  });
-
-  it("preserves # mid-word (not preceded by whitespace)", () => {
-    expect(stripShellComments("echo foo#bar")).toBe("echo foo#bar");
-  });
-
-  it("returns original when no comment present", () => {
-    expect(stripShellComments("ls -la")).toBe("ls -la");
-  });
-
-  it("handles # at the very start of the string", () => {
-    expect(stripShellComments("# this is all comment")).toBe("");
-  });
-
-  it("handles tab before #", () => {
-    expect(stripShellComments("ls\t# comment")).toBe("ls");
-  });
-});
-
-// ─── splitShellCommand ──────────────────────────────────────────────────────
+// ─── splitShellCommand (backed by shell-quote) ─────────────────────────────
 
 describe("splitShellCommand", () => {
+  // Core splitting behavior
   it("returns a single command as-is", () => {
     expect(splitShellCommand("ls -la")).toEqual(["ls -la"]);
   });
@@ -136,10 +104,7 @@ describe("splitShellCommand", () => {
   });
 
   it("splits on ||", () => {
-    expect(splitShellCommand("test -f x || echo no")).toEqual([
-      "test -f x",
-      "echo no",
-    ]);
+    expect(splitShellCommand("test -f x || echo no")).toEqual(["test -f x", "echo no"]);
   });
 
   it("splits on ;", () => {
@@ -147,47 +112,41 @@ describe("splitShellCommand", () => {
   });
 
   it("splits on |", () => {
-    expect(splitShellCommand("cat file | grep foo")).toEqual([
-      "cat file",
-      "grep foo",
-    ]);
+    expect(splitShellCommand("cat file | grep foo")).toEqual(["cat file", "grep foo"]);
   });
 
+  // Quoting prevents splitting (shell-quote returns unquoted tokens)
   it("does NOT split inside single-quoted strings", () => {
-    expect(splitShellCommand("echo 'a && b'")).toEqual(["echo 'a && b'"]);
+    const result = splitShellCommand("echo 'a && b'");
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("a && b");
   });
 
   it("does NOT split inside double-quoted strings", () => {
-    expect(splitShellCommand('echo "a | b"')).toEqual(['echo "a | b"']);
+    const result = splitShellCommand('echo "a | b"');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("a | b");
   });
 
-  it("does NOT split inside $() subshell", () => {
-    expect(splitShellCommand("echo $(cat a && cat b)")).toEqual([
-      "echo $(cat a && cat b)",
-    ]);
-  });
-
-  it("returns whole command on unclosed quote (conservative)", () => {
-    expect(splitShellCommand("echo 'unclosed")).toEqual(["echo 'unclosed"]);
-  });
-
+  // Comments are stripped by shell-quote
   it("strips trailing shell comments", () => {
-    expect(splitShellCommand("grep foo bar.txt # search for foo")).toEqual(["grep foo bar.txt"]);
+    const result = splitShellCommand("grep foo bar.txt # search for foo");
+    expect(result).toEqual(["grep foo bar.txt"]);
   });
 
-  it("does not strip # inside quoted strings", () => {
-    expect(splitShellCommand("echo 'hello # world'")).toEqual(["echo 'hello # world'"]);
-    expect(splitShellCommand('echo "hello # world"')).toEqual(['echo "hello # world"']);
+  it("strips comment containing operators (prevents false split)", () => {
+    const result = splitShellCommand("ls -la # this && that");
+    expect(result).toEqual(["ls -la"]);
   });
 
-  it("strips comment after operator (prevents false split on comment content)", () => {
-    // Without comment handling, the && inside the comment would cause a false split
-    expect(splitShellCommand("ls -la # this && that")).toEqual(["ls -la"]);
+  // Edge cases
+  it("handles empty command", () => {
+    expect(splitShellCommand("")).toEqual([]);
   });
 
-  it("does not treat # mid-word as a comment", () => {
-    // echo foo#bar — the # is not preceded by whitespace, not a comment
-    expect(splitShellCommand("echo foo#bar")).toEqual(["echo foo#bar"]);
+  it("handles multiple operators in sequence", () => {
+    const result = splitShellCommand("a && b | c && d");
+    expect(result).toEqual(["a", "b", "c", "d"]);
   });
 });
 

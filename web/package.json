@@ -48,7 +48,8 @@
     "diff": "^8.0.3",
     "highlight.js": "^11.11.1",
     "hono": "^4.7.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "shell-quote": "^1.8.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
