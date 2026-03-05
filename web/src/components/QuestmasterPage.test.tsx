@@ -321,12 +321,11 @@ describe("QuestmasterPage verification inbox", () => {
     renderQuestmaster();
 
     fireEvent.click(screen.getByText("Regular verification quest"));
-    fireEvent.click(screen.getByRole("button", { name: "Inbox" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByText(/^Inbox$/));
 
     await waitFor(() => {
       expect(mockMarkQuestVerificationInbox).toHaveBeenCalledWith("q-2");
-    });
-    await waitFor(() => {
       const quest = mockState.quests.find((q) => q.questId === "q-2");
       expect(quest).toBeTruthy();
       expect((quest as { verificationInboxUnread?: boolean }).verificationInboxUnread).toBe(true);

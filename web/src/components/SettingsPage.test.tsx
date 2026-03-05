@@ -273,7 +273,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
     await screen.findByText("companion");
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByText("Edit"));
 
     const dialog = screen.getByRole("dialog", { name: "Edit auto-approval rule" });
     expect(dialog).toBeInTheDocument();
@@ -281,7 +281,7 @@ describe("SettingsPage", () => {
     fireEvent.change(within(dialog).getByLabelText("Rule criteria"), {
       target: { value: "Allow harmless commands and test commands" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    fireEvent.click(within(dialog).getByText("Save"));
 
     await waitFor(() => {
       expect(mockApi.updateAutoApprovalConfig).toHaveBeenCalledWith(
