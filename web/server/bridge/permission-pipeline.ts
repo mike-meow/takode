@@ -4,6 +4,7 @@ import { shouldAttemptAutoApproval } from "../auto-approver.js";
 import type { AutoApprovalConfig } from "../auto-approval-store.js";
 import type { BackendType, PermissionRequest, PermissionUpdate } from "../session-types.js";
 import { isClaudeFamily } from "../session-types.js";
+import { shouldSettingsRuleApprove } from "./settings-rule-matcher.js";
 
 export type PermissionRequestBackend = "claude-ws" | "claude-sdk" | "codex";
 
@@ -41,12 +42,18 @@ export interface HandlePermissionRequestOptions {
   activityReason: string;
   enableModeAutoApprove?: boolean;
   enableLlmAutoApproval?: boolean;
+  enableSettingsRuleApprove?: boolean;
 }
 
 export type PermissionPipelineResult =
   | {
     kind: "mode_auto_approved";
     request: PermissionRequest;
+  }
+  | {
+    kind: "settings_rule_approved";
+    request: PermissionRequest;
+    matchedRule: string;
   }
   | {
     kind: "queued_for_llm_auto_approval";
@@ -189,6 +196,30 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
     && shouldModeAutoApprove(session.state.permissionMode, toolName, input)
   ) {
     return { kind: "mode_auto_approved", request: perm };
+  }
+
+  // Tier 2: Settings.json rule matching — fast static check against user allow rules.
+  // Only for SDK sessions where the CLI's built-in rule engine is bypassed by
+  // --permission-prompt-tool stdio. WebSocket sessions already have CLI-side checking,
+  // and Codex sessions use a different permission model entirely.
+  // Also skip tools that can never be auto-approved (they'd just return null anyway).
+  const settingsRuleEnabled = options.enableSettingsRuleApprove !== false
+    && _backend === "claude-sdk"
+    && !NEVER_AUTO_APPROVE.has(toolName);
+  if (settingsRuleEnabled) {
+    return shouldSettingsRuleApprove(toolName, input, session.state.cwd).then((matchedRule) => {
+      if (matchedRule) {
+        return { kind: "settings_rule_approved" as const, request: perm, matchedRule };
+      }
+      // Fall through to LLM/human
+      if (!llmAutoApproveEnabled || !isLlmAutoApprovalEligible(session, toolName, input)) {
+        return complete(null);
+      }
+      return shouldAttemptAutoApproval(
+        session.state.cwd ?? "",
+        session.state.repo_root ? [session.state.repo_root] : undefined,
+      ).then((autoApprovalConfig) => complete(autoApprovalConfig));
+    });
   }
 
   if (!llmAutoApproveEnabled || !isLlmAutoApprovalEligible(session, toolName, input)) {
