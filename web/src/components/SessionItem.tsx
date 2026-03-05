@@ -365,24 +365,18 @@ export function SessionItem({
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            {/* Row 0: Leader/herd tag — above the title for prominence */}
-            {!isEditing && (s.isOrchestrator || (!s.isOrchestrator && !!s.herdedBy)) && (
-              <div className="mb-0.5">
-                {s.isOrchestrator && (
-                  <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Orchestrator session">
-                    leader
-                  </span>
-                )}
-                {!s.isOrchestrator && !!s.herdedBy && (
-                  <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by an orchestrator">
-                    herd
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Row 1: Name only — full width for title */}
+            {/* Row 1: Leader/herd tag (inline) + title */}
             <div className="flex items-center gap-1.5">
+              {!isEditing && s.isOrchestrator && (
+                <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Orchestrator session">
+                  leader
+                </span>
+              )}
+              {!isEditing && !s.isOrchestrator && !!s.herdedBy && (
+                <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by an orchestrator">
+                  herd
+                </span>
+              )}
               {isEditing ? (
                 <input
                   ref={editInputRef}
@@ -434,6 +428,9 @@ export function SessionItem({
             {/* Row 3: Metadata — backend, permissions, badges, #N, wt, git stats (all compact, one line) */}
             {!isEditing && (
               <div className="flex items-center gap-1 mt-0.5 text-[10.5px] text-cc-muted leading-tight">
+                {s.sessionNum != null && (
+                  <span className="text-[9px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
+                )}
                 <img
                   src={backendLogo}
                   alt={backendAlt}
@@ -464,9 +461,6 @@ export function SessionItem({
                   <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-violet-500 bg-violet-500/10">
                     Cron
                   </span>
-                )}
-                {s.sessionNum != null && (
-                  <span className="text-[9px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
                 )}
                 {s.isWorktree && (
                   <span
