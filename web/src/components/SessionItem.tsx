@@ -339,7 +339,7 @@ export function SessionItem({
       >
         {/* Left accent border */}
         <span
-          className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full block ${stripeClass} ${
+          className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full block ${stripeClass} ${
             isActive ? "opacity-100" : "opacity-60 group-hover:opacity-85"
           } transition-opacity`}
           data-testid="session-status-stripe"
