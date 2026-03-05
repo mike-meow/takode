@@ -7,7 +7,6 @@ import { YarnBallDot } from "./CatIcons.js";
 import { parseHash } from "../utils/routing.js";
 import { navigateTo, navigateToSession } from "../utils/navigation.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
-import { deriveUiMode, deriveCodexUiMode } from "../utils/backends.js";
 import { coalesceSessionViewModel, toSessionViewModel } from "../utils/session-view-model.js";
 
 export function TopBar() {
@@ -201,13 +200,6 @@ export function TopBar() {
       `Session ${currentSessionId.slice(0, 8)}`)
     : null;
   const sessionNum = currentSessionVm?.sessionNum ?? null;
-  const currentBackendType = currentSessionVm?.backendType ?? null;
-  const currentPermissionMode = currentSessionVm?.permissionMode ?? null;
-  const modeLabel = currentPermissionMode
-    ? ((currentBackendType === "codex"
-      ? deriveCodexUiMode(currentPermissionMode)
-      : deriveUiMode(currentPermissionMode)) === "plan" ? "Plan" : "Agent")
-    : null;
   const isQuestNamed = useStore((s) => currentSessionId ? s.questNamedSessions.has(currentSessionId) : false);
   const questStatus = currentSessionVm?.claimedQuestStatus;
 
@@ -249,18 +241,6 @@ export function TopBar() {
               {sessionName && (
                 <span className={`text-[11px] font-medium truncate ${isQuestNamed && questStatus !== "needs_verification" ? "text-amber-400" : "text-cc-fg"}`} title={sessionName}>
                   {isQuestNamed && questStatus === "needs_verification" ? `☑ ${sessionName}` : sessionName}
-                </span>
-              )}
-              {modeLabel && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
-                    modeLabel === "Plan"
-                      ? "text-cc-warning border-cc-warning/40 bg-cc-warning/10"
-                      : "text-cc-muted border-cc-border bg-cc-hover/40"
-                  }`}
-                  title={`Current mode: ${modeLabel}`}
-                >
-                  {modeLabel}
                 </span>
               )}
             </button>

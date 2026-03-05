@@ -97,14 +97,14 @@ describe("TopBar", () => {
     expect(screen.getByText("Main Session")).toBeInTheDocument();
   });
 
-  it("shows plan mode indicator in title bar", () => {
+  it("does not show a duplicate plan/agent mode label in title bar", () => {
     resetStore({
       sessions: new Map([["s1", { cwd: "/repo", permissionMode: "plan", backend_type: "codex" }]]),
       sdkSessions: [{ sessionId: "s1", sessionNum: 111, name: "Main Session", permissionMode: "plan", backendType: "codex" }],
     });
 
     render(<TopBar />);
-    expect(screen.getByTitle("Current mode: Plan")).toBeInTheDocument();
+    expect(screen.queryByTitle("Current mode: Plan")).not.toBeInTheDocument();
   });
 
   it("shows diff badge count only for files within cwd", () => {
