@@ -140,3 +140,45 @@ describe("SessionItem search match context", () => {
     expect(highlight.tagName).toBe("MARK");
   });
 });
+
+describe("SessionItem status stripe", () => {
+  it("does not render the yarnball status dot in sidebar chips", () => {
+    renderSessionItem();
+    expect(screen.queryByTestId("session-status-dot")).not.toBeInTheDocument();
+  });
+
+  it("shows a breathing green stripe while running", () => {
+    renderSessionItem({
+      session: makeSession({
+        status: "running",
+        sdkState: "running",
+      }),
+    });
+
+    const stripe = screen.getByTestId("session-status-stripe");
+    expect(stripe).toHaveAttribute("data-status", "running");
+    expect(stripe).toHaveStyle({ animation: "yarn-glow-breathe 2s ease-in-out infinite" });
+  });
+
+  it("shows a glowing yellow stripe when permissions are pending", () => {
+    renderSessionItem({
+      session: makeSession({ status: "idle", sdkState: "connected" }),
+      permCount: 2,
+    });
+
+    const stripe = screen.getByTestId("session-status-stripe");
+    expect(stripe).toHaveAttribute("data-status", "permission");
+    expect(stripe).toHaveStyle({ animation: "yarn-glow-breathe 2s ease-in-out infinite" });
+  });
+
+  it("shows a gray stripe when idle", () => {
+    renderSessionItem({
+      session: makeSession({ status: "idle", sdkState: "connected" }),
+      permCount: 0,
+    });
+
+    const stripe = screen.getByTestId("session-status-stripe");
+    expect(stripe).toHaveAttribute("data-status", "idle");
+    expect(stripe).not.toHaveStyle({ animation: "yarn-glow-breathe 2s ease-in-out infinite" });
+  });
+});

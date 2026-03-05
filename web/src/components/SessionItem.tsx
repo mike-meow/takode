@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, type RefObject } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
-import { SessionStatusDot } from "./SessionStatusDot.js";
+import { deriveSessionStatus, type SessionVisualStatus } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
 import { getHighlightParts } from "../utils/highlight.js";
 
@@ -21,6 +21,16 @@ const SEARCH_MATCH_LABELS: Record<SearchMatchedField, string> = {
   path: "path",
   repo: "repo",
   user_message: "message",
+};
+
+const STRIPE_COLOR_CLASS: Record<SessionVisualStatus, string> = {
+  archived: "bg-cc-muted/45",
+  permission: "bg-amber-400",
+  disconnected: "bg-cc-muted/60",
+  running: "bg-emerald-500",
+  compacting: "bg-emerald-500",
+  completed_unread: "bg-blue-500",
+  idle: "bg-cc-muted/50",
 };
 
 function timeAgo(epochMs: number): string {
@@ -229,6 +239,27 @@ export function SessionItem({
       return { fieldLabel: `${finalFieldLabel}:`, snippet: finalSnippet };
     })()
     : null;
+  const visualStatus = deriveSessionStatus({
+    archived: !!archived,
+    permCount,
+    isConnected: s.isConnected,
+    sdkState: s.sdkState,
+    status: s.status,
+    hasUnread,
+    idleKilled: s.idleKilled,
+  });
+  const stripeClass = STRIPE_COLOR_CLASS[visualStatus];
+  const stripeGlowColor = visualStatus === "permission"
+    ? "rgba(245, 158, 11, 0.7)"
+    : visualStatus === "running" || visualStatus === "compacting"
+      ? "rgba(34, 197, 94, 0.7)"
+      : "";
+  const stripeGlowStyle: React.CSSProperties | undefined = stripeGlowColor
+    ? {
+        ["--glow-color" as string]: stripeGlowColor,
+        animation: "yarn-glow-breathe 2s ease-in-out infinite",
+      }
+    : undefined;
 
   const renderHighlightedSnippet = (text: string): React.ReactNode => {
     const parts = getHighlightParts(text, matchQuery || "");
@@ -308,11 +339,12 @@ export function SessionItem({
       >
         {/* Left accent border */}
         <span
-          className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full hidden sm:block ${
-            s.backendType === "codex"
-              ? "bg-blue-500"
-              : "bg-[#D97757]"
-          } ${isActive ? "opacity-100" : "opacity-40 group-hover:opacity-70"} transition-opacity`}
+          className={`absolute left-0 top-2 bottom-2 w-[2px] rounded-full block ${stripeClass} ${
+            isActive ? "opacity-100" : "opacity-60 group-hover:opacity-85"
+          } transition-opacity`}
+          data-testid="session-status-stripe"
+          data-status={visualStatus}
+          style={stripeGlowStyle}
         />
 
         <div className="flex items-start gap-2">
@@ -330,16 +362,6 @@ export function SessionItem({
               </svg>
             </span>
           )}
-          {/* Status indicator dot */}
-          <SessionStatusDot
-            archived={!!archived}
-            permCount={permCount}
-            isConnected={s.isConnected}
-            sdkState={s.sdkState}
-            status={s.status}
-            hasUnread={hasUnread}
-            idleKilled={s.idleKilled}
-          />
 
           {/* Content */}
           <div className="flex-1 min-w-0">
