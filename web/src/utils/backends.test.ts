@@ -20,22 +20,22 @@ import {
 describe("toModelOptions", () => {
   it("converts server model info to frontend ModelOption with icons", () => {
     const models = [
-      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", description: "Codex model" },
+      { value: "gpt-5.4", label: "GPT-5.4", description: "Codex model" },
       { value: "gpt-5-mini", label: "GPT-5 Mini", description: "Fast" },
     ];
 
     const options = toModelOptions(models);
 
     expect(options).toHaveLength(2);
-    expect(options[0].value).toBe("gpt-5.3-codex");
-    expect(options[0].label).toBe("GPT-5.3 Codex");
+    expect(options[0].value).toBe("gpt-5.4");
+    expect(options[0].label).toBe("GPT-5.4");
     expect(options[0].icon).toBeTruthy();
     expect(options[1].value).toBe("gpt-5-mini");
   });
 
   it("assigns codex icon to codex-containing slugs", () => {
     const options = toModelOptions([
-      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", description: "" },
+      { value: "gpt-5.4-codex", label: "GPT-5.4 Codex", description: "" },
     ]);
     expect(options[0].icon).toBe("\u2733"); // ✳
   });
@@ -101,8 +101,8 @@ describe("getDefaultModel", () => {
     expect(getDefaultModel("claude")).toBe(CLAUDE_MODELS[0].value);
   });
 
-  it("returns first codex model for codex backend", () => {
-    expect(getDefaultModel("codex")).toBe(CODEX_MODELS[0].value);
+  it("returns the shared codex default for codex backend", () => {
+    expect(getDefaultModel("codex")).toBe("gpt-5.4");
   });
 });
 

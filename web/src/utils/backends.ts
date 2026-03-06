@@ -1,6 +1,7 @@
 import type { BackendType } from "../types.js";
 import { assertNever } from "../types.js";
 import type { BackendModelInfo } from "../api.js";
+import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
 
 export interface ModelOption {
   value: string;
@@ -48,7 +49,7 @@ export const CLAUDE_MODELS: ModelOption[] = [
 ];
 
 export const CODEX_MODELS: ModelOption[] = [
-  { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", icon: "\u2733" },
+  { value: "gpt-5.4", label: "GPT-5.4", icon: "\u2733" },
 ];
 
 export const CLAUDE_MODES: ModeOption[] = [
@@ -89,12 +90,7 @@ export function getModesForBackend(backend: BackendType): ModeOption[] {
 }
 
 export function getDefaultModel(backend: BackendType): string {
-  switch (backend) {
-    case "claude":
-    case "claude-sdk":  return CLAUDE_MODELS[0].value;
-    case "codex":       return CODEX_MODELS[0].value;
-    default:            return assertNever(backend);
-  }
+  return getDefaultModelForBackend(backend);
 }
 
 export function getDefaultMode(backend: BackendType): string {

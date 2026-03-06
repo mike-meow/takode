@@ -2485,6 +2485,19 @@ describe("POST /api/sessions/create with backend", () => {
     );
   });
 
+  it("uses the shared codex default model when none is provided", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }),
+    );
+  });
+
   it("injects orchestrator env vars for codex leader sessions", async () => {
     const res = await app.request("/api/sessions/create", {
       method: "POST",

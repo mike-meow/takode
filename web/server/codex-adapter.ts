@@ -27,6 +27,7 @@ import type {
   RateLimitsAwareAdapter,
   TurnStartFailedAwareAdapter,
 } from "./bridge/adapter-interface.js";
+import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 
 // ─── Codex JSON-RPC Types ─────────────────────────────────────────────────────
 
@@ -2582,7 +2583,7 @@ export class CodexAdapter
     return {
       mode,
       settings: {
-        model: this.options.model?.trim() || "gpt-5.3-codex",
+        model: this.options.model?.trim() || getDefaultModelForBackend("codex"),
         reasoning_effort: this.normalizeReasoningEffort(this.options.reasoningEffort),
         developer_instructions: this.options.instructions ?? null,
       },

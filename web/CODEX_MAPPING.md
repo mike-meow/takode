@@ -121,7 +121,7 @@ When Codex initializes, a `SessionState` is synthesized for the browser:
 |---|---|---|
 | `session_id` | Server-generated UUID | Same as Claude sessions |
 | `backend_type` | `"codex"` | Always codex |
-| `model` | From launch options | e.g., `"gpt-5.3-codex"` |
+| `model` | From launch options | e.g., `"gpt-5.4"` |
 | `cwd` | From launch options | Working directory |
 | `permissionMode` | Approval mode string | Raw UI mode value |
 | `tools` | `[]` | Not extracted from Codex yet |

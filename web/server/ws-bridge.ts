@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { GIT_CMD_TIMEOUT } from "./constants.js";
+import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 
 const execPromise = promisify(execCb);
 
@@ -6354,7 +6355,7 @@ export class WsBridge {
           id: assistantId,
           type: "message",
           role: "assistant",
-          model: session.state.model || "gpt-5.3-codex",
+          model: session.state.model || getDefaultModelForBackend("codex"),
           content: [{ type: "text", text }],
           stop_reason: null,
           usage: {

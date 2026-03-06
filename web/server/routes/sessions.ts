@@ -21,6 +21,7 @@ import { searchSessionDocuments, type SessionSearchDocument } from "../session-s
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "../assistant-workspace.js";
 import { generateUniqueSessionName } from "../../src/utils/names.js";
 import { GIT_CMD_TIMEOUT } from "../constants.js";
+import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
 import type { RouteContext } from "./context.js";
 
 export function createSessionsRoutes(ctx: RouteContext) {
@@ -562,7 +563,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const askPermissionRequested = body.askPermission !== false;
     const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
-    const model = body.model || (backend === "codex" ? "gpt-5.3-codex" : undefined);
+    const requestedModel = typeof body.model === "string" ? body.model.trim() : "";
+    const model = requestedModel || (backend === "codex" ? getDefaultModelForBackend("codex") : undefined);
     const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
       ? (body.codexReasoningEffort.trim() || undefined)
       : undefined;

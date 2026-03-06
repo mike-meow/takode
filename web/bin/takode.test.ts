@@ -164,9 +164,28 @@ describe("takode auth fallback", () => {
 });
 
 describe("takode spawn", () => {
-  it("uses defaults and includes createdBy for auto-herding", async () => {
+  it("uses defaults, fetches enriched session info, and includes createdBy for auto-herding", async () => {
     const createBodies: JsonObject[] = [];
-    const created = [{ sessionId: "worker-1", sessionNum: 21, name: "Worker One" }];
+    const created = [{ sessionId: "worker-1" }];
+    const sessionInfoById: Record<string, JsonObject> = {
+      "worker-1": {
+        sessionId: "worker-1",
+        sessionNum: 21,
+        name: "Worker One",
+        state: "running",
+        backendType: "codex",
+        model: "gpt-5.4",
+        cwd: "/tmp/worker-1",
+        createdAt: Date.now(),
+        cliConnected: true,
+        isGenerating: false,
+        isWorktree: true,
+        actualBranch: "feat/worker-1",
+        askPermission: true,
+        codexReasoningEffort: "high",
+        codexInternetAccess: false,
+      },
+    };
     const server = createServer(async (req, res) => {
       const method = req.method || "";
       const url = req.url || "";
@@ -186,6 +205,11 @@ describe("takode spawn", () => {
         createBodies.push(await readJson(req));
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(created.shift()));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-1/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(sessionInfoById["worker-1"]));
         return;
       }
 
@@ -216,15 +240,50 @@ describe("takode spawn", () => {
       codexReasoningEffort: "high",
     });
     expect(result.stdout).toContain('#21 "Worker One"');
+    expect(result.stdout).toContain("model=gpt-5.4");
+    expect(result.stdout).toContain("reasoning=high");
+    expect(result.stdout).toContain("internet=off");
+    expect(result.stdout).toContain("ask=on");
+    expect(result.stdout).toContain("worktree=yes");
   });
 
   it("inherits bypass permission mode and sends initial message to each spawned session", async () => {
     const createBodies: JsonObject[] = [];
     const messageCalls: Array<{ id: string; body: JsonObject }> = [];
     const created = [
-      { sessionId: "worker-a", sessionNum: 31, name: "Worker A" },
-      { sessionId: "worker-b", sessionNum: 32, name: "Worker B" },
+      { sessionId: "worker-a" },
+      { sessionId: "worker-b" },
     ];
+    const sessionInfoById: Record<string, JsonObject> = {
+      "worker-a": {
+        sessionId: "worker-a",
+        sessionNum: 31,
+        name: "Worker A",
+        state: "running",
+        backendType: "claude",
+        model: "",
+        cwd: "/tmp/spawn-test",
+        createdAt: Date.now(),
+        cliConnected: true,
+        isGenerating: false,
+        askPermission: false,
+        isWorktree: true,
+      },
+      "worker-b": {
+        sessionId: "worker-b",
+        sessionNum: 32,
+        name: "Worker B",
+        state: "running",
+        backendType: "claude",
+        model: "",
+        cwd: "/tmp/spawn-test",
+        createdAt: Date.now(),
+        cliConnected: true,
+        isGenerating: false,
+        askPermission: false,
+        isWorktree: true,
+      },
+    };
 
     const server = createServer(async (req, res) => {
       const method = req.method || "";
@@ -245,6 +304,16 @@ describe("takode spawn", () => {
         createBodies.push(await readJson(req));
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(created.shift()));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-a/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(sessionInfoById["worker-a"]));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-b/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(sessionInfoById["worker-b"]));
         return;
       }
       if (method === "POST" && url.startsWith("/api/sessions/") && url.endsWith("/message")) {
@@ -334,6 +403,194 @@ describe("takode spawn", () => {
     expect(parsed.leaderPermissionMode).toBe("bypassPermissions");
     expect(parsed.inheritedAskPermission).toBe(false);
     expect(parsed.sessions.map((s) => s.sessionNum)).toEqual([31, 32]);
+  });
+
+  it("passes explicit codex spawn options through and returns the enriched session shape", async () => {
+    const createBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-3", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-3") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-3", permissionMode: "plan" }));
+        return;
+      }
+      if (method === "POST" && url === "/api/sessions/create") {
+        createBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-c" }));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-c/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          sessionId: "worker-c",
+          sessionNum: 41,
+          name: "Worker C",
+          state: "running",
+          backendType: "codex",
+          model: "gpt-5.4",
+          cwd: "/tmp/codex-worker",
+          createdAt: Date.now(),
+          cliConnected: true,
+          isGenerating: false,
+          askPermission: false,
+          permissionMode: "bypassPermissions",
+          isWorktree: false,
+          codexReasoningEffort: "medium",
+          codexInternetAccess: true,
+        }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    const result = await runTakode(
+      [
+        "spawn",
+        "--port",
+        String(port),
+        "--backend",
+        "codex",
+        "--model",
+        "gpt-5.4",
+        "--reasoning-effort",
+        "medium",
+        "--internet",
+        "--no-ask",
+        "--json",
+      ],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-3",
+        COMPANION_AUTH_TOKEN: "auth-3",
+      },
+    );
+
+    server.close();
+
+    expect(result.status).toBe(0);
+    expect(createBodies).toEqual([
+      {
+        backend: "codex",
+        cwd: process.cwd(),
+        useWorktree: true,
+        createdBy: "leader-3",
+        model: "gpt-5.4",
+        askPermission: false,
+        permissionMode: "bypassPermissions",
+        codexReasoningEffort: "medium",
+        codexInternetAccess: true,
+      },
+    ]);
+
+    const parsed = JSON.parse(result.stdout) as {
+      sessions: Array<{ model: string; codexReasoningEffort: string; codexInternetAccess: boolean; askPermission: boolean; isWorktree: boolean }>;
+      defaultModel: string | null;
+    };
+    expect(parsed.defaultModel).toBeNull();
+    expect(parsed.sessions).toEqual([
+      expect.objectContaining({
+        model: "gpt-5.4",
+        codexReasoningEffort: "medium",
+        codexInternetAccess: true,
+        askPermission: false,
+        isWorktree: false,
+      }),
+    ]);
+  });
+
+  it("rejects unsupported spawn flags instead of ignoring them", async () => {
+    const result = await runTakode(
+      ["spawn", "--unsupported-flag"],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-4",
+        COMPANION_AUTH_TOKEN: "auth-4",
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Unknown option(s): --unsupported-flag");
+  });
+});
+
+describe("takode info", () => {
+  it("prints codex metadata from the enriched session info shape", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-info", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/worker-info/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          sessionId: "worker-info",
+          sessionNum: 52,
+          name: "Info Worker",
+          state: "running",
+          backendType: "codex",
+          model: "gpt-5.4",
+          cwd: "/tmp/info-worker",
+          createdAt: Date.now(),
+          cliConnected: true,
+          isGenerating: false,
+          permissionMode: "bypassPermissions",
+          askPermission: false,
+          isWorktree: true,
+          branch: "jiayi",
+          actualBranch: "jiayi-wt-7173",
+          codexReasoningEffort: "high",
+          codexInternetAccess: true,
+          codexSandbox: "danger-full-access",
+        }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    const result = await runTakode(["info", "worker-info", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-info",
+      COMPANION_AUTH_TOKEN: "auth-info",
+    });
+
+    server.close();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Backend        codex  model: gpt-5.4");
+    expect(result.stdout).toContain("Permissions    bypassPermissions");
+    expect(result.stdout).toContain("Ask Mode       no-ask");
+    expect(result.stdout).toContain("Internet       enabled");
+    expect(result.stdout).toContain("Reasoning      high");
+    expect(result.stdout).toContain("Sandbox        danger-full-access");
+    expect(result.stdout).toContain("Worktree       yes");
+    expect(result.stdout).toContain("WT Branch      jiayi");
+    expect(result.stdout).toContain("Actual Branch  jiayi-wt-7173");
   });
 });
 

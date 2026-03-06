@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 
 const DEFAULT_PORT = 3456;
 
@@ -223,6 +224,113 @@ function parseFlags(argv: string[]): Record<string, string | boolean> {
     }
   }
   return flags;
+}
+
+function assertKnownFlags(
+  flags: Record<string, string | boolean>,
+  allowed: ReadonlySet<string>,
+  usage: string,
+): void {
+  const unknown = Object.keys(flags).filter((key) => !allowed.has(key));
+  if (unknown.length === 0) return;
+  err(`Unknown option(s): ${unknown.map((key) => `--${key}`).join(", ")}\n${usage}`);
+}
+
+function resolveBooleanToggleFlag(
+  flags: Record<string, string | boolean>,
+  positiveKey: string,
+  negativeKey: string,
+): boolean | undefined {
+  const positive = flags[positiveKey];
+  const negative = flags[negativeKey];
+  if (positive !== undefined && negative !== undefined) {
+    err(`Cannot combine --${positiveKey} and --${negativeKey}.`);
+  }
+  if (positive !== undefined) {
+    if (positive !== true) err(`--${positiveKey} does not take a value.`);
+    return true;
+  }
+  if (negative !== undefined) {
+    if (negative !== true) err(`--${negativeKey} does not take a value.`);
+    return false;
+  }
+  return undefined;
+}
+
+function resolveStringFlag(
+  flags: Record<string, string | boolean>,
+  key: string,
+  label: string,
+): string | undefined {
+  const value = flags[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") err(`--${key} requires a value for ${label}.`);
+  const trimmed = value.trim();
+  if (!trimmed) err(`--${key} requires a non-empty value for ${label}.`);
+  return trimmed;
+}
+
+type TakodeSessionInfo = {
+  sessionId: string;
+  sessionNum?: number | null;
+  name?: string | null;
+  state: string;
+  backendType?: string;
+  model?: string;
+  cwd: string;
+  createdAt: number;
+  lastActivityAt?: number;
+  cliSessionId?: string;
+  pid?: number;
+  exitCode?: number | null;
+  archived?: boolean;
+  archivedAt?: number;
+  cliConnected: boolean;
+  isGenerating: boolean;
+  isOrchestrator?: boolean;
+  isAssistant?: boolean;
+  herdedBy?: string;
+  isWorktree?: boolean;
+  repoRoot?: string;
+  branch?: string;
+  actualBranch?: string;
+  envSlug?: string;
+  cronJobId?: string;
+  cronJobName?: string;
+  containerId?: string;
+  containerName?: string;
+  containerImage?: string;
+  gitBranch?: string | null;
+  gitHeadSha?: string | null;
+  gitDefaultBranch?: string | null;
+  gitAhead?: number;
+  gitBehind?: number;
+  totalLinesAdded?: number;
+  totalLinesRemoved?: number;
+  totalCostUsd?: number;
+  numTurns?: number;
+  contextUsedPercent?: number;
+  isCompacting?: boolean;
+  permissionMode?: string | null;
+  askPermission?: boolean;
+  tools?: string[];
+  mcpServers?: Array<{ name: string; status: string }>;
+  claudeCodeVersion?: string | null;
+  claimedQuestId?: string | null;
+  claimedQuestTitle?: string | null;
+  claimedQuestStatus?: string | null;
+  uiMode?: string | null;
+  attentionReason?: string | null;
+  lastReadAt?: number;
+  taskHistory?: Array<{ title: string; startedAt: number }>;
+  keywords?: string[];
+  codexInternetAccess?: boolean;
+  codexSandbox?: string;
+  codexReasoningEffort?: string;
+};
+
+async function fetchSessionInfo(base: string, sessionRef: string): Promise<TakodeSessionInfo> {
+  return apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/info`) as Promise<TakodeSessionInfo>;
 }
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
@@ -460,68 +568,17 @@ async function handleInfo(base: string, args: string[]): Promise<void> {
 
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
-
-  const data = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/info`) as {
-    sessionId: string;
-    sessionNum?: number | null;
-    name?: string | null;
-    state: string;
-    backendType?: string;
-    model?: string;
-    cwd: string;
-    createdAt: number;
-    lastActivityAt?: number;
-    cliSessionId?: string;
-    pid?: number;
-    exitCode?: number | null;
-    archived?: boolean;
-    archivedAt?: number;
-    cliConnected: boolean;
-    isGenerating: boolean;
-    isOrchestrator?: boolean;
-    isAssistant?: boolean;
-    herdedBy?: string;
-    isWorktree?: boolean;
-    repoRoot?: string;
-    branch?: string;
-    actualBranch?: string;
-    envSlug?: string;
-    cronJobId?: string;
-    cronJobName?: string;
-    containerId?: string;
-    containerName?: string;
-    containerImage?: string;
-    // Bridge-derived
-    gitBranch?: string | null;
-    gitHeadSha?: string | null;
-    gitDefaultBranch?: string | null;
-    gitAhead?: number;
-    gitBehind?: number;
-    totalLinesAdded?: number;
-    totalLinesRemoved?: number;
-    totalCostUsd?: number;
-    numTurns?: number;
-    contextUsedPercent?: number;
-    isCompacting?: boolean;
-    permissionMode?: string | null;
-    tools?: string[];
-    mcpServers?: Array<{ name: string; status: string }>;
-    claudeCodeVersion?: string | null;
-    claimedQuestId?: string | null;
-    claimedQuestTitle?: string | null;
-    claimedQuestStatus?: string | null;
-    uiMode?: string | null;
-    attentionReason?: string | null;
-    lastReadAt?: number;
-    taskHistory?: Array<{ title: string; startedAt: number }>;
-    keywords?: string[];
-  };
+  const data = await fetchSessionInfo(base, sessionRef);
 
   if (jsonMode) {
     console.log(JSON.stringify(data, null, 2));
     return;
   }
 
+  printSessionInfo(data);
+}
+
+function printSessionInfo(data: TakodeSessionInfo): void {
   // ── Header ──
   const num = data.sessionNum != null ? `#${data.sessionNum}` : "";
   const name = data.name || "(unnamed)";
@@ -545,7 +602,17 @@ async function handleInfo(base: string, args: string[]): Promise<void> {
   console.log(`  Backend        ${backend}  model: ${model}`);
   if (data.claudeCodeVersion) console.log(`  CLI Version    ${data.claudeCodeVersion}`);
   if (data.permissionMode) console.log(`  Permissions    ${data.permissionMode}`);
+  if (typeof data.askPermission === "boolean") {
+    console.log(`  Ask Mode       ${data.askPermission ? "ask" : "no-ask"}`);
+  }
   if (data.uiMode) console.log(`  UI Mode        ${data.uiMode}`);
+  if (backend === "codex") {
+    if (typeof data.codexInternetAccess === "boolean") {
+      console.log(`  Internet       ${data.codexInternetAccess ? "enabled" : "disabled"}`);
+    }
+    if (data.codexReasoningEffort) console.log(`  Reasoning      ${data.codexReasoningEffort}`);
+    if (data.codexSandbox) console.log(`  Sandbox        ${data.codexSandbox}`);
+  }
 
   // ── Working directory ──
   console.log(`  CWD            ${data.cwd}`);
@@ -554,8 +621,8 @@ async function handleInfo(base: string, args: string[]): Promise<void> {
   }
 
   // ── Worktree / Container ──
+  console.log(`  Worktree       ${data.isWorktree ? "yes" : "no"}`);
   if (data.isWorktree) {
-    console.log(`  Worktree       yes`);
     if (data.branch) console.log(`  WT Branch      ${data.branch}`);
     if (data.actualBranch && data.actualBranch !== data.branch) {
       console.log(`  Actual Branch  ${data.actualBranch}`);
@@ -1239,42 +1306,108 @@ async function handleSend(base: string, args: string[]): Promise<void> {
 
 // ─── Spawn handler ───────────────────────────────────────────────────────────
 
-type SpawnedSession = {
-  sessionId: string;
-  sessionNum?: number | null;
-  name?: string;
-  backendType?: string;
-  cwd?: string;
-  isWorktree?: boolean;
-  actualBranch?: string;
-  branch?: string;
-  permissionMode?: string;
-};
-
-async function handleSpawn(base: string, args: string[]): Promise<void> {
-  const flags = parseFlags(args);
-
-  if (flags.help === true || flags.h === true) {
-    console.log(`
-Usage: takode spawn [options]
+const SPAWN_FLAG_USAGE = `Usage: takode spawn [options]
 
   Create and auto-herd new worker sessions.
 
 Options:
-  --backend <type>   AI backend: "claude", "codex", or "claude-sdk" (default: "codex")
-  --cwd <path>       Working directory (default: current directory)
-  --count <n>        Number of sessions to spawn (default: 1)
-  --message <text>   Initial message to send to spawned sessions
-  --no-worktree      Disable worktree creation
-  --json             Output in JSON format
+  --backend <type>             AI backend: "claude", "codex", or "claude-sdk" (default: "codex")
+  --cwd <path>                 Working directory (default: current directory)
+  --count <n>                  Number of sessions to spawn (default: 1)
+  --message <text>             Initial message to send to spawned sessions
+  --model <id>                 Override the session model
+  --ask / --no-ask             Override inherited ask mode
+  --internet / --no-internet   Codex-only: enable or disable internet access
+  --reasoning-effort <level>   Codex-only: low, medium, or high
+  --no-worktree                Disable worktree creation
+  --json                       Output in JSON format
 
 Examples:
   takode spawn --backend claude-sdk --count 2
-  takode spawn --backend codex --message "Fix the flaky tests"
-  takode spawn --count 3 --no-worktree
-`);
+  takode spawn --backend codex --model gpt-5.4 --reasoning-effort high --internet
+  takode spawn --count 3 --no-worktree`;
+
+const SPAWN_ALLOWED_FLAGS = new Set([
+  "backend",
+  "cwd",
+  "count",
+  "message",
+  "model",
+  "ask",
+  "no-ask",
+  "internet",
+  "no-internet",
+  "reasoning",
+  "reasoning-effort",
+  "no-worktree",
+  "json",
+  "help",
+  "h",
+]);
+
+const VALID_REASONING_EFFORTS = new Set(["low", "medium", "high"]);
+
+function resolveReasoningEffort(flags: Record<string, string | boolean>): string | undefined {
+  const primary = flags["reasoning-effort"];
+  const alias = flags.reasoning;
+  if (primary !== undefined && alias !== undefined) {
+    err("Cannot combine --reasoning-effort and --reasoning.");
+  }
+  const raw = primary ?? alias;
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "string") err("--reasoning-effort requires a value: low, medium, or high.");
+  const normalized = raw.trim().toLowerCase();
+  if (!VALID_REASONING_EFFORTS.has(normalized)) {
+    err(`Invalid --reasoning-effort: ${raw}. Expected low, medium, or high.`);
+  }
+  return normalized;
+}
+
+function buildSpawnDetailParts(session: TakodeSessionInfo): string[] {
+  const parts: string[] = [];
+  if (session.model) parts.push(`model=${session.model}`);
+  if (typeof session.askPermission === "boolean") {
+    parts.push(`ask=${session.askPermission ? "on" : "off"}`);
+  }
+  parts.push(`worktree=${session.isWorktree ? "yes" : "no"}`);
+  if (session.backendType === "codex") {
+    if (session.codexReasoningEffort) parts.push(`reasoning=${session.codexReasoningEffort}`);
+    if (typeof session.codexInternetAccess === "boolean") {
+      parts.push(`internet=${session.codexInternetAccess ? "on" : "off"}`);
+    }
+  }
+  return parts;
+}
+
+function printSpawnedSession(session: TakodeSessionInfo): void {
+  const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId.slice(0, 8);
+  const name = session.name || "(unnamed)";
+  const backend = session.backendType === "codex" ? " [codex]"
+    : "";
+  const wt = session.isWorktree ? " wt" : "";
+  const branch = session.actualBranch || session.branch || "";
+  const branchLabel = branch ? `  ${branch}` : "";
+  const cwdLabel = session.cwd
+    ? session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd
+    : "";
+  console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"${backend}${wt}`);
+  console.log(`        ${cwdLabel}${branchLabel}  ${session.sessionId}`);
+  const detailParts = buildSpawnDetailParts(session);
+  if (detailParts.length > 0) {
+    console.log(`        ${detailParts.join("  ")}`);
+  }
+}
+
+async function handleSpawn(base: string, args: string[]): Promise<void> {
+  const flags = parseFlags(args);
+  assertKnownFlags(flags, SPAWN_ALLOWED_FLAGS, SPAWN_FLAG_USAGE);
+
+  if (flags.help === true || flags.h === true) {
+    console.log(`\n${SPAWN_FLAG_USAGE}\n`);
     return;
   }
+
+  await ensureOrchestratorAccess(base);
 
   const jsonMode = flags.json === true;
 
@@ -1286,11 +1419,21 @@ Examples:
   const cwd = typeof flags.cwd === "string" ? flags.cwd : process.cwd();
   const useWorktree = flags["no-worktree"] === true ? false : true;
   const message = typeof flags.message === "string" ? flags.message.trim() : "";
+  const model = resolveStringFlag(flags, "model", "model");
+  const askOverride = resolveBooleanToggleFlag(flags, "ask", "no-ask");
+  const internetOverride = resolveBooleanToggleFlag(flags, "internet", "no-internet");
+  const reasoningEffort = resolveReasoningEffort(flags);
 
   const countRaw = flags.count;
   const count = countRaw === undefined ? 1 : Number(countRaw);
   if (!Number.isInteger(count) || count < 1) {
     err("Invalid --count. Expected a positive integer.");
+  }
+  if (backendRaw !== "codex" && internetOverride !== undefined) {
+    err("--internet and --no-internet are only supported for Codex sessions.");
+  }
+  if (backendRaw !== "codex" && reasoningEffort !== undefined) {
+    err("--reasoning-effort is only supported for Codex sessions.");
   }
 
   const leaderSessionId = getCallerSessionId();
@@ -1302,7 +1445,7 @@ Examples:
   };
   const inheritBypass = leader.permissionMode === "bypassPermissions";
 
-  const spawned: SpawnedSession[] = [];
+  const spawned: TakodeSessionInfo[] = [];
   for (let i = 0; i < count; i++) {
     const createPayload: Record<string, unknown> = {
       backend: backendRaw,
@@ -1310,29 +1453,37 @@ Examples:
       useWorktree,
       createdBy: leaderSessionId,
     };
-    if (inheritBypass) {
-      createPayload.askPermission = false;
-      if (backendRaw === "codex") {
-        // Codex ignores askPermission — it uses permissionMode directly.
-        // Inherit bypass from leader: auto mode, no sandbox, full network.
+    if (model) {
+      createPayload.model = model;
+    }
+
+    const askPermission = askOverride ?? (inheritBypass ? false : undefined);
+    if (askPermission !== undefined) {
+      createPayload.askPermission = askPermission;
+      if (backendRaw === "codex" && askPermission === false) {
         createPayload.permissionMode = "bypassPermissions";
+      }
+    }
+
+    if (backendRaw === "codex") {
+      createPayload.codexReasoningEffort = reasoningEffort || "high";
+      if (internetOverride !== undefined) {
+        createPayload.codexInternetAccess = internetOverride;
+      } else if (inheritBypass) {
         createPayload.codexInternetAccess = true;
       }
     }
-    // Always default Codex to high reasoning effort.
-    if (backendRaw === "codex") {
-      createPayload.codexReasoningEffort = "high";
-    }
 
-    const session = await apiPost(base, "/sessions/create", createPayload) as SpawnedSession;
-    spawned.push(session);
+    const created = await apiPost(base, "/sessions/create", createPayload) as { sessionId: string };
 
     if (message) {
-      await apiPost(base, `/sessions/${encodeURIComponent(session.sessionId)}/message`, {
+      await apiPost(base, `/sessions/${encodeURIComponent(created.sessionId)}/message`, {
         content: message,
         agentSource: { sessionId: leaderSessionId },
       });
     }
+
+    spawned.push(await fetchSessionInfo(base, created.sessionId));
   }
 
   if (jsonMode) {
@@ -1343,7 +1494,8 @@ Examples:
       useWorktree,
       leaderSessionId,
       leaderPermissionMode: leader.permissionMode || null,
-      inheritedAskPermission: inheritBypass ? false : null,
+      inheritedAskPermission: askOverride === undefined && inheritBypass ? false : null,
+      defaultModel: backendRaw === "codex" && !model ? getDefaultModelForBackend("codex") : null,
       message: message || null,
       sessions: spawned,
     }, null, 2));
@@ -1351,18 +1503,7 @@ Examples:
   }
 
   for (const session of spawned) {
-    const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId.slice(0, 8);
-    const name = session.name || "(unnamed)";
-    const backend = session.backendType === "codex" ? " [codex]"
-      : "";
-    const wt = session.isWorktree ? " wt" : "";
-    const branch = session.actualBranch || session.branch || "";
-    const branchLabel = branch ? `  ${branch}` : "";
-    const cwdLabel = session.cwd
-      ? session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd
-      : "";
-    console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"${backend}${wt}`);
-    console.log(`        ${cwdLabel}${branchLabel}  ${session.sessionId}`);
+    printSpawnedSession(session);
   }
 }
 
@@ -1735,7 +1876,6 @@ try {
     "list",
     "search",
     "info",
-    "spawn",
     "tasks",
     "peek",
     "read",
