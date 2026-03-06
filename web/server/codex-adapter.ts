@@ -353,6 +353,8 @@ export interface CodexResumeSnapshot {
   threadId: string;
   turnCount: number;
   lastTurn: CodexResumeTurnSnapshot | null;
+  /** Thread-level status from the resume response (e.g. "idle", "active"). */
+  threadStatus?: string | null;
 }
 
 export interface CodexSessionMeta {
@@ -903,9 +905,15 @@ export class CodexAdapter
           }) as { thread: Record<string, unknown> & { id: string } };
           this.threadId = resumeResult.thread.id;
           resumeSnapshot = this.buildResumeSnapshot(resumeResult.thread);
-          this.currentTurnId = resumeSnapshot?.lastTurn?.status === "inProgress"
-            ? resumeSnapshot.lastTurn.id
-            : null;
+          // Only set currentTurnId if the turn is truly in-progress AND the
+          // thread itself isn't idle. After a CLI restart, the thread reports
+          // idle but the last turn's status may still say "inProgress" — that
+          // turn is stale (it was in-progress in the dead process).
+          const threadIsIdle = resumeSnapshot?.threadStatus === "idle";
+          this.currentTurnId =
+            !threadIsIdle && resumeSnapshot?.lastTurn?.status === "inProgress"
+              ? resumeSnapshot.lastTurn.id
+              : null;
         } catch (err) {
           // Fresh or partially-initialized Codex threads may fail resume with
           // "no rollout found". Fall back to a fresh thread to avoid a stuck session.
@@ -1402,6 +1410,9 @@ export class CodexAdapter
         break;
       case "thread/started":
         // Thread started after init — nothing to emit.
+        break;
+      case "thread/status/changed":
+        this.handleThreadStatusChanged(params);
         break;
       case "thread/tokenUsage/updated":
         this.handleTokenUsageUpdated(params);
@@ -2176,6 +2187,19 @@ export class CodexAdapter
     }
   }
 
+  private handleThreadStatusChanged(params: Record<string, unknown>): void {
+    const status = params.status as Record<string, unknown> | undefined;
+    if (!status) return;
+
+    if (status.type === "idle" && this.currentTurnId) {
+      console.log(
+        `[codex-adapter] Thread reported idle while currentTurnId=${this.currentTurnId} is set; clearing stale turn for session ${this.sessionId}`,
+      );
+      this.currentTurnId = null;
+      for (const resolve of this.turnEndResolvers.splice(0)) resolve();
+    }
+  }
+
   private handleTurnCompleted(params: Record<string, unknown>): void {
     const turn = params.turn as { id: string; status: string; error?: { message: string } } | undefined;
 
@@ -2486,11 +2510,18 @@ export class CodexAdapter
     const turns = rawTurns.filter((t): t is Record<string, unknown> => !!t && typeof t === "object");
     const last = turns.length > 0 ? turns[turns.length - 1] : null;
 
+    // Extract thread-level status (e.g. {type: "idle"} or {type: "active"})
+    const rawStatus = thread.status;
+    const threadStatus = typeof rawStatus === "object" && rawStatus !== null
+      ? String((rawStatus as Record<string, unknown>).type ?? "")
+      : typeof rawStatus === "string" ? rawStatus : null;
+
     if (!last) {
       return {
         threadId: thread.id,
         turnCount: 0,
         lastTurn: null,
+        threadStatus,
       };
     }
 
@@ -2509,6 +2540,7 @@ export class CodexAdapter
         error: last.error ?? null,
         items,
       },
+      threadStatus,
     };
   }
 

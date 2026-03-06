@@ -50,6 +50,9 @@ describe("Codex adapter method drift vs upstream protocol snapshot", () => {
       // from the pinned upstream snapshot in this repo.
       "codex/event/patch_apply_begin",
       "codex/event/patch_apply_end",
+      // Observed in live Codex sessions for thread idle/active transitions.
+      // Used to clear stale currentTurnId after CLI restart.
+      "thread/status/changed",
     ]);
 
     const legacyServerRequests = new Set([

@@ -1926,7 +1926,6 @@ export class WsBridge {
       if (existing.parent_tool_use_id !== incomingParentToolUseId) continue;
       if (incomingTimestamp == null) continue;
       if (typeof existing.timestamp !== "number") continue;
-      if (existing.timestamp !== incomingTimestamp) continue;
       if (Math.abs(existing.timestamp - incomingTimestamp) > WsBridge.CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS) continue;
 
       const existingContentKey = JSON.stringify(existing.message.content);
@@ -6208,6 +6207,17 @@ export class WsBridge {
     }
 
     if (lastTurn.status === "inProgress") {
+      // If the thread is idle, this turn was in-progress in the dead CLI
+      // process and is now stale. Clear recovery — don't wait for a turn
+      // that will never complete in the new process.
+      if (snapshot.threadStatus === "idle") {
+        session.pendingCodexTurnRecovery = null;
+        console.log(
+          `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} reports inProgress but thread is idle; clearing stale recovery`,
+        );
+        this.persistSession(session);
+        return;
+      }
       session.pendingCodexTurnRecovery = {
         ...pending,
         turnId: lastTurn.id,

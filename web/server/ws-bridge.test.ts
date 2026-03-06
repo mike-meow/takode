@@ -6200,7 +6200,9 @@ describe("Codex adapter result handling", () => {
     expect(assistantHistory).toHaveLength(1);
   });
 
-  it("does not deduplicate legitimate repeated Codex text when timestamp differs", () => {
+  it("deduplicates Codex assistant messages with different IDs but same content within 15s window", () => {
+    // When Codex reconnects and replays the same message with a different ID
+    // but identical content within the 15-second window, it should be deduped.
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
     bridge.attachCodexAdapter("s1", adapter as any);
@@ -6224,6 +6226,7 @@ describe("Codex adapter result handling", () => {
       timestamp: 1700000001000,
     });
 
+    // Same content, 1ms later, different ID — should be deduped (within 15s window)
     adapter.emitBrowserMessage({
       type: "assistant",
       message: {
@@ -6237,6 +6240,55 @@ describe("Codex adapter result handling", () => {
       },
       parent_tool_use_id: null,
       timestamp: 1700000001001,
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.filter((c: any) => c.type === "assistant")).toHaveLength(1);
+
+    const assistantHistory = bridge.getSession("s1")!.messageHistory.filter((m: any) => m.type === "assistant");
+    expect(assistantHistory).toHaveLength(1);
+  });
+
+  it("does not deduplicate legitimate repeated Codex text when timestamp exceeds 15s window", () => {
+    // Messages with identical content but timestamps >15s apart are legitimate
+    // repeated text, not reconnect replays.
+    const browser = makeBrowserSocket("s1");
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    const repeatedText = "Checking reconnect status.";
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-legit-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: repeatedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: 1700000001000,
+    });
+
+    // Same content but 20 seconds later — NOT a replay, should be kept
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-legit-2",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "text", text: repeatedText }],
+        stop_reason: null,
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: 1700000021000,
     });
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -7416,6 +7468,60 @@ describe("Codex resumed-turn recovery", () => {
     expect(preview.previews[0].is_error).toBe(false);
     expect(preview.previews[0].content).toContain("no output was captured");
     expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_silent")).toBe(false);
+  });
+
+  it("clears stale recovery when resumed turn is inProgress but thread is idle", async () => {
+    // When Codex CLI restarts, thread/resume may report the last turn as
+    // "inProgress" while the thread itself is "idle". The turn was running
+    // in the dead process and is now stale — recovery should be cleared, not
+    // kept pending forever.
+    const sid = "s-idle-thread-stale-turn";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run a command",
+    }));
+    adapter1.emitDisconnect("turn-stale");
+
+    // Reconnect with inProgress turn but idle thread
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-idle",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-idle",
+        turnCount: 5,
+        threadStatus: "idle",
+        lastTurn: {
+          id: "turn-stale",
+          status: "inProgress",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "run a command" }] },
+            { type: "commandExecution", id: "cmd_stale", status: "in_progress", command: ["make", "build"] },
+          ],
+        },
+      },
+    });
+
+    // Recovery should be cleared (not kept pending)
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexTurnRecovery).toBeNull();
+
+    // No "non-text tool activity" error sent
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((c: any) =>
+      c.type === "error"
+      && typeof c.message === "string"
+      && c.message.includes("non-text tool activity"))).toBeUndefined();
   });
 });
 

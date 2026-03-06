@@ -1585,6 +1585,100 @@ describe("CodexAdapter", () => {
     expect(adapter.getCurrentTurnId()).toBe("turn_in_progress");
   });
 
+  it("does NOT set currentTurnId when thread/resume returns inProgress turn but thread is idle", async () => {
+    // After a CLI restart, the resumed thread may report idle while the last
+    // turn still says "inProgress" (stale from the dead process). The adapter
+    // must not set currentTurnId in this case — doing so would block subsequent
+    // user messages with a stale turn/interrupt.
+    const mock = createMockProcess();
+
+    const adapter = new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      threadId: "thr_idle_thread",
+    });
+
+    await tick();
+
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    mock.stdout.push(JSON.stringify({
+      id: 2,
+      result: {
+        thread: {
+          id: "thr_idle_thread",
+          status: { type: "idle" },
+          turns: [
+            {
+              id: "turn_stale_inprogress",
+              status: "inProgress",
+              items: [
+                { type: "userMessage", content: [{ type: "text", text: "do something" }] },
+                { type: "commandExecution", id: "cmd_dead", status: "in_progress", command: ["make"] },
+              ],
+            },
+          ],
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    // Thread is idle → turn is stale → currentTurnId must be null
+    expect(adapter.getCurrentTurnId()).toBeNull();
+  });
+
+  it("thread/status/changed idle clears stale currentTurnId", async () => {
+    // If currentTurnId is set (e.g. from a resumed inProgress turn that's
+    // actually running), a thread/status/changed notification reporting idle
+    // should clear it so user messages aren't blocked.
+    const mock = createMockProcess();
+
+    const adapter = new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      threadId: "thr_status_change",
+    });
+
+    await tick();
+
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    // Resume returns an active thread with an inProgress turn
+    mock.stdout.push(JSON.stringify({
+      id: 2,
+      result: {
+        thread: {
+          id: "thr_status_change",
+          status: { type: "active" },
+          turns: [
+            {
+              id: "turn_active",
+              status: "inProgress",
+              items: [
+                { type: "userMessage", content: [{ type: "text", text: "hello" }] },
+              ],
+            },
+          ],
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    expect(adapter.getCurrentTurnId()).toBe("turn_active");
+
+    // Thread transitions to idle — turn is done, clear currentTurnId
+    mock.stdout.push(JSON.stringify({
+      jsonrpc: "2.0",
+      method: "thread/status/changed",
+      params: { threadId: "thr_status_change", status: { type: "idle" } },
+    }) + "\n");
+    await tick();
+
+    expect(adapter.getCurrentTurnId()).toBeNull();
+  });
+
   it("falls back to thread/start when thread/resume fails with missing rollout", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const errors: string[] = [];
