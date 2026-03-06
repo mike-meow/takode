@@ -590,61 +590,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
     }
 
-    // Resolve @ file mentions: parse @path and @path:line-line patterns,
-    // read file contents, and prepend as context to the user message.
-    let finalContent = msg;
-    const mentionPattern = /(?:^|\s)@([\w./-]+(?::(\d+)(?:-(\d+))?)?)(?=\s|$)/g;
-    const mentions: Array<{ fullMatch: string; path: string; startLine?: number; endLine?: number }> = [];
-    let m;
-    while ((m = mentionPattern.exec(msg)) !== null) {
-      const raw = m[1];
-      // Split path from optional :line-line suffix
-      const colonIdx = raw.lastIndexOf(":");
-      let filePath = raw;
-      let startLine: number | undefined;
-      let endLine: number | undefined;
-      if (colonIdx > 0) {
-        const lineSpec = raw.slice(colonIdx + 1);
-        const lineMatch = lineSpec.match(/^(\d+)(?:-(\d+))?$/);
-        if (lineMatch) {
-          filePath = raw.slice(0, colonIdx);
-          startLine = parseInt(lineMatch[1], 10);
-          endLine = lineMatch[2] ? parseInt(lineMatch[2], 10) : startLine;
-        }
-      }
-      // Resolve relative paths against the session's search root
-      const absPath = filePath.startsWith("/") ? filePath : (mentionSearchRoot ? `${mentionSearchRoot}/${filePath}` : filePath);
-      mentions.push({ fullMatch: m[0], path: absPath, startLine, endLine });
-    }
-
-    if (mentions.length > 0) {
-      try {
-        const { resolved } = await api.resolveMentions(
-          mentions.map((mt) => ({ path: mt.path, startLine: mt.startLine, endLine: mt.endLine })),
-        );
-        // Build context blocks for successfully resolved files
-        const contextParts: string[] = [];
-        for (let i = 0; i < resolved.length; i++) {
-          const r = resolved[i];
-          const mt = mentions[i];
-          if (r.content != null) {
-            const lineInfo = mt.startLine
-              ? `:${mt.startLine}${mt.endLine && mt.endLine !== mt.startLine ? `-${mt.endLine}` : ""}`
-              : "";
-            contextParts.push(`<file path="${r.path}${lineInfo}">\n${r.content}\n</file>`);
-          }
-        }
-        if (contextParts.length > 0) {
-          finalContent = contextParts.join("\n\n") + "\n\n" + msg;
-        }
-      } catch {
-        // If resolution fails, send the raw message — don't block the user
-      }
-    }
-
     const sent = sendToSession(sessionId, {
       type: "user_message",
-      content: finalContent,
+      content: msg,
       session_id: sessionId,
       images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
     });
