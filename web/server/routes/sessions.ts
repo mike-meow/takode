@@ -38,7 +38,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     execCaptureStdoutAsync,
     pathExists,
     WEB_DIR,
-    ORCHESTRATOR_SYSTEM_PROMPT,
+    buildOrchestratorSystemPrompt,
     resolveInitialModeState,
   } = ctx;
 
@@ -134,7 +134,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
     throw new SessionPreparationError(message, status, step);
   };
 
-  const markOrchestratorSession = (sessionId: string) => {
+  const markOrchestratorSession = (
+    sessionId: string,
+    backend: SessionBackend,
+  ) => {
     // Fire-and-forget: wait for CLI to connect, then send identity message
     (async () => {
       const maxWait = 30_000;
@@ -143,7 +146,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       while (Date.now() - start < maxWait) {
         const info = launcher.getSession(sessionId);
         if (info && (info.state === "connected" || info.state === "running")) {
-          wsBridge.injectUserMessage(sessionId, ORCHESTRATOR_SYSTEM_PROMPT);
+          wsBridge.injectUserMessage(sessionId, buildOrchestratorSystemPrompt(backend));
           return;
         }
         if (info?.state === "exited") return; // CLI crashed, don't inject
@@ -194,7 +197,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     if (sessionConfig.isOrchestrator) {
       session.isOrchestrator = true;
-      markOrchestratorSession(session.sessionId);
+      markOrchestratorSession(session.sessionId, sessionConfig.launchOptions.backendType || "claude");
     }
     if (sessionConfig.envSlug) session.envSlug = sessionConfig.envSlug;
 
@@ -570,7 +573,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       : undefined;
     // Orchestrator guardrails are injected via system prompt, not file writes
     const orchestratorGuardrails = isOrchestrator
-      ? launcher.getOrchestratorGuardrails(launcher.getPort())
+      ? launcher.getOrchestratorGuardrails(launcher.getPort(), backend)
       : undefined;
 
     const initialCwd = cwd || process.cwd();

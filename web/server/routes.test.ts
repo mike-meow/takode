@@ -146,7 +146,7 @@ import { Hono } from "hono";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
-import { createRoutes } from "./routes.js";
+import { buildOrchestratorSystemPrompt, createRoutes } from "./routes.js";
 import { _resetModelCache } from "./routes/system.js";
 import * as envManager from "./env-manager.js";
 import * as gitUtils from "./git-utils.js";
@@ -2516,6 +2516,7 @@ describe("POST /api/sessions/create with backend", () => {
         }),
       }),
     );
+    expect(launcher.getOrchestratorGuardrails).toHaveBeenCalledWith(3456, "codex");
   });
 
   it("defaults to claude backend when not specified", async () => {
@@ -2528,6 +2529,33 @@ describe("POST /api/sessions/create with backend", () => {
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(
       expect.objectContaining({ backendType: "claude" }),
+    );
+  });
+});
+
+describe("buildOrchestratorSystemPrompt", () => {
+  it("keeps the Codex leader startup prompt free of Claude/sub-agent wording", () => {
+    const prompt = buildOrchestratorSystemPrompt("codex");
+    expect(prompt).toContain("leader session");
+    expect(prompt).toContain("Delegate non-trivial implementation, investigation, and verification to worker sessions.");
+    expect(prompt).not.toContain("CLAUDE.md");
+    expect(prompt).not.toContain("sub-agent");
+    expect(prompt).not.toContain("[Agent]");
+  });
+
+  it("injects the Codex-specific startup prompt for connected leader sessions", async () => {
+    launcher.getSession.mockReturnValue({ state: "connected" });
+
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "codex", role: "orchestrator" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+      "session-1",
+      buildOrchestratorSystemPrompt("codex"),
     );
   });
 });

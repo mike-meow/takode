@@ -51,7 +51,9 @@ export interface RouteContext {
 
   ROUTES_DIR: string;
   WEB_DIR: string;
-  ORCHESTRATOR_SYSTEM_PROMPT: string;
+  buildOrchestratorSystemPrompt: (
+    backend: "claude" | "codex" | "claude-sdk",
+  ) => string;
   resolveInitialModeState: (
     backend: "claude" | "codex" | "claude-sdk",
     requestedPermissionMode: unknown,

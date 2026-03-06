@@ -1653,13 +1653,23 @@ describe("symlinkProjectSettings", () => {
 });
 
 describe("getOrchestratorGuardrails", () => {
-  it("returns guardrails string with session link format for chat references", () => {
+  it("returns Claude-family guardrails with session link format for chat references", () => {
     // getOrchestratorGuardrails now returns a string instead of writing to a file.
     // Orchestrator instructions are injected via system prompt (extraInstructions).
-    const guardrails = launcher.getOrchestratorGuardrails(3456);
+    const guardrails = launcher.getOrchestratorGuardrails(3456, "claude");
     expect(guardrails).toContain("Takode — Cross-Session Orchestration");
     expect(guardrails).toContain("[#N](session:N)");
     expect(guardrails).toContain("[#5](session:5)");
+    expect(guardrails).toContain("sub-agent");
+  });
+
+  it("returns Codex guardrails without Claude-only or sub-agent guidance", () => {
+    const guardrails = launcher.getOrchestratorGuardrails(3456, "codex");
+    expect(guardrails).toContain("leader session");
+    expect(guardrails).toContain("Delegate larger work to a herded worker session");
+    expect(guardrails).not.toContain("CLAUDE.md");
+    expect(guardrails).not.toContain("sub-agent");
+    expect(guardrails).not.toMatch(/\bagent\b/i);
   });
 });
 

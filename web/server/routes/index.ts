@@ -39,15 +39,22 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /** Initial system prompt injected into leader/orchestrator sessions on startup. */
-const ORCHESTRATOR_SYSTEM_PROMPT =
-  `[System] You are a leader agent. Your job is to coordinate worker sessions in your herd.\n\n` +
-  `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers, [Agent] = message from another agent.\n\n` +
-  `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
-  `When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.\n\n` +
-  `**On startup**: Acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
-  `**Events**: Herd events arrive automatically — no polling needed. React to events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
-  `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +
-  `Read your project CLAUDE.md for full orchestration documentation and workflow guidelines.`;
+export function buildOrchestratorSystemPrompt(
+  backend: "claude" | "codex" | "claude-sdk",
+): string {
+  const isCodexLeader = backend === "codex";
+
+  return `[System] You are a leader session. Your job is to coordinate worker sessions in your herd.\n\n` +
+    `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers. Forwarded messages from other sessions may also appear with their own source tags.\n\n` +
+    `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
+    `When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, use \`[src/app.ts:42](file:/absolute/path/to/src/app.ts:42)\`. When referencing sessions, use \`[#5](session:5)\`.\n\n` +
+    `**On startup**: Acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
+    `**Events**: Herd events arrive automatically — no polling needed. React to events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
+    `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +
+    (isCodexLeader
+      ? `**Role focus**: Keep your own work to triage, coordination, and short spot checks. Delegate non-trivial implementation, investigation, and verification to worker sessions.\n\nUse the orchestration instructions already loaded in this session as your source of truth. Do not assume Claude-specific tools or files exist.`
+      : `**Role focus**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions.\n\nRead your project's instruction files for full orchestration documentation and workflow guidelines.`);
+}
 
 /** Non-blocking exec — runs a shell command without stalling the event loop. */
 async function execAsync(command: string, cwd: string): Promise<string> {
@@ -204,7 +211,7 @@ export function createRoutes(
     pathExists,
     ROUTES_DIR,
     WEB_DIR,
-    ORCHESTRATOR_SYSTEM_PROMPT,
+    buildOrchestratorSystemPrompt,
     resolveInitialModeState,
   };
 
