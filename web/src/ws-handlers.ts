@@ -698,6 +698,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       break;
     }
 
+    case "session_unstuck": {
+      store.setSessionStuck(sessionId, false);
+      break;
+    }
+
     case "session_deleted": {
       // Another browser or the API deleted a session — remove it from the store
       // so the sidebar updates immediately without waiting for the next poll.

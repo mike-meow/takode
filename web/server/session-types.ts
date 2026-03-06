@@ -332,6 +332,7 @@ export type BrowserIncomingMessageBase =
   | { type: "permission_evaluating_status"; request_id: string; evaluating: "queued" | "evaluating"; timestamp: number }
   | { type: "state_snapshot"; sessionStatus: string | null; permissionMode: string; backendConnected: boolean; uiMode: string | null; askPermission: boolean; lastReadAt?: number; attentionReason?: "action" | "error" | "review" | null; generationStartedAt?: number | null }
   | { type: "session_stuck" }
+  | { type: "session_unstuck" }
   | { type: "quest_list_updated" }
   | { type: "session_quest_claimed"; quest: { id: string; title: string; status?: string } | null }
   | { type: "task_notification"; task_id: string; tool_use_id: string; status: string; output_file?: string; summary?: string }

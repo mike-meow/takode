@@ -1024,23 +1024,37 @@ export class WsBridge {
 
   /** Periodically check for sessions stuck in "generating" state with no CLI activity. */
   startStuckSessionWatchdog(): void {
-    const STUCK_THRESHOLD_MS = 120_000; // 2 minutes
+    const STUCK_THRESHOLD_MS = 120_000; // 2 minutes without any CLI activity
     const CHECK_INTERVAL_MS = 30_000;   // check every 30s
 
     const timer = setInterval(() => {
+      const now = Date.now();
       for (const session of this.sessions.values()) {
         if (!session.isGenerating || !session.generationStartedAt) continue;
-        if (session.stuckNotifiedAt) continue; // already notified
 
-        const elapsed = Date.now() - session.generationStartedAt;
-        if (elapsed < STUCK_THRESHOLD_MS) continue;
+        // Check whether the CLI has been active recently — either a real
+        // message or a keep_alive ping within the threshold. This is more
+        // robust than comparing to generationStartedAt because it detects
+        // sessions that started fine but hung mid-turn.
+        const lastActivity = Math.max(session.lastCliMessageAt, session.lastCliPingAt);
+        const sinceLastActivity = lastActivity > 0 ? now - lastActivity : now - session.generationStartedAt;
 
-        // If CLI sent a message after generation started, it's still active
-        if (session.lastCliMessageAt > session.generationStartedAt) continue;
+        if (sinceLastActivity < STUCK_THRESHOLD_MS) {
+          // Session is active — reset stuck notification so it can
+          // re-fire if the session hangs again later in the same turn.
+          if (session.stuckNotifiedAt) {
+            session.stuckNotifiedAt = null;
+            this.broadcastToBrowsers(session, { type: "session_unstuck" } as BrowserIncomingMessage);
+          }
+          continue;
+        }
 
-        session.stuckNotifiedAt = Date.now();
-        console.warn(`[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s, no CLI response)`);
-        this.recorder?.recordServerEvent(session.id, "stuck_detected", { elapsed }, session.backendType, session.state.cwd);
+        if (session.stuckNotifiedAt) continue; // already notified, still stuck
+
+        session.stuckNotifiedAt = now;
+        const elapsed = now - session.generationStartedAt;
+        console.warn(`[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s generation, ${Math.round(sinceLastActivity / 1000)}s since last CLI activity)`);
+        this.recorder?.recordServerEvent(session.id, "stuck_detected", { elapsed, sinceLastActivity }, session.backendType, session.state.cwd);
         this.broadcastToBrowsers(session, { type: "session_stuck" } as BrowserIncomingMessage);
       }
     }, CHECK_INTERVAL_MS);
@@ -2807,6 +2821,12 @@ export class WsBridge {
     adapter.onInitError((error) => {
       console.error(`[ws-bridge] Claude SDK adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
       session.claudeSdkAdapter = null;
+      // Notify browsers so the UI shows the disconnect state and the
+      // relaunch button appears. Without this, the browser still thinks
+      // the backend is connected after a failed relaunch.
+      this.setGenerating(session, false, "sdk_init_error");
+      this.broadcastToBrowsers(session, { type: "backend_disconnected" });
+      this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
     });
 
     this.broadcastToBrowsers(session, { type: "backend_connected" });
