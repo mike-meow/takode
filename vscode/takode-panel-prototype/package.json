@@ -2,7 +2,7 @@
   "name": "takode-panel-prototype",
   "displayName": "Takode Panel Prototype",
   "description": "Minimal VS Code prototype that renders the existing Takode localhost frontend in a webview panel.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "takode-local",
   "private": true,
   "extensionKind": [
@@ -30,6 +30,10 @@
       {
         "command": "takodePrototype.reloadPanel",
         "title": "Takode: Reload Panel"
+      },
+      {
+        "command": "takodePrototype.showDebugLog",
+        "title": "Takode: Show Debug Log"
       }
     ],
     "configuration": {

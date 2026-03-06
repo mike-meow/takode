@@ -226,14 +226,25 @@ function buildPanelHtml({ baseUrl, cspSource, nonce }) {
         error.classList.toggle("hidden", lastHealthOk);
       }
 
+      function debug(text, data) {
+        vscode.postMessage({
+          type: "debug",
+          text,
+          data: typeof data === "undefined" ? null : data,
+        });
+      }
+
       function requestLatestSelectionContext() {
+        debug("requestLatestSelectionContext");
         vscode.postMessage({ type: "readyForSelectionContext" });
       }
 
       function pushSelectionContextToFrame() {
         if (!frame.contentWindow) {
+          debug("pushSelectionContextToFrame skipped: no contentWindow");
           return;
         }
+        debug("pushSelectionContextToFrame", { payload: latestSelectionPayload });
         frame.contentWindow.postMessage({
           source: "takode-vscode-prototype",
           type: "takode:vscode-context",
@@ -254,6 +265,7 @@ function buildPanelHtml({ baseUrl, cspSource, nonce }) {
         } catch (_error) {
           lastHealthOk = false;
         }
+        debug("ping", { ok: lastHealthOk });
         updateOverlay();
       }
 
@@ -262,11 +274,13 @@ function buildPanelHtml({ baseUrl, cspSource, nonce }) {
         loading.classList.remove("hidden");
         error.classList.add("hidden");
         frame.src = baseUrl;
+        debug("loadFrame", { baseUrl });
         void ping();
       }
 
       frame.addEventListener("load", () => {
         frameHasLoaded = true;
+        debug("frame load");
         updateOverlay();
         pushSelectionContextToFrame();
         setTimeout(pushSelectionContextToFrame, 250);
@@ -292,18 +306,21 @@ function buildPanelHtml({ baseUrl, cspSource, nonce }) {
           event.data.source === "takode-vscode-prototype" &&
           event.data.type === "takode:vscode-ready"
         ) {
+          debug("inner frame ready");
           requestLatestSelectionContext();
           pushSelectionContextToFrame();
           return;
         }
 
         if (event.data.type === "reload") {
+          debug("received reload");
           loadFrame();
           return;
         }
 
         if (event.data.type === "selectionContext") {
           latestSelectionPayload = event.data.payload ?? null;
+          debug("received selectionContext", { payload: latestSelectionPayload });
           pushSelectionContextToFrame();
         }
       });

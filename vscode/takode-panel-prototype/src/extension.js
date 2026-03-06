@@ -7,6 +7,19 @@ const { buildSelectionPayload } = require("./editor-context");
 const VIEW_TYPE = "takode.panelPrototype";
 
 let lastSelectionPayload = null;
+let outputChannel;
+
+function logDebug(message, details) {
+  if (!outputChannel) {
+    return;
+  }
+  const ts = new Date().toISOString();
+  if (typeof details === "undefined") {
+    outputChannel.appendLine(`[${ts}] ${message}`);
+    return;
+  }
+  outputChannel.appendLine(`[${ts}] ${message} ${JSON.stringify(details)}`);
+}
 
 function getNonce() {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -56,6 +69,7 @@ function getPortMappings(baseUrl) {
 
 function renderPanel(panel, baseUrl) {
   panel.title = "Takode";
+  logDebug("renderPanel", { baseUrl });
   panel.webview.html = buildPanelHtml({
     baseUrl,
     cspSource: panel.webview.cspSource,
@@ -102,6 +116,11 @@ function pushSelectionContext(panel) {
   if (vscode.window.activeTextEditor) {
     lastSelectionPayload = getSelectionContext(vscode.window.activeTextEditor);
   }
+  logDebug("pushSelectionContext", {
+    hasPanel: Boolean(panel),
+    activeEditor: Boolean(vscode.window.activeTextEditor),
+    payload: lastSelectionPayload,
+  });
   void panel.webview.postMessage({
     type: "selectionContext",
     payload: lastSelectionPayload,
@@ -110,9 +129,14 @@ function pushSelectionContext(panel) {
 
 function refreshSelectionContext(editor = vscode.window.activeTextEditor) {
   if (!editor) {
+    logDebug("refreshSelectionContext", { editor: null, payload: lastSelectionPayload });
     return lastSelectionPayload;
   }
   lastSelectionPayload = getSelectionContext(editor);
+  logDebug("refreshSelectionContext", {
+    editor: getPathLabel(editor),
+    payload: lastSelectionPayload,
+  });
   return lastSelectionPayload;
 }
 
@@ -139,11 +163,18 @@ function attachPanel(panel, state) {
     }
 
     if (message.type === "readyForSelectionContext") {
+      logDebug("webview->extension readyForSelectionContext");
       pushSelectionContext(panel);
       return;
     }
 
+    if (message.type === "debug" && typeof message.text === "string") {
+      logDebug(`webview->extension ${message.text}`, message.data);
+      return;
+    }
+
     if (message.type === "info" && typeof message.text === "string") {
+      logDebug(`webview->extension info ${message.text}`);
       void vscode.window.showInformationMessage(message.text);
     }
   });
@@ -153,6 +184,9 @@ function attachPanel(panel, state) {
 
 function activate(context) {
   let panelRef;
+  outputChannel = vscode.window.createOutputChannel("Takode Prototype");
+  context.subscriptions.push(outputChannel);
+  logDebug("activate");
 
   const showPanel = () => {
     if (panelRef) {
@@ -188,13 +222,21 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("takodePrototype.reloadPanel", () => {
       const panel = showPanel();
+      logDebug("command reloadPanel");
       panel.webview.postMessage({ type: "reload" });
       pushSelectionContext(panel);
     }),
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("takodePrototype.showDebugLog", () => {
+      outputChannel.show(true);
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
+      logDebug("event onDidChangeActiveTextEditor", { editor: editor ? getPathLabel(editor) : null });
       refreshSelectionContext(editor);
       pushSelectionContext(panelRef);
     }),
@@ -202,6 +244,10 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.window.onDidChangeTextEditorSelection((event) => {
+      logDebug("event onDidChangeTextEditorSelection", {
+        editor: getPathLabel(event.textEditor),
+        isEmpty: event.selections.every((selection) => selection.isEmpty),
+      });
       refreshSelectionContext(event.textEditor);
       pushSelectionContext(panelRef);
     }),
