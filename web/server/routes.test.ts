@@ -28,9 +28,11 @@ vi.mock("node:child_process", () => {
 
 const mockResolveBinary = vi.hoisted(() => vi.fn((_name: string) => null as string | null));
 const mockExpandTilde = vi.hoisted(() => vi.fn((p: string) => p)); // pass-through by default
+const mockCaptureUserShellEnv = vi.hoisted(() => vi.fn((_varNames: string[]) => ({} as Record<string, string>)));
 vi.mock("./path-resolver.js", () => ({
   resolveBinary: mockResolveBinary,
   expandTilde: mockExpandTilde,
+  captureUserShellEnv: mockCaptureUserShellEnv,
 }));
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -145,6 +147,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { access, readFile, stat } from "node:fs/promises";
 import { createRoutes } from "./routes.js";
+import { _resetModelCache } from "./routes/system.js";
 import * as envManager from "./env-manager.js";
 import * as gitUtils from "./git-utils.js";
 import * as questStore from "./quest-store.js";
@@ -253,6 +256,11 @@ let tracker: ReturnType<typeof createMockTracker>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset the LiteLLM model cache so each test starts clean.
+  _resetModelCache();
+  // Stub global fetch to prevent LiteLLM proxy calls in tests.
+  // Model endpoint tests exercise the fallback path (models_cache.json).
+  vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("no proxy in tests"))));
   launcher = createMockLauncher();
   bridge = createMockBridge();
   sessionStore = createMockStore();

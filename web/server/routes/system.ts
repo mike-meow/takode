@@ -10,7 +10,7 @@ import { getNamerLogIndex, getNamerLogEntry } from "../session-namer.js";
 import { getApprovalLogIndex, getApprovalLogEntry } from "../auto-approver.js";
 import { runExport, runImport, type ImportStats } from "../migration.js";
 import { containerManager } from "../container-manager.js";
-import { resolveBinary } from "../path-resolver.js";
+import { resolveBinary, captureUserShellEnv } from "../path-resolver.js";
 import { getSettings } from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
 import { getUsageLimits } from "../usage-limits.js";
@@ -39,6 +39,149 @@ function compareCodexModelSlugs(a: string, b: string): number {
   const variantDelta = getCodexModelVariantRank(a) - getCodexModelVariantRank(b);
   if (variantDelta !== 0) return variantDelta;
   return a.localeCompare(b);
+}
+
+// ─── LiteLLM proxy model discovery ──────────────────────────────────────────
+
+interface CachedModels {
+  /** All model IDs fetched from the proxy (excludes wildcard duplicates). */
+  allIds: string[];
+  /** Epoch ms when the cache was populated. */
+  fetchedAt: number;
+}
+
+const MODEL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let _modelCache: CachedModels | null = null;
+
+/** Reset the model cache (for testing). */
+export function _resetModelCache(): void {
+  _modelCache = null;
+}
+
+/** Resolve the LiteLLM proxy base URL from env vars or shell profile. */
+function getLitellmProxyUrl(): string {
+  if (process.env.LITELLM_PROXY_URL) return process.env.LITELLM_PROXY_URL;
+  const shellEnv = captureUserShellEnv(["LITELLM_PROXY_URL"]);
+  return shellEnv.LITELLM_PROXY_URL || "http://localhost:4000";
+}
+
+/** Resolve the LiteLLM API key from env vars or shell profile. */
+function getLitellmApiKey(): string | undefined {
+  if (process.env.LITELLM_API_KEY) return process.env.LITELLM_API_KEY;
+  const shellEnv = captureUserShellEnv(["LITELLM_API_KEY"]);
+  return shellEnv.LITELLM_API_KEY;
+}
+
+/**
+ * Fetch available model IDs from the LiteLLM proxy. Uses a shared cache
+ * with a 5-minute TTL to avoid hammering the proxy on every modal open.
+ */
+async function fetchLitellmModels(): Promise<string[] | null> {
+  if (_modelCache && Date.now() - _modelCache.fetchedAt < MODEL_CACHE_TTL_MS) {
+    return _modelCache.allIds;
+  }
+
+  const proxyUrl = getLitellmProxyUrl();
+  const apiKey = getLitellmApiKey();
+
+  try {
+    const headers: Record<string, string> = {};
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+    const res = await fetch(`${proxyUrl}/v1/models`, {
+      headers,
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return null;
+
+    const body = (await res.json()) as { data?: Array<{ id: string }> };
+    if (!body.data || !Array.isArray(body.data)) return null;
+
+    // Filter out wildcard routing duplicates (e.g. "gpt-5.3-codex*")
+    const ids = body.data
+      .map((m) => m.id)
+      .filter((id) => !id.endsWith("*"));
+
+    _modelCache = { allIds: ids, fetchedAt: Date.now() };
+    return ids;
+  } catch {
+    return null; // proxy unreachable — caller should use fallback
+  }
+}
+
+const CLAUDE_ALIASES = new Set(["opus", "sonnet", "haiku"]);
+
+function isClaudeModelId(id: string): boolean {
+  return id.startsWith("claude-") || CLAUDE_ALIASES.has(id);
+}
+
+function isCodexModelId(id: string): boolean {
+  return id.startsWith("gpt-");
+}
+
+/** Rank Claude model families so the dropdown shows them in a useful order. */
+function getClaudeModelRank(id: string): number {
+  if (id === "opus" || id.includes("opus")) return 0;
+  if (id === "sonnet" || id.includes("sonnet")) return 1;
+  if (id === "haiku" || id.includes("haiku")) return 2;
+  return 3;
+}
+
+function compareClaudeModelIds(a: string, b: string): number {
+  const rankA = getClaudeModelRank(a);
+  const rankB = getClaudeModelRank(b);
+  if (rankA !== rankB) return rankA - rankB;
+  return a.localeCompare(b);
+}
+
+/**
+ * Generate a human-readable label from a model ID.
+ *   gpt-5.3-codex      → GPT-5.3 Codex
+ *   claude-opus-4-6     → Claude Opus 4.6
+ *   opus                → Opus
+ *   haiku               → Haiku
+ */
+function modelIdToLabel(id: string): string {
+  // Simple aliases
+  if (CLAUDE_ALIASES.has(id)) {
+    return id.charAt(0).toUpperCase() + id.slice(1);
+  }
+
+  // GPT models: "gpt-5.3-codex" → "GPT-5.3 Codex"
+  if (id.startsWith("gpt-")) {
+    return id.replace(/^gpt-/, "GPT-")
+      .split("-")
+      .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
+  // Claude models: "claude-opus-4-6-fast" → "Claude Opus 4.6 Fast"
+  if (id.startsWith("claude-")) {
+    const parts = id.replace(/^claude-/, "").split("-");
+    const formatted: string[] = ["Claude"];
+    let i = 0;
+    // Family name (opus, sonnet, haiku)
+    if (i < parts.length) {
+      formatted.push(parts[i].charAt(0).toUpperCase() + parts[i].slice(1));
+      i++;
+    }
+    // Version numbers: join consecutive numeric parts with dots
+    const versionParts: string[] = [];
+    while (i < parts.length && /^\d+$/.test(parts[i])) {
+      versionParts.push(parts[i]);
+      i++;
+    }
+    if (versionParts.length > 0) formatted.push(versionParts.join("."));
+    // Remaining parts (e.g., "fast", "1m")
+    while (i < parts.length) {
+      formatted.push(parts[i].charAt(0).toUpperCase() + parts[i].slice(1));
+      i++;
+    }
+    return formatted.join(" ");
+  }
+
+  // Gemini or other: capitalize first letter of each segment
+  return id.split("-").map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
 }
 
 export function createSystemRoutes(ctx: RouteContext) {
@@ -85,9 +228,21 @@ export function createSystemRoutes(ctx: RouteContext) {
   api.get("/backends/:id/models", async (c) => {
     const backendId = c.req.param("id");
 
+    // Try fetching from LiteLLM proxy first (shared cache across backends)
+    const proxyModels = await fetchLitellmModels();
+
     if (backendId === "codex") {
-      // Read Codex model list from its local cache file
-      const cachePath = join(homedir(), ".codex", "models_cache.json");
+      if (proxyModels) {
+        const models = proxyModels
+          .filter(isCodexModelId)
+          .filter((id) => !id.startsWith("gpt-5.2") && !id.startsWith("gpt-5.1") && !id.startsWith("gpt-4"))
+          .sort(compareCodexModelSlugs)
+          .map((id) => ({ value: id, label: modelIdToLabel(id), description: "" }));
+        if (models.length > 0) return c.json(models);
+      }
+
+      // Fallback: read from Codex CLI's local models cache
+      const cachePath = join(getLegacyCodexHome(), "models_cache.json");
       if (!(await pathExists(cachePath))) {
         return c.json({ error: "Codex models cache not found. Run codex once to populate it." }, 404);
       }
@@ -102,7 +257,6 @@ export function createSystemRoutes(ctx: RouteContext) {
             priority?: number;
           }>;
         };
-        // Keep only current visible models and enforce a stable Takode-facing order.
         const models = cache.models
           .filter((m) => m.visibility === "list")
           .filter((m) => !m.slug.startsWith("gpt-5.2") && !m.slug.startsWith("gpt-5.1"))
@@ -113,13 +267,24 @@ export function createSystemRoutes(ctx: RouteContext) {
             description: m.description || "",
           }));
         return c.json(models);
-      } catch (e) {
+      } catch {
         return c.json({ error: "Failed to parse Codex models cache" }, 500);
       }
     }
 
-    // Claude models are hardcoded on the frontend
-    return c.json({ error: "Use frontend defaults for this backend" }, 404);
+    if (backendId === "claude" || backendId === "claude-sdk") {
+      if (proxyModels) {
+        const models = proxyModels
+          .filter(isClaudeModelId)
+          .sort(compareClaudeModelIds)
+          .map((id) => ({ value: id, label: modelIdToLabel(id), description: "" }));
+        if (models.length > 0) return c.json(models);
+      }
+      // No proxy available — frontend will use hardcoded defaults
+      return c.json({ error: "Use frontend defaults for this backend" }, 404);
+    }
+
+    return c.json({ error: "Unknown backend" }, 404);
   });
 
   // ─── Containers ─────────────────────────────────────────────────

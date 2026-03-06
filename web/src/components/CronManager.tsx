@@ -574,10 +574,9 @@ function JobForm({
   const models = dynamicModels || getModelsForBackend(form.backendType);
   const selectedModel = models.find((m) => m.value === form.model) || models[0];
 
-  // Fetch dynamic models when backend changes
+  // Fetch dynamic models when backend changes (LiteLLM proxy discovery)
   useEffect(() => {
     setDynamicModels(null);
-    if (form.backendType !== "codex") return;
     api.getBackendModels(form.backendType).then((fetched) => {
       if (fetched.length > 0) {
         const options = toModelOptions(fetched);

@@ -162,9 +162,10 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     updateMode(getDefaultMode(newBackend));
   }
 
-  // Fetch dynamic models for codex
+  // Fetch dynamic models from the server (LiteLLM proxy discovery).
+  // Works for all backends — falls back to static defaults if unavailable.
   useEffect(() => {
-    if (!open || backend !== "codex") {
+    if (!open) {
       setDynamicModels(null);
       return;
     }

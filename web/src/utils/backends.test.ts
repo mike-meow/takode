@@ -20,17 +20,17 @@ import {
 describe("toModelOptions", () => {
   it("converts server model info to frontend ModelOption with icons", () => {
     const models = [
-      { value: "gpt-5.4", label: "gpt-5.4", description: "Frontier" },
-      { value: "gpt-5.3-codex-spark", label: "gpt-5.3-codex-spark", description: "Fast" },
+      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", description: "Codex model" },
+      { value: "gpt-5-mini", label: "GPT-5 Mini", description: "Fast" },
     ];
 
     const options = toModelOptions(models);
 
     expect(options).toHaveLength(2);
-    expect(options[0].value).toBe("gpt-5.4");
-    expect(options[0].label).toBe("gpt-5.4");
+    expect(options[0].value).toBe("gpt-5.3-codex");
+    expect(options[0].label).toBe("GPT-5.3 Codex");
     expect(options[0].icon).toBeTruthy();
-    expect(options[1].value).toBe("gpt-5.3-codex-spark");
+    expect(options[1].value).toBe("gpt-5-mini");
   });
 
   it("assigns codex icon to codex-containing slugs", () => {

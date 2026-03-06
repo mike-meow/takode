@@ -48,9 +48,7 @@ export const CLAUDE_MODELS: ModelOption[] = [
 ];
 
 export const CODEX_MODELS: ModelOption[] = [
-  { value: "gpt-5.4", label: "GPT-5.4", icon: "\u2733" },
   { value: "gpt-5.3-codex", label: "GPT-5.3 Codex", icon: "\u2733" },
-  { value: "gpt-5.3-codex-spark", label: "GPT-5.3 Codex Spark", icon: "\u26A1" },
 ];
 
 export const CLAUDE_MODES: ModeOption[] = [
