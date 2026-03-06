@@ -72,7 +72,7 @@ function formatSelectionLocation(input) {
 }
 
 function buildSelectionPayload(input) {
-  if (!input || !input.pathLabel) {
+  if (!input || !input.pathLabel || !input.absolutePath) {
     return null;
   }
   if (input.isEmpty) {
@@ -82,6 +82,7 @@ function buildSelectionPayload(input) {
   if (!lineCount) return null;
   const endLine = getInclusiveEndLine(input);
   return {
+    absolutePath: input.absolutePath,
     relativePath: input.pathLabel,
     displayPath: getDisplayPathLabel(input.pathLabel),
     startLine: input.startLine,

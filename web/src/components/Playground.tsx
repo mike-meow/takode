@@ -248,6 +248,7 @@ const MSG_USER_SELECTION: ChatMessage = {
   timestamp: Date.now() - 57500,
   metadata: {
     vscodeSelection: {
+      absolutePath: "/Users/demo/project/web/src/components/Composer.tsx",
       relativePath: "web/src/components/Composer.tsx",
       displayPath: "Composer.tsx",
       startLine: 35,

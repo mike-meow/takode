@@ -232,6 +232,7 @@ export type ContentBlock =
   | { type: "thinking"; thinking: string; budget_tokens?: number; thinking_time_ms?: number };
 
 export interface VsCodeSelectionMetadata {
+  absolutePath: string;
   relativePath: string;
   displayPath: string;
   startLine: number;

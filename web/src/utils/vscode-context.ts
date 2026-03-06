@@ -1,4 +1,5 @@
 export interface VsCodeSelectionContextPayload {
+  absolutePath: string;
   relativePath: string;
   displayPath: string;
   startLine: number;
@@ -18,12 +19,55 @@ export function isVsCodeSelectionContextPayload(value: unknown): value is VsCode
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.relativePath === "string"
+    typeof record.absolutePath === "string"
+    && typeof record.relativePath === "string"
     && typeof record.displayPath === "string"
     && typeof record.startLine === "number"
     && typeof record.endLine === "number"
     && typeof record.lineCount === "number"
   );
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+export function getVsCodeSelectionSessionRoot(repoRoot?: string | null, cwd?: string | null): string | null {
+  const normalizedRepoRoot = repoRoot ? normalizePath(repoRoot) : "";
+  const normalizedCwd = cwd ? normalizePath(cwd) : "";
+  if (normalizedRepoRoot && normalizedCwd.startsWith(normalizedRepoRoot + "/")) {
+    return normalizedRepoRoot;
+  }
+  return normalizedCwd || normalizedRepoRoot || null;
+}
+
+export function resolveVsCodeSelectionForSession(
+  context: VsCodeSelectionContext | VsCodeSelectionContextPayload,
+  sessionRoot: string | null,
+): VsCodeSelectionContextPayload {
+  const normalizedAbsolutePath = normalizePath(context.absolutePath);
+  const normalizedSessionRoot = sessionRoot ? normalizePath(sessionRoot) : "";
+  const sharedFields = {
+    absolutePath: normalizedAbsolutePath,
+    startLine: context.startLine,
+    endLine: context.endLine,
+    lineCount: context.lineCount,
+  };
+
+  if (!normalizedSessionRoot || !normalizedAbsolutePath.startsWith(normalizedSessionRoot + "/")) {
+    return {
+      ...sharedFields,
+      relativePath: normalizedAbsolutePath,
+      displayPath: normalizedAbsolutePath,
+    };
+  }
+
+  const repoRelativePath = normalizedAbsolutePath.slice(normalizedSessionRoot.length + 1);
+  return {
+    ...sharedFields,
+    relativePath: repoRelativePath,
+    displayPath: context.displayPath,
+  };
 }
 
 export function formatVsCodeSelectionSummary(context: VsCodeSelectionContext | VsCodeSelectionContextPayload): string {

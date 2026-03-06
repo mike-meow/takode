@@ -127,6 +127,7 @@ describe("MessageBubble - user messages", () => {
       content: "Please review this",
       metadata: {
         vscodeSelection: {
+          absolutePath: "/test/web/src/components/Composer.tsx",
           relativePath: "web/src/components/Composer.tsx",
           displayPath: "Composer.tsx",
           startLine: 35,

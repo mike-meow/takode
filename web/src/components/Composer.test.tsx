@@ -112,6 +112,7 @@ function setupMockStore(overrides: {
   session?: Partial<SessionState>;
   sdkSessionTotals?: { added: number; removed: number };
   vscodeSelectionContext?: {
+    absolutePath: string;
     relativePath: string;
     displayPath: string;
     startLine: number;
@@ -207,6 +208,14 @@ describe("Composer basic rendering", () => {
     expect(screen.queryByText("+34")).toBeNull();
     expect(screen.queryByText("-8")).toBeNull();
   });
+
+  it("does not switch to the collapsed composer on narrow desktop layouts", () => {
+    mediaState.narrowLayout = true;
+    mediaState.touchDevice = false;
+    render(<Composer sessionId="s1" />);
+
+    expect(screen.queryByText("Type a message...")).toBeNull();
+  });
 });
 
 // ─── Send button disabled state ──────────────────────────────────────────────
@@ -294,6 +303,7 @@ describe("Composer sending messages", () => {
   it("sends VS Code selection metadata separately from the visible user message", () => {
     setupMockStore({
       vscodeSelectionContext: {
+        absolutePath: "/test/web/src/App.tsx",
         relativePath: "web/src/App.tsx",
         displayPath: "App.tsx",
         startLine: 42,
@@ -312,6 +322,7 @@ describe("Composer sending messages", () => {
       type: "user_message",
       content: "check this bug",
       vscodeSelection: {
+        absolutePath: "/test/web/src/App.tsx",
         relativePath: "web/src/App.tsx",
         displayPath: "App.tsx",
         startLine: 42,
@@ -334,6 +345,42 @@ describe("Composer sending messages", () => {
       content: "check this bug",
     }));
     expect(mockSendToSession.mock.calls.at(-1)?.[1]).not.toHaveProperty("vscodeSelection");
+  });
+
+  it("falls back to the absolute path when the selection is outside the session root", () => {
+    setupMockStore({
+      session: {
+        cwd: "/test/project-a",
+        repo_root: "/test/project-a",
+      },
+      vscodeSelectionContext: {
+        absolutePath: "/test/project-b/src/Other.ts",
+        relativePath: "project-b/src/Other.ts",
+        displayPath: "Other.ts",
+        startLine: 7,
+        endLine: 9,
+        lineCount: 3,
+        updatedAt: 1,
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "check this external file" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
+      type: "user_message",
+      content: "check this external file",
+      vscodeSelection: {
+        absolutePath: "/test/project-b/src/Other.ts",
+        relativePath: "/test/project-b/src/Other.ts",
+        displayPath: "/test/project-b/src/Other.ts",
+        startLine: 7,
+        endLine: 9,
+        lineCount: 3,
+      },
+    }));
   });
 
   it("textarea is cleared after sending", () => {
@@ -522,6 +569,7 @@ describe("Composer VS Code context", () => {
   it("renders the current VS Code selection line when context is available", () => {
     setupMockStore({
       vscodeSelectionContext: {
+        absolutePath: "/test/web/src/components/Composer.tsx",
         relativePath: "web/src/components/Composer.tsx",
         displayPath: "Composer.tsx",
         startLine: 12,

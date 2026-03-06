@@ -21,6 +21,8 @@ import { api } from "../api.js";
 import {
   buildVsCodeSelectionPrompt,
   formatVsCodeSelectionSummary,
+  getVsCodeSelectionSessionRoot,
+  resolveVsCodeSelectionForSession,
   type VsCodeSelectionContextPayload,
 } from "../utils/vscode-context.js";
 
@@ -295,14 +297,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
+  const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionData?.repo_root, sessionData?.cwd);
   const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionContext
-    ? {
-      relativePath: vscodeSelectionContext.relativePath,
-      displayPath: vscodeSelectionContext.displayPath,
-      startLine: vscodeSelectionContext.startLine,
-      endLine: vscodeSelectionContext.endLine,
-      lineCount: vscodeSelectionContext.lineCount,
-    }
+    ? resolveVsCodeSelectionForSession(vscodeSelectionContext, sessionSelectionRoot)
     : null;
 
   useEffect(() => {
@@ -848,21 +845,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const canSend = (text.trim().length > 0 || images.length > 0) && isConnected;
 
   // Mobile collapsible composer — collapse when empty (no text, no images), regardless of streaming
-  const isCollapsed = isNarrowLayout && !composerExpanded && !text.trim() && images.length === 0;
+  const isCollapsed = usesTouchKeyboard && isNarrowLayout && !composerExpanded && !text.trim() && images.length === 0;
 
   // Auto-collapse when composer becomes empty (after send clears text)
   useEffect(() => {
-    if (!isNarrowLayout) return;
+    if (!usesTouchKeyboard || !isNarrowLayout) return;
     if (!text.trim() && images.length === 0) {
       const timer = setTimeout(() => setComposerExpanded(false), 300);
       return () => clearTimeout(timer);
     }
-  }, [isNarrowLayout, text, images.length]);
+  }, [usesTouchKeyboard, isNarrowLayout, text, images.length]);
 
   // Collapse on tap outside the composer when empty
   const composerRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!isNarrowLayout || isCollapsed) return;
+    if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed) return;
     const handler = (e: MouseEvent | TouchEvent) => {
       if (!text.trim() && images.length === 0 && composerRootRef.current && !composerRootRef.current.contains(e.target as Node)) {
         setComposerExpanded(false);
@@ -874,7 +871,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  }, [isNarrowLayout, isCollapsed, text, images.length]);
+  }, [usesTouchKeyboard, isNarrowLayout, isCollapsed, text, images.length]);
 
   const expandComposer = useCallback(() => {
     textareaRef.current?.focus(); // synchronous focus triggers mobile virtual keyboard

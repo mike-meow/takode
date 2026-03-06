@@ -88,6 +88,13 @@ function getPathLabel(editor) {
   return vscode.workspace.asRelativePath(document.uri, false);
 }
 
+function getAbsolutePath(editor) {
+  if (!editor) {
+    return "";
+  }
+  return editor.document.uri.fsPath || editor.document.fileName || "";
+}
+
 function getSelectionContext(editor = vscode.window.activeTextEditor) {
   if (!editor) {
     return null;
@@ -98,6 +105,7 @@ function getSelectionContext(editor = vscode.window.activeTextEditor) {
   const lineText = editor.document.lineAt(selection.active.line).text;
 
   return buildSelectionPayload({
+    absolutePath: getAbsolutePath(editor),
     pathLabel: getPathLabel(editor),
     startLine: start.line + 1,
     startCharacter: start.character + 1,

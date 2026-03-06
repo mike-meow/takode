@@ -97,6 +97,7 @@ test("formatSelectionContext renders the selection range and preview text", () =
 test("buildSelectionPayload counts full-line selections using VS Code range semantics", () => {
   assert.deepEqual(
     buildSelectionPayload({
+      absolutePath: "/workspace/project/web/src/App.tsx",
       pathLabel: "web/src/App.tsx",
       startLine: 42,
       startCharacter: 1,
@@ -106,6 +107,7 @@ test("buildSelectionPayload counts full-line selections using VS Code range sema
       selectedText: "line 42\nline 43\nline 44\n",
     }),
     {
+      absolutePath: "/workspace/project/web/src/App.tsx",
       relativePath: "web/src/App.tsx",
       displayPath: "App.tsx",
       startLine: 42,
@@ -118,6 +120,7 @@ test("buildSelectionPayload counts full-line selections using VS Code range sema
 test("buildSelectionPayload returns null for an empty selection", () => {
   assert.equal(
     buildSelectionPayload({
+      absolutePath: "/workspace/project/web/src/App.tsx",
       pathLabel: "web/src/App.tsx",
       startLine: 42,
       startCharacter: 7,

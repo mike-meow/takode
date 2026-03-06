@@ -18,6 +18,7 @@ afterEach(() => {
 
 describe("VS Code selection formatting", () => {
   const context = {
+    absolutePath: "/workspace/project/web/src/App.tsx",
     relativePath: "web/src/App.tsx",
     displayPath: "App.tsx",
     startLine: 42,
@@ -44,6 +45,7 @@ describe("isVsCodeSelectionContextPayload", () => {
   it("accepts the extension payload shape", () => {
     expect(
       isVsCodeSelectionContextPayload({
+        absolutePath: "/workspace/project/web/src/App.tsx",
         relativePath: "web/src/App.tsx",
         displayPath: "App.tsx",
         startLine: 42,
@@ -66,6 +68,7 @@ describe("maybeReadVsCodeSelectionContext", () => {
         type: VSCODE_CONTEXT_MESSAGE_TYPE,
         payload: {
           relativePath: "web/src/App.tsx",
+          absolutePath: "/workspace/project/web/src/App.tsx",
           displayPath: "App.tsx",
           startLine: 42,
           endLine: 44,
@@ -74,6 +77,7 @@ describe("maybeReadVsCodeSelectionContext", () => {
       }),
     ).toEqual({
       relativePath: "web/src/App.tsx",
+      absolutePath: "/workspace/project/web/src/App.tsx",
       displayPath: "App.tsx",
       startLine: 42,
       endLine: 44,
@@ -99,6 +103,31 @@ describe("maybeReadVsCodeSelectionContext", () => {
         payload: null,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("resolveVsCodeSelectionForSession", () => {
+  const context = {
+    absolutePath: "/workspace/project/web/src/App.tsx",
+    relativePath: "web/src/App.tsx",
+    displayPath: "App.tsx",
+    startLine: 42,
+    endLine: 44,
+    lineCount: 3,
+  };
+
+  it("keeps a repo-relative path when the file is inside the session root", async () => {
+    const { resolveVsCodeSelectionForSession } = await import("./vscode-context.js");
+    expect(resolveVsCodeSelectionForSession(context, "/workspace/project")).toEqual(context);
+  });
+
+  it("falls back to the absolute path when the file is outside the session root", async () => {
+    const { resolveVsCodeSelectionForSession } = await import("./vscode-context.js");
+    expect(resolveVsCodeSelectionForSession(context, "/workspace/other")).toEqual({
+      ...context,
+      relativePath: "/workspace/project/web/src/App.tsx",
+      displayPath: "/workspace/project/web/src/App.tsx",
+    });
   });
 });
 
