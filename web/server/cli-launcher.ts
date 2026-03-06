@@ -23,7 +23,7 @@ import type { BackendType } from "./session-types.js";
 import { assertNever, isClaudeFamily } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { CodexAdapter } from "./codex-adapter.js";
-import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
+import { resolveBinary, getEnrichedPath, captureUserShellEnv } from "./path-resolver.js";
 import { containerManager } from "./container-manager.js";
 import {
   getLegacyCodexHome,
@@ -1351,8 +1351,23 @@ export class CliLauncher {
         spawnCmd = [binary, ...args];
       }
 
+      // Capture LiteLLM env vars from the user's login shell. When the
+      // Companion server runs outside the user's normal shell (e.g. started
+      // via `bun server/index.ts` without sourcing mai-agents .env), these
+      // vars are missing from process.env. The Codex config.toml references
+      // them via env_key but Codex can only read them from its own process
+      // environment. For Claude sessions this isn't needed because the
+      // configured claudeBinary typically points to claude.sh which sources
+      // the env vars itself.
+      const shellEnv = captureUserShellEnv([
+        "LITELLM_API_KEY",
+        "LITELLM_PROXY_URL",
+        "LITELLM_BASE_URL",
+      ]);
+
       spawnEnv = {
         ...process.env,
+        ...shellEnv,
         CLAUDECODE: undefined,
         ...options.env,
         CODEX_HOME: codexHome,

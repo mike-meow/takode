@@ -114,6 +114,77 @@ export function expandTilde(inputPath: string): string {
   return inputPath;
 }
 
+// ─── Shell environment capture (cached) ──────────────────────────────────────
+
+let _cachedShellEnv: Record<string, string> | null = null;
+
+/**
+ * Capture specific environment variables from the user's interactive login shell.
+ *
+ * When the Companion runs as a daemon or is started outside the user's normal
+ * shell (e.g. via systemd, launchd, or a bare `bun server/index.ts`), important
+ * env vars set by shell profiles (e.g. LITELLM_API_KEY from mai-agents) are
+ * missing from process.env. This function spawns a login shell — just like
+ * captureUserShellPath() — to capture the specified env vars.
+ *
+ * Result is cached after the first call (the user's shell env doesn't change
+ * during the server's lifetime).
+ */
+export function captureUserShellEnv(varNames: string[]): Record<string, string> {
+  if (_cachedShellEnv) {
+    const result: Record<string, string> = {};
+    for (const name of varNames) {
+      if (_cachedShellEnv[name] !== undefined) result[name] = _cachedShellEnv[name];
+    }
+    return result;
+  }
+
+  _cachedShellEnv = {};
+
+  if (varNames.length === 0) return {};
+
+  try {
+    const shell = process.env.SHELL || "/bin/bash";
+    // Print each requested var as KEY=VALUE, using a unique delimiter to avoid
+    // collisions with noisy shell startup output.
+    const printCommands = varNames
+      .map((name) => `echo "___ENV_${name}___=\${${name}:-}"`)
+      .join("; ");
+    const captured = execSync( // sync-ok: cold path, one-time capture at startup
+      `${shell} -lic '${printCommands}'`,
+      {
+        encoding: "utf-8",
+        timeout: 10_000,
+        env: { HOME: homedir(), USER: process.env.USER, SHELL: shell },
+      },
+    );
+
+    for (const name of varNames) {
+      const pattern = new RegExp(`___ENV_${name}___=(.*)`);
+      const match = captured.match(pattern);
+      if (match?.[1] && match[1].length > 0) {
+        _cachedShellEnv[name] = match[1];
+      }
+    }
+  } catch {
+    // Shell sourcing failed — fall back to process.env
+  }
+
+  // Also check process.env for any vars not captured from the shell
+  for (const name of varNames) {
+    if (!_cachedShellEnv[name] && process.env[name]) {
+      _cachedShellEnv[name] = process.env[name]!;
+    }
+  }
+
+  return { ..._cachedShellEnv };
+}
+
+/** Reset the cached shell env (for testing). */
+export function _resetShellEnvCache(): void {
+  _cachedShellEnv = null;
+}
+
 // ─── Enriched PATH (cached) ───────────────────────────────────────────────────
 
 let _cachedPath: string | null = null;
