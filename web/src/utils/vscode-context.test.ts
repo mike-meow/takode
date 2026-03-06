@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildVsCodeSelectionPrompt,
+  formatVsCodeSelectionAttachmentLabel,
+  formatVsCodeSelectionSummary,
   VSCODE_CONTEXT_MESSAGE_TYPE,
   VSCODE_CONTEXT_SOURCE,
   VSCODE_READY_MESSAGE_TYPE,
   announceVsCodeReady,
-  appendVsCodeContext,
   isVsCodeSelectionContextPayload,
   maybeReadVsCodeSelectionContext,
 } from "./vscode-context.js";
@@ -14,35 +16,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("appendVsCodeContext", () => {
-  it("appends the VS Code metadata line when enabled", () => {
-    expect(
-      appendVsCodeContext(
-        "Investigate this regression",
-        {
-          label: "Cursor: web/src/App.tsx:42:7",
-          messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-          updatedAt: 1,
-        },
-        true,
-      ),
-    ).toBe(
-      "Investigate this regression\n\n[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-    );
+describe("VS Code selection formatting", () => {
+  const context = {
+    relativePath: "web/src/App.tsx",
+    displayPath: "App.tsx",
+    startLine: 42,
+    endLine: 44,
+    lineCount: 3,
+  };
+
+  it("renders a compact composer summary", () => {
+    expect(formatVsCodeSelectionSummary(context)).toBe("3 lines selected");
   });
 
-  it("leaves the message untouched when disabled", () => {
-    expect(
-      appendVsCodeContext(
-        "Investigate this regression",
-        {
-          label: "Cursor: web/src/App.tsx:42:7",
-          messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-          updatedAt: 1,
-        },
-        false,
-      ),
-    ).toBe("Investigate this regression");
+  it("renders a file attachment label for the message bubble", () => {
+    expect(formatVsCodeSelectionAttachmentLabel(context)).toBe("App.tsx:42-44");
+  });
+
+  it("builds the separate model prompt with the full relative path", () => {
+    expect(buildVsCodeSelectionPrompt(context)).toBe(
+      "[user selection in VSCode: web/src/App.tsx lines 42-44] (this may or may not be relevant)",
+    );
   });
 });
 
@@ -50,14 +44,17 @@ describe("isVsCodeSelectionContextPayload", () => {
   it("accepts the extension payload shape", () => {
     expect(
       isVsCodeSelectionContextPayload({
-        label: "Cursor: web/src/App.tsx:42:7",
-        messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
+        relativePath: "web/src/App.tsx",
+        displayPath: "App.tsx",
+        startLine: 42,
+        endLine: 44,
+        lineCount: 3,
       }),
     ).toBe(true);
   });
 
   it("rejects incomplete payloads", () => {
-    expect(isVsCodeSelectionContextPayload({ label: "Cursor only" })).toBe(false);
+    expect(isVsCodeSelectionContextPayload({ displayPath: "App.tsx" })).toBe(false);
   });
 });
 
@@ -68,13 +65,19 @@ describe("maybeReadVsCodeSelectionContext", () => {
         source: VSCODE_CONTEXT_SOURCE,
         type: VSCODE_CONTEXT_MESSAGE_TYPE,
         payload: {
-          label: "Cursor: web/src/App.tsx:42:7",
-          messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
+          relativePath: "web/src/App.tsx",
+          displayPath: "App.tsx",
+          startLine: 42,
+          endLine: 44,
+          lineCount: 3,
         },
       }),
     ).toEqual({
-      label: "Cursor: web/src/App.tsx:42:7",
-      messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
+      relativePath: "web/src/App.tsx",
+      displayPath: "App.tsx",
+      startLine: 42,
+      endLine: 44,
+      lineCount: 3,
     });
   });
 

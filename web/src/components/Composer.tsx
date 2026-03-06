@@ -18,7 +18,11 @@ import { Lightbox } from "./Lightbox.js";
 import { CatPawAvatar } from "./CatIcons.js";
 import { useVoiceInput } from "../hooks/useVoiceInput.js";
 import { api } from "../api.js";
-import { appendVsCodeContext } from "../utils/vscode-context.js";
+import {
+  buildVsCodeSelectionPrompt,
+  formatVsCodeSelectionSummary,
+  type VsCodeSelectionContextPayload,
+} from "../utils/vscode-context.js";
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -272,7 +276,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const diffLinesAdded = sessionData?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
   const diffLinesRemoved = sessionData?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
   const vscodeSelectionContext = useStore((s) => s.vscodeSelectionContext);
-  const vscodeContextAttachEnabled = useStore((s) => s.vscodeContextAttachEnabled);
 
   const isConnected = cliConnected.get(sessionId) ?? false;
   const currentMode = sessionData?.permissionMode || "acceptEdits";
@@ -290,6 +293,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
+  const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionContext
+    ? {
+      relativePath: vscodeSelectionContext.relativePath,
+      displayPath: vscodeSelectionContext.displayPath,
+      startLine: vscodeSelectionContext.startLine,
+      endLine: vscodeSelectionContext.endLine,
+      lineCount: vscodeSelectionContext.lineCount,
+    }
+    : null;
 
   useEffect(() => {
     if (!isCodex) return;
@@ -595,8 +607,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
     const sent = sendToSession(sessionId, {
       type: "user_message",
-      content: appendVsCodeContext(msg, vscodeSelectionContext, vscodeContextAttachEnabled),
+      content: msg,
       session_id: sessionId,
+      ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
       images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
     });
 
@@ -1136,37 +1149,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
             )}
           </div>
 
-          {vscodeSelectionContext && (
-            <div className="flex items-center justify-between gap-2 px-4 pb-1 text-[10px]">
-              <div className="min-w-0 flex items-center gap-2 text-cc-muted/90">
-                <span className="shrink-0 inline-flex items-center rounded-md border border-cc-border bg-cc-hover/70 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted">
-                  VS Code
-                </span>
-                <span className="truncate font-mono-code text-[10px] text-cc-muted/80">
-                  {vscodeSelectionContext.label}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => useStore.getState().setVsCodeContextAttachEnabled(!vscodeContextAttachEnabled)}
-                className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
-                  vscodeContextAttachEnabled
-                    ? "bg-cc-primary/12 text-cc-primary hover:bg-cc-primary/20"
-                    : "bg-cc-hover/70 text-cc-muted hover:text-cc-fg"
-                }`}
-                title={
-                  vscodeContextAttachEnabled
-                    ? "VS Code context will be appended to outgoing user messages"
-                    : "VS Code context is visible here but will not be appended to outgoing user messages"
-                }
-              >
-                {vscodeContextAttachEnabled ? "Attach on" : "Attach off"}
-              </button>
-            </div>
-          )}
-
           {/* Git branch + model + lines info */}
-          {(sessionData?.git_branch || sessionData?.model) && (
+          {(sessionData?.git_branch || sessionData?.model || vscodeSelectionPayload) && (
             <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted">
               {sessionData?.git_branch && (
                 <span className="flex items-center gap-1 truncate min-w-0">
@@ -1181,9 +1165,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
               )}
               {((sessionData?.git_ahead || 0) > 0 || (sessionData?.git_behind || 0) > 0) && (
                 <span className="flex items-center gap-0.5 text-[10px]">
-                  {(sessionData.git_ahead || 0) > 0 && <span className="text-green-500">{sessionData.git_ahead}&#8593;</span>}
-                  {(sessionData.git_behind || 0) > 0 && (
-                    <span className="text-cc-warning">{sessionData.git_behind}&#8595;</span>
+                  {(sessionData?.git_ahead || 0) > 0 && <span className="text-green-500">{sessionData?.git_ahead}&#8593;</span>}
+                  {(sessionData?.git_behind || 0) > 0 && (
+                    <span className="text-cc-warning">{sessionData?.git_behind}&#8595;</span>
                   )}
                 </span>
               )}
@@ -1281,7 +1265,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                           }`}
                           title="Reasoning effort (relaunch required)"
                         >
-                          <span>reasoning:{CODEX_REASONING_EFFORTS.find((x) => x.value === codexReasoningEffort)?.label.toLowerCase() || "default"}</span>
+                          <span>{CODEX_REASONING_EFFORTS.find((x) => x.value === codexReasoningEffort)?.label.toLowerCase() || "default"}</span>
                           <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
                             <path d="M4 6l4 4 4-4" />
                           </svg>
@@ -1307,6 +1291,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       </div>
                     </>
                   )}
+                </>
+              )}
+              {vscodeSelectionPayload && (
+                <>
+                  {(sessionData?.git_branch || sessionData?.model) && <span className="text-cc-muted/40">&middot;</span>}
+                  <span
+                    className="inline-flex max-w-[132px] shrink min-w-0 items-center rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
+                    title={buildVsCodeSelectionPrompt(vscodeSelectionPayload)}
+                  >
+                    <span className="truncate">{formatVsCodeSelectionSummary(vscodeSelectionPayload)}</span>
+                  </span>
                 </>
               )}
             </div>

@@ -121,6 +121,26 @@ describe("MessageBubble - user messages", () => {
     expect((time.textContent || "").length).toBeGreaterThan(0);
   });
 
+  it("renders a VS Code selection attachment above the user message content", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Please review this",
+      metadata: {
+        vscodeSelection: {
+          relativePath: "web/src/components/Composer.tsx",
+          displayPath: "Composer.tsx",
+          startLine: 35,
+          endLine: 38,
+          lineCount: 4,
+        },
+      },
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByText("Composer.tsx:35-38")).toBeTruthy();
+    expect(screen.getByText("Please review this")).toBeTruthy();
+  });
+
   it("renders user messages with image thumbnails from REST URLs", () => {
     const msg = makeMessage({
       role: "user",

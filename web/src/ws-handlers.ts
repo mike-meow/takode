@@ -674,6 +674,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         content: data.content,
         timestamp: data.timestamp || Date.now(),
         ...(data.images?.length ? { images: data.images } : {}),
+        ...(data.vscodeSelection ? { metadata: { vscodeSelection: data.vscodeSelection } } : {}),
         ...(data.agentSource ? { agentSource: data.agentSource } : {}),
       };
       store.appendMessage(sessionId, userMsg);
@@ -997,6 +998,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
             content: histMsg.content,
             timestamp: histMsg.timestamp,
             ...(histMsg.images?.length ? { images: histMsg.images } : {}),
+            ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
             ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
           });
         } else if (histMsg.type === "assistant") {

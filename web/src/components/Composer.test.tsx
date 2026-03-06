@@ -45,10 +45,6 @@ const mockUpdateSession = vi.fn();
 const mockSetPreviousPermissionMode = vi.fn();
 const mockSetSessionPreview = vi.fn();
 const mockSetAskPermission = vi.fn();
-const mockSetVsCodeContextAttachEnabled = vi.fn((enabled: boolean) => {
-  mockStoreState.vscodeContextAttachEnabled = enabled;
-  notifyMockStore();
-});
 
 // Shared listener set for mock store reactivity
 const mockStoreListeners = new Set<() => void>();
@@ -105,8 +101,14 @@ function setupMockStore(overrides: {
   sessionStatus?: "idle" | "running" | "compacting" | null;
   session?: Partial<SessionState>;
   sdkSessionTotals?: { added: number; removed: number };
-  vscodeSelectionContext?: { label: string; messageSuffix: string; updatedAt: number } | null;
-  vscodeContextAttachEnabled?: boolean;
+  vscodeSelectionContext?: {
+    relativePath: string;
+    displayPath: string;
+    startLine: number;
+    endLine: number;
+    lineCount: number;
+    updatedAt: number;
+  } | null;
 } = {}) {
   const {
     isConnected = true,
@@ -114,7 +116,6 @@ function setupMockStore(overrides: {
     session = {},
     sdkSessionTotals,
     vscodeSelectionContext = null,
-    vscodeContextAttachEnabled = true,
   } = overrides;
 
   const sessionsMap = new Map<string, SessionState>();
@@ -145,8 +146,6 @@ function setupMockStore(overrides: {
     setSessionPreview: mockSetSessionPreview,
     setAskPermission: mockSetAskPermission,
     vscodeSelectionContext,
-    vscodeContextAttachEnabled,
-    setVsCodeContextAttachEnabled: mockSetVsCodeContextAttachEnabled,
     sdkSessions: sdkSessionTotals ? [{
       sessionId: "s1",
       totalLinesAdded: sdkSessionTotals.added,
@@ -265,35 +264,16 @@ describe("Composer sending messages", () => {
     }));
   });
 
-  it("appends VS Code cursor context when attachment is enabled", () => {
+  it("sends VS Code selection metadata separately from the visible user message", () => {
     setupMockStore({
       vscodeSelectionContext: {
-        label: "Cursor: web/src/App.tsx:42:7  const route = useMemo(...)",
-        messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
+        relativePath: "web/src/App.tsx",
+        displayPath: "App.tsx",
+        startLine: 42,
+        endLine: 44,
+        lineCount: 3,
         updatedAt: 1,
       },
-      vscodeContextAttachEnabled: true,
-    });
-    const { container } = render(<Composer sessionId="s1" />);
-    const textarea = container.querySelector("textarea")!;
-
-    fireEvent.change(textarea, { target: { value: "check this bug" } });
-    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
-
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "check this bug\n\n[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-    }));
-  });
-
-  it("does not append VS Code cursor context when attachment is disabled", () => {
-    setupMockStore({
-      vscodeSelectionContext: {
-        label: "Cursor: web/src/App.tsx:42:7  const route = useMemo(...)",
-        messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-        updatedAt: 1,
-      },
-      vscodeContextAttachEnabled: false,
     });
     const { container } = render(<Composer sessionId="s1" />);
     const textarea = container.querySelector("textarea")!;
@@ -304,7 +284,29 @@ describe("Composer sending messages", () => {
     expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
       type: "user_message",
       content: "check this bug",
+      vscodeSelection: {
+        relativePath: "web/src/App.tsx",
+        displayPath: "App.tsx",
+        startLine: 42,
+        endLine: 44,
+        lineCount: 3,
+      },
     }));
+  });
+
+  it("does not send VS Code metadata when there is no selection", () => {
+    setupMockStore({ vscodeSelectionContext: null });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "check this bug" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
+      type: "user_message",
+      content: "check this bug",
+    }));
+    expect(mockSendToSession.mock.calls.at(-1)?.[1]).not.toHaveProperty("vscodeSelection");
   });
 
   it("textarea is cleared after sending", () => {
@@ -493,33 +495,17 @@ describe("Composer VS Code context", () => {
   it("renders the current VS Code selection line when context is available", () => {
     setupMockStore({
       vscodeSelectionContext: {
-        label: "Composer.tsx:12:3-14:9",
-        messageSuffix: "[user cursor in VSCode: web/src/Composer.tsx:12:3-14:9] (this may or may not be relevant)",
+        relativePath: "web/src/components/Composer.tsx",
+        displayPath: "Composer.tsx",
+        startLine: 12,
+        endLine: 14,
+        lineCount: 3,
         updatedAt: 1,
       },
     });
     render(<Composer sessionId="s1" />);
 
-    expect(screen.getByText("VS Code")).toBeTruthy();
-    expect(screen.getByText(/Composer\.tsx:12:3-14:9/)).toBeTruthy();
-    expect(screen.getByTitle("VS Code context will be appended to outgoing user messages")).toBeTruthy();
-  });
-
-  it("toggles VS Code context attachment without hiding the live preview", () => {
-    setupMockStore({
-      vscodeSelectionContext: {
-        label: "App.tsx:42:7",
-        messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-        updatedAt: 1,
-      },
-      vscodeContextAttachEnabled: true,
-    });
-    render(<Composer sessionId="s1" />);
-
-    fireEvent.click(screen.getByTitle("VS Code context will be appended to outgoing user messages"));
-
-    expect(mockSetVsCodeContextAttachEnabled).toHaveBeenCalledWith(false);
-    expect(screen.getByText(/App\.tsx:42:7/)).toBeTruthy();
+    expect(screen.getByText("3 lines selected")).toBeTruthy();
   });
 });
 

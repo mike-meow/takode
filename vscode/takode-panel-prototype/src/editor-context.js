@@ -1,19 +1,5 @@
 "use strict";
 
-function summarizeText(text, maxLength = 120) {
-  const collapsed = String(text || "").replace(/\s+/g, " ").trim();
-  if (!collapsed) {
-    return "";
-  }
-  if (collapsed.length <= maxLength) {
-    return collapsed;
-  }
-  if (maxLength <= 3) {
-    return collapsed.slice(0, maxLength);
-  }
-  return `${collapsed.slice(0, Math.max(0, maxLength - 3))}...`;
-}
-
 function getDisplayPathLabel(pathLabel) {
   const value = String(pathLabel || "").trim();
   if (!value) {
@@ -23,6 +9,15 @@ function getDisplayPathLabel(pathLabel) {
   return parts[parts.length - 1] || value;
 }
 
+function getSelectedLineCount(selectedText) {
+  const normalized = String(selectedText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!normalized) {
+    return 0;
+  }
+  const withoutTrailingNewline = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+  return Math.max(1, withoutTrailingNewline.split("\n").length);
+}
+
 function formatSelectionContext(input) {
   if (!input || !input.pathLabel) {
     return "No active editor";
@@ -30,39 +25,49 @@ function formatSelectionContext(input) {
 
   const pathLabel = getDisplayPathLabel(input.pathLabel);
   if (input.isEmpty) {
-    return `${pathLabel}:${input.startLine}:${input.startCharacter}`;
+    return `${pathLabel}:${input.startLine}`;
   }
 
-  if (input.startLine === input.endLine) {
-    return `${pathLabel}:${input.startLine}:${input.startCharacter}-${input.endCharacter}`;
+  const lineCount = getSelectedLineCount(input.selectedText);
+  const endLine = input.startLine + Math.max(0, lineCount - 1);
+  if (input.startLine === endLine) {
+    return `${pathLabel}:${input.startLine}`;
   }
 
-  return `${pathLabel}:${input.startLine}:${input.startCharacter}-${input.endLine}:${input.endCharacter}`;
+  return `${pathLabel}:${input.startLine}-${endLine}`;
 }
 
 function formatSelectionLocation(input) {
   if (!input || !input.pathLabel) {
     return "";
   }
-  const start = `${input.startLine}:${input.startCharacter}`;
   if (input.isEmpty) {
-    return `${input.pathLabel}:${start}`;
+    return "";
   }
-  const end = `${input.endLine}:${input.endCharacter}`;
-  return `${input.pathLabel}:${start}-${end}`;
+  const lineCount = getSelectedLineCount(input.selectedText);
+  const endLine = input.startLine + Math.max(0, lineCount - 1);
+  if (input.startLine === endLine) {
+    return `${input.pathLabel}:${input.startLine}`;
+  }
+  return `${input.pathLabel}:${input.startLine}-${endLine}`;
 }
 
 function buildSelectionPayload(input) {
   if (!input || !input.pathLabel) {
     return null;
   }
-  const location = formatSelectionLocation(input);
-  if (!location) {
+  if (input.isEmpty) {
     return null;
   }
+  const lineCount = getSelectedLineCount(input.selectedText);
+  if (!lineCount) return null;
+  const endLine = input.startLine + Math.max(0, lineCount - 1);
   return {
-    label: formatSelectionContext(input),
-    messageSuffix: `[user cursor in VSCode: ${location}] (this may or may not be relevant)`,
+    relativePath: input.pathLabel,
+    displayPath: getDisplayPathLabel(input.pathLabel),
+    startLine: input.startLine,
+    endLine,
+    lineCount,
   };
 }
 
@@ -70,5 +75,5 @@ module.exports = {
   buildSelectionPayload,
   formatSelectionContext,
   formatSelectionLocation,
-  summarizeText,
+  getSelectedLineCount,
 };

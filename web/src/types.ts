@@ -10,6 +10,7 @@ import type {
   CreationProgressEvent,
   ToolResultPreview,
   SessionTaskEntry,
+  VsCodeSelectionMetadata,
 } from "../server/session-types.js";
 import { assertNever, isClaudeFamily } from "../server/session-types.js";
 import type { ImageRef } from "../server/image-store.js";
@@ -24,7 +25,7 @@ import type {
   QuestTransitionInput,
 } from "../server/quest-types.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, ImageRef };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, ImageRef, VsCodeSelectionMetadata };
 export { assertNever, isClaudeFamily };
 export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
 
@@ -53,6 +54,7 @@ export interface ChatMessage {
     answers?: { question: string; answer: string }[];
     /** LLM rationale for auto-approved permissions (rendered separately from the summary). */
     autoApprovalReason?: string;
+    vscodeSelection?: VsCodeSelectionMetadata;
     quest?: {
       questId: string;
       title: string;

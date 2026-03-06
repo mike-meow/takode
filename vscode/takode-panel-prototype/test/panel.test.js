@@ -8,7 +8,7 @@ const {
   getHealthUrl,
   normalizeBaseUrl,
 } = require("../src/panel");
-const { formatSelectionContext, summarizeText } = require("../src/editor-context");
+const { formatSelectionContext, getSelectedLineCount } = require("../src/editor-context");
 
 test("normalizeBaseUrl falls back to the default localhost URL", () => {
   assert.equal(normalizeBaseUrl(""), DEFAULT_BASE_URL + "/");
@@ -60,7 +60,7 @@ test("formatSelectionContext renders an inline cursor label when the selection i
       isEmpty: true,
       lineText: "const route = useMemo(() => parseHash(hash), [hash]);",
     }),
-    "App.tsx:42:7",
+    "App.tsx:42",
   );
 });
 
@@ -75,13 +75,13 @@ test("formatSelectionContext renders the selection range and preview text", () =
       isEmpty: false,
       selectedText: "selected\ntext",
     }),
-    "Composer.tsx:12:3-14:9",
+    "Composer.tsx:12-13",
   );
 });
 
-test("buildSelectionPayload includes both the UI label and the appended message suffix", () => {
+test("buildSelectionPayload returns null for an empty selection", () => {
   const { buildSelectionPayload } = require("../src/editor-context");
-  assert.deepEqual(
+  assert.equal(
     buildSelectionPayload({
       pathLabel: "web/src/App.tsx",
       startLine: 42,
@@ -89,16 +89,10 @@ test("buildSelectionPayload includes both the UI label and the appended message 
       isEmpty: true,
       lineText: "const route = useMemo(() => parseHash(hash), [hash]);",
     }),
-    {
-      label: "App.tsx:42:7",
-      messageSuffix: "[user cursor in VSCode: web/src/App.tsx:42:7] (this may or may not be relevant)",
-    },
+    null,
   );
 });
 
-test("summarizeText truncates long previews without changing whitespace semantics", () => {
-  assert.equal(
-    summarizeText("alpha beta gamma delta", 10),
-    "alpha b...",
-  );
+test("getSelectedLineCount ignores a trailing newline in full-line selections", () => {
+  assert.equal(getSelectedLineCount("line one\nline two\n"), 2);
 });

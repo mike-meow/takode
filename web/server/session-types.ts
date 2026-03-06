@@ -231,6 +231,14 @@ export type ContentBlock =
   | { type: "tool_result"; tool_use_id: string; content: string | ContentBlock[]; is_error?: boolean }
   | { type: "thinking"; thinking: string; budget_tokens?: number; thinking_time_ms?: number };
 
+export interface VsCodeSelectionMetadata {
+  relativePath: string;
+  displayPath: string;
+  startLine: number;
+  endLine: number;
+  lineCount: number;
+}
+
 // ─── Browser Message Types (browser <-> bridge) ──────────────────────────────
 
 /** Messages the browser sends to the bridge */
@@ -240,6 +248,7 @@ export type BrowserOutgoingMessage =
     content: string;
     session_id?: string;
     images?: { media_type: string; data: string }[];
+    vscodeSelection?: VsCodeSelectionMetadata;
     /**
      * Codex-internal transport optimization: local file paths forwarded as
      * `UserInput::LocalImage` entries instead of inline data: URLs.
@@ -300,7 +309,7 @@ export type BrowserIncomingMessageBase =
   | { type: "error"; message: string }
   | { type: "backend_disconnected"; reason?: "idle_limit" }
   | { type: "backend_connected" }
-  | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[]; agentSource?: { sessionId: string; sessionLabel?: string } }
+  | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[]; agentSource?: { sessionId: string; sessionLabel?: string }; vscodeSelection?: VsCodeSelectionMetadata }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_order_update"; sessionOrder: Record<string, string[]> }

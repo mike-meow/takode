@@ -1,12 +1,13 @@
-export interface VsCodeSelectionContext {
-  label: string;
-  messageSuffix: string;
-  updatedAt: number;
+export interface VsCodeSelectionContextPayload {
+  relativePath: string;
+  displayPath: string;
+  startLine: number;
+  endLine: number;
+  lineCount: number;
 }
 
-export interface VsCodeSelectionContextPayload {
-  label: string;
-  messageSuffix: string;
+export interface VsCodeSelectionContext extends VsCodeSelectionContextPayload {
+  updatedAt: number;
 }
 
 export const VSCODE_CONTEXT_SOURCE = "takode-vscode-prototype";
@@ -16,12 +17,36 @@ export const VSCODE_READY_MESSAGE_TYPE = "takode:vscode-ready";
 export function isVsCodeSelectionContextPayload(value: unknown): value is VsCodeSelectionContextPayload {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return typeof record.label === "string" && typeof record.messageSuffix === "string";
+  return (
+    typeof record.relativePath === "string"
+    && typeof record.displayPath === "string"
+    && typeof record.startLine === "number"
+    && typeof record.endLine === "number"
+    && typeof record.lineCount === "number"
+  );
 }
 
-export function appendVsCodeContext(content: string, context: VsCodeSelectionContext | null, enabled: boolean): string {
-  if (!enabled || !context?.messageSuffix) return content;
-  return `${content}\n\n${context.messageSuffix}`;
+export function formatVsCodeSelectionSummary(context: VsCodeSelectionContext | VsCodeSelectionContextPayload): string {
+  const noun = context.lineCount === 1 ? "line" : "lines";
+  return `${context.lineCount} ${noun} selected`;
+}
+
+export function formatVsCodeSelectionAttachmentLabel(
+  context: VsCodeSelectionContext | VsCodeSelectionContextPayload,
+): string {
+  if (context.startLine === context.endLine) {
+    return `${context.displayPath}:${context.startLine}`;
+  }
+  return `${context.displayPath}:${context.startLine}-${context.endLine}`;
+}
+
+export function buildVsCodeSelectionPrompt(
+  context: VsCodeSelectionContext | VsCodeSelectionContextPayload,
+): string {
+  if (context.startLine === context.endLine) {
+    return `[user selection in VSCode: ${context.relativePath} line ${context.startLine}] (this may or may not be relevant)`;
+  }
+  return `[user selection in VSCode: ${context.relativePath} lines ${context.startLine}-${context.endLine}] (this may or may not be relevant)`;
 }
 
 export function maybeReadVsCodeSelectionContext(

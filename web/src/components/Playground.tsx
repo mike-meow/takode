@@ -241,6 +241,22 @@ const MSG_USER: ChatMessage = {
   timestamp: Date.now() - 60000,
 };
 
+const MSG_USER_SELECTION: ChatMessage = {
+  id: "msg-1b",
+  role: "user",
+  content: "Can you review the selected lines?",
+  timestamp: Date.now() - 57500,
+  metadata: {
+    vscodeSelection: {
+      relativePath: "web/src/components/Composer.tsx",
+      displayPath: "Composer.tsx",
+      startLine: 35,
+      endLine: 38,
+      lineCount: 4,
+    },
+  },
+};
+
 const MSG_USER_IMAGE: ChatMessage = {
   id: "msg-2",
   role: "user",
@@ -985,6 +1001,9 @@ export function Playground() {
           <div className="space-y-4 max-w-3xl">
             <Card label="User message">
               <MessageBubble message={MSG_USER} />
+            </Card>
+            <Card label="User message with VS Code selection">
+              <MessageBubble message={MSG_USER_SELECTION} />
             </Card>
             <Card label="User message with image">
               <MessageBubble message={MSG_USER_IMAGE} sessionId="playground" />

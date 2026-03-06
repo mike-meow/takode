@@ -1013,6 +1013,7 @@ export class CodexAdapter
       content: string;
       images?: { media_type: string; data: string }[];
       local_images?: string[];
+      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     },
   ): Promise<void> {
     // User message is the latest completed message before Codex starts reasoning.
@@ -1063,6 +1064,13 @@ export class CodexAdapter
 
     // Add text
     input.push({ type: "text", text: msg.content, text_elements: [] });
+    if (msg.vscodeSelection) {
+      const selection = msg.vscodeSelection;
+      const selectionText = selection.startLine === selection.endLine
+        ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
+        : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+      input.push({ type: "text", text: selectionText, text_elements: [] });
+    }
 
     // Log when payload is large (images, long prompts) to help diagnose
     // transport issues — Codex reads JSON-RPC from stdin, so huge lines

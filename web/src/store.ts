@@ -165,7 +165,6 @@ interface AppState {
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
   vscodeSelectionContext: VsCodeSelectionContext | null;
-  vscodeContextAttachEnabled: boolean;
 
   // Actions
   setDarkMode: (v: boolean) => void;
@@ -183,7 +182,6 @@ interface AppState {
   setTaskPanelOpen: (open: boolean) => void;
   setShowNewSessionModal: (open: boolean) => void;
   setVsCodeSelectionContext: (context: VsCodeSelectionContext | null) => void;
-  setVsCodeContextAttachEnabled: (enabled: boolean) => void;
   newSession: () => void;
 
   // Session actions
@@ -375,12 +373,6 @@ function getInitialNotificationDesktop(): boolean {
   return false;
 }
 
-function getInitialVsCodeContextAttachEnabled(): boolean {
-  if (typeof window === "undefined") return true;
-  const stored = localStorage.getItem("cc-vscode-context-attach-enabled");
-  return stored !== "false";
-}
-
 function getInitialZoomLevel(): number {
   if (typeof window === "undefined") return 0.9;
   const stored = localStorage.getItem("cc-zoom-level");
@@ -476,7 +468,6 @@ export const useStore = create<AppState>((set) => ({
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
   vscodeSelectionContext: null,
-  vscodeContextAttachEnabled: getInitialVsCodeContextAttachEnabled(),
   feedVisibleCount: new Map(),
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
@@ -569,10 +560,6 @@ export const useStore = create<AppState>((set) => ({
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
   setShowNewSessionModal: (open) => set({ showNewSessionModal: open }),
   setVsCodeSelectionContext: (context) => set({ vscodeSelectionContext: context }),
-  setVsCodeContextAttachEnabled: (enabled) => {
-    localStorage.setItem("cc-vscode-context-attach-enabled", String(enabled));
-    set({ vscodeContextAttachEnabled: enabled });
-  },
   newSession: () => {
     scopedRemoveItem("cc-current-session");
     set({ currentSessionId: null });

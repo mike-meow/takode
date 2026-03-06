@@ -1974,6 +1974,13 @@ export class WsBridge {
     return lastClassification;
   }
 
+  private formatVsCodeSelectionPrompt(selection: import("./session-types.js").VsCodeSelectionMetadata): string {
+    if (selection.startLine === selection.endLine) {
+      return `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`;
+    }
+    return `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+  }
+
   private maybeInjectLeaderAddressingReminder(
     session: Session,
     addressing: LeaderAssistantAddressing,
@@ -5387,6 +5394,7 @@ export class WsBridge {
       content: string;
       images?: { media_type: string; data: string }[];
       agentSource?: { sessionId: string; sessionLabel?: string };
+      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     },
     source: "adapter" | "cli",
   ): {
@@ -5411,6 +5419,7 @@ export class WsBridge {
         timestamp: ts,
         id: `user-${ts}-${this.userMsgCounter++}`,
         ...(imageRefs?.length ? { images: imageRefs } : {}),
+        ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
         ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
       };
       session.messageHistory.push(userHistoryEntry);
@@ -5464,7 +5473,7 @@ export class WsBridge {
 
   private async handleUserMessage(
     session: Session,
-    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; agentSource?: { sessionId: string; sessionLabel?: string } }
+    msg: { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; agentSource?: { sessionId: string; sessionLabel?: string }; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }
   ) {
     const maybeIngested = this.ingestUserMessage(session, msg, "cli");
     const ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
@@ -5475,6 +5484,9 @@ export class WsBridge {
     // Build content: if images are present, convert unsupported formats and use
     // content block array; otherwise plain string. Conversion operates on copies
     // so that the original base64 data stored to disk is not affected.
+    const selectionText = msg.vscodeSelection
+      ? this.formatVsCodeSelectionPrompt(msg.vscodeSelection)
+      : null;
     let content: string | unknown[];
     if (msg.images?.length) {
       const blocks: unknown[] = [];
@@ -5499,9 +5511,17 @@ export class WsBridge {
         textContent += formatAttachmentPathAnnotation(paths);
       }
       blocks.push({ type: "text", text: textContent });
+      if (selectionText) {
+        blocks.push({ type: "text", text: selectionText });
+      }
       content = blocks;
     } else {
-      content = msg.content;
+      content = selectionText
+        ? [
+          { type: "text", text: msg.content },
+          { type: "text", text: selectionText },
+        ]
+        : msg.content;
     }
 
     // Role-prefix for orchestrator sessions: the CLI sees [User], [Herd], [System], or [Agent] tags
