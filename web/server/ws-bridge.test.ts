@@ -8463,6 +8463,49 @@ describe("Codex permission_request emits herd event", () => {
   });
 });
 
+// ─── Codex adapter sets cliInitReceived for herd event delivery ────────────
+
+describe("Codex adapter sets cliInitReceived on attach", () => {
+  // Without cliInitReceived = true, isSessionIdle() returns false and herd
+  // events are never delivered. This is the primary path for Codex sessions
+  // after a server restart (cliInitReceived defaults to false, not persisted).
+  it("sets cliInitReceived to true when Codex adapter is attached", () => {
+    const sid = "s-codex-init";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const session = bridge.getSession(sid)!;
+    expect(session.cliInitReceived).toBe(true);
+  });
+
+  it("isSessionIdle returns true for idle Codex session after attach", () => {
+    const sid = "s-codex-idle";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    // Should be idle: codexAdapter set, cliInitReceived true, not generating
+    expect(bridge.isSessionIdle(sid)).toBe(true);
+  });
+
+  it("isSessionIdle returns false while Codex session is generating", () => {
+    const sid = "s-codex-gen";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    // Trigger generating state via user message
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "test",
+    }));
+
+    const session = bridge.getSession(sid)!;
+    expect(session.isGenerating).toBe(true);
+    expect(bridge.isSessionIdle(sid)).toBe(false);
+  });
+});
+
 // ─── SDK disconnect auto-relaunch ───────────────────────────────────────────
 
 describe("SDK disconnect auto-relaunch", () => {

@@ -2200,6 +2200,20 @@ export class WsBridge {
     session.state.backend_type = "codex";
     session.codexAdapter = adapter;
 
+    // Mark session as initialized immediately when the Codex adapter attaches.
+    // Mirrors the SDK path (attachClaudeSdkAdapter). Without this,
+    // cliInitReceived stays false after server restart → isSessionIdle()
+    // returns false → herd events are never delivered.
+    session.cliInitReceived = true;
+
+    // Flush pending herd events now that isSessionIdle() can return true.
+    if (this.herdEventDispatcher) {
+      const orchInfo = this.launcher?.getSession(session.id);
+      if (orchInfo?.isOrchestrator) {
+        this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+      }
+    }
+
     // Forward translated messages to browsers
     adapter.onBrowserMessage((msg) => {
       // Track Codex CLI activity for idle management and stuck detection
@@ -2211,6 +2225,9 @@ export class WsBridge {
       if (msg.type === "session_init") {
         const sanitized = this.sanitizeCodexSessionPatch(msg.session);
         session.state = { ...session.state, ...sanitized, backend_type: "codex" };
+        // Mirror SDK path (line ~2650): ensure cliInitReceived is set so
+        // isSessionIdle() works correctly for herd event delivery.
+        session.cliInitReceived = true;
         this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
         this.persistSession(session);
       } else if (msg.type === "session_update") {
