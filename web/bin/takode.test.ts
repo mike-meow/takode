@@ -505,6 +505,7 @@ describe("takode spawn", () => {
     expect(parsed.sessions).toEqual([
       expect.objectContaining({
         model: "gpt-5.4",
+        permissionMode: "bypassPermissions",
         codexReasoningEffort: "medium",
         codexInternetAccess: true,
         askPermission: false,

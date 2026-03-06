@@ -4159,6 +4159,33 @@ describe("Takode server-authoritative auth", () => {
     );
   });
 
+  it("prefers launcher permissionMode over bridge default in takode info", async () => {
+    const sessions = setupTakodeSessions();
+    sessions["worker-1"].backendType = "codex";
+    sessions["worker-1"].permissionMode = "bypassPermissions";
+    sessions["worker-1"].askPermission = false;
+    bridge.getAllSessions.mockReturnValue([
+      {
+        session_id: "worker-1",
+        permissionMode: "default",
+        uiMode: "agent",
+        git_default_branch: "main",
+      },
+    ]);
+    bridge.isBackendConnected.mockReturnValue(false);
+    bridge.isSessionBusy.mockReturnValue(false);
+
+    const res = await app.request("/api/sessions/worker-1/info", {
+      method: "GET",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.permissionMode).toBe("bypassPermissions");
+    expect(json.askPermission).toBe(false);
+  });
+
   it("removes deprecated takode watch endpoint", async () => {
     setupTakodeSessions();
     const res = await app.request("/api/events/stream?sessions=worker-1&timeout=1", {

@@ -9,6 +9,19 @@ export function createTakodeRoutes(ctx: RouteContext) {
   const api = new Hono();
   const { launcher, wsBridge, authenticateTakodeCaller, resolveId } = ctx;
 
+  const resolveReportedPermissionMode = (
+    launcherMode: string | undefined,
+    bridgeMode: string | null | undefined,
+  ): string | null => {
+    if (typeof bridgeMode === "string" && bridgeMode.trim() && bridgeMode !== "default") {
+      return bridgeMode;
+    }
+    if (typeof launcherMode === "string" && launcherMode.trim()) {
+      return launcherMode;
+    }
+    return bridgeMode || null;
+  };
+
   const buildEnrichedSessions = async (
     filterFn?: (s: ReturnType<typeof launcher.listSessions>[number]) => boolean,
   ) => {
@@ -104,7 +117,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       numTurns: bridge?.num_turns || 0,
       contextUsedPercent: bridge?.context_used_percent || 0,
       isCompacting: bridge?.is_compacting || false,
-      permissionMode: bridge?.permissionMode || session.permissionMode || null,
+      permissionMode: resolveReportedPermissionMode(session.permissionMode, bridge?.permissionMode),
       tools: bridge?.tools || [],
       mcpServers: bridge?.mcp_servers || [],
       claudeCodeVersion: bridge?.claude_code_version || null,
