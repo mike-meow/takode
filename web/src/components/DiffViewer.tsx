@@ -59,6 +59,27 @@ interface HighlightedLineMaps {
 }
 
 const GAP_EXPAND_CHUNK = 50;
+const MAX_VISIBLE_DIR_SEGMENTS = 2;
+
+function formatFileHeaderPath(fileName: string): { dirLabel: string; baseLabel: string } {
+  const normalized = fileName.replace(/\\/g, "/");
+  const hasLeadingSlash = normalized.startsWith("/");
+  const parts = normalized.split("/").filter(Boolean);
+  const baseLabel = parts.pop() || normalized;
+
+  if (parts.length === 0) {
+    return { dirLabel: "", baseLabel };
+  }
+
+  const truncated = parts.length > MAX_VISIBLE_DIR_SEGMENTS;
+  const visibleParts = truncated ? ["...", ...parts.slice(-MAX_VISIBLE_DIR_SEGMENTS)] : parts;
+  let dirLabel = `${visibleParts.join("/")}/`;
+  if (hasLeadingSlash && !truncated) {
+    dirLabel = `/${dirLabel}`;
+  }
+
+  return { dirLabel, baseLabel };
+}
 
 function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
   const patch = Diff.structuredPatch("", "", oldText, newText, "", "", { context: 3 });
@@ -366,17 +387,17 @@ function buildRenderBlocks(
 }
 
 function FileHeader({ fileName, fileStatsLabel }: { fileName: string; fileStatsLabel?: string }) {
-  const parts = fileName.split("/");
-  const base = parts.pop() || fileName;
-  const dir = parts.join("/");
+  const { dirLabel, baseLabel } = formatFileHeaderPath(fileName);
   return (
-    <div className="diff-file-header">
+    <div className="diff-file-header" title={fileName}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0">
         <path d="M9 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5L9 1z" />
         <polyline points="9 1 9 5 13 5" />
       </svg>
-      {dir && <span className="text-cc-muted">{dir}/</span>}
-      <span className="font-semibold text-cc-fg">{base}</span>
+      <span className="diff-file-path">
+        {dirLabel && <span className="text-cc-muted">{dirLabel}</span>}
+        <span className="font-semibold text-cc-fg">{baseLabel}</span>
+      </span>
       {fileStatsLabel && <span className="ml-2 text-cc-muted text-[11px] font-mono-code">{fileStatsLabel}</span>}
     </div>
   );

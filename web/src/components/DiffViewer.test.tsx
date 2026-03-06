@@ -143,6 +143,21 @@ index 1234567..abcdefg 100644
     expect(screen.getByText("Button.tsx")).toBeTruthy();
   });
 
+  it("truncates long file paths in headers and keeps the full path as a tooltip", () => {
+    const longPath = "/home/jiayiwei/.companion/worktrees/companion/jiayi-wt-7712/vscode/takode-panel-prototype/package.json";
+    render(
+      <DiffViewer
+        oldText="a"
+        newText="b"
+        fileName={longPath}
+      />,
+    );
+
+    expect(screen.getByText(".../vscode/takode-panel-prototype/")).toBeTruthy();
+    expect(screen.getByText("package.json")).toBeTruthy();
+    expect(screen.getByTitle(longPath)).toBeTruthy();
+  });
+
   it("handles multi-file unified diff", () => {
     const multiDiff = `diff --git a/a.ts b/a.ts
 --- a/a.ts
