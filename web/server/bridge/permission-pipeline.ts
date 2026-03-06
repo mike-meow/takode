@@ -198,6 +198,19 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
     return { kind: "mode_auto_approved", request: perm };
   }
 
+  // Helper: set deferralReason when sensitive file/command blocks auto-approval
+  const setSensitiveDeferralReason = (): void => {
+    if (NEVER_AUTO_APPROVE.has(toolName)) return; // UI handles AskUserQuestion/ExitPlanMode specially
+    const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
+    const filePath = isFileEdit ? String(input.file_path ?? "") : "";
+    const bashCommand = toolName === "Bash" ? String(input.command ?? "") : "";
+    if (isFileEdit && isSensitiveConfigPath(filePath)) {
+      perm.deferralReason = "Sensitive file — requires manual approval";
+    } else if (toolName === "Bash" && isSensitiveBashCommand(bashCommand)) {
+      perm.deferralReason = "Modifies sensitive config — requires manual approval";
+    }
+  };
+
   // Tier 2: Settings.json rule matching — fast static check against user allow rules.
   // For SDK sessions, the CLI's built-in rule engine is bypassed by --permission-prompt-tool
   // stdio. For Codex sessions, there is no CLI-side rule engine at all.
@@ -216,6 +229,7 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
       }
       // Fall through to LLM/human
       if (!llmAutoApproveEnabled || !isLlmAutoApprovalEligible(session, toolName, input)) {
+        setSensitiveDeferralReason();
         return complete(null);
       }
       return shouldAttemptAutoApproval(
@@ -226,6 +240,7 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
   }
 
   if (!llmAutoApproveEnabled || !isLlmAutoApprovalEligible(session, toolName, input)) {
+    setSensitiveDeferralReason();
     return complete(null);
   }
 
