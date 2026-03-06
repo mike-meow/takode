@@ -2932,6 +2932,70 @@ describe("Persistence", () => {
     expect(session.state.model).toBe("live-model");
   });
 
+  it("restoreFromDisk: finalizes stale disconnected bash tools recovered from history", async () => {
+    const startedAt = Date.now() - 180_000;
+    store.saveSync({
+      id: "persisted-codex-tool",
+      state: {
+        session_id: "persisted-codex-tool",
+        backend_type: "codex",
+        model: "gpt-5-codex",
+        cwd: "/saved",
+        tools: ["Bash"],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 1,
+        context_used_percent: 0,
+        is_compacting: false,
+        git_branch: "",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/saved",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [
+        {
+          type: "assistant",
+          message: {
+            id: "assistant-persisted-tool",
+            type: "message",
+            role: "assistant",
+            model: "gpt-5-codex",
+            content: [{ type: "tool_use", id: "cmd_restore", name: "Bash", input: { command: "git status --short" } }],
+            stop_reason: "tool_use",
+            usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: startedAt,
+          tool_start_times: { cmd_restore: startedAt },
+        } as any,
+      ],
+      pendingMessages: [],
+      pendingPermissions: [],
+      toolResults: [],
+    });
+
+    await store.flushAll();
+    const count = await bridge.restoreFromDisk();
+    expect(count).toBe(1);
+
+    const session = bridge.getSession("persisted-codex-tool")!;
+    expect(session.toolStartTimes.has("cmd_restore")).toBe(false);
+    const previewMsg = session.messageHistory.findLast((m) => m.type === "tool_result_preview") as any;
+    expect(previewMsg).toBeDefined();
+    expect(previewMsg.previews[0].tool_use_id).toBe("cmd_restore");
+    expect(previewMsg.previews[0].is_error).toBe(true);
+    expect(previewMsg.previews[0].content).toContain("backend was disconnected");
+  });
+
   it("persistSession: called after state changes (via store.save)", async () => {
     mockExecSync.mockImplementation(() => {
       throw new Error("not a git repo");
@@ -7156,6 +7220,62 @@ describe("Codex resumed-turn recovery", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("result finalizes silent bash tools so they do not stay running forever", async () => {
+    const sid = "s-result-silent-terminal";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run silent command",
+    }));
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "assistant-cmd-silent",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_use", id: "cmd_silent", name: "Bash", input: { command: "true" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    browser.send.mockClear();
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 1000,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "codex-result-silent",
+        session_id: sid,
+      },
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const preview = calls.find((c: any) =>
+      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_silent"));
+    expect(preview).toBeDefined();
+    expect(preview.previews[0].is_error).toBe(false);
+    expect(preview.previews[0].content).toContain("no output was captured");
+    expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_silent")).toBe(false);
   });
 });
 

@@ -1518,6 +1518,10 @@ export class WsBridge {
         }
       }
 
+      this.recoverToolStartTimesFromHistory(session);
+      this.finalizeRecoveredDisconnectedTerminalTools(session, "restore_from_disk");
+      this.scheduleCodexToolResultWatchdogs(session, "restore_from_disk");
+
       this.sessions.set(p.id, session);
       count++;
     }
@@ -3772,6 +3776,7 @@ export class WsBridge {
 
     const turnTriggerSource = this.getCurrentTurnTriggerSource(session);
     this.setGenerating(session, false, "result");
+    this.finalizeOrphanedTerminalToolsOnResult(session, msg);
     // Turn completed — the user message was processed. Clear the re-queue
     // tracker so we don't re-send it on a subsequent disconnect.
     session.lastOutboundUserNdjson = null;
@@ -4411,6 +4416,106 @@ export class WsBridge {
     console.warn(
       `[ws-bridge] Synthesized tool_result_preview for orphaned tool ${toolUseId} in session ${sessionTag(session.id)} (${reason})`,
     );
+  }
+
+  private findToolUseNameInHistory(session: Session, toolUseId: string): string | null {
+    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+      const msg = session.messageHistory[i];
+      if (msg.type !== "assistant") continue;
+      const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content) {
+        if (block.type === "tool_use" && block.id === toolUseId) {
+          return typeof block.name === "string" ? block.name : null;
+        }
+      }
+    }
+    return null;
+  }
+
+  private collectUnresolvedToolStartTimesFromHistory(session: Session): Map<string, number> {
+    const starts = new Map<string, number>();
+    const resolved = new Set<string>();
+
+    for (const msg of session.messageHistory) {
+      if (msg.type === "assistant") {
+        const raw = (msg as Record<string, unknown>).tool_start_times;
+        if (raw && typeof raw === "object") {
+          for (const [toolUseId, ts] of Object.entries(raw as Record<string, unknown>)) {
+            if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+            const prev = starts.get(toolUseId);
+            if (prev == null || ts < prev) starts.set(toolUseId, ts);
+          }
+        }
+      } else if (msg.type === "tool_result_preview") {
+        for (const preview of msg.previews || []) {
+          if (typeof preview.tool_use_id === "string") {
+            resolved.add(preview.tool_use_id);
+          }
+        }
+      }
+    }
+
+    for (const toolUseId of resolved) {
+      starts.delete(toolUseId);
+    }
+    return starts;
+  }
+
+  private recoverToolStartTimesFromHistory(session: Session): void {
+    const unresolved = this.collectUnresolvedToolStartTimesFromHistory(session);
+    if (unresolved.size === 0) return;
+    for (const [toolUseId, startedAt] of unresolved) {
+      if (!session.toolStartTimes.has(toolUseId)) {
+        session.toolStartTimes.set(toolUseId, startedAt);
+      }
+    }
+  }
+
+  private finalizeRecoveredDisconnectedTerminalTools(session: Session, reason: string): void {
+    if (session.backendType !== "codex") return;
+    if (session.codexAdapter?.isConnected()) return;
+
+    const now = Date.now();
+    for (const [toolUseId, startedAt] of session.toolStartTimes) {
+      if (now - startedAt < CODEX_TOOL_RESULT_WATCHDOG_MS) continue;
+      const toolName = this.findToolUseNameInHistory(session, toolUseId);
+      if (toolName !== "Bash") continue;
+      this.emitSyntheticToolResultPreview(
+        session,
+        toolUseId,
+        "Terminal command was interrupted while backend was disconnected; final output was not recovered.",
+        true,
+        reason,
+      );
+    }
+  }
+
+  private finalizeOrphanedTerminalToolsOnResult(session: Session, msg: CLIResultMessage): void {
+    if (session.backendType !== "codex") return;
+    if (session.toolStartTimes.size === 0) return;
+
+    const stopReason = typeof msg.stop_reason === "string" ? msg.stop_reason.toLowerCase() : "";
+    const interrupted = stopReason.includes("interrupt") || stopReason.includes("cancel");
+    const failed = !!msg.is_error || interrupted;
+
+    for (const toolUseId of [...session.toolStartTimes.keys()]) {
+      const toolName = this.findToolUseNameInHistory(session, toolUseId);
+      if (toolName !== "Bash") continue;
+
+      const content = interrupted
+        ? "Terminal command was interrupted before the final tool result was delivered."
+        : failed
+          ? "Terminal command failed before the final tool result was delivered."
+          : "Terminal command completed, but no output was captured.";
+      this.emitSyntheticToolResultPreview(
+        session,
+        toolUseId,
+        content,
+        failed,
+        "result_orphaned_terminal",
+      );
+    }
   }
 
   private scheduleCodexToolResultWatchdogs(session: Session, reason: string): void {
@@ -5101,6 +5206,9 @@ export class WsBridge {
     data.subscribed = true;
     const lastAckSeq = Number.isFinite(lastSeq) ? Math.max(0, Math.floor(lastSeq)) : 0;
     data.lastAckSeq = lastAckSeq;
+    this.recoverToolStartTimesFromHistory(session);
+    this.finalizeRecoveredDisconnectedTerminalTools(session, "session_subscribe");
+    this.scheduleCodexToolResultWatchdogs(session, "session_subscribe");
 
     // Clean up stale pendingPermissions that were already resolved in
     // messageHistory. This handles the case where the server crashed before
