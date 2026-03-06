@@ -1548,6 +1548,43 @@ describe("CodexAdapter", () => {
     expect(allWritten).not.toContain('"method":"thread/start"');
   });
 
+  it("restores currentTurnId when thread/resume returns an in-progress turn", async () => {
+    const mock = createMockProcess();
+
+    const adapter = new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      threadId: "thr_existing_789",
+    });
+
+    await tick();
+
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    mock.stdout.push(JSON.stringify({
+      id: 2,
+      result: {
+        thread: {
+          id: "thr_existing_789",
+          turns: [
+            {
+              id: "turn_in_progress",
+              status: "inProgress",
+              items: [
+                { type: "userMessage", content: [{ type: "text", text: "run command" }] },
+                { type: "commandExecution", id: "cmd_live", status: "in_progress", command: ["sleep", "60"] },
+              ],
+            },
+          ],
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    expect(adapter.getCurrentTurnId()).toBe("turn_in_progress");
+  });
+
   it("falls back to thread/start when thread/resume fails with missing rollout", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const errors: string[] = [];

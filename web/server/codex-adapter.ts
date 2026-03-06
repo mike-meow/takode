@@ -903,6 +903,9 @@ export class CodexAdapter
           }) as { thread: Record<string, unknown> & { id: string } };
           this.threadId = resumeResult.thread.id;
           resumeSnapshot = this.buildResumeSnapshot(resumeResult.thread);
+          this.currentTurnId = resumeSnapshot?.lastTurn?.status === "inProgress"
+            ? resumeSnapshot.lastTurn.id
+            : null;
         } catch (err) {
           // Fresh or partially-initialized Codex threads may fail resume with
           // "no rollout found". Fall back to a fresh thread to avoid a stuck session.

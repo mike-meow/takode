@@ -6888,9 +6888,73 @@ describe("Codex resumed-turn recovery", () => {
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const recovered = calls.find((c: any) =>
       c.type === "assistant"
-      && c.message?.id === "codex-recovered-item-a1"
+      && c.message?.id === "codex-agent-item-a1"
       && c.message?.content?.[0]?.text === "Recovered answer from resumed turn");
     expect(recovered).toBeDefined();
+  });
+
+  it("deduplicates resumed assistant text when codex replays the same item after reconnect", async () => {
+    const sid = "s-replay-dedup";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "recover and replay",
+    }));
+
+    adapter1.emitDisconnect("turn-replay");
+
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-replay",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-replay",
+        turnCount: 11,
+        lastTurn: {
+          id: "turn-replay",
+          status: "completed",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "recover and replay" }] },
+            { type: "agentMessage", id: "item-replay", text: "Recovered once" },
+          ],
+        },
+      },
+    });
+
+    browser.send.mockClear();
+    adapter2.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-agent-item-replay",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "text", text: "Recovered once" }],
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now() + 1000,
+    });
+
+    const session = bridge.getSession(sid)!;
+    expect(session.messageHistory.filter((msg: any) =>
+      msg.type === "assistant" && msg.message?.id === "codex-agent-item-replay")).toHaveLength(1);
+    expect(browser.send).not.toHaveBeenCalled();
   });
 
   it("retries the user message when resumed turn has only user input", async () => {
@@ -7217,6 +7281,82 @@ describe("Codex resumed-turn recovery", () => {
         c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_live"));
       expect(preview).toBeUndefined();
       expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_live")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("watchdog finalizes resumed in-progress bash tools after reconnect confirmation", async () => {
+    vi.useFakeTimers();
+    try {
+      const sid = "s-watchdog-resumed-turn";
+      const adapter1 = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter1 as any);
+
+      const browser = makeBrowserSocket(sid);
+      bridge.handleBrowserOpen(browser, sid);
+      browser.send.mockClear();
+
+      await bridge.handleBrowserMessage(browser, JSON.stringify({
+        type: "user_message",
+        content: "run reconnecting command",
+      }));
+      adapter1.emitBrowserMessage({
+        type: "assistant",
+        message: {
+          id: "assistant-cmd-reconnect",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.3-codex",
+          content: [{ type: "tool_use", id: "cmd_reconnect", name: "Bash", input: { command: "sleep 36000" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: Date.now(),
+      });
+      browser.send.mockClear();
+
+      adapter1.emitDisconnect("turn-reconnect");
+
+      const adapter2 = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter2 as any);
+      adapter2.emitSessionMeta({
+        cliSessionId: "thread-reconnect",
+        model: "gpt-5.3-codex",
+        cwd: "/repo",
+        resumeSnapshot: {
+          threadId: "thread-reconnect",
+          turnCount: 15,
+          lastTurn: {
+            id: "turn-reconnect",
+            status: "inProgress",
+            error: null,
+            items: [
+              { type: "userMessage", content: [{ type: "text", text: "run reconnecting command" }] },
+              { type: "commandExecution", id: "cmd_reconnect", status: "in_progress", command: ["sleep", "36000"] },
+            ],
+          },
+        },
+      });
+
+      const pending = bridge.getSession(sid)?.pendingCodexTurnRecovery;
+      expect(pending?.resumeConfirmedAt).not.toBeNull();
+      expect(browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg)).find((c: any) =>
+        c.type === "error"
+        && typeof c.message === "string"
+        && c.message.includes("non-text tool activity"))).toBeUndefined();
+
+      browser.send.mockClear();
+      vi.advanceTimersByTime(120_000);
+
+      const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+      const preview = calls.find((c: any) =>
+        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_reconnect"));
+      expect(preview).toBeDefined();
+      expect(preview.previews[0].is_error).toBe(true);
+      expect(preview.previews[0].content).toContain("interrupted");
+      expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_reconnect")).toBe(false);
     } finally {
       vi.useRealTimers();
     }

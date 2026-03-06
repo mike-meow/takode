@@ -221,6 +221,7 @@ interface PendingCodexTurnRecovery {
   userContent: string;
   turnId: string | null;
   disconnectedAt: number | null;
+  resumeConfirmedAt: number | null;
 }
 
 type LeaderAssistantAddressing = "not_leader" | "user" | "self" | "missing";
@@ -1896,16 +1897,18 @@ export class WsBridge {
 
   /**
    * Codex can replay prior assistant messages after reconnect. Deduplicate only
-   * when timestamp + content + parent tool context all match a recent assistant.
-   * This keeps the filter narrow so legitimate repeated text still appears.
+   * when the canonical assistant ID matches, or when timestamp + content +
+   * parent tool context all match a recent assistant. This keeps the fallback
+   * filter narrow so legitimate repeated text still appears.
    */
   private isDuplicateCodexAssistantReplay(
     session: Session,
     msg: Extract<BrowserIncomingMessage, { type: "assistant" }>,
   ): boolean {
-    if (typeof msg.timestamp !== "number") return false;
+    const incomingId = typeof msg.message?.id === "string" ? msg.message.id : null;
+    if (!incomingId && typeof msg.timestamp !== "number") return false;
 
-    const incomingTimestamp = msg.timestamp;
+    const incomingTimestamp = typeof msg.timestamp === "number" ? msg.timestamp : null;
     const incomingParentToolUseId = msg.parent_tool_use_id;
     const incomingContentKey = JSON.stringify(msg.message.content);
 
@@ -1917,7 +1920,11 @@ export class WsBridge {
       if (scannedAssistants > WsBridge.CODEX_ASSISTANT_REPLAY_SCAN_LIMIT) break;
 
       const existing = entry as Extract<BrowserIncomingMessage, { type: "assistant" }>;
+      if (incomingId && existing.message?.id === incomingId) {
+        return true;
+      }
       if (existing.parent_tool_use_id !== incomingParentToolUseId) continue;
+      if (incomingTimestamp == null) continue;
       if (typeof existing.timestamp !== "number") continue;
       if (existing.timestamp !== incomingTimestamp) continue;
       if (Math.abs(existing.timestamp - incomingTimestamp) > WsBridge.CODEX_ASSISTANT_REPLAY_DEDUP_WINDOW_MS) continue;
@@ -2437,6 +2444,7 @@ export class WsBridge {
       if (session.pendingCodexTurnRecovery) {
         session.pendingCodexTurnRecovery.turnId = disconnectedTurnId;
         session.pendingCodexTurnRecovery.disconnectedAt = Date.now();
+        session.pendingCodexTurnRecovery.resumeConfirmedAt = null;
       }
       const now = Date.now();
       const intentionalRelaunch = session.intentionalCodexRelaunchUntil !== null
@@ -4474,10 +4482,10 @@ export class WsBridge {
 
   private finalizeRecoveredDisconnectedTerminalTools(session: Session, reason: string): void {
     if (session.backendType !== "codex") return;
-    if (session.codexAdapter?.isConnected()) return;
 
     const now = Date.now();
     for (const [toolUseId, startedAt] of session.toolStartTimes) {
+      if (this.shouldDeferCodexToolResultWatchdog(session, toolUseId)) continue;
       if (now - startedAt < CODEX_TOOL_RESULT_WATCHDOG_MS) continue;
       const toolName = this.findToolUseNameInHistory(session, toolUseId);
       if (toolName !== "Bash") continue;
@@ -4526,9 +4534,7 @@ export class WsBridge {
         session.codexToolResultWatchdogs.delete(toolUseId);
         if (!session.toolStartTimes.has(toolUseId)) return;
 
-        // Keep waiting while Codex is connected; this avoids timing out
-        // legitimate long-running commands that continue after reconnect.
-        if (session.codexAdapter?.isConnected()) {
+        if (this.shouldDeferCodexToolResultWatchdog(session, toolUseId)) {
           this.scheduleCodexToolResultWatchdogs(session, "backend_connected");
           return;
         }
@@ -4543,6 +4549,22 @@ export class WsBridge {
       }, CODEX_TOOL_RESULT_WATCHDOG_MS);
       session.codexToolResultWatchdogs.set(toolUseId, timer);
     }
+  }
+
+  private shouldDeferCodexToolResultWatchdog(session: Session, toolUseId: string): boolean {
+    if (!session.codexAdapter?.isConnected()) return false;
+
+    const pending = session.pendingCodexTurnRecovery;
+    if (!pending) return true;
+    if (pending.resumeConfirmedAt == null) return true;
+    if (pending.disconnectedAt == null) return true;
+
+    const startedAt = session.toolStartTimes.get(toolUseId);
+    if (typeof startedAt !== "number") return true;
+
+    // Only time out tools that were already running before the disconnect and
+    // remained unresolved after Codex confirmed the resumed turn.
+    return startedAt > pending.disconnectedAt;
   }
 
   private synthesizeCodexToolResultsFromResumedTurn(
@@ -5095,6 +5117,7 @@ export class WsBridge {
           userContent: msg.content || "",
           turnId: null,
           disconnectedAt: null,
+          resumeConfirmedAt: null,
         };
       }
 
@@ -6184,6 +6207,16 @@ export class WsBridge {
       return;
     }
 
+    if (lastTurn.status === "inProgress") {
+      session.pendingCodexTurnRecovery = {
+        ...pending,
+        turnId: lastTurn.id,
+        resumeConfirmedAt: Date.now(),
+      };
+      this.persistSession(session);
+      return;
+    }
+
     session.pendingCodexTurnRecovery = null;
     console.warn(
       `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} has non-user items but no recoverable agentMessage text; skipping auto-retry to avoid duplicate side effects`,
@@ -6231,6 +6264,7 @@ export class WsBridge {
       ...pending,
       turnId: null,
       disconnectedAt: null,
+      resumeConfirmedAt: null,
     };
     session.pendingCodexTurnRecovery = nextPending;
     this.markRunningFromUserDispatch(session, "codex_resume_retry");
@@ -6261,7 +6295,7 @@ export class WsBridge {
       if (!text.trim()) continue;
 
       const itemId = typeof item.id === "string" ? item.id : `${turn.id}-${i}`;
-      const assistantId = `codex-recovered-${itemId}`;
+      const assistantId = `codex-agent-${itemId}`;
       const alreadyExists = session.messageHistory.some((m) => (
         m.type === "assistant" && m.message?.id === assistantId
       ));
