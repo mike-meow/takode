@@ -6,6 +6,8 @@ const { buildSelectionPayload } = require("./editor-context");
 
 const VIEW_TYPE = "takode.panelPrototype";
 
+let lastSelectionPayload = null;
+
 function getNonce() {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let value = "";
@@ -97,10 +99,21 @@ function pushSelectionContext(panel) {
   if (!panel) {
     return;
   }
+  if (vscode.window.activeTextEditor) {
+    lastSelectionPayload = getSelectionContext(vscode.window.activeTextEditor);
+  }
   void panel.webview.postMessage({
     type: "selectionContext",
-    payload: getSelectionContext(),
+    payload: lastSelectionPayload,
   });
+}
+
+function refreshSelectionContext(editor = vscode.window.activeTextEditor) {
+  if (!editor) {
+    return lastSelectionPayload;
+  }
+  lastSelectionPayload = getSelectionContext(editor);
+  return lastSelectionPayload;
 }
 
 function attachPanel(panel, state) {
@@ -181,13 +194,15 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => {
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      refreshSelectionContext(editor);
       pushSelectionContext(panelRef);
     }),
   );
 
   context.subscriptions.push(
-    vscode.window.onDidChangeTextEditorSelection(() => {
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+      refreshSelectionContext(event.textEditor);
       pushSelectionContext(panelRef);
     }),
   );
