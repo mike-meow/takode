@@ -316,7 +316,7 @@ describe("ToolBlock", () => {
     expect(dollarSpan?.textContent).toBe("$ ");
   });
 
-  it("renders Edit diff view when expanded", () => {
+  it("renders Edit diff view inline (flat, no collapse)", () => {
     const { container } = render(
       <ToolBlock
         name="Edit"
@@ -329,11 +329,8 @@ describe("ToolBlock", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button"));
-
-    // DiffViewer renders file header with basename
+    // Edit tools render as flat inline diffs — no click needed
     expect(screen.getByText("app.ts")).toBeTruthy();
-    // DiffViewer renders del/add lines
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
@@ -363,7 +360,6 @@ describe("ToolBlock", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -394,7 +390,6 @@ describe("ToolBlock", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -424,7 +419,6 @@ describe("ToolBlock", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -443,9 +437,8 @@ describe("ToolBlock", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByText("Applied changes")).toBeTruthy();
-    expect(screen.getByText("modify: /home/user/src/app.ts")).toBeTruthy();
+    // Flat inline view shows change summary directly
+    expect(screen.getByText(/modify.*app\.ts/)).toBeTruthy();
   });
 
   it("renders Read file path when expanded", () => {

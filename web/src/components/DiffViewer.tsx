@@ -394,7 +394,7 @@ export function DiffViewer({
 }: DiffViewerProps) {
   const isCompact = mode === "compact";
   const showLineNumbers = showLineNumbersProp ?? false;
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [expandedGaps, setExpandedGaps] = useState<Record<string, number>>({});
 
   const hasSource = oldText !== undefined || newText !== undefined;

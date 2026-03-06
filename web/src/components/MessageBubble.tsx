@@ -758,6 +758,18 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
 
+  // Edit/Write groups: flat stack of inline diffs, no group card wrapper.
+  // Each ToolBlock renders as EditInline (flat diff) via its own early return.
+  if (name === "Edit" || name === "Write") {
+    return (
+      <div className="flex flex-col gap-2">
+        {items.map((item, i) => (
+          <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button

@@ -155,6 +155,11 @@ export const ToolBlock = memo(function ToolBlock({
     return <TodoWriteInline input={input} />;
   }
 
+  // Edit/Write: flat inline diff — no card wrapper, no collapse, the diff IS the display
+  if (name === "Edit" || name === "Write") {
+    return <EditInline input={input} toolUseId={toolUseId} sessionId={sessionId} />;
+  }
+
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button
@@ -240,6 +245,57 @@ function TodoWriteInline({ input }: { input: Record<string, unknown> }) {
       </span>
     </div>
   );
+}
+
+/** Flat inline diff for Edit/Write tools — no card wrapper, no collapse button.
+ *  The diff IS the tool display, like GitHub inline diffs. Error results still show. */
+function EditInline({ input, toolUseId, sessionId }: {
+  input: Record<string, unknown>;
+  toolUseId: string;
+  sessionId?: string;
+}) {
+  const result = useStore((s) =>
+    sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined,
+  );
+  // Distinguish Edit from Write by checking for edit-specific fields
+  const isWrite = "content" in input && !("old_string" in input) && !("new_string" in input) && !("changes" in input);
+  const parsed = !isWrite ? parseEditToolInput(input) : null;
+  const writeParsed = isWrite ? parseWriteToolInput(input) : null;
+  const filePath = parsed?.filePath || writeParsed?.filePath || "";
+
+  // Show error results inline (failed edits)
+  if (result?.is_error) {
+    return (
+      <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+        <div className="text-xs font-mono-code text-red-400 mb-1">{filePath}</div>
+        <pre className="text-[11px] font-mono-code text-red-300 whitespace-pre-wrap">{result.content}</pre>
+      </div>
+    );
+  }
+
+  // Edit tool: render diff directly
+  if (parsed) {
+    if (parsed.unifiedDiff) {
+      return <DiffViewer unifiedDiff={parsed.unifiedDiff} fileName={filePath} mode="compact" />;
+    }
+    if (parsed.changes.length > 0 && !parsed.oldText && !parsed.newText) {
+      return (
+        <div className="text-xs text-cc-muted font-mono-code space-y-0.5">
+          {parsed.changes.map((c, i) => (
+            <div key={i}>{typeof c.kind === "string" ? c.kind : "modify"}: {typeof c.path === "string" ? c.path : filePath}</div>
+          ))}
+        </div>
+      );
+    }
+    return <DiffViewer oldText={parsed.oldText} newText={parsed.newText} fileName={filePath} mode="compact" />;
+  }
+
+  // Write tool: show new file content as a diff
+  if (writeParsed) {
+    return <DiffViewer newText={writeParsed.content} fileName={filePath} mode="compact" />;
+  }
+
+  return null;
 }
 
 function formatBytes(bytes: number): string {

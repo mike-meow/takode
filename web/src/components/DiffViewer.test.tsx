@@ -67,12 +67,13 @@ index 1234567..abcdefg 100644
     expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
   });
 
-  it("renders full mode with line numbers", () => {
+  it("renders full mode with line numbers when explicitly enabled", () => {
     const { container } = render(
       <DiffViewer
         oldText="hello"
         newText="world"
         mode="full"
+        showLineNumbers
       />,
     );
     expect(container.querySelector(".diff-full")).toBeTruthy();
