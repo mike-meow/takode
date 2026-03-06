@@ -3836,7 +3836,7 @@ export class WsBridge {
     if (msg.request.subtype !== "can_use_tool") return;
     const toolName = msg.request.tool_name;
     const applyResult = (result: PermissionPipelineResult): void => {
-      if (result.kind === "mode_auto_approved") {
+      if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
         const ndjson = JSON.stringify({
           type: "control_response",
           response: {
@@ -3954,7 +3954,7 @@ export class WsBridge {
    */
   private handleSdkPermissionRequest(session: Session, perm: PermissionRequest): void | Promise<void> {
     const applyResult = (result: PermissionPipelineResult): void => {
-      if (result.kind === "mode_auto_approved") {
+      if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
         // Auto-approve: send response directly back to the SDK adapter
         if (session.claudeSdkAdapter) {
           session.claudeSdkAdapter.sendBrowserMessage({
