@@ -67,6 +67,20 @@ index 1234567..abcdefg 100644
     expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
   });
 
+  it("renders custom header actions alongside the file header", () => {
+    render(
+      <DiffViewer
+        oldText="hello"
+        newText="world"
+        fileName="src/file.ts"
+        headerActions={<button type="button">Open File</button>}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Open File" })).toBeTruthy();
+    expect(screen.getByText("file.ts")).toBeTruthy();
+  });
+
   it("renders full mode with line numbers when explicitly enabled", () => {
     const { container } = render(
       <DiffViewer

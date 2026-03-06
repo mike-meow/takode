@@ -352,6 +352,25 @@ select {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.diff-file-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.diff-file-action-btn {
+  border: 1px solid var(--color-cc-border);
+  background: color-mix(in oklab, var(--color-cc-bg) 88%, transparent);
+  color: var(--color-cc-muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.diff-file-action-btn:hover {
+  color: var(--color-cc-fg);
+  background: var(--color-cc-hover);
+}
 .dark .diff-file-header {
   background: rgba(255,255,255,0.04);
 }

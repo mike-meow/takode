@@ -24,6 +24,7 @@ import {
   type VsCodeSelectionContextPayload,
   maybeReadVsCodeSelectionContext,
 } from "./utils/vscode-context.js";
+import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
 
 type TakodeDebugWindow = Window & typeof globalThis & {
   __TAKODE_VSCODE_CONTEXT__?: VsCodeSelectionContextPayload | null;
@@ -104,6 +105,16 @@ export default function App() {
       delete debugWindow.__TAKODE_CLEAR_VSCODE_CONTEXT__;
       window.removeEventListener("message", handleParentMessage);
     };
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        await ensureVsCodeEditorPreference();
+      } catch {
+        // Ignore editor preference sync failures so the embedded app stays usable.
+      }
+    })();
   }, []);
 
   // Poll server health every 10s. Require 2+ consecutive failures before marking unreachable.

@@ -10,6 +10,7 @@ import type { SessionItem as SessionItemType } from "../utils/project-grouping.j
 import { CodeCopyButton } from "./CodeCopyButton.js";
 import { withQuestIdInHash } from "../utils/routing.js";
 import { highlightCode } from "../utils/syntax-highlighting.js";
+import { openFileInEmbeddedVsCode } from "../utils/vscode-bridge.js";
 
 function parseQuestIdFromHref(href?: string): string | null {
   if (!href) return null;
@@ -435,6 +436,9 @@ function SessionMarkdownLink({ sessionNum, children }: { sessionNum: number; chi
 function FileMarkdownLink({ target, children }: { target: FileLinkTarget; children: ReactNode }) {
   const onClick = useCallback(async (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
+    if (openFileInEmbeddedVsCode(target)) {
+      return;
+    }
     let settings;
     try {
       settings = await api.getSettings();

@@ -14,6 +14,7 @@ import { MarkdownContent } from "./MarkdownContent.js";
 
 describe("MarkdownContent quest links", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     window.location.hash = "#/session/s1";
     useStore.getState().reset();
     mockGetSettings.mockReset();
@@ -140,5 +141,28 @@ describe("MarkdownContent quest links", () => {
     });
     expect(openSpy).not.toHaveBeenCalled();
     openSpy.mockRestore();
+  });
+
+  it("routes file links through the VS Code embed bridge when running inside the panel", () => {
+    window.history.replaceState({}, "", "/?takodeHost=vscode");
+    const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+
+    render(<MarkdownContent text="[app.ts](file:/tmp/project/app.ts:7:3)" />);
+    fireEvent.click(screen.getByRole("link", { name: "app.ts" }));
+
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: "takode-vscode-prototype",
+        type: "takode:open-file",
+        payload: {
+          absolutePath: "/tmp/project/app.ts",
+          line: 7,
+          column: 3,
+        },
+      },
+      "*",
+    );
+    expect(mockGetSettings).not.toHaveBeenCalled();
+    postMessageSpy.mockRestore();
   });
 });

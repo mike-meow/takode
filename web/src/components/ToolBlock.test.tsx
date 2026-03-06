@@ -365,6 +365,53 @@ describe("ToolBlock", () => {
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
 
+  it("shows an Open File action for embedded VS Code diffs and jumps to the first changed line", () => {
+    window.history.replaceState({}, "", "/?takodeHost=vscode");
+    const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+
+    render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/src/app.ts",
+          changes: [
+            {
+              path: "/home/user/src/app.ts",
+              kind: "modify",
+              diff: [
+                "diff --git a/src/app.ts b/src/app.ts",
+                "--- a/src/app.ts",
+                "+++ b/src/app.ts",
+                "@@ -10,2 +12,3 @@",
+                "-const x = 1;",
+                "+const x = 2;",
+              ].join("\n"),
+            },
+          ],
+        }}
+        toolUseId="tool-7-open"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open File" }));
+
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: "takode-vscode-prototype",
+        type: "takode:open-file",
+        payload: {
+          absolutePath: "/home/user/src/app.ts",
+          line: 12,
+          column: 1,
+        },
+      },
+      "*",
+    );
+
+    postMessageSpy.mockRestore();
+    window.history.replaceState({}, "", "/");
+  });
+
   it("renders Edit diff when changes use unified_diff field", () => {
     const { container } = render(
       <ToolBlock

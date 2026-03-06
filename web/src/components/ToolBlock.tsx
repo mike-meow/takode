@@ -8,6 +8,8 @@ import { CopyFormatButton } from "./CopyFormatButton.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
+import { isEmbeddedInVsCode } from "../utils/embed-context.js";
+import { openFileInEmbeddedVsCode, resolveEmbeddedVsCodePath } from "../utils/vscode-bridge.js";
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: "terminal",
@@ -254,14 +256,39 @@ function EditInline({ input, toolUseId, sessionId }: {
   toolUseId: string;
   sessionId?: string;
 }) {
+  const isEmbedded = isEmbeddedInVsCode();
   const result = useStore((s) =>
     sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined,
   );
+  const sessionCwd = useStore((s) => {
+    if (!sessionId) return null;
+    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
+  });
   // Distinguish Edit from Write by checking for edit-specific fields
   const isWrite = "content" in input && !("old_string" in input) && !("new_string" in input) && !("changes" in input);
   const parsed = !isWrite ? parseEditToolInput(input) : null;
   const writeParsed = isWrite ? parseWriteToolInput(input) : null;
-  const filePath = parsed?.filePath || writeParsed?.filePath || "";
+  const filePath = parsed?.filePath || writeParsed?.filePath || (parsed?.changes.find((change) => typeof change.path === "string")?.path as string | undefined) || "";
+  const openFileAbsolutePath = resolveEmbeddedVsCodePath(filePath, sessionCwd);
+  const firstChangedLine = parsed ? getFirstChangedLineFromEditPayload(parsed) : 1;
+  const showOpenFileButton = isEmbedded && Boolean(openFileAbsolutePath);
+  const openFileButton = showOpenFileButton ? (
+    <button
+      type="button"
+      className="diff-file-action-btn"
+      onClick={() => {
+        if (!openFileAbsolutePath) return;
+        openFileInEmbeddedVsCode({
+          absolutePath: openFileAbsolutePath,
+          line: isWrite ? 1 : firstChangedLine,
+          column: 1,
+        });
+      }}
+      title="Open this file in VS Code"
+    >
+      Open File
+    </button>
+  ) : undefined;
 
   // Show error results inline (failed edits)
   if (result?.is_error) {
@@ -276,26 +303,40 @@ function EditInline({ input, toolUseId, sessionId }: {
   // Edit tool: render diff directly
   if (parsed) {
     if (parsed.unifiedDiff) {
-      return <DiffViewer unifiedDiff={parsed.unifiedDiff} fileName={filePath} mode="compact" />;
+      return <DiffViewer unifiedDiff={parsed.unifiedDiff} fileName={filePath} mode="compact" headerActions={openFileButton} />;
     }
     if (parsed.changes.length > 0 && !parsed.oldText && !parsed.newText) {
       return (
-        <div className="text-xs text-cc-muted font-mono-code space-y-0.5">
-          {parsed.changes.map((c, i) => (
-            <div key={i}>{typeof c.kind === "string" ? c.kind : "modify"}: {typeof c.path === "string" ? c.path : filePath}</div>
-          ))}
+        <div className="space-y-1">
+          {openFileButton && <div className="flex justify-end">{openFileButton}</div>}
+          <div className="text-xs text-cc-muted font-mono-code space-y-0.5">
+            {parsed.changes.map((c, i) => (
+              <div key={i}>{typeof c.kind === "string" ? c.kind : "modify"}: {typeof c.path === "string" ? c.path : filePath}</div>
+            ))}
+          </div>
         </div>
       );
     }
-    return <DiffViewer oldText={parsed.oldText} newText={parsed.newText} fileName={filePath} mode="compact" />;
+    return <DiffViewer oldText={parsed.oldText} newText={parsed.newText} fileName={filePath} mode="compact" headerActions={openFileButton} />;
   }
 
   // Write tool: show new file content as a diff
   if (writeParsed) {
-    return <DiffViewer newText={writeParsed.content} fileName={filePath} mode="compact" />;
+    return <DiffViewer newText={writeParsed.content} fileName={filePath} mode="compact" headerActions={openFileButton} />;
   }
 
   return null;
+}
+
+function getFirstChangedLineFromEditPayload(parsed: ReturnType<typeof parseEditToolInput>): number {
+  const firstHunkMatch = parsed.unifiedDiff.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/m);
+  if (firstHunkMatch) {
+    const nextLine = Number.parseInt(firstHunkMatch[1], 10);
+    if (Number.isFinite(nextLine) && nextLine > 0) {
+      return nextLine;
+    }
+  }
+  return 1;
 }
 
 function formatBytes(bytes: number): string {

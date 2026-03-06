@@ -156,6 +156,25 @@ function pushSelectionContext(panel) {
   });
 }
 
+async function openFileInPanelEditor(request) {
+  if (!request || typeof request.absolutePath !== "string" || !request.absolutePath) {
+    return;
+  }
+
+  const line = Math.max(1, Number(request.line) || 1);
+  const column = Math.max(1, Number(request.column) || 1);
+  const uri = vscode.Uri.file(request.absolutePath);
+  const document = await vscode.workspace.openTextDocument(uri);
+  const editor = await vscode.window.showTextDocument(document, {
+    preview: false,
+    preserveFocus: false,
+    viewColumn: vscode.ViewColumn.Active,
+  });
+  const position = new vscode.Position(line - 1, column - 1);
+  editor.selection = new vscode.Selection(position, position);
+  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+}
+
 function refreshSelectionContext(editor = vscode.window.activeTextEditor) {
   if (!editor) {
     logDebug("refreshSelectionContext", { editor: null, payload: lastSelectionPayload });
@@ -187,6 +206,16 @@ function attachPanel(panel, kind) {
     if (message.type === "openExternal" && typeof message.url === "string") {
       void vscode.env.asExternalUri(vscode.Uri.parse(message.url)).then((externalUri) => {
         void vscode.env.openExternal(externalUri);
+      });
+      return;
+    }
+
+    if (message.type === "openFile" && typeof message.absolutePath === "string") {
+      logDebug("webview->extension openFile", message);
+      void openFileInPanelEditor(message).catch((error) => {
+        const text = error instanceof Error ? error.message : String(error);
+        logDebug("openFile failed", { absolutePath: message.absolutePath, error: text });
+        void vscode.window.showErrorMessage(`Failed to open file in VS Code: ${text}`);
       });
       return;
     }

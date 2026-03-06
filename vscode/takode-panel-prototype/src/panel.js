@@ -320,6 +320,23 @@ function buildPanelHtml({ baseUrl, cspSource, nonce }) {
           return;
         }
 
+        if (
+          event.source === frame.contentWindow &&
+          event.data.source === "takode-vscode-prototype" &&
+          event.data.type === "takode:open-file" &&
+          event.data.payload &&
+          typeof event.data.payload.absolutePath === "string"
+        ) {
+          debug("openFile", event.data.payload);
+          vscode.postMessage({
+            type: "openFile",
+            absolutePath: event.data.payload.absolutePath,
+            line: event.data.payload.line,
+            column: event.data.payload.column,
+          });
+          return;
+        }
+
         if (event.data.type === "reload") {
           debug("received reload");
           loadFrame();

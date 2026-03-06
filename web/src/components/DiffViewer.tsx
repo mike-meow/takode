@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import * as Diff from "diff";
 import {
@@ -24,6 +24,8 @@ export interface DiffViewerProps {
   showLineNumbers?: boolean;
   /** Optional label for the compact-mode modal trigger. */
   expandButtonLabel?: string;
+  /** Optional actions rendered in the file header. */
+  headerActions?: ReactNode;
 }
 
 interface DiffLine {
@@ -386,7 +388,15 @@ function buildRenderBlocks(
   return blocks;
 }
 
-function FileHeader({ fileName, fileStatsLabel }: { fileName: string; fileStatsLabel?: string }) {
+function FileHeader({
+  fileName,
+  fileStatsLabel,
+  headerActions,
+}: {
+  fileName: string;
+  fileStatsLabel?: string;
+  headerActions?: ReactNode;
+}) {
   const { dirLabel, baseLabel } = formatFileHeaderPath(fileName);
   return (
     <div className="diff-file-header" title={fileName}>
@@ -399,6 +409,7 @@ function FileHeader({ fileName, fileStatsLabel }: { fileName: string; fileStatsL
         <span className="font-semibold text-cc-fg">{baseLabel}</span>
       </span>
       {fileStatsLabel && <span className="ml-2 text-cc-muted text-[11px] font-mono-code">{fileStatsLabel}</span>}
+      {headerActions && <div className="diff-file-header-actions">{headerActions}</div>}
     </div>
   );
 }
@@ -412,6 +423,7 @@ export function DiffViewer({
   mode = "compact",
   showLineNumbers: showLineNumbersProp,
   expandButtonLabel = "Expand",
+  headerActions,
 }: DiffViewerProps) {
   const isCompact = mode === "compact";
   const showLineNumbers = showLineNumbersProp ?? false;
@@ -497,6 +509,7 @@ export function DiffViewer({
               <FileHeader
                 fileName={file.fileName || fileName || ""}
                 fileStatsLabel={data.length === 1 ? fileStatsLabel : undefined}
+                headerActions={headerActions}
               />
             )}
             {blocks.map((block) => {
@@ -596,6 +609,7 @@ export function DiffViewer({
                 fileName={fileName}
                 mode="full"
                 showLineNumbers
+                headerActions={headerActions}
               />
             </div>
           </div>
