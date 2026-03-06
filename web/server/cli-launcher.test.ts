@@ -244,7 +244,7 @@ beforeEach(() => {
   delete process.env.COMPANION_FORCE_BYPASS_IN_CONTAINER;
   tempDir = mkdtempSync(join(tmpdir(), "launcher-test-"));
   store = new SessionStore(tempDir);
-  launcher = new CliLauncher(3456);
+  launcher = new CliLauncher(3456, { serverId: "test-server-id" });
   launcher.setStore(store);
   mockSpawn.mockReturnValue(createMockProc());
   mockResolveBinary.mockReturnValue("/usr/bin/claude");
@@ -280,6 +280,7 @@ describe("launch", () => {
     await launcher.launch({ cwd: "/tmp/project" });
 
     const [, options] = mockSpawn.mock.calls[0];
+    expect(options.env.COMPANION_SERVER_ID).toBe("test-server-id");
     expect(options.env.COMPANION_SESSION_ID).toBe("test-session-id");
     expect(typeof options.env.COMPANION_AUTH_TOKEN).toBe("string");
     expect(options.env.COMPANION_AUTH_TOKEN.length).toBeGreaterThan(0);
@@ -291,10 +292,9 @@ describe("launch", () => {
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
     await launcher.launch({ backendType: "codex", cwd: "/tmp/project" });
 
-    // The auth file is written to ~/.companion/session-auth/<hash>.json
-    // where hash is sha256("/tmp/project").slice(0, 16)
-    const { getSessionAuthPath } = await import("./cli-launcher.js");
-    const expectedPath = getSessionAuthPath("/tmp/project");
+    // The auth file is written to ~/.companion/session-auth/<hash>-<serverId>.json
+    const { getSessionAuthPath } = await import("../shared/session-auth.js");
+    const expectedPath = getSessionAuthPath("/tmp/project", "test-server-id");
     const deadline = Date.now() + 1000;
     while (!mockWriteFile.mock.calls.some((call) => call[0] === expectedPath)) {
       if (Date.now() > deadline) throw new Error("Timed out waiting for session-auth write");
@@ -314,10 +314,12 @@ describe("launch", () => {
       sessionId: string;
       authToken: string;
       port: number;
+      serverId: string;
     };
     expect(payload.sessionId).toBe("test-session-id");
     expect(payload.authToken.length).toBeGreaterThan(0);
     expect(payload.port).toBe(3456);
+    expect(payload.serverId).toBe("test-server-id");
   });
 
   it("spawns CLI with correct --sdk-url and flags", async () => {
@@ -682,11 +684,13 @@ describe("launch", () => {
 
       const [cmdAndArgs, options] = mockSpawn.mock.calls[0];
       expect(cmdAndArgs).toContain("app-server");
+      expect(options.env.COMPANION_SERVER_ID).toBe("test-server-id");
       expect(options.env.COMPANION_SESSION_ID).toBe("test-session-id");
 
       const updatedConfig = realReadFileSync(configPath, "utf-8");
       expect(updatedConfig).toContain("\"PATH\"");
       expect(updatedConfig).toContain("\"HOME\"");
+      expect(updatedConfig).toContain("\"COMPANION_SERVER_ID\"");
       expect(updatedConfig).toContain("\"COMPANION_SESSION_ID\"");
       expect(updatedConfig).toContain("\"COMPANION_AUTH_TOKEN\"");
       expect(updatedConfig).toContain("\"COMPANION_PORT\"");
@@ -1014,6 +1018,7 @@ describe("relaunch", () => {
     const [relaunchCmd] = mockSpawn.mock.calls[1];
     expect(relaunchCmd).toContain("-e");
     expect(relaunchCmd).toContain("CLAUDE_CODE_OAUTH_TOKEN=tok-test");
+    expect(relaunchCmd.some((arg: string) => arg.startsWith("COMPANION_SERVER_ID=test-server-id"))).toBe(true);
     expect(relaunchCmd.some((arg: string) => arg.startsWith("COMPANION_AUTH_TOKEN="))).toBe(true);
   });
 
@@ -1282,7 +1287,7 @@ describe("persistence", () => {
         return origKill.call(process, pid, signal as any);
       }) as any);
 
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       const recovered = await newLauncher.restoreFromDisk();
 
@@ -1319,7 +1324,7 @@ describe("persistence", () => {
         return true;
       }) as any);
 
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       const recovered = await newLauncher.restoreFromDisk();
 
@@ -1335,13 +1340,13 @@ describe("persistence", () => {
     });
 
     it("returns 0 when no store is set", async () => {
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       // No setStore call
       expect(await newLauncher.restoreFromDisk()).toBe(0);
     });
 
     it("returns 0 when store has no launcher data", async () => {
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       // Store is empty, no launcher.json file
       expect(await newLauncher.restoreFromDisk()).toBe(0);
@@ -1361,7 +1366,7 @@ describe("persistence", () => {
       store.saveLauncher(savedSessions);
       await store.flushAll();
 
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       const recovered = await newLauncher.restoreFromDisk();
 
@@ -1387,7 +1392,7 @@ describe("persistence", () => {
       store.saveLauncher(savedSessions);
       await store.flushAll();
 
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       const recovered = await newLauncher.restoreFromDisk();
 
@@ -1418,7 +1423,7 @@ describe("persistence", () => {
       store.saveLauncher(savedSessions);
       await store.flushAll();
 
-      const newLauncher = new CliLauncher(3456);
+      const newLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
       newLauncher.setStore(store);
       const recovered = await newLauncher.restoreFromDisk();
 
@@ -1687,7 +1692,7 @@ describe("cat herding", () => {
     }));
     store.saveLauncher(sessions);
     await store.flushAll(); // ensure launcher.json is written before restoreFromDisk reads it
-    herdLauncher = new CliLauncher(3456);
+    herdLauncher = new CliLauncher(3456, { serverId: "test-server-id" });
     herdLauncher.setStore(store);
     await herdLauncher.restoreFromDisk();
   }

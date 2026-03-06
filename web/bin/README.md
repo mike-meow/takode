@@ -60,7 +60,9 @@ managing sessions/settings, and orchestrating/working quests.
 ## Auth and environment conventions
 
 - Session auth is read from env (`COMPANION_SESSION_ID`, `COMPANION_AUTH_TOKEN`) or
-  centralized auth files at `~/.companion/session-auth/<cwd-hash>.json`.
+  centralized auth files at `~/.companion/session-auth/<cwd-hash>-<server-id>.json`.
+- If multiple Companion instances share the same cwd, the CLI fails closed instead of
+  guessing which server namespace to use.
 - Port defaults to `3456` unless overridden by `--port` or env.
 - Most commands assume a local Takode server is available on `localhost`.
 

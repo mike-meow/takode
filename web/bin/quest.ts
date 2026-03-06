@@ -47,10 +47,14 @@ import type { QuestmasterTask } from "../server/quest-types.js";
 import { applyQuestListFilters } from "../server/quest-list-filters.js";
 import { getName } from "../server/session-names.js";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import {
+  getLegacySessionAuthPath,
+  getSessionAuthDir,
+  getSessionAuthFilePrefix,
+  parseSessionAuthFileData,
+} from "../shared/session-auth.js";
 
 const DEFAULT_PORT = 3456;
 const COMPANION_SESSION_ID_HEADER = "x-companion-session-id";
@@ -60,6 +64,7 @@ type CompanionCredentials = {
   sessionId: string;
   authToken: string;
   port?: number;
+  serverId?: string;
 };
 
 // ─── Arg parsing helpers ────────────────────────────────────────────────────
@@ -144,57 +149,93 @@ function getCredentials(): CompanionCredentials | null {
   const sessionId = process.env.COMPANION_SESSION_ID;
   const authToken = process.env.COMPANION_AUTH_TOKEN;
   const envPort = Number(process.env.COMPANION_PORT);
+  const serverId = process.env.COMPANION_SERVER_ID?.trim();
   if (sessionId && authToken) {
     return {
       sessionId,
       authToken,
       ...(Number.isFinite(envPort) && envPort > 0 ? { port: envPort } : {}),
+      ...(serverId ? { serverId } : {}),
     };
   }
 
-  // Primary: centralized auth file under ~/.companion/session-auth/
   const cwd = process.cwd();
-  const hash = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 16);
-  const centralPath = join(homedir(), ".companion", "session-auth", `${hash}.json`);
+  const authDir = getSessionAuthDir();
+  const prefix = `${getSessionAuthFilePrefix(cwd)}-`;
+
+  let fileNames: string[] = [];
   try {
-    const data = JSON.parse(readFileSync(centralPath, "utf-8")) as {
-      sessionId?: unknown;
-      authToken?: unknown;
-      port?: unknown;
-    };
-    if (typeof data.sessionId === "string" && data.sessionId && typeof data.authToken === "string" && data.authToken) {
-      const filePort = typeof data.port === "number" ? data.port : Number(data.port);
-      return {
-        sessionId: data.sessionId,
-        authToken: data.authToken,
-        ...(Number.isFinite(filePort) && filePort > 0 ? { port: filePort } : {}),
-      };
-    }
+    fileNames = readdirSync(authDir);
   } catch {
-    // Fall through to legacy candidates
+    fileNames = [];
   }
+
+  const candidates = fileNames
+    .filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
+    .map((name) => {
+      try {
+        return parseSessionAuthFileData(JSON.parse(readFileSync(`${authDir}/${name}`, "utf-8")));
+      } catch {
+        return null;
+      }
+    })
+    .filter((value): value is CompanionCredentials => value !== null);
+
+  if (candidates.length > 0) {
+    const envServerId = process.env.COMPANION_SERVER_ID?.trim();
+    if (envServerId) {
+      const serverMatches = candidates.filter((candidate) => candidate.serverId === envServerId);
+      if (serverMatches.length === 0) {
+        die(`No Companion auth context matched server ${envServerId} for ${cwd}. Relaunch this session to refresh quest auth.`);
+      }
+      if (serverMatches.length === 1) return serverMatches[0];
+      die(`Multiple Companion auth contexts matched server ${envServerId} for ${cwd}. Refusing to guess which server to use.`);
+    }
+
+    const envSessionId = process.env.COMPANION_SESSION_ID?.trim();
+    if (envSessionId) {
+      const sessionMatches = candidates.filter((candidate) => candidate.sessionId === envSessionId);
+      if (sessionMatches.length === 0) {
+        die(`No Companion auth context matched session ${envSessionId} for ${cwd}. Relaunch this session to refresh quest auth.`);
+      }
+      if (sessionMatches.length === 1) return sessionMatches[0];
+      if (sessionMatches.length > 1) {
+        die(`Multiple Companion auth contexts matched session ${envSessionId} for ${cwd}. Refusing to guess which server to use.`);
+      }
+    }
+
+    if (Number.isFinite(envPort) && envPort > 0) {
+      const portMatches = candidates.filter((candidate) => candidate.port === envPort);
+      if (portMatches.length === 0) {
+        die(`No Companion auth context matched port ${envPort} for ${cwd}. Relaunch this session to refresh quest auth.`);
+      }
+      if (portMatches.length === 1) return portMatches[0];
+      die(`Multiple Companion auth contexts matched port ${envPort} for ${cwd}. Refusing to guess which server to use.`);
+    }
+
+    if (candidates.length === 1) return candidates[0];
+    die(`Multiple Companion auth contexts were found for ${cwd}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars.`);
+  }
+
+  const legacyCentral = (() => {
+    try {
+      return parseSessionAuthFileData(JSON.parse(readFileSync(getLegacySessionAuthPath(cwd), "utf-8")));
+    } catch {
+      return null;
+    }
+  })();
+  if (legacyCentral) return legacyCentral;
 
   // Legacy fallback: auth files in the user's repo (for backwards compatibility)
-  const candidates = [
+  const legacyCandidates = [
     join(cwd, ".companion", "session-auth.json"),
     join(cwd, ".codex", "session-auth.json"),
     join(cwd, ".claude", "session-auth.json"),
   ];
-  for (const authFile of candidates) {
+  for (const authFile of legacyCandidates) {
     try {
-      const data = JSON.parse(readFileSync(authFile, "utf-8")) as {
-        sessionId?: unknown;
-        authToken?: unknown;
-        port?: unknown;
-      };
-      if (typeof data.sessionId === "string" && data.sessionId && typeof data.authToken === "string" && data.authToken) {
-        const filePort = typeof data.port === "number" ? data.port : Number(data.port);
-        return {
-          sessionId: data.sessionId,
-          authToken: data.authToken,
-          ...(Number.isFinite(filePort) && filePort > 0 ? { port: filePort } : {}),
-        };
-      }
+      const data = parseSessionAuthFileData(JSON.parse(readFileSync(authFile, "utf-8")));
+      if (data) return data;
     } catch {
       // Try next candidate
     }

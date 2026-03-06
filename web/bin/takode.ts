@@ -4,64 +4,118 @@
  * Server-authoritative orchestration commands.
  */
 
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
+import {
+  getLegacySessionAuthPath,
+  getSessionAuthDir,
+  getSessionAuthFilePrefix,
+  parseSessionAuthFileData,
+  type SessionAuthFileData,
+} from "../shared/session-auth.js";
 
 const DEFAULT_PORT = 3456;
 
-type SessionAuthFileData = {
-  sessionId: string;
-  authToken: string;
-  port?: number;
-};
-
-/**
- * Compute the centralized auth file path for a given cwd.
- * Must match getSessionAuthPath() in cli-launcher.ts.
- */
-function getCentralAuthPath(cwd: string): string {
-  const hash = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 16);
-  return join(homedir(), ".companion", "session-auth", `${hash}.json`);
+function getRequestedPort(argv: string[]): number | undefined {
+  const idx = argv.indexOf("--port");
+  if (idx === -1 || !argv[idx + 1]) return undefined;
+  const parsed = Number(argv[idx + 1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function getSessionAuthFileData(): SessionAuthFileData | null {
-  // Primary: centralized auth file under ~/.companion/session-auth/
-  const centralPath = getCentralAuthPath(process.cwd());
+function readSessionAuthFile(path: string): SessionAuthFileData | null {
   try {
-    const data = JSON.parse(readFileSync(centralPath, "utf-8"));
-    if (typeof data.sessionId === "string" && data.sessionId.trim() &&
-        typeof data.authToken === "string" && data.authToken.trim()) {
-      const parsedPort = typeof data.port === "number" && Number.isFinite(data.port) && data.port > 0
-        ? data.port
-        : undefined;
-      return { sessionId: data.sessionId, authToken: data.authToken, ...(parsedPort ? { port: parsedPort } : {}) };
-    }
+    return parseSessionAuthFileData(JSON.parse(readFileSync(path, "utf-8")));
   } catch {
-    // Fall through to legacy candidates
+    return null;
   }
+}
+
+function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | null {
+  const authDir = getSessionAuthDir();
+  const prefix = `${getSessionAuthFilePrefix(process.cwd())}-`;
+
+  let fileNames: string[];
+  try {
+    fileNames = readdirSync(authDir);
+  } catch {
+    return null;
+  }
+
+  const candidates = fileNames
+    .filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
+    .map((name) => readSessionAuthFile(`${authDir}/${name}`))
+    .filter((value): value is SessionAuthFileData => value !== null);
+
+  if (candidates.length === 0) return null;
+
+  const envServerId = process.env.COMPANION_SERVER_ID?.trim();
+  if (envServerId) {
+    const serverMatches = candidates.filter((candidate) => candidate.serverId === envServerId);
+    if (serverMatches.length === 0) {
+      err(`No Companion auth context matched server ${envServerId} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
+    }
+    if (serverMatches.length === 1) return serverMatches[0];
+    err(`Multiple Companion auth contexts matched server ${envServerId} for ${process.cwd()}. Refusing to guess which server to use.`);
+  }
+
+  const envSessionId = process.env.COMPANION_SESSION_ID?.trim();
+  if (envSessionId) {
+    const sessionMatches = candidates.filter((candidate) => candidate.sessionId === envSessionId);
+    if (sessionMatches.length === 0) {
+      err(`No Companion auth context matched session ${envSessionId} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
+    }
+    if (sessionMatches.length === 1) return sessionMatches[0];
+    if (sessionMatches.length > 1) {
+      err(`Multiple Companion auth contexts matched session ${envSessionId} for ${process.cwd()}. Refusing to guess which server to use.`);
+    }
+  }
+
+  const envPreferredPort = [process.env.TAKODE_API_PORT, process.env.COMPANION_PORT]
+    .map((value) => Number(value))
+    .find((value) => Number.isFinite(value) && value > 0);
+  if (envPreferredPort) {
+    const portMatches = candidates.filter((candidate) => candidate.port === envPreferredPort);
+    if (portMatches.length === 0) {
+      err(`No Companion auth context matched port ${envPreferredPort} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
+    }
+    if (portMatches.length === 1) return portMatches[0];
+    err(`Multiple Companion auth contexts matched port ${envPreferredPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+  }
+
+  const explicitPort = getRequestedPort(argv);
+  if (explicitPort && candidates.length > 1) {
+    const portMatches = candidates.filter((candidate) => candidate.port === explicitPort);
+    if (portMatches.length === 0) {
+      err(`No Companion auth context matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+    }
+    if (portMatches.length === 1) return portMatches[0];
+    err(`Multiple Companion auth contexts matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+  }
+
+  if (candidates.length === 1) return candidates[0];
+
+  err(
+    `Multiple Companion auth contexts were found for ${process.cwd()}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars, or rerun with --port <server-port>.`,
+  );
+}
+
+function getSessionAuthFileData(argv: string[] = process.argv.slice(2)): SessionAuthFileData | null {
+  const scoped = getScopedSessionAuthFileData(argv);
+  if (scoped) return scoped;
+
+  const legacyCentral = readSessionAuthFile(getLegacySessionAuthPath(process.cwd()));
+  if (legacyCentral) return legacyCentral;
 
   // Legacy fallback: auth files in the user's repo (for backwards compatibility)
   const legacyCandidates = [
-    ".companion/session-auth.json",
-    ".codex/session-auth.json",
-    ".claude/session-auth.json",
+    `${process.cwd()}/.companion/session-auth.json`,
+    `${process.cwd()}/.codex/session-auth.json`,
+    `${process.cwd()}/.claude/session-auth.json`,
   ];
-  for (const relPath of legacyCandidates) {
-    const authFile = join(process.cwd(), relPath);
-    try {
-      const data = JSON.parse(readFileSync(authFile, "utf-8"));
-      if (typeof data.sessionId !== "string" || !data.sessionId.trim()) continue;
-      if (typeof data.authToken !== "string" || !data.authToken.trim()) continue;
-      const parsedPort = typeof data.port === "number" && Number.isFinite(data.port) && data.port > 0
-        ? data.port
-        : undefined;
-      return { sessionId: data.sessionId, authToken: data.authToken, ...(parsedPort ? { port: parsedPort } : {}) };
-    } catch {
-      // Try the next candidate.
-    }
+  for (const authFile of legacyCandidates) {
+    const data = readSessionAuthFile(authFile);
+    if (data) return data;
   }
   return null;
 }
@@ -69,11 +123,8 @@ function getSessionAuthFileData(): SessionAuthFileData | null {
 // ─── Port discovery (same pattern as ctl.ts) ────────────────────────────────
 
 function getPort(argv: string[]): number {
-  const idx = argv.indexOf("--port");
-  if (idx !== -1 && argv[idx + 1]) {
-    const p = Number(argv[idx + 1]);
-    if (!Number.isNaN(p) && p > 0) return p;
-  }
+  const requestedPort = getRequestedPort(argv);
+  if (requestedPort) return requestedPort;
   // Orchestrator sessions get TAKODE_API_PORT
   if (process.env.TAKODE_API_PORT) {
     const p = Number(process.env.TAKODE_API_PORT);
@@ -83,7 +134,7 @@ function getPort(argv: string[]): number {
     const p = Number(process.env.COMPANION_PORT);
     if (!Number.isNaN(p) && p > 0) return p;
   }
-  const authFile = getSessionAuthFileData();
+  const authFile = getSessionAuthFileData(argv);
   if (authFile?.port) return authFile.port;
   return DEFAULT_PORT;
 }

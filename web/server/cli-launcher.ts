@@ -30,6 +30,7 @@ import {
   resolveCompanionCodexSessionHome,
 } from "./codex-home.js";
 import { sessionTag } from "./session-tag.js";
+import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
 
 /** Check if a file exists (async equivalent of existsSync). */
 async function fileExists(path: string): Promise<boolean> {
@@ -278,20 +279,6 @@ export interface LaunchOptions {
   extraInstructions?: string;
 }
 
-// ─── Session auth file (centralized under ~/.companion/) ────────────────────
-
-/**
- * Compute the path to the session-auth file for a given working directory.
- * Uses a SHA-256 hash of the absolute cwd to create a unique, path-safe
- * filename under ~/.companion/session-auth/. This keeps all auth state out
- * of the user's repo while remaining discoverable by CLI tools that know
- * their cwd.
- */
-export function getSessionAuthPath(cwd: string): string {
-  const hash = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 16);
-  return join(homedir(), ".companion", "session-auth", `${hash}.json`);
-}
-
 // ─── Companion instruction injection (system prompt) ────────────────────────
 
 /**
@@ -378,6 +365,7 @@ export class CliLauncher {
   /** Runtime-only env vars per session (kept out of persisted launcher state). */
   private sessionEnvs = new Map<string, Record<string, string>>();
   private port: number;
+  private serverId: string;
   private store: SessionStore | null = null;
   private recorder: RecorderManager | null = null;
   private onCodexAdapter: ((sessionId: string, adapter: CodexAdapter) => void) | null = null;
@@ -397,8 +385,9 @@ export class CliLauncher {
   /** Integer session number → UUID */
   private sessionByNum = new Map<number, string>();
 
-  constructor(port: number) {
+  constructor(port: number, options?: { serverId?: string }) {
     this.port = port;
+    this.serverId = options?.serverId?.trim() || "unknown-server";
   }
 
   /** Get the server port number. */
@@ -710,6 +699,7 @@ export class CliLauncher {
     // Always inject companion identity/auth vars so agents can identify and authenticate themselves.
     const envWithSessionId = {
       ...options.env,
+      COMPANION_SERVER_ID: this.serverId,
       COMPANION_SESSION_ID: sessionId,
       COMPANION_AUTH_TOKEN: sessionAuthToken,
     };
@@ -843,6 +833,7 @@ export class CliLauncher {
     // and re-resolve the env profile if one was used at creation time.
     if (!runtimeEnv) {
       const reconstructed: Record<string, string> = {
+        COMPANION_SERVER_ID: this.serverId,
         COMPANION_SESSION_ID: sessionId,
         COMPANION_AUTH_TOKEN: sessionAuthToken,
         COMPANION_PORT: String(this.port),
@@ -2272,15 +2263,14 @@ ${isCodexLeader
 
   /**
    * Write a session-auth file to ~/.companion/session-auth/.
-   * Keyed by a hash of the working directory so CLI tools can discover
-   * session credentials without needing env vars, and without writing
-   * anything into the user's repo.
+   * Keyed by cwd hash + server id so multiple Companion instances sharing
+   * the same repo/worktree do not overwrite each other's auth context.
    */
   private async writeSessionAuthFile(cwd: string, sessionId: string, authToken: string, port: number): Promise<void> {
-    const authFilePath = getSessionAuthPath(cwd);
+    const authFilePath = getSessionAuthPath(cwd, this.serverId);
     try {
-      await mkdir(join(homedir(), ".companion", "session-auth"), { recursive: true });
-      const data = JSON.stringify({ sessionId, authToken, port }, null, 2);
+      await mkdir(getSessionAuthDir(), { recursive: true });
+      const data = JSON.stringify({ sessionId, authToken, port, serverId: this.serverId }, null, 2);
       await writeFile(authFilePath, data, { mode: 0o600 });
     } catch (err) {
       console.warn(`[cli-launcher] Failed to write session-auth file to ${authFilePath}:`, err);
