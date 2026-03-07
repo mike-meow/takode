@@ -34,7 +34,7 @@
     "start": "NODE_ENV=production bun server/index.ts",
     "serve": "bun serve.ts",
     "prepublishOnly": "bun run build",
-    "typecheck": "./scripts/run-local-tool.sh tsc --noEmit",
+    "typecheck": "./scripts/typecheck.sh",
     "test": "./scripts/run-local-tool.sh vitest run --silent --reporter=verbose",
     "test:watch": "./scripts/run-local-tool.sh vitest",
     "test:codex-contract": "./scripts/run-local-tool.sh vitest run server/codex-protocol-*.test.ts"
