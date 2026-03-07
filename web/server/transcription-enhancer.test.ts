@@ -9,7 +9,7 @@ import {
   enhanceTranscript,
 } from "./transcription-enhancer.js";
 
-const { trunc, extractAssistantText, isSystemNoise, MAX_TURNS, MIN_WORDS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
+const { trunc, extractAssistantText, isSystemNoise, MAX_TURNS, MIN_CHARS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
 
 // ─── Helper to build mock messages ──────────────────────────────────────────
 
@@ -380,10 +380,10 @@ describe("enhanceTranscript", () => {
   });
 
   it("skips enhancement for short transcripts", async () => {
-    // Less than MIN_WORDS_FOR_ENHANCEMENT words
-    const result = await enhanceTranscript("yes", [userMsg("hello")], defaultConfig, "key");
+    // Less than MIN_CHARS_FOR_ENHANCEMENT characters
+    const result = await enhanceTranscript("yes sure", [userMsg("hello")], defaultConfig, "key");
     expect(result.enhanced).toBe(false);
-    expect(result.text).toBe("yes");
+    expect(result.text).toBe("yes sure");
   });
 
   it("skips enhancement with null history", async () => {

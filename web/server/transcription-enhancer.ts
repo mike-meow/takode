@@ -36,9 +36,9 @@ const ENHANCEMENT_TIMEOUT_MS = 30_000;
 /** If enhanced text is this many times longer than raw, discard as hallucination. */
 const HALLUCINATION_LENGTH_RATIO = 3;
 
-/** Minimum word count to attempt enhancement. Short utterances (single sentences)
+/** Minimum character count to attempt enhancement. Short utterances
  *  don't benefit from the enhancer — skip to avoid added latency. */
-const MIN_WORDS_FOR_ENHANCEMENT = 10;
+const MIN_CHARS_FOR_ENHANCEMENT = 100;
 
 /** Max total characters for the STT prompt.
  *  Conservative limit: gpt-4o-mini-transcribe accepts up to ~1024 tokens in the
@@ -628,8 +628,7 @@ export async function enhanceTranscript(
   }
 
   // Skip for very short transcripts
-  const wordCount = rawText.trim().split(/\s+/).length;
-  if (wordCount < MIN_WORDS_FOR_ENHANCEMENT) {
+  if (rawText.trim().length < MIN_CHARS_FOR_ENHANCEMENT) {
     return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "too short" } };
   }
 
@@ -775,7 +774,7 @@ export const _testHelpers = {
   ENHANCER_MSG_STEP,
   ENHANCER_MSG_FLOOR,
   ENHANCER_CONTEXT_MAX_CHARS,
-  MIN_WORDS_FOR_ENHANCEMENT,
+  MIN_CHARS_FOR_ENHANCEMENT,
   HALLUCINATION_LENGTH_RATIO,
   STT_PROMPT_MAX_CHARS,
   STT_CONVO_BUDGET_RATIO,
