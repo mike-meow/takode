@@ -1446,6 +1446,59 @@ describe("GET /api/settings", () => {
 
     vi.mocked(settingsManager.getServerName).mockReturnValue("");
   });
+
+  it("masks OpenAI API keys in the settings response", async () => {
+    vi.mocked(settingsManager.getSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: {
+        backend: "openai",
+        apiKey: "server-only-secret",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+      },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 123,
+    });
+
+    const res = await app.request("/api/settings", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.namerConfig).toEqual({
+      backend: "openai",
+      apiKey: "***",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+    });
+    expect(json.transcriptionConfig).toEqual({
+      apiKey: "***",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: true,
+      enhancementModel: "gpt-5-mini",
+    });
+    expect(JSON.stringify(json)).not.toContain("server-only-secret");
+    expect(JSON.stringify(json)).not.toContain("transcription-secret");
+  });
 });
 
 describe("PUT /api/settings", () => {
@@ -1788,6 +1841,114 @@ describe("PUT /api/settings", () => {
     );
     const json = await res.json();
     expect(json.editorConfig).toEqual({ editor: "cursor" });
+  });
+
+  it("preserves stored masked API keys without returning plaintext", async () => {
+    vi.mocked(settingsManager.getSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: {
+        backend: "openai",
+        apiKey: "persisted-namer-secret",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+      },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "persisted-transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-4.1-mini",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 123,
+    });
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: {
+        backend: "openai",
+        apiKey: "persisted-namer-secret",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+      },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "persisted-transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-4.1-mini",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 456,
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        namerConfig: {
+          backend: "openai",
+          apiKey: "***",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-4o-mini",
+        },
+        transcriptionConfig: {
+          apiKey: "***",
+          baseUrl: "https://api.openai.com/v1",
+          enhancementEnabled: false,
+          enhancementModel: "gpt-4.1-mini",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namerConfig: {
+          backend: "openai",
+          apiKey: "persisted-namer-secret",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-4o-mini",
+        },
+        transcriptionConfig: {
+          apiKey: "persisted-transcription-secret",
+          baseUrl: "https://api.openai.com/v1",
+          enhancementEnabled: false,
+          enhancementModel: "gpt-4.1-mini",
+        },
+      }),
+    );
+
+    const json = await res.json();
+    expect(json.namerConfig.apiKey).toBe("***");
+    expect(json.transcriptionConfig.apiKey).toBe("***");
+    expect(JSON.stringify(json)).not.toContain("persisted-namer-secret");
+    expect(JSON.stringify(json)).not.toContain("persisted-transcription-secret");
   });
 
   it("returns 400 for invalid editorConfig.editor", async () => {

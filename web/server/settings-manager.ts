@@ -4,7 +4,7 @@ import {
   existsSync,
 } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, basename, extname } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 
@@ -71,13 +71,22 @@ export type NamerConfig =
   | { backend: "claude"; model?: string }
   | { backend: "openai"; apiKey: string; baseUrl: string; model: string };
 
+interface CompanionSecrets {
+  namerOpenAIApiKey: string;
+  transcriptionApiKey: string;
+}
+
 const DEFAULT_PATH = join(homedir(), ".companion", "settings.json");
 /** Shared legacy path — exported for tests only */
 export const LEGACY_PATH = DEFAULT_PATH;
+const DEFAULT_SECRETS_PATH = join(homedir(), ".companion", "settings-secrets.json");
 
 let loaded = false;
+let secretsLoaded = false;
 let filePath = DEFAULT_PATH;
+let secretsPath = DEFAULT_SECRETS_PATH;
 let _pendingWrite: Promise<void> = Promise.resolve();
+let _pendingSecretsWrite: Promise<void> = Promise.resolve();
 let settings: CompanionSettings = {
   serverName: "",
   serverId: "",
@@ -99,6 +108,26 @@ let settings: CompanionSettings = {
   editorConfig: { editor: "none" },
   updatedAt: 0,
 };
+let secrets: CompanionSecrets = {
+  namerOpenAIApiKey: "",
+  transcriptionApiKey: "",
+};
+
+function deriveSecretsPath(settingsPath: string): string {
+  const dir = dirname(settingsPath);
+  const file = basename(settingsPath);
+  if (file === "settings.json") return join(dir, "settings-secrets.json");
+  const match = /^settings-(.+)\.json$/.exec(file);
+  if (match) return join(dir, `settings-secrets-${match[1]}.json`);
+  const ext = extname(file);
+  const stem = ext ? file.slice(0, -ext.length) : file;
+  return join(dir, `${stem}.secrets${ext || ".json"}`);
+}
+
+function resetPaths(nextFilePath: string): void {
+  filePath = nextFilePath;
+  secretsPath = deriveSecretsPath(nextFilePath);
+}
 
 /** Parse namerConfig from raw settings, with backward compat for old flat fields. */
 function normalizeNamerConfig(raw: Record<string, unknown> | null | undefined): NamerConfig {
@@ -154,6 +183,49 @@ function normalizeEditorConfig(raw: Record<string, unknown> | null | undefined):
   return { editor: "none" };
 }
 
+function normalizeSecrets(raw: Record<string, unknown> | null | undefined): CompanionSecrets {
+  return {
+    namerOpenAIApiKey: typeof raw?.namerOpenAIApiKey === "string" ? raw.namerOpenAIApiKey : "",
+    transcriptionApiKey: typeof raw?.transcriptionApiKey === "string" ? raw.transcriptionApiKey : "",
+  };
+}
+
+function mergeSecretsIntoSettings(
+  base: CompanionSettings,
+  nextSecrets: CompanionSecrets,
+): CompanionSettings {
+  return {
+    ...base,
+    namerConfig: base.namerConfig.backend === "openai"
+      ? { ...base.namerConfig, apiKey: nextSecrets.namerOpenAIApiKey }
+      : base.namerConfig,
+    transcriptionConfig: {
+      ...base.transcriptionConfig,
+      apiKey: nextSecrets.transcriptionApiKey,
+    },
+  };
+}
+
+function stripSecretsFromSettings(base: CompanionSettings): CompanionSettings {
+  return {
+    ...base,
+    namerConfig: base.namerConfig.backend === "openai"
+      ? { ...base.namerConfig, apiKey: "" }
+      : base.namerConfig,
+    transcriptionConfig: {
+      ...base.transcriptionConfig,
+      apiKey: "",
+    },
+  };
+}
+
+function hasInlineSecrets(base: CompanionSettings): boolean {
+  return (
+    (base.namerConfig.backend === "openai" && base.namerConfig.apiKey.length > 0) ||
+    base.transcriptionConfig.apiKey.length > 0
+  );
+}
+
 function normalize(raw: Partial<CompanionSettings> | null | undefined): CompanionSettings {
   return {
     serverName: typeof raw?.serverName === "string" ? raw.serverName : "",
@@ -178,26 +250,67 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
   };
 }
 
+function loadSecretsFromDisk(): CompanionSecrets {
+  try {
+    if (existsSync(secretsPath)) { // sync-ok: cold path, cached after first load
+      const raw = readFileSync(secretsPath, "utf-8"); // sync-ok: cold path, cached after first load
+      return normalizeSecrets(JSON.parse(raw) as Record<string, unknown>);
+    }
+  } catch {
+    return normalizeSecrets(null);
+  }
+  return normalizeSecrets(null);
+}
+
 function ensureLoaded(): void {
   if (loaded) return;
+  let normalized = normalize(null);
   try {
     if (existsSync(filePath)) { // sync-ok: cold path, cached after first load
       const raw = readFileSync(filePath, "utf-8"); // sync-ok: cold path, cached after first load
-      settings = normalize(JSON.parse(raw) as Partial<CompanionSettings>);
+      normalized = normalize(JSON.parse(raw) as Partial<CompanionSettings>);
     }
   } catch {
-    settings = normalize(null);
+    normalized = normalize(null);
+  }
+
+  if (!secretsLoaded) {
+    const persistedSecrets = loadSecretsFromDisk();
+    secrets = {
+      namerOpenAIApiKey:
+        persistedSecrets.namerOpenAIApiKey
+        || (normalized.namerConfig.backend === "openai" ? normalized.namerConfig.apiKey : ""),
+      transcriptionApiKey:
+        persistedSecrets.transcriptionApiKey || normalized.transcriptionConfig.apiKey,
+    };
+    secretsLoaded = true;
+  }
+
+  settings = mergeSecretsIntoSettings(normalized, secrets);
+
+  if (hasInlineSecrets(normalized)) {
+    persist();
+    persistSecrets();
   }
   loaded = true;
 }
 
 function persist(): void {
-  const data = JSON.stringify(settings, null, 2);
+  const data = JSON.stringify(stripSecretsFromSettings(settings), null, 2);
   const path = filePath; // capture current path before any async re-assignment
   mkdirSync(dirname(path), { recursive: true });
   // Chain writes so each waits for the previous to finish. This prevents
   // an earlier write from completing after a later one and overwriting it.
   _pendingWrite = _pendingWrite.then(() =>
+    writeFile(path, data, "utf-8").catch(() => {}),
+  );
+}
+
+function persistSecrets(): void {
+  const data = JSON.stringify(secrets, null, 2);
+  const path = secretsPath; // capture current path before any async re-assignment
+  mkdirSync(dirname(path), { recursive: true });
+  _pendingSecretsWrite = _pendingSecretsWrite.then(() =>
     writeFile(path, data, "utf-8").catch(() => {}),
   );
 }
@@ -217,12 +330,35 @@ export function updateSettings(
   const defined = Object.fromEntries(
     Object.entries(patch).filter(([, v]) => v !== undefined),
   );
+
+  if (defined.namerConfig) {
+    const nextNamerConfig = defined.namerConfig as NamerConfig;
+    if (nextNamerConfig.backend === "openai") {
+      secrets = {
+        ...secrets,
+        namerOpenAIApiKey: nextNamerConfig.apiKey,
+      };
+    }
+  }
+
+  if (defined.transcriptionConfig) {
+    const nextTranscriptionConfig = defined.transcriptionConfig as TranscriptionConfig;
+    secrets = {
+      ...secrets,
+      transcriptionApiKey: nextTranscriptionConfig.apiKey,
+    };
+  }
+
   settings = {
     ...settings,
     ...defined,
     updatedAt: Date.now(),
   };
+  settings = mergeSecretsIntoSettings(settings, secrets);
   persist();
+  if (defined.namerConfig || defined.transcriptionConfig) {
+    persistSecrets();
+  }
   return { ...settings };
 }
 
@@ -254,29 +390,49 @@ export function getServerId(): string {
  */
 export async function initWithPort(port: number): Promise<void> {
   const portPath = join(homedir(), ".companion", `settings-${port}.json`);
+  const portSecretsPath = deriveSecretsPath(portPath);
   if (!existsSync(portPath) && existsSync(LEGACY_PATH)) { // sync-ok: cold path, cached after first load
     try {
       const raw = readFileSync(LEGACY_PATH, "utf-8"); // sync-ok: cold path, cached after first load
       const legacy = normalize(JSON.parse(raw) as Partial<CompanionSettings>);
-      const migrated = { ...legacy, serverId: "", updatedAt: Date.now() };
+      const migrated = {
+        ...stripSecretsFromSettings(legacy),
+        serverId: "",
+        updatedAt: Date.now(),
+      };
+      const migratedSecrets = normalizeSecrets({
+        namerOpenAIApiKey: legacy.namerConfig.backend === "openai" ? legacy.namerConfig.apiKey : "",
+        transcriptionApiKey: legacy.transcriptionConfig.apiKey,
+      });
       mkdirSync(dirname(portPath), { recursive: true });
       await writeFile(portPath, JSON.stringify(migrated, null, 2), "utf-8");
+      if (migratedSecrets.namerOpenAIApiKey || migratedSecrets.transcriptionApiKey) {
+        await writeFile(portSecretsPath, JSON.stringify(migratedSecrets, null, 2), "utf-8");
+      }
     } catch {
       // Migration failed — start fresh from the new path
     }
   }
-  filePath = portPath;
+  resetPaths(portPath);
   loaded = false;
+  secretsLoaded = false;
 }
 
 /** Wait for any pending async writes to complete. Test-only. */
 export function _flushForTest(): Promise<void> {
-  return _pendingWrite;
+  return Promise.all([_pendingWrite, _pendingSecretsWrite]).then(() => undefined);
 }
 
 export function _resetForTest(customPath?: string): void {
   loaded = false;
-  filePath = customPath || DEFAULT_PATH;
+  secretsLoaded = false;
+  resetPaths(customPath || DEFAULT_PATH);
   settings = normalize(null);
+  secrets = normalizeSecrets(null);
   _pendingWrite = Promise.resolve();
+  _pendingSecretsWrite = Promise.resolve();
+}
+
+export function _getSecretsPathForTest(customSettingsPath?: string): string {
+  return deriveSecretsPath(customSettingsPath || filePath);
 }

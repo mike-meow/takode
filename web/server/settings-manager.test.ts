@@ -11,15 +11,18 @@ import {
   initWithPort,
   _resetForTest,
   _flushForTest,
+  _getSecretsPathForTest,
 } from "./settings-manager.js";
 
 let tempDir: string;
 let settingsPath: string;
+let secretsPath: string;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "settings-manager-test-"));
   settingsPath = join(tempDir, "settings.json");
   _resetForTest(settingsPath);
+  secretsPath = _getSecretsPathForTest(settingsPath);
 });
 
 afterEach(() => {
@@ -62,6 +65,55 @@ describe("settings-manager", () => {
     expect(saved.pushoverUserKey).toBe("po-user");
   });
 
+  it("stores OpenAI API keys in a separate secrets file", async () => {
+    const updated = updateSettings({
+      namerConfig: {
+        backend: "openai",
+        apiKey: "namer-secret",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+      },
+      transcriptionConfig: {
+        apiKey: "transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-5-mini",
+      },
+    });
+
+    expect(updated.namerConfig).toEqual({
+      backend: "openai",
+      apiKey: "namer-secret",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+    });
+    expect(updated.transcriptionConfig.apiKey).toBe("transcription-secret");
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.namerConfig).toEqual({
+      backend: "openai",
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4o-mini",
+    });
+    expect(savedSettings.transcriptionConfig).toEqual({
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: false,
+      enhancementModel: "gpt-5-mini",
+    });
+    expect(JSON.stringify(savedSettings)).not.toContain("namer-secret");
+    expect(JSON.stringify(savedSettings)).not.toContain("transcription-secret");
+
+    const savedSecrets = JSON.parse(await readFile(secretsPath, "utf-8"));
+    expect(savedSecrets).toEqual({
+      namerOpenAIApiKey: "namer-secret",
+      transcriptionApiKey: "transcription-secret",
+    });
+  });
+
   it("loads existing settings from disk", () => {
     writeFileSync(
       settingsPath,
@@ -95,6 +147,56 @@ describe("settings-manager", () => {
     // pushoverUserKey should still be there
     expect(updated.pushoverUserKey).toBe("po-user");
     expect(updated.pushoverApiToken).toBe("po-token");
+  });
+
+  it("migrates legacy plaintext API keys out of the settings file", async () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        namerConfig: {
+          backend: "openai",
+          apiKey: "legacy-namer-secret",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+        },
+        transcriptionConfig: {
+          apiKey: "legacy-transcription-secret",
+          baseUrl: "https://example.invalid/v1",
+          enhancementEnabled: false,
+          enhancementModel: "gpt-4o-mini",
+        },
+        updatedAt: 123,
+      }),
+      "utf-8",
+    );
+
+    _resetForTest(settingsPath);
+
+    const loaded = getSettings();
+    expect(loaded.namerConfig).toEqual({
+      backend: "openai",
+      apiKey: "legacy-namer-secret",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+    });
+    expect(loaded.transcriptionConfig).toEqual({
+      apiKey: "legacy-transcription-secret",
+      baseUrl: "https://example.invalid/v1",
+      enhancementEnabled: false,
+      enhancementModel: "gpt-4o-mini",
+    });
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.namerConfig.apiKey).toBe("");
+    expect(savedSettings.transcriptionConfig.apiKey).toBe("");
+
+    const savedSecrets = JSON.parse(await readFile(secretsPath, "utf-8"));
+    expect(savedSecrets).toEqual({
+      namerOpenAIApiKey: "legacy-namer-secret",
+      transcriptionApiKey: "legacy-transcription-secret",
+    });
   });
 
   it("normalizes malformed file shape to defaults", () => {
