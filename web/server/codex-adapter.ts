@@ -270,6 +270,24 @@ interface CodexContextCompactionItem extends CodexItem {
   type: "contextCompaction";
 }
 
+interface CodexCollabAgentToolCallItem extends CodexItem {
+  type: "collabAgentToolCall";
+  tool?: string;
+  prompt?: string;
+  senderThreadId?: string;
+  receiverThreadIds?: string[];
+  agentsStates?: unknown[];
+  status?: "inProgress" | "completed" | "failed" | "declined";
+  error?: unknown;
+}
+
+interface PendingSubagentToolUse {
+  prompt: string;
+  startedAt: number;
+  senderThreadId: string | null;
+  parentToolUseId: string | null;
+}
+
 function formatWebSearchResultEntry(entry: unknown): string {
   if (!entry || typeof entry !== "object") return "";
   const rec = entry as Record<string, unknown>;
@@ -621,6 +639,9 @@ export class CodexAdapter
   // and only send item/completed — we need to emit tool_use before tool_result.
   private emittedToolUseIds = new Set<string>();
   private patchChangesByCallId = new Map<string, ToolFileChange[]>();
+  private parentToolUseIdByThreadId = new Map<string, string>();
+  private parentToolUseIdByItemId = new Map<string, string | null>();
+  private pendingSubagentToolUsesByCallId = new Map<string, PendingSubagentToolUse>();
 
   // Resolve when the current turn ends (used by interruptAndWaitForTurnEnd)
   private turnEndResolvers: Array<() => void> = [];
@@ -640,6 +661,7 @@ export class CodexAdapter
     jsonRpcId: number;
     callId: string;
     toolName: string;
+    parentToolUseId: string | null;
     timeout: ReturnType<typeof setTimeout>;
   }>(); // request_id -> pending dynamic tool call metadata
 
@@ -1414,6 +1436,9 @@ export class CodexAdapter
       case "turn/plan/updated":
         this.emitPlanTodoWrite(params, "turn_plan_updated");
         break;
+      case "codex/event/task_complete":
+        this.handleSubagentTaskComplete(params);
+        break;
       case "turn/diff/updated":
         // Could show diff, but not needed for MVP
         break;
@@ -1476,6 +1501,87 @@ export class CodexAdapter
     if (direct.length === 0) return cached;
     if (!hasAnyPatchDiff(direct) && hasAnyPatchDiff(cached)) return cached;
     return direct;
+  }
+
+  private getThreadIdFromRecord(record: Record<string, unknown> | undefined): string | null {
+    if (!record) return null;
+    const threadId = toSafeText(
+      record.threadId
+      ?? record.senderThreadId
+      ?? record.conversationId
+      ?? record.conversation_id
+      ?? record.new_thread_id,
+    ).trim();
+    return threadId || null;
+  }
+
+  private getThreadIdFromParams(params: Record<string, unknown>): string | null {
+    const direct = this.getThreadIdFromRecord(params);
+    if (direct) return direct;
+
+    for (const key of ["item", "turn", "msg"]) {
+      const value = params[key];
+      if (value && typeof value === "object") {
+        const nested = this.getThreadIdFromRecord(value as Record<string, unknown>);
+        if (nested) return nested;
+      }
+    }
+
+    return null;
+  }
+
+  private getParentToolUseIdForThreadId(threadId: string | null | undefined): string | null {
+    if (!threadId) return null;
+    return this.parentToolUseIdByThreadId.get(threadId) ?? null;
+  }
+
+  private resolveParentToolUseId(params: Record<string, unknown>, itemId?: string): string | null {
+    if (itemId && this.parentToolUseIdByItemId.has(itemId)) {
+      return this.parentToolUseIdByItemId.get(itemId) ?? null;
+    }
+    return this.getParentToolUseIdForThreadId(this.getThreadIdFromParams(params));
+  }
+
+  private extractSubagentRole(item: CodexCollabAgentToolCallItem): string {
+    if (Array.isArray(item.agentsStates)) {
+      for (const agentState of item.agentsStates) {
+        if (!agentState || typeof agentState !== "object") continue;
+        const role = toSafeText((agentState as Record<string, unknown>).role).trim();
+        if (role) return role;
+      }
+    }
+    return "";
+  }
+
+  private extractSubagentLabel(item: CodexCollabAgentToolCallItem): string {
+    if (Array.isArray(item.agentsStates)) {
+      for (const agentState of item.agentsStates) {
+        if (!agentState || typeof agentState !== "object") continue;
+        const rec = agentState as Record<string, unknown>;
+        const nickname = toSafeText(rec.nickname ?? rec.agentNickname ?? rec.name).trim();
+        if (nickname) return nickname;
+      }
+    }
+    return "";
+  }
+
+  private handleSubagentTaskComplete(params: Record<string, unknown>): void {
+    const msg = params.msg as Record<string, unknown> | undefined;
+    const threadId = this.getThreadIdFromParams(params);
+    const toolUseId = this.getParentToolUseIdForThreadId(threadId);
+    if (!toolUseId) return;
+
+    const resultText = toSafeText(
+      msg?.last_agent_message
+      ?? params.last_agent_message
+      ?? msg?.summary
+      ?? params.summary
+      ?? msg?.message
+      ?? params.message,
+    ).trim() || "Subagent completed";
+
+    const parentToolUseId = this.pendingSubagentToolUsesByCallId.get(toolUseId)?.parentToolUseId ?? null;
+    this.emitToolResult(toolUseId, resultText, false, parentToolUseId);
   }
 
   // ── Incoming request handlers (approval requests) ───────────────────────
@@ -1595,10 +1701,10 @@ export class CodexAdapter
     const toolName = params.tool as string || "unknown_dynamic_tool";
     const toolArgs = params.arguments as Record<string, unknown> || {};
     const requestId = `codex-dynamic-${randomUUID()}`;
-
+    const parentToolUseId = this.resolveParentToolUseId(params, callId);
 
     // Emit tool_use so the browser sees this custom tool invocation.
-    this.emitToolUseTracked(callId, `dynamic:${toolName}`, toolArgs);
+    this.emitToolUseTracked(callId, `dynamic:${toolName}`, toolArgs, { parentToolUseId });
 
     this.pendingApprovals.set(requestId, jsonRpcId);
     const timeout = setTimeout(() => {
@@ -1609,6 +1715,7 @@ export class CodexAdapter
       jsonRpcId,
       callId,
       toolName,
+      parentToolUseId,
       timeout,
     });
 
@@ -1638,6 +1745,7 @@ export class CodexAdapter
       pending.callId,
       `Dynamic tool "${pending.toolName}" timed out waiting for output.`,
       true,
+      pending.parentToolUseId,
     );
 
     try {
@@ -1770,6 +1878,8 @@ export class CodexAdapter
   private handleItemStarted(params: Record<string, unknown>): void {
     const item = params.item as CodexItem;
     if (!item) return;
+    const parentToolUseId = this.resolveParentToolUseId(params, item.id);
+    this.parentToolUseIdByItemId.set(item.id, parentToolUseId);
 
     switch (item.type) {
       case "agentMessage":
@@ -1791,7 +1901,7 @@ export class CodexAdapter
               usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
             },
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
         });
         // Also emit content_block_start
         this.emit({
@@ -1801,7 +1911,7 @@ export class CodexAdapter
             index: 0,
             content_block: { type: "text", text: "" },
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
         });
         break;
 
@@ -1810,7 +1920,7 @@ export class CodexAdapter
         const commandStr = formatCommandForDisplay(cmd.command, cmd.commandActions);
         this.commandStartTimes.set(item.id, Date.now());
         this.commandOutputByItemId.delete(item.id);
-        this.emitToolUseStart(item.id, "Bash", { command: commandStr });
+        this.emitToolUseStart(item.id, "Bash", { command: commandStr }, { parentToolUseId });
         break;
       }
 
@@ -1827,19 +1937,19 @@ export class CodexAdapter
           file_path: firstChange?.path || "",
           changes,
         };
-        this.emitToolUseStart(item.id, toolName, toolInput);
+        this.emitToolUseStart(item.id, toolName, toolInput, { parentToolUseId });
         break;
       }
 
       case "mcpToolCall": {
         const mcp = item as CodexMcpToolCallItem;
-        this.emitToolUseStart(item.id, `mcp:${mcp.server}:${mcp.tool}`, mcp.arguments || {});
+        this.emitToolUseStart(item.id, `mcp:${mcp.server}:${mcp.tool}`, mcp.arguments || {}, { parentToolUseId });
         break;
       }
 
       case "webSearch": {
         const ws = item as CodexWebSearchItem;
-        this.emitToolUseStart(item.id, "WebSearch", { query: extractWebSearchQuery(ws) });
+        this.emitToolUseStart(item.id, "WebSearch", { query: extractWebSearchQuery(ws) }, { parentToolUseId });
         break;
       }
 
@@ -1858,9 +1968,22 @@ export class CodexAdapter
               index: 0,
               content_block: { type: "thinking", thinking: r.summary || r.content || "" },
             },
-            parent_tool_use_id: null,
+            parent_tool_use_id: parentToolUseId,
           });
         }
+        break;
+      }
+
+      case "collabAgentToolCall": {
+        const collab = item as CodexCollabAgentToolCallItem;
+        if (collab.tool !== "spawnAgent") break;
+        const senderThreadId = toSafeText(collab.senderThreadId).trim() || this.getThreadIdFromParams(params);
+        this.pendingSubagentToolUsesByCallId.set(item.id, {
+          prompt: toSafeText(collab.prompt).trim(),
+          startedAt: Date.now(),
+          senderThreadId: senderThreadId || null,
+          parentToolUseId: this.getParentToolUseIdForThreadId(senderThreadId),
+        });
         break;
       }
 
@@ -1891,10 +2014,12 @@ export class CodexAdapter
   }
 
   private handleAgentMessageDelta(params: Record<string, unknown>): void {
+    const itemId = params.itemId as string | undefined;
     const delta = params.delta as string;
     if (!delta) return;
 
     this.streamingText += delta;
+    const parentToolUseId = this.resolveParentToolUseId(params, itemId);
 
     // Emit as content_block_delta (matches Claude's streaming format)
     this.emit({
@@ -1904,7 +2029,7 @@ export class CodexAdapter
         index: 0,
         delta: { type: "text_delta", text: delta },
       },
-      parent_tool_use_id: null,
+      parent_tool_use_id: parentToolUseId,
     });
   }
 
@@ -1992,12 +2117,15 @@ export class CodexAdapter
     this.planSignatureByKey.set(key, signature);
 
     const toolUseId = `codex-plan-${key}-${++this.planToolUseSeq}`;
-    this.emitToolUseTracked(toolUseId, "TodoWrite", { todos });
+    this.emitToolUseTracked(toolUseId, "TodoWrite", { todos }, {
+      parentToolUseId: this.resolveParentToolUseId(params, toolUseId),
+    });
   }
 
   private handleItemCompleted(params: Record<string, unknown>): void {
     const item = params.item as CodexItem;
     if (!item) return;
+    const parentToolUseId = this.resolveParentToolUseId(params, item.id);
 
     switch (item.type) {
       case "agentMessage": {
@@ -2012,7 +2140,7 @@ export class CodexAdapter
             type: "content_block_stop",
             index: 0,
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
         });
         this.emit({
           type: "stream_event",
@@ -2021,7 +2149,7 @@ export class CodexAdapter
             delta: { stop_reason: null }, // null, not "end_turn" — the turn may continue with tool calls
             usage: { output_tokens: 0 },
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
         });
 
         // Emit the full assistant message
@@ -2036,7 +2164,7 @@ export class CodexAdapter
             stop_reason: "end_turn",
             usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
           timestamp: completedAt,
         });
         this.markMessageFinished(completedAt);
@@ -2051,7 +2179,7 @@ export class CodexAdapter
         const cmd = item as CodexCommandExecutionItem;
         const commandStr = formatCommandForDisplay(cmd.command, cmd.commandActions);
         // Ensure tool_use was emitted (may be skipped when auto-approved)
-        this.ensureToolUseEmitted(item.id, "Bash", { command: commandStr });
+        this.ensureToolUseEmitted(item.id, "Bash", { command: commandStr }, { parentToolUseId });
         // Clean up progress tracking
         this.commandStartTimes.delete(item.id);
         const streamedOutput = (this.commandOutputByItemId.get(item.id) || "").trim();
@@ -2097,7 +2225,7 @@ export class CodexAdapter
           resultText = `${resultText}\n(${durationStr})`;
         }
 
-        this.emitToolResult(item.id, resultText, failed);
+        this.emitToolResult(item.id, resultText, failed, parentToolUseId);
         break;
       }
 
@@ -2110,9 +2238,9 @@ export class CodexAdapter
         this.ensureToolUseEmitted(item.id, toolName, {
           file_path: firstChange?.path || "",
           changes,
-        });
+        }, { parentToolUseId });
         const summary = changes.map((c) => `${safeKind(c.kind)}: ${c.path}`).join("\n");
-        this.emitToolResult(item.id, summary || "File changes applied", fc.status === "failed");
+        this.emitToolResult(item.id, summary || "File changes applied", fc.status === "failed", parentToolUseId);
         this.patchChangesByCallId.delete(item.id);
         break;
       }
@@ -2120,8 +2248,8 @@ export class CodexAdapter
       case "mcpToolCall": {
         const mcp = item as CodexMcpToolCallItem;
         // Ensure tool_use was emitted
-        this.ensureToolUseEmitted(item.id, `mcp:${mcp.server}:${mcp.tool}`, mcp.arguments || {});
-        this.emitToolResult(item.id, mcp.result || mcp.error || "MCP tool call completed", mcp.status === "failed");
+        this.ensureToolUseEmitted(item.id, `mcp:${mcp.server}:${mcp.tool}`, mcp.arguments || {}, { parentToolUseId });
+        this.emitToolResult(item.id, mcp.result || mcp.error || "MCP tool call completed", mcp.status === "failed", parentToolUseId);
         break;
       }
 
@@ -2129,14 +2257,14 @@ export class CodexAdapter
         const ws = item as CodexWebSearchItem;
         const wsQuery = extractWebSearchQuery(ws);
         // Ensure tool_use was emitted
-        this.ensureToolUseEmitted(item.id, "WebSearch", { query: wsQuery });
+        this.ensureToolUseEmitted(item.id, "WebSearch", { query: wsQuery }, { parentToolUseId });
         // Only emit a result if there's meaningful content beyond the query
         // itself. Codex web search items often lack structured result data,
         // causing extractWebSearchResultText to return the query or a generic
         // placeholder — showing that as "RESULT" is confusing.
         const wsResult = extractWebSearchResultText(ws);
         if (wsResult && wsResult !== wsQuery && wsResult !== "Web search completed") {
-          this.emitToolResult(item.id, wsResult, false);
+          this.emitToolResult(item.id, wsResult, false, parentToolUseId);
         }
         break;
       }
@@ -2165,7 +2293,7 @@ export class CodexAdapter
               stop_reason: null,
               usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
             },
-            parent_tool_use_id: null,
+            parent_tool_use_id: parentToolUseId,
             timestamp: completedAt,
           });
           this.markMessageFinished(completedAt);
@@ -2181,8 +2309,43 @@ export class CodexAdapter
             type: "content_block_stop",
             index: 0,
           },
-          parent_tool_use_id: null,
+          parent_tool_use_id: parentToolUseId,
         });
+        break;
+      }
+
+      case "collabAgentToolCall": {
+        const collab = item as CodexCollabAgentToolCallItem;
+        if (collab.tool !== "spawnAgent") break;
+
+        const pending = this.pendingSubagentToolUsesByCallId.get(item.id);
+        const role = this.extractSubagentRole(collab);
+        const description = this.extractSubagentLabel(collab) || role || "Subagent";
+        const effectiveParentToolUseId = pending?.parentToolUseId ?? parentToolUseId;
+        const input: Record<string, unknown> = {
+          prompt: toSafeText(collab.prompt).trim() || pending?.prompt || "",
+          description,
+          subagent_type: role,
+        };
+
+        this.ensureToolUseEmitted(item.id, "Agent", input, {
+          parentToolUseId: effectiveParentToolUseId,
+          timestamp: pending?.startedAt,
+        });
+
+        if (Array.isArray(collab.receiverThreadIds)) {
+          for (const threadId of collab.receiverThreadIds) {
+            if (typeof threadId === "string" && threadId.trim()) {
+              this.parentToolUseIdByThreadId.set(threadId, item.id);
+            }
+          }
+        }
+
+        if (collab.status === "failed" || collab.status === "declined") {
+          const errorText = toSafeText(collab.error).trim() || "Subagent failed";
+          this.emitToolResult(item.id, errorText, true, effectiveParentToolUseId);
+        }
+
         break;
       }
 
@@ -2199,6 +2362,8 @@ export class CodexAdapter
   private handleThreadStatusChanged(params: Record<string, unknown>): void {
     const status = params.status as Record<string, unknown> | undefined;
     if (!status) return;
+    const threadId = this.getThreadIdFromParams(params);
+    if (threadId && this.threadId && threadId !== this.threadId) return;
 
     if (status.type === "idle" && this.currentTurnId) {
       console.log(
@@ -2211,6 +2376,10 @@ export class CodexAdapter
 
   private handleTurnCompleted(params: Record<string, unknown>): void {
     const turn = params.turn as { id: string; status: string; error?: { message: string } } | undefined;
+    const threadId = this.getThreadIdFromParams(params);
+    if (threadId && this.threadId && threadId !== this.threadId) {
+      return;
+    }
 
     this.currentTurnId = null;
     // Wake any callers waiting for the turn to end (e.g. interruptAndWaitForTurnEnd)
@@ -2324,6 +2493,8 @@ export class CodexAdapter
     // }}
     // IMPORTANT: `total` is cumulative across all turns and can far exceed the context window.
     // `last` is the most recent turn — its inputTokens reflects what's actually in context.
+    const threadId = this.getThreadIdFromParams(params);
+    if (threadId && this.threadId && threadId !== this.threadId) return;
     const tokenUsage = params.tokenUsage as Record<string, unknown> | undefined;
     if (!tokenUsage) return;
 
@@ -2421,8 +2592,13 @@ export class CodexAdapter
   }
 
   /** Emit an assistant message with a tool_use content block (no tracking). */
-  private emitToolUse(toolUseId: string, toolName: string, input: Record<string, unknown>): void {
-    const now = Date.now();
+  private emitToolUse(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options?: { parentToolUseId?: string | null; timestamp?: number },
+  ): void {
+    const now = options?.timestamp ?? Date.now();
     this.emit({
       type: "assistant",
       message: {
@@ -2441,16 +2617,21 @@ export class CodexAdapter
         stop_reason: null,
         usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
-      parent_tool_use_id: null,
+      parent_tool_use_id: options?.parentToolUseId ?? null,
       timestamp: now,
       tool_start_times: { [toolUseId]: now },
     });
   }
 
   /** Emit tool_use and track the ID so we don't double-emit. */
-  private emitToolUseTracked(toolUseId: string, toolName: string, input: Record<string, unknown>): void {
+  private emitToolUseTracked(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options?: { parentToolUseId?: string | null; timestamp?: number },
+  ): void {
     this.emittedToolUseIds.add(toolUseId);
-    this.emitToolUse(toolUseId, toolName, input);
+    this.emitToolUse(toolUseId, toolName, input, options);
   }
 
   /**
@@ -2458,7 +2639,12 @@ export class CodexAdapter
    * This matches Claude Code's streaming pattern and ensures the frontend sees the tool block
    * even during active streaming.
    */
-  private emitToolUseStart(toolUseId: string, toolName: string, input: Record<string, unknown>): void {
+  private emitToolUseStart(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options?: { parentToolUseId?: string | null; timestamp?: number },
+  ): void {
     // Emit stream event for tool_use start (matches Claude Code pattern)
     this.emit({
       type: "stream_event",
@@ -2467,20 +2653,25 @@ export class CodexAdapter
         index: 0,
         content_block: { type: "tool_use", id: toolUseId, name: toolName, input: {} },
       },
-      parent_tool_use_id: null,
+      parent_tool_use_id: options?.parentToolUseId ?? null,
     });
-    this.emitToolUseTracked(toolUseId, toolName, input);
+    this.emitToolUseTracked(toolUseId, toolName, input, options);
   }
 
   /** Emit tool_use only if item/started was never received for this ID. */
-  private ensureToolUseEmitted(toolUseId: string, toolName: string, input: Record<string, unknown>): void {
+  private ensureToolUseEmitted(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options?: { parentToolUseId?: string | null; timestamp?: number },
+  ): void {
     if (!this.emittedToolUseIds.has(toolUseId)) {
-      this.emitToolUseStart(toolUseId, toolName, input);
+      this.emitToolUseStart(toolUseId, toolName, input, options);
     }
   }
 
   /** Emit an assistant message with a tool_result content block. */
-  private emitToolResult(toolUseId: string, content: unknown, isError: boolean): void {
+  private emitToolResult(toolUseId: string, content: unknown, isError: boolean, parentToolUseId?: string | null): void {
     const safeContent = typeof content === "string" ? content : JSON.stringify(content);
     const completedAt = Date.now();
     this.emit({
@@ -2501,7 +2692,7 @@ export class CodexAdapter
         stop_reason: null,
         usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
-      parent_tool_use_id: null,
+      parent_tool_use_id: parentToolUseId ?? null,
       timestamp: completedAt,
     });
     this.markMessageFinished(completedAt);

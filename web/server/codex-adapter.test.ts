@@ -64,6 +64,13 @@ function createMockProcess() {
   return { proc, stdin: stdinStream, stdout: stdoutReadable, stderr: stderrReadable };
 }
 
+async function initializeAdapter(stdout: MockReadableStream) {
+  stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+  await tick();
+  stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+  await tick();
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("CodexAdapter", () => {
@@ -244,6 +251,213 @@ describe("CodexAdapter", () => {
     const result = results[0] as { data: { is_error: boolean; subtype: string } };
     expect(result.data.is_error).toBe(false);
     expect(result.data.subtype).toBe("success");
+  });
+
+  it("emits a synthetic Agent tool_use for Codex spawnAgent calls and parents child tool activity under it", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        threadId: "thr_123",
+        item: {
+          type: "collabAgentToolCall",
+          id: "agent_call_1",
+          tool: "spawnAgent",
+          prompt: "Inspect the feed renderer",
+          senderThreadId: "thr_123",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: "thr_123",
+        item: {
+          type: "collabAgentToolCall",
+          id: "agent_call_1",
+          tool: "spawnAgent",
+          prompt: "Inspect the feed renderer",
+          senderThreadId: "thr_123",
+          receiverThreadIds: ["thr_child_1"],
+          agentsStates: [{ nickname: "Banach", role: "explorer" }],
+          status: "completed",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        threadId: "thr_child_1",
+        item: {
+          type: "commandExecution",
+          id: "cmd_child_1",
+          command: ["rg", "subagent", "web/src"],
+          status: "inProgress",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    const agentToolUse = messages.find((msg) => {
+      if (msg.type !== "assistant") return false;
+      const content = (msg as { message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
+      return content.some((block) => block.type === "tool_use" && block.id === "agent_call_1" && block.name === "Agent");
+    }) as
+      | { parent_tool_use_id?: string | null; message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> } }
+      | undefined;
+    expect(agentToolUse).toBeDefined();
+    expect(agentToolUse!.parent_tool_use_id ?? null).toBeNull();
+    const agentBlock = agentToolUse!.message.content.find((block) => block.type === "tool_use" && block.id === "agent_call_1") as {
+      input?: Record<string, unknown>;
+    };
+    expect(agentBlock.input?.description).toBe("Banach");
+    expect(agentBlock.input?.subagent_type).toBe("explorer");
+
+    const childToolUse = messages.find((msg) => {
+      if (msg.type !== "assistant") return false;
+      const content = (msg as { message: { content: Array<{ type: string; id?: string; name?: string }> } }).message.content;
+      return content.some((block) => block.type === "tool_use" && block.id === "cmd_child_1" && block.name === "Bash");
+    }) as { parent_tool_use_id?: string | null } | undefined;
+    expect(childToolUse).toBeDefined();
+    expect(childToolUse!.parent_tool_use_id).toBe("agent_call_1");
+  });
+
+  it("parents child assistant messages under the spawned Agent card", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: "thr_123",
+        item: {
+          type: "collabAgentToolCall",
+          id: "agent_call_2",
+          tool: "spawnAgent",
+          prompt: "Summarize the adapter",
+          senderThreadId: "thr_123",
+          receiverThreadIds: ["thr_child_2"],
+          agentsStates: [{ nickname: "Peirce", role: "explorer" }],
+          status: "completed",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "item/started",
+      params: {
+        threadId: "thr_child_2",
+        item: { type: "agentMessage", id: "agent_msg_1" },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "item/agentMessage/delta",
+      params: {
+        threadId: "thr_child_2",
+        itemId: "agent_msg_1",
+        delta: "Subagent reporting in",
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: "thr_child_2",
+        item: { type: "agentMessage", id: "agent_msg_1", text: "Subagent reporting in" },
+      },
+    }) + "\n");
+    await tick();
+
+    const childAssistant = messages.find((msg) => msg.type === "assistant" && (msg as { message: { id: string } }).message.id === "codex-agent-agent_msg_1") as
+      | { parent_tool_use_id?: string | null; message: { content: Array<{ type: string; text?: string }> } }
+      | undefined;
+    expect(childAssistant).toBeDefined();
+    expect(childAssistant!.parent_tool_use_id).toBe("agent_call_2");
+    expect(childAssistant!.message.content[0].text).toBe("Subagent reporting in");
+  });
+
+  it("emits a subagent tool_result from task_complete and suppresses child-thread turn results", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+
+    stdout.push(JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: "thr_123",
+        item: {
+          type: "collabAgentToolCall",
+          id: "agent_call_3",
+          tool: "spawnAgent",
+          prompt: "Verify completion",
+          senderThreadId: "thr_123",
+          receiverThreadIds: ["thr_child_3"],
+          agentsStates: [{ nickname: "Noether", role: "explorer" }],
+          status: "completed",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "codex/event/task_complete",
+      params: {
+        conversationId: "thr_child_3",
+        msg: {
+          conversation_id: "thr_child_3",
+          last_agent_message: "Done reading the relevant files.",
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    const toolResult = messages.find((msg) => {
+      if (msg.type !== "assistant") return false;
+      const content = (msg as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      return content.some((block) => block.type === "tool_result" && block.tool_use_id === "agent_call_3");
+    }) as
+      | { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }
+      | undefined;
+    expect(toolResult).toBeDefined();
+    const resultBlock = toolResult!.message.content.find((block) => block.type === "tool_result" && block.tool_use_id === "agent_call_3") as {
+      content?: string;
+    };
+    expect(resultBlock.content).toContain("Done reading the relevant files.");
+
+    const resultCountBeforeChildTurn = messages.filter((msg) => msg.type === "result").length;
+
+    stdout.push(JSON.stringify({
+      method: "turn/completed",
+      params: {
+        threadId: "thr_child_3",
+        turn: { id: "turn_child_3", status: "completed", items: [], error: null },
+      },
+    }) + "\n");
+    await tick();
+
+    const resultCountAfterChildTurn = messages.filter((msg) => msg.type === "result").length;
+    expect(resultCountAfterChildTurn).toBe(resultCountBeforeChildTurn);
   });
 
   it("translates command_execution item to Bash tool_use with stream_event", async () => {
