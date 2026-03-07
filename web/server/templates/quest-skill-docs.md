@@ -200,6 +200,7 @@ When the user asks you to work on a quest — whether via the Companion "Assign"
 4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed.
 5. **Self-check**: Before submitting, verify everything you can yourself (tests, typecheck, code review). Do not include self-verifiable items in the verification checklist.
 6. **Submit**: `quest complete q-N --items "..."` — only list items that truly require human verification (UI appearance, UX feel, edge cases needing judgment). Keep items concise — one short sentence each, scannable at a glance.
+   - **Worktree sessions:** If you're working in a git worktree, do **not** run `quest complete` or move the quest to `needs_verification` until your changes are synced to the main repo checkout and pushed. The human verifies from the main repo, not your worktree.
 
 ## Tags
 
@@ -253,6 +254,7 @@ idea → refined → in_progress → needs_verification → done
 ### in_progress → needs_verification
 - Is the implementation actually complete?
 - Run tests, typecheck, linting yourself first.
+- **Worktree sessions:** If you made the change in a git worktree, finish the full sync-to-main workflow first (rebase/cherry-pick/push/reset/post-reset verification) before running `quest complete` or describing the work as ready for verification.
 - **If reworking a quest with existing feedback**: before submitting, reply to the feedback thread explaining what you did. Use `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap, clarified error messages"`. Be concise — summarize what changed, don't repeat the original feedback.
 - **Then mark each addressed human feedback entry** with `quest address q-N <index>`. This command toggles state, so run `quest show q-N` after each toggle and confirm the entry now shows `addressed` (do not toggle entries already addressed).
 - Do not claim feedback was addressed unless both happened: (1) you posted the agent reply with `quest feedback`, and (2) the corresponding human feedback entries are marked addressed.

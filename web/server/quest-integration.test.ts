@@ -67,6 +67,20 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("refined`, `in_progress`, `needs_verification`, or `done");
   });
 
+  it("tells worktree workers to sync to main before needs_verification", async () => {
+    await ensureQuestmasterIntegration(3456, "/repo/web");
+
+    const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
+      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+    );
+    expect(codexSkillWrite).toBeDefined();
+
+    const skill = String(codexSkillWrite?.[1] ?? "");
+    expect(skill).toContain("Worktree sessions:");
+    expect(skill).toContain("do **not** run `quest complete`");
+    expect(skill).toContain("synced to the main repo checkout and pushed");
+  });
+
   it("instructs agents to use quest directly before PATH fallbacks", async () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 

@@ -1689,6 +1689,19 @@ describe("symlinkProjectSettings", () => {
   // worktree instructions now go through the system prompt (--append-system-prompt
   // for Claude, developer_instructions for Codex, appendSystemPrompt for SDK)
   // instead of file-based injection. See q-124.
+
+  it("injects worktree quest sync guardrails into the Claude system prompt", async () => {
+    await launchWorktree();
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    const promptIdx = cmdAndArgs.indexOf("--append-system-prompt");
+    expect(promptIdx).toBeGreaterThan(-1);
+    const prompt = String(cmdAndArgs[promptIdx + 1] ?? "");
+    expect(prompt).toContain("### Quest Status Rule");
+    expect(prompt).toContain("do **NOT** transition it to `needs_verification`");
+    expect(prompt).toContain("main repo contains the changes");
+    expect(prompt).toContain("branch has been pushed");
+  });
 });
 
 describe("getOrchestratorGuardrails", () => {

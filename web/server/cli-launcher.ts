@@ -390,7 +390,11 @@ Do NOT report the sync as complete until ALL of the following are true:
 - [ ] Main repo log shows the cherry-picked commits
 - [ ] Worktree has been reset to match the main repo branch
 - [ ] Tests have been run **after the reset** AND passed (or failures reported to user)
-- [ ] Changes have been pushed to the remote`);
+- [ ] Changes have been pushed to the remote
+
+### Quest Status Rule
+
+If you are working on a quest from this worktree session, do **NOT** transition it to \`needs_verification\` (or say it is ready for verification) until the sync workflow above is fully complete, the main repo contains the changes, and the branch has been pushed. If sync is still pending, leave the quest \`in_progress\`.`);
   }
 
   // Link syntax — always included (useful for all sessions)
