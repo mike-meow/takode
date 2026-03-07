@@ -114,6 +114,7 @@ Cleaning rules:
 - Do NOT assume every word is correct — the STT model may mishear words. Correct obvious mishearings that contradict the surrounding context
 - Preserve ALL technical terms, file paths, variable names, session numbers, quest IDs exactly as spoken
 - Preserve questions the user is asking — do NOT convert questions into instructions. The user may want to discuss before committing to a solution
+- Preserve uncertainty — if the user hedges (should we, maybe, I'm not sure, could we, what if), keep it as a question or tentative suggestion, not a confident instruction
 - NEVER add information not in the original speech
 - NEVER remove meaningful content — only remove filler and repetition
 - NEVER answer questions from the transcript — only clean them up
