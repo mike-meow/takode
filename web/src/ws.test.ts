@@ -2544,7 +2544,7 @@ describe("mid-stream follow-up turn expansion", () => {
   /** When a user_message arrives while the session is running, the in-flight
    *  turn should get a sticky "expanded" override so it doesn't collapse
    *  when sessionStatus flickers to "idle" after the interrupted result. */
-  it("sets keepTurnExpanded override for the in-flight turn when user_message arrives during running", () => {
+  it("tracks transient auto-expansion for the in-flight turn when user_message arrives during running", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
@@ -2566,10 +2566,12 @@ describe("mid-stream follow-up turn expansion", () => {
       timestamp: 2000,
     });
 
-    // The override for the in-flight turn (u1) should be set to expanded
-    const overrides = useStore.getState().turnActivityOverrides.get("s1");
-    expect(overrides).toBeTruthy();
-    expect(overrides!.get("u1")).toBe(true);
+    // The auto-expanded turn set should track the in-flight turn (u1).
+    const autoExpandedTurns = useStore.getState().autoExpandedTurnIds.get("s1");
+    expect(autoExpandedTurns).toBeTruthy();
+    expect(autoExpandedTurns!.has("u1")).toBe(true);
+    // Manual overrides should remain untouched.
+    expect(useStore.getState().turnActivityOverrides.get("s1")?.get("u1")).toBeUndefined();
   });
 
   it("does not set override when session is idle", () => {
@@ -2591,8 +2593,51 @@ describe("mid-stream follow-up turn expansion", () => {
       timestamp: 2000,
     });
 
-    const overrides = useStore.getState().turnActivityOverrides.get("s1");
-    // No override should be set (or empty map)
-    expect(overrides?.get("u1")).toBeUndefined();
+    const autoExpandedTurns = useStore.getState().autoExpandedTurnIds.get("s1");
+    expect(autoExpandedTurns?.has("u1")).toBeUndefined();
+  });
+
+  it("clears transient auto-expansion when message_history replaces the session feed", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "user_message",
+      id: "u1",
+      content: "First request",
+      timestamp: 1000,
+    });
+    useStore.getState().setSessionStatus("s1", "running");
+    fireMessage({
+      type: "user_message",
+      id: "u2",
+      content: "Follow-up during stream",
+      timestamp: 2000,
+    });
+
+    expect(useStore.getState().autoExpandedTurnIds.get("s1")?.has("u1")).toBe(true);
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "u1", content: "First request", timestamp: 1000 },
+        {
+          type: "assistant",
+          message: {
+            id: "msg-1",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [{ type: "text", text: "Recovered reply" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 3000,
+        },
+      ],
+    });
+
+    expect(useStore.getState().autoExpandedTurnIds.has("s1")).toBe(false);
   });
 });

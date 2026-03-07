@@ -48,6 +48,7 @@ export function useCollapsePolicy({
   sessionStatus: "idle" | "running" | "compacting" | "reverting" | null;
 } {
   const overrides = useStore((s) => s.turnActivityOverrides.get(sessionId));
+  const autoExpandedTurnIds = useStore((s) => s.autoExpandedTurnIds.get(sessionId));
   const toggleTurnActivity = useStore((s) => s.toggleTurnActivity);
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId) ?? null);
 
@@ -62,6 +63,7 @@ export function useCollapsePolicy({
         sessionStatus === "running" && isPenultimateTurn && lastTurnIsFreshUserOnly;
       const override = overrides?.get(turn.id);
       const defaultExpanded = getDefaultTurnExpanded(turn, isLastTurn, keepExpandedDuringStreaming, leaderMode);
+      const isAutoExpanded = autoExpandedTurnIds?.has(turn.id) === true && (isLastTurn || isPenultimateTurn);
       const isActivityExpanded = shouldForceLeaderStreamingTurnExpanded(
         turn,
         isLastTurn,
@@ -70,7 +72,7 @@ export function useCollapsePolicy({
         sessionStatus,
       )
         ? true
-        : (override !== undefined ? override : defaultExpanded);
+        : (override !== undefined ? override : (isAutoExpanded ? true : defaultExpanded));
 
       return {
         turnId: turn.id,
@@ -79,7 +81,7 @@ export function useCollapsePolicy({
         keepExpandedDuringStreaming,
       };
     });
-  }, [turns, overrides, sessionStatus, leaderMode]);
+  }, [turns, overrides, autoExpandedTurnIds, sessionStatus, leaderMode]);
 
   const turnStateById = useMemo(() => new Map(turnStates.map((state) => [state.turnId, state])), [turnStates]);
 

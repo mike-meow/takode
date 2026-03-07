@@ -523,6 +523,17 @@ describe("Turn activity overrides", () => {
     const overrides = useStore.getState().turnActivityOverrides.get("s1");
     expect(overrides?.has("turn-2")).toBe(false);
   });
+
+  it("keepTurnAutoExpanded + clearAutoExpandedTurns manage transient expansion state separately", () => {
+    useStore.getState().keepTurnAutoExpanded("s1", "turn-1");
+    useStore.getState().keepTurnAutoExpanded("s1", "turn-2");
+
+    expect(useStore.getState().autoExpandedTurnIds.get("s1")).toEqual(new Set(["turn-1", "turn-2"]));
+
+    useStore.getState().clearAutoExpandedTurns("s1");
+
+    expect(useStore.getState().autoExpandedTurnIds.has("s1")).toBe(false);
+  });
 });
 
 // ─── Reset ──────────────────────────────────────────────────────────────────

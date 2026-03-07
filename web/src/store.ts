@@ -311,6 +311,10 @@ interface AppState {
   // Default: last turn expanded, all others collapsed. Overrides let the user
   // toggle individual turns away from the default (true = expanded, false = collapsed).
   turnActivityOverrides: Map<string, Map<string, boolean>>;
+  // Transient auto-expansion for interrupted in-flight turns. Unlike
+  // turnActivityOverrides, these are not user-driven and should not persist
+  // across authoritative history replays.
+  autoExpandedTurnIds: Map<string, Set<string>>;
   collapsibleTurnIds: Map<string, string[]>;
   toggleTurnActivity: (sessionId: string, turnId: string, defaultExpanded: boolean) => void;
   collapseAllTurnActivity: (sessionId: string, turnIds: string[]) => void;
@@ -318,6 +322,8 @@ interface AppState {
   focusTurn: (sessionId: string, targetTurnId: string) => void;
   /** Set a sticky "expanded" override for a turn (used to keep in-flight turns visible). */
   keepTurnExpanded: (sessionId: string, turnId: string) => void;
+  keepTurnAutoExpanded: (sessionId: string, turnId: string) => void;
+  clearAutoExpandedTurns: (sessionId: string) => void;
   setCollapsibleTurnIds: (sessionId: string, turnIds: string[]) => void;
 
   // Diff panel actions
@@ -476,6 +482,7 @@ export const useStore = create<AppState>((set) => ({
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
   turnActivityOverrides: new Map(),
+  autoExpandedTurnIds: new Map(),
   collapsibleTurnIds: new Map(),
   terminalOpen: false,
   terminalCwd: null,
@@ -671,6 +678,8 @@ export const useStore = create<AppState>((set) => ({
       composerDrafts.delete(sessionId);
       const turnActivityOverrides = new Map(s.turnActivityOverrides);
       turnActivityOverrides.delete(sessionId);
+      const autoExpandedTurnIds = new Map(s.autoExpandedTurnIds);
+      autoExpandedTurnIds.delete(sessionId);
       const collapsibleTurnIds = new Map(s.collapsibleTurnIds);
       collapsibleTurnIds.delete(sessionId);
       const sessionAttention = new Map(s.sessionAttention);
@@ -717,6 +726,7 @@ export const useStore = create<AppState>((set) => ({
         feedScrollPosition,
         composerDrafts,
         turnActivityOverrides,
+        autoExpandedTurnIds,
         collapsibleTurnIds,
         sessionAttention,
         sessionInfoOpenSessionId,
@@ -1432,6 +1442,23 @@ export const useStore = create<AppState>((set) => ({
       return { turnActivityOverrides: overrides };
     }),
 
+  keepTurnAutoExpanded: (sessionId, turnId) =>
+    set((s) => {
+      const autoExpandedTurnIds = new Map(s.autoExpandedTurnIds);
+      const session = new Set(autoExpandedTurnIds.get(sessionId) || []);
+      session.add(turnId);
+      autoExpandedTurnIds.set(sessionId, session);
+      return { autoExpandedTurnIds };
+    }),
+
+  clearAutoExpandedTurns: (sessionId) =>
+    set((s) => {
+      if (!s.autoExpandedTurnIds.has(sessionId)) return s;
+      const autoExpandedTurnIds = new Map(s.autoExpandedTurnIds);
+      autoExpandedTurnIds.delete(sessionId);
+      return { autoExpandedTurnIds };
+    }),
+
   setCollapsibleTurnIds: (sessionId, turnIds) =>
     set((s) => {
       const collapsibleTurnIds = new Map(s.collapsibleTurnIds);
@@ -1493,6 +1520,7 @@ export const useStore = create<AppState>((set) => ({
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
       turnActivityOverrides: new Map(),
+      autoExpandedTurnIds: new Map(),
       collapsibleTurnIds: new Map(),
       quests: [],
       terminalOpen: false,

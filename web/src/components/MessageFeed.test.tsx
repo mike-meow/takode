@@ -49,6 +49,7 @@ vi.mock("../store.js", () => {
       feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
+      autoExpandedTurnIds: mockStoreValues.autoExpandedTurnIds ?? new Map(),
       toggleTurnActivity: mockToggleTurnActivity,
       scrollToTurnId: mockStoreValues.scrollToTurnId ?? new Map(),
       clearScrollToTurn: mockClearScrollToTurn,
@@ -69,6 +70,7 @@ vi.mock("../store.js", () => {
     collapseAllTurnActivity: mockCollapseAllTurnActivity,
     setCollapsibleTurnIds: mockSetCollapsibleTurnIds,
     turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
+    autoExpandedTurnIds: mockStoreValues.autoExpandedTurnIds ?? new Map(),
     toggleTurnActivity: mockToggleTurnActivity,
     focusTurn: mockFocusTurn,
     keepTurnExpanded: mockKeepTurnExpanded,
@@ -192,6 +194,7 @@ function resetStore() {
   mockStoreValues.toolResults = new Map();
   mockStoreValues.toolStartTimestamps = new Map();
   mockStoreValues.turnActivityOverrides = new Map();
+  mockStoreValues.autoExpandedTurnIds = new Map();
   mockStoreValues.backgroundAgentNotifs = new Map();
   mockStoreValues.sdkSessions = [];
 }
@@ -202,6 +205,12 @@ function setStoreTurnOverrides(sessionId: string, overrides: [string, boolean][]
   const map = new Map();
   map.set(sessionId, new Map(overrides));
   mockStoreValues.turnActivityOverrides = map;
+}
+
+function setStoreAutoExpandedTurns(sessionId: string, turnIds: string[]) {
+  const map = new Map();
+  map.set(sessionId, new Set(turnIds));
+  mockStoreValues.autoExpandedTurnIds = map;
 }
 
 beforeEach(() => {
@@ -1473,5 +1482,41 @@ describe("MessageFeed - collapsed turns", () => {
     // Without the override, turn 1 would collapse since sessionStatus is idle.
     // The sticky override should keep it expanded, so the tool row is visible.
     expect(screen.getByText("Read File")).toBeTruthy();
+  });
+
+  it("does not reopen older non-penultimate turns from stale auto-expanded state", () => {
+    const sid = "test-stale-auto-expanded-turns";
+    setStoreStatus(sid, "idle");
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "First request" }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-older", name: "Read", input: { file_path: "/tmp/older.ts" } },
+        ],
+      }),
+      makeMessage({ id: "a2", role: "assistant", content: "Older result" }),
+      makeMessage({ id: "u2", role: "user", content: "Second request" }),
+      makeMessage({
+        id: "a3",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-penultimate", name: "Read", input: { file_path: "/tmp/penultimate.ts" } },
+        ],
+      }),
+      makeMessage({ id: "a4", role: "assistant", content: "Penultimate result" }),
+      makeMessage({ id: "u3", role: "user", content: "Latest request" }),
+      makeMessage({ id: "a5", role: "assistant", content: "Latest result" }),
+    ]);
+    setStoreAutoExpandedTurns(sid, ["u1", "u2"]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    // Stale auto-expanded state should not reopen older turns when the session
+    // is revisited. Only the still-relevant penultimate turn may stay expanded.
+    expect(screen.getAllByText("Read File")).toHaveLength(1);
   });
 });

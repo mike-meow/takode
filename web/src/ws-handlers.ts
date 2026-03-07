@@ -661,7 +661,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         const msgs = store.messages.get(sessionId) || [];
         for (let i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i].role === "user") {
-            store.keepTurnExpanded(sessionId, msgs[i].id);
+            store.keepTurnAutoExpanded(sessionId, msgs[i].id);
             break;
           }
         }
@@ -993,6 +993,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // after message_history. This prevents stale banners from surviving
       // reconnects or server restarts.
       store.clearPermissions(sessionId);
+      // Clear transient turn auto-expansion from previous reconnects or
+      // interrupted follow-ups. The server history is authoritative here, so
+      // reopening a session should recompute collapsed turns from the fresh feed.
+      store.clearAutoExpandedTurns(sessionId);
       const chatMessages: ChatMessage[] = [];
       for (let i = 0; i < data.messages.length; i++) {
         const histMsg = data.messages[i];
