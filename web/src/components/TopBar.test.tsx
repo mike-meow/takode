@@ -2,10 +2,17 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
+const mockNavigateTo = vi.fn();
+const mockNavigateToSession = vi.fn();
+
 vi.mock("../api.js", () => ({
   api: {
     relaunchSession: vi.fn().mockResolvedValue({ ok: true }),
   },
+}));
+vi.mock("../utils/navigation.js", () => ({
+  navigateTo: (...args: unknown[]) => mockNavigateTo(...args),
+  navigateToSession: (...args: unknown[]) => mockNavigateToSession(...args),
 }));
 vi.mock("./SessionInfoPopover.js", () => ({
   SessionInfoPopover: () => <div data-testid="session-info-popover" />,
@@ -13,6 +20,7 @@ vi.mock("./SessionInfoPopover.js", () => ({
 
 interface MockStoreState {
   currentSessionId: string | null;
+  zoomLevel: number;
   cliConnected: Map<string, boolean>;
   cliDisconnectReason: Map<string, "idle_limit" | null>;
   sessionStatus: Map<string, "idle" | "running" | "compacting" | null>;
@@ -24,7 +32,18 @@ interface MockStoreState {
   activeTab: "chat" | "diff";
   setActiveTab: ReturnType<typeof vi.fn>;
   sessions: Map<string, { cwd?: string; permissionMode?: string; backend_type?: string }>;
-  sdkSessions: { sessionId: string; cwd?: string; name?: string; sessionNum?: number | null; permissionMode?: string; backendType?: string }[];
+  sdkSessions: {
+    sessionId: string;
+    createdAt: number;
+    archived?: boolean;
+    cwd?: string;
+    name?: string;
+    sessionNum?: number | null;
+    permissionMode?: string;
+    backendType?: string;
+    cliConnected?: boolean;
+    state?: "idle" | "running" | "compacting" | null;
+  }[];
   changedFiles: Map<string, Set<string>>;
   pendingPermissions: Map<string, Map<string, unknown>>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
@@ -40,6 +59,7 @@ let storeState: MockStoreState;
 function resetStore(overrides: Partial<MockStoreState> = {}) {
   storeState = {
     currentSessionId: "s1",
+    zoomLevel: 1,
     cliConnected: new Map([["s1", true]]),
     cliDisconnectReason: new Map(),
     sessionStatus: new Map([["s1", "idle"]]),
@@ -81,6 +101,7 @@ import { TopBar } from "./TopBar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.innerWidth = 1280;
   resetStore();
 });
 
@@ -89,7 +110,7 @@ describe("TopBar", () => {
     resetStore({
       sessions: new Map([["s1", { cwd: "/repo", permissionMode: "acceptEdits", backend_type: "claude" }]]),
       sessionNames: new Map([["s1", "Main Session"]]),
-      sdkSessions: [{ sessionId: "s1", sessionNum: 111, name: "Main Session" }],
+      sdkSessions: [{ sessionId: "s1", createdAt: 1, sessionNum: 111, name: "Main Session" }],
     });
 
     render(<TopBar />);
@@ -100,7 +121,7 @@ describe("TopBar", () => {
   it("does not show a duplicate plan/agent mode label in title bar", () => {
     resetStore({
       sessions: new Map([["s1", { cwd: "/repo", permissionMode: "plan", backend_type: "codex" }]]),
-      sdkSessions: [{ sessionId: "s1", sessionNum: 111, name: "Main Session", permissionMode: "plan", backendType: "codex" }],
+      sdkSessions: [{ sessionId: "s1", createdAt: 1, sessionNum: 111, name: "Main Session", permissionMode: "plan", backendType: "codex" }],
     });
 
     render(<TopBar />);
@@ -143,5 +164,65 @@ describe("TopBar", () => {
     await waitFor(() => {
       expect(storeState.setSessionInfoOpenSessionId).toHaveBeenLastCalledWith(null);
     });
+  });
+
+  it("cycles to the next attention session on mobile without opening the sidebar", () => {
+    window.innerWidth = 390;
+    resetStore({
+      currentSessionId: "s1",
+      sdkSessions: [
+        { sessionId: "s1", createdAt: 20, name: "First" },
+        { sessionId: "s2", createdAt: 10, name: "Second" },
+      ],
+      sessionAttention: new Map([
+        ["s1", "review"],
+        ["s2", "review"],
+      ]),
+      sessionStatus: new Map([
+        ["s1", "idle"],
+        ["s2", "idle"],
+      ]),
+      cliConnected: new Map([
+        ["s1", true],
+        ["s2", true],
+      ]),
+    });
+
+    render(<TopBar />);
+
+    fireEvent.click(screen.getByTitle("Cycle through sessions needing attention"));
+
+    expect(mockNavigateToSession).toHaveBeenCalledWith("s2");
+    expect(storeState.setSidebarOpen).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on mobile when there is no next attention session", () => {
+    window.innerWidth = 390;
+    resetStore({
+      currentSessionId: "s2",
+      sdkSessions: [
+        { sessionId: "s1", createdAt: 20, name: "First" },
+        { sessionId: "s2", createdAt: 10, name: "Second" },
+      ],
+      sessionAttention: new Map([
+        ["s1", "review"],
+        ["s2", "review"],
+      ]),
+      sessionStatus: new Map([
+        ["s1", "idle"],
+        ["s2", "idle"],
+      ]),
+      cliConnected: new Map([
+        ["s1", true],
+        ["s2", true],
+      ]),
+    });
+
+    render(<TopBar />);
+
+    fireEvent.click(screen.getByTitle("Cycle through sessions needing attention"));
+
+    expect(mockNavigateToSession).not.toHaveBeenCalled();
+    expect(storeState.setSidebarOpen).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import { SessionStatusDot, deriveSessionStatus } from "./SessionStatusDot.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { parseHash } from "../utils/routing.js";
 import { navigateTo, navigateToSession } from "../utils/navigation.js";
+import { isDesktopShellLayout } from "../utils/layout.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
 import { coalesceSessionViewModel, toSessionViewModel } from "../utils/session-view-model.js";
 
@@ -25,6 +26,7 @@ export function TopBar() {
   const sessionStatus = useStore((s) => s.sessionStatus);
   const sessionNames = useStore((s) => s.sessionNames);
   const sdkSessions = useStore((s) => s.sdkSessions);
+  const zoomLevel = useStore((s) => s.zoomLevel);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const setSessionInfoOpenSessionId = useStore((s) => s.setSessionInfoOpenSessionId);
@@ -158,8 +160,28 @@ export function TopBar() {
   }, [attentionKey]);
 
   const handleAttentionCycle = useCallback(() => {
-    setSidebarOpen(true);
     if (attentionSessionIds.length === 0) return;
+
+    if (!isDesktopShellLayout(zoomLevel)) {
+      if (!currentSessionId) {
+        navigateToSession(attentionSessionIds[0]);
+        return;
+      }
+
+      const currentIdx = attentionSessionIds.indexOf(currentSessionId);
+      if (currentIdx < 0) {
+        navigateToSession(attentionSessionIds[0]);
+        return;
+      }
+
+      const nextSessionId = attentionSessionIds[currentIdx + 1];
+      if (!nextSessionId) return;
+
+      navigateToSession(nextSessionId);
+      return;
+    }
+
+    setSidebarOpen(true);
     // Find current session's position in the attention list to cycle from there
     const currentIdx = currentSessionId
       ? attentionSessionIds.indexOf(currentSessionId)
@@ -168,7 +190,7 @@ export function TopBar() {
     const nextIdx = (startFrom + 1) % attentionSessionIds.length;
     cycleIndexRef.current = nextIdx;
     navigateToSession(attentionSessionIds[nextIdx]);
-  }, [attentionSessionIds, currentSessionId, setSidebarOpen]);
+  }, [attentionSessionIds, currentSessionId, setSidebarOpen, zoomLevel]);
 
   // Track the hash before navigating to questmaster so we can toggle back
   const prevHashRef = useRef<string>("");
