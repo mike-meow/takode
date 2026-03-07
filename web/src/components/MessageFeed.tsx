@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, memo } from "react";
+import { useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, memo, type ReactNode } from "react";
 import { useStore } from "../store.js";
 import { MessageBubble } from "./MessageBubble.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon, formatDuration } from "./ToolBlock.js";
@@ -625,6 +625,31 @@ const SubagentBatchContainer = memo(function SubagentBatchContainer({
   );
 });
 
+function SubagentSectionHeader({
+  label,
+  open,
+  onToggle,
+  extra,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  extra?: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
+    >
+      <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+        <path d="M6 4l4 4-4 4" />
+      </svg>
+      <span className="text-[11px] font-medium text-cc-muted">{label}</span>
+      {extra && <span className="ml-auto shrink-0">{extra}</span>}
+    </button>
+  );
+}
+
 const SubagentContainer = memo(function SubagentContainer({
   group,
   sessionId,
@@ -638,8 +663,11 @@ const SubagentContainer = memo(function SubagentContainer({
 }) {
   const [open, setOpen] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [activitiesOpen, setActivitiesOpen] = useState(true);
+  const [resultOpen, setResultOpen] = useState(true);
   const [bgOutput, setBgOutput] = useState<string | null>(null);
   const headerRef = useRef<HTMLButtonElement>(null);
+  const previousHadStreamingRef = useRef(false);
   const label = group.description || "Subagent";
   const agentType = group.agentType;
   const childCount = group.children.length;
@@ -675,10 +703,13 @@ const SubagentContainer = memo(function SubagentContainer({
   const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running";
 
   useEffect(() => {
-    if (rawStreamingText && !open) {
+    const hasStreaming = rawStreamingText.length > 0;
+    if (hasStreaming && !previousHadStreamingRef.current) {
       setOpen(true);
+      setActivitiesOpen(true);
     }
-  }, [rawStreamingText, open]);
+    previousHadStreamingRef.current = hasStreaming;
+  }, [rawStreamingText]);
 
   // Get the last visible entry for a compact preview (fallback when no result)
   const lastEntry = group.children[group.children.length - 1];
@@ -765,15 +796,7 @@ const SubagentContainer = memo(function SubagentContainer({
           {/* Collapsible prompt section */}
           {hasPrompt && (
             <div className="border-b border-cc-border/50">
-              <button
-                onClick={() => setPromptOpen(!promptOpen)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${promptOpen ? "rotate-90" : ""}`}>
-                  <path d="M6 4l4 4-4 4" />
-                </svg>
-                <span className="text-[11px] font-medium text-cc-muted">Prompt</span>
-              </button>
+              <SubagentSectionHeader label="Prompt" open={promptOpen} onToggle={() => setPromptOpen(!promptOpen)} />
               {promptOpen && (
                 <div className="px-3 pb-2">
                   <pre className="text-[11px] text-cc-muted font-mono-code whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
@@ -786,22 +809,27 @@ const SubagentContainer = memo(function SubagentContainer({
 
           {/* Child activities */}
           {(childCount > 0 || rawStreamingText) && (
-            <div className="px-3 py-2 space-y-3">
-              {childCount > 0 && (
-                <FeedEntries entries={group.children} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-              )}
-              {rawStreamingText && (
-                <div className="rounded-[8px] border border-cc-border/50 bg-cc-hover/20 px-3 py-2">
-                  {isCodexSession ? (
-                    <div className="text-[13px] text-cc-fg">
-                      <MarkdownContent text={streamingText} />
-                      <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle -translate-y-[2px] animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
+            <div className="border-b border-cc-border/50">
+              <SubagentSectionHeader label="Activities" open={activitiesOpen} onToggle={() => setActivitiesOpen(!activitiesOpen)} />
+              {activitiesOpen && (
+                <div className="px-3 pb-2 space-y-3">
+                  {childCount > 0 && (
+                    <FeedEntries entries={group.children} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                  )}
+                  {rawStreamingText && (
+                    <div className="rounded-[8px] border border-cc-border/50 bg-cc-hover/20 px-3 py-2">
+                      {isCodexSession ? (
+                        <div className="text-[13px] text-cc-fg">
+                          <MarkdownContent text={streamingText} />
+                          <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle -translate-y-[2px] animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
+                        </div>
+                      ) : (
+                        <pre className="font-serif-assistant text-[14px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
+                          {streamingText}
+                          <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
+                        </pre>
+                      )}
                     </div>
-                  ) : (
-                    <pre className="font-serif-assistant text-[14px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
-                      {streamingText}
-                      <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
-                    </pre>
                   )}
                 </div>
               )}
@@ -850,12 +878,17 @@ const SubagentContainer = memo(function SubagentContainer({
 
           {/* Result */}
           {resultPreview && (
-            <SubagentResult
-              preview={resultPreview}
-              parsedText={parsedResultPreview}
-              sessionId={sessionId}
-              toolUseId={group.taskToolUseId}
-            />
+            <div className="border-t border-cc-border/50">
+              <SubagentSectionHeader label="Result" open={resultOpen} onToggle={() => setResultOpen(!resultOpen)} />
+              {resultOpen && (
+                <SubagentResult
+                  preview={resultPreview}
+                  parsedText={parsedResultPreview}
+                  sessionId={sessionId}
+                  toolUseId={group.taskToolUseId}
+                />
+              )}
+            </div>
           )}
 
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
@@ -906,19 +939,16 @@ function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
     : (parsedText ?? preview.content);
 
   return (
-    <div className="border-t border-cc-border/50 px-3 pt-2 pb-2">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary/60 shrink-0">
-          <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM7.25 5a.75.75 0 011.5 0v.5a.75.75 0 01-1.5 0V5zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.5h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-1.75H7.25a.75.75 0 01-.75-.75z" />
-        </svg>
-        <span className="text-[11px] font-medium text-cc-muted">Result</span>
-        {loading && (
+    <div className="px-3 pb-2">
+      {loading && (
+        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-cc-muted">
           <svg className="w-3 h-3 animate-spin text-cc-muted" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-        )}
-      </div>
+          <span>Loading full result...</span>
+        </div>
+      )}
       <div className="text-sm max-h-96 overflow-y-auto">
         <MarkdownContent text={displayText} />
       </div>

@@ -954,6 +954,64 @@ describe("MessageFeed - subagent grouping", () => {
     expect(screen.queryByText("Find all authentication middleware files")).toBeNull();
   });
 
+  it("lets Prompt, Activities, and Result collapse independently", () => {
+    const sid = "test-subagent-sections";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "task-sections",
+            name: "Task",
+            input: {
+              description: "Inspect auth flow",
+              subagent_type: "Explore",
+              prompt: "Trace the auth middleware path",
+            },
+          },
+        ],
+      }),
+      makeMessage({
+        id: "child-sections",
+        role: "assistant",
+        content: "Checked middleware entrypoint",
+        parentToolUseId: "task-sections",
+        contentBlocks: [{ type: "text", text: "Checked middleware entrypoint" }],
+      }),
+    ]);
+    setStoreToolResults(sid, {
+      "task-sections": {
+        content: "Final auth summary",
+        is_truncated: false,
+      },
+    });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    fireEvent.click(screen.getByText("Inspect auth flow"));
+
+    expect(screen.getByText("Prompt")).toBeTruthy();
+    expect(screen.getByText("Activities")).toBeTruthy();
+    expect(screen.getByText("Result")).toBeTruthy();
+    expect(screen.queryByText("Trace the auth middleware path")).toBeNull();
+    expect(screen.getByText("Checked middleware entrypoint")).toBeTruthy();
+    expect(screen.getByText("Final auth summary")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Activities"));
+    expect(screen.queryByText("Checked middleware entrypoint")).toBeNull();
+    expect(screen.getByText("Final auth summary")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Result"));
+    expect(screen.queryByText("Final auth summary")).toBeNull();
+
+    fireEvent.click(screen.getByText("Prompt"));
+    expect(screen.getByText("Trace the auth middleware path")).toBeTruthy();
+    expect(screen.queryByText("Checked middleware entrypoint")).toBeNull();
+  });
+
   it("does not render Task tool_use as ToolBlock in mixed message with text and Task", () => {
     // When an assistant message has both text and Task tool_use blocks,
     // the Task blocks should be filtered from MessageBubble rendering

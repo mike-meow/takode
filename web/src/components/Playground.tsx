@@ -2571,6 +2571,8 @@ function PlaygroundSubagentGroup({
 }) {
   const [open, setOpen] = useState(true);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [activitiesOpen, setActivitiesOpen] = useState(true);
+  const [resultOpen, setResultOpen] = useState(true);
   const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
 
   useEffect(() => {
@@ -2650,8 +2652,21 @@ function PlaygroundSubagentGroup({
 
               {/* Child activities */}
               {items.length > 0 && (
-                <div className="px-3 py-2 space-y-3">
-                  <PlaygroundToolGroup toolName={items[0]?.name || "Grep"} items={items} />
+                <div className="border-b border-cc-border/50">
+                  <button
+                    onClick={() => setActivitiesOpen(!activitiesOpen)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${activitiesOpen ? "rotate-90" : ""}`}>
+                      <path d="M6 4l4 4-4 4" />
+                    </svg>
+                    <span className="text-[11px] font-medium text-cc-muted">Activities</span>
+                  </button>
+                  {activitiesOpen && (
+                    <div className="px-3 pb-2 space-y-3">
+                      <PlaygroundToolGroup toolName={items[0]?.name || "Grep"} items={items} />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2672,16 +2687,23 @@ function PlaygroundSubagentGroup({
 
               {/* Result */}
               {resultText && (
-                <div className="border-t border-cc-border/50 px-3 pt-2 pb-2">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary/60 shrink-0">
-                      <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM7.25 5a.75.75 0 011.5 0v.5a.75.75 0 01-1.5 0V5zM6.5 7.75A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.5h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-1.75H7.25a.75.75 0 01-.75-.75z" />
+                <div className="border-t border-cc-border/50">
+                  <button
+                    onClick={() => setResultOpen(!resultOpen)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${resultOpen ? "rotate-90" : ""}`}>
+                      <path d="M6 4l4 4-4 4" />
                     </svg>
                     <span className="text-[11px] font-medium text-cc-muted">Result</span>
-                  </div>
-                  <div className="text-sm max-h-96 overflow-y-auto">
-                    <MarkdownContent text={resultText} />
-                  </div>
+                  </button>
+                  {resultOpen && (
+                    <div className="px-3 pb-2">
+                      <div className="text-sm max-h-96 overflow-y-auto">
+                        <MarkdownContent text={resultText} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
