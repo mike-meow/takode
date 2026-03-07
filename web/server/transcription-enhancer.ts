@@ -92,16 +92,20 @@ ALWAYS use bullet format when the transcript contains 2+ sentences or distinct p
 Use - for top-level bullets, * for sub-bullets.
 Keep top-level bullets SHORT (one line). Move supporting details, context, and reasoning into * sub-bullets.
 
-Example:
+<example title="multiple points">
 - Move settings files out of user's repo
   * Currently pollutes git status
   * Use ~/.companion/ as centralized location
 - Fix session auth path
+</example>
 
 For a single short point, a plain sentence is acceptable — but if there are any supporting details, use sub-bullets:
+
+<example title="single point with details">
 Move the settings files to ~/.companion/
   * Currently pollutes git status
   * Centralized location is easier to manage
+</example>
 
 Cleaning rules:
 - Strip verbal filler and false starts — keep only the final, meaningful version
