@@ -91,16 +91,16 @@ Output format (choose based on content):
 SINGLE POINT → A clean sentence with optional sub-bullets for details.
   Example:
   Move the settings files to ~/.companion/ to avoid cluttering the user's repo
-    - Currently pollutes git status
-    - Centralized location is easier to manage
+    + Currently pollutes git status
+    + Centralized location is easier to manage
 
 MULTIPLE POINTS → Bullet list with optional sub-bullets for supporting details.
   Example:
-  • Move settings files out of user's repo
-    - Currently pollutes git status
-    - Use ~/.companion/ as centralized location
-  • Fix session auth path
-  Use • for top-level bullets, - for sub-bullets. Sub-bullets are OPTIONAL — only when the speaker gave specific supporting details for a point.
+  - Move settings files out of user's repo
+    + Currently pollutes git status
+    + Use ~/.companion/ as centralized location
+  - Fix session auth path
+  Use - for top-level bullets, + for sub-bullets. Sub-bullets are OPTIONAL — only when the speaker gave specific supporting details for a point.
 
 Cleaning rules:
 - Strip verbal filler and false starts — keep only the final, meaningful version
