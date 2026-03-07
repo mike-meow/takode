@@ -265,6 +265,162 @@ describe("takode auth fallback", () => {
   });
 });
 
+describe("takode access control", () => {
+  it("allows non-orchestrator sessions to list sessions", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-list", isOrchestrator: false }));
+        return;
+      }
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify([
+          {
+            sessionId: "worker-list",
+            sessionNum: 153,
+            name: "Worker List",
+            state: "idle",
+            archived: false,
+            cwd: "/repo",
+            createdAt: Date.now(),
+            cliConnected: true,
+          },
+        ]));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["list", "--json", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "worker-list",
+        COMPANION_AUTH_TOKEN: "auth-worker-list",
+      });
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual([
+        expect.objectContaining({
+          sessionId: "worker-list",
+          sessionNum: 153,
+          name: "Worker List",
+        }),
+      ]);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("allows non-orchestrator sessions to peek at session activity", async () => {
+    const now = Date.now();
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-peek", isOrchestrator: false }));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/153/messages") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          sessionId: "session-153",
+          sessionNum: 153,
+          sessionName: "Worker Peek",
+          status: "idle",
+          quest: null,
+          mode: "default",
+          totalTurns: 1,
+          totalMessages: 2,
+          collapsedTurns: [],
+          omittedTurnCount: 0,
+          expandedTurn: {
+            turnNum: 1,
+            startedAt: now - 2_000,
+            endedAt: now,
+            durationMs: 2_000,
+            messages: [
+              { idx: 0, type: "user", content: "check status", ts: now - 2_000 },
+              { idx: 1, type: "result", content: "all good", ts: now, success: true },
+            ],
+            stats: { tools: 0, messages: 2, subagents: 0 },
+            omittedMessageCount: 0,
+          },
+        }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["peek", "153", "--json", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "worker-peek",
+        COMPANION_AUTH_TOKEN: "auth-worker-peek",
+      });
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(expect.objectContaining({
+        sessionNum: 153,
+        sessionName: "Worker Peek",
+        mode: "default",
+      }));
+    } finally {
+      server.close();
+    }
+  });
+
+  it("keeps herd messaging restricted to orchestrator sessions", async () => {
+    const requestUrls: string[] = [];
+    const server = createServer((req, res) => {
+      requestUrls.push(req.url || "");
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-send", isOrchestrator: false }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["send", "153", "please", "retry", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "worker-send",
+        COMPANION_AUTH_TOKEN: "auth-worker-send",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("takode commands require an orchestrator session.");
+      expect(requestUrls).toEqual(["/api/takode/me"]);
+    } finally {
+      server.close();
+    }
+  });
+});
+
 describe("takode send", () => {
   it("keeps the positional message form for short manual sends", async () => {
     const messageCalls: Array<{ id: string; body: JsonObject }> = [];

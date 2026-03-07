@@ -37,8 +37,8 @@ Data commands (no server required):
   export      Export session data to a .tar.zst archive [--port PORT]
   import      Import session data from a .tar.zst archive [--port PORT]
 
-Orchestration commands (requires running server + TAKODE_ROLE=orchestrator):
-  takode      Cross-session orchestration (watch, peek, read, send)
+Takode session commands (requires running server + Companion session auth):
+  takode      Session inspection for all sessions; send/herd/spawn require TAKODE_ROLE=orchestrator
 
 Management commands (requires running server):
   sessions    Manage sessions (list, create, kill, relaunch, archive, rename, send-message)

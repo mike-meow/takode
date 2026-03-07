@@ -4186,8 +4186,11 @@ describe("Takode server-authoritative auth", () => {
     return sessions;
   }
 
-  it("denies spoofed token and allows authenticated orchestrator list scope", async () => {
+  it("denies spoofed token and allows authenticated takode list scope for workers and orchestrators", async () => {
     setupTakodeSessions();
+    launcher.verifySessionAuthToken.mockImplementation(
+      (id: string, token: string) => (id === "orch-1" && token === "tok-1") || (id === "worker-2" && token === "tok-2"),
+    );
 
     const denied = await app.request("/api/takode/sessions", {
       method: "GET",
@@ -4203,6 +4206,15 @@ describe("Takode server-authoritative auth", () => {
     const json = await allowed.json();
     expect(Array.isArray(json)).toBe(true);
     expect(json).toHaveLength(3);
+
+    const workerAllowed = await app.request("/api/takode/sessions", {
+      method: "GET",
+      headers: authHeaders("worker-2", "tok-2"),
+    });
+    expect(workerAllowed.status).toBe(200);
+    const workerJson = await workerAllowed.json();
+    expect(Array.isArray(workerJson)).toBe(true);
+    expect(workerJson).toHaveLength(3);
   });
 
   it("enforces authenticated orchestrator identity for herd and unherd", async () => {

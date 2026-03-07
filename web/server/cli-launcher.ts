@@ -268,7 +268,7 @@ export interface SdkSessionInfo {
 
   /** Whether this is an assistant-mode session */
   isAssistant?: boolean;
-  /** Whether this is an orchestrator session (has takode CLI access) */
+  /** Whether this is an orchestrator session (has herd/orchestration privileges) */
   isOrchestrator?: boolean;
   /** Session UUID of the leader that has herded this worker (single leader per session) */
   herdedBy?: string;

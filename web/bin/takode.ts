@@ -1481,7 +1481,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  await ensureOrchestratorAccess(base);
+  await ensureTakodeAccess(base, { requireOrchestrator: true });
 
   const jsonMode = flags.json === true;
 
@@ -1891,14 +1891,14 @@ function printUsage(): void {
 Usage: takode <command> [options]
 
 Commands:
-  list     List sessions (herded only for leaders, --active for all, --all includes archived)
-  search   Search sessions via server-side ranking (name/task/path/message, etc.)
+  list     List sessions (available to all sessions; herded-only by default for leaders)
+  search   Search sessions via server-side ranking (available to all sessions)
   info     Show detailed metadata for a session
   spawn    Create and auto-herd new worker sessions
-  tasks    Show task outline of a session (table of contents)
-  peek     View session activity (smart overview by default)
-  read     Read full content of a specific message
-  send     Send a message to a session
+  tasks    Show a session task outline (available to all sessions)
+  peek     View session activity (available to all sessions)
+  read     Read a full message (available to all sessions)
+  send     Send a message to a herded session
   herd     Herd sessions (e.g. takode herd 5,6,7)
   unherd   Release a session from your herd (e.g. takode unherd 5)
   stop     Gracefully stop a herded session (e.g. takode stop 5)
@@ -1934,9 +1934,12 @@ Examples:
 `);
 }
 
-async function ensureOrchestratorAccess(base: string): Promise<void> {
+async function ensureTakodeAccess(
+  base: string,
+  options?: { requireOrchestrator?: boolean },
+): Promise<void> {
   const me = await apiGet(base, "/takode/me") as { isOrchestrator?: boolean };
-  if (me.isOrchestrator !== true) {
+  if (options?.requireOrchestrator && me.isOrchestrator !== true) {
     err("takode commands require an orchestrator session.");
   }
 }
@@ -1947,25 +1950,26 @@ const args = stripGlobalFlags(rawArgs);
 const base = getBase(rawArgs);
 
 try {
-  const requiresAuth = new Set([
-    "list",
-    "search",
-    "info",
-    "tasks",
-    "peek",
-    "read",
-    "send",
-    "herd",
-    "unherd",
-    "stop",
-    "pending",
-    "answer",
+  const commandAccess = new Map<string, { requireOrchestrator?: boolean }>([
+    ["list", {}],
+    ["search", {}],
+    ["info", {}],
+    ["tasks", {}],
+    ["peek", {}],
+    ["read", {}],
+    ["send", { requireOrchestrator: true }],
+    ["herd", { requireOrchestrator: true }],
+    ["unherd", { requireOrchestrator: true }],
+    ["stop", { requireOrchestrator: true }],
+    ["pending", { requireOrchestrator: true }],
+    ["answer", { requireOrchestrator: true }],
   ]);
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
   const wantsHelp = args.includes("--help") || args.includes("-h");
-  if (command && requiresAuth.has(command) && !wantsHelp) {
-    await ensureOrchestratorAccess(base);
+  const access = command ? commandAccess.get(command) : undefined;
+  if (access && !wantsHelp) {
+    await ensureTakodeAccess(base, access);
   }
 
   switch (command) {
