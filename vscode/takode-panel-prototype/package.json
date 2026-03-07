@@ -2,7 +2,7 @@
   "name": "takode-panel-prototype",
   "displayName": "Takode Panel Prototype",
   "description": "Minimal VS Code prototype that renders the existing Takode localhost frontend in a webview panel.",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "publisher": "takode-local",
   "private": true,
   "extensionKind": [
@@ -48,12 +48,12 @@
         "takodePrototype.productionBaseUrl": {
           "type": "string",
           "default": "http://localhost:3456",
-          "description": "Takode production/server URL to render in the default panel. In Remote SSH, localhost is resolved on the workspace machine via webview port mapping."
+          "description": "Takode production/server URL to render in the default panel. In Remote SSH, localhost is resolved on the workspace machine via VS Code's forwarded URI handling."
         },
         "takodePrototype.devBaseUrl": {
           "type": "string",
           "default": "http://localhost:5174",
-          "description": "Takode dev server URL to render in the dev panel. In Remote SSH, localhost is resolved on the workspace machine via webview port mapping."
+          "description": "Takode dev server URL to render in the dev panel. In Remote SSH, localhost is resolved on the workspace machine via VS Code's forwarded URI handling."
         },
         "takodePrototype.retainContextWhenHidden": {
           "type": "boolean",

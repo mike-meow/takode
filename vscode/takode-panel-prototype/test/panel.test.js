@@ -67,6 +67,19 @@ test("buildPanelHtml embeds the Takode iframe URL and the health probe target", 
   assert.doesNotMatch(html, /selection-label/);
 });
 
+test("buildPanelHtml can load the iframe through a VS Code-forwarded URL", () => {
+  const html = buildPanelHtml({
+    baseUrl: "http://localhost:5174/",
+    resolvedBaseUrl: "https://forwarded.example/vscode-remote-resource/takode/",
+    cspSource: "vscode-webview://test",
+    nonce: "nonce-123",
+  });
+
+  assert.match(html, /"https:\/\/forwarded\.example\/vscode-remote-resource\/takode\/\?takodeHost=vscode"/);
+  assert.match(html, /"https:\/\/forwarded\.example\/vscode-remote-resource\/takode\/api\/health"/);
+  assert.match(html, /loadingUrl\.textContent = baseUrl/);
+});
+
 test("formatSelectionContext renders an inline cursor label when the selection is empty", () => {
   assert.equal(
     formatSelectionContext({

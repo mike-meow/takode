@@ -25,7 +25,11 @@ function normalizeBaseUrl(value) {
 }
 
 function getHealthUrl(baseUrl) {
-  return new URL("/api/health", baseUrl).toString();
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/api/health`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 function getEmbeddedAppUrl(baseUrl) {
@@ -43,9 +47,9 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function buildPanelHtml({ baseUrl, cspSource, nonce }) {
-  const healthUrl = getHealthUrl(baseUrl);
-  const embeddedAppUrl = getEmbeddedAppUrl(baseUrl);
+function buildPanelHtml({ baseUrl, resolvedBaseUrl = baseUrl, cspSource, nonce }) {
+  const healthUrl = getHealthUrl(resolvedBaseUrl);
+  const embeddedAppUrl = getEmbeddedAppUrl(resolvedBaseUrl);
 
   return `<!DOCTYPE html>
 <html lang="en">

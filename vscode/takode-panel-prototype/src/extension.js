@@ -87,12 +87,21 @@ function getPortMappings(baseUrl) {
   return [{ webviewPort: port, extensionHostPort: port }];
 }
 
-function renderPanel(panel, kind, baseUrl) {
+function applyWebviewOptions(panel, baseUrl) {
+  panel.webview.options = {
+    enableScripts: true,
+    portMapping: getPortMappings(baseUrl),
+  };
+}
+
+async function renderPanel(panel, kind, baseUrl) {
   const panelSpec = getPanelSpec(kind);
+  const resolvedBaseUrl = (await vscode.env.asExternalUri(vscode.Uri.parse(baseUrl))).toString();
   panel.title = panelSpec.title;
-  logDebug("renderPanel", { kind, baseUrl });
+  logDebug("renderPanel", { kind, baseUrl, resolvedBaseUrl });
   panel.webview.html = buildPanelHtml({
     baseUrl,
+    resolvedBaseUrl,
     cspSource: panel.webview.cspSource,
     nonce: getNonce(),
   });
@@ -191,12 +200,13 @@ function refreshSelectionContext(editor = vscode.window.activeTextEditor) {
 function attachPanel(panel, kind) {
   const initialBaseUrl = getConfiguredBaseUrl(kind);
 
-  panel.webview.options = {
-    enableScripts: true,
-    portMapping: getPortMappings(initialBaseUrl),
-  };
+  applyWebviewOptions(panel, initialBaseUrl);
 
-  renderPanel(panel, kind, initialBaseUrl);
+  void renderPanel(panel, kind, initialBaseUrl).catch((error) => {
+    const text = error instanceof Error ? error.message : String(error);
+    logDebug("renderPanel failed", { kind, baseUrl: initialBaseUrl, error: text });
+    void vscode.window.showErrorMessage(`Failed to render Takode panel: ${text}`);
+  });
 
   panel.webview.onDidReceiveMessage((message) => {
     if (!message || typeof message !== "object") {
@@ -335,7 +345,13 @@ function activate(context) {
       }
 
       for (const [kind, panel] of panelsByKind.entries()) {
-        renderPanel(panel, kind, getConfiguredBaseUrl(kind));
+        const baseUrl = getConfiguredBaseUrl(kind);
+        applyWebviewOptions(panel, baseUrl);
+        void renderPanel(panel, kind, baseUrl).catch((error) => {
+          const text = error instanceof Error ? error.message : String(error);
+          logDebug("renderPanel failed after config change", { kind, baseUrl, error: text });
+          void vscode.window.showErrorMessage(`Failed to reload Takode panel: ${text}`);
+        });
         pushSelectionContext(panel);
       }
     }),
