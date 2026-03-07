@@ -316,7 +316,7 @@ describe("ToolBlock", () => {
     expect(dollarSpan?.textContent).toBe("$ ");
   });
 
-  it("renders Edit diff view inline (flat, no collapse)", () => {
+  it("keeps Edit diffs collapsed by default and only renders them after expand", () => {
     const { container } = render(
       <ToolBlock
         name="Edit"
@@ -329,13 +329,18 @@ describe("ToolBlock", () => {
       />
     );
 
-    // Edit tools render as flat inline diffs — no click needed
+    expect(screen.getByText("Edit File")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeNull();
+    expect(container.querySelector(".diff-line-add")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button"));
+
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
 
-  it("renders Edit diff from unified change patches when old/new strings are missing", () => {
+  it("keeps Edit unified diffs collapsed until the user opens them", () => {
     const { container } = render(
       <ToolBlock
         name="Edit"
@@ -360,8 +365,35 @@ describe("ToolBlock", () => {
       />
     );
 
+    expect(screen.getByText("Edit File")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeNull();
+    expect(container.querySelector(".diff-line-add")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button"));
+
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+  });
+
+  it("keeps Write diffs collapsed by default and renders them on demand", () => {
+    const { container } = render(
+      <ToolBlock
+        name="Write"
+        input={{
+          file_path: "/home/user/src/new-file.ts",
+          content: 'export const answer = 42;\n',
+        }}
+        toolUseId="tool-7c"
+      />
+    );
+
+    expect(screen.getByText("Write File")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(screen.getByText("new-file.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
   });
 
@@ -393,6 +425,7 @@ describe("ToolBlock", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
     fireEvent.click(screen.getByRole("button", { name: "Open File" }));
 
     expect(postMessageSpy).toHaveBeenCalledWith(
@@ -437,6 +470,7 @@ describe("ToolBlock", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -466,6 +500,7 @@ describe("ToolBlock", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -484,7 +519,7 @@ describe("ToolBlock", () => {
       />
     );
 
-    // Flat inline view shows change summary directly
+    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
     expect(screen.getByText(/modify.*app\.ts/)).toBeTruthy();
   });
 

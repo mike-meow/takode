@@ -1109,7 +1109,7 @@ export function Playground() {
         </Section>
 
         {/* ─── Tool Blocks (standalone) ──────────────────────── */}
-        <Section title="Tool Blocks" description="Expandable tool call visualization with duration badges">
+        <Section title="Tool Blocks" description="Expandable tool call visualization with duration badges. Edit and Write diffs start collapsed and only render after expansion.">
           <div className="space-y-2 max-w-3xl">
             <ToolBlock name="Bash" input={{ command: "git status && npm run lint", description: "Check git status and lint" }} toolUseId="tb-1" sessionId={MOCK_SESSION_ID} />
             <ToolBlock name="Bash" input={{ command: "python scripts/mix_dataset.py --chunks 512", description: "Run long data mixing command (live output demo)" }} toolUseId="tb-live" sessionId={MOCK_SESSION_ID} />

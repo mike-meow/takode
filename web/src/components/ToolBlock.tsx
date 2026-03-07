@@ -157,11 +157,6 @@ export const ToolBlock = memo(function ToolBlock({
     return <TodoWriteInline input={input} />;
   }
 
-  // Edit/Write: flat inline diff — no card wrapper, no collapse, the diff IS the display
-  if (name === "Edit" || name === "Write") {
-    return <EditInline input={input} toolUseId={toolUseId} sessionId={sessionId} />;
-  }
-
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button
@@ -189,7 +184,7 @@ export const ToolBlock = memo(function ToolBlock({
       {open && (
         <div className="px-3 pb-3 pt-0 border-t border-cc-border">
           <div className="mt-2">
-            <ToolDetail name={name} input={input} />
+            <ToolDetail name={name} input={input} sessionId={sessionId} />
           </div>
           {sessionId && !isSubagentToolName(name) && (
             <ToolResultSection
@@ -247,96 +242,6 @@ function TodoWriteInline({ input }: { input: Record<string, unknown> }) {
       </span>
     </div>
   );
-}
-
-/** Flat inline diff for Edit/Write tools — no card wrapper, no collapse button.
- *  The diff IS the tool display, like GitHub inline diffs. Error results still show. */
-function EditInline({ input, toolUseId, sessionId }: {
-  input: Record<string, unknown>;
-  toolUseId: string;
-  sessionId?: string;
-}) {
-  const isEmbedded = isEmbeddedInVsCode();
-  const result = useStore((s) =>
-    sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined,
-  );
-  const sessionCwd = useStore((s) => {
-    if (!sessionId) return null;
-    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
-  });
-  // Distinguish Edit from Write by checking for edit-specific fields
-  const isWrite = "content" in input && !("old_string" in input) && !("new_string" in input) && !("changes" in input);
-  const parsed = !isWrite ? parseEditToolInput(input) : null;
-  const writeParsed = isWrite ? parseWriteToolInput(input) : null;
-  const filePath = parsed?.filePath || writeParsed?.filePath || (parsed?.changes.find((change) => typeof change.path === "string")?.path as string | undefined) || "";
-  const openFileAbsolutePath = resolveEmbeddedVsCodePath(filePath, sessionCwd);
-  const firstChangedLine = parsed ? getFirstChangedLineFromEditPayload(parsed) : 1;
-  const showOpenFileButton = isEmbedded && Boolean(openFileAbsolutePath);
-  const openFileButton = showOpenFileButton ? (
-    <button
-      type="button"
-      className="diff-file-action-btn"
-      onClick={() => {
-        if (!openFileAbsolutePath) return;
-        openFileInEmbeddedVsCode({
-          absolutePath: openFileAbsolutePath,
-          line: isWrite ? 1 : firstChangedLine,
-          column: 1,
-        });
-      }}
-      title="Open this file in VS Code"
-    >
-      Open File
-    </button>
-  ) : undefined;
-
-  // Show error results inline (failed edits)
-  if (result?.is_error) {
-    return (
-      <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
-        <div className="text-xs font-mono-code text-red-400 mb-1">{filePath}</div>
-        <pre className="text-[11px] font-mono-code text-red-300 whitespace-pre-wrap">{result.content}</pre>
-      </div>
-    );
-  }
-
-  // Edit tool: render diff directly
-  if (parsed) {
-    if (parsed.unifiedDiff) {
-      return <DiffViewer unifiedDiff={parsed.unifiedDiff} fileName={filePath} mode="compact" headerActions={openFileButton} />;
-    }
-    if (parsed.changes.length > 0 && !parsed.oldText && !parsed.newText) {
-      return (
-        <div className="space-y-1">
-          {openFileButton && <div className="flex justify-end">{openFileButton}</div>}
-          <div className="text-xs text-cc-muted font-mono-code space-y-0.5">
-            {parsed.changes.map((c, i) => (
-              <div key={i}>{typeof c.kind === "string" ? c.kind : "modify"}: {typeof c.path === "string" ? c.path : filePath}</div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    return <DiffViewer oldText={parsed.oldText} newText={parsed.newText} fileName={filePath} mode="compact" headerActions={openFileButton} />;
-  }
-
-  // Write tool: show new file content as a diff
-  if (writeParsed) {
-    return <DiffViewer newText={writeParsed.content} fileName={filePath} mode="compact" headerActions={openFileButton} />;
-  }
-
-  return null;
-}
-
-function getFirstChangedLineFromEditPayload(parsed: ReturnType<typeof parseEditToolInput>): number {
-  const firstHunkMatch = parsed.unifiedDiff.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/m);
-  if (firstHunkMatch) {
-    const nextLine = Number.parseInt(firstHunkMatch[1], 10);
-    if (Number.isFinite(nextLine) && nextLine > 0) {
-      return nextLine;
-    }
-  }
-  return 1;
 }
 
 function formatBytes(bytes: number): string {
@@ -513,14 +418,14 @@ function ToolResultSection({
 }
 
 /** Route to custom detail renderer per tool type */
-function ToolDetail({ name, input }: { name: string; input: Record<string, unknown> }) {
+function ToolDetail({ name, input, sessionId }: { name: string; input: Record<string, unknown>; sessionId?: string }) {
   switch (name) {
     case "Bash":
       return <BashDetail input={input} />;
     case "Edit":
-      return <EditToolDetail input={input} />;
+      return <EditToolDetail input={input} sessionId={sessionId} />;
     case "Write":
-      return <WriteToolDetail input={input} />;
+      return <WriteToolDetail input={input} sessionId={sessionId} />;
     case "Read":
       return <ReadToolDetail input={input} />;
     case "Glob":
@@ -558,6 +463,52 @@ function ToolDetail({ name, input }: { name: string; input: Record<string, unkno
 
 // ─── Per-tool detail components ─────────────────────────────────────────────
 
+function getFirstChangedLineFromEditPayload(parsed: ReturnType<typeof parseEditToolInput>): number {
+  const firstHunkMatch = parsed.unifiedDiff.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/m);
+  if (firstHunkMatch) {
+    const nextLine = Number.parseInt(firstHunkMatch[1], 10);
+    if (Number.isFinite(nextLine) && nextLine > 0) {
+      return nextLine;
+    }
+  }
+  return 1;
+}
+
+function EmbeddedDiffOpenFileButton({
+  filePath,
+  sessionId,
+  line,
+}: {
+  filePath: string;
+  sessionId?: string;
+  line: number;
+}) {
+  const sessionCwd = useStore((s) => {
+    if (!sessionId) return null;
+    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
+  });
+  const isEmbedded = isEmbeddedInVsCode();
+  const absolutePath = resolveEmbeddedVsCodePath(filePath, sessionCwd);
+  if (!isEmbedded || !absolutePath) return null;
+
+  return (
+    <button
+      type="button"
+      className="diff-file-action-btn"
+      onClick={() => {
+        openFileInEmbeddedVsCode({
+          absolutePath,
+          line,
+          column: 1,
+        });
+      }}
+      title="Open this file in VS Code"
+    >
+      Open File
+    </button>
+  );
+}
+
 function BashDetail({ input }: { input: Record<string, unknown> }) {
   const command = String(input.command || "");
   return (
@@ -581,7 +532,7 @@ function BashDetail({ input }: { input: Record<string, unknown> }) {
   );
 }
 
-function EditToolDetail({ input }: { input: Record<string, unknown> }) {
+function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const {
     filePath,
     oldText: oldStr,
@@ -589,14 +540,16 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
     changes,
     unifiedDiff,
   } = parseEditToolInput(input);
+  const openFileButton = <EmbeddedDiffOpenFileButton filePath={filePath} sessionId={sessionId} line={getFirstChangedLineFromEditPayload({ filePath, oldText: oldStr, newText: newStr, changes, unifiedDiff })} />;
 
   if (!oldStr && !newStr && unifiedDiff) {
-    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="full" />;
+    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="full" headerActions={openFileButton} />;
   }
 
   if (!oldStr && !newStr && changes.length > 0) {
     return (
       <div className="space-y-1.5">
+        {openFileButton}
         <div className="text-[10px] text-cc-muted uppercase tracking-wider">Applied changes</div>
         <div className="space-y-1">
           {changes.map((change, i) => (
@@ -619,15 +572,16 @@ function EditToolDetail({ input }: { input: Record<string, unknown> }) {
           replace all
         </span>
       )}
-      <DiffViewer oldText={oldStr} newText={newStr} fileName={filePath} mode="full" />
+      <DiffViewer oldText={oldStr} newText={newStr} fileName={filePath} mode="full" headerActions={openFileButton} />
     </div>
   );
 }
 
-function WriteToolDetail({ input }: { input: Record<string, unknown> }) {
+function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const { filePath, content } = parseWriteToolInput(input);
+  const openFileButton = <EmbeddedDiffOpenFileButton filePath={filePath} sessionId={sessionId} line={1} />;
 
-  return <DiffViewer newText={content} fileName={filePath} mode="full" />;
+  return <DiffViewer newText={content} fileName={filePath} mode="full" headerActions={openFileButton} />;
 }
 
 function ReadToolDetail({ input }: { input: Record<string, unknown> }) {
