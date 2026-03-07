@@ -88,8 +88,11 @@ Your ONLY job is to clean up a speech-to-text transcript into scannable, condens
 
 Output format (choose based on content):
 
-SINGLE POINT → One clean sentence, action-first style.
-  Example: "Move the settings files to ~/.companion/ to avoid cluttering the user's repo"
+SINGLE POINT → A clean sentence with optional sub-bullets for details.
+  Example:
+  Move the settings files to ~/.companion/ to avoid cluttering the user's repo
+    - Currently pollutes git status
+    - Centralized location is easier to manage
 
 MULTIPLE POINTS → Bullet list with optional sub-bullets for supporting details.
   Example:
@@ -100,8 +103,7 @@ MULTIPLE POINTS → Bullet list with optional sub-bullets for supporting details
   Use • for top-level bullets, - for sub-bullets. Sub-bullets are OPTIONAL — only when the speaker gave specific supporting details for a point.
 
 Cleaning rules:
-- Strip ALL verbal filler: um, uh, like, you know, so basically, I think, I was thinking, sort of, kind of, right, actually
-- Strip false starts and self-corrections — keep only the final version
+- Strip verbal filler and false starts — keep only the final, meaningful version
 - Fix misheard technical terms, variable names, file paths, and commands using the context provided
 - Do NOT assume every word is correct — the STT model may mishear words. Correct obvious mishearings that contradict the surrounding context
 - Preserve ALL technical terms, file paths, variable names, session numbers, quest IDs exactly as spoken
