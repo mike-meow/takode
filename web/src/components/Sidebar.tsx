@@ -33,6 +33,7 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
+import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId, type HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -586,6 +587,19 @@ export function Sidebar() {
 
     return highlights;
   }, [hoveredSession?.sessionId, sessionInfoOpenSessionId, allSessionList]);
+  const herdGroupBadgeThemes = useMemo(() => {
+    const leaderThemes = buildHerdGroupBadgeThemes(allSessionList);
+    const sessionThemes = new Map<string, HerdGroupBadgeTheme>();
+
+    for (const session of allSessionList) {
+      const leaderId = getHerdGroupLeaderId(session);
+      if (!leaderId) continue;
+      const theme = leaderThemes.get(leaderId);
+      if (theme) sessionThemes.set(session.id, theme);
+    }
+
+    return sessionThemes;
+  }, [allSessionList]);
 
   // Shared props for SessionItem / ProjectGroup
   const sessionItemProps = {
@@ -726,6 +740,7 @@ export function Sidebar() {
                   sessionPreview={sessionPreviews.get(s.id)}
                   permCount={countUserPermissions(pendingPermissions.get(s.id))}
                   isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                  herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                   herdHoverHighlight={herdHoverHighlights.get(s.id)}
                   matchContext={matchContext}
                   matchedField={matchedField}
@@ -788,6 +803,7 @@ export function Sidebar() {
                                 attributes: attributes as unknown as Record<string, unknown>,
                               }
                             : undefined}
+                          herdGroupBadgeThemes={herdGroupBadgeThemes}
                           {...sessionItemProps}
                         />
                       </div>
@@ -821,6 +837,7 @@ export function Sidebar() {
                         sessionName={sessionNames.get(s.id)}
                         permCount={countUserPermissions(pendingPermissions.get(s.id))}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                        herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
                         {...sessionItemProps}
                       />
@@ -853,6 +870,7 @@ export function Sidebar() {
                         sessionPreview={sessionPreviews.get(s.id)}
                         permCount={countUserPermissions(pendingPermissions.get(s.id))}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
+                        herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
                         {...sessionItemProps}
                       />

@@ -3,6 +3,7 @@ import type { SessionItem as SessionItemType } from "../utils/project-grouping.j
 import { deriveSessionStatus, type SessionVisualStatus } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
 import { getHighlightParts } from "../utils/highlight.js";
+import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
 type SearchMatchedField =
   | "name"
@@ -77,6 +78,7 @@ interface SessionItemProps {
     listeners?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
   };
+  herdGroupBadgeTheme?: HerdGroupBadgeTheme;
   /** Hover-linked herd relationship highlight in sidebar. */
   herdHoverHighlight?: "leader" | "worker";
   /** When set, shows why this session matched a search query (e.g. "keyword: zustand") */
@@ -115,6 +117,7 @@ export function SessionItem({
   hasUnread,
   reorderMode,
   dragHandleProps,
+  herdGroupBadgeTheme,
   herdHoverHighlight,
   matchContext,
   matchedField,
@@ -260,6 +263,17 @@ export function SessionItem({
         animation: "yarn-glow-breathe 2s ease-in-out infinite",
       }
     : undefined;
+  const roleBadgeStyle = herdGroupBadgeTheme
+    ? {
+        color: herdGroupBadgeTheme.textColor,
+        borderColor: herdGroupBadgeTheme.borderColor,
+        backgroundColor: s.isOrchestrator ? herdGroupBadgeTheme.leaderBackground : herdGroupBadgeTheme.herdBackground,
+      }
+    : {
+        color: s.isOrchestrator ? "#f59e0b" : "#fbbf24",
+        borderColor: "rgba(245, 158, 11, 0.18)",
+        backgroundColor: "rgba(245, 158, 11, 0.1)",
+      };
 
   const renderHighlightedSnippet = (text: string): React.ReactNode => {
     const parts = getHighlightParts(text, matchQuery || "");
@@ -368,12 +382,24 @@ export function SessionItem({
             {/* Row 1: Leader/herd tag (inline) + title */}
             <div className="flex items-center gap-1.5">
               {!isEditing && s.isOrchestrator && (
-                <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Orchestrator session">
+                <span
+                  className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 border"
+                  title="Orchestrator session"
+                  data-testid="session-role-badge"
+                  data-herd-group-tone={herdGroupBadgeTheme?.token}
+                  style={roleBadgeStyle}
+                >
                   leader
                 </span>
               )}
               {!isEditing && !s.isOrchestrator && !!s.herdedBy && (
-                <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by an orchestrator">
+                <span
+                  className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 border"
+                  title="Herded by an orchestrator"
+                  data-testid="session-role-badge"
+                  data-herd-group-tone={herdGroupBadgeTheme?.token}
+                  style={roleBadgeStyle}
+                >
                   herd
                 </span>
               )}

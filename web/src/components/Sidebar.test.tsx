@@ -1001,6 +1001,46 @@ describe("Sidebar", () => {
     });
   });
 
+  it("assigns the same herd-group tone to a leader and its workers while keeping different leaders distinct", () => {
+    const leaderAlphaId = "leader-alpha";
+    const workerAlphaId = "worker-alpha";
+    const leaderBetaId = "leader-beta";
+    const workerBetaId = "worker-beta";
+    mockState = createMockState({
+      sessions: new Map([
+        [leaderAlphaId, makeSession(leaderAlphaId, { model: "leader-alpha-model" })],
+        [workerAlphaId, makeSession(workerAlphaId, { model: "worker-alpha-model" })],
+        [leaderBetaId, makeSession(leaderBetaId, { model: "leader-beta-model" })],
+        [workerBetaId, makeSession(workerBetaId, { model: "worker-beta-model" })],
+      ]),
+      sdkSessions: [
+        makeSdkSession(leaderAlphaId, { isOrchestrator: true, sessionNum: 7, createdAt: 1700000001000 }),
+        makeSdkSession(workerAlphaId, { herdedBy: leaderAlphaId, sessionNum: 8, createdAt: 1700000002000 }),
+        makeSdkSession(leaderBetaId, { isOrchestrator: true, sessionNum: 9, createdAt: 1700000003000 }),
+        makeSdkSession(workerBetaId, { herdedBy: leaderBetaId, sessionNum: 10, createdAt: 1700000004000 }),
+      ],
+      sessionNames: new Map([
+        [leaderAlphaId, "Leader Alpha"],
+        [workerAlphaId, "Worker Alpha"],
+        [leaderBetaId, "Leader Beta"],
+        [workerBetaId, "Worker Beta"],
+      ]),
+    });
+
+    render(<Sidebar />);
+
+    const alphaLeaderTone = screen.getByText("Leader Alpha").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
+    const alphaWorkerTone = screen.getByText("Worker Alpha").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
+    const betaLeaderTone = screen.getByText("Leader Beta").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
+    const betaWorkerTone = screen.getByText("Worker Beta").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
+
+    expect(alphaLeaderTone).toBeTruthy();
+    expect(alphaLeaderTone).toBe(alphaWorkerTone);
+    expect(betaLeaderTone).toBeTruthy();
+    expect(betaLeaderTone).toBe(betaWorkerTone);
+    expect(alphaLeaderTone).not.toBe(betaLeaderTone);
+  });
+
   it("keeps herd highlights active when leader info panel is open", () => {
     const leaderSessionId = "leader-2";
     const workerSessionId = "worker-2";

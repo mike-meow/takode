@@ -17,13 +17,129 @@ import { GitHubPRDisplay, CodexRateLimitsSection, CodexTokenDetailsSection } fro
 import { SessionCreationProgress } from "./SessionCreationProgress.js";
 import { StepList } from "./SessionCreationView.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
+import { SessionItem } from "./SessionItem.js";
 import type { CreationProgressEvent } from "../types.js";
 import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar } from "./PawTrail.js";
+import type { SessionItem as SidebarSessionItem } from "../utils/project-grouping.js";
+import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-group-theme.js";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 
 const MOCK_SESSION_ID = "playground-session";
+const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName: string; preview: string }> = [
+  {
+    session: {
+      id: "leader-alpha",
+      model: "gpt-5.4",
+      cwd: "/Users/stan/Dev/takode",
+      gitBranch: "feat/herd-colors",
+      isContainerized: false,
+      gitAhead: 2,
+      gitBehind: 0,
+      linesAdded: 18,
+      linesRemoved: 3,
+      isConnected: true,
+      status: "idle",
+      sdkState: "connected",
+      createdAt: 1,
+      archived: false,
+      backendType: "codex",
+      repoRoot: "/Users/stan/Dev/takode",
+      permCount: 0,
+      isOrchestrator: true,
+      sessionNum: 7,
+    },
+    sessionName: "Orchestrator Alpha",
+    preview: "Routing work across frontend, backend, and review sessions.",
+  },
+  {
+    session: {
+      id: "worker-alpha",
+      model: "gpt-5.4-mini",
+      cwd: "/Users/stan/Dev/takode",
+      gitBranch: "feat/herd-colors",
+      isContainerized: false,
+      gitAhead: 1,
+      gitBehind: 0,
+      linesAdded: 9,
+      linesRemoved: 1,
+      isConnected: true,
+      status: "running",
+      sdkState: "running",
+      createdAt: 2,
+      archived: false,
+      backendType: "codex",
+      repoRoot: "/Users/stan/Dev/takode",
+      permCount: 0,
+      herdedBy: "leader-alpha",
+      sessionNum: 8,
+    },
+    sessionName: "Worker Alpha",
+    preview: "Tightening the badge palette and sidebar contrast.",
+  },
+  {
+    session: {
+      id: "leader-beta",
+      model: "claude-sonnet-4-5",
+      cwd: "/Users/stan/Dev/takode",
+      gitBranch: "feat/herd-colors",
+      isContainerized: false,
+      gitAhead: 0,
+      gitBehind: 0,
+      linesAdded: 4,
+      linesRemoved: 0,
+      isConnected: true,
+      status: "idle",
+      sdkState: "connected",
+      createdAt: 3,
+      archived: false,
+      backendType: "claude",
+      repoRoot: "/Users/stan/Dev/takode",
+      permCount: 0,
+      isOrchestrator: true,
+      sessionNum: 12,
+    },
+    sessionName: "Orchestrator Beta",
+    preview: "Keeping infra workers organized during long-running tasks.",
+  },
+  {
+    session: {
+      id: "worker-beta",
+      model: "claude-haiku-4-5",
+      cwd: "/Users/stan/Dev/takode",
+      gitBranch: "feat/herd-colors",
+      isContainerized: false,
+      gitAhead: 0,
+      gitBehind: 0,
+      linesAdded: 2,
+      linesRemoved: 0,
+      isConnected: true,
+      status: "idle",
+      sdkState: "connected",
+      createdAt: 4,
+      archived: false,
+      backendType: "claude",
+      repoRoot: "/Users/stan/Dev/takode",
+      permCount: 0,
+      herdedBy: "leader-beta",
+      sessionNum: 13,
+    },
+    sessionName: "Worker Beta",
+    preview: "Reviewing session naming and hover states.",
+  },
+];
+const PLAYGROUND_HERD_GROUP_THEMES = (() => {
+  const leaderThemes = buildHerdGroupBadgeThemes(PLAYGROUND_SESSION_ROWS.map(({ session }) => session));
+  const sessionThemes = new Map<string, ReturnType<typeof leaderThemes.get>>();
+  for (const { session } of PLAYGROUND_SESSION_ROWS) {
+    const leaderId = getHerdGroupLeaderId(session);
+    if (!leaderId) continue;
+    const theme = leaderThemes.get(leaderId);
+    if (theme) sessionThemes.set(session.id, theme);
+  }
+  return sessionThemes;
+})();
 
 function mockPermission(overrides: Partial<PermissionRequest> & { tool_name: string; input: Record<string, unknown> }): PermissionRequest {
   return {
@@ -1340,6 +1456,39 @@ export function Playground() {
                   <SessionStatusDot archived permCount={0} isConnected={false} sdkState={null} status={null} />
                   <span className="text-xs text-cc-muted">Archived</span>
                 </div>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
+        <Section title="Session List Herd Groups" description="Leader and worker pills share a herd-group color so different orchestrator groups are easier to scan in the sidebar.">
+          <div className="max-w-md">
+            <Card label="Session list pills">
+              <div className="space-y-1 rounded-xl bg-cc-sidebar p-2">
+                {PLAYGROUND_SESSION_ROWS.map(({ session, sessionName, preview }, index) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    isActive={index === 0}
+                    sessionName={sessionName}
+                    sessionPreview={preview}
+                    permCount={session.permCount}
+                    isRecentlyRenamed={false}
+                    onSelect={() => {}}
+                    onStartRename={() => {}}
+                    onArchive={() => {}}
+                    onUnarchive={() => {}}
+                    onDelete={() => {}}
+                    onClearRecentlyRenamed={() => {}}
+                    editingSessionId={null}
+                    editingName=""
+                    setEditingName={() => {}}
+                    onConfirmRename={() => {}}
+                    onCancelRename={() => {}}
+                    editInputRef={{ current: null }}
+                    herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(session.id)}
+                  />
+                ))}
               </div>
             </Card>
           </div>

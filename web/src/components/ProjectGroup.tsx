@@ -27,6 +27,7 @@ import { SessionItem } from "./SessionItem.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { isTouchDevice } from "../utils/mobile.js";
 import { api } from "../api.js";
+import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
 interface ProjectGroupProps {
   group: ProjectGroupType;
@@ -58,6 +59,7 @@ interface ProjectGroupProps {
   isFirst: boolean;
   sessionAttention?: Map<string, "action" | "error" | "review" | null>;
   herdHoverHighlights?: Map<string, "leader" | "worker">;
+  herdGroupBadgeThemes?: Map<string, HerdGroupBadgeTheme>;
   groupDragHandleProps?: {
     listeners?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
@@ -129,6 +131,7 @@ export function ProjectGroup({
   isFirst,
   sessionAttention,
   herdHoverHighlights,
+  herdGroupBadgeThemes,
   groupDragHandleProps,
   groupDragging,
 }: ProjectGroupProps) {
@@ -264,6 +267,7 @@ export function ProjectGroup({
                           onCancelArchive={onCancelArchive}
                           attention={attention}
                           hasUnread={!!attention}
+                          herdGroupBadgeTheme={herdGroupBadgeThemes?.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights?.get(s.id)}
                           reorderMode={reorderMode}
                           dragHandleProps={reorderMode && touchDevice

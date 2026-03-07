@@ -3,6 +3,7 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { ComponentProps } from "react";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
+import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
 const mockStoreState = {
   questNamedSessions: new Set<string>(),
@@ -76,6 +77,14 @@ function renderSessionItem(overrides: Partial<ComponentProps<typeof SessionItem>
   };
 }
 
+const SAGE_THEME: HerdGroupBadgeTheme = {
+  token: "sage",
+  textColor: "rgb(159, 214, 172)",
+  borderColor: "rgba(119, 191, 139, 0.34)",
+  leaderBackground: "rgba(119, 191, 139, 0.16)",
+  herdBackground: "rgba(119, 191, 139, 0.1)",
+};
+
 describe("SessionItem swipe archive", () => {
   it("archives on right swipe in normal mode", () => {
     const { getByText, onArchive } = renderSessionItem();
@@ -138,6 +147,32 @@ describe("SessionItem search match context", () => {
     expect(screen.getByText("name:")).toBeInTheDocument();
     const highlight = screen.getByText("Beta");
     expect(highlight.tagName).toBe("MARK");
+  });
+});
+
+describe("SessionItem herd role badges", () => {
+  it("renders a themed leader badge for orchestrator sessions", () => {
+    renderSessionItem({
+      session: makeSession({ isOrchestrator: true }),
+      herdGroupBadgeTheme: SAGE_THEME,
+    });
+
+    const badge = screen.getByText("leader");
+    expect(badge).toHaveAttribute("data-herd-group-tone", "sage");
+    expect(badge).toHaveStyle({ color: SAGE_THEME.textColor });
+    expect(badge).toHaveStyle({ backgroundColor: SAGE_THEME.leaderBackground });
+  });
+
+  it("renders a themed herd badge for worker sessions", () => {
+    renderSessionItem({
+      session: makeSession({ herdedBy: "leader-1" }),
+      herdGroupBadgeTheme: SAGE_THEME,
+    });
+
+    const badge = screen.getByText("herd");
+    expect(badge).toHaveAttribute("data-herd-group-tone", "sage");
+    expect(badge).toHaveStyle({ color: SAGE_THEME.textColor });
+    expect(badge).toHaveStyle({ backgroundColor: SAGE_THEME.herdBackground });
   });
 });
 
