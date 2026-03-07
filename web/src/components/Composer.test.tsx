@@ -110,6 +110,7 @@ function setupMockStore(overrides: {
   isConnected?: boolean;
   sessionStatus?: "idle" | "running" | "compacting" | null;
   session?: Partial<SessionState>;
+  draftText?: string;
   sdkSessionTotals?: { added: number; removed: number };
   vscodeSelectionContext?: {
     absolutePath: string;
@@ -125,6 +126,7 @@ function setupMockStore(overrides: {
     isConnected = true,
     sessionStatus = "idle",
     session = {},
+    draftText = "",
     sdkSessionTotals,
     vscodeSelectionContext = null,
   } = overrides;
@@ -150,7 +152,7 @@ function setupMockStore(overrides: {
     sessionStatus: sessionStatusMap,
     previousPermissionMode: previousPermissionModeMap,
     askPermission: askPermissionMap,
-    composerDrafts: new Map(),
+    composerDrafts: draftText ? new Map([["s1", { text: draftText, images: [] }]]) : new Map(),
     appendMessage: mockAppendMessage,
     updateSession: mockUpdateSession,
     setPreviousPermissionMode: mockSetPreviousPermissionMode,
@@ -183,6 +185,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mediaState.narrowLayout = false;
   mediaState.touchDevice = false;
+  Object.defineProperty(window, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
   setupMockStore();
 });
 
@@ -215,6 +221,38 @@ describe("Composer basic rendering", () => {
     render(<Composer sessionId="s1" />);
 
     expect(screen.queryByText("Type a message...")).toBeNull();
+  });
+
+  it("keeps the voice button visible on mobile even when voice input is unavailable", () => {
+    mediaState.narrowLayout = true;
+    mediaState.touchDevice = true;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    const voiceButtons = screen.getAllByLabelText("Voice input");
+    expect(voiceButtons.length).toBeGreaterThan(0);
+    expect(voiceButtons[0].hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Voice input requires HTTPS or localhost in this browser.")).toBeTruthy();
+  });
+
+  it("shows the expanded mobile voice button instead of dropping it from the toolbar", () => {
+    mediaState.narrowLayout = true;
+    mediaState.touchDevice = true;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+    setupMockStore({ draftText: "Voice should still have a slot" });
+
+    render(<Composer sessionId="s1" />);
+
+    const voiceButtons = screen.getAllByLabelText("Voice input");
+    expect(voiceButtons.length).toBeGreaterThan(0);
+    expect(screen.getByTitle("Voice input requires HTTPS or localhost in this browser.")).toBeTruthy();
   });
 });
 

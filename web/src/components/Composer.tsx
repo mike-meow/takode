@@ -199,7 +199,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Voice input — records audio via MediaRecorder, transcribes server-side
   const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
-    isRecording, isSupported: voiceSupported, isTranscribing,
+    isRecording, isSupported: voiceSupported, unsupportedMessage: voiceUnsupportedMessage, isTranscribing,
     transcriptionPhase,
     error: voiceError, volumeLevel, setIsTranscribing, setTranscriptionPhase,
     setError: setVoiceError,
@@ -229,6 +229,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
   });
 
   const handleMicClick = useCallback(() => {
+    if (!voiceSupported) {
+      setVoiceError(voiceUnsupportedMessage ?? "Voice input is unavailable.");
+      return;
+    }
     if (!isRecording) {
       const el = textareaRef.current;
       const cursorPos = el?.selectionStart ?? text.length;
@@ -238,7 +242,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       };
     }
     toggleRecording();
-  }, [isRecording, text, toggleRecording]);
+  }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
 
   // Narrow layout detection via media query (matches Tailwind's sm: breakpoint).
   // This controls layout only; keyboard behavior is tied to actual touch devices.
@@ -882,6 +886,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     () => images.map((img) => ({ src: `data:${img.mediaType};base64,${img.base64}`, name: img.name })),
     [images],
   );
+  const voiceButtonTitle = voiceError
+    || voiceUnsupportedMessage
+    || (isTranscribing ? (transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...") : isRecording ? "Stop recording" : "Voice input");
+  const voiceButtonDisabled = !voiceSupported || !isConnected || isTranscribing;
+  const compactVoiceButtonDisabled = voiceButtonDisabled || isRunning;
 
   return (
     <div ref={composerRootRef} className={`shrink-0 border-t border-cc-border bg-cc-card ${isCollapsed ? "" : "px-2 sm:px-4 py-2 sm:py-3"}`}>
@@ -909,28 +918,27 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </span>
               <span className="flex-1 text-sm text-cc-muted text-left truncate">Type a message...</span>
             </button>
-            {voiceSupported && (
-              <button
-                onClick={() => {
-                  setComposerExpanded(true);
-                  handleMicClick();
-                }}
-                disabled={!isConnected || isTranscribing || isRunning}
-                className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${
-                  !isConnected || isTranscribing || isRunning
-                    ? "text-cc-muted opacity-30 cursor-not-allowed"
-                    : isRecording
-                    ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                }`}
-                title={voiceError || (isTranscribing ? (transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...") : isRecording ? "Stop recording" : "Voice input")}
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 ${isRecording ? "animate-pulse" : ""}`}>
-                  <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
-                  <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
-                </svg>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setComposerExpanded(true);
+                handleMicClick();
+              }}
+              disabled={compactVoiceButtonDisabled}
+              aria-label="Voice input"
+              className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${
+                compactVoiceButtonDisabled
+                  ? "text-cc-muted opacity-30 cursor-not-allowed"
+                  : isRecording
+                  ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+              }`}
+              title={voiceButtonTitle}
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 ${isRecording ? "animate-pulse" : ""}`}>
+                <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+              </svg>
+            </button>
             {/* Stop button — visible in compact bar while streaming */}
             {isRunning && (
               <button
@@ -1110,8 +1118,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
               <span>{transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing..."}</span>
             </div>
           )}
-          {voiceError && !isRecording && !isTranscribing && (
-            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
+          {(voiceError || (voiceUnsupportedMessage && isNarrowLayout)) && !isRecording && !isTranscribing && (
+            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError || voiceUnsupportedMessage}</div>
           )}
 
           <div className="relative">
@@ -1412,25 +1420,24 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 </svg>
               </button>
 
-              {voiceSupported && (
-                <button
-                  onClick={handleMicClick}
-                  disabled={!isConnected || isTranscribing}
-                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
-                    !isConnected || isTranscribing
-                      ? "text-cc-muted opacity-30 cursor-not-allowed"
-                      : isRecording
-                      ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
-                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                  }`}
-                  title={voiceError || (isTranscribing ? (transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...") : isRecording ? "Stop recording" : "Voice input")}
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 sm:w-4 sm:h-4 ${isRecording ? "animate-pulse" : ""}`}>
-                    <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
-                    <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
-                  </svg>
-                </button>
-              )}
+              <button
+                onClick={handleMicClick}
+                disabled={voiceButtonDisabled}
+                aria-label="Voice input"
+                className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
+                  voiceButtonDisabled
+                    ? "text-cc-muted opacity-30 cursor-not-allowed"
+                    : isRecording
+                    ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                }`}
+                title={voiceButtonTitle}
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 sm:w-4 sm:h-4 ${isRecording ? "animate-pulse" : ""}`}>
+                  <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                  <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                </svg>
+              </button>
 
               {/* Stop button — always rendered so the voice/send buttons never shift.
                    Disabled (greyed out) when idle, active when running. */}

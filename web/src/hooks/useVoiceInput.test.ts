@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { normalizeMeterLevel } from "./useVoiceInput.js";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getVoiceInputSupport, normalizeMeterLevel } from "./useVoiceInput.js";
+
+beforeEach(() => {
+  Object.defineProperty(window, "isSecureContext", {
+    configurable: true,
+    value: true,
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn(),
+    },
+  });
+  vi.stubGlobal("MediaRecorder", class MediaRecorder {});
+});
 
 describe("normalizeMeterLevel", () => {
   it("keeps silence at zero", () => {
@@ -22,5 +37,28 @@ describe("normalizeMeterLevel", () => {
     expect(rising).toBeGreaterThan(0.25);
     expect(falling).toBeGreaterThan(0.2);
     expect(falling).toBeLessThan(rising);
+  });
+});
+
+describe("getVoiceInputSupport", () => {
+  it("reports insecure contexts explicitly instead of hiding voice input", () => {
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+
+    expect(getVoiceInputSupport()).toEqual({
+      isSupported: false,
+      unsupportedReason: "insecure-context",
+      unsupportedMessage: "Voice input requires HTTPS or localhost in this browser.",
+    });
+  });
+
+  it("reports full support when browser recording APIs are available", () => {
+    expect(getVoiceInputSupport()).toEqual({
+      isSupported: true,
+      unsupportedReason: null,
+      unsupportedMessage: null,
+    });
   });
 });

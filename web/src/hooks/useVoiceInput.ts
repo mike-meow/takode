@@ -6,10 +6,17 @@ export interface UseVoiceInputOptions {
 }
 
 export type TranscriptionPhase = "transcribing" | "enhancing" | null;
+export type VoiceInputUnsupportedReason =
+  | "insecure-context"
+  | "missing-media-devices"
+  | "missing-media-recorder"
+  | "unsupported-environment";
 
 export interface UseVoiceInputReturn {
   isRecording: boolean;
   isSupported: boolean;
+  unsupportedReason: VoiceInputUnsupportedReason | null;
+  unsupportedMessage: string | null;
   isTranscribing: boolean;
   /** Current transcription phase: "transcribing" (STT in progress), "enhancing" (LLM enhancement), or null */
   transcriptionPhase: TranscriptionPhase;
@@ -24,11 +31,51 @@ export interface UseVoiceInputReturn {
   toggleRecording: () => void;
 }
 
-const isMediaRecorderSupported =
-  typeof window !== "undefined" &&
-  typeof navigator !== "undefined" &&
-  !!navigator.mediaDevices?.getUserMedia &&
-  typeof MediaRecorder !== "undefined";
+interface VoiceInputSupport {
+  isSupported: boolean;
+  unsupportedReason: VoiceInputUnsupportedReason | null;
+  unsupportedMessage: string | null;
+}
+
+export function getVoiceInputSupport(): VoiceInputSupport {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return {
+      isSupported: false,
+      unsupportedReason: "unsupported-environment",
+      unsupportedMessage: "Voice input is unavailable in this environment.",
+    };
+  }
+
+  if (window.isSecureContext === false) {
+    return {
+      isSupported: false,
+      unsupportedReason: "insecure-context",
+      unsupportedMessage: "Voice input requires HTTPS or localhost in this browser.",
+    };
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return {
+      isSupported: false,
+      unsupportedReason: "missing-media-devices",
+      unsupportedMessage: "Voice input is unavailable in this browser.",
+    };
+  }
+
+  if (typeof MediaRecorder === "undefined") {
+    return {
+      isSupported: false,
+      unsupportedReason: "missing-media-recorder",
+      unsupportedMessage: "Voice recording is unavailable in this browser.",
+    };
+  }
+
+  return {
+    isSupported: true,
+    unsupportedReason: null,
+    unsupportedMessage: null,
+  };
+}
 
 // Meter tuning constants calibrated for speech-level mic input.
 const VOLUME_NOISE_FLOOR = 0.01;
@@ -46,6 +93,7 @@ export function normalizeMeterLevel(rms: number, previousLevel: number): number 
 }
 
 export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInputReturn {
+  const support = getVoiceInputSupport();
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionPhase, setTranscriptionPhase] = useState<TranscriptionPhase>(null);
@@ -121,7 +169,10 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   }, []);
 
   const startRecording = useCallback(async () => {
-    if (!isMediaRecorderSupported) return;
+    if (!support.isSupported) {
+      setError(support.unsupportedMessage ?? "Voice input is unavailable.");
+      return;
+    }
 
     setError(null);
     chunksRef.current = [];
@@ -176,7 +227,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
         setError("Could not access microphone");
       }
     }
-  }, [startVolumeMonitor, stopVolumeMonitor]);
+  }, [startVolumeMonitor, stopVolumeMonitor, support.isSupported, support.unsupportedMessage]);
 
   const toggleRecording = useCallback(() => {
     if (isRecording) {
@@ -206,7 +257,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
   return {
     isRecording,
-    isSupported: isMediaRecorderSupported,
+    isSupported: support.isSupported,
+    unsupportedReason: support.unsupportedReason,
+    unsupportedMessage: support.unsupportedMessage,
     isTranscribing,
     transcriptionPhase,
     error,
