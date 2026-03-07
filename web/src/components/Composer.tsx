@@ -25,6 +25,7 @@ import {
   resolveVsCodeSelectionForSession,
   type VsCodeSelectionContextPayload,
 } from "../utils/vscode-context.js";
+import { isNarrowComposerLayout } from "../utils/layout.js";
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -177,6 +178,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [dynamicCodexModels, setDynamicCodexModels] = useState<ModelOption[] | null>(null);
   const [sendPressing, setSendPressing] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const zoomLevel = useStore((s) => s.zoomLevel);
 
   // @ mention file search state
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
@@ -244,22 +246,16 @@ export function Composer({ sessionId }: { sessionId: string }) {
     toggleRecording();
   }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
 
-  // Narrow layout detection via media query (matches Tailwind's sm: breakpoint).
-  // This controls layout only; keyboard behavior is tied to actual touch devices.
-  const [isNarrowLayout, setIsNarrowLayout] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try { return !window.matchMedia("(min-width: 640px)").matches; }
-    catch { return false; }
-  });
+  // Narrow layout detection uses zoom-adjusted viewport width so VS Code side
+  // panels do not switch to mobile layout too early when the app is zoomed out.
+  const [isNarrowLayout, setIsNarrowLayout] = useState(() => isNarrowComposerLayout(zoomLevel));
   const usesTouchKeyboard = isTouchDevice();
   useEffect(() => {
-    let mql: MediaQueryList;
-    try { mql = window.matchMedia("(min-width: 640px)"); }
-    catch { return; }
-    const handler = (e: MediaQueryListEvent) => setIsNarrowLayout(!e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
+    const updateLayout = () => setIsNarrowLayout(isNarrowComposerLayout(zoomLevel));
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, [zoomLevel]);
 
   // Track whether the current text change came from user typing (handleInput).
   // When it did, handleInput already adjusted the textarea height synchronously,

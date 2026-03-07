@@ -50,6 +50,7 @@ export function SessionHoverCard({
 }: SessionHoverCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
+  const zoomLevel = useStore((st) => st.zoomLevel ?? 1);
 
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);
@@ -157,7 +158,7 @@ export function SessionHoverCard({
     <div
       ref={cardRef}
       className="fixed z-50 pointer-events-auto hidden-on-touch"
-      style={{ left, top, width: cardWidth }}
+      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

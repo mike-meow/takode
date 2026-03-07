@@ -3,6 +3,7 @@ import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, Task
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
 import type { VsCodeSelectionContext } from "./utils/vscode-context.js";
 import { isEmbeddedInVsCode } from "./utils/embed-context.js";
+import { isDesktopShellLayout } from "./utils/layout.js";
 
 // ─── Pending Session (client-only, pre-creation) ────────────────────────────
 
@@ -470,7 +471,7 @@ export const useStore = create<AppState>((set) => ({
   notificationSound: getInitialNotificationSound(),
   notificationDesktop: getInitialNotificationDesktop(),
   showUsageBars: typeof window !== "undefined" ? scopedGetItem("cc-show-usage") !== "false" : true,
-  sidebarOpen: typeof window !== "undefined" ? window.innerWidth >= 768 : true,
+  sidebarOpen: typeof window !== "undefined" ? isDesktopShellLayout(getInitialZoomLevel()) : true,
   sessionInfoOpenSessionId: null,
   reorderMode: false,
   taskPanelOpen: false,

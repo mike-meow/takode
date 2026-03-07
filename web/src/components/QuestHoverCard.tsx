@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { QuestmasterTask } from "../types.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
+import { useStore } from "../store.js";
 
 interface QuestHoverCardProps {
   quest: QuestmasterTask;
@@ -13,6 +14,7 @@ interface QuestHoverCardProps {
 export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }: QuestHoverCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const statusTheme = getQuestStatusTheme(quest.status);
+  const zoomLevel = useStore((state) => state.zoomLevel ?? 1);
 
   const cardWidth = 300;
   const gap = 6;
@@ -39,7 +41,7 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
     <div
       ref={cardRef}
       className="fixed z-50 pointer-events-auto hidden-on-touch"
-      style={{ left, top, width: cardWidth }}
+      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

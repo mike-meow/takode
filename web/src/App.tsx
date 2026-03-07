@@ -19,6 +19,7 @@ import { SessionCreationView } from "./components/SessionCreationView.js";
 import { NewSessionModal } from "./components/NewSessionModal.js";
 import { QuestmasterPage } from "./components/QuestmasterPage.js";
 import { isPendingId } from "./utils/pending-creation.js";
+import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
@@ -57,6 +58,8 @@ export default function App() {
   const isScheduledPage = route.page === "scheduled";
   const isQuestmasterPage = route.page === "questmaster";
   const isSessionView = route.page === "session" || route.page === "home";
+  const isDesktopShell = isDesktopShellLayout(zoomLevel);
+  const isDesktopTaskPanel = isDesktopTaskPanelLayout(zoomLevel);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -199,13 +202,13 @@ export default function App() {
   const swipeRef = useRef({ startX: 0, startY: 0, dx: 0, swiping: false });
 
   const handleSidebarTouchStart = useCallback((e: React.TouchEvent) => {
-    if (window.innerWidth >= 768) return;
+    if (isDesktopShell) return;
     const t = e.touches[0];
     swipeRef.current = { startX: t.clientX, startY: t.clientY, dx: 0, swiping: false };
-  }, []);
+  }, [isDesktopShell]);
 
   const handleSidebarTouchMove = useCallback((e: React.TouchEvent) => {
-    if (window.innerWidth >= 768) return;
+    if (isDesktopShell) return;
     const t = e.touches[0];
     const dx = t.clientX - swipeRef.current.startX;
     const dy = t.clientY - swipeRef.current.startY;
@@ -221,7 +224,7 @@ export default function App() {
     if (sidebarRef.current) {
       sidebarRef.current.style.transform = `translateX(${swipeRef.current.dx}px)`;
     }
-  }, []);
+  }, [isDesktopShell]);
 
   const handleSidebarTouchEnd = useCallback(() => {
     if (!swipeRef.current.swiping) return;
@@ -254,9 +257,9 @@ export default function App() {
   return (
     <div className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left', width: `${100 / zoomLevel}%`, height: `${100 / zoomLevel}%` }}>
       {/* Mobile overlay backdrop */}
-      {sidebarOpen && (
+      {sidebarOpen && !isDesktopShell && (
         <div
-          className="fixed inset-0 bg-black/30 z-30 md:hidden"
+          className="fixed inset-0 bg-black/30 z-30"
           onClick={() => useStore.getState().setSidebarOpen(false)}
         />
       )}
@@ -268,9 +271,13 @@ export default function App() {
         onTouchMove={handleSidebarTouchMove}
         onTouchEnd={handleSidebarTouchEnd}
         className={`
-          fixed md:relative z-40 md:z-auto
+          ${isDesktopShell ? "relative z-auto" : "fixed z-40"}
           h-full shrink-0 transition-all duration-200
-          ${sidebarOpen ? "w-[80vw] md:w-[260px] translate-x-0" : "w-0 -translate-x-full md:w-0 md:-translate-x-full"}
+          ${
+            isDesktopShell
+              ? (sidebarOpen ? "w-[260px] translate-x-0" : "w-0")
+              : (sidebarOpen ? "w-[80vw] translate-x-0" : "w-0 -translate-x-full")
+          }
           overflow-hidden
         `}
       >
@@ -350,18 +357,18 @@ export default function App() {
       {currentSessionId && isSessionView && !isPendingId(currentSessionId) && (
         <>
           {/* Mobile overlay backdrop */}
-          {taskPanelOpen && (
+          {taskPanelOpen && !isDesktopTaskPanel && (
             <div
-              className="fixed inset-0 bg-black/30 z-30 lg:hidden"
+              className="fixed inset-0 bg-black/30 z-30"
               onClick={() => useStore.getState().setTaskPanelOpen(false)}
             />
           )}
 
           <div
             className={`
-              fixed lg:relative z-40 lg:z-auto right-0 top-0
+              ${isDesktopTaskPanel ? "relative z-auto" : "fixed z-40 right-0 top-0"}
               h-full shrink-0 transition-all duration-200
-              ${taskPanelOpen ? "w-[280px] translate-x-0" : "w-0 translate-x-full lg:w-0 lg:translate-x-full"}
+              ${taskPanelOpen ? "w-[280px] translate-x-0" : "w-0 translate-x-full"}
               overflow-hidden
             `}
           >

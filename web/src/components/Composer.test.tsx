@@ -8,21 +8,19 @@ import type { SessionState } from "../../server/session-types.js";
 Element.prototype.scrollIntoView = vi.fn();
 
 const mediaState = {
-  narrowLayout: false,
   touchDevice: false,
 };
 
-// Polyfill matchMedia for jsdom. Layout width and touch capability are controlled
-// independently so keyboard behavior can be tested on narrow desktop layouts.
+// Polyfill matchMedia for jsdom. Touch capability remains query-driven; layout
+// width is controlled via window.innerWidth because the composer now uses
+// zoom-adjusted viewport width instead of a raw media query.
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
     matches:
-      query === "(min-width: 640px)"
-        ? !mediaState.narrowLayout
-        : query === "(hover: none) and (pointer: coarse)"
-          ? mediaState.touchDevice
-          : false,
+      query === "(hover: none) and (pointer: coarse)"
+        ? mediaState.touchDevice
+        : false,
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -111,6 +109,7 @@ function setupMockStore(overrides: {
   sessionStatus?: "idle" | "running" | "compacting" | null;
   session?: Partial<SessionState>;
   draftText?: string;
+  zoomLevel?: number;
   sdkSessionTotals?: { added: number; removed: number };
   vscodeSelectionContext?: {
     absolutePath: string;
@@ -127,6 +126,7 @@ function setupMockStore(overrides: {
     sessionStatus = "idle",
     session = {},
     draftText = "",
+    zoomLevel = 1,
     sdkSessionTotals,
     vscodeSelectionContext = null,
   } = overrides;
@@ -158,6 +158,7 @@ function setupMockStore(overrides: {
     setPreviousPermissionMode: mockSetPreviousPermissionMode,
     setSessionPreview: mockSetSessionPreview,
     setAskPermission: mockSetAskPermission,
+    zoomLevel,
     vscodeSelectionContext,
     sdkSessions: sdkSessionTotals ? [{
       sessionId: "s1",
@@ -181,10 +182,19 @@ function setupMockStore(overrides: {
   };
 }
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+  window.dispatchEvent(new Event("resize"));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mediaState.narrowLayout = false;
   mediaState.touchDevice = false;
+  setViewportWidth(1024);
   Object.defineProperty(window, "isSecureContext", {
     configurable: true,
     value: true,
@@ -216,7 +226,7 @@ describe("Composer basic rendering", () => {
   });
 
   it("does not switch to the collapsed composer on narrow desktop layouts", () => {
-    mediaState.narrowLayout = true;
+    setViewportWidth(500);
     mediaState.touchDevice = false;
     render(<Composer sessionId="s1" />);
 
@@ -224,7 +234,7 @@ describe("Composer basic rendering", () => {
   });
 
   it("keeps the voice button visible on mobile even when voice input is unavailable", () => {
-    mediaState.narrowLayout = true;
+    setViewportWidth(500);
     mediaState.touchDevice = true;
     Object.defineProperty(window, "isSecureContext", {
       configurable: true,
@@ -240,7 +250,7 @@ describe("Composer basic rendering", () => {
   });
 
   it("shows the expanded mobile voice button instead of dropping it from the toolbar", () => {
-    mediaState.narrowLayout = true;
+    setViewportWidth(500);
     mediaState.touchDevice = true;
     Object.defineProperty(window, "isSecureContext", {
       configurable: true,
@@ -311,7 +321,7 @@ describe("Composer sending messages", () => {
   });
 
   it("pressing Enter still sends on narrow desktop layouts", () => {
-    mediaState.narrowLayout = true;
+    setViewportWidth(500);
     mediaState.touchDevice = false;
     const { container } = render(<Composer sessionId="s1" />);
     const textarea = container.querySelector("textarea")!;
@@ -323,6 +333,14 @@ describe("Composer sending messages", () => {
       type: "user_message",
       content: "send from side panel",
     }));
+  });
+
+  it("keeps the desktop composer layout when zoom makes the effective width wide enough", () => {
+    setViewportWidth(720);
+    setupMockStore({ zoomLevel: 0.8 });
+    render(<Composer sessionId="s1" />);
+
+    expect(screen.queryByText("Type a message...")).toBeNull();
   });
 
   it("clicking the send button sends the message", () => {

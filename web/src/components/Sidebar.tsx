@@ -32,6 +32,7 @@ import { YarnBallSpinner } from "./CatIcons.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
+import { isDesktopShellLayout } from "../utils/layout.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -108,6 +109,7 @@ export function Sidebar() {
   const pendingSessions = useStore((s) => s.pendingSessions);
   const serverName = useStore((s) => s.serverName);
   const setServerName = useStore((s) => s.setServerName);
+  const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
@@ -118,6 +120,7 @@ export function Sidebar() {
   const isTerminalPage = route.page === "terminal";
   const isScheduledPage = route.page === "scheduled";
   const isQuestmasterPage = route.page === "questmaster";
+  const isDesktopLayout = isDesktopShellLayout(zoomLevel);
 
   // Poll for SDK sessions on mount
   useEffect(() => {
@@ -262,14 +265,14 @@ export function Sidebar() {
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
     navigateToSession(sessionId);
     // Close sidebar on mobile
-    if (window.innerWidth < 768) {
+    if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
     }
   }
 
   function handleNewSession() {
     useStore.getState().setShowNewSessionModal(true);
-    if (window.innerWidth < 768) {
+    if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
     }
   }
@@ -879,7 +882,7 @@ export function Sidebar() {
               } else {
                 window.location.hash = "#/terminal";
               }
-              if (window.innerWidth < 768) {
+              if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }
             }}
@@ -908,7 +911,7 @@ export function Sidebar() {
               } else {
                 window.location.hash = "#/scheduled";
               }
-              if (window.innerWidth < 768) {
+              if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }
             }}
@@ -935,7 +938,7 @@ export function Sidebar() {
               } else {
                 window.location.hash = "#/questmaster";
               }
-              if (window.innerWidth < 768) {
+              if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }
             }}
@@ -962,7 +965,7 @@ export function Sidebar() {
               } else {
                 window.location.hash = "#/settings";
               }
-              if (window.innerWidth < 768) {
+              if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }
             }}
