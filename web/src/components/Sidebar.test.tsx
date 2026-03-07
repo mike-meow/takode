@@ -448,6 +448,30 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(sessionButton.textContent).toContain("-858");
   });
 
+  it("falls back to local diff file stats when server line totals are temporarily zero", () => {
+    const session = makeSession("s1", {
+      git_branch: "jiayi-wt-9954",
+      is_worktree: true,
+      total_lines_added: 0,
+      total_lines_removed: 0,
+    });
+    const sdk = makeSdkSession("s1", { totalLinesAdded: 0, totalLinesRemoved: 0 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+      diffFileStats: new Map([
+        ["s1", new Map([
+          ["/repo/docs/codex-dropped-user-messages.md", { additions: 1527, deletions: 625 }],
+        ])],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button")!;
+    expect(sessionButton.textContent).toContain("+1527");
+    expect(sessionButton.textContent).toContain("-625");
+  });
+
   it("active session has highlighted styling (bg-cc-active class)", () => {
     const session = makeSession("s1");
     const sdk = makeSdkSession("s1");

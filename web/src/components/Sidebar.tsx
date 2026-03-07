@@ -41,6 +41,16 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   x: 0,
 });
 
+function sumDiffFileStats(fileStats: Map<string, { additions: number; deletions: number }> | undefined) {
+  let additions = 0;
+  let deletions = 0;
+  for (const stats of fileStats?.values() ?? []) {
+    additions += stats.additions;
+    deletions += stats.deletions;
+  }
+  return { additions, deletions };
+}
+
 function SortableProjectGroup({
   id,
   children,
@@ -109,6 +119,7 @@ export function Sidebar() {
   const reorderMode = useStore((s) => s.reorderMode);
   const setReorderMode = useStore((s) => s.setReorderMode);
   const pendingSessions = useStore((s) => s.pendingSessions);
+  const diffFileStats = useStore((s) => s.diffFileStats);
   const serverName = useStore((s) => s.serverName);
   const setServerName = useStore((s) => s.setServerName);
   const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
@@ -445,6 +456,15 @@ export function Sidebar() {
     const gitBehind = bridgeState?.git_behind === 0 && sdkGitBehind > 0
       ? sdkGitBehind
       : (bridgeState?.git_behind ?? sdkGitBehind);
+    const serverLinesAdded = bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0;
+    const serverLinesRemoved = bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0;
+    const localLineStats = sumDiffFileStats(diffFileStats.get(id));
+    const linesAdded = serverLinesAdded === 0 && serverLinesRemoved === 0 && (localLineStats.additions > 0 || localLineStats.deletions > 0)
+      ? localLineStats.additions
+      : serverLinesAdded;
+    const linesRemoved = serverLinesAdded === 0 && serverLinesRemoved === 0 && (localLineStats.additions > 0 || localLineStats.deletions > 0)
+      ? localLineStats.deletions
+      : serverLinesRemoved;
     return {
       id,
       model: bridgeState?.model || sdkInfo?.model || "",
@@ -453,8 +473,8 @@ export function Sidebar() {
       isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
       gitAhead,
       gitBehind,
-      linesAdded: bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0,
-      linesRemoved: bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0,
+      linesAdded,
+      linesRemoved,
       isConnected: cliConnected.get(id) ?? sdkInfo?.cliConnected ?? false,
       status: sessionStatus.get(id) ?? null,
       sdkState: sdkInfo?.state ?? null,
