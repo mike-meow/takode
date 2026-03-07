@@ -242,6 +242,20 @@ describe("ToolBlock", () => {
     expect(screen.getByText("Web Fetch")).toBeTruthy();
   });
 
+  it("can hide the repeated label when a grouped bash row already has an outer heading", () => {
+    render(
+      <ToolBlock
+        name="Bash"
+        input={{ command: "echo hello" }}
+        toolUseId="tool-hide-label"
+        hideLabel
+      />
+    );
+
+    expect(screen.queryByText("Terminal")).toBeNull();
+    expect(screen.getByText("echo hello")).toBeTruthy();
+  });
+
   it("is collapsed by default (does not show details)", () => {
     render(
       <ToolBlock

@@ -701,6 +701,24 @@ describe("MessageBubble - content block grouping", () => {
     expect(labels.length).toBe(4);
   });
 
+  it("keeps the outer Terminal group label while removing repeated inner bash labels", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "",
+      contentBlocks: [
+        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test -f package.json" } },
+        { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "bun run test" } },
+      ],
+    });
+
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getAllByText("Terminal")).toHaveLength(1);
+    expect(screen.getByText("test -f package.json")).toBeTruthy();
+    expect(screen.getByText("bun run test")).toBeTruthy();
+  });
+
   it("does not group different tool types together", () => {
     const msg = makeMessage({
       role: "assistant",

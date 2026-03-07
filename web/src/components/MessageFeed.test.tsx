@@ -550,6 +550,35 @@ describe("MessageFeed - tool-only message detection", () => {
     expect(labels.length).toBe(3);
   });
 
+  it("keeps the outer Terminal group label while removing repeated inner bash labels", () => {
+    const sid = "test-bash-tool-group";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test -f package.json" } },
+        ],
+      }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "bun run test" } },
+        ],
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getAllByText("Terminal")).toHaveLength(1);
+    expect(screen.getByText("test -f package.json")).toBeTruthy();
+    expect(screen.getByText("bun run test")).toBeTruthy();
+  });
+
   it("does not group different tool types across messages", () => {
     const sid = "test-no-tool-group";
     setStoreMessages(sid, [

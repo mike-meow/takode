@@ -276,7 +276,14 @@ const ToolMessageGroup = memo(function ToolMessageGroup({ group, sessionId }: { 
             {open && (
               <div className="border-t border-cc-border px-3 py-2 flex flex-col gap-1.5">
                 {group.items.map((item, i) => (
-                  <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+                  <ToolBlock
+                    key={item.id || i}
+                    name={item.name}
+                    input={item.input}
+                    toolUseId={item.id}
+                    sessionId={sessionId}
+                    hideLabel={group.toolName === "Bash"}
+                  />
                 ))}
               </div>
             )}

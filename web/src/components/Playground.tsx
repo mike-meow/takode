@@ -2063,6 +2063,15 @@ export function Playground() {
         {/* ─── Tool Message Groups ──────────────────────────────── */}
         <Section title="Tool Message Groups" description="Consecutive same-tool calls collapsed into a single expandable row">
           <div className="space-y-4 max-w-3xl">
+            <Card label="Multi-item group (2 Terminal commands)">
+              <PlaygroundToolGroup
+                toolName="Bash"
+                items={[
+                  { id: "bash-group-1", name: "Bash", input: { command: "test -f /home/jiayiwei/.config/app.json" } },
+                  { id: "bash-group-2", name: "Bash", input: { command: "sed -n '1,80p' /home/jiayiwei/.config/app.json" } },
+                ]}
+              />
+            </Card>
             <Card label="Multi-item group (4 Reads)">
               <PlaygroundToolGroup toolName="Read" items={MOCK_TOOL_GROUP_ITEMS} />
             </Card>

@@ -138,11 +138,13 @@ export const ToolBlock = memo(function ToolBlock({
   input,
   toolUseId,
   sessionId,
+  hideLabel = false,
 }: {
   name: string;
   input: Record<string, unknown>;
   toolUseId: string;
   sessionId?: string;
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const headerRef = useRef<HTMLButtonElement>(null);
@@ -151,6 +153,7 @@ export const ToolBlock = memo(function ToolBlock({
 
   // Extract the most useful preview
   const preview = getPreview(name, input);
+  const showPreviewOnly = hideLabel && Boolean(preview);
 
   // TodoWrite: flat inline view with status icon + active task + count
   if (name === "TodoWrite" && Array.isArray((input as Record<string, unknown>).todos)) {
@@ -172,9 +175,9 @@ export const ToolBlock = memo(function ToolBlock({
           <path d="M6 4l4 4-4 4" />
         </svg>
         <ToolIcon type={iconType} />
-        <span className="text-xs font-medium text-cc-fg">{label}</span>
+        {!showPreviewOnly && <span className="text-xs font-medium text-cc-fg">{label}</span>}
         {preview && (
-          <span className="text-xs text-cc-muted truncate flex-1 font-mono-code">
+          <span className={`text-xs truncate flex-1 font-mono-code ${showPreviewOnly ? "text-cc-fg/90" : "text-cc-muted"}`}>
             {preview}
           </span>
         )}

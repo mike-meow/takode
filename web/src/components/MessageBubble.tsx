@@ -811,7 +811,14 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
       {open && (
         <div className="border-t border-cc-border px-3 py-2 flex flex-col gap-1.5">
           {items.map((item, i) => (
-            <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+            <ToolBlock
+              key={item.id || i}
+              name={item.name}
+              input={item.input}
+              toolUseId={item.id}
+              sessionId={sessionId}
+              hideLabel={name === "Bash"}
+            />
           ))}
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
