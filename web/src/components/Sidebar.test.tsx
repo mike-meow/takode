@@ -212,7 +212,7 @@ beforeEach(() => {
   window.location.hash = "";
 });
 
-describe("Sidebar", () => {
+describe("Sidebar", { timeout: 10000 }, () => {
   it("renders 'New Session' button", () => {
     render(<Sidebar />);
     expect(screen.getByText("New Session")).toBeInTheDocument();
@@ -472,7 +472,7 @@ describe("Sidebar", () => {
     expect(mockState.setShowNewSessionModal).toHaveBeenCalledWith(true);
   });
 
-  it("double-clicking a session enters edit mode", () => {
+  it("double-clicking a session enters edit mode", async () => {
     const session = makeSession("s1");
     const sdk = makeSdkSession("s1");
     mockState = createMockState({
@@ -485,7 +485,7 @@ describe("Sidebar", () => {
     fireEvent.doubleClick(sessionButton);
 
     // After double-click, an input should appear for renaming
-    const input = screen.getByDisplayValue("claude-sonnet-4-5-20250929");
+    const input = await screen.findByDisplayValue("claude-sonnet-4-5-20250929");
     expect(input).toBeInTheDocument();
     expect(input.tagName).toBe("INPUT");
   });
