@@ -38,6 +38,13 @@ function formatTokens(n: number): string {
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
+function escapeSelectorValue(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, "\\$&");
+}
+
 function minuteBucket(timestamp: number): string | null {
   const d = new Date(timestamp);
   if (Number.isNaN(d.getTime())) return null;
@@ -1313,7 +1320,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
     // Wait for DOM to settle, then scroll to the specific message
     requestAnimationFrame(() => {
-      const target = el.querySelector(`[data-message-id="${CSS.escape(scrollToMessageId)}"]`);
+      const target = el.querySelector(`[data-message-id="${escapeSelectorValue(scrollToMessageId)}"]`);
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "center" });
       }
