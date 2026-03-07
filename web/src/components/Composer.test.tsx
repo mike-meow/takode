@@ -245,8 +245,9 @@ describe("Composer basic rendering", () => {
 
     const voiceButtons = screen.getAllByLabelText("Voice input");
     expect(voiceButtons.length).toBeGreaterThan(0);
-    expect(voiceButtons[0].hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Voice input requires HTTPS or localhost in this browser.")).toBeTruthy();
+    expect(voiceButtons[0].hasAttribute("disabled")).toBe(false);
+    expect(voiceButtons[0].getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByText("Voice input requires HTTPS or localhost in this browser.")).toBeNull();
   });
 
   it("shows the expanded mobile voice button instead of dropping it from the toolbar", () => {
@@ -262,7 +263,38 @@ describe("Composer basic rendering", () => {
 
     const voiceButtons = screen.getAllByLabelText("Voice input");
     expect(voiceButtons.length).toBeGreaterThan(0);
-    expect(screen.getByTitle("Voice input requires HTTPS or localhost in this browser.")).toBeTruthy();
+    expect(screen.getByTitle("Voice needs HTTPS")).toBeTruthy();
+  });
+
+  it("shows the full unavailable-voice explanation only after pressing the voice button", () => {
+    setViewportWidth(500);
+    mediaState.touchDevice = true;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    expect(screen.queryByText("Voice input requires HTTPS or localhost in this browser.")).toBeNull();
+
+    fireEvent.click(screen.getAllByLabelText("Voice input")[0]);
+
+    expect(screen.getByText("Voice input requires HTTPS or localhost in this browser.")).toBeTruthy();
+  });
+
+  it("shows the concise unavailable tooltip without the full message on desktop hover state", () => {
+    setViewportWidth(1200);
+    mediaState.touchDevice = false;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    expect(screen.getByTitle("Voice needs HTTPS")).toBeTruthy();
+    expect(screen.queryByText("Voice input requires HTTPS or localhost in this browser.")).toBeNull();
   });
 });
 

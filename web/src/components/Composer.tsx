@@ -201,7 +201,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Voice input — records audio via MediaRecorder, transcribes server-side
   const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
-    isRecording, isSupported: voiceSupported, unsupportedMessage: voiceUnsupportedMessage, isTranscribing,
+    isRecording, isSupported: voiceSupported, unsupportedReason: voiceUnsupportedReason, unsupportedMessage: voiceUnsupportedMessage, isTranscribing,
     transcriptionPhase,
     error: voiceError, volumeLevel, setIsTranscribing, setTranscriptionPhase,
     setError: setVoiceError,
@@ -229,6 +229,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
     },
   });
+  const [voiceUnsupportedInfoOpen, setVoiceUnsupportedInfoOpen] = useState(false);
 
   const handleMicClick = useCallback(() => {
     if (!voiceSupported) {
@@ -245,6 +246,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
     toggleRecording();
   }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
+
+  const toggleVoiceUnsupportedInfo = useCallback((expandComposerOnReveal = false) => {
+    if (!voiceUnsupportedMessage) return;
+    if (expandComposerOnReveal) setComposerExpanded(true);
+    setVoiceUnsupportedInfoOpen((open) => !open);
+  }, [voiceUnsupportedMessage]);
 
   // Narrow layout detection uses zoom-adjusted viewport width so VS Code side
   // panels do not switch to mobile layout too early when the app is zoomed out.
@@ -882,11 +889,19 @@ export function Composer({ sessionId }: { sessionId: string }) {
     () => images.map((img) => ({ src: `data:${img.mediaType};base64,${img.base64}`, name: img.name })),
     [images],
   );
-  const voiceButtonTitle = voiceError
-    || voiceUnsupportedMessage
+  const voiceUnsupportedTooltip = voiceUnsupportedReason === "insecure-context"
+    ? "Voice needs HTTPS"
+    : "Voice unavailable";
+  const voiceButtonTitle = (!voiceSupported ? voiceUnsupportedTooltip : voiceError)
     || (isTranscribing ? (transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...") : isRecording ? "Stop recording" : "Voice input");
-  const voiceButtonDisabled = !voiceSupported || !isConnected || isTranscribing;
+  const voiceButtonDisabled = !isConnected || isTranscribing;
   const compactVoiceButtonDisabled = voiceButtonDisabled || isRunning;
+
+  useEffect(() => {
+    if (voiceSupported || isRecording || isTranscribing) {
+      setVoiceUnsupportedInfoOpen(false);
+    }
+  }, [voiceSupported, isRecording, isTranscribing]);
 
   return (
     <div ref={composerRootRef} className={`shrink-0 border-t border-cc-border bg-cc-card ${isCollapsed ? "" : "px-2 sm:px-4 py-2 sm:py-3"}`}>
@@ -916,13 +931,18 @@ export function Composer({ sessionId }: { sessionId: string }) {
             </button>
             <button
               onClick={() => {
+                if (!voiceSupported) {
+                  toggleVoiceUnsupportedInfo(true);
+                  return;
+                }
                 setComposerExpanded(true);
                 handleMicClick();
               }}
               disabled={compactVoiceButtonDisabled}
               aria-label="Voice input"
+              aria-disabled={!voiceSupported || compactVoiceButtonDisabled}
               className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${
-                compactVoiceButtonDisabled
+                (!voiceSupported || compactVoiceButtonDisabled)
                   ? "text-cc-muted opacity-30 cursor-not-allowed"
                   : isRecording
                   ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
@@ -1114,8 +1134,31 @@ export function Composer({ sessionId }: { sessionId: string }) {
               <span>{transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing..."}</span>
             </div>
           )}
-          {(voiceError || (voiceUnsupportedMessage && isNarrowLayout)) && !isRecording && !isTranscribing && (
-            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError || voiceUnsupportedMessage}</div>
+          {voiceUnsupportedInfoOpen && voiceUnsupportedMessage && !isRecording && !isTranscribing && (
+            <div className="px-4 pt-2">
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-start gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning"
+              >
+                <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                <span className="flex-1">{voiceUnsupportedMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setVoiceUnsupportedInfoOpen(false)}
+                  className="shrink-0 text-cc-warning/70 hover:text-cc-warning transition-colors"
+                  aria-label="Dismiss voice input message"
+                  title="Dismiss"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          {voiceError && !isRecording && !isTranscribing && (
+            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
           )}
 
           <div className="relative">
@@ -1417,11 +1460,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </button>
 
               <button
-                onClick={handleMicClick}
+                onClick={!voiceSupported ? () => toggleVoiceUnsupportedInfo(false) : handleMicClick}
                 disabled={voiceButtonDisabled}
                 aria-label="Voice input"
+                aria-disabled={!voiceSupported || voiceButtonDisabled}
                 className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
-                  voiceButtonDisabled
+                  (!voiceSupported || voiceButtonDisabled)
                     ? "text-cc-muted opacity-30 cursor-not-allowed"
                     : isRecording
                     ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
