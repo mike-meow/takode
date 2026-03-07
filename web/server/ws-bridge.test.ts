@@ -4627,6 +4627,310 @@ describe("compaction_finished herd event", () => {
   });
 });
 
+// ─── Compaction does NOT kill generation lifecycle ───────────────────────────
+
+describe("Compaction preserves generation state (regression)", () => {
+  // Regression: Claude Code compaction called setGenerating(false, "compaction")
+  // which killed the generation lifecycle mid-turn. After compaction, the CLI
+  // continued working but isGenerating was false, so the final result was a
+  // no-op and the session appeared permanently idle despite active work.
+
+  it("Claude Code: isGenerating stays true during compaction", async () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Start generation via user message
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "implement the feature",
+    }));
+    const session = bridge.getSession("s1")!;
+    expect(session.isGenerating).toBe(true);
+
+    // CLI enters compaction mid-turn
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+    }));
+
+    // isGenerating must stay true — compaction is NOT a turn boundary
+    expect(session.isGenerating).toBe(true);
+    expect(session.state.is_compacting).toBe(true);
+
+    // CLI finishes compaction, continues turn
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "idle",
+    }));
+    expect(session.state.is_compacting).toBe(false);
+    expect(session.isGenerating).toBe(true);
+
+    // Turn ends normally — result properly transitions to idle
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "done",
+      duration_ms: 5000,
+      duration_api_ms: 5000,
+      num_turns: 1,
+      total_cost_usd: 0.05,
+      stop_reason: "end_turn",
+      usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      uuid: "result-1",
+      session_id: "cli-123",
+    }));
+    expect(session.isGenerating).toBe(false);
+  });
+
+  it("Claude Code: compaction mid-tool-call preserves tool state and generation", async () => {
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Start generation
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run the tests",
+    }));
+
+    // CLI sends assistant message with a tool_use
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "msg-tool",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "tool_use", id: "tool-bash-1", name: "Bash", input: { command: "bun run test" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "u-tool",
+      session_id: "cli-123",
+    }));
+
+    const session = bridge.getSession("s1")!;
+    expect(session.isGenerating).toBe(true);
+    expect(session.toolStartTimes.has("tool-bash-1")).toBe(true);
+
+    // Compaction starts mid-tool-call
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+    }));
+
+    // Both generation AND tool state must be preserved
+    expect(session.isGenerating).toBe(true);
+    expect(session.toolStartTimes.has("tool-bash-1")).toBe(true);
+    expect(session.state.is_compacting).toBe(true);
+
+    // Compaction finishes
+    bridge.handleCLIMessage(cli, JSON.stringify({
+      type: "system",
+      subtype: "status",
+      status: "idle",
+    }));
+
+    // Still generating, tool still tracked
+    expect(session.isGenerating).toBe(true);
+    expect(session.toolStartTimes.has("tool-bash-1")).toBe(true);
+    expect(session.state.is_compacting).toBe(false);
+  });
+
+  it("Codex: isGenerating stays true during compaction status_change", async () => {
+    const sid = "s-codex-compact";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    // Start generation
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "implement feature",
+    }));
+    const session = bridge.getSession(sid)!;
+    expect(session.isGenerating).toBe(true);
+
+    // Codex adapter emits compacting status
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    expect(session.isGenerating).toBe(true);
+    expect(session.state.is_compacting).toBe(true);
+
+    // Codex adapter emits compaction finished
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+    expect(session.isGenerating).toBe(true);
+    expect(session.state.is_compacting).toBe(false);
+  });
+
+  it("Codex: compaction mid-tool-call preserves tool tracking", async () => {
+    const sid = "s-codex-compact-tool";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    // Start generation
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run tests",
+    }));
+
+    // Codex emits assistant with tool_use
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "codex-agent-tool-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_use", id: "cmd_test", name: "Bash", input: { command: "bun run test" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const session = bridge.getSession(sid)!;
+    expect(session.toolStartTimes.has("cmd_test")).toBe(true);
+
+    // Compaction starts mid-tool-call
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+
+    // Tool state and generation must survive compaction
+    expect(session.isGenerating).toBe(true);
+    expect(session.toolStartTimes.has("cmd_test")).toBe(true);
+    expect(session.state.is_compacting).toBe(true);
+
+    // Compaction finishes
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+    expect(session.isGenerating).toBe(true);
+    expect(session.toolStartTimes.has("cmd_test")).toBe(true);
+    expect(session.state.is_compacting).toBe(false);
+  });
+});
+
+// ─── Codex stale turn retry after compaction + disconnect ────────────────────
+
+describe("Codex retries user message when turn is stale after disconnect", () => {
+  // Regression: When Codex disconnects during compaction and is relaunched,
+  // the resumed thread reports idle but the last turn is inProgress. The
+  // bridge must retry the user message so work continues, not silently
+  // clear recovery and leave the session idle forever.
+
+  it("retries user message when resumed turn is inProgress but thread is idle", async () => {
+    const sid = "s-stale-retry";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    // Send user message to start the turn
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "implement the feature and run tests",
+    }));
+
+    // Disconnect mid-turn (simulates crash during compaction)
+    adapter1.emitDisconnect("turn-compact");
+
+    // Reconnect — resume snapshot shows stale inProgress turn with thread idle
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-stale",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-stale",
+        turnCount: 5,
+        threadStatus: "idle",
+        lastTurn: {
+          id: "turn-compact",
+          status: "inProgress",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "implement the feature and run tests" }] },
+            { type: "agentMessage", id: "agent-1", text: "I'll start by running the tests." },
+            { type: "commandExecution", id: "cmd_test", status: "in_progress", command: ["bun", "run", "test"] },
+            { type: "contextCompaction", id: "compact-1" },
+          ],
+        },
+      },
+    });
+
+    // The user message must be retried via the adapter (not silently cleared)
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const retried = adapter2.sendBrowserMessage.mock.calls[0][0] as any;
+    expect(retried.content).toBe("implement the feature and run tests");
+  });
+
+  it("recovers agent messages before retrying stale turn", async () => {
+    // When the last turn has agent messages not yet in history, they should
+    // be recovered first. If recovery succeeds, no retry is needed.
+    const sid = "s-recover-then-idle";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "check status",
+    }));
+    adapter1.emitDisconnect("turn-recover");
+
+    // Reconnect with agent messages that weren't streamed before disconnect
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-recover",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-recover",
+        turnCount: 3,
+        threadStatus: "idle",
+        lastTurn: {
+          id: "turn-recover",
+          status: "completed",
+          error: null,
+          items: [
+            { type: "userMessage", content: [{ type: "text", text: "check status" }] },
+            { type: "agentMessage", id: "item-new-msg", text: "Status looks good. All tests passing." },
+          ],
+        },
+      },
+    });
+
+    // Agent message should be recovered and broadcast to browser
+    const session = bridge.getSession(sid)!;
+    const recovered = session.messageHistory.find(
+      (m: any) => m.type === "assistant" && m.message?.id === "codex-agent-item-new-msg",
+    );
+    expect(recovered).toBeDefined();
+
+    // No retry needed since recovery succeeded
+    expect(session.pendingCodexTurnRecovery).toBeNull();
+  });
+});
+
 // ─── handleSessionSubscribe — single message_history delivery ───────────────
 
 describe("handleSessionSubscribe — no double message_history", () => {
@@ -7709,11 +8013,11 @@ describe("Codex resumed-turn recovery", () => {
     expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_silent")).toBe(false);
   });
 
-  it("clears stale recovery when resumed turn is inProgress but thread is idle", async () => {
+  it("retries stale recovery when resumed turn is inProgress but thread is idle", async () => {
     // When Codex CLI restarts, thread/resume may report the last turn as
     // "inProgress" while the thread itself is "idle". The turn was running
-    // in the dead process and is now stale — recovery should be cleared, not
-    // kept pending forever.
+    // in the dead process and is now stale — the user message should be
+    // retried so work continues (not silently cleared).
     const sid = "s-idle-thread-stale-turn";
     const adapter1 = makeCodexAdapterMock();
     bridge.attachCodexAdapter(sid, adapter1 as any);
@@ -7751,9 +8055,10 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    // Recovery should be cleared (not kept pending)
-    const session = bridge.getSession(sid)!;
-    expect(session.pendingCodexTurnRecovery).toBeNull();
+    // User message must be retried via the adapter
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const retried = (adapter2.sendBrowserMessage.mock.calls[0][0] as any);
+    expect(retried.content).toBe("run a command");
 
     // No "non-text tool activity" error sent
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));

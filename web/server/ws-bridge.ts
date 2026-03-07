@@ -3458,13 +3458,16 @@ export class WsBridge {
     } else if (msg.subtype === "status") {
       const wasCompacting = session.state.is_compacting;
       session.state.is_compacting = msg.status === "compacting";
-      // Compaction pauses generation; clear the flag so deriveSessionStatus is accurate.
       // Guard: only emit compaction_started for NEW compaction transitions (not
       // re-notifications of already-known compaction) and skip --resume replay
       // which replays stale status messages from the CLI's history.
+      // NOTE: Do NOT call setGenerating(false) here. Compaction is not a turn
+      // boundary — the CLI continues its turn after compaction. Killing the
+      // generation lifecycle mid-turn means the actual result at end of turn
+      // is a no-op (isGenerating already false), leaving the session stuck as
+      // idle while still actively working.
       if (msg.status === "compacting" && !wasCompacting && !session.cliResuming) {
         session.compactedDuringTurn = true;
-        this.setGenerating(session, false, "compaction");
         this.emitTakodeEvent(session.id, "compaction_started", {
           ...(typeof session.state.context_used_percent === "number"
             ? { context_used_percent: session.state.context_used_percent }
@@ -6275,6 +6278,20 @@ export class WsBridge {
       return;
     }
 
+    // If the thread is idle but the last turn claims inProgress, the turn was
+    // running in the dead CLI process and is now stale (e.g. compaction +
+    // disconnect). Retry immediately — the work from the old turn is lost, but
+    // Codex has compacted context and can pick up from a fresh turn. This check
+    // must run BEFORE recovery/synthesis because those would absorb partial
+    // results from a turn that will never continue.
+    if (lastTurn.status === "inProgress" && snapshot.threadStatus === "idle") {
+      console.log(
+        `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} reports inProgress but thread is idle; retrying user message`,
+      );
+      this.retryPendingCodexTurn(session, pending);
+      return;
+    }
+
     const recovered = this.recoverAgentMessagesFromResumedTurn(session, lastTurn, pending);
     if (recovered > 0) {
       session.consecutiveAdapterFailures = 0;
@@ -6302,17 +6319,7 @@ export class WsBridge {
     }
 
     if (lastTurn.status === "inProgress") {
-      // If the thread is idle, this turn was in-progress in the dead CLI
-      // process and is now stale. Clear recovery — don't wait for a turn
-      // that will never complete in the new process.
-      if (snapshot.threadStatus === "idle") {
-        session.pendingCodexTurnRecovery = null;
-        console.log(
-          `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} reports inProgress but thread is idle; clearing stale recovery`,
-        );
-        this.persistSession(session);
-        return;
-      }
+      // Thread is still active — keep waiting for turn completion
       session.pendingCodexTurnRecovery = {
         ...pending,
         turnId: lastTurn.id,
