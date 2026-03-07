@@ -86,21 +86,22 @@ const SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI
 
 Your ONLY job is to clean up a speech-to-text transcript into scannable, condensed text.
 
-Output format (choose based on content):
+Output format:
 
-SINGLE POINT → A clean sentence with optional sub-bullets for details.
-  Example:
-  Move the settings files to ~/.companion/ to avoid cluttering the user's repo
-    * Currently pollutes git status
-    * Centralized location is easier to manage
+ALWAYS use bullet format when the transcript contains 2+ sentences or distinct points.
+Use - for top-level bullets, * for sub-bullets.
+Keep top-level bullets SHORT (one line). Move supporting details, context, and reasoning into * sub-bullets.
 
-MULTIPLE POINTS → Bullet list with optional sub-bullets for supporting details.
-  Example:
-  - Move settings files out of user's repo
-    * Currently pollutes git status
-    * Use ~/.companion/ as centralized location
-  - Fix session auth path
-  Use - for top-level bullets, * for sub-bullets. Sub-bullets are OPTIONAL — only when the speaker gave specific supporting details for a point.
+Example:
+- Move settings files out of user's repo
+  * Currently pollutes git status
+  * Use ~/.companion/ as centralized location
+- Fix session auth path
+
+For a single short point, a plain sentence is acceptable — but if there are any supporting details, use sub-bullets:
+Move the settings files to ~/.companion/
+  * Currently pollutes git status
+  * Centralized location is easier to manage
 
 Cleaning rules:
 - Strip verbal filler and false starts — keep only the final, meaningful version
@@ -313,6 +314,9 @@ export function buildEnhancementPrompt(
   }
 
   parts.push(`<TRANSCRIPT>\n${rawTranscript}\n</TRANSCRIPT>`);
+
+  // Format reminder — reinforces the system prompt's bullet format requirement
+  parts.push("\nRemember: use bullet format (- top level, * sub-bullets) whenever there are 2+ sentences. Keep top-level bullets short; put details in sub-bullets.");
 
   return parts.join("\n");
 }
