@@ -120,6 +120,20 @@ describe("SessionItem swipe archive", () => {
 
     expect(onArchive).not.toHaveBeenCalled();
   });
+
+  it("does not select the session when the mobile reorder handle is tapped", () => {
+    const { onSelect } = renderSessionItem({
+      reorderMode: true,
+      onMobileReorderHandleActiveChange: vi.fn(),
+      dragHandleProps: {},
+    });
+
+    const handle = screen.getByTestId("session-drag-handle-s1");
+    fireEvent.click(handle);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(handle).toHaveClass("touch-none");
+  });
 });
 
 describe("SessionItem search match context", () => {

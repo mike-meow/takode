@@ -74,6 +74,7 @@ interface SessionItemProps {
   attention?: "action" | "error" | "review" | null;
   hasUnread?: boolean;
   reorderMode?: boolean;
+  onMobileReorderHandleActiveChange?: (active: boolean) => void;
   dragHandleProps?: {
     listeners?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
@@ -116,6 +117,7 @@ export function SessionItem({
   attention,
   hasUnread,
   reorderMode,
+  onMobileReorderHandleActiveChange,
   dragHandleProps,
   herdGroupBadgeTheme,
   herdHoverHighlight,
@@ -126,6 +128,7 @@ export function SessionItem({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const touchStartedOnDragHandle = useRef(false);
   const swipeActive = useRef(false);
   const suppressTap = useRef(false);
   const [swipeOffsetPx, setSwipeOffsetPx] = useState(0);
@@ -138,6 +141,18 @@ export function SessionItem({
 
   // Long-press to open context menu on touch devices
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touchTarget = e.target as HTMLElement | null;
+    const startedOnDragHandle = !!touchTarget?.closest("[data-session-drag-handle='true']");
+    touchStartedOnDragHandle.current = startedOnDragHandle;
+    if (startedOnDragHandle) {
+      suppressTap.current = true;
+      cancelLongPress();
+      swipeStart.current = null;
+      swipeActive.current = false;
+      setSwipeOffsetPx(0);
+      return;
+    }
+
     const touch = e.touches[0];
     swipeStart.current = { x: touch.clientX, y: touch.clientY };
     swipeActive.current = false;
@@ -165,6 +180,10 @@ export function SessionItem({
   }, [onArchive, s.id]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (touchStartedOnDragHandle.current) {
+      cancelLongPress();
+      return;
+    }
     const start = swipeStart.current;
     if (!start) {
       cancelLongPress();
@@ -192,6 +211,13 @@ export function SessionItem({
 
   const handleTouchEnd = useCallback(() => {
     cancelLongPress();
+    if (touchStartedOnDragHandle.current) {
+      touchStartedOnDragHandle.current = false;
+      swipeStart.current = null;
+      swipeActive.current = false;
+      setSwipeOffsetPx(0);
+      return;
+    }
     if (swipeActive.current) {
       const shouldArchive = Math.abs(swipeOffsetPx) >= 72 && canSwipeToArchive;
       swipeActive.current = false;
@@ -205,6 +231,7 @@ export function SessionItem({
 
   const handleTouchCancel = useCallback(() => {
     cancelLongPress();
+    touchStartedOnDragHandle.current = false;
     swipeStart.current = null;
     swipeActive.current = false;
     setSwipeOffsetPx(0);
@@ -342,7 +369,7 @@ export function SessionItem({
         className={`w-full text-left rounded-xl sm:rounded-lg border sm:border-transparent ${
           archived ? "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-14 sm:py-2" : "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-3 sm:py-2"
         } transition-all duration-100 select-none ${
-          reorderMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
+          reorderMode ? "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing" : "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
         } ${
           isActive
             ? "bg-cc-active border-cc-primary/25"
@@ -365,7 +392,12 @@ export function SessionItem({
           {/* Drag handle — mobile reorder mode only (iOS Edit pattern) */}
           {reorderMode && (
             <span
-              className="text-cc-muted/40 sm:hidden shrink-0 pt-[1px] cursor-grab active:cursor-grabbing"
+              data-session-drag-handle="true"
+              data-testid={`session-drag-handle-${s.id}`}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={() => onMobileReorderHandleActiveChange?.(true)}
+              onTouchStart={() => onMobileReorderHandleActiveChange?.(true)}
+              className="text-cc-muted/40 sm:hidden shrink-0 pt-[1px] cursor-grab active:cursor-grabbing touch-none"
               {...(dragHandleProps?.listeners ?? {})}
               {...(dragHandleProps?.attributes ?? {})}
             >

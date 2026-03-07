@@ -76,6 +76,7 @@ export function Sidebar() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [mobileReorderHandleActive, setMobileReorderHandleActive] = useState(false);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
   const [hoveredSession, setHoveredSession] = useState<{ sessionId: string; rect: DOMRect } | null>(null);
@@ -258,6 +259,29 @@ export function Sidebar() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    if (!mobileReorderHandleActive) return;
+
+    const clearHandleState = () => setMobileReorderHandleActive(false);
+    window.addEventListener("pointerup", clearHandleState);
+    window.addEventListener("pointercancel", clearHandleState);
+    window.addEventListener("touchend", clearHandleState);
+    window.addEventListener("touchcancel", clearHandleState);
+
+    return () => {
+      window.removeEventListener("pointerup", clearHandleState);
+      window.removeEventListener("pointercancel", clearHandleState);
+      window.removeEventListener("touchend", clearHandleState);
+      window.removeEventListener("touchcancel", clearHandleState);
+    };
+  }, [mobileReorderHandleActive]);
+
+  useEffect(() => {
+    if (!reorderMode && mobileReorderHandleActive) {
+      setMobileReorderHandleActive(false);
+    }
+  }, [mobileReorderHandleActive, reorderMode]);
 
   function handleSelectSession(sessionId: string) {
     setContextMenu(null);
@@ -657,6 +681,17 @@ export function Sidebar() {
               {serverName || "Takode"}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => useStore.getState().setSidebarOpen(false)}
+            className="sm:hidden ml-auto inline-flex items-center justify-center w-9 h-9 rounded-full border border-cc-border/70 bg-cc-hover/50 text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            aria-label="Dismiss sidebar"
+            title="Dismiss sidebar"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4">
+              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+            </svg>
+          </button>
           {import.meta.env.DEV && (
             <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 leading-none">Dev</span>
           )}
@@ -675,7 +710,18 @@ export function Sidebar() {
       </div>
 
       {/* Session list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div
+        data-testid="sidebar-session-scroller"
+        className={`flex-1 px-2 pb-2 overflow-x-hidden ${
+          mobileReorderHandleActive
+            ? "overflow-y-hidden overscroll-none"
+            : "overflow-y-auto"
+        }`}
+        style={{
+          touchAction: mobileReorderHandleActive ? "none" : "pan-y",
+          overscrollBehaviorX: "none",
+        }}
+      >
         {/* Toolbar: search + mobile edit mode */}
         {allSessionList.length > 0 && (
           <div className="px-2 pb-1.5 flex items-center gap-1">
@@ -797,6 +843,7 @@ export function Sidebar() {
                           recentlyRenamed={recentlyRenamed}
                           isFirst={i === 0}
                           groupDragging={isDragging}
+                          onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
                           groupDragHandleProps={projectGroups.length > 1
                             ? {
                                 listeners: listeners as Record<string, unknown> | undefined,

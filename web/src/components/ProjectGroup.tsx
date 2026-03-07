@@ -65,6 +65,7 @@ interface ProjectGroupProps {
     attributes?: Record<string, unknown>;
   };
   groupDragging?: boolean;
+  onMobileReorderHandleActiveChange?: (active: boolean) => void;
 }
 
 /** Wrapper that makes a SessionItem draggable via @dnd-kit/sortable */
@@ -134,6 +135,7 @@ export function ProjectGroup({
   herdGroupBadgeThemes,
   groupDragHandleProps,
   groupDragging,
+  onMobileReorderHandleActiveChange,
 }: ProjectGroupProps) {
   // Build summary counts
   const hasStatus = group.runningCount > 0 || group.permCount > 0 || group.unreadCount > 0;
@@ -270,6 +272,7 @@ export function ProjectGroup({
                           herdGroupBadgeTheme={herdGroupBadgeThemes?.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights?.get(s.id)}
                           reorderMode={reorderMode}
+                          onMobileReorderHandleActiveChange={onMobileReorderHandleActiveChange}
                           dragHandleProps={reorderMode && touchDevice
                             ? {
                                 listeners: listeners as Record<string, unknown> | undefined,

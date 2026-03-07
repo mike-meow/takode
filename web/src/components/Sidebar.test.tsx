@@ -210,7 +210,24 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockState = createMockState();
   window.location.hash = "";
+  setTouchDevice(false);
 });
+
+function setTouchDevice(enabled: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: enabled && query === "(hover: none) and (pointer: coarse)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
 
 describe("Sidebar", { timeout: 10000 }, () => {
   it("renders 'New Session' button", () => {
@@ -571,6 +588,46 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     render(<Sidebar />);
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("renders a mobile dismiss button that closes the sidebar explicitly", () => {
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss sidebar" }));
+
+    expect(mockState.setSidebarOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the mobile session scroller vertically scrollable by default and locks it while a reorder handle is held", async () => {
+    setTouchDevice(true);
+    const session1 = makeSession("s1");
+    const session2 = makeSession("s2");
+    const sdk1 = makeSdkSession("s1");
+    const sdk2 = makeSdkSession("s2");
+    mockState = createMockState({
+      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sdkSessions: [sdk1, sdk2],
+      reorderMode: true,
+    });
+
+    render(<Sidebar />);
+
+    const scroller = screen.getByTestId("sidebar-session-scroller");
+    expect(scroller).toHaveClass("overflow-y-auto");
+    expect(scroller).toHaveClass("overflow-x-hidden");
+    expect(scroller).toHaveStyle({ touchAction: "pan-y" });
+
+    fireEvent.touchStart(screen.getByTestId("session-drag-handle-s1"));
+    await waitFor(() => {
+      expect(scroller).toHaveClass("overflow-y-hidden");
+      expect(scroller).toHaveStyle({ touchAction: "none" });
+    });
+
+    fireEvent.touchEnd(window);
+    await waitFor(() => {
+      expect(scroller).toHaveClass("overflow-y-auto");
+      expect(scroller).toHaveStyle({ touchAction: "pan-y" });
+    });
   });
 
   it("archived sessions section shows count", () => {
