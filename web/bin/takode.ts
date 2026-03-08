@@ -423,9 +423,22 @@ function formatRelativeTime(epoch: number): string {
   return `${Math.round(diff / 3600000)}h ago`;
 }
 
+function escapeTerminalText(s: string): string {
+  return s
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+
+function formatInlineText(value: unknown): string {
+  return escapeTerminalText(String(value ?? ""));
+}
+
 function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return s.slice(0, max) + ` [+${s.length - max} chars]`;
+  const escaped = escapeTerminalText(s);
+  if (escaped.length <= max) return escaped;
+  return escaped.slice(0, max) + ` [+${escaped.length - max} chars]`;
 }
 
 // ─── Command handlers ───────────────────────────────────────────────────────
@@ -523,7 +536,7 @@ async function handleList(base: string, args: string[]): Promise<void> {
 
   let total = 0;
   for (const [projectKey, projectSessions] of sortedGroups) {
-    const label = projectKey.split("/").pop() || projectKey;
+    const label = formatInlineText(projectKey.split("/").pop() || projectKey);
     const running = projectSessions.filter(s => s.cliConnected && s.state === "running").length;
     const countLabel = running > 0 ? `  (${running} running)` : "";
     console.log(`▸ ${label}  ${projectSessions.length}${countLabel}`);
@@ -582,7 +595,7 @@ function printSessionLine(s: {
   claimedQuestStatus?: string | null;
 }): void {
   const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
-  const name = s.name || "(unnamed)";
+  const name = formatInlineText(s.name || "(unnamed)");
   const role = s.isOrchestrator ? " [leader]" : "";
   const herd = s.herdedBy ? " [herd]" : "";
   // Backend type tag: only show for codex (sdk is implied by session details)
@@ -591,14 +604,14 @@ function printSessionLine(s: {
   const status = s.cliConnected
     ? (s.state === "running" ? "●" : "○")
     : (s.archived ? "⊘" : "✗");
-  const attention = s.attentionReason ? ` ⚠ ${s.attentionReason}` : "";
+  const attention = s.attentionReason ? ` ⚠ ${formatInlineText(s.attentionReason)}` : "";
 
   // Quest indicator: "📋 q-42 in_progress"
   const quest = s.claimedQuestId
-    ? ` 📋 ${s.claimedQuestId}${s.claimedQuestStatus ? ` ${s.claimedQuestStatus}` : ""}`
+    ? ` 📋 ${formatInlineText(s.claimedQuestId)}${s.claimedQuestStatus ? ` ${formatInlineText(s.claimedQuestStatus)}` : ""}`
     : "";
 
-  const branch = s.gitBranch ? `  ${s.gitBranch}` : "";
+  const branch = s.gitBranch ? `  ${formatInlineText(s.gitBranch)}` : "";
 
   // Commits ahead/behind: "3↑5↓" (only show non-zero)
   const ahead = s.gitAhead ? `${s.gitAhead}↑` : "";
@@ -641,7 +654,7 @@ async function handleInfo(base: string, args: string[]): Promise<void> {
 function printSessionInfo(data: TakodeSessionInfo): void {
   // ── Header ──
   const num = data.sessionNum != null ? `#${data.sessionNum}` : "";
-  const name = data.name || "(unnamed)";
+  const name = formatInlineText(data.name || "(unnamed)");
   const statusIcon = data.cliConnected
     ? (data.state === "running" ? "●" : "○")
     : (data.archived ? "⊘" : "✗");
@@ -652,45 +665,45 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   console.log("─".repeat(60));
 
   // ── Identity ──
-  console.log(`  UUID           ${data.sessionId}`);
-  if (data.cliSessionId) console.log(`  CLI Session    ${data.cliSessionId}`);
+  console.log(`  UUID           ${formatInlineText(data.sessionId)}`);
+  if (data.cliSessionId) console.log(`  CLI Session    ${formatInlineText(data.cliSessionId)}`);
   if (data.pid) console.log(`  PID            ${data.pid}`);
 
   // ── Backend ──
   const backend = data.backendType || "claude";
   const model = data.model || "unknown";
-  console.log(`  Backend        ${backend}  model: ${model}`);
-  if (data.claudeCodeVersion) console.log(`  CLI Version    ${data.claudeCodeVersion}`);
-  if (data.permissionMode) console.log(`  Permissions    ${data.permissionMode}`);
+  console.log(`  Backend        ${formatInlineText(backend)}  model: ${formatInlineText(model)}`);
+  if (data.claudeCodeVersion) console.log(`  CLI Version    ${formatInlineText(data.claudeCodeVersion)}`);
+  if (data.permissionMode) console.log(`  Permissions    ${formatInlineText(data.permissionMode)}`);
   if (typeof data.askPermission === "boolean") {
     console.log(`  Ask Mode       ${data.askPermission ? "ask" : "no-ask"}`);
   }
-  if (data.uiMode) console.log(`  UI Mode        ${data.uiMode}`);
+  if (data.uiMode) console.log(`  UI Mode        ${formatInlineText(data.uiMode)}`);
   if (backend === "codex") {
     if (typeof data.codexInternetAccess === "boolean") {
       console.log(`  Internet       ${data.codexInternetAccess ? "enabled" : "disabled"}`);
     }
-    if (data.codexReasoningEffort) console.log(`  Reasoning      ${data.codexReasoningEffort}`);
-    if (data.codexSandbox) console.log(`  Sandbox        ${data.codexSandbox}`);
+    if (data.codexReasoningEffort) console.log(`  Reasoning      ${formatInlineText(data.codexReasoningEffort)}`);
+    if (data.codexSandbox) console.log(`  Sandbox        ${formatInlineText(data.codexSandbox)}`);
   }
 
   // ── Working directory ──
-  console.log(`  CWD            ${data.cwd}`);
+  console.log(`  CWD            ${formatInlineText(data.cwd)}`);
   if (data.repoRoot && data.repoRoot !== data.cwd) {
-    console.log(`  Repo Root      ${data.repoRoot}`);
+    console.log(`  Repo Root      ${formatInlineText(data.repoRoot)}`);
   }
 
   // ── Worktree / Container ──
   console.log(`  Worktree       ${data.isWorktree ? "yes" : "no"}`);
   if (data.isWorktree) {
-    if (data.branch) console.log(`  WT Branch      ${data.branch}`);
+    if (data.branch) console.log(`  WT Branch      ${formatInlineText(data.branch)}`);
     if (data.actualBranch && data.actualBranch !== data.branch) {
-      console.log(`  Actual Branch  ${data.actualBranch}`);
+      console.log(`  Actual Branch  ${formatInlineText(data.actualBranch)}`);
     }
   }
   if (data.containerId) {
-    console.log(`  Container      ${data.containerName || data.containerId}`);
-    if (data.containerImage) console.log(`  Image          ${data.containerImage}`);
+    console.log(`  Container      ${formatInlineText(data.containerName || data.containerId)}`);
+    if (data.containerImage) console.log(`  Image          ${formatInlineText(data.containerImage)}`);
   }
 
   // ── Git ──
@@ -699,10 +712,10 @@ function printSessionInfo(data: TakodeSessionInfo): void {
     const ahead = data.gitAhead ? `${data.gitAhead}↑` : "";
     const behind = data.gitBehind ? `${data.gitBehind}↓` : "";
     const delta = [ahead, behind].filter(Boolean).join(" ");
-    console.log(`  Git Branch     ${gitBranch}${delta ? `  ${delta}` : ""}`);
+    console.log(`  Git Branch     ${formatInlineText(gitBranch)}${delta ? `  ${delta}` : ""}`);
   }
   if (data.gitHeadSha) console.log(`  HEAD           ${data.gitHeadSha.slice(0, 12)}`);
-  if (data.gitDefaultBranch) console.log(`  Default Branch ${data.gitDefaultBranch}`);
+  if (data.gitDefaultBranch) console.log(`  Default Branch ${formatInlineText(data.gitDefaultBranch)}`);
 
   const added = data.totalLinesAdded || 0;
   const removed = data.totalLinesRemoved || 0;
@@ -716,22 +729,22 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   if (data.isAssistant) roles.push("assistant");
   if (data.herdedBy) roles.push(`herded`);
   if (roles.length > 0) console.log(`  Roles          ${roles.join(", ")}`);
-  if (data.herdedBy) console.log(`  Herded By      ${data.herdedBy}`);
+  if (data.herdedBy) console.log(`  Herded By      ${formatInlineText(data.herdedBy)}`);
 
   // ── Quest ──
   if (data.claimedQuestId) {
-    const questLine = `${data.claimedQuestId}${data.claimedQuestStatus ? ` (${data.claimedQuestStatus})` : ""}`;
+    const questLine = `${formatInlineText(data.claimedQuestId)}${data.claimedQuestStatus ? ` (${formatInlineText(data.claimedQuestStatus)})` : ""}`;
     console.log(`  Quest          ${questLine}`);
-    if (data.claimedQuestTitle) console.log(`                 ${data.claimedQuestTitle}`);
+    if (data.claimedQuestTitle) console.log(`                 ${formatInlineText(data.claimedQuestTitle)}`);
   }
 
   // ── Cron ──
   if (data.cronJobId) {
-    console.log(`  Cron Job       ${data.cronJobName || data.cronJobId}`);
+    console.log(`  Cron Job       ${formatInlineText(data.cronJobName || data.cronJobId)}`);
   }
 
   // ── Env ──
-  if (data.envSlug) console.log(`  Env Profile    ${data.envSlug}`);
+  if (data.envSlug) console.log(`  Env Profile    ${formatInlineText(data.envSlug)}`);
 
   // ── Metrics ──
   const turns = data.numTurns || 0;
@@ -747,7 +760,7 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   // ── MCP Servers ──
   if (data.mcpServers && data.mcpServers.length > 0) {
     console.log("");
-    console.log(`  MCP Servers    ${data.mcpServers.map(s => `${s.name} (${s.status})`).join(", ")}`);
+    console.log(`  MCP Servers    ${data.mcpServers.map(s => `${formatInlineText(s.name)} (${formatInlineText(s.status)})`).join(", ")}`);
   }
 
   // ── Tools ──
@@ -757,7 +770,7 @@ function printSessionInfo(data: TakodeSessionInfo): void {
 
   // ── Attention ──
   if (data.attentionReason) {
-    console.log(`  Attention      ⚠ ${data.attentionReason}`);
+    console.log(`  Attention      ⚠ ${formatInlineText(data.attentionReason)}`);
   }
 
   // ── Timestamps ──
@@ -772,7 +785,7 @@ function printSessionInfo(data: TakodeSessionInfo): void {
 
   // ── Keywords ──
   if (data.keywords && data.keywords.length > 0) {
-    console.log(`  Keywords       ${data.keywords.join(", ")}`);
+    console.log(`  Keywords       ${data.keywords.map((keyword) => formatInlineText(keyword)).join(", ")}`);
   }
 }
 
@@ -781,6 +794,7 @@ function printSessionInfo(data: TakodeSessionInfo): void {
 async function handleTasks(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
   if (!sessionRef) err("Usage: takode tasks <session> [--json]");
+  const safeSessionRef = formatInlineText(sessionRef);
 
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
@@ -806,7 +820,7 @@ async function handleTasks(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  console.log(`Session #${data.sessionNum} "${data.sessionName}"`);
+  console.log(`Session #${data.sessionNum} "${formatInlineText(data.sessionName)}"`);
   console.log(`${data.tasks.length} tasks, ${data.totalMessages} messages`);
   console.log("");
 
@@ -824,12 +838,12 @@ async function handleTasks(base: string, args: string[]): Promise<void> {
     const time = formatTimeShort(task.startedAt);
     const title = truncate(task.title, 50).padEnd(54);
     const range = `[${task.startIdx}]-[${task.endIdx}]`;
-    const quest = task.questId ? ` (${task.questId})` : "";
+    const quest = task.questId ? ` (${formatInlineText(task.questId)})` : "";
     console.log(`  ${num}  ${time}   ${title}${range}${quest}`);
   }
 
   console.log("");
-  console.log(`Browse: takode peek ${sessionRef} --from <msg-id> | Task: takode peek ${sessionRef} --task <n>`);
+  console.log(`Browse: takode peek ${safeSessionRef} --from <msg-id> | Task: takode peek ${safeSessionRef} --task <n>`);
 }
 
 // ─── Peek types ──────────────────────────────────────────────────────────────
@@ -917,7 +931,7 @@ type PeekDetailResponse = {
 function userSourceLabel(msg: PeekMessage): string {
   if (!msg.agentSource) return "user";
   if (msg.agentSource.sessionId === "herd-events") return "herd";
-  return `agent${msg.agentSource.sessionLabel ? ` ${msg.agentSource.sessionLabel}` : ""}`;
+  return `agent${msg.agentSource.sessionLabel ? ` ${formatInlineText(msg.agentSource.sessionLabel)}` : ""}`;
 }
 
 function formatCollapsedTurn(turn: CollapsedTurn): string {
@@ -960,7 +974,7 @@ function printExpandedMessages(messages: PeekMessage[]): void {
             const tool = msg.tools[ti];
             const isLastTool = ti === msg.tools.length - 1 && !text;
             const connector = isLastTool && isLast ? "└─" : "├─";
-            console.log(`  ${pipe}       ${connector} ${tool.name.padEnd(6)} ${tool.summary}`);
+            console.log(`  ${pipe}       ${connector} ${formatInlineText(tool.name).padEnd(6)} ${truncate(tool.summary, 80)}`);
           }
         }
         break;
@@ -976,22 +990,23 @@ function printExpandedMessages(messages: PeekMessage[]): void {
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${msg.content}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, 100)}`);
         break;
     }
   }
 }
 
 function printPeekHeader(d: { sessionNum: number; sessionName: string; status: string; quest?: { id: string; title: string; status: string } | null }): void {
-  console.log(`Session #${d.sessionNum} "${d.sessionName}" -- ${d.status}`);
+  console.log(`Session #${d.sessionNum} "${formatInlineText(d.sessionName)}" -- ${formatInlineText(d.status)}`);
   if (d.quest) {
-    console.log(`Quest: ${d.quest.id} "${d.quest.title}" [${d.quest.status}]`);
+    console.log(`Quest: ${formatInlineText(d.quest.id)} "${formatInlineText(d.quest.title)}" [${formatInlineText(d.quest.status)}]`);
   }
 }
 
 // ─── Peek mode handlers ─────────────────────────────────────────────────────
 
 function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
+  const safeSessionRef = formatInlineText(sessionRef);
   printPeekHeader(d);
   console.log(`Total: ${d.totalTurns} turns, ${d.totalMessages} messages (msg [0]-[${d.totalMessages - 1}])`);
   console.log("");
@@ -1008,7 +1023,7 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
         lastDate = firstDate;
       }
     }
-    console.log(`  ... ${d.omittedTurnCount} earlier turns omitted (takode peek ${sessionRef} --from 0 to browse)`);
+    console.log(`  ... ${d.omittedTurnCount} earlier turns omitted (takode peek ${safeSessionRef} --from 0 to browse)`);
     console.log("");
   }
 
@@ -1052,7 +1067,7 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
     // Omitted messages hint
     if (et.omittedMessageCount > 0) {
       const firstIdx = et.messages.length > 0 ? et.messages[0].idx - et.omittedMessageCount : 0;
-      console.log(`  ... ${et.omittedMessageCount} earlier messages omitted (takode peek ${sessionRef} --from ${firstIdx} to see all)`);
+      console.log(`  ... ${et.omittedMessageCount} earlier messages omitted (takode peek ${safeSessionRef} --from ${firstIdx} to see all)`);
     }
 
     printExpandedMessages(et.messages);
@@ -1060,10 +1075,11 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
   }
 
   // Hint
-  console.log(`Hint: takode peek ${sessionRef} --from <msg-id> to browse history | takode read ${sessionRef} <msg-id> for full message`);
+  console.log(`Hint: takode peek ${safeSessionRef} --from <msg-id> to browse history | takode read ${safeSessionRef} <msg-id> for full message`);
 }
 
 function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number): void {
+  const safeSessionRef = formatInlineText(sessionRef);
   printPeekHeader(d);
   console.log(`Messages [${d.from}]-[${d.to}] of [0]-[${d.totalMessages - 1}]`);
   console.log("");
@@ -1119,7 +1135,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${msg.content}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, 100)}`);
         break;
     }
   }
@@ -1130,10 +1146,10 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
   const hints: string[] = [];
   if (d.from > 0) {
     const prevFrom = Math.max(0, d.from - count);
-    hints.push(`Prev: takode peek ${sessionRef} --from ${prevFrom}`);
+    hints.push(`Prev: takode peek ${safeSessionRef} --from ${prevFrom}`);
   }
   if (d.to < d.totalMessages - 1) {
-    hints.push(`Next: takode peek ${sessionRef} --from ${d.to + 1}`);
+    hints.push(`Next: takode peek ${safeSessionRef} --from ${d.to + 1}`);
   }
   if (hints.length > 0) {
     console.log(hints.join("  |  "));
@@ -1166,6 +1182,7 @@ function printPeekDetail(d: PeekDetailResponse): void {
 async function handlePeek(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
   if (!sessionRef) err("Usage: takode peek <session> [--from N] [--task N] [--detail] [--turns N] [--json]");
+  const safeSessionRef = formatInlineText(sessionRef);
 
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
@@ -1179,7 +1196,7 @@ async function handlePeek(base: string, args: string[]): Promise<void> {
       tasks: Array<{ taskNum: number; startIdx: number; endIdx: number }>;
     };
     const task = tasksData.tasks.find(t => t.taskNum === taskNum);
-    if (!task) err(`Task #${taskNum} not found. Use "takode tasks ${sessionRef}" to see available tasks.`);
+    if (!task) err(`Task #${taskNum} not found. Use "takode tasks ${safeSessionRef}" to see available tasks.`);
 
     const count = Number(flags.count) || 30;
     const params = new URLSearchParams({ from: String(task.startIdx), count: String(count) });
@@ -1269,14 +1286,14 @@ async function handleRead(base: string, args: string[]): Promise<void> {
 
   const time = formatTime(d.ts);
   const lineInfo = d.totalLines > d.limit ? ` (lines ${d.offset + 1}-${d.offset + d.limit} of ${d.totalLines})` : ` (${d.totalLines} lines)`;
-  console.log(`[msg ${d.idx}] ${d.type} -- ${time}${lineInfo}`);
+  console.log(`[msg ${d.idx}] ${formatInlineText(d.type)} -- ${time}${lineInfo}`);
   console.log("\u2500".repeat(60));
 
   // Print with line numbers (like the Read tool)
   const lines = d.content.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const lineNum = String(d.offset + i + 1).padStart(4);
-    console.log(`${lineNum}  ${lines[i]}`);
+    console.log(`${lineNum}  ${formatInlineText(lines[i] ?? "")}`);
   }
 
   if (d.offset + lines.length < d.totalLines) {
@@ -1375,7 +1392,7 @@ async function handleSend(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  console.log(`[${formatTime(Date.now())}] \u2713 Message sent to session ${sessionRef}`);
+  console.log(`[${formatTime(Date.now())}] \u2713 Message sent to session ${formatInlineText(sessionRef)}`);
 }
 
 // ─── Spawn handler ───────────────────────────────────────────────────────────
@@ -1455,20 +1472,20 @@ function buildSpawnDetailParts(session: TakodeSessionInfo): string[] {
 
 function printSpawnedSession(session: TakodeSessionInfo): void {
   const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId.slice(0, 8);
-  const name = session.name || "(unnamed)";
+  const name = formatInlineText(session.name || "(unnamed)");
   const backend = session.backendType === "codex" ? " [codex]"
     : "";
   const wt = session.isWorktree ? " wt" : "";
-  const branch = session.actualBranch || session.branch || "";
+  const branch = formatInlineText(session.actualBranch || session.branch || "");
   const branchLabel = branch ? `  ${branch}` : "";
   const cwdLabel = session.cwd
-    ? session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd
+    ? formatInlineText(session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd)
     : "";
   console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"${backend}${wt}`);
-  console.log(`        ${cwdLabel}${branchLabel}  ${session.sessionId}`);
+  console.log(`        ${cwdLabel}${branchLabel}  ${formatInlineText(session.sessionId)}`);
   const detailParts = buildSpawnDetailParts(session);
   if (detailParts.length > 0) {
-    console.log(`        ${detailParts.join("  ")}`);
+    console.log(`        ${detailParts.map((part) => formatInlineText(part)).join("  ")}`);
   }
 }
 
@@ -1599,7 +1616,7 @@ async function handleStop(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  console.log(`[${formatTime(Date.now())}] \u2713 Stopped session ${sessionRef}`);
+  console.log(`[${formatTime(Date.now())}] \u2713 Stopped session ${formatInlineText(sessionRef)}`);
 }
 
 // ─── Herd/Unherd handlers ───────────────────────────────────────────────────
@@ -1625,16 +1642,16 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
     console.log(`[${formatTime(Date.now())}] \u2713 Herded ${result.herded.length} session(s)`);
   }
   if (result.notFound.length > 0) {
-    console.log(`[${formatTime(Date.now())}] \u2717 Not found: ${result.notFound.join(", ")}`);
+    console.log(`[${formatTime(Date.now())}] \u2717 Not found: ${result.notFound.map((ref) => formatInlineText(ref)).join(", ")}`);
   }
   if (result.conflicts?.length > 0) {
     for (const c of result.conflicts) {
-      console.log(`[${formatTime(Date.now())}] \u2717 Conflict: ${c.id} already herded by ${c.herder}`);
+      console.log(`[${formatTime(Date.now())}] \u2717 Conflict: ${formatInlineText(c.id)} already herded by ${formatInlineText(c.herder)}`);
     }
   }
   if (result.leaders?.length) {
     for (const lid of result.leaders) {
-      console.log(`[${formatTime(Date.now())}] \u2717 Cannot herd leader session: ${lid}`);
+      console.log(`[${formatTime(Date.now())}] \u2717 Cannot herd leader session: ${formatInlineText(lid)}`);
     }
   }
 }
@@ -1654,9 +1671,9 @@ async function handleUnherd(base: string, args: string[]): Promise<void> {
   }
 
   if (result.removed) {
-    console.log(`[${formatTime(Date.now())}] \u2713 Unherded session ${sessionRef}`);
+    console.log(`[${formatTime(Date.now())}] \u2713 Unherded session ${formatInlineText(sessionRef)}`);
   } else {
-    console.log(`[${formatTime(Date.now())}] Session ${sessionRef} was not herded by you`);
+    console.log(`[${formatTime(Date.now())}] Session ${formatInlineText(sessionRef)} was not herded by you`);
   }
 }
 
@@ -1666,6 +1683,7 @@ async function handlePending(base: string, args: string[]): Promise<void> {
   const sessionRef = args.filter(a => !a.startsWith("--"))[0];
   const jsonMode = args.includes("--json");
   if (!sessionRef) err("Usage: takode pending <session>");
+  const safeSessionRef = formatInlineText(sessionRef);
 
   const result = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/pending`) as {
     pending: Array<{
@@ -1691,22 +1709,22 @@ async function handlePending(base: string, args: string[]): Promise<void> {
   for (const p of result.pending) {
     if (p.tool_name === "AskUserQuestion" && p.questions) {
       for (const q of p.questions) {
-        console.log(`\n[AskUserQuestion] ${q.question}`);
+        console.log(`\n[AskUserQuestion] ${formatInlineText(q.question)}`);
         if (q.options) {
           for (let i = 0; i < q.options.length; i++) {
             const opt = q.options[i];
-            console.log(`  ${i + 1}. ${opt.label}${opt.description ? ` — ${opt.description}` : ""}`);
+            console.log(`  ${i + 1}. ${formatInlineText(opt.label)}${opt.description ? ` — ${formatInlineText(opt.description)}` : ""}`);
           }
         }
-        console.log(`\nAnswer: takode answer ${sessionRef} <option-number-or-text>`);
+        console.log(`\nAnswer: takode answer ${safeSessionRef} <option-number-or-text>`);
       }
     } else if (p.tool_name === "ExitPlanMode") {
       const planPreview = typeof p.plan === "string" ? p.plan.slice(0, 500) : "(no plan text)";
       console.log(`\n[ExitPlanMode] Plan approval requested`);
-      console.log(planPreview);
+      console.log(formatInlineText(planPreview));
       if (typeof p.plan === "string" && p.plan.length > 500) console.log("  ...(truncated)");
-      console.log(`\nApprove: takode answer ${sessionRef} approve`);
-      console.log(`Reject:  takode answer ${sessionRef} reject 'feedback here'`);
+      console.log(`\nApprove: takode answer ${safeSessionRef} approve`);
+      console.log(`Reject:  takode answer ${safeSessionRef} reject 'feedback here'`);
     }
   }
 }
@@ -1731,12 +1749,12 @@ async function handleAnswer(base: string, args: string[]): Promise<void> {
   }
 
   if (result.tool_name === "AskUserQuestion") {
-    console.log(`[${formatTime(Date.now())}] \u2713 Answered: "${result.answer}"`);
+    console.log(`[${formatTime(Date.now())}] \u2713 Answered: "${formatInlineText(result.answer)}"`);
   } else if (result.tool_name === "ExitPlanMode") {
     if (result.action === "approved") {
       console.log(`[${formatTime(Date.now())}] \u2713 Plan approved`);
     } else {
-      console.log(`[${formatTime(Date.now())}] \u2717 Plan rejected: ${result.feedback}`);
+      console.log(`[${formatTime(Date.now())}] \u2717 Plan rejected: ${formatInlineText(result.feedback)}`);
     }
   }
 }
@@ -1852,17 +1870,17 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   }
 
   if (results.length === 0) {
-    console.log(`No sessions matching "${query}".`);
+    console.log(`No sessions matching "${formatInlineText(query)}".`);
     return;
   }
 
-  console.log(`${results.length} session(s) matching "${query}":`);
+  console.log(`${results.length} session(s) matching "${formatInlineText(query)}":`);
   console.log("");
 
   for (const row of results) {
     const s = row.session;
     const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
-    const name = s.name || "(unnamed)";
+    const name = formatInlineText(s.name || "(unnamed)");
     const status = s.cliConnected
       ? (s.state === "running" ? "●" : "○")
       : (s.archived ? "⊘" : "✗");
@@ -1870,12 +1888,13 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
     const sessionRef = s.sessionNum != null ? String(s.sessionNum) : s.sessionId;
 
     console.log(`  ${num.padEnd(5)} ${status} ${name}`);
-    console.log(`        field: ${row.matchedFieldLabel}  reason: ${row.matchReason}`);
+    console.log(`        field: ${formatInlineText(row.matchedFieldLabel)}  reason: ${formatInlineText(row.matchReason)}`);
     if (row.snippet) {
       console.log(`        snippet: ${truncate(row.snippet, 120)}`);
     }
     if (row.messageId) {
-      console.log(`        message id: ${row.messageId} (takode peek ${sessionRef} --from ${row.messageId})`);
+      const messageId = formatInlineText(row.messageId);
+      console.log(`        message id: ${messageId} (takode peek ${sessionRef} --from ${messageId})`);
     }
     if (activity) {
       console.log(`        activity: ${activity}`);
