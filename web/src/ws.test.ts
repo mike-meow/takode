@@ -1707,11 +1707,21 @@ describe("handleMessage: history_sync", () => {
     });
 
     expect(errorSpy).toHaveBeenCalled();
-    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({
+    const outgoing = lastWs.send.mock.calls.map((call) => JSON.parse(call[0] as string));
+    expect(outgoing).toHaveLength(2);
+    expect(outgoing[0]).toMatchObject({
+      type: "history_sync_mismatch",
+      frozen_count: 1,
+      expected_frozen_hash: "deadbeef",
+      expected_full_hash: "deadbeef",
+    });
+    expect(outgoing[0].actual_frozen_hash).toEqual(expect.any(String));
+    expect(outgoing[0].actual_full_hash).toEqual(expect.any(String));
+    expect(outgoing[1]).toEqual({
       type: "session_subscribe",
       last_seq: 0,
       known_frozen_count: 0,
-    }));
+    });
     errorSpy.mockRestore();
   });
 });

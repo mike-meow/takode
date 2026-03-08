@@ -15,6 +15,16 @@ const CLI_DISCONNECT_DEBOUNCE_MS = 250;
 export interface WsMessageHandlerDeps {
   disconnectSession: (sessionId: string) => void;
   requestFullHistorySync: (sessionId: string) => void;
+  reportHistorySyncMismatch: (
+    sessionId: string,
+    details: {
+      frozenCount: number;
+      expectedFrozenHash: string;
+      actualFrozenHash: string;
+      expectedFullHash: string;
+      actualFullHash: string;
+    },
+  ) => void;
 }
 
 function clearPendingCliDisconnect(sessionId: string): void {
@@ -379,6 +389,13 @@ function verifyHistorySync(
     `frozen expected=${data.expected_frozen_hash} actual=${actualFrozenHash}; ` +
     `full expected=${data.expected_full_hash} actual=${actualFullHash}`,
   );
+  deps.reportHistorySyncMismatch(sessionId, {
+    frozenCount: normalizedFrozenCount,
+    expectedFrozenHash: data.expected_frozen_hash,
+    actualFrozenHash,
+    expectedFullHash: data.expected_full_hash,
+    actualFullHash,
+  });
   deps.requestFullHistorySync(sessionId);
 }
 

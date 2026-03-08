@@ -44,6 +44,16 @@ handleIncomingMessage = createWsMessageHandler({
   disconnectSession: (sessionId) => {
     transport.disconnectSession(sessionId);
   },
+  reportHistorySyncMismatch: (sessionId, details) => {
+    transport.sendToSession(sessionId, {
+      type: "history_sync_mismatch",
+      frozen_count: details.frozenCount,
+      expected_frozen_hash: details.expectedFrozenHash,
+      actual_frozen_hash: details.actualFrozenHash,
+      expected_full_hash: details.expectedFullHash,
+      actual_full_hash: details.actualFullHash,
+    });
+  },
   requestFullHistorySync: (sessionId) => {
     transport.requestFullHistorySync(sessionId);
   },

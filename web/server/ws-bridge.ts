@@ -5507,6 +5507,16 @@ export class WsBridge {
       return;
     }
 
+    if (msg.type === "history_sync_mismatch") {
+      console.warn(
+        `[history-sync] Browser reported hash mismatch for session ${sessionTag(session.id)} ` +
+        `(frozenCount=${msg.frozen_count}) ` +
+        `frozen expected=${msg.expected_frozen_hash} actual=${msg.actual_frozen_hash}; ` +
+        `full expected=${msg.expected_full_hash} actual=${msg.actual_full_hash}`,
+      );
+      return;
+    }
+
     // Heartbeat — keeps the connection alive, no action needed
     if ((msg as { type: string }).type === "ping") return;
 

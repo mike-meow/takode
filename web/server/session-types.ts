@@ -309,6 +309,14 @@ export type BrowserOutgoingMessage =
   }
   | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
   | { type: "session_subscribe"; last_seq: number; known_frozen_count?: number; known_frozen_hash?: string }
+  | {
+    type: "history_sync_mismatch";
+    frozen_count: number;
+    expected_frozen_hash: string;
+    actual_frozen_hash: string;
+    expected_full_hash: string;
+    actual_full_hash: string;
+  }
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string; interruptSource?: "user" | "leader" | "system" }
   | { type: "set_model"; model: string; client_msg_id?: string }

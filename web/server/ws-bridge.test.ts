@@ -1396,6 +1396,28 @@ describe("Browser handlers", () => {
     warnSpy.mockRestore();
   });
 
+  it("logs a warning when the browser reports a history_sync mismatch", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "history_sync_mismatch",
+      frozen_count: 3,
+      expected_frozen_hash: "expected-frozen",
+      actual_frozen_hash: "actual-frozen",
+      expected_full_hash: "expected-full",
+      actual_full_hash: "actual-full",
+    }));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[history-sync] Browser reported hash mismatch for session"),
+    );
+    expect(browser.send).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("session_subscribe no-gap: sends history_sync when history-backed events were missed", () => {
     // Simulates a mobile browser that disconnected while the session was generating,
     // then reconnects. The event buffer covers the gap (no gap), but the browser
