@@ -325,7 +325,11 @@ async function getClaimedQuestForNamer(sessionId: string): Promise<{ id: string;
  *  (which persists through needs_verification until done/cancelled). */
 async function isQuestOwningSessionName(sessionId: string): Promise<boolean> {
   if (await getActiveQuestForSession(sessionId)) return true;
-  return !!wsBridge.getSession(sessionId)?.state?.claimedQuestId;
+  // Only lock the name while the quest is actively in_progress.
+  // Once the quest transitions to needs_verification/done, the auto-namer
+  // should be free to rename as the session moves on to new work.
+  const state = wsBridge.getSession(sessionId)?.state;
+  return !!state?.claimedQuestId && state?.claimedQuestStatus === "in_progress";
 }
 
 /** Apply a naming result: set name, broadcast, add task entry. Shared by all triggers. */
