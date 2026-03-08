@@ -6,6 +6,11 @@ const mockScrollTo = vi.fn();
 beforeAll(() => {
   Element.prototype.scrollIntoView = mockScrollIntoView;
   Element.prototype.scrollTo = mockScrollTo;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(0);
+    return 1;
+  });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
 });
 
 import { render, screen, fireEvent, act } from "@testing-library/react";
@@ -404,6 +409,15 @@ describe("MessageFeed - message rendering", () => {
 // ─── Streaming indicator ─────────────────────────────────────────────────────
 
 describe("MessageFeed - streaming text", () => {
+  it("renders a bottom scroll runway so the newest user turn can pin to the top", () => {
+    const sid = "test-bottom-runway";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe(`${window.innerHeight}px`);
+  });
+
   it("pins a newly sent user turn to the top of the feed viewport", () => {
     const sid = "test-pin-user-turn";
     const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });

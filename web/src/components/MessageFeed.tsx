@@ -1173,6 +1173,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const didMountRef = useRef(false);
   const lastPinnedUserTurnIdRef = useRef<string | null>(null);
+  const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
+    typeof window === "undefined" ? 0 : window.innerHeight,
+  );
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -1230,6 +1233,37 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   // ─── Scroll management ─────────────────────────────────────────────────
 
+  const updateBottomRunwayHeight = useCallback(() => {
+    const el = containerRef.current;
+    const nextHeight = Math.max(
+      0,
+      Math.round(
+        el?.clientHeight ||
+        el?.getBoundingClientRect().height ||
+        (typeof window === "undefined" ? 0 : window.innerHeight),
+      ),
+    );
+    setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+  }, []);
+
+  const isNearContentBottom = useCallback(() => {
+    const container = containerRef.current;
+    const bottomMarker = bottomRef.current;
+    if (!container || !bottomMarker) return true;
+    const containerRect = container.getBoundingClientRect();
+    const bottomRect = bottomMarker.getBoundingClientRect();
+    return bottomRect.bottom - containerRect.bottom < 120;
+  }, []);
+
+  const scrollToContentBottom = useCallback((behavior: ScrollBehavior) => {
+    const bottomMarker = bottomRef.current;
+    if (bottomMarker) {
+      bottomMarker.scrollIntoView({ behavior, block: "end" });
+    }
+    isNearBottom.current = true;
+    setShowScrollButton(false);
+  }, []);
+
   const handleLoadMore = useCallback(() => {
     if (loadingMore.current) return;
     loadingMore.current = true;
@@ -1265,10 +1299,20 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     return () => observer.disconnect();
   }, [hasMore, handleLoadMore]);
 
+  useLayoutEffect(() => {
+    updateBottomRunwayHeight();
+  }, [updateBottomRunwayHeight]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.addEventListener("resize", updateBottomRunwayHeight);
+    return () => window.removeEventListener("resize", updateBottomRunwayHeight);
+  }, [updateBottomRunwayHeight]);
+
   function handleScroll() {
     const el = containerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = isNearContentBottom();
     isNearBottom.current = nearBottom;
     // Only trigger a re-render when the button state actually changes
     const shouldShow = !nearBottom;
@@ -1296,10 +1340,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         setShowScrollButton(true);
       }
     } else {
-      const el = containerRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      scrollToContentBottom("auto");
     }
-  }, [sessionId]);
+  }, [scrollToContentBottom, sessionId]);
 
   useEffect(() => {
     if (!didMountRef.current) {
@@ -1314,20 +1357,17 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     if (!el) return;
     const target = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
     if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-      isNearBottom.current = false;
-      setShowScrollButton(true);
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      });
     }
   }, [latestVisibleUserTurnId, messages]);
 
   const scrollToBottom = useCallback(() => {
-    const el = containerRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-      isNearBottom.current = true;
-      setShowScrollButton(false);
-    }
-  }, []);
+    scrollToContentBottom("smooth");
+  }, [scrollToContentBottom]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
@@ -1516,6 +1556,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
           <TurnEntries turns={visibleTurns} sessionId={sessionId} leaderMode={isLeaderSession} />
           <FeedFooter sessionId={sessionId} />
           <div ref={bottomRef} />
+          <div
+            aria-hidden="true"
+            data-testid="feed-bottom-runway"
+            style={{ height: `${bottomRunwayHeight}px` }}
+          />
         </div>
         </PawCounterContext.Provider>
         </PawScrollProvider>
@@ -1581,7 +1626,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
                       return;
                     }
                   }
-                  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+                  scrollToBottom();
                 }}
                 className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
                 title="Next user message"
