@@ -88,24 +88,25 @@ Your ONLY job is to clean up a speech-to-text transcript into scannable, condens
 
 Output format:
 
-ALWAYS use bullet format when the transcript contains 2+ sentences or distinct points.
-Use - for top-level bullets, * for sub-bullets.
-Keep top-level bullets SHORT (one line). Move supporting details, context, and reasoning into * sub-bullets.
-Do NOT insert empty lines between bullets — keep the list compact.
+ALWAYS use structured format when the transcript contains 2+ sentences or distinct points.
+Top-level points are plain text lines with NO bullet marker and NO indentation.
+Sub-points use " - " (space + minus + space), indented under their parent.
+Keep top-level lines SHORT (one line). Move supporting details, context, and reasoning into sub-points.
+Do NOT insert empty lines between lines — keep the output compact.
 
 <example title="multiple points">
-- Move settings files out of user's repo
-  * Currently pollutes git status
-  * Use ~/.companion/ as centralized location
-- Fix session auth path
+Move settings files out of user's repo
+  - Currently pollutes git status
+  - Use ~/.companion/ as centralized location
+Fix session auth path
 </example>
 
-For a single short point, a plain sentence is acceptable — but if there are any supporting details, use sub-bullets:
+For a single short point, a plain sentence is acceptable — but if there are any supporting details, use sub-points:
 
 <example title="single point with details">
 Move the settings files to ~/.companion/
-  * Currently pollutes git status
-  * Centralized location is easier to manage
+  - Currently pollutes git status
+  - Centralized location is easier to manage
 </example>
 
 Cleaning rules:
@@ -347,8 +348,8 @@ export function buildEnhancementPrompt(
 
   parts.push(`<TRANSCRIPT>\n${rawTranscript}\n</TRANSCRIPT>`);
 
-  // Format reminder — reinforces the system prompt's bullet format requirement
-  parts.push("\nRemember: use bullet format (- top level, * sub-bullets) whenever there are 2+ sentences. Keep top-level bullets short; put details in sub-bullets.");
+  // Format reminder — reinforces the system prompt's format requirement
+  parts.push("\nRemember: for 2+ sentences, use plain text lines for top-level points (no bullet marker) and indented \"  - \" for sub-points. Keep top-level lines short; put details in sub-points.");
 
   return parts.join("\n");
 }
