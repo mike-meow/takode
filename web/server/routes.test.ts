@@ -1907,6 +1907,87 @@ describe("POST /api/transcribe", () => {
     expect((uploadedFile as File).type).toBe("audio/mp4");
     expect((uploadedFile as File).name).toBe("recording.mp4");
   });
+
+  it("supports voice-edit mode by transcribing the instruction then applying it to the current draft", async () => {
+    vi.mocked(settingsManager.getSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-5-mini",
+        customVocabulary: "Takode, WsBridge",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 123,
+    });
+    vi.mocked(sessionNames.getName).mockReturnValue("Voice edit session");
+    bridge.getSessionTaskHistory.mockReturnValue([{ title: "Fix reconnect bug" }]);
+    bridge.getMessageHistory.mockReturnValue([{ type: "user_message", content: "Please rewrite this update" }]);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ text: "turn this into bullet points" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          choices: [{ message: { content: "- Short bullet\n- Another bullet" } }],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    const form = new FormData();
+    form.append("audio", new File([new Uint8Array([0x52, 0x49, 0x46, 0x46])], "recording.wav", { type: "audio/wav" }));
+    form.append("backend", "openai");
+    form.append("mode", "edit");
+    form.append("sessionId", "session-1");
+    form.append("composerText", "Please rewrite this update into two short bullets.");
+
+    const res = await app.request("/api/transcribe", { method: "POST", body: form });
+
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("event: stt_complete");
+    expect(body).toContain("\"nextPhase\":\"editing\"");
+    expect(body).toContain("event: result");
+    expect(body).toContain("\"mode\":\"edit\"");
+    expect(body).toContain("\"instructionText\":\"turn this into bullet points\"");
+    expect(body).toContain("- Short bullet");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    const [, sttInit] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const sttBody = sttInit.body as FormData;
+    expect(sttBody.get("prompt")).toBeTruthy();
+    expect(String(sttBody.get("prompt"))).toContain("Current draft:");
+    expect(String(sttBody.get("prompt"))).toContain("spoken edit instruction");
+
+    const [, enhanceInit] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    const enhanceBody = JSON.parse(String(enhanceInit.body));
+    expect(enhanceBody.messages[0].content).toContain("VOICE EDITOR");
+    expect(enhanceBody.messages[1].content).toContain("<CURRENT_COMPOSER_TEXT>");
+    expect(enhanceBody.messages[1].content).toContain("<EDIT_INSTRUCTION>");
+  });
 });
 
 // ─── Settings ────────────────────────────────────────────────────────────────

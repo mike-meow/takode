@@ -82,7 +82,7 @@ function isSystemNoise(msg: BrowserIncomingMessage): boolean {
 
 // ─── System prompt ──────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
+const DICTATION_SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
 
 Your ONLY job is to clean up a speech-to-text transcript into scannable, condensed text.
 
@@ -119,6 +119,20 @@ Cleaning rules:
 - NEVER remove meaningful content — only remove filler and repetition
 - NEVER answer questions from the transcript — only clean them up
 - Output ONLY the cleaned text, nothing else`;
+
+const VOICE_EDIT_SYSTEM_PROMPT = `You are a VOICE EDITOR for a text composer.
+
+You will receive the user's current composer text and a spoken edit instruction that has already been transcribed by STT.
+
+Your only job is to apply the instruction to the current composer text and return the FULL updated composer text.
+
+Rules:
+- Return ONLY the fully edited composer text
+- Do NOT explain what you changed
+- Do NOT wrap the result in markdown fences
+- Preserve the user's existing meaning, structure, tone, and technical details unless the instruction changes them
+- Apply the spoken instruction literally and conservatively
+- Never invent new facts, file paths, commands, or requirements that were not already present in the draft or the instruction`;
 
 // ─── Context extraction ─────────────────────────────────────────────────────
 
@@ -262,6 +276,10 @@ export function buildTranscriptionContext(history: BrowserIncomingMessage[]): st
 // ─── Prompt construction ────────────────────────────────────────────────────
 
 export interface EnhancementContextInput {
+  /** Which voice flow is being processed. */
+  mode?: "dictation" | "edit";
+  /** Full current composer text (used by voice-edit mode). */
+  composerText?: string;
   /** Text before the cursor in the composer. */
   composerBefore?: string;
   /** Text after the cursor in the composer. */
@@ -327,11 +345,51 @@ export function buildEnhancementPrompt(
   return parts.join("\n");
 }
 
+export function buildVoiceEditPrompt(
+  instructionText: string,
+  currentComposerText: string,
+  conversationContext: string,
+  extra?: EnhancementContextInput,
+): string {
+  const parts: string[] = [];
+
+  parts.push(`<CURRENT_COMPOSER_TEXT>\n${currentComposerText}\n</CURRENT_COMPOSER_TEXT>`);
+  parts.push("");
+  parts.push(`<EDIT_INSTRUCTION>\n${instructionText}\n</EDIT_INSTRUCTION>`);
+
+  if (conversationContext) {
+    parts.push("");
+    parts.push(`<CONVERSATION_CONTEXT>\nRecent conversation in this coding session:\n\n${conversationContext}\n</CONVERSATION_CONTEXT>`);
+  }
+
+  const supplementary: string[] = [];
+  if (extra?.taskTitles && extra.taskTitles.length > 0) {
+    supplementary.push(`Session tasks: ${extra.taskTitles.join("; ")}`);
+  }
+  if (extra?.sessionName) {
+    supplementary.push(`Current session: ${extra.sessionName}`);
+  }
+  if (extra?.activeSessionNames && extra.activeSessionNames.length > 0) {
+    supplementary.push(`Other active sessions: ${extra.activeSessionNames.join("; ")}`);
+  }
+
+  if (supplementary.length > 0) {
+    parts.push("");
+    parts.push(`<SESSION_CONTEXT>\n${supplementary.join("\n")}\n</SESSION_CONTEXT>`);
+  }
+
+  return parts.join("\n");
+}
+
 // ─── STT prompt construction ─────────────────────────────────────────────────
 
 export interface SttPromptInput {
+  /** Which voice flow is being processed. */
+  mode?: "dictation" | "edit";
   /** Task titles from the session auto-namer (highest priority context). */
   taskHistory?: SessionTaskEntry[];
+  /** Full current composer text when the user is voice-editing existing text. */
+  composerText?: string;
   /** Session display name. */
   sessionName?: string;
   /** Names of other active sessions (vocabulary from the user's workspace). */
@@ -406,8 +464,10 @@ export function buildSttPrompt(input: SttPromptInput): string {
     addMeta("Sessions: " + truncated.join(", "));
   }
 
-  // 4. Composer text with cursor position marker
-  if ((input.composerBefore || input.composerAfter) && metaRemaining > 0) {
+  // 4. Composer text
+  if (input.mode === "edit" && input.composerText && metaRemaining > 0) {
+    addMeta("Current draft: " + trunc(input.composerText.trim(), 1000));
+  } else if ((input.composerBefore || input.composerAfter) && metaRemaining > 0) {
     const before = input.composerBefore ? trunc(input.composerBefore.trim(), 500) + " " : "";
     const after = input.composerAfter ? " " + trunc(input.composerAfter.trim(), 500) : "";
     addMeta(`Composer: ${before}[CURSOR]${after}`);
@@ -527,7 +587,11 @@ export function buildSttPrompt(input: SttPromptInput): string {
   }
 
   // Closing instruction — recency bias ensures the model sees this last
-  sections.push("TRANSCRIBE THE FOLLOWING AUDIO EXACTLY AS SPOKEN. Output ONLY the transcribed words.");
+  sections.push(
+    input.mode === "edit"
+      ? "The audio is a spoken edit instruction for the current draft. TRANSCRIBE THE INSTRUCTION EXACTLY AS SPOKEN. Output ONLY the transcribed instruction text."
+      : "TRANSCRIBE THE FOLLOWING AUDIO EXACTLY AS SPOKEN. Output ONLY the transcribed words.",
+  );
 
   return sections.join("\n");
 }
@@ -547,6 +611,7 @@ async function callEnhancementLLM(
   prompt: string,
   config: TranscriptionConfig,
   apiKey: string,
+  systemPrompt: string,
 ): Promise<LLMCallResult> {
   const baseUrl = (config.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = config.enhancementModel || "gpt-5-mini";
@@ -564,7 +629,7 @@ async function callEnhancementLLM(
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
         max_completion_tokens: 1000,
@@ -634,31 +699,31 @@ export async function enhanceTranscript(
 
   // Skip if enhancement is disabled
   if (!config.enhancementEnabled) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "disabled" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "disabled" } };
   }
 
   // Skip for very short transcripts
   if (rawText.trim().length < MIN_CHARS_FOR_ENHANCEMENT) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "too short" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "too short" } };
   }
 
   // Build context from session history
   const conversationContext = history ? buildTranscriptionContext(history) : "";
 
   // Check if we have any meaningful context at all
-  const hasExtra = !!(extra?.composerBefore || extra?.composerAfter || extra?.taskTitles?.length || extra?.sessionName || extra?.activeSessionNames?.length);
+  const hasExtra = !!(extra?.composerText || extra?.composerBefore || extra?.composerAfter || extra?.taskTitles?.length || extra?.sessionName || extra?.activeSessionNames?.length);
   if (!conversationContext && !hasExtra) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "no context" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "no context" } };
   }
 
   // Build prompt and call LLM
   const prompt = buildEnhancementPrompt(rawText, conversationContext, extra);
   const t0 = Date.now();
-  const llmResult = await callEnhancementLLM(prompt, config, apiKey);
+  const llmResult = await callEnhancementLLM(prompt, config, apiKey, DICTATION_SYSTEM_PROMPT);
   const durationMs = Date.now() - t0;
 
   if (!llmResult.ok) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: prompt, enhancedText: null, durationMs, skipReason: llmResult.error } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: null, durationMs, skipReason: llmResult.error } };
   }
 
   const enhanced = llmResult.text;
@@ -668,10 +733,62 @@ export async function enhanceTranscript(
     console.warn(
       `[transcription-enhancer] Discarding hallucinated output (${enhanced.length} chars vs ${rawText.length} raw)`,
     );
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs, skipReason: "hallucination guard" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs, skipReason: "hallucination guard" } };
   }
 
-  return { text: enhanced, rawText, enhanced: true, _debug: { model, systemPrompt: SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs } };
+  return { text: enhanced, rawText, enhanced: true, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs } };
+}
+
+export interface VoiceEditResult {
+  text: string;
+  _debug: {
+    model: string;
+    systemPrompt: string;
+    userMessage: string;
+    enhancedText: string | null;
+    durationMs: number;
+    skipReason?: string;
+  };
+}
+
+export async function applyVoiceEdit(
+  instructionText: string,
+  currentComposerText: string,
+  history: BrowserIncomingMessage[] | null,
+  config: TranscriptionConfig,
+  apiKey: string,
+  extra?: EnhancementContextInput,
+): Promise<VoiceEditResult> {
+  const model = config.enhancementModel || "gpt-5-mini";
+  const conversationContext = history ? buildTranscriptionContext(history) : "";
+  const prompt = buildVoiceEditPrompt(instructionText, currentComposerText, conversationContext, extra);
+  const t0 = Date.now();
+  const llmResult = await callEnhancementLLM(prompt, config, apiKey, VOICE_EDIT_SYSTEM_PROMPT);
+  const durationMs = Date.now() - t0;
+
+  if (!llmResult.ok) {
+    throw Object.assign(new Error(llmResult.error), {
+      _debug: {
+        model,
+        systemPrompt: VOICE_EDIT_SYSTEM_PROMPT,
+        userMessage: prompt,
+        enhancedText: null,
+        durationMs,
+        skipReason: llmResult.error,
+      },
+    });
+  }
+
+  return {
+    text: llmResult.text,
+    _debug: {
+      model,
+      systemPrompt: VOICE_EDIT_SYSTEM_PROMPT,
+      userMessage: prompt,
+      enhancedText: llmResult.text,
+      durationMs,
+    },
+  };
 }
 
 // ─── Debug log (in-memory, for Settings debug panel) ─────────────────────────
@@ -680,6 +797,7 @@ export interface TranscriptionLogEntry {
   id: number;
   timestamp: number;
   sessionId: string | null;
+  mode?: "dictation" | "edit";
   /** STT phase */
   sttModel: string;
   sttDurationMs: number;
@@ -778,7 +896,8 @@ export function getTranscriptionLogEntry(id: number): TranscriptionLogEntry | un
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
 export const _testHelpers = {
-  SYSTEM_PROMPT,
+  DICTATION_SYSTEM_PROMPT,
+  VOICE_EDIT_SYSTEM_PROMPT,
   MAX_TURNS,
   ENHANCER_MSG_START,
   ENHANCER_MSG_STEP,
@@ -797,5 +916,6 @@ export const _testHelpers = {
   isSystemNoise,
   buildTranscriptionContext,
   buildEnhancementPrompt,
+  buildVoiceEditPrompt,
   buildSttPrompt,
 };

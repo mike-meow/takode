@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends, getTranscriptionStatus, resolveAudioUploadFormat, resolveOpenAIKey } from "../transcription.js";
-import { enhanceTranscript, buildSttPrompt, addTranscriptionLogEntry } from "../transcription-enhancer.js";
+import { enhanceTranscript, buildSttPrompt, addTranscriptionLogEntry, applyVoiceEdit } from "../transcription-enhancer.js";
 import * as sessionNames from "../session-names.js";
 import { getSettings } from "../settings-manager.js";
 import type { RouteContext } from "./context.js";
@@ -38,6 +38,8 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     }
 
     const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"] : undefined;
+    const mode = body["mode"] === "edit" ? "edit" : "dictation";
+    const composerText = typeof body["composerText"] === "string" ? body["composerText"] : undefined;
     const composerBefore = typeof body["composerBefore"] === "string" ? body["composerBefore"] : undefined;
     const composerAfter = typeof body["composerAfter"] === "string" ? body["composerAfter"] : undefined;
     const requestedBackend = typeof body["backend"] === "string" ? body["backend"] : undefined;
@@ -47,6 +49,17 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     if (!backend) {
       return c.json(
         { error: "No transcription backend available. Configure an OpenAI API key in Settings → Voice Transcription, or set OPENAI_API_KEY / GOOGLE_API_KEY in your environment." },
+        400,
+      );
+    }
+
+    if (mode === "edit" && composerText === undefined) {
+      return c.json({ error: "composerText is required for voice edit mode." }, 400);
+    }
+
+    if (mode === "edit" && !resolveOpenAIKey()) {
+      return c.json(
+        { error: "Voice edit requires an OpenAI-compatible enhancement model API key in Settings → Voice Transcription, or OPENAI_API_KEY in your environment." },
         400,
       );
     }
@@ -67,9 +80,11 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         if (sessionId) {
           const recentOtherNames = getRecentSessionNames(sessionId, 10);
           sttPrompt = buildSttPrompt({
+            mode,
             taskHistory: wsBridge.getSessionTaskHistory(sessionId),
             sessionName: sessionNames.getName(sessionId),
             activeSessionNames: recentOtherNames.length > 0 ? recentOtherNames : undefined,
+            composerText: mode === "edit" ? composerText : undefined,
             composerBefore: composerBefore,
             composerAfter: composerAfter,
             messageHistory: wsBridge.getMessageHistory(sessionId),
@@ -108,25 +123,76 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
         const sttDurationMs = Date.now() - sttStart;
 
-        // Notify client that STT is done — if enhancement follows, UI can show "Enhancing..."
-        const willEnhance = !!(sessionId && usedBackend === "openai" &&
-          getSettings().transcriptionConfig.enhancementEnabled && resolveOpenAIKey());
+        const settings = getSettings();
+        const enhancementKey = resolveOpenAIKey();
+        const willEnhanceDictation = !!(sessionId && usedBackend === "openai" &&
+          settings.transcriptionConfig.enhancementEnabled && enhancementKey);
+        const willRunVoiceEdit = mode === "edit";
         await stream.writeSSE({
           event: "stt_complete",
-          data: JSON.stringify({ rawText, backend: usedBackend, willEnhance }),
+          data: JSON.stringify({
+            rawText,
+            backend: usedBackend,
+            willEnhance: willEnhanceDictation,
+            nextPhase: willRunVoiceEdit ? "editing" : (willEnhanceDictation ? "enhancing" : null),
+            mode,
+          }),
         });
 
+        if (willRunVoiceEdit) {
+          const history = sessionId ? wsBridge.getMessageHistory(sessionId) : null;
+          const taskHistory = sessionId ? wsBridge.getSessionTaskHistory(sessionId) : [];
+          const enhOtherNames = sessionId ? getRecentSessionNames(sessionId, 20) : [];
+          const result = await applyVoiceEdit(rawText, composerText!, history, settings.transcriptionConfig, enhancementKey!, {
+            mode,
+            composerText,
+            taskTitles: taskHistory.map((t) => t.title),
+            sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
+            activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+          });
+
+          addTranscriptionLogEntry({
+            sessionId: sessionId ?? null,
+            mode,
+            sttModel,
+            sttDurationMs,
+            sttPrompt,
+            rawTranscript: rawText,
+            audioSizeBytes: buf.length,
+            enhancement: {
+              model: result._debug.model,
+              systemPrompt: result._debug.systemPrompt,
+              userMessage: result._debug.userMessage,
+              enhancedText: result._debug.enhancedText,
+              durationMs: result._debug.durationMs,
+              skipReason: result._debug.skipReason,
+            },
+          });
+
+          await stream.writeSSE({
+            event: "result",
+            data: JSON.stringify({
+              mode,
+              text: result.text,
+              rawText,
+              instructionText: rawText,
+              backend: usedBackend,
+              enhanced: true,
+            }),
+          });
+          return;
+        }
+
         // Tier 2: Context-aware enhancement (OpenAI backend only)
-        if (willEnhance) {
-          const enhancementKey = resolveOpenAIKey()!;
-          const settings = getSettings();
+        if (willEnhanceDictation) {
           const history = wsBridge.getMessageHistory(sessionId!);
 
           // Build enriched context for enhancement
           const taskHistory = wsBridge.getSessionTaskHistory(sessionId!);
           const enhOtherNames = getRecentSessionNames(sessionId!, 20);
 
-          const result = await enhanceTranscript(rawText, history, settings.transcriptionConfig, enhancementKey, {
+          const result = await enhanceTranscript(rawText, history, settings.transcriptionConfig, enhancementKey!, {
+            mode,
             composerBefore: composerBefore,
             composerAfter: composerAfter,
             taskTitles: taskHistory.map((t) => t.title),
@@ -137,6 +203,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           // Log for debug panel
           addTranscriptionLogEntry({
             sessionId: sessionId!,
+            mode,
             sttModel,
             sttDurationMs,
             sttPrompt,
@@ -154,7 +221,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
           await stream.writeSSE({
             event: "result",
-            data: JSON.stringify({ text: result.text, rawText: result.rawText, backend: usedBackend, enhanced: result.enhanced }),
+            data: JSON.stringify({ mode, text: result.text, rawText: result.rawText, backend: usedBackend, enhanced: result.enhanced }),
           });
           return;
         }
@@ -162,6 +229,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         // Log STT-only call (no enhancement attempted)
         addTranscriptionLogEntry({
           sessionId: sessionId ?? null,
+          mode,
           sttModel,
           sttDurationMs,
           sttPrompt,
@@ -172,7 +240,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
         await stream.writeSSE({
           event: "result",
-          data: JSON.stringify({ text: rawText, backend: usedBackend, enhanced: false }),
+          data: JSON.stringify({ mode, text: rawText, backend: usedBackend, enhanced: false }),
         });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);

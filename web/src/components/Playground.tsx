@@ -2099,6 +2099,69 @@ export function Playground() {
               </div>
             </Card>
             <div className="mt-4" />
+            <Card label="Voice edit preview — explicit accept or undo">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  <textarea
+                    readOnly
+                    value={"Ship the reconnect fix tonight and add a short rollback note for on-call."}
+                    rows={2}
+                    className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "54px" }}
+                  />
+                  <div className="px-4 pb-3 pt-1">
+                    <div className="rounded-xl border border-cc-primary/20 bg-cc-primary/5 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">Voice edit preview</div>
+                          <div className="mt-1 text-xs leading-relaxed text-cc-muted">
+                            Apply instruction: <span className="text-cc-fg">Make this calmer, split it into two sentences, and mention the rollback note at the end.</span>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button className="rounded-lg border border-cc-border px-3 py-1.5 text-xs font-medium text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg">
+                            Undo
+                          </button>
+                          <button className="rounded-lg bg-cc-primary px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-opacity hover:opacity-90">
+                            Accept
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 overflow-hidden rounded-lg border border-cc-border bg-cc-bg/80">
+                        <DiffViewer
+                          oldText="Ship the reconnect fix tonight and add a short rollback note for on-call."
+                          newText={"Ship the reconnect fix tonight.\nAdd a short rollback note for on-call so the handoff stays calm and explicit."}
+                          mode="compact"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted opacity-30">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
             <Card label="Idle — mic button ready">
               <div className="border-t border-cc-border bg-cc-card px-4 py-3">
                 <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">

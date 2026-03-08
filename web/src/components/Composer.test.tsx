@@ -32,6 +32,8 @@ Object.defineProperty(window, "matchMedia", {
 });
 
 const mockSendToSession = vi.fn().mockReturnValue(true);
+const mockTranscribe = vi.fn().mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
+const mockGetBackendModels = vi.fn().mockResolvedValue([]);
 
 // Build a controllable mock store state
 let mockStoreState: Record<string, unknown> = {};
@@ -43,7 +45,47 @@ vi.mock("../ws.js", () => ({
 vi.mock("../api.js", () => ({
   api: {
     gitPull: vi.fn().mockResolvedValue({ success: true, output: "", git_ahead: 0, git_behind: 0 }),
-    getBackendModels: vi.fn().mockResolvedValue([]),
+    getBackendModels: (...args: unknown[]) => mockGetBackendModels(...args),
+    transcribe: (...args: unknown[]) => mockTranscribe(...args),
+  },
+}));
+
+const mockVoiceState = {
+  isSupportedOverride: null as boolean | null,
+  unsupportedReasonOverride: null as "insecure-context" | "missing-media-devices" | "missing-media-recorder" | "unsupported-environment" | null,
+  unsupportedMessageOverride: null as string | null,
+  onAudioReady: null as ((blob: Blob) => void | Promise<void>) | null,
+};
+
+vi.mock("../hooks/useVoiceInput.js", () => ({
+  useVoiceInput: (options: { onAudioReady?: (blob: Blob) => void | Promise<void> } = {}) => {
+    mockVoiceState.onAudioReady = options.onAudioReady ?? null;
+    const isSupported = mockVoiceState.isSupportedOverride ?? window.isSecureContext !== false;
+    const unsupportedReason = isSupported
+      ? null
+      : (mockVoiceState.unsupportedReasonOverride ?? (window.isSecureContext === false ? "insecure-context" : "unsupported-environment"));
+    const unsupportedMessage = isSupported
+      ? null
+      : (mockVoiceState.unsupportedMessageOverride
+        ?? (unsupportedReason === "insecure-context"
+          ? "Voice input requires HTTPS or localhost in this browser."
+          : "Voice input is unavailable."));
+    return {
+      isRecording: false,
+      isSupported,
+      unsupportedReason,
+      unsupportedMessage,
+      isTranscribing: false,
+      transcriptionPhase: null,
+      error: null,
+      volumeLevel: 0,
+      setIsTranscribing: vi.fn(),
+      setTranscriptionPhase: vi.fn(),
+      setError: vi.fn(),
+      startRecording: vi.fn(),
+      stopRecording: vi.fn(),
+      toggleRecording: vi.fn(() => options.onAudioReady?.(new Blob(["voice"], { type: "audio/webm" }))),
+    };
   },
 }));
 
@@ -213,6 +255,12 @@ function makeImageDataTransfer(file: File) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockVoiceState.isSupportedOverride = null;
+  mockVoiceState.unsupportedReasonOverride = null;
+  mockVoiceState.unsupportedMessageOverride = null;
+  mockVoiceState.onAudioReady = null;
+  mockTranscribe.mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
+  mockGetBackendModels.mockResolvedValue([]);
   mediaState.touchDevice = false;
   setViewportWidth(1024);
   Object.defineProperty(window, "isSecureContext", {
@@ -329,6 +377,92 @@ describe("Composer basic rendering", () => {
 
     expect(screen.getByTitle("Voice needs HTTPS")).toBeTruthy();
     expect(screen.queryByText("Voice input requires HTTPS or localhost in this browser.")).toBeNull();
+  });
+});
+
+describe("Composer voice edit mode", () => {
+  it("keeps empty-composer voice input on the normal dictation path", async () => {
+    render(<Composer sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "dictation",
+          sessionId: "s1",
+        }),
+      );
+    });
+    const options = mockTranscribe.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(options?.composerText).toBeUndefined();
+  });
+
+  it("uses voice edit mode for non-empty drafts and makes the edit explicit and reversible", async () => {
+    setupMockStore({ draftText: "Please rewrite this update into two short bullets." });
+    mockTranscribe.mockResolvedValueOnce({
+      mode: "edit",
+      text: "- Bullet one\n- Bullet two",
+      rawText: "turn this into two short bullets",
+      instructionText: "turn this into two short bullets",
+      backend: "openai",
+      enhanced: true,
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "edit",
+          sessionId: "s1",
+          composerText: "Please rewrite this update into two short bullets.",
+        }),
+      );
+    });
+
+    expect(screen.getByText("Voice edit preview")).toBeTruthy();
+    expect(screen.getByText(/Apply instruction:/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+
+    const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Please rewrite this update into two short bullets.");
+    expect(screen.getByTitle("Send message").hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("- Bullet one\n- Bullet two");
+    });
+    expect(screen.queryByText("Voice edit preview")).toBeNull();
+  });
+
+  it("lets the user undo a pending voice edit and keep the original draft", async () => {
+    setupMockStore({ draftText: "Keep this draft as-is." });
+    mockTranscribe.mockResolvedValueOnce({
+      mode: "edit",
+      text: "Edited draft that should be discarded.",
+      rawText: "rewrite this",
+      instructionText: "rewrite this",
+      backend: "openai",
+      enhanced: true,
+    });
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await screen.findByText("Voice edit preview");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() => {
+      expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Keep this draft as-is.");
+    });
+    expect(screen.queryByText("Voice edit preview")).toBeNull();
   });
 });
 

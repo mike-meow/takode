@@ -5,11 +5,20 @@ import {
   _testHelpers,
   buildTranscriptionContext,
   buildEnhancementPrompt,
+  buildVoiceEditPrompt,
   buildSttPrompt,
   enhanceTranscript,
 } from "./transcription-enhancer.js";
 
-const { trunc, extractAssistantText, isSystemNoise, MAX_TURNS, MIN_CHARS_FOR_ENHANCEMENT, HALLUCINATION_LENGTH_RATIO, STT_PROMPT_MAX_CHARS } = _testHelpers;
+const {
+  trunc,
+  extractAssistantText,
+  isSystemNoise,
+  MAX_TURNS,
+  MIN_CHARS_FOR_ENHANCEMENT,
+  HALLUCINATION_LENGTH_RATIO,
+  STT_PROMPT_MAX_CHARS,
+} = _testHelpers;
 
 // ─── Helper to build mock messages ──────────────────────────────────────────
 
@@ -361,6 +370,33 @@ describe("buildEnhancementPrompt", () => {
   });
 });
 
+describe("buildVoiceEditPrompt", () => {
+  it("includes the current composer text and edit instruction in dedicated XML blocks", () => {
+    const prompt = buildVoiceEditPrompt("shorten the first paragraph", "Long draft text", "");
+    expect(prompt).toContain("<CURRENT_COMPOSER_TEXT>");
+    expect(prompt).toContain("Long draft text");
+    expect(prompt).toContain("<EDIT_INSTRUCTION>");
+    expect(prompt).toContain("shorten the first paragraph");
+  });
+
+  it("includes conversation and session context when available", () => {
+    const prompt = buildVoiceEditPrompt(
+      "turn this into bullets",
+      "Investigate the reconnect issue and update docs.",
+      "[user]\n    Investigate the reconnect issue",
+      {
+        taskTitles: ["Fix reconnect bug"],
+        sessionName: "Voice edit debug",
+        activeSessionNames: ["Docs follow-up"],
+      },
+    );
+    expect(prompt).toContain("<CONVERSATION_CONTEXT>");
+    expect(prompt).toContain("Fix reconnect bug");
+    expect(prompt).toContain("Current session: Voice edit debug");
+    expect(prompt).toContain("Other active sessions: Docs follow-up");
+  });
+});
+
 // ─── enhanceTranscript ──────────────────────────────────────────────────────
 
 describe("enhanceTranscript", () => {
@@ -499,6 +535,17 @@ describe("buildSttPrompt", () => {
   it("includes only composerAfter with [CURSOR] when composerBefore is empty", () => {
     const prompt = buildSttPrompt({ composerAfter: "and add tests" });
     expect(prompt).toContain("Composer: [CURSOR] and add tests");
+  });
+
+  it("uses current draft wording and edit-specific closing instruction in voice-edit mode", () => {
+    const prompt = buildSttPrompt({
+      mode: "edit",
+      composerText: "Please rewrite this update into short bullets.",
+      sessionName: "Voice edit session",
+    });
+    expect(prompt).toContain("Current draft: Please rewrite this update into short bullets.");
+    expect(prompt).toContain("spoken edit instruction");
+    expect(prompt).not.toContain("Composer: [CURSOR]");
   });
 
   it("formats recent turns as indented [user]/[assistant] blocks", () => {

@@ -16,6 +16,7 @@ import {
 import { isTouchDevice } from "../utils/mobile.js";
 import { Lightbox } from "./Lightbox.js";
 import { CatPawAvatar } from "./CatIcons.js";
+import { DiffViewer } from "./DiffViewer.js";
 import { useVoiceInput } from "../hooks/useVoiceInput.js";
 import { api } from "../api.js";
 import {
@@ -39,6 +40,12 @@ interface ImageAttachment {
   name: string;
   base64: string;
   mediaType: string;
+}
+
+interface VoiceEditProposal {
+  originalText: string;
+  editedText: string;
+  instructionText: string;
 }
 
 function getImageFiles(files: ArrayLike<File> | Iterable<File> | null | undefined): File[] {
@@ -204,6 +211,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [sendPressing, setSendPressing] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [isImageDragOver, setIsImageDragOver] = useState(false);
+  const [voiceEditProposal, setVoiceEditProposal] = useState<VoiceEditProposal | null>(null);
   const zoomLevel = useStore((s) => s.zoomLevel);
 
   // @ mention file search state
@@ -224,6 +232,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
+  const voiceCaptureModeRef = useRef<"dictation" | "edit">("dictation");
+  const voiceEditBaseTextRef = useRef("");
 
   // Voice input — records audio via MediaRecorder, transcribes server-side
   const preRecordingTextRef = useRef({ before: "", after: "" });
@@ -238,16 +248,32 @@ export function Composer({ sessionId }: { sessionId: string }) {
       setIsTranscribing(true);
       setTranscriptionPhase("transcribing");
       try {
-        const { before, after } = preRecordingTextRef.current;
-        const { text: transcript } = await api.transcribe(blob, {
-          sessionId,
-          composerBefore: before || undefined,
-          composerAfter: after || undefined,
-          onPhase: (phase) => setTranscriptionPhase(phase),
-        });
-        const separator = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
-        const afterSep = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
-        setText(before + separator + transcript + afterSep + after);
+        if (voiceCaptureModeRef.current === "edit") {
+          const { text: editedText, instructionText, rawText } = await api.transcribe(blob, {
+            mode: "edit",
+            sessionId,
+            composerText: voiceEditBaseTextRef.current,
+            onPhase: (phase) => setTranscriptionPhase(phase),
+          });
+          setVoiceEditProposal({
+            originalText: voiceEditBaseTextRef.current,
+            editedText,
+            instructionText: instructionText || rawText || "",
+          });
+        } else {
+          const { before, after } = preRecordingTextRef.current;
+          const { text: transcript } = await api.transcribe(blob, {
+            mode: "dictation",
+            sessionId,
+            composerBefore: before || undefined,
+            composerAfter: after || undefined,
+            onPhase: (phase) => setTranscriptionPhase(phase),
+          });
+          const separator = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+          const afterSep = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : "";
+          setText(before + separator + transcript + afterSep + after);
+          setVoiceEditProposal(null);
+        }
       } catch (err) {
         setVoiceError(err instanceof Error ? err.message : "Transcription failed");
       } finally {
@@ -264,12 +290,19 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
     if (!isRecording) {
-      const el = textareaRef.current;
-      const cursorPos = el?.selectionStart ?? text.length;
-      preRecordingTextRef.current = {
-        before: text.slice(0, cursorPos),
-        after: text.slice(cursorPos),
-      };
+      if (text.trim().length > 0) {
+        voiceCaptureModeRef.current = "edit";
+        voiceEditBaseTextRef.current = text;
+        setVoiceEditProposal(null);
+      } else {
+        voiceCaptureModeRef.current = "dictation";
+        const el = textareaRef.current;
+        const cursorPos = el?.selectionStart ?? text.length;
+        preRecordingTextRef.current = {
+          before: text.slice(0, cursorPos),
+          after: text.slice(cursorPos),
+        };
+      }
     }
     toggleRecording();
   }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
@@ -307,6 +340,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }, [text]);
+
+  useEffect(() => {
+    setVoiceEditProposal(null);
+    voiceCaptureModeRef.current = "dictation";
+    voiceEditBaseTextRef.current = "";
+  }, [sessionId]);
 
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
@@ -576,9 +615,23 @@ export function Composer({ sessionId }: { sessionId: string }) {
     textareaRef.current?.focus();
   }, []);
 
+  const acceptVoiceEdit = useCallback(() => {
+    if (!voiceEditProposal) return;
+    setText(voiceEditProposal.editedText);
+    setVoiceEditProposal(null);
+    textareaRef.current?.focus();
+  }, [setText, voiceEditProposal]);
+
+  const undoVoiceEdit = useCallback(() => {
+    if (!voiceEditProposal) return;
+    setText(voiceEditProposal.originalText);
+    setVoiceEditProposal(null);
+    textareaRef.current?.focus();
+  }, [setText, voiceEditProposal]);
+
   async function handleSend() {
     const msg = text.trim();
-    if ((!msg && images.length === 0) || !isConnected) return;
+    if ((!msg && images.length === 0) || !isConnected || voiceEditProposal) return;
 
     // Auto-answer pending AskUserQuestion if user types a response.
     // The typed text becomes the "Other..." answer for each question.
@@ -686,7 +739,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       const now = Date.now();
       if (now - lastShiftUp < 400) {
         lastShiftUp = 0;
-        if (!isConnected || isTranscribing) return;
+        if (!isConnected || isTranscribing || voiceEditProposal) return;
         handleMicClick();
       } else {
         lastShiftUp = now;
@@ -699,7 +752,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
     };
-  }, [voiceSupported, isRecording, isConnected, isTranscribing, handleMicClick]);
+  }, [voiceSupported, isRecording, isConnected, isTranscribing, handleMicClick, voiceEditProposal]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     // Slash menu navigation
@@ -778,6 +831,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
     isUserInput.current = true;
     const newText = e.target.value;
     const cursorPos = e.target.selectionStart;
+    if (voiceEditProposal) {
+      setVoiceEditProposal(null);
+    }
     setText(newText);
     const ta = e.target;
     ta.style.height = "auto";
@@ -916,7 +972,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   const sessionStatus = useStore((s) => s.sessionStatus);
   const isRunning = sessionStatus.get(sessionId) === "running";
-  const canSend = (text.trim().length > 0 || images.length > 0) && isConnected;
+  const canSend = (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal;
 
   // Mobile collapsible composer — collapse when empty (no text, no images), regardless of streaming
   const isCollapsed = usesTouchKeyboard && isNarrowLayout && !composerExpanded && !text.trim() && images.length === 0;
@@ -959,9 +1015,16 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const voiceUnsupportedTooltip = voiceUnsupportedReason === "insecure-context"
     ? "Voice needs HTTPS"
     : "Voice unavailable";
+  const voiceIdleTitle = text.trim().length > 0 ? "Voice edit" : "Voice input";
   const voiceButtonTitle = (!voiceSupported ? voiceUnsupportedTooltip : voiceError)
-    || (isTranscribing ? (transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...") : isRecording ? "Stop recording" : "Voice input");
-  const voiceButtonDisabled = !isConnected || isTranscribing;
+    || (isTranscribing
+      ? (transcriptionPhase === "editing" ? "Editing..." : transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...")
+      : isRecording
+        ? "Stop recording"
+        : voiceEditProposal
+          ? "Accept or undo the voice edit first"
+          : voiceIdleTitle);
+  const voiceButtonDisabled = !isConnected || isTranscribing || !!voiceEditProposal;
   const compactVoiceButtonDisabled = voiceButtonDisabled || isRunning;
 
   useEffect(() => {
@@ -1214,7 +1277,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
           {isTranscribing && !isRecording && (
             <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
               <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
-              <span>{transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing..."}</span>
+              <span>{transcriptionPhase === "editing" ? "Editing..." : transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing..."}</span>
             </div>
           )}
           {voiceUnsupportedInfoOpen && voiceUnsupportedMessage && !isRecording && !isTranscribing && (
@@ -1242,6 +1305,39 @@ export function Composer({ sessionId }: { sessionId: string }) {
           )}
           {voiceError && !isRecording && !isTranscribing && (
             <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
+          )}
+          {voiceEditProposal && !isRecording && !isTranscribing && (
+            <div className="px-4 pt-2">
+              <div className="rounded-xl border border-cc-primary/20 bg-cc-primary/5 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">Voice edit preview</div>
+                    <div className="mt-1 text-[12px] text-cc-muted">
+                      Apply instruction: <span className="text-cc-fg">{voiceEditProposal.instructionText || "(no instruction text returned)"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={undoVoiceEdit}
+                      className="rounded-lg border border-cc-border px-3 py-1.5 text-[12px] font-medium text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={acceptVoiceEdit}
+                      className="rounded-lg bg-cc-primary px-3 py-1.5 text-[12px] font-medium text-white hover:bg-cc-primary-hover transition-colors cursor-pointer"
+                    >
+                      Accept
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <DiffViewer oldText={voiceEditProposal.originalText} newText={voiceEditProposal.editedText} mode="compact" />
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="relative">

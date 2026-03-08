@@ -435,6 +435,7 @@ export interface TranscriptionLogIndexEntry {
   id: number;
   timestamp: number;
   sessionId: string | null;
+  mode?: "dictation" | "edit";
   sttModel: string;
   sttDurationMs: number;
   rawTranscript: string;
@@ -457,6 +458,18 @@ export interface TranscriptionLogEntry extends TranscriptionLogIndexEntry {
     durationMs: number;
     skipReason?: string;
   } | null;
+}
+
+export type VoiceTranscriptionMode = "dictation" | "edit";
+export type VoiceTranscriptionPhase = "transcribing" | "enhancing" | "editing";
+
+export interface VoiceTranscriptionResult {
+  mode?: VoiceTranscriptionMode;
+  text: string;
+  rawText?: string;
+  instructionText?: string;
+  backend: string;
+  enhanced: boolean;
 }
 
 export interface NamerLogIndexEntry {
@@ -857,18 +870,22 @@ export const api = {
     audio: Blob,
     options?: {
       backend?: "gemini" | "openai";
+      mode?: VoiceTranscriptionMode;
       sessionId?: string;
+      composerText?: string;
       composerBefore?: string;
       composerAfter?: string;
       /** Called when transcription phase changes (e.g. "enhancing" after STT completes) */
-      onPhase?: (phase: "transcribing" | "enhancing") => void;
+      onPhase?: (phase: VoiceTranscriptionPhase) => void;
     },
-  ): Promise<{ text: string; rawText?: string; backend: string; enhanced: boolean }> => {
+  ): Promise<VoiceTranscriptionResult> => {
     const audioFileName = resolveAudioUploadFilename(audio.type);
     const form = new FormData();
     form.append("audio", audio, audioFileName);
     if (options?.backend) form.append("backend", options.backend);
+    if (options?.mode) form.append("mode", options.mode);
     if (options?.sessionId) form.append("sessionId", options.sessionId);
+    if (options?.composerText !== undefined) form.append("composerText", options.composerText);
     if (options?.composerBefore) form.append("composerBefore", options.composerBefore);
     if (options?.composerAfter) form.append("composerAfter", options.composerAfter);
     const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form });
@@ -882,7 +899,7 @@ export const api = {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let result: { text: string; rawText?: string; backend: string; enhanced: boolean } | null = null;
+    let result: VoiceTranscriptionResult | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -904,8 +921,10 @@ export const api = {
 
         const parsed = JSON.parse(data);
         if (eventType === "stt_complete") {
-          // STT done — if enhancement will follow, notify the caller
-          if (parsed.willEnhance) {
+          const nextPhase = parsed.nextPhase as VoiceTranscriptionPhase | null | undefined;
+          if (nextPhase) {
+            options?.onPhase?.(nextPhase);
+          } else if (parsed.willEnhance) {
             options?.onPhase?.("enhancing");
           }
         } else if (eventType === "result") {
