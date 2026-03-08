@@ -247,6 +247,14 @@ function createMockBridge() {
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),
     isSessionBusy: vi.fn(() => false),
+    getTrafficStatsSnapshot: vi.fn(() => ({
+      windowStartedAt: 1000,
+      capturedAt: 2000,
+      totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
+      buckets: [],
+      sessions: {},
+    })),
+    resetTrafficStats: vi.fn(),
   } as any;
 }
 
@@ -254,6 +262,14 @@ function createMockStore() {
   return {
     setArchived: vi.fn(async () => true),
     flushAll: vi.fn(async () => {}),
+  } as any;
+}
+
+function createMockRecorder() {
+  return {
+    getRecordingsDir: vi.fn(() => "/tmp/companion-recordings"),
+    isGloballyEnabled: vi.fn(() => true),
+    getMaxLines: vi.fn(() => 500000),
   } as any;
 }
 
@@ -273,6 +289,7 @@ let launcher: ReturnType<typeof createMockLauncher>;
 let bridge: ReturnType<typeof createMockBridge>;
 let sessionStore: ReturnType<typeof createMockStore>;
 let tracker: ReturnType<typeof createMockTracker>;
+let recorder: ReturnType<typeof createMockRecorder>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -285,9 +302,10 @@ beforeEach(() => {
   bridge = createMockBridge();
   sessionStore = createMockStore();
   tracker = createMockTracker();
+  recorder = createMockRecorder();
   app = new Hono();
   const terminalManager = { getInfo: () => null, spawn: () => "", kill: () => {} } as any;
-  app.route("/api", createRoutes(launcher, bridge, sessionStore, tracker, terminalManager));
+  app.route("/api", createRoutes(launcher, bridge, sessionStore, tracker, terminalManager, undefined, recorder));
 
   // Default no-op mocks for container workspace isolation (called during container session creation)
   vi.spyOn(containerManager, "copyWorkspaceToContainer").mockResolvedValue(undefined);
@@ -1414,6 +1432,48 @@ describe("GET /api/health", () => {
     expect(json.ok).toBe(true);
     expect(json.timestamp).toBeGreaterThanOrEqual(before);
     expect(json.timestamp).toBeLessThanOrEqual(after);
+  });
+});
+
+describe("GET /api/traffic/stats", () => {
+  it("returns the current traffic snapshot and recorder metadata", async () => {
+    const res = await app.request("/api/traffic/stats", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      snapshot: {
+        windowStartedAt: 1000,
+        capturedAt: 2000,
+        totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
+        buckets: [],
+        sessions: {},
+      },
+      recording: {
+        available: true,
+        recordingsDir: "/tmp/companion-recordings",
+        globalEnabled: true,
+        maxLines: 500000,
+      },
+    });
+  });
+});
+
+describe("POST /api/traffic/stats/reset", () => {
+  it("resets traffic counters and returns the fresh snapshot", async () => {
+    const res = await app.request("/api/traffic/stats/reset", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(bridge.resetTrafficStats).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toEqual({
+      ok: true,
+      snapshot: {
+        windowStartedAt: 1000,
+        capturedAt: 2000,
+        totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
+        buckets: [],
+        sessions: {},
+      },
+    });
   });
 });
 

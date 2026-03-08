@@ -110,6 +110,7 @@ beforeEach(() => {
   store = new SessionStore(tempDir);
   bridge = new WsBridge();
   bridge.setStore(store);
+  bridge.resetTrafficStats();
   mockExecSync.mockReset();
   mockExec.mockReset();
   // Default: mockExec delegates to mockExecSync so tests that set up
@@ -122,6 +123,90 @@ beforeEach(() => {
     } catch (err) {
       if (callback) callback(err, { stdout: "", stderr: "" });
     }
+  });
+});
+
+describe("traffic accounting", () => {
+  it("tracks browser fanout using successful sends only", () => {
+    const browser1 = makeBrowserSocket("s1");
+    const browser2 = makeBrowserSocket("s1");
+
+    bridge.handleBrowserOpen(browser1, "s1");
+    bridge.handleBrowserOpen(browser2, "s1");
+    bridge.resetTrafficStats();
+
+    browser2.send.mockImplementation(() => {
+      throw new Error("socket failed");
+    });
+
+    bridge.broadcastSessionUpdate("s1", { cwd: "/repo" });
+
+    const snapshot = bridge.getTrafficStatsSnapshot();
+    const bucket = snapshot.buckets.find(
+      (entry) =>
+        entry.channel === "browser"
+        && entry.direction === "out"
+        && entry.messageType === "session_update",
+    );
+
+    expect(bucket).toBeDefined();
+    expect(bucket?.messages).toBe(1);
+    expect(bucket?.fanoutSum).toBe(1);
+    expect(bucket?.maxFanout).toBe(1);
+    expect(bucket?.wireBytes).toBe(bucket?.payloadBytes);
+  });
+
+  it("tracks browser inbound messages by type", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.resetTrafficStats();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+
+    const snapshot = bridge.getTrafficStatsSnapshot();
+    const bucket = snapshot.buckets.find(
+      (entry) =>
+        entry.channel === "browser"
+        && entry.direction === "in"
+        && entry.messageType === "session_subscribe",
+    );
+
+    expect(bucket).toMatchObject({
+      messages: 1,
+      fanoutSum: 1,
+      maxFanout: 1,
+    });
+    expect(snapshot.sessions.s1?.totals.messages).toBeGreaterThan(0);
+  });
+
+  it("tracks CLI inbound NDJSON and outbound sends", async () => {
+    const browser = makeBrowserSocket("s1");
+    const cli = makeCliSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.resetTrafficStats();
+
+    bridge.handleCLIMessage(cli, `${JSON.stringify({ type: "keep_alive" })}\n`);
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "user_message", content: "hi" }));
+    await Promise.resolve();
+
+    const snapshot = bridge.getTrafficStatsSnapshot();
+    const cliIn = snapshot.buckets.find(
+      (entry) =>
+        entry.channel === "cli"
+        && entry.direction === "in"
+        && entry.messageType === "keep_alive",
+    );
+    const cliOut = snapshot.buckets.find(
+      (entry) =>
+        entry.channel === "cli"
+        && entry.direction === "out"
+        && entry.messageType === "user",
+    );
+
+    expect(cliIn?.messages).toBe(1);
+    expect(cliOut?.messages).toBe(1);
+    expect(cliOut?.wireBytes).toBe(cliOut?.payloadBytes);
   });
 });
 

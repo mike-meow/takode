@@ -19,6 +19,7 @@ import type {
   PermissionRequest,
 } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
+import { trafficStats } from "./traffic-stats.js";
 import type { BackendAdapter } from "./bridge/adapter-interface.js";
 
 // ─── SDK internals cache ─────────────────────────────────────────────────────
@@ -333,9 +334,19 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta> {
     if (!msg || typeof msg.type !== "string") return;
 
     // Record raw incoming message
+    const raw = JSON.stringify(msg);
     this.options.recorder?.record(
-      this.sessionId, "in", JSON.stringify(msg), "cli", "claude-sdk", this.options.cwd,
+      this.sessionId, "in", raw, "cli", "claude-sdk", this.options.cwd,
     );
+    trafficStats.record({
+      sessionId: this.sessionId,
+      channel: "cli",
+      direction: "in",
+      messageType: typeof msg.subtype === "string" && msg.subtype
+        ? `${msg.type}.${msg.subtype}`
+        : msg.type,
+      payloadBytes: Buffer.byteLength(raw, "utf-8"),
+    });
 
     switch (msg.type) {
       case "system": {
@@ -447,6 +458,13 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta> {
     if (!this.sdkSession || !this.connected) return false;
 
     const msgType = (msg as any).type;
+    trafficStats.record({
+      sessionId: this.sessionId,
+      channel: "cli",
+      direction: "out",
+      messageType: typeof msgType === "string" && msgType ? msgType : "unknown",
+      payloadBytes: Buffer.byteLength(JSON.stringify(msg), "utf-8"),
+    });
 
     switch (msgType) {
       case "user_message": {

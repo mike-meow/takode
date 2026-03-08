@@ -203,6 +203,28 @@ export function createSystemRoutes(ctx: RouteContext) {
 
   api.get("/health", (c) => c.json({ ok: true, timestamp: Date.now() }));
 
+  api.get("/traffic/stats", (c) => {
+    return c.json({
+      snapshot: wsBridge.getTrafficStatsSnapshot(),
+      recording: recorder
+        ? {
+          available: true,
+          recordingsDir: recorder.getRecordingsDir(),
+          globalEnabled: recorder.isGloballyEnabled(),
+          maxLines: recorder.getMaxLines(),
+        }
+        : { available: false },
+    });
+  });
+
+  api.post("/traffic/stats/reset", (c) => {
+    wsBridge.resetTrafficStats();
+    return c.json({
+      ok: true,
+      snapshot: wsBridge.getTrafficStatsSnapshot(),
+    });
+  });
+
   api.get("/vscode/selection", (c) => {
     return c.json({
       state: wsBridge.getVsCodeSelectionState(),

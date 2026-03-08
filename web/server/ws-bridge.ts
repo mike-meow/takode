@@ -11,6 +11,7 @@ const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { PushoverNotifier } from "./pushover.js";
+import { getTrafficMessageType, trafficStats, type TrafficStatsSnapshot } from "./traffic-stats.js";
 import type {
   CLIMessage,
   CLISystemInitMessage,
@@ -1157,6 +1158,14 @@ export class WsBridge {
   /** Attach a recorder for raw message capture. */
   setRecorder(recorder: RecorderManager): void {
     this.recorder = recorder;
+  }
+
+  getTrafficStatsSnapshot(): TrafficStatsSnapshot {
+    return trafficStats.snapshot();
+  }
+
+  resetTrafficStats(): void {
+    trafficStats.reset();
   }
 
   /** Attach an image store for persisting user-uploaded images to disk. */
@@ -3194,9 +3203,23 @@ export class WsBridge {
       try {
         msg = JSON.parse(line);
       } catch {
+        trafficStats.record({
+          sessionId,
+          channel: "cli",
+          direction: "in",
+          messageType: "invalid_json",
+          payloadBytes: Buffer.byteLength(line, "utf-8"),
+        });
         console.warn(`[ws-bridge] Failed to parse CLI message: ${line.substring(0, 200)}`);
         continue;
       }
+      trafficStats.record({
+        sessionId,
+        channel: "cli",
+        direction: "in",
+        messageType: getTrafficMessageType(msg),
+        payloadBytes: Buffer.byteLength(line, "utf-8"),
+      });
       this.routeCLIMessage(session, msg);
     }
 
@@ -3465,9 +3488,23 @@ export class WsBridge {
     try {
       msg = JSON.parse(data);
     } catch {
+      trafficStats.record({
+        sessionId,
+        channel: "browser",
+        direction: "in",
+        messageType: "invalid_json",
+        payloadBytes: Buffer.byteLength(data, "utf-8"),
+      });
       console.warn(`[ws-bridge] Failed to parse browser message: ${data.substring(0, 200)}`);
       return;
     }
+    trafficStats.record({
+      sessionId,
+      channel: "browser",
+      direction: "in",
+      messageType: getTrafficMessageType(msg),
+      payloadBytes: Buffer.byteLength(data, "utf-8"),
+    });
 
     void this.routeBrowserMessage(session, msg, ws).catch((err) => {
       if (msg.type === "user_message" && msg.images?.length) {
@@ -6690,6 +6727,13 @@ export class WsBridge {
     try {
       // NDJSON requires a newline delimiter
       session.backendSocket.send(ndjson + "\n");
+      trafficStats.record({
+        sessionId: session.id,
+        channel: "cli",
+        direction: "out",
+        messageType: getTrafficMessageType(JSON.parse(ndjson) as Record<string, unknown>),
+        payloadBytes: Buffer.byteLength(ndjson + "\n", "utf-8"),
+      });
     } catch (err) {
       // Send failure means the socket is dead — re-queue the message so it
       // can be delivered after reconnect, then close the socket to trigger
@@ -7441,18 +7485,38 @@ export class WsBridge {
     // Record raw outgoing browser message
     this.recorder?.record(session.id, "out", json, "browser", session.backendType, session.state.cwd);
 
+    let successfulFanout = 0;
     for (const ws of session.browserSockets) {
       try {
         ws.send(json);
+        successfulFanout++;
       } catch {
         session.browserSockets.delete(ws);
       }
     }
+    trafficStats.record({
+      sessionId: session.id,
+      channel: "browser",
+      direction: "out",
+      messageType: msg.type,
+      payloadBytes: Buffer.byteLength(json, "utf-8"),
+      fanout: successfulFanout,
+    });
   }
 
   private sendToBrowser(ws: ServerWebSocket<SocketData>, msg: BrowserIncomingMessage) {
     try {
-      ws.send(JSON.stringify(msg));
+      const json = JSON.stringify(msg);
+      ws.send(json);
+      const sessionId = (ws.data as BrowserSocketData).sessionId;
+      trafficStats.record({
+        sessionId,
+        channel: "browser",
+        direction: "out",
+        messageType: msg.type,
+        payloadBytes: Buffer.byteLength(json, "utf-8"),
+        fanout: 1,
+      });
     } catch {
       // Socket will be cleaned up on close
     }

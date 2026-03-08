@@ -21,6 +21,7 @@ import type {
   McpServerConfig,
 } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
+import { getTrafficMessageType, trafficStats } from "./traffic-stats.js";
 import type {
   BackendAdapter,
   CurrentTurnIdAwareAdapter,
@@ -713,6 +714,19 @@ export class CodexAdapter
     const cwd = options.cwd || "";
     this.transport.onRawIncoming((line) => {
       recorder?.record(sessionId, "in", line, "cli", "codex", cwd);
+      let messageType = "invalid_json";
+      try {
+        messageType = getTrafficMessageType(JSON.parse(line) as Record<string, unknown>);
+      } catch {
+        // Keep invalid_json attribution.
+      }
+      trafficStats.record({
+        sessionId,
+        channel: "cli",
+        direction: "in",
+        messageType,
+        payloadBytes: Buffer.byteLength(line, "utf-8"),
+      });
       // Ring buffer: keep last N messages for debugging unexpected disconnects
       const truncated = line.length > 200 ? line.substring(0, 200) + "..." : line;
       this.recentRawMessages.push(truncated);
@@ -720,11 +734,22 @@ export class CodexAdapter
         this.recentRawMessages.shift();
       }
     });
-    if (recorder) {
-      this.transport.onRawOutgoing((data) => {
-        recorder.record(sessionId, "out", data.trimEnd(), "cli", "codex", cwd);
+    this.transport.onRawOutgoing((data) => {
+      recorder?.record(sessionId, "out", data.trimEnd(), "cli", "codex", cwd);
+      let messageType = "invalid_json";
+      try {
+        messageType = getTrafficMessageType(JSON.parse(data) as Record<string, unknown>);
+      } catch {
+        // Keep invalid_json attribution.
+      }
+      trafficStats.record({
+        sessionId,
+        channel: "cli",
+        direction: "out",
+        messageType,
+        payloadBytes: Buffer.byteLength(data, "utf-8"),
       });
-    }
+    });
 
     // Propagate transport close (stdout ends) to the adapter.
     // This fires independently of proc.exited — stdout can close while
