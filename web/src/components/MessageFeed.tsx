@@ -1138,10 +1138,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
-  // Tracks the first render — used to scroll instantly on session switch
-  // instead of smooth-scrolling. Cleared inside the auto-scroll effect itself
-  // (not a separate effect) to avoid React's same-render effect batching.
-  const isInitialRender = useRef(true);
+  const didMountRef = useRef(false);
+  const lastPinnedUserTurnIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -1170,6 +1168,13 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const totalTurns = turns.length;
   const hasMore = totalTurns > visibleCount;
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
+  const latestVisibleUserTurnId = useMemo(() => {
+    for (let i = visibleTurns.length - 1; i >= 0; i--) {
+      const turn = visibleTurns[i];
+      if (isUserBoundaryEntry(turn.userEntry)) return turn.id;
+    }
+    return null;
+  }, [visibleTurns]);
 
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
@@ -1258,35 +1263,24 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     }
   }, [sessionId]);
 
-  // Auto-scroll: on subsequent renders, keep "sticky to bottom" behavior if the
-  // user is near bottom:
-  // - during streaming: use immediate alignment to avoid smooth-scroll lag
-  // - otherwise: keep smooth scrolling for non-streaming message arrivals
-  // Throttled to avoid layout thrashing on heavy feeds.
-  const lastScrollTime = useRef(0);
   useEffect(() => {
-    // Skip the first effect run — initial scroll was handled by useLayoutEffect above
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      lastPinnedUserTurnIdRef.current = latestVisibleUserTurnId;
       return;
     }
-    if (isNearBottom.current) {
-      const now = Date.now();
-      const throttleMs = streamingText ? 80 : 200;
-      if (now - lastScrollTime.current >= throttleMs) {
-        lastScrollTime.current = now;
-        const el = containerRef.current;
-        if (el) {
-          if (streamingText) {
-            // Keep up with token streaming without animation backlog.
-            el.scrollTop = el.scrollHeight;
-          } else {
-            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-          }
-        }
-      }
+    if (messages[messages.length - 1]?.role !== "user") return;
+    if (!latestVisibleUserTurnId || latestVisibleUserTurnId === lastPinnedUserTurnIdRef.current) return;
+    lastPinnedUserTurnIdRef.current = latestVisibleUserTurnId;
+    const el = containerRef.current;
+    if (!el) return;
+    const target = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      isNearBottom.current = false;
+      setShowScrollButton(true);
     }
-  }, [messages.length, streamingText]);
+  }, [latestVisibleUserTurnId, messages]);
 
   const scrollToBottom = useCallback(() => {
     const el = containerRef.current;

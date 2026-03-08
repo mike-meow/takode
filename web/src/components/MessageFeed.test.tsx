@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 
 // jsdom does not implement scrollIntoView; polyfill it before any React rendering
+const mockScrollIntoView = vi.fn();
+const mockScrollTo = vi.fn();
 beforeAll(() => {
-  Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.scrollIntoView = mockScrollIntoView;
+  Element.prototype.scrollTo = mockScrollTo;
 });
 
 import { render, screen, fireEvent, act } from "@testing-library/react";
@@ -223,6 +226,8 @@ function setStoreAutoExpandedTurns(sessionId: string, turnIds: string[]) {
 
 beforeEach(() => {
   resetStore();
+  mockScrollIntoView.mockClear();
+  mockScrollTo.mockClear();
 });
 
 // ─── Pure functions tested through component output ──────────────────────────
@@ -372,6 +377,57 @@ describe("MessageFeed - message rendering", () => {
 // ─── Streaming indicator ─────────────────────────────────────────────────────
 
 describe("MessageFeed - streaming text", () => {
+  it("pins a newly sent user turn to the top of the feed viewport", () => {
+    const sid = "test-pin-user-turn";
+    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
+    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
+    setStoreMessages(sid, [firstUser, firstAssistant]);
+
+    const { rerender } = render(<MessageFeed sessionId={sid} />);
+
+    mockScrollIntoView.mockClear();
+
+    setStoreMessages(sid, [
+      firstUser,
+      firstAssistant,
+      makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
+  });
+
+  it("does not auto-follow streaming or assistant replies after pinning the user turn", () => {
+    const sid = "test-no-stream-follow";
+    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
+    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
+    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
+    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
+
+    const { rerender } = render(<MessageFeed sessionId={sid} />);
+
+    mockScrollIntoView.mockClear();
+    mockScrollTo.mockClear();
+
+    setStoreStreaming(sid, "Assistant is streaming");
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).not.toHaveBeenCalled();
+    expect(mockScrollTo).not.toHaveBeenCalled();
+
+    setStoreMessages(sid, [
+      firstUser,
+      firstAssistant,
+      secondUser,
+      makeMessage({ id: "a2", role: "assistant", content: "Answer in progress" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).not.toHaveBeenCalled();
+    expect(mockScrollTo).not.toHaveBeenCalled();
+  });
+
   it("renders streaming text with cursor animation", () => {
     const sid = "test-streaming";
     setStoreMessages(sid, [
