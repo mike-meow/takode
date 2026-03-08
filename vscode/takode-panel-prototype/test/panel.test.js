@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   DEFAULT_BASE_URL,
   buildPanelHtml,
+  getCspConnectOrigins,
   getEmbeddedAppUrl,
   getHealthUrl,
   normalizeBaseUrl,
@@ -77,7 +78,27 @@ test("buildPanelHtml can load the iframe through a VS Code-forwarded URL", () =>
 
   assert.match(html, /"https:\/\/forwarded\.example\/vscode-remote-resource\/takode\/\?takodeHost=vscode"/);
   assert.match(html, /"https:\/\/forwarded\.example\/vscode-remote-resource\/takode\/api\/health"/);
+  assert.match(html, /frame-src[^"]*https:\/\/forwarded\.example/);
+  assert.match(html, /connect-src[^"]*https:\/\/forwarded\.example/);
   assert.match(html, /loadingUrl\.textContent = baseUrl/);
+  assert.match(html, /retryConnection/);
+});
+
+test("getCspConnectOrigins allows forwarded VS Code origins in addition to localhost defaults", () => {
+  assert.deepEqual(
+    getCspConnectOrigins(
+      "http://localhost:3456/",
+      "https://forwarded.example/vscode-remote-resource/takode/",
+    ),
+    [
+      "http://127.0.0.1:*",
+      "http://localhost:*",
+      "https://127.0.0.1:*",
+      "https://localhost:*",
+      "http://localhost:3456",
+      "https://forwarded.example",
+    ],
+  );
 });
 
 test("formatSelectionContext renders an inline cursor label when the selection is empty", () => {

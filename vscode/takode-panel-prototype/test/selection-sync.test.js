@@ -123,6 +123,35 @@ test("selection sync publishes non-empty selections and clears to all configured
   assert.equal(clearPayload.sourceType, "vscode-window");
 });
 
+test("selection sync retries the same payload after a failed publish", async () => {
+  const calls = [];
+  let shouldSucceed = false;
+  const manager = createSelectionSyncManager({
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return { ok: shouldSucceed, status: shouldSucceed ? 200 : 503 };
+    },
+    getBaseUrls: () => ["http://localhost:3456"],
+    getSourceInfo: () => ({
+      sourceId: "vscode-window:test",
+      sourceType: "vscode-window",
+    }),
+  });
+
+  const selection = {
+    absolutePath: "/workspace/project/web/src/App.tsx",
+    startLine: 10,
+    endLine: 12,
+    lineCount: 3,
+  };
+
+  assert.equal(await manager.publishSelection(selection), false);
+  shouldSucceed = true;
+  assert.equal(await manager.publishSelection(selection), true);
+
+  assert.equal(calls.length, 2);
+});
+
 test("window sync publishes workspace roots and deduplicates identical heartbeats unless forced", async () => {
   const calls = [];
   const manager = createSelectionSyncManager({
@@ -146,6 +175,29 @@ test("window sync publishes workspace roots and deduplicates identical heartbeat
   const payload = JSON.parse(calls[0].options.body);
   assert.deepEqual(payload.workspaceRoots, ["/workspace/project"]);
   assert.equal(payload.lastActivityAt, 2000);
+});
+
+test("window sync retries the same heartbeat after a failed publish", async () => {
+  const calls = [];
+  let shouldSucceed = false;
+  const manager = createSelectionSyncManager({
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return { ok: shouldSucceed, status: shouldSucceed ? 200 : 503 };
+    },
+    getBaseUrls: () => ["http://localhost:3456"],
+    getSourceInfo: () => ({
+      sourceId: "vscode-window:test",
+      sourceType: "vscode-window",
+    }),
+    getWorkspaceRoots: () => ["/workspace/project"],
+  });
+
+  assert.equal(await manager.publishWindow({ lastActivityAt: 2000 }), false);
+  shouldSucceed = true;
+  assert.equal(await manager.publishWindow({ lastActivityAt: 2000 }), true);
+
+  assert.equal(calls.length, 2);
 });
 
 test("command polling executes remote open-file requests and posts results", async () => {

@@ -134,7 +134,6 @@ function createSelectionSyncManager({
     if (!options.force && fingerprint === lastSelectionFingerprint) {
       return false;
     }
-    lastSelectionFingerprint = fingerprint;
 
     if (urls.length === 0) {
       logDebug("selectionSync skipped: no configured base URLs");
@@ -142,19 +141,26 @@ function createSelectionSyncManager({
     }
 
     const payload = buildSelectionSyncPayload(selection, sourceInfo, Date.now());
+    let successCount = 0;
     await Promise.all(urls.map(async ({ apiUrl }) => {
       try {
         const response = await postJson(fetchImpl, apiUrl, payload);
         if (!response.ok) {
           logDebug("selectionSync publish failed", { apiUrl, status: response.status });
+          return;
         }
+        successCount += 1;
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
         logDebug("selectionSync publish error", { apiUrl, error: text });
       }
     }));
 
-    return true;
+    if (successCount > 0) {
+      lastSelectionFingerprint = fingerprint;
+    }
+
+    return successCount > 0;
   }
 
   async function publishWindow(options = {}) {
@@ -168,7 +174,6 @@ function createSelectionSyncManager({
     if (!options.force && fingerprint === lastWindowFingerprint) {
       return false;
     }
-    lastWindowFingerprint = fingerprint;
 
     if (urls.length === 0) {
       logDebug("windowSync skipped: no configured base URLs");
@@ -176,19 +181,26 @@ function createSelectionSyncManager({
     }
 
     const payload = buildWindowStatePayload(windowState, sourceInfo, Date.now());
+    let successCount = 0;
     await Promise.all(urls.map(async ({ apiUrl }) => {
       try {
         const response = await postJson(fetchImpl, apiUrl, payload);
         if (!response.ok) {
           logDebug("windowSync publish failed", { apiUrl, status: response.status });
+          return;
         }
+        successCount += 1;
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
         logDebug("windowSync publish error", { apiUrl, error: text });
       }
     }));
 
-    return true;
+    if (successCount > 0) {
+      lastWindowFingerprint = fingerprint;
+    }
+
+    return successCount > 0;
   }
 
   async function pollCommands() {

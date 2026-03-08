@@ -25,6 +25,7 @@ const PANEL_SPECS = {
 let lastSelectionPayload = null;
 let outputChannel;
 let lastWindowActivityAt = Date.now();
+const SELECTION_SYNC_HEARTBEAT_MS = 10_000;
 
 function getBackgroundSelectionContext(editor = vscode.window.activeTextEditor) {
   return editor ? getSelectionContext(editor) : null;
@@ -244,6 +245,18 @@ function attachPanel(panel, kind) {
       return;
     }
 
+    if (message.type === "retryConnection") {
+      const baseUrl = getConfiguredBaseUrl(kind);
+      logDebug("webview->extension retryConnection", { kind, baseUrl });
+      applyWebviewOptions(panel, baseUrl);
+      void renderPanel(panel, kind, baseUrl).catch((error) => {
+        const text = error instanceof Error ? error.message : String(error);
+        logDebug("renderPanel failed after retry", { kind, baseUrl, error: text });
+        void vscode.window.showErrorMessage(`Failed to reconnect Takode panel: ${text}`);
+      });
+      return;
+    }
+
     if (message.type === "openFile" && typeof message.absolutePath === "string") {
       logDebug("webview->extension openFile", message);
       void openFileInPanelEditor(message).catch((error) => {
@@ -418,6 +431,16 @@ function activate(context) {
     },
   });
 
+  const heartbeatInterval = setInterval(() => {
+    void selectionSync.publishSelection(getBackgroundSelectionContext(), { force: true });
+    void selectionSync.publishWindow({ force: true, lastActivityAt: lastWindowActivityAt });
+  }, SELECTION_SYNC_HEARTBEAT_MS);
+  context.subscriptions.push({
+    dispose() {
+      clearInterval(heartbeatInterval);
+    },
+  });
+
   if (typeof vscode.window.registerWebviewPanelSerializer === "function") {
     for (const panelSpec of Object.values(PANEL_SPECS)) {
       context.subscriptions.push(
@@ -442,6 +465,7 @@ function deactivate() {}
 module.exports = {
   activate,
   deactivate,
+  SELECTION_SYNC_HEARTBEAT_MS,
   getBackgroundSelectionContext,
   getSelectionSourceInfo,
 };

@@ -38,6 +38,27 @@ function getEmbeddedAppUrl(baseUrl) {
   return url.toString();
 }
 
+function getCspConnectOrigins(baseUrl, resolvedBaseUrl = baseUrl) {
+  const defaults = [
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+    "https://127.0.0.1:*",
+    "https://localhost:*",
+  ];
+  const origins = new Set(defaults);
+  for (const candidate of [baseUrl, resolvedBaseUrl]) {
+    try {
+      const url = new URL(candidate);
+      if (url.origin && url.origin !== "null") {
+        origins.add(url.origin);
+      }
+    } catch {
+      // Ignore malformed inputs; normalizeBaseUrl handles validation elsewhere.
+    }
+  }
+  return [...origins];
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -50,15 +71,16 @@ function escapeHtml(value) {
 function buildPanelHtml({ baseUrl, resolvedBaseUrl = baseUrl, cspSource, nonce }) {
   const healthUrl = getHealthUrl(resolvedBaseUrl);
   const embeddedAppUrl = getEmbeddedAppUrl(resolvedBaseUrl);
+  const cspConnectOrigins = getCspConnectOrigins(baseUrl, resolvedBaseUrl).join(" ");
 
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src ${cspSource} data: http: https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; frame-src http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:*; connect-src http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:*;"
-    />
+      <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src ${cspSource} data: http: https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; frame-src ${cspConnectOrigins}; connect-src ${cspConnectOrigins};"
+      />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Takode</title>
     <style>
@@ -301,7 +323,7 @@ function buildPanelHtml({ baseUrl, resolvedBaseUrl = baseUrl, cspSource, nonce }
       });
 
       retryButton.addEventListener("click", () => {
-        loadFrame();
+        vscode.postMessage({ type: "retryConnection" });
       });
 
       openButton.addEventListener("click", () => {
@@ -365,6 +387,7 @@ function buildPanelHtml({ baseUrl, resolvedBaseUrl = baseUrl, cspSource, nonce }
 module.exports = {
   DEFAULT_BASE_URL,
   buildPanelHtml,
+  getCspConnectOrigins,
   getEmbeddedAppUrl,
   getHealthUrl,
   normalizeBaseUrl,
