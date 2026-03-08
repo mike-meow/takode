@@ -21,7 +21,11 @@ the current scroll rules allow.
 In practice, that means:
 
 - scroll to the real content bottom marker once
-- if streaming runway already exists, that single scroll may use it
+- if runway is not available yet because no assistant token has arrived, treat the
+  just-sent user message as the last renderable message while the session is
+  running
+- once that pending-user runway becomes available, allow one follow-up bottom
+  scroll for the same sent message
 - do not separately pin the user turn to the top of the viewport
 
 ### 2. Scroll runway

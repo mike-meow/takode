@@ -613,6 +613,32 @@ describe("MessageFeed - streaming text", () => {
     expect(screen.queryByLabelText("Go to bottom")).toBeNull();
   });
 
+  it("applies one follow-up bottom scroll when the sent user turn becomes the pending running tail", () => {
+    const sid = "test-scroll-pending-user-runway";
+    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
+    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
+    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
+    setStoreMessages(sid, [firstUser, firstAssistant]);
+
+    const { rerender } = render(<MessageFeed sessionId={sid} />);
+
+    mockScrollIntoView.mockClear();
+
+    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(mockScrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "end" });
+
+    mockScrollIntoView.mockClear();
+
+    setStoreStatus(sid, "running");
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(mockScrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "end" });
+  });
+
   it("does not keep auto-following after streaming has started", () => {
     const sid = "test-no-stream-follow";
     const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
