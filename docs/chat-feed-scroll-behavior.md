@@ -4,7 +4,7 @@ This file is the source of truth for Takode chat-feed scrolling behavior.
 
 ## Goals
 
-- Keep the newest user message stable at the top of the viewport after send.
+- Keep send-time scrolling simple and predictable.
 - Avoid continuous auto-follow during assistant streaming.
 - Preserve manual navigation controls for following the latest content.
 
@@ -12,33 +12,36 @@ This file is the source of truth for Takode chat-feed scrolling behavior.
 
 ### 1. Sending a user message
 
-When a new user message is added to the feed, the feed should scroll so that the
-turn containing that user message is aligned to the top of the chat viewport,
-directly under the header.
+When a new user message is added to the feed, the feed should first render that
+message in place in the conversation.
 
-This behavior applies even when the newest user turn is near the end of the
-conversation.
+After the message is rendered, the feed should scroll downward once as far as
+the current scroll rules allow.
+
+In practice, that means:
+
+- scroll to the real content bottom marker once
+- if streaming runway already exists, that single scroll may use it
+- do not separately pin the user turn to the top of the viewport
 
 ### 2. Scroll runway
 
 The feed may include extra scrollable runway below the real content, but only
 while the top-level assistant response is actively streaming.
 
-The runway is measured relative to the newest user turn.
-
-The maximum runway target is one feed viewport below the newest user turn.
-However, the runway must shrink as the assistant response grows.
+The runway is measured relative to the last renderable top-level message.
 
 The practical rule is:
 
-- compute how much real content currently exists from the top of the newest
-  user turn down to the current assistant/output bottom
-- only add enough runway to cover the remaining gap up to one viewport
-- once the assistant content already fills that viewport, the runway should be
-  zero
+- find the last renderable top-level message while streaming
+- allow overscroll only while that final message remains fully visible
+- cap the runway to the amount needed to keep that final message visible within
+  the viewport
+- if the final message is taller than the viewport, do not add extra blank
+  runway beyond the real content bottom
 
 This avoids long confusing blank space after the last message while still
-providing temporary headroom for the pinned-send layout during streaming.
+allowing the user to read the full final message.
 
 When top-level streaming is not active, the runway must be zero.
 
@@ -48,8 +51,8 @@ While assistant output is streaming:
 
 - do not continuously auto-scroll the viewport
 - do not keep forcing the viewport downward as new text arrives
-- let the user read the generated text in a stable position below the pinned
-  user message
+- let the user read the generated text in a stable position after the one-time
+  send scroll
 
 If the user wants to follow the latest content live, they must do so manually.
 
@@ -72,8 +75,7 @@ Saved scroll position restore should keep working as before:
 During top-level streaming, restore must preserve the viewport-relative
 placement of the saved visible turn anchor, even if the real content bottom was
 also on screen at the time. Switching away from a streaming session and back
-must not drop the newest user turn from the top of the viewport down toward the
-bottom.
+must not shift the visible conversation position unexpectedly.
 
 ## Non-goals
 
@@ -85,6 +87,7 @@ bottom.
 
 After send:
 
-1. the newest user message moves to the top of the chat viewport
-2. assistant output grows beneath it without pushing the viewport
-3. the jump-to-latest control remains available for manual follow
+1. the newest user message appears in the conversation
+2. the feed scrolls downward once as far as currently allowed
+3. assistant output grows afterward without pushing the viewport
+4. the jump-to-latest control remains available for manual follow

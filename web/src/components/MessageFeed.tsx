@@ -999,7 +999,10 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
       {/* Streaming indicator */}
       {rawStreamingText && (
-        <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+        <div
+          className="animate-[fadeSlideIn_0.2s_ease-out]"
+          data-feed-streaming-message="true"
+        >
           <div className="flex items-start gap-3">
             <PawTrailAvatar isStreaming />
             <div className="flex-1 min-w-0">
@@ -1139,8 +1142,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const didMountRef = useRef(false);
-  const lastPinnedUserTurnIdRef = useRef<string | null>(null);
-  const lastStreamingRunwayPinnedTurnIdRef = useRef<string | null>(null);
+  const lastSentUserMessageIdRef = useRef<string | null>(null);
   const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
     0,
   );
@@ -1191,14 +1193,6 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const hasMore = totalTurns > visibleCount;
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
   const isTopLevelStreaming = Boolean(streamingText);
-  const latestVisibleUserTurnId = useMemo(() => {
-    for (let i = visibleTurns.length - 1; i >= 0; i--) {
-      const turn = visibleTurns[i];
-      if (isUserBoundaryEntry(turn.userEntry)) return turn.id;
-    }
-    return null;
-  }, [visibleTurns]);
-
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
   const collapsibleTurnIds = useMemo(() =>
@@ -1217,7 +1211,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   const updateBottomRunwayHeight = useCallback(() => {
     const el = containerRef.current;
-    if (!el || !isTopLevelStreaming || !latestVisibleUserTurnId) {
+    if (!el || !isTopLevelStreaming) {
       setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
@@ -1229,18 +1223,18 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         (typeof window === "undefined" ? 0 : window.innerHeight),
       ),
     );
-    const latestUserTurn = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
+    const lastRenderableMessage = el.querySelector<HTMLElement>('[data-feed-streaming-message="true"]');
     const bottomMarker = bottomRef.current;
-    if (!latestUserTurn || !bottomMarker || viewportHeight === 0) {
+    if (!lastRenderableMessage || !bottomMarker || viewportHeight === 0) {
       setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
-    const userRect = latestUserTurn.getBoundingClientRect();
+    const messageRect = lastRenderableMessage.getBoundingClientRect();
     const bottomRect = bottomMarker.getBoundingClientRect();
-    const contentSinceLatestUser = Math.max(0, bottomRect.bottom - userRect.top);
-    const nextHeight = Math.max(0, Math.round(viewportHeight - contentSinceLatestUser));
+    const contentSinceLastMessage = Math.max(0, bottomRect.bottom - messageRect.top);
+    const nextHeight = Math.max(0, Math.round(viewportHeight - contentSinceLastMessage));
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, [isTopLevelStreaming, latestVisibleUserTurnId]);
+  }, [isTopLevelStreaming]);
 
   const isNearContentBottom = useCallback(() => {
     const container = containerRef.current;
@@ -1360,43 +1354,19 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
-      lastPinnedUserTurnIdRef.current = latestVisibleUserTurnId;
+      lastSentUserMessageIdRef.current = messages[messages.length - 1]?.role === "user"
+        ? messages[messages.length - 1]?.id
+        : null;
       return;
     }
-    if (messages[messages.length - 1]?.role !== "user") return;
-    if (!latestVisibleUserTurnId || latestVisibleUserTurnId === lastPinnedUserTurnIdRef.current) return;
-    lastPinnedUserTurnIdRef.current = latestVisibleUserTurnId;
-    const el = containerRef.current;
-    if (!el) return;
-    const target = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
-    if (target) {
-      requestAnimationFrame(() => {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        isNearBottom.current = false;
-        setShowScrollButton(true);
-      });
-    }
-  }, [latestVisibleUserTurnId, messages]);
-
-  useEffect(() => {
-    if (!isTopLevelStreaming || bottomRunwayHeight <= 0) {
-      lastStreamingRunwayPinnedTurnIdRef.current = null;
-      return;
-    }
-    if (messages[messages.length - 1]?.role !== "user") return;
-    if (!latestVisibleUserTurnId || latestVisibleUserTurnId === lastStreamingRunwayPinnedTurnIdRef.current) return;
-    lastStreamingRunwayPinnedTurnIdRef.current = latestVisibleUserTurnId;
-    const el = containerRef.current;
-    if (!el) return;
-    const target = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
-    if (target) {
-      requestAnimationFrame(() => {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        isNearBottom.current = false;
-        setShowScrollButton(true);
-      });
-    }
-  }, [bottomRunwayHeight, isTopLevelStreaming, latestVisibleUserTurnId, messages]);
+    const newestMessage = messages[messages.length - 1];
+    if (newestMessage?.role !== "user") return;
+    if (newestMessage.id === lastSentUserMessageIdRef.current) return;
+    lastSentUserMessageIdRef.current = newestMessage.id;
+    requestAnimationFrame(() => {
+      scrollToContentBottom("smooth");
+    });
+  }, [messages, scrollToContentBottom]);
 
   const scrollToBottom = useCallback(() => {
     scrollToContentBottom("smooth");
