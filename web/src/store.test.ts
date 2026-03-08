@@ -286,6 +286,53 @@ describe("Messages", () => {
     expect(messages[1].content).toBe("new2");
   });
 
+  it("setMessages: records the frozen boundary when provided", () => {
+    useStore.getState().addSession(makeSession("s1"));
+    const newMessages = [
+      makeMessage({ content: "new1" }),
+      makeMessage({ content: "new2" }),
+      makeMessage({ content: "new3" }),
+    ];
+
+    useStore.getState().setMessages("s1", newMessages, { frozenCount: 2 });
+
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
+    expect(useStore.getState().messageFrozenRevisions.get("s1")).toBe(0);
+  });
+
+  it("commitMessagesAsFrozen: freezes the current message tail without rebuilding messages", () => {
+    useStore.getState().addSession(makeSession("s1"));
+    useStore.getState().appendMessage("s1", makeMessage({ content: "u1" }));
+    useStore.getState().appendMessage("s1", makeMessage({ role: "assistant", content: "a1" }));
+
+    useStore.getState().commitMessagesAsFrozen("s1");
+
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
+    expect(useStore.getState().messages.get("s1")).toHaveLength(2);
+  });
+
+  it("updateMessage: bumps the frozen revision when editing a frozen message", () => {
+    useStore.getState().addSession(makeSession("s1"));
+    const first = makeMessage({ id: "frozen", content: "old" });
+    const second = makeMessage({ id: "active", content: "tail" });
+    useStore.getState().setMessages("s1", [first, second], { frozenCount: 1 });
+
+    useStore.getState().updateMessage("s1", "frozen", { content: "new" });
+
+    expect(useStore.getState().messageFrozenRevisions.get("s1")).toBe(1);
+  });
+
+  it("updateMessage: does not bump the frozen revision for active-tail edits", () => {
+    useStore.getState().addSession(makeSession("s1"));
+    const first = makeMessage({ id: "frozen", content: "old" });
+    const second = makeMessage({ id: "active", content: "tail" });
+    useStore.getState().setMessages("s1", [first, second], { frozenCount: 1 });
+
+    useStore.getState().updateMessage("s1", "active", { content: "new-tail" });
+
+    expect(useStore.getState().messageFrozenRevisions.get("s1")).toBe(0);
+  });
+
   it("updateLastAssistantMessage: updates the last assistant message", () => {
     useStore.getState().addSession(makeSession("s1"));
     useStore.getState().appendMessage("s1", makeMessage({ role: "user", content: "q" }));

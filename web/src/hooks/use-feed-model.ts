@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { isSubagentToolName, type ChatMessage, type ContentBlock } from "../types.js";
 
 export interface ToolItem {
@@ -313,6 +313,11 @@ export interface Turn {
   stats: TurnStats;
 }
 
+export interface FeedModel {
+  entries: FeedEntry[];
+  turns: Turn[];
+}
+
 /** Count tool_use blocks and subagents recursively in a list of FeedEntries */
 function countEntryStats(entries: FeedEntry[]): {
   messages: number;
@@ -507,7 +512,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 /** Group flat feed entries into turns.
  *  Leader mode keeps the same boundary rule (user messages only); @to(user) affects
  *  response/promotion behavior inside a turn, not turn splitting. */
-export function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[] {
+export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTurnIndex = 0): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
@@ -517,7 +522,7 @@ export function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[]
     if (isBoundary) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
-        turns.push(makeTurn(currentUser, currentEntries, turns.length, leaderMode));
+        turns.push(makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode));
       }
       currentUser = entry;
       currentEntries = [];
@@ -528,21 +533,87 @@ export function groupIntoTurns(entries: FeedEntry[], leaderMode = false): Turn[]
 
   // Flush final turn
   if (currentUser !== null || currentEntries.length > 0) {
-    turns.push(makeTurn(currentUser, currentEntries, turns.length, leaderMode));
+    turns.push(makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode));
   }
 
   return turns;
 }
 
+export function buildFeedModel(messages: ChatMessage[], leaderMode = false, startTurnIndex = 0): FeedModel {
+  const entries = groupMessages(messages);
+  const turns = groupIntoTurns(entries, leaderMode, startTurnIndex);
+  return { entries, turns };
+}
+
+function concatFeedModels(base: FeedModel, next: FeedModel): FeedModel {
+  if (base.entries.length === 0) return next;
+  if (next.entries.length === 0) return base;
+  return {
+    entries: [...base.entries, ...next.entries],
+    turns: [...base.turns, ...next.turns],
+  };
+}
+
+function haveSameMessageRefs(a: ChatMessage[], b: ChatMessage[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function useFeedModel(
   messages: ChatMessage[],
-  config?: { leaderMode?: boolean },
-): { entries: FeedEntry[]; turns: Turn[] } {
+  config?: { leaderMode?: boolean; frozenCount?: number; frozenRevision?: number },
+): FeedModel {
   const leaderMode = config?.leaderMode ?? false;
+  const frozenCount = Math.max(0, Math.min(config?.frozenCount ?? 0, messages.length));
+  const frozenRevision = config?.frozenRevision ?? 0;
+  const cacheRef = useRef<{
+    leaderMode: boolean;
+    frozenCount: number;
+    frozenRevision: number;
+    frozenMessages: ChatMessage[];
+    frozenModel: FeedModel;
+  } | null>(null);
 
   return useMemo(() => {
-    const entries = groupMessages(messages);
-    const turns = groupIntoTurns(entries, leaderMode);
-    return { entries, turns };
-  }, [messages, leaderMode]);
+    const frozenMessages = messages.slice(0, frozenCount);
+    const activeMessages = messages.slice(frozenCount);
+
+    let frozenModel: FeedModel;
+    const cached = cacheRef.current;
+    if (
+      cached
+      && cached.leaderMode === leaderMode
+      && cached.frozenCount === frozenCount
+      && cached.frozenRevision === frozenRevision
+      && haveSameMessageRefs(cached.frozenMessages, frozenMessages)
+    ) {
+      frozenModel = cached.frozenModel;
+    } else if (
+      cached
+      && cached.leaderMode === leaderMode
+      && cached.frozenRevision === frozenRevision
+      && frozenCount >= cached.frozenCount
+      && haveSameMessageRefs(cached.frozenMessages, frozenMessages.slice(0, cached.frozenCount))
+    ) {
+      const newlyFrozen = frozenMessages.slice(cached.frozenCount);
+      const deltaModel = buildFeedModel(newlyFrozen, leaderMode, cached.frozenModel.turns.length);
+      frozenModel = concatFeedModels(cached.frozenModel, deltaModel);
+    } else {
+      frozenModel = buildFeedModel(frozenMessages, leaderMode);
+    }
+
+    cacheRef.current = {
+      leaderMode,
+      frozenCount,
+      frozenRevision,
+      frozenMessages,
+      frozenModel,
+    };
+
+    const activeModel = buildFeedModel(activeMessages, leaderMode, frozenModel.turns.length);
+    return concatFeedModels(frozenModel, activeModel);
+  }, [messages, leaderMode, frozenCount, frozenRevision]);
 }

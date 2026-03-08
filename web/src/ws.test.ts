@@ -851,6 +851,18 @@ describe("handleMessage: result", () => {
   it("updates cost/turns, clears streaming, sets idle", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().appendMessage("s1", {
+      id: "user-1",
+      role: "user",
+      content: "hello",
+      timestamp: 1000,
+    });
+    useStore.getState().appendMessage("s1", {
+      id: "assistant-1",
+      role: "assistant",
+      content: "world",
+      timestamp: 2000,
+    });
     useStore.getState().setStreaming("s1", "partial");
     useStore.getState().setStreamingStats("s1", { startedAt: Date.now() });
 
@@ -877,6 +889,7 @@ describe("handleMessage: result", () => {
     expect(state.streaming.has("s1")).toBe(false);
     expect(state.streamingStartedAt.has("s1")).toBe(false);
     expect(state.sessionStatus.get("s1")).toBe("idle");
+    expect(state.messageFrozenCounts.get("s1")).toBe(2);
   });
 
   it("suppresses completion notifications for leader sessions without @to(user) assistant messages", () => {
@@ -1288,6 +1301,7 @@ describe("handleMessage: message_history", () => {
     expect(msgs[0].content).toBe("What is 2+2?");
     expect(msgs[1].role).toBe("assistant");
     expect(msgs[1].content).toBe("4");
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
   });
 
   it("restores leader_user_addressed metadata from history", () => {
@@ -1350,6 +1364,7 @@ describe("handleMessage: message_history", () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0].role).toBe("system");
     expect(msgs[0].content).toBe("Error: Timed out");
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(1);
   });
 
   it("assigns stable IDs to error results based on history index", () => {

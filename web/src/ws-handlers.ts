@@ -480,6 +480,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           variant: "error",
         });
       }
+      store.commitMessagesAsFrozen(sessionId);
       break;
     }
 
@@ -1012,6 +1013,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // reopening a session should recompute collapsed turns from the fresh feed.
       store.clearAutoExpandedTurns(sessionId);
       const chatMessages: ChatMessage[] = [];
+      let frozenCount = 0;
       for (let i = 0; i < data.messages.length; i++) {
         const histMsg = data.messages[i];
         if (histMsg.type === "user_message") {
@@ -1104,12 +1106,13 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
               variant: "error",
             });
           }
+          frozenCount = chatMessages.length;
         }
       }
       // Server history is authoritative — always replace browser state.
       // This prevents cross-session message contamination that occurred
       // when the old merge logic kept stale messages from a previous session.
-      store.setMessages(sessionId, chatMessages);
+      store.setMessages(sessionId, chatMessages, { frozenCount });
       // If we received history with messages, the CLI was connected before (e.g. page refresh).
       // Mark it so the UI shows "CLI disconnected" instead of "Starting session..." if it drops.
       if (chatMessages.length > 0) {

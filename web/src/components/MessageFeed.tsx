@@ -341,6 +341,37 @@ function getTurnSummaryDurationMs(turn: Turn, nextTurn: Turn | null, leaderMode:
   return getNormalTurnDurationMs(turn);
 }
 
+interface TurnOffsetIndex {
+  turnId: string;
+  offsetTop: number;
+}
+
+export function findActiveTaskTurnIdForScroll(
+  turnOffsets: TurnOffsetIndex[],
+  scrollTop: number,
+  fallbackTurnId: string | null,
+  offsetPx = 48,
+): string | null {
+  if (turnOffsets.length === 0) return fallbackTurnId;
+
+  const targetOffset = scrollTop + offsetPx;
+  let low = 0;
+  let high = turnOffsets.length - 1;
+  let best = -1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (turnOffsets[mid].offsetTop <= targetOffset) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return best >= 0 ? turnOffsets[best].turnId : fallbackTurnId;
+}
+
 function TurnSummaryStats({
   stats,
   durationMs,
@@ -1128,6 +1159,8 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
 
 export function MessageFeed({ sessionId }: { sessionId: string }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
+  const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
@@ -1145,6 +1178,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const loadingMore = useRef(false);
+  const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
   const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
 
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
@@ -1163,7 +1197,11 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     };
   }, [sessionId]);
 
-  const { turns } = useFeedModel(messages, { leaderMode: isLeaderSession });
+  const { turns } = useFeedModel(messages, {
+    leaderMode: isLeaderSession,
+    frozenCount,
+    frozenRevision,
+  });
 
   const totalTurns = turns.length;
   const hasMore = totalTurns > visibleCount;
@@ -1353,29 +1391,77 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // fires on every scroll frame, not just on intersection threshold crossings.
   const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
   const setActiveTaskTurnId = useStore((s) => s.setActiveTaskTurnId);
+  const taskTriggerIds = useMemo(
+    () => new Set((taskHistory || []).map((task) => task.triggerMessageId)),
+    [taskHistory],
+  );
+  const firstTaskTurnId = taskHistory?.[0]?.triggerMessageId ?? null;
+
+  const rebuildTaskTurnOffsets = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || taskTriggerIds.size === 0) {
+      taskTurnOffsetsRef.current = [];
+      return;
+    }
+    const nextOffsets: TurnOffsetIndex[] = [];
+    const targets = el.querySelectorAll<HTMLElement>("[data-turn-id]");
+    for (const target of targets) {
+      const turnId = target.dataset.turnId;
+      if (!turnId || !taskTriggerIds.has(turnId)) continue;
+      nextOffsets.push({ turnId, offsetTop: target.offsetTop });
+    }
+    taskTurnOffsetsRef.current = nextOffsets;
+  }, [taskTriggerIds]);
+
+  useLayoutEffect(() => {
+    rebuildTaskTurnOffsets();
+    if (containerRef.current) {
+      setActiveTaskTurnId(
+        sessionId,
+        findActiveTaskTurnIdForScroll(taskTurnOffsetsRef.current, containerRef.current.scrollTop, firstTaskTurnId),
+      );
+    }
+
+    const el = containerRef.current;
+    if (!el || taskTriggerIds.size === 0 || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    let rafId = 0;
+    const scheduleRebuild = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rebuildTaskTurnOffsets();
+        setActiveTaskTurnId(
+          sessionId,
+          findActiveTaskTurnIdForScroll(taskTurnOffsetsRef.current, el.scrollTop, firstTaskTurnId),
+        );
+      });
+    };
+
+    const observer = new ResizeObserver(() => {
+      scheduleRebuild();
+    });
+    const targets = el.querySelectorAll<HTMLElement>("[data-turn-id]");
+    targets.forEach((target) => observer.observe(target));
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
+  }, [firstTaskTurnId, rebuildTaskTurnOffsets, sessionId, setActiveTaskTurnId, taskTriggerIds, visibleTurns]);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !taskHistory || taskHistory.length === 0) return;
 
-    const triggerIds = new Set(taskHistory.map((t) => t.triggerMessageId));
-
     let rafId = 0;
     const recalc = () => {
-      const targets = el.querySelectorAll<HTMLElement>("[data-turn-id]");
-      let activeTurnId: string | null = null;
-      const containerRect = el.getBoundingClientRect();
-      const refLine = containerRect.top + 48;
-      for (const target of targets) {
-        if (!triggerIds.has(target.dataset.turnId!)) continue;
-        const rect = target.getBoundingClientRect();
-        if (rect.top <= refLine) {
-          activeTurnId = target.dataset.turnId!;
-        }
-      }
-      if (!activeTurnId) {
-        const first = taskHistory[0];
-        if (first) activeTurnId = first.triggerMessageId;
-      }
+      const activeTurnId = findActiveTaskTurnIdForScroll(
+        taskTurnOffsetsRef.current,
+        el.scrollTop,
+        firstTaskTurnId,
+      );
       setActiveTaskTurnId(sessionId, activeTurnId);
     };
 
@@ -1390,7 +1476,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       el.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(rafId);
     };
-  }, [taskHistory, sessionId, setActiveTaskTurnId, visibleTurns]);
+  }, [firstTaskTurnId, sessionId, setActiveTaskTurnId, taskHistory, visibleTurns]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 

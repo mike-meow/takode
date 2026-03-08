@@ -29,6 +29,10 @@ interface AppState {
 
   // Messages per session
   messages: Map<string, ChatMessage[]>;
+  /** Number of messages at the start of each session feed that belong to frozen, completed turns. */
+  messageFrozenCounts: Map<string, number>;
+  /** Incremented when a frozen message is edited in place so feed-model caches can invalidate safely. */
+  messageFrozenRevisions: Map<string, number>;
 
   // Streaming partial text per session
   streaming: Map<string, string>;
@@ -196,11 +200,13 @@ interface AppState {
 
   // Message actions
   appendMessage: (sessionId: string, msg: ChatMessage) => void;
-  setMessages: (sessionId: string, msgs: ChatMessage[]) => void;
+  setMessages: (sessionId: string, msgs: ChatMessage[], options?: { frozenCount?: number }) => void;
   updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
   /** Update quest title in all quest_claimed/quest_submitted messages for a quest. */
   updateQuestTitleInMessages: (sessionId: string, questId: string, newTitle: string) => void;
   updateLastAssistantMessage: (sessionId: string, updater: (msg: ChatMessage) => ChatMessage) => void;
+  /** Mark all currently buffered messages as frozen/completed turns. */
+  commitMessagesAsFrozen: (sessionId: string) => void;
   setStreaming: (sessionId: string, text: string | null, parentToolUseId?: string | null) => void;
   setStreamingStats: (sessionId: string, stats: { startedAt?: number; outputTokens?: number } | null) => void;
   /** Clear all streaming/generation transient state for a session in one batch */
@@ -410,6 +416,8 @@ export const useStore = create<AppState>((set) => ({
   sdkSessions: [],
   currentSessionId: getInitialSessionId(),
   messages: new Map(),
+  messageFrozenCounts: new Map(),
+  messageFrozenRevisions: new Map(),
   streaming: new Map(),
   streamingByParentToolUseId: new Map(),
   streamingStartedAt: new Map(),
@@ -596,7 +604,11 @@ export const useStore = create<AppState>((set) => ({
       sessions.set(session.session_id, session);
       const messages = new Map(s.messages);
       if (!messages.has(session.session_id)) messages.set(session.session_id, []);
-      return { sessions, messages };
+      const messageFrozenCounts = new Map(s.messageFrozenCounts);
+      if (!messageFrozenCounts.has(session.session_id)) messageFrozenCounts.set(session.session_id, 0);
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      if (!messageFrozenRevisions.has(session.session_id)) messageFrozenRevisions.set(session.session_id, 0);
+      return { sessions, messages, messageFrozenCounts, messageFrozenRevisions };
     }),
 
   updateSession: (sessionId, updates) =>
@@ -613,6 +625,10 @@ export const useStore = create<AppState>((set) => ({
       sessions.delete(sessionId);
       const messages = new Map(s.messages);
       messages.delete(sessionId);
+      const messageFrozenCounts = new Map(s.messageFrozenCounts);
+      messageFrozenCounts.delete(sessionId);
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      messageFrozenRevisions.delete(sessionId);
       const streaming = new Map(s.streaming);
       streaming.delete(sessionId);
       const streamingByParentToolUseId = new Map(s.streamingByParentToolUseId);
@@ -697,6 +713,8 @@ export const useStore = create<AppState>((set) => ({
       return {
         sessions,
         messages,
+        messageFrozenCounts,
+        messageFrozenRevisions,
         streaming,
         streamingByParentToolUseId,
         streamingStartedAt,
@@ -755,7 +773,7 @@ export const useStore = create<AppState>((set) => ({
       return { messages };
     }),
 
-  setMessages: (sessionId, msgs) =>
+  setMessages: (sessionId, msgs, options) =>
     set((s) => {
       // Deduplicate by message ID (server may send duplicates on CLI reconnect)
       const seen = new Set<string>();
@@ -766,7 +784,12 @@ export const useStore = create<AppState>((set) => ({
       });
       const messages = new Map(s.messages);
       messages.set(sessionId, deduped);
-      return { messages };
+      const messageFrozenCounts = new Map(s.messageFrozenCounts);
+      const frozenCount = Math.max(0, Math.min(options?.frozenCount ?? 0, deduped.length));
+      messageFrozenCounts.set(sessionId, frozenCount);
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      messageFrozenRevisions.set(sessionId, 0);
+      return { messages, messageFrozenCounts, messageFrozenRevisions };
     }),
 
   updateMessage: (sessionId, msgId, updates) =>
@@ -774,9 +797,18 @@ export const useStore = create<AppState>((set) => ({
       const messages = new Map(s.messages);
       const list = messages.get(sessionId);
       if (!list) return s;
-      const updated = list.map((m) => (m.id === msgId ? { ...m, ...updates } : m));
+      let updatedFrozen = false;
+      const frozenCount = s.messageFrozenCounts.get(sessionId) ?? 0;
+      const updated = list.map((m, index) => {
+        if (m.id !== msgId) return m;
+        if (index < frozenCount) updatedFrozen = true;
+        return { ...m, ...updates };
+      });
       messages.set(sessionId, updated);
-      return { messages };
+      if (!updatedFrozen) return { messages };
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      messageFrozenRevisions.set(sessionId, (messageFrozenRevisions.get(sessionId) ?? 0) + 1);
+      return { messages, messageFrozenRevisions };
     }),
 
   updateQuestTitleInMessages: (sessionId, questId, newTitle) =>
@@ -799,21 +831,43 @@ export const useStore = create<AppState>((set) => ({
       if (!changed) return s;
       const messages = new Map(s.messages);
       messages.set(sessionId, updated);
-      return { messages };
+      const frozenCount = s.messageFrozenCounts.get(sessionId) ?? 0;
+      const changedFrozen = updated.some((m, index) => index < frozenCount && m !== list[index]);
+      if (!changedFrozen) return { messages };
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      messageFrozenRevisions.set(sessionId, (messageFrozenRevisions.get(sessionId) ?? 0) + 1);
+      return { messages, messageFrozenRevisions };
     }),
 
   updateLastAssistantMessage: (sessionId, updater) =>
     set((s) => {
       const messages = new Map(s.messages);
       const list = [...(messages.get(sessionId) || [])];
+      let updatedIndex = -1;
       for (let i = list.length - 1; i >= 0; i--) {
         if (list[i].role === "assistant") {
           list[i] = updater(list[i]);
+          updatedIndex = i;
           break;
         }
       }
       messages.set(sessionId, list);
-      return { messages };
+      if (updatedIndex < 0 || updatedIndex >= (s.messageFrozenCounts.get(sessionId) ?? 0)) return { messages };
+      const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
+      messageFrozenRevisions.set(sessionId, (messageFrozenRevisions.get(sessionId) ?? 0) + 1);
+      return { messages, messageFrozenRevisions };
+    }),
+
+  commitMessagesAsFrozen: (sessionId) =>
+    set((s) => {
+      const list = s.messages.get(sessionId);
+      if (!list) return s;
+      const nextFrozenCount = list.length;
+      const prevFrozenCount = s.messageFrozenCounts.get(sessionId) ?? 0;
+      if (prevFrozenCount === nextFrozenCount) return s;
+      const messageFrozenCounts = new Map(s.messageFrozenCounts);
+      messageFrozenCounts.set(sessionId, nextFrozenCount);
+      return { messageFrozenCounts };
     }),
 
   setStreaming: (sessionId, text, parentToolUseId) =>
@@ -1508,6 +1562,8 @@ export const useStore = create<AppState>((set) => ({
       sdkSessions: [],
       currentSessionId: null,
       messages: new Map(),
+      messageFrozenCounts: new Map(),
+      messageFrozenRevisions: new Map(),
       streaming: new Map(),
       streamingByParentToolUseId: new Map(),
       streamingStartedAt: new Map(),

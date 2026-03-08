@@ -37,6 +37,8 @@ vi.mock("../store.js", () => {
   const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       messages: mockStoreValues.messages ?? new Map(),
+      messageFrozenCounts: mockStoreValues.messageFrozenCounts ?? new Map(),
+      messageFrozenRevisions: mockStoreValues.messageFrozenRevisions ?? new Map(),
       streaming: mockStoreValues.streaming ?? new Map(),
       streamingByParentToolUseId: mockStoreValues.streamingByParentToolUseId ?? new Map(),
       streamingStartedAt: mockStoreValues.streamingStartedAt ?? new Map(),
@@ -82,7 +84,7 @@ vi.mock("../store.js", () => {
   return { useStore };
 });
 
-import { MessageFeed, ElapsedTimer } from "./MessageFeed.js";
+import { MessageFeed, ElapsedTimer, findActiveTaskTurnIdForScroll } from "./MessageFeed.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -193,6 +195,8 @@ function resetStore() {
   mockSetFeedScrollPosition.mockReset();
   mockCollapseAllTurnActivity.mockReset();
   mockStoreValues.messages = new Map();
+  mockStoreValues.messageFrozenCounts = new Map();
+  mockStoreValues.messageFrozenRevisions = new Map();
   mockStoreValues.streaming = new Map();
   mockStoreValues.streamingByParentToolUseId = new Map();
   mockStoreValues.streamingStartedAt = new Map();
@@ -228,6 +232,29 @@ beforeEach(() => {
   resetStore();
   mockScrollIntoView.mockClear();
   mockScrollTo.mockClear();
+});
+
+describe("findActiveTaskTurnIdForScroll", () => {
+  it("returns the last turn whose top is above the reference line", () => {
+    const offsets = [
+      { turnId: "t1", offsetTop: 0 },
+      { turnId: "t2", offsetTop: 120 },
+      { turnId: "t3", offsetTop: 280 },
+    ];
+
+    expect(findActiveTaskTurnIdForScroll(offsets, 0, "t1")).toBe("t1");
+    expect(findActiveTaskTurnIdForScroll(offsets, 100, "t1")).toBe("t2");
+    expect(findActiveTaskTurnIdForScroll(offsets, 260, "t1")).toBe("t3");
+  });
+
+  it("falls back to the first task turn when the viewport is above all tracked turns", () => {
+    const offsets = [
+      { turnId: "t2", offsetTop: 120 },
+      { turnId: "t3", offsetTop: 280 },
+    ];
+
+    expect(findActiveTaskTurnIdForScroll(offsets, 0, "t2", 0)).toBe("t2");
+  });
 });
 
 // ─── Pure functions tested through component output ──────────────────────────
