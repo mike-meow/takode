@@ -1152,6 +1152,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const isTouch = useMemo(() => isTouchDevice(), []);
   const loadingMore = useRef(false);
   const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
+  const restoredSessionIdRef = useRef<string | null>(null);
 
   const findVisibleTurnAnchor = useCallback((container: HTMLDivElement) => {
     const containerRect = container.getBoundingClientRect();
@@ -1230,9 +1231,16 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       return;
     }
     const messageRect = lastRenderableMessage.getBoundingClientRect();
+    const containerRect = el.getBoundingClientRect();
     const bottomRect = bottomMarker.getBoundingClientRect();
     const contentSinceLastMessage = Math.max(0, bottomRect.bottom - messageRect.top);
-    const nextHeight = Math.max(0, Math.round(viewportHeight - contentSinceLastMessage));
+    const desiredRunway = Math.max(0, Math.round(viewportHeight - contentSinceLastMessage));
+    const realContentBottom = Math.max(0, Math.round(bottomRect.bottom - containerRect.top + el.scrollTop));
+    const preserveVisibleRunway = Math.max(
+      0,
+      Math.round(el.scrollTop + viewportHeight - realContentBottom),
+    );
+    const nextHeight = Math.max(desiredRunway, preserveVisibleRunway);
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [isTopLevelStreaming]);
 
@@ -1302,7 +1310,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   useLayoutEffect(() => {
     updateBottomRunwayHeight();
-  }, [updateBottomRunwayHeight]);
+  }, [messages, streamingText, updateBottomRunwayHeight]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1328,13 +1336,19 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // useLayoutEffect runs before the browser paints, preventing the flash
   // where the feed appears at scrollTop=0 for one frame before jumping.
   useLayoutEffect(() => {
+    if (restoredSessionIdRef.current === sessionId) return;
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
+    if (messages.length === 0 && (pos?.anchorTurnId || !streamingText)) return;
     const shouldPreferAnchorRestore = Boolean(
       pos?.anchorTurnId && (isTopLevelStreaming || !pos.isAtBottom),
     );
-    if (pos && shouldPreferAnchorRestore && restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
-      isNearBottom.current = false;
-      setShowScrollButton(true);
+    if (pos && shouldPreferAnchorRestore) {
+      if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      } else {
+        scrollToContentBottom("auto");
+      }
     } else if (pos && !pos.isAtBottom) {
       const el = containerRef.current;
       if (el) {
@@ -1349,7 +1363,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     } else {
       scrollToContentBottom("auto");
     }
-  }, [isTopLevelStreaming, restoreTurnAnchor, scrollToContentBottom, sessionId]);
+    restoredSessionIdRef.current = sessionId;
+  }, [isTopLevelStreaming, messages.length, restoreTurnAnchor, scrollToContentBottom, sessionId, streamingText]);
 
   useEffect(() => {
     if (!didMountRef.current) {
