@@ -433,7 +433,7 @@ describe("MessageFeed - streaming text", () => {
     expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe("0px");
   });
 
-  it("limits streaming runway to the space needed to keep the last renderable message fully visible", () => {
+  it("limits streaming runway to the space needed to bring the last renderable message to the top", () => {
     const sid = "test-bottom-runway-streaming";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
     setStoreStreaming(sid, "Assistant is streaming");
@@ -528,6 +528,68 @@ describe("MessageFeed - streaming text", () => {
     rerender(<MessageFeed sessionId={sid} />);
 
     expect(runway.style.height).toBe("0px");
+  });
+
+  it("does not shrink the streaming runway enough to clamp the current scroll position upward", () => {
+    const sid = "test-bottom-runway-no-clamp";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+    setStoreStreaming(sid, "Assistant is streaming");
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const streamingMessage = container.querySelector('[data-feed-streaming-message="true"]') as HTMLDivElement;
+    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
+    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 520,
+    });
+    streamingMessage.getBoundingClientRect = () => ({
+      x: 0,
+      y: -100,
+      top: -100,
+      bottom: 120,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 220,
+      toJSON: () => ({}),
+    });
+    bottomMarker.getBoundingClientRect = () => ({
+      x: 0,
+      y: 440,
+      top: 440,
+      bottom: 440,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    });
+    scrollContainer.getBoundingClientRect = () => ({
+      x: 0,
+      y: 100,
+      top: 100,
+      bottom: 700,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(runway.style.height).toBe("260px");
   });
 
   it("scrolls to the content bottom once after appending a new user message", () => {
@@ -638,6 +700,88 @@ describe("MessageFeed - streaming text", () => {
     } finally {
       Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }
+  });
+
+  it("waits for session content before applying a saved anchor restore", () => {
+    const sid = "test-delayed-anchor-restore";
+    setStoreMessages(sid, []);
+    setStoreStreaming(sid, "Assistant is streaming");
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 480,
+      scrollHeight: 1200,
+      isAtBottom: true,
+      anchorTurnId: "u2",
+      anchorOffsetTop: 0,
+    });
+
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
+        return {
+          x: 0,
+          y: 320,
+          top: 320,
+          bottom: 400,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 80,
+          toJSON: () => ({}),
+        };
+      }
+      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
+        return {
+          x: 0,
+          y: 100,
+          top: 100,
+          bottom: 700,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 600,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+      const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+
+      expect(scrollContainer.scrollTop).toBe(0);
+
+      setStoreMessages(sid, [
+        makeMessage({ id: "u1", role: "user", content: "First question" }),
+        makeMessage({ id: "a1", role: "assistant", content: "First answer" }),
+        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
+      ]);
+      rerender(<MessageFeed sessionId={sid} />);
+
+      expect(scrollContainer.scrollTop).toBe(220);
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  it("falls back to the conversation end when a saved anchor can no longer be restored", () => {
+    const sid = "test-missing-anchor-falls-back-to-bottom";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "First question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "First answer" }),
+    ]);
+    setStoreStreaming(sid, "Assistant is streaming");
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 480,
+      scrollHeight: 1200,
+      isAtBottom: false,
+      anchorTurnId: "missing-turn",
+      anchorOffsetTop: 0,
+    });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "end" });
   });
 
   it("renders streaming text with cursor animation", () => {

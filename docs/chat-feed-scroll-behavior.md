@@ -34,14 +34,21 @@ The runway is measured relative to the last renderable top-level message.
 The practical rule is:
 
 - find the last renderable top-level message while streaming
-- allow overscroll only while that final message remains fully visible
-- cap the runway to the amount needed to keep that final message visible within
-  the viewport
-- if the final message is taller than the viewport, do not add extra blank
-  runway beyond the real content bottom
+- allow enough overscroll for that final message to reach the top of the
+  viewport
+- if that final message is taller than the viewport, still allow scrolling
+  through it until its bottom has been seen
+- never add blank runway beyond the point needed to finish reading the last
+  message
 
 This avoids long confusing blank space after the last message while still
-allowing the user to read the full final message.
+allowing the user to read the full final message and align its top with the top
+of the viewport when needed.
+
+While the user is actively scrolled inside the temporary overscroll region, the
+runway must not shrink in a way that clamps the current scroll position upward.
+In practice, preserve enough runway to keep the current viewport stable, then
+allow it to shrink later as the user scrolls or as real content catches up.
 
 When top-level streaming is not active, the runway must be zero.
 
@@ -72,10 +79,11 @@ Saved scroll position restore should keep working as before:
 - if the user left the session at the bottom, restore to the real content
   bottom, not the end of the runway
 
-During top-level streaming, restore must preserve the viewport-relative
-placement of the saved visible turn anchor, even if the real content bottom was
-also on screen at the time. Switching away from a streaming session and back
-must not shift the visible conversation position unexpectedly.
+During top-level streaming, restore should preserve the viewport-relative
+placement of the saved visible turn anchor when that anchor is still available.
+If the saved anchor cannot be restored reliably, prefer the end of the
+conversation over dropping the user near the beginning. Restore should wait
+until the session feed has actual content before applying.
 
 ## Non-goals
 
