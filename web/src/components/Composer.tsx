@@ -41,6 +41,31 @@ interface ImageAttachment {
   mediaType: string;
 }
 
+function getImageFiles(files: ArrayLike<File> | Iterable<File> | null | undefined): File[] {
+  if (!files) return [];
+  return Array.from(files).filter((file) => file.type.startsWith("image/"));
+}
+
+function getPastedImageFiles(e: React.ClipboardEvent): File[] {
+  const items = e.clipboardData?.items;
+  if (!items) return [];
+  const files: File[] = [];
+  for (const item of Array.from(items)) {
+    if (!item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+function hasDraggedImageFiles(dataTransfer: DataTransfer | null | undefined): boolean {
+  if (!dataTransfer) return false;
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    return Array.from(dataTransfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/"));
+  }
+  return getImageFiles(dataTransfer.files).length > 0;
+}
+
 function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -178,6 +203,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [dynamicCodexModels, setDynamicCodexModels] = useState<ModelOption[] | null>(null);
   const [sendPressing, setSendPressing] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [isImageDragOver, setIsImageDragOver] = useState(false);
   const zoomLevel = useStore((s) => s.zoomLevel);
 
   // @ mention file search state
@@ -193,6 +219,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const mentionMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageDragDepthRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
@@ -764,16 +791,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files) return;
-    const newImages: ImageAttachment[] = [];
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) continue;
-      const raw = await readFileAsBase64(file);
-      const { base64, mediaType } = await ensureSupportedFormat(raw.base64, raw.mediaType);
-      newImages.push({ name: file.name, base64, mediaType });
-    }
-    setImages((prev) => [...prev, ...newImages]);
+    await appendImages(getImageFiles(e.target.files));
     e.target.value = "";
   }
 
@@ -781,22 +799,71 @@ export function Composer({ sessionId }: { sessionId: string }) {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function handlePaste(e: React.ClipboardEvent) {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+  async function appendImages(files: File[], buildName?: (file: File, index: number) => string) {
+    if (files.length === 0) return;
     const newImages: ImageAttachment[] = [];
-    for (const item of Array.from(items)) {
-      if (!item.type.startsWith("image/")) continue;
-      const file = item.getAsFile();
-      if (!file) continue;
+    for (const [index, file] of files.entries()) {
       const raw = await readFileAsBase64(file);
       const { base64, mediaType } = await ensureSupportedFormat(raw.base64, raw.mediaType);
-      newImages.push({ name: `pasted-${Date.now()}.${mediaType.split("/")[1] || "jpeg"}`, base64, mediaType });
+      newImages.push({
+        name: buildName?.(file, index) ?? file.name,
+        base64,
+        mediaType,
+      });
     }
-    if (newImages.length > 0) {
-      e.preventDefault();
-      setImages((prev) => [...prev, ...newImages]);
+    setImages((prev) => [...prev, ...newImages]);
+  }
+
+  async function handlePaste(e: React.ClipboardEvent) {
+    const files = getPastedImageFiles(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    const pasteTs = Date.now();
+    await appendImages(files, (_file, index) => `pasted-${pasteTs}-${index}.${files[index].type.split("/")[1] || "jpeg"}`);
+  }
+
+  function resetImageDragState() {
+    imageDragDepthRef.current = 0;
+    setIsImageDragOver(false);
+  }
+
+  function handleComposerDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDraggedImageFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    imageDragDepthRef.current += 1;
+    setIsImageDragOver(true);
+  }
+
+  function handleComposerDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDraggedImageFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isImageDragOver) setIsImageDragOver(true);
+  }
+
+  function handleComposerDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    if (!isImageDragOver) return;
+    e.preventDefault();
+    e.stopPropagation();
+    imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
+    if (imageDragDepthRef.current === 0) {
+      setIsImageDragOver(false);
     }
+  }
+
+  async function handleComposerDrop(e: React.DragEvent<HTMLDivElement>) {
+    const files = getImageFiles(e.dataTransfer?.files);
+    if (files.length === 0) {
+      resetImageDragState();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    resetImageDragState();
+    await appendImages(files);
+    textareaRef.current?.focus();
   }
 
   function selectMode(mode: string) {
@@ -1016,11 +1083,27 @@ export function Composer({ sessionId }: { sessionId: string }) {
         />
 
         {/* Unified input card */}
-        <div className={`relative bg-cc-input-bg border rounded-[14px] overflow-visible transition-colors ${
-          isPlan
-            ? "border-cc-primary/40"
-            : "border-cc-border focus-within:border-cc-primary/30"
-        }`}>
+        <div
+          data-testid="composer-input-card"
+          onDragEnter={handleComposerDragEnter}
+          onDragOver={handleComposerDragOver}
+          onDragLeave={handleComposerDragLeave}
+          onDrop={handleComposerDrop}
+          className={`relative bg-cc-input-bg border rounded-[14px] overflow-visible transition-colors ${
+            isImageDragOver
+              ? "border-cc-primary bg-cc-primary/5 shadow-[0_0_0_3px_rgba(255,122,26,0.12)]"
+              : isPlan
+              ? "border-cc-primary/40"
+              : "border-cc-border focus-within:border-cc-primary/30"
+          }`}
+        >
+          {isImageDragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[14px] border border-dashed border-cc-primary/50 bg-cc-primary/10">
+              <div className="rounded-full border border-cc-primary/25 bg-cc-card/95 px-3 py-1 text-[11px] font-medium text-cc-primary shadow-sm">
+                Drop images to attach
+              </div>
+            </div>
+          )}
           {/* Slash command menu */}
           {slashMenuOpen && filteredCommands.length > 0 && (
             <div

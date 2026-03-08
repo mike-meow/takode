@@ -1674,6 +1674,48 @@ export function Playground() {
               </div>
             </Card>
             <div className="mt-4" />
+            <Card label="Desktop drag-over image attach">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="relative bg-cc-input-bg border border-cc-primary rounded-[14px] overflow-hidden shadow-[0_0_0_3px_rgba(255,122,26,0.12)]">
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center border border-dashed border-cc-primary/50 bg-cc-primary/10">
+                    <div className="rounded-full border border-cc-primary/25 bg-cc-card/95 px-3 py-1 text-[11px] font-medium text-cc-primary shadow-sm">
+                      Drop images to attach
+                    </div>
+                  </div>
+                  <textarea
+                    readOnly
+                    value="Investigate this screenshot and attached error."
+                    rows={1}
+                    className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-primary bg-cc-primary/10">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                          <rect x="2" y="2" width="12" height="12" rx="2" />
+                          <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                          <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
             <Card label="Send pressed — paw morph">
               <div className="border-t border-cc-border bg-cc-card px-4 py-3">
                 <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, createEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionState } from "../../server/session-types.js";
 
@@ -194,6 +194,23 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event("resize"));
 }
 
+function makeImageFile(name: string, type = "image/png") {
+  return new File(["fake-image-bytes"], name, { type });
+}
+
+function makeImageDataTransfer(file: File) {
+  return {
+    files: [file],
+    items: [
+      {
+        kind: "file",
+        type: file.type,
+        getAsFile: () => file,
+      },
+    ],
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mediaState.touchDevice = false;
@@ -201,6 +218,20 @@ beforeEach(() => {
   Object.defineProperty(window, "isSecureContext", {
     configurable: true,
     value: true,
+  });
+  Object.defineProperty(window, "FileReader", {
+    configurable: true,
+    writable: true,
+    value: class MockFileReader {
+      result: string | ArrayBuffer | null = null;
+      onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+      onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+
+      readAsDataURL(file: Blob) {
+        this.result = `data:${(file as File).type || "image/png"};base64,ZmFrZQ==`;
+        this.onload?.call(this as unknown as FileReader, new ProgressEvent("load") as ProgressEvent<FileReader>);
+      }
+    },
   });
   setupMockStore();
 });
@@ -325,6 +356,66 @@ describe("Composer send button state", () => {
 
     const sendBtn = screen.getByTitle("Send message");
     expect(sendBtn.hasAttribute("disabled")).toBe(false);
+  });
+});
+
+describe("Composer image attachments", () => {
+  it("attaches selected image files through the upload input", async () => {
+    const { container } = render(<Composer sessionId="s1" />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(fileInput, { target: { files: [makeImageFile("upload.png")] } });
+
+    await waitFor(() => {
+      expect(screen.getByAltText("upload.png")).toBeTruthy();
+    });
+  });
+
+  it("attaches pasted images and prevents the browser paste default", async () => {
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+    const imageFile = makeImageFile("clipboard.png");
+    const pasteEvent = createEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          {
+            type: imageFile.type,
+            getAsFile: () => imageFile,
+          },
+        ],
+      },
+    });
+
+    fireEvent(textarea, pasteEvent);
+
+    expect(pasteEvent.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(container.querySelector('img[alt^="pasted-"]')).toBeTruthy();
+    });
+  });
+
+  it("attaches dropped images inside the composer instead of letting the browser navigate", async () => {
+    render(<Composer sessionId="s1" />);
+    const inputCard = screen.getByTestId("composer-input-card");
+    const imageFile = makeImageFile("drop.png");
+    const dataTransfer = makeImageDataTransfer(imageFile);
+
+    const dragOverEvent = createEvent.dragOver(inputCard, { dataTransfer });
+    fireEvent(inputCard, dragOverEvent);
+
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect(screen.getByText("Drop images to attach")).toBeTruthy();
+
+    const dropEvent = createEvent.drop(inputCard, { dataTransfer });
+    fireEvent(inputCard, dropEvent);
+
+    expect(dropEvent.defaultPrevented).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByAltText("drop.png")).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Drop images to attach")).toBeNull();
+    });
   });
 });
 
