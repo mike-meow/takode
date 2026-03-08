@@ -110,6 +110,21 @@ function setStoreStreaming(sessionId: string, text: string | undefined) {
   mockStoreValues.streaming = map;
 }
 
+function setStoreFeedScrollPosition(
+  sessionId: string,
+  pos: {
+    scrollTop: number;
+    scrollHeight: number;
+    isAtBottom: boolean;
+    anchorTurnId?: string | null;
+    anchorOffsetTop?: number;
+  },
+) {
+  const map = new Map();
+  map.set(sessionId, pos);
+  mockStoreValues.feedScrollPosition = map;
+}
+
 function setStoreParentStreaming(sessionId: string, entries: Record<string, string>) {
   const map = new Map();
   map.set(sessionId, new Map(Object.entries(entries)));
@@ -382,13 +397,64 @@ describe("MessageFeed - message rendering", () => {
 // ─── Streaming indicator ─────────────────────────────────────────────────────
 
 describe("MessageFeed - streaming text", () => {
-  it("renders a bottom scroll runway so the newest user turn can pin to the top", () => {
-    const sid = "test-bottom-runway";
+  it("does not render bottom runway when top-level assistant streaming is inactive", () => {
+    const sid = "test-bottom-runway-idle";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe(`${window.innerHeight}px`);
+    expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe("0px");
+  });
+
+  it("limits streaming runway to the remaining viewport gap below the newest user turn", () => {
+    const sid = "test-bottom-runway-streaming";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+    setStoreStreaming(sid, "Assistant is streaming");
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const latestUserTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
+    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
+    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    latestUserTurn.getBoundingClientRect = () => ({
+      x: 0,
+      y: 100,
+      top: 100,
+      bottom: 180,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 80,
+      toJSON: () => ({}),
+    });
+    bottomMarker.getBoundingClientRect = () => ({
+      x: 0,
+      y: 320,
+      top: 320,
+      bottom: 320,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    });
+
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(runway.style.height).toBe("380px");
+
+    setStoreStreaming(sid, undefined);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(runway.style.height).toBe("0px");
   });
 
   it("pins a newly sent user turn to the top of the feed viewport", () => {
@@ -412,7 +478,7 @@ describe("MessageFeed - streaming text", () => {
     expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
   });
 
-  it("does not auto-follow streaming or assistant replies after pinning the user turn", () => {
+  it("re-pins once when streaming runway appears but does not keep auto-following afterward", () => {
     const sid = "test-no-stream-follow";
     const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
     const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
@@ -427,9 +493,10 @@ describe("MessageFeed - streaming text", () => {
     setStoreStreaming(sid, "Assistant is streaming");
     rerender(<MessageFeed sessionId={sid} />);
 
-    expect(mockScrollIntoView).not.toHaveBeenCalled();
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
     expect(mockScrollTo).not.toHaveBeenCalled();
 
+    mockScrollIntoView.mockClear();
     setStoreMessages(sid, [
       firstUser,
       firstAssistant,
@@ -440,6 +507,63 @@ describe("MessageFeed - streaming text", () => {
 
     expect(mockScrollIntoView).not.toHaveBeenCalled();
     expect(mockScrollTo).not.toHaveBeenCalled();
+  });
+
+  it("restores the saved streaming anchor across session switches even when the saved state was near bottom", () => {
+    const sid = "test-streaming-anchor-restore";
+    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
+    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
+    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
+    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
+    setStoreStreaming(sid, "Assistant is streaming");
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 480,
+      scrollHeight: 1200,
+      isAtBottom: true,
+      anchorTurnId: "u2",
+      anchorOffsetTop: 0,
+    });
+
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
+        return {
+          x: 0,
+          y: 320,
+          top: 320,
+          bottom: 400,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 80,
+          toJSON: () => ({}),
+        };
+      }
+      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
+        return {
+          x: 0,
+          y: 100,
+          top: 100,
+          bottom: 700,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 600,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const { container } = render(<MessageFeed sessionId={sid} />);
+      const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+
+      expect(scrollContainer.scrollTop).toBe(220);
+      expect(mockScrollIntoView).not.toHaveBeenCalledWith({ behavior: "auto", block: "end" });
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
   });
 
   it("renders streaming text with cursor animation", () => {

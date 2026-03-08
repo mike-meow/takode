@@ -1140,8 +1140,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const didMountRef = useRef(false);
   const lastPinnedUserTurnIdRef = useRef<string | null>(null);
+  const lastStreamingRunwayPinnedTurnIdRef = useRef<string | null>(null);
   const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
-    typeof window === "undefined" ? 0 : window.innerHeight,
+    0,
   );
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
@@ -1150,6 +1151,21 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const loadingMore = useRef(false);
   const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
 
+  const findVisibleTurnAnchor = useCallback((container: HTMLDivElement) => {
+    const containerRect = container.getBoundingClientRect();
+    const turns = container.querySelectorAll<HTMLElement>("[data-turn-id]");
+    for (const turn of turns) {
+      const rect = turn.getBoundingClientRect();
+      if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
+        return {
+          turnId: turn.dataset.turnId ?? null,
+          offsetTop: rect.top - containerRect.top,
+        };
+      }
+    }
+    return null;
+  }, []);
+
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
   // avoiding the race where useEffect cleanup runs too late.
@@ -1157,20 +1173,24 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     return () => {
       const el = containerRef.current;
       if (el) {
+        const anchor = findVisibleTurnAnchor(el);
         useStore.getState().setFeedScrollPosition(sessionId, {
           scrollTop: el.scrollTop,
           scrollHeight: el.scrollHeight,
           isAtBottom: isNearBottom.current,
+          anchorTurnId: anchor?.turnId ?? null,
+          anchorOffsetTop: anchor?.offsetTop,
         });
       }
     };
-  }, [sessionId]);
+  }, [findVisibleTurnAnchor, sessionId]);
 
   const { turns } = useFeedModel(messages, { leaderMode: isLeaderSession });
 
   const totalTurns = turns.length;
   const hasMore = totalTurns > visibleCount;
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
+  const isTopLevelStreaming = Boolean(streamingText);
   const latestVisibleUserTurnId = useMemo(() => {
     for (let i = visibleTurns.length - 1; i >= 0; i--) {
       const turn = visibleTurns[i];
@@ -1197,16 +1217,30 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   const updateBottomRunwayHeight = useCallback(() => {
     const el = containerRef.current;
-    const nextHeight = Math.max(
+    if (!el || !isTopLevelStreaming || !latestVisibleUserTurnId) {
+      setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    const viewportHeight = Math.max(
       0,
       Math.round(
-        el?.clientHeight ||
-        el?.getBoundingClientRect().height ||
+        el.clientHeight ||
+        el.getBoundingClientRect().height ||
         (typeof window === "undefined" ? 0 : window.innerHeight),
       ),
     );
+    const latestUserTurn = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
+    const bottomMarker = bottomRef.current;
+    if (!latestUserTurn || !bottomMarker || viewportHeight === 0) {
+      setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    const userRect = latestUserTurn.getBoundingClientRect();
+    const bottomRect = bottomMarker.getBoundingClientRect();
+    const contentSinceLatestUser = Math.max(0, bottomRect.bottom - userRect.top);
+    const nextHeight = Math.max(0, Math.round(viewportHeight - contentSinceLatestUser));
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, []);
+  }, [isTopLevelStreaming, latestVisibleUserTurnId]);
 
   const isNearContentBottom = useCallback(() => {
     const container = containerRef.current;
@@ -1224,6 +1258,17 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     }
     isNearBottom.current = true;
     setShowScrollButton(false);
+  }, []);
+
+  const restoreTurnAnchor = useCallback((anchorTurnId: string, anchorOffsetTop = 0) => {
+    const container = containerRef.current;
+    if (!container) return false;
+    const target = container.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(anchorTurnId)}"]`);
+    if (!target) return false;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    container.scrollTop += targetRect.top - containerRect.top - anchorOffsetTop;
+    return true;
   }, []);
 
   const handleLoadMore = useCallback(() => {
@@ -1290,7 +1335,13 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   // where the feed appears at scrollTop=0 for one frame before jumping.
   useLayoutEffect(() => {
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
-    if (pos && !pos.isAtBottom) {
+    const shouldPreferAnchorRestore = Boolean(
+      pos?.anchorTurnId && (isTopLevelStreaming || !pos.isAtBottom),
+    );
+    if (pos && shouldPreferAnchorRestore && restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
+      isNearBottom.current = false;
+      setShowScrollButton(true);
+    } else if (pos && !pos.isAtBottom) {
       const el = containerRef.current;
       if (el) {
         if (el.scrollHeight === pos.scrollHeight) {
@@ -1304,7 +1355,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     } else {
       scrollToContentBottom("auto");
     }
-  }, [scrollToContentBottom, sessionId]);
+  }, [isTopLevelStreaming, restoreTurnAnchor, scrollToContentBottom, sessionId]);
 
   useEffect(() => {
     if (!didMountRef.current) {
@@ -1326,6 +1377,26 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       });
     }
   }, [latestVisibleUserTurnId, messages]);
+
+  useEffect(() => {
+    if (!isTopLevelStreaming || bottomRunwayHeight <= 0) {
+      lastStreamingRunwayPinnedTurnIdRef.current = null;
+      return;
+    }
+    if (messages[messages.length - 1]?.role !== "user") return;
+    if (!latestVisibleUserTurnId || latestVisibleUserTurnId === lastStreamingRunwayPinnedTurnIdRef.current) return;
+    lastStreamingRunwayPinnedTurnIdRef.current = latestVisibleUserTurnId;
+    const el = containerRef.current;
+    if (!el) return;
+    const target = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(latestVisibleUserTurnId)}"]`);
+    if (target) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      });
+    }
+  }, [bottomRunwayHeight, isTopLevelStreaming, latestVisibleUserTurnId, messages]);
 
   const scrollToBottom = useCallback(() => {
     scrollToContentBottom("smooth");
