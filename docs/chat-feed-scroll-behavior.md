@@ -21,13 +21,26 @@ conversation.
 
 ### 2. Scroll runway
 
-The feed must include extra scrollable runway below the real content so the
-newest user turn can actually reach the top of the viewport.
+The feed may include extra scrollable runway below the real content, but only
+while the top-level assistant response is actively streaming.
 
-The runway should be roughly one feed viewport tall.
+The runway is measured relative to the newest user turn.
 
-The runway exists to make the top-alignment target reachable. It is not the
-"real bottom" of the conversation.
+The maximum runway target is one feed viewport below the newest user turn.
+However, the runway must shrink as the assistant response grows.
+
+The practical rule is:
+
+- compute how much real content currently exists from the top of the newest
+  user turn down to the current assistant/output bottom
+- only add enough runway to cover the remaining gap up to one viewport
+- once the assistant content already fills that viewport, the runway should be
+  zero
+
+This avoids long confusing blank space after the last message while still
+providing temporary headroom for the pinned-send layout during streaming.
+
+When top-level streaming is not active, the runway must be zero.
 
 ### 3. Assistant streaming
 
@@ -55,6 +68,12 @@ Saved scroll position restore should keep working as before:
 - if the user left the session scrolled up, restore that position
 - if the user left the session at the bottom, restore to the real content
   bottom, not the end of the runway
+
+During top-level streaming, restore must preserve the viewport-relative
+placement of the saved visible turn anchor, even if the real content bottom was
+also on screen at the time. Switching away from a streaming session and back
+must not drop the newest user turn from the top of the viewport down toward the
+bottom.
 
 ## Non-goals
 

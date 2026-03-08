@@ -307,8 +307,8 @@ interface AppState {
   setFeedVisibleCount: (sessionId: string, count: number) => void;
 
   // Per-session scroll position (persists across session switches, in-memory only)
-  feedScrollPosition: Map<string, { scrollTop: number; scrollHeight: number; isAtBottom: boolean }>;
-  setFeedScrollPosition: (sessionId: string, pos: { scrollTop: number; scrollHeight: number; isAtBottom: boolean }) => void;
+  feedScrollPosition: Map<string, { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number }>;
+  setFeedScrollPosition: (sessionId: string, pos: { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number }) => void;
 
   // Per-session composer drafts (text + images persist across session switches)
   composerDrafts: Map<string, { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }>;
