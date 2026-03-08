@@ -19,7 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useStore, countUserPermissions, type PendingSession } from "../store.js";
 import { api, type SessionSearchResult } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
-import { connectSession, connectAllSessions, disconnectSession } from "../ws.js";
+import { connectSession, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
 import { cancelPendingCreation } from "../utils/pending-creation.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
@@ -143,8 +143,6 @@ export function Sidebar() {
         const list = await api.listSessions();
         if (active) {
           useStore.getState().setSdkSessions(list);
-          // Connect all active sessions so we receive notifications for all of them
-          connectAllSessions(list);
           // Hydrate session names from server (server is source of truth for auto-generated names)
           const store = useStore.getState();
           let batchedAttention: Map<string, "action" | "error" | "review" | null> | null = null;

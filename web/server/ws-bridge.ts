@@ -248,6 +248,8 @@ interface Session {
   /** Pending control_requests sent TO CLI, keyed by request_id */
   pendingControlRequests: Map<string, PendingControlRequest>;
   messageHistory: BrowserIncomingMessage[];
+  /** Number of history entries that belong to the frozen prefix persisted in the append-only log. */
+  frozenCount: number;
   /** Messages queued while waiting for CLI to connect */
   pendingMessages: string[];
   /** Authoritative Codex outbound user-turn queue (persisted across disconnect/relaunch). */
@@ -1504,6 +1506,7 @@ export class WsBridge {
         pendingPermissions: new Map(p.pendingPermissions || []),
         pendingControlRequests: new Map(),
         messageHistory: p.messageHistory || [],
+        frozenCount: typeof p._frozenCount === "number" ? Math.max(0, Math.min(p._frozenCount, (p.messageHistory || []).length)) : 0,
         pendingMessages: p.pendingMessages || [],
         pendingCodexTurns: restoredCodexTurns,
         nextEventSeq: p.nextEventSeq && p.nextEventSeq > 0 ? p.nextEventSeq : 1,
@@ -1593,6 +1596,7 @@ export class WsBridge {
   /** Persist a session to disk (debounced). */
   private persistSession(session: Session): void {
     if (!this.store) return;
+    this.clampFrozenCount(session);
     this.store.save({
       id: session.id,
       state: session.state,
@@ -1616,6 +1620,7 @@ export class WsBridge {
   persistSessionSync(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || !this.store) return;
+    this.clampFrozenCount(session);
     this.store.saveSync({
       id: session.id,
       state: session.state,
@@ -1884,6 +1889,7 @@ export class WsBridge {
         pendingPermissions: new Map(),
         pendingControlRequests: new Map(),
         messageHistory: [],
+        frozenCount: 0,
         pendingMessages: [],
         pendingCodexTurns: [],
         nextEventSeq: 1,
@@ -2477,6 +2483,7 @@ export class WsBridge {
             timestamp: ts,
             id: markerId,
           });
+          this.freezeHistoryThroughCurrentTail(session);
           this.broadcastToBrowsers(session, {
             type: "compact_boundary",
             id: markerId,
@@ -4136,6 +4143,7 @@ export class WsBridge {
         trigger: meta?.trigger,
         preTokens: meta?.pre_tokens,
       });
+      this.freezeHistoryThroughCurrentTail(session);
       const preTokenContextPct = computePreTokenContextUsedPercent(
         session.state.model,
         meta?.pre_tokens,
@@ -4479,6 +4487,7 @@ export class WsBridge {
       data: msg,
     };
     session.messageHistory.push(browserMsg);
+    this.freezeHistoryThroughCurrentTail(session);
     this.broadcastToBrowsers(session, browserMsg);
     this.persistSession(session);
 
@@ -5488,7 +5497,7 @@ export class WsBridge {
     ws?: ServerWebSocket<SocketData>,
   ) {
     if (msg.type === "session_subscribe") {
-      this.handleSessionSubscribe(session, ws, msg.last_seq);
+      this.handleSessionSubscribe(session, ws, msg.last_seq, msg.known_frozen_count);
       return;
     }
 
@@ -5970,10 +5979,48 @@ export class WsBridge {
     this.persistSession(session);
   }
 
+  private normalizeKnownFrozenCount(knownFrozenCount: number | undefined): number {
+    if (!Number.isFinite(knownFrozenCount)) return 0;
+    return Math.max(0, Math.floor(knownFrozenCount ?? 0));
+  }
+
+  private clampFrozenCount(session: Session): void {
+    session.frozenCount = Math.max(0, Math.min(session.frozenCount, session.messageHistory.length));
+  }
+
+  private freezeHistoryThroughCurrentTail(session: Session): void {
+    session.frozenCount = session.messageHistory.length;
+  }
+
+  private sendHistorySync(
+    session: Session,
+    ws: ServerWebSocket<SocketData>,
+    knownFrozenCount: number,
+  ): boolean {
+    const normalizedKnownFrozenCount = this.normalizeKnownFrozenCount(knownFrozenCount);
+    this.clampFrozenCount(session);
+    const frozenCount = session.frozenCount;
+    if (normalizedKnownFrozenCount > frozenCount) {
+      return false;
+    }
+    if (session.messageHistory.length === 0) {
+      return true;
+    }
+    this.sendToBrowser(ws, {
+      type: "history_sync",
+      frozen_base_count: normalizedKnownFrozenCount,
+      frozen_delta: session.messageHistory.slice(normalizedKnownFrozenCount, frozenCount),
+      hot_messages: session.messageHistory.slice(frozenCount),
+      frozen_count: frozenCount,
+    });
+    return true;
+  }
+
   private handleSessionSubscribe(
     session: Session,
     ws: ServerWebSocket<SocketData> | undefined,
     lastSeq: number,
+    knownFrozenCount = 0,
   ) {
     if (!ws) return;
     const data = ws.data as BrowserSocketData;
@@ -6014,7 +6061,7 @@ export class WsBridge {
     // This is the single source of truth for initial state delivery (previously
     // also done in handleBrowserOpen, causing double delivery).
     if (lastAckSeq === 0) {
-      if (session.messageHistory.length > 0) {
+      if (session.messageHistory.length > 0 && !this.sendHistorySync(session, ws, knownFrozenCount)) {
         this.sendToBrowser(ws, {
           type: "message_history",
           messages: session.messageHistory,
@@ -6044,10 +6091,10 @@ export class WsBridge {
 
       if (hasGap || hasMissedHistoryBacked) {
         // Gap in buffer coverage OR missed history-backed events: send
-        // authoritative message_history (full replacement) so the browser
-        // has all chat messages. Then replay only transient events from the
-        // buffer for in-flight streaming/progress state.
-        if (session.messageHistory.length > 0) {
+        // authoritative history state so the browser can rebuild its feed.
+        // Prefer frozen-delta + hot-tail sync, but fall back to a full reset
+        // when the client cannot safely reuse its frozen prefix.
+        if (session.messageHistory.length > 0 && !this.sendHistorySync(session, ws, knownFrozenCount)) {
           this.sendToBrowser(ws, {
             type: "message_history",
             messages: session.messageHistory,

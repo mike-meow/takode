@@ -36,6 +36,7 @@ type SequencedIncomingMessage = BrowserIncomingMessage & {
 
 export interface WsTransportCallbacks {
   hasLocalMessages: (sessionId: string) => boolean;
+  getKnownFrozenCount: (sessionId: string) => number;
   onMessage: (sessionId: string, data: BrowserIncomingMessage) => void;
   onConnecting?: (sessionId: string) => void;
   onConnected?: (sessionId: string) => void;
@@ -174,7 +175,14 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
       reconnectAttempts.delete(sessionId);
 
       const lastSeq = callbacks.hasLocalMessages(sessionId) ? getLastSeq(sessionId) : 0;
-      ws.send(JSON.stringify({ type: "session_subscribe", last_seq: lastSeq }));
+      const knownFrozenCount = callbacks.hasLocalMessages(sessionId)
+        ? callbacks.getKnownFrozenCount(sessionId)
+        : 0;
+      ws.send(JSON.stringify({
+        type: "session_subscribe",
+        last_seq: lastSeq,
+        known_frozen_count: Math.max(0, Math.floor(knownFrozenCount)),
+      }));
 
       const timer = reconnectTimers.get(sessionId);
       if (timer) {

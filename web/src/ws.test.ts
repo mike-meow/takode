@@ -8,12 +8,14 @@ vi.mock("./utils/names.js", () => ({
 }));
 
 const getDiffStatsMock = vi.fn().mockResolvedValue({ stats: {} });
+const listSessionsMock = vi.fn().mockResolvedValue([]);
 const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 
 // Mock the API module so PostHog doesn't break in jsdom
 vi.mock("./api.js", () => ({
   api: {
     getDiffStats: getDiffStatsMock,
+    listSessions: listSessionsMock,
   },
 }));
 
@@ -30,6 +32,7 @@ let useStore: typeof import("./store.js").useStore;
 let lastWs: InstanceType<typeof MockWebSocket>;
 
 class MockWebSocket {
+  static instances: MockWebSocket[] = [];
   static OPEN = 1;
   static CLOSED = 3;
   static CONNECTING = 0;
@@ -49,6 +52,7 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url;
+    MockWebSocket.instances.push(this);
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     lastWs = this;
   }
@@ -65,7 +69,10 @@ beforeEach(async () => {
   vi.useFakeTimers();
   getDiffStatsMock.mockReset();
   getDiffStatsMock.mockResolvedValue({ stats: {} });
+  listSessionsMock.mockReset();
+  listSessionsMock.mockResolvedValue([]);
   playNotificationSoundMock.mockReset();
+  MockWebSocket.instances = [];
 
   const storeModule = await import("./store.js");
   useStore = storeModule.useStore;
@@ -133,22 +140,30 @@ describe("connectSession", () => {
     expect(lastWs).toBe(first);
   });
 
-  it("sends session_subscribe with last_seq on open when store has messages", () => {
+  it("sends session_subscribe with last_seq and known_frozen_count on open when store has messages", () => {
     // Simulate a WebSocket reconnect (not a page refresh): store already has
     // messages, so we use the cached last_seq from localStorage
     localStorage.setItem("companion:last-seq:s1", "12");
-    useStore.getState().appendMessage("s1", {
-      id: "msg-existing",
-      role: "user",
-      content: "existing message",
-      timestamp: 1000,
-    });
+    useStore.getState().setMessages("s1", [
+      {
+        id: "msg-existing",
+        role: "user",
+        content: "existing message",
+        timestamp: 1000,
+      },
+      {
+        id: "msg-hot",
+        role: "assistant",
+        content: "hot reply",
+        timestamp: 2000,
+      },
+    ], { frozenCount: 1 });
     wsModule.connectSession("s1");
 
     lastWs.onopen?.(new Event("open"));
 
     expect(lastWs.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session_subscribe", last_seq: 12 }),
+      JSON.stringify({ type: "session_subscribe", last_seq: 12, known_frozen_count: 1 }),
     );
   });
 
@@ -164,7 +179,7 @@ describe("connectSession", () => {
     lastWs.onopen?.(new Event("open"));
 
     expect(lastWs.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session_subscribe", last_seq: 0 }),
+      JSON.stringify({ type: "session_subscribe", last_seq: 0, known_frozen_count: 0 }),
     );
   });
 
@@ -175,8 +190,28 @@ describe("connectSession", () => {
     lastWs.onopen?.(new Event("open"));
 
     expect(lastWs.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session_subscribe", last_seq: 0 }),
+      JSON.stringify({ type: "session_subscribe", last_seq: 0, known_frozen_count: 0 }),
     );
+  });
+});
+
+describe("visibility reconnect", () => {
+  it("reconnects only the current session when tab becomes visible", () => {
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", cwd: "/tmp/s1", createdAt: Date.now(), archived: false, state: "exited" },
+      { sessionId: "s2", cwd: "/tmp/s2", createdAt: Date.now(), archived: false, state: "exited" },
+    ]);
+    useStore.getState().setCurrentSession("s2");
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0]?.url).toBe("ws://localhost:3456/ws/browser/s2");
   });
 });
 
@@ -267,6 +302,24 @@ describe("handleMessage: session_init", () => {
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
     expect(useStore.getState().sessionNames.get("s1")).toBe("Custom Name");
+  });
+});
+
+describe("handleMessage: session_created", () => {
+  it("refreshes sdk sessions without opening sockets for every listed session", async () => {
+    listSessionsMock.mockResolvedValueOnce([
+      { sessionId: "s-new-1", cwd: "/tmp/a", createdAt: Date.now(), archived: false },
+      { sessionId: "s-new-2", cwd: "/tmp/b", createdAt: Date.now(), archived: false },
+    ]);
+
+    wsModule.connectSession("s-origin");
+    fireMessage({ type: "session_created", session_id: "s-new-1" });
+    await Promise.resolve();
+
+    expect(listSessionsMock).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().sdkSessions.map((s) => s.sessionId)).toEqual(["s-new-1", "s-new-2"]);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0]?.url).toBe("ws://localhost:3456/ws/browser/s-origin");
   });
 });
 
@@ -1526,6 +1579,86 @@ describe("handleMessage: message_history", () => {
     const msgs = useStore.getState().messages.get("s1")!;
     expect(msgs).toHaveLength(2);
     expect(msgs[1].turnDurationMs).toBe(3500);
+  });
+});
+
+describe("handleMessage: history_sync", () => {
+  it("appends frozen delta and replaces the hot tail", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    useStore.getState().setMessages("s1", [
+      { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
+      { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
+    ], { frozenCount: 1 });
+
+    fireMessage({
+      type: "history_sync",
+      frozen_base_count: 1,
+      frozen_delta: [
+        {
+          type: "assistant",
+          message: {
+            id: "frozen-2",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [{ type: "text", text: "new frozen reply" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 3000,
+        },
+        {
+          type: "result",
+          data: {
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            duration_ms: 100,
+            duration_api_ms: 50,
+            num_turns: 1,
+            total_cost_usd: 0.01,
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+            uuid: "r1",
+            session_id: "s1",
+          },
+        },
+      ],
+      hot_messages: [
+        { type: "user_message", id: "hot-2", content: "new hot user", timestamp: 4000 },
+      ],
+      frozen_count: 2,
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs.map((m) => m.id)).toEqual(["frozen-1", "frozen-2", "hot-2"]);
+    expect(msgs[2]?.content).toBe("new hot user");
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
+  });
+
+  it("clears the prior hot tail when history_sync hot_messages is empty", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    useStore.getState().setMessages("s1", [
+      { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
+      { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
+    ], { frozenCount: 1 });
+
+    fireMessage({
+      type: "history_sync",
+      frozen_base_count: 1,
+      frozen_delta: [],
+      hot_messages: [],
+      frozen_count: 1,
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs.map((m) => m.id)).toEqual(["frozen-1"]);
+    expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(1);
   });
 });
 

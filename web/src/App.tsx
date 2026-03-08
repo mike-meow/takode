@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useStore } from "./store.js";
-import { connectSession, sendVsCodeSelectionUpdate } from "./ws.js";
+import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
 
 import { parseHash, navigateToSession, navigateToMostRecentSession } from "./utils/routing.js";
@@ -174,6 +174,7 @@ export default function App() {
   // Capture the localStorage-restored session ID during render (before any effects run)
   // so the mount logic can use it even if the hash-sync branch would clear it.
   const restoredIdRef = useRef(useStore.getState().currentSessionId);
+  const connectedSessionIdRef = useRef<string | null>(null);
 
   // Sync hash → store. On mount, restore a localStorage session into the URL first.
   useEffect(() => {
@@ -192,21 +193,47 @@ export default function App() {
       }
       // Don't connect WebSocket or fire REST calls for pending sessions
       // (they don't exist on the server yet)
-      if (!isPendingId(route.sessionId)) {
+      if (isPendingId(route.sessionId)) {
+        if (connectedSessionIdRef.current) {
+          disconnectSession(connectedSessionIdRef.current);
+          connectedSessionIdRef.current = null;
+        }
+      } else {
+        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== route.sessionId) {
+          disconnectSession(connectedSessionIdRef.current);
+        }
         store.markSessionViewed(route.sessionId);
         api.markSessionRead?.(route.sessionId).catch(() => {});
         connectSession(route.sessionId);
+        connectedSessionIdRef.current = route.sessionId;
       }
     } else if (route.page === "home") {
       const store = useStore.getState();
       if (store.currentSessionId !== null) {
         store.setCurrentSession(null);
       }
+      if (connectedSessionIdRef.current) {
+        disconnectSession(connectedSessionIdRef.current);
+        connectedSessionIdRef.current = null;
+      }
       // Auto-navigate to the most recent session if available
       navigateToMostRecentSession({ replace: true });
+    } else {
+      if (connectedSessionIdRef.current) {
+        disconnectSession(connectedSessionIdRef.current);
+        connectedSessionIdRef.current = null;
+      }
     }
-    // For other pages (settings, terminal, etc.), preserve currentSessionId
   }, [route]);
+
+  useEffect(() => {
+    return () => {
+      if (connectedSessionIdRef.current) {
+        disconnectSession(connectedSessionIdRef.current);
+        connectedSessionIdRef.current = null;
+      }
+    };
+  }, []);
 
   if (route.page === "playground") {
     return <Playground />;

@@ -308,7 +308,7 @@ export type BrowserOutgoingMessage =
     client_msg_id?: string;
   }
   | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
-  | { type: "session_subscribe"; last_seq: number }
+  | { type: "session_subscribe"; last_seq: number; known_frozen_count?: number }
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string; interruptSource?: "user" | "leader" | "system" }
   | { type: "set_model"; model: string; client_msg_id?: string }
@@ -361,6 +361,13 @@ export type BrowserIncomingMessageBase =
   | { type: "vscode_selection_state"; state: VsCodeSelectionState | null }
   | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[]; agentSource?: { sessionId: string; sessionLabel?: string }; vscodeSelection?: VsCodeSelectionMetadata }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
+  | {
+    type: "history_sync";
+    frozen_base_count: number;
+    frozen_delta: BrowserIncomingMessage[];
+    hot_messages: BrowserIncomingMessage[];
+    frozen_count: number;
+  }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_order_update"; sessionOrder: Record<string, string[]> }
   | { type: "group_order_update"; groupOrder: string[] }

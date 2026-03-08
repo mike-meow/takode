@@ -230,6 +230,19 @@ function setTouchDevice(enabled: boolean) {
 }
 
 describe("Sidebar", { timeout: 10000 }, () => {
+  it("polling refreshes sdk sessions without calling connectAllSessions", async () => {
+    const listed = [makeSdkSession("s1")];
+    mockApi.listSessions.mockResolvedValueOnce(listed);
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalled();
+      expect(mockState.setSdkSessions).toHaveBeenCalledWith(listed);
+    });
+    expect(mockConnectAllSessions).not.toHaveBeenCalled();
+  });
+
   it("renders 'New Session' button", () => {
     render(<Sidebar />);
     expect(screen.getByText("New Session")).toBeInTheDocument();

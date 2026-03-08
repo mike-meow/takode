@@ -10,6 +10,9 @@ const transport = createWsTransport({
     const messages = useStore.getState().messages.get(sessionId);
     return Boolean(messages && messages.length > 0);
   },
+  getKnownFrozenCount: (sessionId) => {
+    return useStore.getState().messageFrozenCounts.get(sessionId) ?? 0;
+  },
   onConnecting: (sessionId) => {
     useStore.getState().setConnectionStatus(sessionId, "connecting");
   },
@@ -32,9 +35,6 @@ const transport = createWsTransport({
 handleIncomingMessage = createWsMessageHandler({
   disconnectSession: (sessionId) => {
     transport.disconnectSession(sessionId);
-  },
-  connectAllSessions: (sessions) => {
-    transport.connectAllSessions(sessions);
   },
 });
 
@@ -92,10 +92,11 @@ if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       const store = useStore.getState();
-      for (const s of store.sdkSessions) {
-        if (!s.archived && !transport.hasSocket(s.sessionId)) {
-          connectSession(s.sessionId);
-        }
+      const currentSessionId = store.currentSessionId;
+      if (!currentSessionId) return;
+      const sdkSession = store.sdkSessions.find((s) => s.sessionId === currentSessionId);
+      if (sdkSession && !sdkSession.archived && !transport.hasSocket(currentSessionId)) {
+        connectSession(currentSessionId);
       }
     }
   });

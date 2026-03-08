@@ -1,6 +1,6 @@
 import { useStore } from "./store.js";
 import { api } from "./api.js";
-import type { BrowserIncomingMessage, ContentBlock, ChatMessage, TaskItem, SdkSessionInfo } from "./types.js";
+import type { BrowserIncomingMessage, ContentBlock, ChatMessage, TaskItem } from "./types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound } from "./utils/notification-sound.js";
 
@@ -13,7 +13,6 @@ const CLI_DISCONNECT_DEBOUNCE_MS = 250;
 
 export interface WsMessageHandlerDeps {
   disconnectSession: (sessionId: string) => void;
-  connectAllSessions: (sessions: SdkSessionInfo[]) => void;
 }
 
 function clearPendingCliDisconnect(sessionId: string): void {
@@ -235,6 +234,129 @@ function mergeContentBlocks(existing: ContentBlock[], incoming: ContentBlock[]):
   }
 
   return result;
+}
+
+function normalizeHistoryMessages(
+  sessionId: string,
+  historyMessages: BrowserIncomingMessage[],
+  startIndex = 0,
+): { chatMessages: ChatMessage[]; frozenCount: number } {
+  const store = useStore.getState();
+  const chatMessages: ChatMessage[] = [];
+  let frozenCount = 0;
+
+  for (let i = 0; i < historyMessages.length; i++) {
+    const histMsg = historyMessages[i];
+    const historyIndex = startIndex + i;
+    if (histMsg.type === "user_message") {
+      chatMessages.push({
+        id: histMsg.id || nextId(),
+        role: "user",
+        content: histMsg.content,
+        timestamp: histMsg.timestamp,
+        ...(histMsg.images?.length ? { images: histMsg.images } : {}),
+        ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
+        ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
+      });
+    } else if (histMsg.type === "assistant") {
+      const msg = histMsg.message;
+      const textContent = extractTextFromBlocks(msg.content);
+      chatMessages.push({
+        id: msg.id,
+        role: "assistant",
+        content: textContent,
+        contentBlocks: msg.content,
+        timestamp: histMsg.timestamp || Date.now(),
+        parentToolUseId: histMsg.parent_tool_use_id,
+        model: msg.model,
+        stopReason: msg.stop_reason,
+        cliUuid: (histMsg as Record<string, unknown>).uuid as string | undefined,
+        leaderUserAddressed: (histMsg as { leader_user_addressed?: boolean }).leader_user_addressed === true,
+        ...(typeof (histMsg as Record<string, unknown>).turn_duration_ms === "number"
+          ? { turnDurationMs: (histMsg as Record<string, unknown>).turn_duration_ms as number }
+          : {}),
+      });
+      if (msg.content?.length) {
+        extractTasksFromBlocks(sessionId, msg.content);
+        extractChangedFilesFromBlocks(sessionId, msg.content);
+      }
+      const histToolStartTimes = (histMsg as Record<string, unknown>).tool_start_times as Record<string, number> | undefined;
+      if (histToolStartTimes) {
+        store.setToolStartTimestamps(sessionId, histToolStartTimes);
+      }
+    } else if (histMsg.type === "compact_marker") {
+      chatMessages.push({
+        id: histMsg.id || `compact-${historyIndex}`,
+        role: "system",
+        content: histMsg.summary || "Conversation compacted",
+        timestamp: histMsg.timestamp,
+        variant: "info",
+      });
+    } else if (histMsg.type === "permission_denied") {
+      chatMessages.push({
+        id: histMsg.id,
+        role: "system",
+        content: histMsg.summary,
+        timestamp: histMsg.timestamp,
+        variant: "denied",
+      });
+    } else if (histMsg.type === "permission_approved") {
+      chatMessages.push({
+        id: histMsg.id,
+        role: "system",
+        content: histMsg.summary,
+        timestamp: histMsg.timestamp,
+        variant: "approved",
+        ...(histMsg.answers?.length ? { metadata: { answers: histMsg.answers } } : {}),
+      });
+    } else if (histMsg.type === "tool_result_preview") {
+      for (const preview of histMsg.previews) {
+        store.setToolResult(sessionId, preview.tool_use_id, preview);
+      }
+    } else if (histMsg.type === "task_notification") {
+      if (histMsg.tool_use_id) {
+        store.setBackgroundAgentNotif(sessionId, histMsg.tool_use_id, {
+          status: histMsg.status,
+          outputFile: histMsg.output_file,
+          summary: histMsg.summary,
+        });
+      }
+    } else if (histMsg.type === "result") {
+      const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
+      if (r.is_error) {
+        const errorText = r.errors?.length
+          ? r.errors.join(", ")
+          : r.result || "An error occurred";
+        chatMessages.push({
+          id: `hist-error-${historyIndex}`,
+          role: "system",
+          content: `Error: ${errorText}`,
+          timestamp: Date.now(),
+          variant: "error",
+        });
+      }
+      frozenCount = chatMessages.length;
+    }
+  }
+
+  return { chatMessages, frozenCount };
+}
+
+function updateSessionPreviewFromHistory(sessionId: string, historyMessages: BrowserIncomingMessage[]): void {
+  const store = useStore.getState();
+  for (let i = historyMessages.length - 1; i >= 0; i--) {
+    const msg = historyMessages[i];
+    if (msg.type === "user_message" && msg.content) {
+      store.setSessionPreview(sessionId, msg.content.slice(0, 80));
+      break;
+    }
+  }
+}
+
+function resetAuthoritativeHistoryState(sessionId: string): void {
+  const store = useStore.getState();
+  store.clearPermissions(sessionId);
+  store.clearAutoExpandedTurns(sessionId);
 }
 
 function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, deps: WsMessageHandlerDeps) {
@@ -733,7 +855,6 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         console.log(`[ws] session_created: refreshing session list for ${createdId}`);
         api.listSessions().then((list) => {
           store.setSdkSessions(list);
-          deps.connectAllSessions(list);
         }).catch((err) => {
           console.warn("[ws] Failed to refresh sessions after session_created:", err);
         });
@@ -1003,131 +1124,51 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "message_history": {
-      // Clear stale pending permissions — the server will re-send any that
-      // are actually still pending as permission_request messages immediately
-      // after message_history. This prevents stale banners from surviving
-      // reconnects or server restarts.
-      store.clearPermissions(sessionId);
-      // Clear transient turn auto-expansion from previous reconnects or
-      // interrupted follow-ups. The server history is authoritative here, so
-      // reopening a session should recompute collapsed turns from the fresh feed.
-      store.clearAutoExpandedTurns(sessionId);
-      const chatMessages: ChatMessage[] = [];
-      let frozenCount = 0;
-      for (let i = 0; i < data.messages.length; i++) {
-        const histMsg = data.messages[i];
-        if (histMsg.type === "user_message") {
-          chatMessages.push({
-            id: histMsg.id || nextId(),
-            role: "user",
-            content: histMsg.content,
-            timestamp: histMsg.timestamp,
-            ...(histMsg.images?.length ? { images: histMsg.images } : {}),
-            ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
-            ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
-          });
-        } else if (histMsg.type === "assistant") {
-          const msg = histMsg.message;
-          const textContent = extractTextFromBlocks(msg.content);
-          chatMessages.push({
-            id: msg.id,
-            role: "assistant",
-            content: textContent,
-            contentBlocks: msg.content,
-            timestamp: histMsg.timestamp || Date.now(),
-            parentToolUseId: histMsg.parent_tool_use_id,
-            model: msg.model,
-            stopReason: msg.stop_reason,
-            cliUuid: (histMsg as Record<string, unknown>).uuid as string | undefined,
-            leaderUserAddressed: (histMsg as { leader_user_addressed?: boolean }).leader_user_addressed === true,
-            ...(typeof (histMsg as Record<string, unknown>).turn_duration_ms === "number"
-              ? { turnDurationMs: (histMsg as Record<string, unknown>).turn_duration_ms as number }
-              : {}),
-          });
-          // Also extract tasks and changed files from history
-          if (msg.content?.length) {
-            extractTasksFromBlocks(sessionId, msg.content);
-            extractChangedFilesFromBlocks(sessionId, msg.content);
-          }
-          // Restore tool start timestamps for in-flight tools on reconnect
-          const histToolStartTimes = (histMsg as Record<string, unknown>).tool_start_times as Record<string, number> | undefined;
-          if (histToolStartTimes) {
-            store.setToolStartTimestamps(sessionId, histToolStartTimes);
-          }
-        } else if (histMsg.type === "compact_marker") {
-          chatMessages.push({
-            id: histMsg.id || `compact-${i}`,
-            role: "system",
-            content: histMsg.summary || "Conversation compacted",
-            timestamp: histMsg.timestamp,
-            variant: "info",
-          });
-        } else if (histMsg.type === "permission_denied") {
-          chatMessages.push({
-            id: histMsg.id,
-            role: "system",
-            content: histMsg.summary,
-            timestamp: histMsg.timestamp,
-            variant: "denied",
-          });
-        } else if (histMsg.type === "permission_approved") {
-          chatMessages.push({
-            id: histMsg.id,
-            role: "system",
-            content: histMsg.summary,
-            timestamp: histMsg.timestamp,
-            variant: "approved",
-            ...(histMsg.answers?.length ? { metadata: { answers: histMsg.answers } } : {}),
-          });
-        } else if (histMsg.type === "tool_result_preview") {
-          for (const preview of histMsg.previews) {
-            store.setToolResult(sessionId, preview.tool_use_id, preview);
-          }
-        } else if (histMsg.type === "task_notification") {
-          // Replay background agent completion so bgNotif survives reconnects
-          if (histMsg.tool_use_id) {
-            store.setBackgroundAgentNotif(sessionId, histMsg.tool_use_id, {
-              status: histMsg.status,
-              outputFile: histMsg.output_file,
-              summary: histMsg.summary,
-            });
-          }
-        } else if (histMsg.type === "result") {
-          const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
-          if (r.is_error) {
-            const errorText = r.errors?.length
-              ? r.errors.join(", ")
-              : r.result || "An error occurred";
-            chatMessages.push({
-              id: `hist-error-${i}`,
-              role: "system",
-              content: `Error: ${errorText}`,
-              timestamp: Date.now(),
-              variant: "error",
-            });
-          }
-          frozenCount = chatMessages.length;
-        }
-      }
-      // Server history is authoritative — always replace browser state.
-      // This prevents cross-session message contamination that occurred
-      // when the old merge logic kept stale messages from a previous session.
+      resetAuthoritativeHistoryState(sessionId);
+      const { chatMessages, frozenCount } = normalizeHistoryMessages(sessionId, data.messages);
       store.setMessages(sessionId, chatMessages, { frozenCount });
-      // If we received history with messages, the CLI was connected before (e.g. page refresh).
-      // Mark it so the UI shows "CLI disconnected" instead of "Starting session..." if it drops.
       if (chatMessages.length > 0) {
         store.setCliEverConnected(sessionId);
       }
       processedToolUseIds.delete(sessionId);
       taskCounters.delete(sessionId);
-      // Extract last user message as sidebar preview
-      for (let i = data.messages.length - 1; i >= 0; i--) {
-        const m = data.messages[i];
-        if (m.type === "user_message" && m.content) {
-          store.setSessionPreview(sessionId, m.content.slice(0, 80));
-          break;
-        }
+      updateSessionPreviewFromHistory(sessionId, data.messages);
+      break;
+    }
+
+    case "history_sync": {
+      resetAuthoritativeHistoryState(sessionId);
+      const existingMessages = store.messages.get(sessionId) || [];
+      const existingFrozenCount = Math.max(
+        0,
+        Math.min(store.messageFrozenCounts.get(sessionId) ?? 0, existingMessages.length),
+      );
+      const reusableFrozenCount = Math.max(0, Math.min(existingFrozenCount, data.frozen_base_count));
+      const frozenPrefix = reusableFrozenCount > 0
+        ? existingMessages.slice(0, reusableFrozenCount)
+        : [];
+      const { chatMessages: frozenDeltaMessages } = normalizeHistoryMessages(
+        sessionId,
+        data.frozen_delta,
+        data.frozen_base_count,
+      );
+      const { chatMessages: hotMessages } = normalizeHistoryMessages(
+        sessionId,
+        data.hot_messages,
+        data.frozen_count,
+      );
+      const mergedMessages = [...frozenPrefix, ...frozenDeltaMessages, ...hotMessages];
+      const nextFrozenCount = Math.max(
+        frozenPrefix.length,
+        Math.min(data.frozen_count, frozenPrefix.length + frozenDeltaMessages.length),
+      );
+      store.setMessages(sessionId, mergedMessages, { frozenCount: nextFrozenCount });
+      if (mergedMessages.length > 0) {
+        store.setCliEverConnected(sessionId);
       }
+      processedToolUseIds.delete(sessionId);
+      taskCounters.delete(sessionId);
+      updateSessionPreviewFromHistory(sessionId, [...data.frozen_delta, ...data.hot_messages]);
       break;
     }
   }
