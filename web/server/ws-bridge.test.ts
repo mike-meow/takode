@@ -3803,7 +3803,8 @@ describe("Persistence", () => {
       turnId: null,
       disconnectedAt: null,
       resumeConfirmedAt: null,
-      turnTarget: null,
+      // turnTarget is set by markRunningFromUserDispatch (optimistic running state)
+      turnTarget: expect.any(String),
       lastError: null,
     });
   });

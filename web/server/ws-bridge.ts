@@ -5889,12 +5889,20 @@ export class WsBridge {
       }
 
       let pendingTurnTarget: UserDispatchTurnTarget | null = null;
-      if (msg.type === "user_message" && ingested?.wasGenerating) {
-        const interruptSource =
-          msg.agentSource
-            ? (this.isSystemSourceTag(msg.agentSource) ? "system" : "leader")
-            : "user";
-        pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource);
+      if (msg.type === "user_message" && ingested && session.state.backend_state !== "broken") {
+        // Mark session running for ALL user_message dispatches, not just
+        // when the session was already generating. Without this, idle SDK
+        // sessions stay visually idle until the CLI emits a status_change
+        // event — creating a flicker gap. The interruptSource is only set
+        // when wasGenerating was true (an actual interruption occurred).
+        // Skip for broken sessions — they can't process messages until
+        // the adapter relaunches.
+        const interruptSource = ingested.wasGenerating
+          ? (msg.agentSource
+              ? (this.isSystemSourceTag(msg.agentSource) ? "system" : "leader")
+              : "user")
+          : undefined;
+        pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource ?? null);
         this.trackUserMessageForTurn(session, ingested.historyIndex, pendingTurnTarget);
       }
 
