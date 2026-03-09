@@ -21,41 +21,32 @@ the current scroll rules allow.
 In practice, that means:
 
 - scroll to the maximum currently allowed scroll position once
-- if runway is not available yet because no assistant token has arrived, treat the
-  just-sent user message as the last renderable message while the session is
-  running
-- once that pending-user runway becomes available, allow one follow-up bottom
-  scroll for the same sent message, after that runway has actually been laid
-  out in the DOM
+- the newest user message itself defines that allowed position
 - do not separately pin the user turn to the top of the viewport
 
 ### 2. Scroll runway
 
-The feed may include extra scrollable runway below the real content whenever
-the top-level session is actively `running`.
+The feed includes a persistent scroll runway below the real content whenever
+there is a user turn in the visible feed.
 
-The runway is measured relative to the last renderable top-level message.
+The runway is measured relative to the newest user message only.
 
 The practical rule is:
 
-- while the session is `running`, find the last renderable top-level message
-- allow enough overscroll for that final message to reach the top of the
+- find the newest user message in the visible feed
+- allow enough overscroll for that user message to reach the top of the
   viewport
-- if that final message is taller than the viewport, still allow scrolling
-  through it until its bottom has been seen
-- never add blank runway beyond the point needed to finish reading the last
-  message
+- do not use the newest assistant message to size the runway
+- keep that runway present after generation finishes
+- replace the runway target only when a newer user message arrives
 
-This avoids long confusing blank space after the last message while still
-allowing the user to read the full final message and align its top with the top
-of the viewport when needed.
+This preserves a stable "question near the top, answer below it" layout and
+avoids jarring post-generation jumps when the final assistant/system message is
+short.
 
-While the user is actively scrolled inside the temporary overscroll region, the
-runway must not shrink in a way that clamps the current scroll position upward.
-In practice, preserve enough runway to keep the current viewport stable, then
-allow it to shrink later as the user scrolls or as real content catches up.
-
-When the top-level session is not `running`, the runway must be zero.
+The runway may still shrink as real assistant content grows below the newest
+user message, but it must not shrink in a way that clamps the current scroll
+position upward while the user is already inside that extra scroll region.
 
 ### 3. Running Turn
 
@@ -76,22 +67,22 @@ If the user wants to follow the latest content live, they must do so manually.
 The existing jump-to-bottom/latest control remains the manual way to follow new
 content.
 
-That control should scroll to the real content bottom marker, not the absolute
-end of the runway, so it does not land the user in blank space.
+That control should scroll to the maximum currently allowed bottom position for
+the newest user turn.
 
 ### 5. Session restore
 
 Saved scroll position restore should keep working as before:
 
 - if the user left the session scrolled up, restore that position
-- if the user left the session at the bottom, restore to the real content
-  bottom, not the end of the runway
+- if the user left the session at the bottom, restore to the current allowed
+  bottom position for the newest user turn
 
-During a top-level running turn, restore should preserve the viewport-relative
-placement of the saved visible turn anchor when that anchor is still available.
-If the saved anchor cannot be restored reliably, prefer the end of the
-conversation over dropping the user near the beginning. Restore should wait
-until the session feed has actual content before applying.
+Restore should preserve the viewport-relative placement of the saved visible
+turn anchor when that anchor is still available. If the saved anchor cannot be
+restored reliably, prefer the end of the conversation over dropping the user
+near the beginning. Restore should wait until the session feed has actual
+content before applying.
 
 ## Non-goals
 

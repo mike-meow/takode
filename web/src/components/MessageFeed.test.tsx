@@ -424,19 +424,18 @@ describe("MessageFeed - message rendering", () => {
 // ─── Streaming indicator ─────────────────────────────────────────────────────
 
 describe("MessageFeed - streaming text", () => {
-  it("does not render bottom runway when the top-level session is not running", () => {
-    const sid = "test-bottom-runway-idle";
-    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+  it("does not render bottom runway when there is no user turn to anchor it", () => {
+    const sid = "test-bottom-runway-no-user";
+    setStoreMessages(sid, [makeMessage({ id: "a1", role: "assistant", content: "Answer" })]);
 
     render(<MessageFeed sessionId={sid} />);
 
     expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe("0px");
   });
 
-  it("adds runway during a running pre-stream turn using the last visible turn as the anchor", () => {
-    const sid = "test-bottom-runway-running-no-stream";
+  it("adds persistent runway using the newest user turn as the anchor even when idle", () => {
+    const sid = "test-bottom-runway-user-anchor";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
-    setStoreStatus(sid, "running");
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
@@ -478,20 +477,22 @@ describe("MessageFeed - streaming text", () => {
 
     expect(runway.style.height).toBe("520px");
 
-    setStoreStatus(sid, null);
+    setStoreMessages(sid, [makeMessage({ id: "a1", role: "assistant", content: "Answer only" })]);
     rerender(<MessageFeed sessionId={sid} />);
 
     expect(runway.style.height).toBe("0px");
   });
 
-  it("limits streaming runway to the space needed to bring the last renderable message to the top", () => {
-    const sid = "test-bottom-runway-streaming";
-    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+  it("sizes runway from the newest user turn instead of the streaming assistant message", () => {
+    const sid = "test-bottom-runway-user-not-stream";
+    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
+    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
+    setStoreMessages(sid, [user, assistant]);
     setStoreStreaming(sid, "Assistant is streaming");
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const streamingMessage = container.querySelector('[data-feed-streaming-message="true"]') as HTMLDivElement;
+    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
     const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
     const bottomMarker = runway.previousElementSibling as HTMLDivElement;
 
@@ -499,15 +500,15 @@ describe("MessageFeed - streaming text", () => {
       configurable: true,
       value: 600,
     });
-    streamingMessage.getBoundingClientRect = () => ({
+    userTurn.getBoundingClientRect = () => ({
       x: 0,
       y: 220,
       top: 220,
-      bottom: 440,
+      bottom: 300,
       left: 0,
       right: 0,
       width: 0,
-      height: 220,
+      height: 80,
       toJSON: () => ({}),
     });
     bottomMarker.getBoundingClientRect = () => ({
@@ -528,21 +529,17 @@ describe("MessageFeed - streaming text", () => {
     rerender(<MessageFeed sessionId={sid} />);
 
     expect(runway.style.height).toBe("380px");
-
-    setStoreStreaming(sid, undefined);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("0px");
   });
 
-  it("does not add blank runway when the last renderable streaming message is taller than the viewport", () => {
-    const sid = "test-bottom-runway-tall-streaming";
-    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
-    setStoreStreaming(sid, "Assistant is streaming");
+  it("collapses the persistent runway to zero once content below the newest user already exceeds one viewport", () => {
+    const sid = "test-bottom-runway-long-answer";
+    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
+    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Long answer" });
+    setStoreMessages(sid, [user, assistant]);
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const streamingMessage = container.querySelector('[data-feed-streaming-message="true"]') as HTMLDivElement;
+    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
     const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
     const bottomMarker = runway.previousElementSibling as HTMLDivElement;
 
@@ -550,15 +547,15 @@ describe("MessageFeed - streaming text", () => {
       configurable: true,
       value: 600,
     });
-    streamingMessage.getBoundingClientRect = () => ({
+    userTurn.getBoundingClientRect = () => ({
       x: 0,
       y: 120,
       top: 120,
-      bottom: 860,
+      bottom: 200,
       left: 0,
       right: 0,
       width: 0,
-      height: 740,
+      height: 80,
       toJSON: () => ({}),
     });
     bottomMarker.getBoundingClientRect = () => ({
@@ -581,14 +578,15 @@ describe("MessageFeed - streaming text", () => {
     expect(runway.style.height).toBe("0px");
   });
 
-  it("does not shrink the streaming runway enough to clamp the current scroll position upward", () => {
+  it("does not shrink the user-anchored runway enough to clamp the current scroll position upward", () => {
     const sid = "test-bottom-runway-no-clamp";
-    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
-    setStoreStreaming(sid, "Assistant is streaming");
+    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
+    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
+    setStoreMessages(sid, [user, assistant]);
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const streamingMessage = container.querySelector('[data-feed-streaming-message="true"]') as HTMLDivElement;
+    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
     const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
     const bottomMarker = runway.previousElementSibling as HTMLDivElement;
 
@@ -601,15 +599,15 @@ describe("MessageFeed - streaming text", () => {
       writable: true,
       value: 520,
     });
-    streamingMessage.getBoundingClientRect = () => ({
+    userTurn.getBoundingClientRect = () => ({
       x: 0,
       y: -100,
       top: -100,
-      bottom: 120,
+      bottom: -20,
       left: 0,
       right: 0,
       width: 0,
-      height: 220,
+      height: 80,
       toJSON: () => ({}),
     });
     bottomMarker.getBoundingClientRect = () => ({
@@ -673,118 +671,6 @@ describe("MessageFeed - streaming text", () => {
 
     expect(mockScrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
     expect(screen.queryByLabelText("Go to bottom")).toBeNull();
-  });
-
-  it("applies one follow-up bottom scroll when the sent user turn becomes the pending running tail", () => {
-    const sid = "test-scroll-pending-user-runway";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
-    setStoreMessages(sid, [firstUser, firstAssistant]);
-
-    const { rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = document.querySelector(".overflow-y-auto") as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1600,
-    });
-
-    mockScrollIntoView.mockClear();
-    mockScrollTo.mockClear();
-
-    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(mockScrollTo).toHaveBeenCalledTimes(1);
-    expect(mockScrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: "smooth" });
-
-    mockScrollIntoView.mockClear();
-    mockScrollTo.mockClear();
-
-    setStoreStatus(sid, "running");
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(mockScrollTo).toHaveBeenCalledTimes(1);
-    expect(mockScrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: "smooth" });
-  });
-
-  it("waits until the pending-user runway is laid out before applying the follow-up send scroll", () => {
-    const sid = "test-scroll-after-pending-user-runway-layout";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
-    setStoreMessages(sid, [firstUser, firstAssistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      get() {
-        const runway = document.querySelector('[data-testid="feed-bottom-runway"]') as HTMLDivElement | null;
-        const runwayHeight = runway ? Number.parseInt(runway.style.height || "0", 10) || 0 : 0;
-        return 600 + runwayHeight;
-      },
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-
-    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    const trailingTurn = container.querySelector('[data-turn-id="u2"]') as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    trailingTurn.getBoundingClientRect = () => ({
-      x: 0,
-      y: 320,
-      top: 320,
-      bottom: 400,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 80,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 400,
-      top: 400,
-      bottom: 400,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    mockScrollTo.mockClear();
-
-    setStoreStatus(sid, "running");
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("520px");
-    expect(mockScrollTo).toHaveBeenCalledTimes(1);
-    expect(mockScrollTo).toHaveBeenLastCalledWith({ top: 520, behavior: "smooth" });
   });
 
   it("does not keep auto-following after streaming has started", () => {
@@ -953,9 +839,32 @@ describe("MessageFeed - streaming text", () => {
       anchorOffsetTop: 0,
     });
 
-    render(<MessageFeed sessionId={sid} />);
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 600 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 900 : 0;
+      },
+    });
+    try {
+      render(<MessageFeed sessionId={sid} />);
 
-    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "end" });
+      expect(mockScrollTo).toHaveBeenCalledWith({ top: 300, behavior: "auto" });
+    } finally {
+      if (originalClientHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      }
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      }
+    }
   });
 
   it("renders streaming text with cursor animation", () => {
