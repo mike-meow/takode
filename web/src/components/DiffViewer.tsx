@@ -83,8 +83,25 @@ function formatFileHeaderPath(fileName: string): { dirLabel: string; baseLabel: 
   return { dirLabel, baseLabel };
 }
 
+function normalizeTextForLogicalLineDiff(text: string): string {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n");
+  if (lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
+
 function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
-  const patch = Diff.structuredPatch("", "", oldText, newText, "", "", { context: 3 });
+  const patch = Diff.structuredPatch(
+    "",
+    "",
+    normalizeTextForLogicalLineDiff(oldText),
+    normalizeTextForLogicalLineDiff(newText),
+    "",
+    "",
+    { context: 3 },
+  );
   return patch.hunks.map((hunk) => {
     const header = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
     const rawLines: DiffLine[] = [];
@@ -92,6 +109,9 @@ function parsePatchToHunks(oldText: string, newText: string): DiffHunk[] {
     let newLine = hunk.newStart;
 
     for (const raw of hunk.lines) {
+      if (raw === "\\ No newline at end of file") {
+        continue;
+      }
       const prefix = raw[0];
       const content = raw.slice(1);
       if (prefix === "-") {

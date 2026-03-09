@@ -126,6 +126,33 @@ index 1234567..abcdefg 100644
     expect(screen.getByText("No changes")).toBeTruthy();
   });
 
+  it("ignores line-ending-only changes for old/new text diffs", () => {
+    render(
+      <DiffViewer
+        oldText={"line one\r\nline two\r\n"}
+        newText={"line one\nline two"}
+        fileName="draft.md"
+      />,
+    );
+
+    expect(screen.getByText("No changes")).toBeTruthy();
+    expect(screen.queryByText("No newline at end of file")).toBeNull();
+  });
+
+  it("still shows substantive text edits when line endings also differ", () => {
+    const { container } = render(
+      <DiffViewer
+        oldText={"line one\r\nline two\r\n"}
+        newText={"line one\nline changed\n"}
+        fileName="draft.md"
+      />,
+    );
+
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+    expect(screen.queryByText("No changes")).toBeNull();
+  });
+
   it("shows 'No changes' when both are empty", () => {
     render(<DiffViewer />);
     expect(screen.getByText("No changes")).toBeTruthy();
