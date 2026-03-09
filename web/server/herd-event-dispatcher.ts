@@ -44,7 +44,7 @@ export interface LauncherHandle {
  *  Instead, user message count + IDs are included in the turn_end event
  *  so the leader can peek at specific messages via [msg-id] if needed. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
-  "turn_end", "compaction_started", "compaction_finished", "permission_request", "permission_resolved",
+  "turn_end", "permission_request", "permission_resolved",
   "session_error", "session_archived", "session_deleted",
 ]);
 

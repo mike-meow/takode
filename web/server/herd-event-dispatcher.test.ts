@@ -180,9 +180,9 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
-  it("delivers compaction_started events to orchestrator", () => {
-    // compaction_started is an actionable event — the leader should see it
-    // immediately so they know the worker is compacting, not stuck.
+  it("filters compaction herd events from orchestrator delivery", () => {
+    // Compaction lifecycle events are still formatted elsewhere, but the leader
+    // should not get them as herd events because they create avoidable noise.
     const { bridge, launcher } = createMocks();
     const dispatcher = new HerdEventDispatcher(bridge, launcher);
     dispatcher.setupForOrchestrator("orch-1");
@@ -193,11 +193,14 @@ describe("HerdEventDispatcher", () => {
       event: "compaction_started",
       data: { context_used_percent: 92 },
     }));
+    triggerEvent(makeEvent({
+      id: 2,
+      event: "compaction_finished",
+      data: { context_used_percent: 61 },
+    }));
     vi.advanceTimersByTime(600);
 
-    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
-    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
-    expect(content).toContain("compaction_started");
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
 
     dispatcher.destroy();
   });
