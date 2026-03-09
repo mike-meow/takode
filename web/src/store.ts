@@ -302,10 +302,6 @@ interface AppState {
   setSessionStatus: (sessionId: string, status: "idle" | "running" | "compacting" | "reverting" | null) => void;
   setSessionStuck: (sessionId: string, stuck: boolean) => void;
 
-  // Per-session feed visible count (persists across session switches)
-  feedVisibleCount: Map<string, number>;
-  setFeedVisibleCount: (sessionId: string, count: number) => void;
-
   // Per-session scroll position (persists across session switches, in-memory only)
   feedScrollPosition: Map<string, { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number; lastSeenContentBottom?: number | null }>;
   setFeedScrollPosition: (sessionId: string, pos: { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number; lastSeenContentBottom?: number | null }) => void;
@@ -489,7 +485,6 @@ export const useStore = create<AppState>((set) => ({
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
   vscodeSelectionContext: null,
-  feedVisibleCount: new Map(),
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
   turnActivityOverrides: new Map(),
@@ -691,8 +686,6 @@ export const useStore = create<AppState>((set) => ({
       toolStartTimestamps.delete(sessionId);
       const prStatus = new Map(s.prStatus);
       prStatus.delete(sessionId);
-      const feedVisibleCount = new Map(s.feedVisibleCount);
-      feedVisibleCount.delete(sessionId);
       const feedScrollPosition = new Map(s.feedScrollPosition);
       feedScrollPosition.delete(sessionId);
       const composerDrafts = new Map(s.composerDrafts);
@@ -746,7 +739,6 @@ export const useStore = create<AppState>((set) => ({
         backgroundAgentNotifs,
         toolStartTimestamps,
         prStatus,
-        feedVisibleCount,
         feedScrollPosition,
         composerDrafts,
         turnActivityOverrides,
@@ -1454,13 +1446,6 @@ export const useStore = create<AppState>((set) => ({
       return { diffPanelSelectedFile };
     }),
 
-  setFeedVisibleCount: (sessionId, count) =>
-    set((s) => {
-      const feedVisibleCount = new Map(s.feedVisibleCount);
-      feedVisibleCount.set(sessionId, count);
-      return { feedVisibleCount };
-    }),
-
   setFeedScrollPosition: (sessionId, pos) =>
     set((s) => {
       const feedScrollPosition = new Map(s.feedScrollPosition);
@@ -1603,7 +1588,6 @@ export const useStore = create<AppState>((set) => ({
       sessionInfoOpenSessionId: null,
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),
-      feedVisibleCount: new Map(),
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
       turnActivityOverrides: new Map(),

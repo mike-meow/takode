@@ -15,6 +15,7 @@ beforeAll(() => {
 
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ChatMessage } from "../types.js";
+import type { FeedEntry, Turn } from "../hooks/use-feed-model.js";
 
 // Mock react-markdown to avoid ESM issues in tests
 vi.mock("react-markdown", () => ({
@@ -34,7 +35,6 @@ const mockClearScrollToMessage = vi.fn();
 const mockSetActiveTaskTurnId = vi.fn();
 const mockKeepTurnExpanded = vi.fn();
 const mockSetCollapsibleTurnIds = vi.fn();
-const mockSetFeedVisibleCount = vi.fn();
 const mockSetFeedScrollPosition = vi.fn();
 const mockCollapseAllTurnActivity = vi.fn();
 
@@ -57,7 +57,6 @@ vi.mock("../store.js", () => {
       toolResults: mockStoreValues.toolResults ?? new Map(),
       toolStartTimestamps: mockStoreValues.toolStartTimestamps ?? new Map(),
       sdkSessions: mockStoreValues.sdkSessions ?? [],
-      feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
       autoExpandedTurnIds: mockStoreValues.autoExpandedTurnIds ?? new Map(),
@@ -74,8 +73,6 @@ vi.mock("../store.js", () => {
     return selector(state);
   };
   useStore.getState = () => ({
-    feedVisibleCount: mockStoreValues.feedVisibleCount ?? new Map(),
-    setFeedVisibleCount: mockSetFeedVisibleCount,
     feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
     setFeedScrollPosition: mockSetFeedScrollPosition,
     collapseAllTurnActivity: mockCollapseAllTurnActivity,
@@ -89,7 +86,15 @@ vi.mock("../store.js", () => {
   return { useStore };
 });
 
-import { MessageFeed, ElapsedTimer, findActiveTaskTurnIdForScroll } from "./MessageFeed.js";
+import {
+  MessageFeed,
+  ElapsedTimer,
+  buildFeedSections,
+  findActiveTaskTurnIdForScroll,
+  findSectionWindowStartIndexForTarget,
+  findVisibleSectionEndIndex,
+  findVisibleSectionStartIndex,
+} from "./MessageFeed.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -98,6 +103,83 @@ function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role
     timestamp: Date.now(),
     ...overrides,
   };
+}
+
+function makeFeedEntryMessage(msg: ChatMessage): FeedEntry {
+  return { kind: "message", msg };
+}
+
+function makeTurnForSections({
+  id,
+  userEntry = null,
+  systemEntries = [],
+  agentEntries = [],
+  responseEntry = null,
+  promotedEntries = [],
+}: {
+  id: string;
+  userEntry?: FeedEntry | null;
+  systemEntries?: FeedEntry[];
+  agentEntries?: FeedEntry[];
+  responseEntry?: FeedEntry | null;
+  promotedEntries?: FeedEntry[];
+}): Turn {
+  return {
+    id,
+    userEntry,
+    allEntries: [
+      ...systemEntries,
+      ...agentEntries,
+      ...promotedEntries,
+      ...(responseEntry ? [responseEntry] : []),
+    ],
+    agentEntries,
+    systemEntries,
+    responseEntry,
+    promotedEntries,
+    stats: {
+      messageCount: 0,
+      toolCount: 0,
+      subagentCount: 0,
+      herdEventCount: 0,
+    },
+  };
+}
+
+function makeSectionTurns(totalTurns: number): Turn[] {
+  return Array.from({ length: totalTurns }, (_, index) => {
+    const turnNumber = index + 1;
+    return makeTurnForSections({
+      id: `turn-${turnNumber}`,
+      userEntry: makeFeedEntryMessage(makeMessage({
+        id: `u${turnNumber}`,
+        role: "user",
+        content: `Turn ${turnNumber}`,
+      })),
+    });
+  });
+}
+
+function makeSectionedMessages(sectionCount: number, turnsPerSection = 50): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  let timestamp = 1_700_000_000_000;
+
+  for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
+    for (let turnIndex = 0; turnIndex < turnsPerSection; turnIndex++) {
+      const turnNumber = sectionIndex * turnsPerSection + turnIndex + 1;
+      const label = turnIndex === 0
+        ? `Section ${sectionIndex + 1} marker`
+        : `Section ${sectionIndex + 1} turn ${turnIndex + 1}`;
+      messages.push(makeMessage({
+        id: `u${turnNumber}`,
+        role: "user",
+        content: label,
+        timestamp: timestamp++,
+      }));
+    }
+  }
+
+  return messages;
 }
 
 function setStoreMessages(sessionId: string, msgs: ChatMessage[]) {
@@ -204,6 +286,18 @@ function setStoreSdkSessionRole(
   }];
 }
 
+function setStoreScrollToTurn(sessionId: string, turnId: string) {
+  const map = new Map();
+  map.set(sessionId, turnId);
+  mockStoreValues.scrollToTurnId = map;
+}
+
+function setStoreScrollToMessage(sessionId: string, messageId: string) {
+  const map = new Map();
+  map.set(sessionId, messageId);
+  mockStoreValues.scrollToMessageId = map;
+}
+
 function resetStore() {
   mockToggleTurnActivity.mockReset();
   mockFocusTurn.mockReset();
@@ -212,7 +306,6 @@ function resetStore() {
   mockSetActiveTaskTurnId.mockReset();
   mockKeepTurnExpanded.mockReset();
   mockSetCollapsibleTurnIds.mockReset();
-  mockSetFeedVisibleCount.mockReset();
   mockSetFeedScrollPosition.mockReset();
   mockCollapseAllTurnActivity.mockReset();
   mockStoreValues.messages = new Map();
@@ -232,6 +325,10 @@ function resetStore() {
   mockStoreValues.turnActivityOverrides = new Map();
   mockStoreValues.autoExpandedTurnIds = new Map();
   mockStoreValues.backgroundAgentNotifs = new Map();
+  mockStoreValues.scrollToTurnId = new Map();
+  mockStoreValues.scrollToMessageId = new Map();
+  mockStoreValues.sessionTaskHistory = new Map();
+  mockStoreValues.activeTaskTurnId = new Map();
   mockStoreValues.sdkSessions = [];
 }
 
@@ -275,6 +372,124 @@ describe("findActiveTaskTurnIdForScroll", () => {
     ];
 
     expect(findActiveTaskTurnIdForScroll(offsets, 0, "t2", 0)).toBe("t2");
+  });
+});
+
+describe("MessageFeed section windowing", () => {
+  it("chunks turns into fixed-size 50-turn sections", () => {
+    const sections = buildFeedSections(makeSectionTurns(120));
+
+    expect(sections).toHaveLength(3);
+    expect(sections.map((section) => section.turns.length)).toEqual([50, 50, 20]);
+    expect(findVisibleSectionStartIndex(sections, 3)).toBe(0);
+    expect(findVisibleSectionEndIndex(sections, 0, 3)).toBe(3);
+    expect(findVisibleSectionStartIndex(sections, 2)).toBe(1);
+    expect(findVisibleSectionEndIndex(sections, 1, 2)).toBe(3);
+  });
+
+  it("clamps target window selection for section-aware jumps", () => {
+    const sections = buildFeedSections(makeSectionTurns(200), 50);
+
+    expect(findSectionWindowStartIndexForTarget(sections, 0, 3)).toBe(0);
+    expect(findSectionWindowStartIndexForTarget(sections, 1, 3)).toBe(0);
+    expect(findSectionWindowStartIndexForTarget(sections, 2, 3)).toBe(1);
+    expect(findSectionWindowStartIndexForTarget(sections, 3, 3)).toBe(1);
+  });
+
+  it("slides a bounded three-section window when the user loads older and jumps back to latest", () => {
+    const sid = "test-section-window";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+    const jumpToLatestRef: { current: (() => void) | null } = { current: null };
+
+    const { container } = render(
+      <MessageFeed
+        sessionId={sid}
+        sectionTurnCount={2}
+        onJumpToLatestReady={(handler) => { jumpToLatestRef.current = handler; }}
+      />
+    );
+
+    expect(screen.queryByText("Section 1 marker")).toBeNull();
+    expect(screen.getByText("Section 2 marker")).toBeTruthy();
+    expect(screen.getByText("Section 4 marker")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load older section" })).toBeTruthy();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load older section" }));
+
+    expect(screen.getByText("Section 1 marker")).toBeTruthy();
+    expect(screen.queryByText("Section 4 marker")).toBeNull();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+
+    act(() => {
+      jumpToLatestRef.current?.();
+    });
+
+    expect(screen.queryByText("Section 1 marker")).toBeNull();
+    expect(screen.getByText("Section 2 marker")).toBeTruthy();
+    expect(screen.getByText("Section 4 marker")).toBeTruthy();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+  });
+
+  it("shows the newer-section control after loading older history", () => {
+    const sid = "test-section-newer-control";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+    fireEvent.click(screen.getByRole("button", { name: "Load older section" }));
+
+    expect(screen.getByRole("button", { name: "Load newer section" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Load newer section" }));
+    expect(screen.queryByText("Section 1 marker")).toBeNull();
+    expect(screen.getByText("Section 2 marker")).toBeTruthy();
+    expect(screen.getByText("Section 4 marker")).toBeTruthy();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+  });
+
+  it("remounts the correct section window before scrolling to an older turn", async () => {
+    const sid = "test-section-scroll-to-turn";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+    setStoreScrollToTurn(sid, "u1");
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+
+    expect(await screen.findByText("Section 1 marker")).toBeTruthy();
+    expect(screen.queryByText("Section 4 marker")).toBeNull();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+    expect(mockKeepTurnExpanded).toHaveBeenCalledWith(sid, "u1");
+    expect(mockClearScrollToTurn).toHaveBeenCalledWith(sid);
+  });
+
+  it("remounts the correct section window before scrolling to an older message", async () => {
+    const sid = "test-section-scroll-to-message";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+    setStoreScrollToMessage(sid, "u1");
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+
+    expect(await screen.findByText("Section 1 marker")).toBeTruthy();
+    expect(screen.queryByText("Section 4 marker")).toBeNull();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+    expect(mockFocusTurn).toHaveBeenCalledWith(sid, "u1");
+    expect(mockClearScrollToMessage).toHaveBeenCalledWith(sid);
+  });
+
+  it("restores a saved older-section anchor instead of falling back to latest", async () => {
+    const sid = "test-section-anchor-restore";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 240,
+      scrollHeight: 1600,
+      isAtBottom: false,
+      anchorTurnId: "u1",
+      anchorOffsetTop: 0,
+    });
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+
+    expect(await screen.findByText("Section 1 marker")).toBeTruthy();
+    expect(screen.queryByText("Section 4 marker")).toBeNull();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
   });
 });
 

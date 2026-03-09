@@ -22,7 +22,8 @@ import {
   type TurnStats,
 } from "../hooks/use-feed-model.js";
 
-const FEED_PAGE_SIZE = 100;
+const DEFAULT_VISIBLE_SECTION_COUNT = 3;
+const FEED_SECTION_TURN_COUNT = 50;
 
 function formatElapsed(ms: number): string {
   const secs = Math.floor(ms / 1000);
@@ -370,6 +371,57 @@ function getTurnSummaryDurationMs(turn: Turn, nextTurn: Turn | null, leaderMode:
 interface TurnOffsetIndex {
   turnId: string;
   offsetTop: number;
+}
+
+interface FeedSection {
+  id: string;
+  turns: Turn[];
+}
+
+export function buildFeedSections(turns: Turn[], sectionTurnCount = FEED_SECTION_TURN_COUNT): FeedSection[] {
+  if (turns.length === 0) return [];
+
+  const sections: FeedSection[] = [];
+  const normalizedSectionTurnCount = Math.max(1, sectionTurnCount);
+  for (let start = 0; start < turns.length; start += normalizedSectionTurnCount) {
+    const current = turns.slice(start, start + normalizedSectionTurnCount);
+    if (current.length === 0) continue;
+    sections.push({
+      id: current[0]?.id ?? `section-${sections.length}`,
+      turns: current,
+    });
+  }
+
+  return sections;
+}
+
+export function findVisibleSectionStartIndex(sections: FeedSection[], visibleSectionCount: number): number {
+  return Math.max(0, sections.length - Math.max(1, visibleSectionCount));
+}
+
+export function findVisibleSectionEndIndex(
+  sections: FeedSection[],
+  startIndex: number,
+  visibleSectionCount: number,
+): number {
+  if (sections.length === 0) return 0;
+  const normalizedStartIndex = Math.min(Math.max(0, startIndex), sections.length - 1);
+  return Math.min(sections.length, normalizedStartIndex + Math.max(1, visibleSectionCount));
+}
+
+function findPreviousSectionStartIndex(sections: FeedSection[], fromIndex: number): number | null {
+  return fromIndex > 0 ? Math.min(fromIndex - 1, sections.length - 1) : null;
+}
+
+export function findSectionWindowStartIndexForTarget(
+  sections: FeedSection[],
+  targetIndex: number,
+  visibleSectionCount: number,
+): number {
+  if (sections.length === 0) return 0;
+  const normalizedCount = Math.max(1, visibleSectionCount);
+  const maxStartIndex = Math.max(0, sections.length - normalizedCount);
+  return Math.min(Math.max(0, targetIndex - 1), maxStartIndex);
 }
 
 export function findActiveTaskTurnIdForScroll(
@@ -1075,7 +1127,8 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
 // ─── Turn list (owns collapse state so MessageFeed doesn't re-render on toggle) ─
 
-const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: { turns: Turn[]; sessionId: string; leaderMode: boolean }) {
+const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode }: { sections: FeedSection[]; sessionId: string; leaderMode: boolean }) {
+  const turns = useMemo(() => sections.flatMap((section) => section.turns), [sections]);
   const { turnStates, toggleTurn } = useCollapsePolicy({ sessionId, turns, leaderMode });
   const minuteBoundaryLabels = useMemo(() => {
     const visibleTimedMessages: ChatMessage[] = [];
@@ -1108,67 +1161,75 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
 
   return (
     <>
-      {turns.map((turn, index) => {
-        const isActivityExpanded = turnStates[index]?.isActivityExpanded ?? false;
-        const turnSummaryDuration = getTurnSummaryDurationMs(turn, turns[index + 1] ?? null, leaderMode);
+      {(() => {
+        let globalIndex = 0;
+        return sections.map((section) => (
+          <div key={section.id} data-feed-section-id={section.id} className="space-y-3 sm:space-y-5">
+            {section.turns.map((turn) => {
+              const turnIndex = globalIndex++;
+              const isActivityExpanded = turnStates[turnIndex]?.isActivityExpanded ?? false;
+              const turnSummaryDuration = getTurnSummaryDurationMs(turn, turns[turnIndex + 1] ?? null, leaderMode);
 
-        return (
-          <div key={turn.id}>
-            <div
-              data-turn-id={turn.id}
-              className="turn-container space-y-3 sm:space-y-5"
-              data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
-            >
-              {/* User message — always visible */}
-              {turn.userEntry && (
-                <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-              )}
+              return (
+                <div key={turn.id}>
+                  <div
+                    data-turn-id={turn.id}
+                    className="turn-container space-y-3 sm:space-y-5"
+                    data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
+                  >
+                    {/* User message — always visible */}
+                    {turn.userEntry && (
+                      <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                    )}
 
-              {isActivityExpanded ? (
-                /* Expanded: show all entries with collapse affordance */
-                turn.allEntries.length > 0 && (
-                  <TurnEntriesExpanded
-                    turn={turn}
-                    sessionId={sessionId}
-                    durationMs={turnSummaryDuration}
-                    minuteBoundaryLabels={minuteBoundaryLabels}
-                    onCollapse={() => toggleTurn(turn.id)}
-                  />
-                )
-              ) : (
-                <>
-                  {/* System messages — always visible */}
-                  {turn.systemEntries.length > 0 && (
-                    <FeedEntries entries={turn.systemEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-                  )}
-                  {/* Collapsed: single paw outside, activity bar + promoted entries + response in shared card */}
-                  {(turn.agentEntries.length > 0 || turn.promotedEntries.length > 0 || turn.responseEntry) && (
-                    <div className="flex items-start gap-3">
-                      <PawTrailAvatar />
-                      <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                        {turn.agentEntries.length > 0 && (
-                          <CollapsedActivityBar
-                            stats={turn.stats}
-                            durationMs={turnSummaryDuration}
-                            onClick={() => toggleTurn(turn.id)}
-                          />
+                    {isActivityExpanded ? (
+                      /* Expanded: show all entries with collapse affordance */
+                      turn.allEntries.length > 0 && (
+                        <TurnEntriesExpanded
+                          turn={turn}
+                          sessionId={sessionId}
+                          durationMs={turnSummaryDuration}
+                          minuteBoundaryLabels={minuteBoundaryLabels}
+                          onCollapse={() => toggleTurn(turn.id)}
+                        />
+                      )
+                    ) : (
+                      <>
+                        {/* System messages — always visible */}
+                        {turn.systemEntries.length > 0 && (
+                          <FeedEntries entries={turn.systemEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
                         )}
-                        {(turn.promotedEntries.length > 0 || turn.responseEntry) && (
-                          <div className="px-3 py-2.5">
-                            <HidePawContext.Provider value={true}>
-                              <FeedEntries entries={[...turn.promotedEntries, ...(turn.responseEntry ? [turn.responseEntry] : [])]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
-                            </HidePawContext.Provider>
+                        {/* Collapsed: single paw outside, activity bar + promoted entries + response in shared card */}
+                        {(turn.agentEntries.length > 0 || turn.promotedEntries.length > 0 || turn.responseEntry) && (
+                          <div className="flex items-start gap-3">
+                            <PawTrailAvatar />
+                            <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
+                              {turn.agentEntries.length > 0 && (
+                                <CollapsedActivityBar
+                                  stats={turn.stats}
+                                  durationMs={turnSummaryDuration}
+                                  onClick={() => toggleTurn(turn.id)}
+                                />
+                              )}
+                              {(turn.promotedEntries.length > 0 || turn.responseEntry) && (
+                                <div className="px-3 py-2.5">
+                                  <HidePawContext.Provider value={true}>
+                                    <FeedEntries entries={[...turn.promotedEntries, ...(turn.responseEntry ? [turn.responseEntry] : [])]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                                  </HidePawContext.Provider>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        ));
+      })()}
     </>
   );
 });
@@ -1181,11 +1242,13 @@ export function MessageFeed({
   latestIndicatorMode = "overlay",
   onLatestIndicatorVisibleChange,
   onJumpToLatestReady,
+  sectionTurnCount = FEED_SECTION_TURN_COUNT,
 }: {
   sessionId: string;
   latestIndicatorMode?: "overlay" | "external";
   onLatestIndicatorVisibleChange?: (visible: boolean) => void;
   onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
+  sectionTurnCount?: number;
 }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
@@ -1195,7 +1258,6 @@ export function MessageFeed({
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
@@ -1211,11 +1273,10 @@ export function MessageFeed({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
+  const [sectionWindowStart, setSectionWindowStart] = useState<number | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
-  const loadingMore = useRef(false);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
-  const visibleCount = useStore((s) => s.feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE);
   const restoredSessionIdRef = useRef<string | null>(null);
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
 
@@ -1269,9 +1330,34 @@ export function MessageFeed({
     frozenRevision,
   });
 
-  const totalTurns = turns.length;
-  const hasMore = totalTurns > visibleCount;
-  const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
+  const sections = useMemo(() => buildFeedSections(turns, sectionTurnCount), [sectionTurnCount, turns]);
+  const totalSections = sections.length;
+  const latestVisibleSectionStartIndex = useMemo(
+    () => findVisibleSectionStartIndex(sections, DEFAULT_VISIBLE_SECTION_COUNT),
+    [sections],
+  );
+  const visibleSectionStartIndex = sectionWindowStart ?? latestVisibleSectionStartIndex;
+  const visibleSectionEndIndex = useMemo(
+    () => findVisibleSectionEndIndex(sections, visibleSectionStartIndex, DEFAULT_VISIBLE_SECTION_COUNT),
+    [sections, visibleSectionStartIndex],
+  );
+  const visibleSections = useMemo(
+    () => sections.slice(visibleSectionStartIndex, visibleSectionEndIndex),
+    [sections, visibleSectionEndIndex, visibleSectionStartIndex],
+  );
+  const visibleTurns = useMemo(
+    () => visibleSections.flatMap((section) => section.turns),
+    [visibleSections],
+  );
+  const previousSectionStartIndex = useMemo(
+    () => findPreviousSectionStartIndex(sections, visibleSectionStartIndex),
+    [sections, visibleSectionStartIndex],
+  );
+  const nextSectionStartIndex = useMemo(() => {
+    return visibleSectionStartIndex + 1 < sections.length ? visibleSectionStartIndex + 1 : null;
+  }, [sections, visibleSectionStartIndex]);
+  const hasOlderSections = previousSectionStartIndex !== null;
+  const hasNewerSections = sectionWindowStart !== null && nextSectionStartIndex !== null;
   const isTopLevelStreaming = Boolean(streamingText);
   const newestMessage = messages[messages.length - 1];
   const lastUserTurnId = [...visibleTurns]
@@ -1290,6 +1376,27 @@ export function MessageFeed({
   useEffect(() => {
     useStore.getState().setCollapsibleTurnIds(sessionId, collapsibleTurnIds);
   }, [sessionId, collapsibleTurnIds]);
+
+  useEffect(() => {
+    setSectionWindowStart((current) => {
+      if (current == null) return null;
+      if (sections.length === 0) return null;
+      const normalizedCurrent = Math.min(current, sections.length - 1);
+      const next = findSectionWindowStartIndexForTarget(sections, normalizedCurrent, DEFAULT_VISIBLE_SECTION_COUNT);
+      return next === latestVisibleSectionStartIndex ? null : next;
+    });
+  }, [latestVisibleSectionStartIndex, sections]);
+
+  const getSectionWindowStartForTurnId = useCallback((turnId: string): number | null => {
+    const targetSectionIndex = sections.findIndex((section) => section.turns.some((turn) => turn.id === turnId));
+    if (targetSectionIndex < 0) return null;
+    const nextStartIndex = findSectionWindowStartIndexForTarget(
+      sections,
+      targetSectionIndex,
+      DEFAULT_VISIBLE_SECTION_COUNT,
+    );
+    return nextStartIndex === latestVisibleSectionStartIndex ? null : nextStartIndex;
+  }, [latestVisibleSectionStartIndex, sections]);
 
   // ─── Scroll management ─────────────────────────────────────────────────
 
@@ -1386,40 +1493,46 @@ export function MessageFeed({
     return true;
   }, []);
 
-  const handleLoadMore = useCallback(() => {
-    if (loadingMore.current) return;
-    loadingMore.current = true;
+  const moveSectionWindow = useCallback((nextStartIndex: number | null) => {
     const el = containerRef.current;
-    const prevHeight = el?.scrollHeight ?? 0;
-    const current = useStore.getState().feedVisibleCount.get(sessionId) ?? FEED_PAGE_SIZE;
-    useStore.getState().setFeedVisibleCount(sessionId, current + FEED_PAGE_SIZE);
-    // Preserve scroll position after DOM updates
+    const anchor = el ? findVisibleTurnAnchor(el) : null;
+    setSectionWindowStart(nextStartIndex);
     requestAnimationFrame(() => {
-      if (el) {
-        const newHeight = el.scrollHeight;
-        el.scrollTop += newHeight - prevHeight;
+      if (anchor?.turnId) {
+        restoreTurnAnchor(anchor.turnId, anchor.offsetTop ?? 0);
       }
-      loadingMore.current = false;
     });
-  }, [sessionId]);
+  }, [findVisibleTurnAnchor, restoreTurnAnchor]);
 
-  // Auto-load older messages when scrolling near the top
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    const container = containerRef.current;
-    if (!sentinel || !container || !hasMore) return;
+  const ensureSectionForTurnVisible = useCallback((turnId: string): boolean => {
+    const nextStartIndex = getSectionWindowStartForTurnId(turnId);
+    if (nextStartIndex === sectionWindowStart) return false;
+    if (nextStartIndex == null && visibleSectionStartIndex === latestVisibleSectionStartIndex) return false;
+    moveSectionWindow(nextStartIndex);
+    return true;
+  }, [
+    getSectionWindowStartForTurnId,
+    moveSectionWindow,
+    sectionWindowStart,
+    latestVisibleSectionStartIndex,
+    visibleSectionStartIndex,
+  ]);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          handleLoadMore();
-        }
-      },
-      { root: container, rootMargin: "200px 0px 0px 0px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, handleLoadMore]);
+  const handleLoadOlderSection = useCallback(() => {
+    if (previousSectionStartIndex == null) return;
+    moveSectionWindow(previousSectionStartIndex);
+  }, [moveSectionWindow, previousSectionStartIndex]);
+
+  const handleLoadNewerSection = useCallback(() => {
+    if (nextSectionStartIndex == null) return;
+    moveSectionWindow(nextSectionStartIndex === latestVisibleSectionStartIndex ? null : nextSectionStartIndex);
+  }, [latestVisibleSectionStartIndex, moveSectionWindow, nextSectionStartIndex]);
+
+  const resetVisibleSectionsToLatest = useCallback((behavior: ScrollBehavior = "auto") => {
+    if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) return;
+    setSectionWindowStart(null);
+    requestAnimationFrame(() => scrollToAllowedBottom(behavior));
+  }, [scrollToAllowedBottom, sectionWindowStart, totalSections]);
 
   useLayoutEffect(() => {
     updateBottomRunwayHeight();
@@ -1439,6 +1552,7 @@ export function MessageFeed({
     if (nearBottom) {
       lastSeenContentBottomRef.current = getRealContentBottom();
       setShowLatestPill(false);
+      resetVisibleSectionsToLatest("auto");
     }
     // Only trigger a re-render when the button state actually changes
     const shouldShow = !nearBottom;
@@ -1459,6 +1573,13 @@ export function MessageFeed({
     const shouldPreferAnchorRestore = Boolean(
       pos?.anchorTurnId && (isTopLevelStreaming || !pos.isAtBottom),
     );
+    const desiredSectionWindowStart = shouldPreferAnchorRestore && pos?.anchorTurnId
+      ? getSectionWindowStartForTurnId(pos.anchorTurnId)
+      : null;
+    if (desiredSectionWindowStart !== sectionWindowStart) {
+      setSectionWindowStart(desiredSectionWindowStart);
+      return;
+    }
     if (pos && shouldPreferAnchorRestore) {
       if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
         isNearBottom.current = false;
@@ -1481,7 +1602,16 @@ export function MessageFeed({
       scrollToAllowedBottom("auto");
     }
     restoredSessionIdRef.current = sessionId;
-  }, [isTopLevelStreaming, messages.length, restoreTurnAnchor, scrollToAllowedBottom, sessionId, streamingText]);
+  }, [
+    getSectionWindowStartForTurnId,
+    isTopLevelStreaming,
+    messages.length,
+    restoreTurnAnchor,
+    scrollToAllowedBottom,
+    sectionWindowStart,
+    sessionId,
+    streamingText,
+  ]);
 
   useEffect(() => {
     didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
@@ -1555,8 +1685,9 @@ export function MessageFeed({
   }, [messages, newestMessage?.id, newestMessage?.role, scrollToAllowedBottom, scrollToContentBottom]);
 
   const scrollToBottom = useCallback(() => {
+    resetVisibleSectionsToLatest("auto");
     scrollToContentBottom("smooth");
-  }, [scrollToContentBottom]);
+  }, [resetVisibleSectionsToLatest, scrollToContentBottom]);
 
   useEffect(() => {
     onLatestIndicatorVisibleChange?.(showLatestPill);
@@ -1573,22 +1704,29 @@ export function MessageFeed({
   useEffect(() => {
     if (!scrollToTurnId) return;
     clearScrollToTurn(sessionId);
-    const el = containerRef.current;
-    if (!el) return;
     // Expand the target turn's activity if needed.
     const overrides = useStore.getState().turnActivityOverrides.get(sessionId);
     const isExpanded = overrides?.get(scrollToTurnId);
     if (isExpanded !== true) {
       useStore.getState().keepTurnExpanded(sessionId, scrollToTurnId);
     }
-    // Use requestAnimationFrame so uncollapse DOM update settles first
-    requestAnimationFrame(() => {
-      const target = el.querySelector(`[data-turn-id="${CSS.escape(scrollToTurnId)}"]`);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
-  }, [scrollToTurnId, sessionId, clearScrollToTurn]);
+    const sectionChanged = ensureSectionForTurnVisible(scrollToTurnId);
+    const scheduleScroll = () => {
+      requestAnimationFrame(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const target = el.querySelector(`[data-turn-id="${escapeSelectorValue(scrollToTurnId)}"]`);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    };
+    if (sectionChanged) {
+      requestAnimationFrame(scheduleScroll);
+      return;
+    }
+    scheduleScroll();
+  }, [clearScrollToTurn, ensureSectionForTurnVisible, scrollToTurnId, sessionId]);
 
   // Scroll-to-message: triggered from QuestmasterPage version history clicks.
   // Finds the turn containing the target message, focuses it (expand target,
@@ -1598,8 +1736,6 @@ export function MessageFeed({
   useEffect(() => {
     if (!scrollToMessageId) return;
     clearScrollToMessage(sessionId);
-    const el = containerRef.current;
-    if (!el) return;
 
     // Find which turn contains this message
     const targetTurn = turns.find((t) =>
@@ -1610,15 +1746,25 @@ export function MessageFeed({
 
     // Focus: expand target turn, all others revert to defaults (last expanded, rest collapsed)
     useStore.getState().focusTurn(sessionId, targetTurn.id);
+    const sectionChanged = ensureSectionForTurnVisible(targetTurn.id);
 
     // Wait for DOM to settle, then scroll to the specific message
-    requestAnimationFrame(() => {
-      const target = el.querySelector(`[data-message-id="${escapeSelectorValue(scrollToMessageId)}"]`);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    });
-  }, [scrollToMessageId, sessionId, clearScrollToMessage, turns]);
+    const scheduleScroll = () => {
+      requestAnimationFrame(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const target = el.querySelector(`[data-message-id="${escapeSelectorValue(scrollToMessageId)}"]`);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    };
+    if (sectionChanged) {
+      requestAnimationFrame(scheduleScroll);
+      return;
+    }
+    scheduleScroll();
+  }, [clearScrollToMessage, ensureSectionForTurnVisible, scrollToMessageId, sessionId, turns]);
 
   // Track which task outline chip should be highlighted based on scroll position.
   // The reference line is near the container top (with a small offset to avoid
@@ -1743,15 +1889,31 @@ export function MessageFeed({
         <PawScrollProvider scrollRef={containerRef}>
         <PawCounterContext.Provider value={pawCounter}>
         <div className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
-          {hasMore && (
-            <div ref={sentinelRef} className="flex justify-center pb-2">
-              <span className="flex items-center gap-1.5 text-xs text-cc-muted">
+          {hasOlderSections && (
+            <div className="flex justify-center pb-2">
+              <button
+                type="button"
+                onClick={handleLoadOlderSection}
+                className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
+              >
                 <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
-                Loading older messages...
-              </span>
+                Load older section
+              </button>
             </div>
           )}
-          <TurnEntries turns={visibleTurns} sessionId={sessionId} leaderMode={isLeaderSession} />
+          <TurnEntries sections={visibleSections} sessionId={sessionId} leaderMode={isLeaderSession} />
+          {hasNewerSections && (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={handleLoadNewerSection}
+                className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
+              >
+                <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
+                Load newer section
+              </button>
+            </div>
+          )}
           <FeedFooter sessionId={sessionId} />
           <div ref={bottomRef} />
           <div
