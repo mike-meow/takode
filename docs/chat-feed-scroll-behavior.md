@@ -20,24 +20,25 @@ the current scroll rules allow.
 
 In practice, that means:
 
-- scroll to the real content bottom marker once
+- scroll to the maximum currently allowed scroll position once
 - if runway is not available yet because no assistant token has arrived, treat the
   just-sent user message as the last renderable message while the session is
   running
 - once that pending-user runway becomes available, allow one follow-up bottom
-  scroll for the same sent message
+  scroll for the same sent message, after that runway has actually been laid
+  out in the DOM
 - do not separately pin the user turn to the top of the viewport
 
 ### 2. Scroll runway
 
-The feed may include extra scrollable runway below the real content, but only
-while the top-level assistant response is actively streaming.
+The feed may include extra scrollable runway below the real content whenever
+the top-level session is actively `running`.
 
 The runway is measured relative to the last renderable top-level message.
 
 The practical rule is:
 
-- find the last renderable top-level message while streaming
+- while the session is `running`, find the last renderable top-level message
 - allow enough overscroll for that final message to reach the top of the
   viewport
 - if that final message is taller than the viewport, still allow scrolling
@@ -54,16 +55,19 @@ runway must not shrink in a way that clamps the current scroll position upward.
 In practice, preserve enough runway to keep the current viewport stable, then
 allow it to shrink later as the user scrolls or as real content catches up.
 
-When top-level streaming is not active, the runway must be zero.
+When the top-level session is not `running`, the runway must be zero.
 
-### 3. Assistant streaming
+### 3. Running Turn
 
-While assistant output is streaming:
+While the session is running:
 
 - do not continuously auto-scroll the viewport
 - do not keep forcing the viewport downward as new text arrives
 - let the user read the generated text in a stable position after the one-time
   send scroll
+
+When assistant text is streaming, the same rule still applies: no continuous
+auto-follow after the one-time send scroll.
 
 If the user wants to follow the latest content live, they must do so manually.
 
@@ -83,7 +87,7 @@ Saved scroll position restore should keep working as before:
 - if the user left the session at the bottom, restore to the real content
   bottom, not the end of the runway
 
-During top-level streaming, restore should preserve the viewport-relative
+During a top-level running turn, restore should preserve the viewport-relative
 placement of the saved visible turn anchor when that anchor is still available.
 If the saved anchor cannot be restored reliably, prefer the end of the
 conversation over dropping the user near the beginning. Restore should wait

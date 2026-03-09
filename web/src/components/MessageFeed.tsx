@@ -1196,14 +1196,10 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const hasMore = totalTurns > visibleCount;
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
   const isTopLevelStreaming = Boolean(streamingText);
+  const isTopLevelRunning = sessionStatus === "running";
+  const hasActiveTopLevelTurn = isTopLevelRunning || isTopLevelStreaming;
   const newestMessage = messages[messages.length - 1];
-  const trailingUserTurnId = newestMessage?.role === "user"
-    ? visibleTurns[visibleTurns.length - 1]?.id ?? null
-    : null;
-  const shouldUsePendingUserRunway = !isTopLevelStreaming &&
-    sessionStatus === "running" &&
-    newestMessage?.role === "user" &&
-    trailingUserTurnId != null;
+  const lastVisibleTurnId = visibleTurns[visibleTurns.length - 1]?.id ?? null;
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
   const collapsibleTurnIds = useMemo(() =>
@@ -1222,7 +1218,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   const updateBottomRunwayHeight = useCallback(() => {
     const el = containerRef.current;
-    if (!el || (!isTopLevelStreaming && !shouldUsePendingUserRunway)) {
+    if (!el || !hasActiveTopLevelTurn) {
       setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
@@ -1237,8 +1233,8 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     const lastRenderableMessage = isTopLevelStreaming
       ? el.querySelector<HTMLElement>('[data-feed-streaming-message="true"]')
       : (
-          trailingUserTurnId
-            ? el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(trailingUserTurnId)}"]`)
+          lastVisibleTurnId
+            ? el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(lastVisibleTurnId)}"]`)
             : null
         );
     const bottomMarker = bottomRef.current;
@@ -1258,7 +1254,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     );
     const nextHeight = Math.max(desiredRunway, preserveVisibleRunway);
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, [isTopLevelStreaming, shouldUsePendingUserRunway, trailingUserTurnId]);
+  }, [hasActiveTopLevelTurn, isTopLevelStreaming, lastVisibleTurnId]);
 
   const isNearContentBottom = useCallback(() => {
     const container = containerRef.current;
@@ -1277,6 +1273,18 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     isNearBottom.current = true;
     setShowScrollButton(false);
   }, []);
+
+  const scrollToAllowedBottom = useCallback((behavior: ScrollBehavior) => {
+    const container = containerRef.current;
+    if (container) {
+      const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      container.scrollTo({ top: targetTop, behavior });
+      isNearBottom.current = true;
+      setShowScrollButton(false);
+      return;
+    }
+    scrollToContentBottom(behavior);
+  }, [scrollToContentBottom]);
 
   const restoreTurnAnchor = useCallback((anchorTurnId: string, anchorOffsetTop = 0) => {
     const container = containerRef.current;
@@ -1326,7 +1334,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
 
   useLayoutEffect(() => {
     updateBottomRunwayHeight();
-  }, [messages, streamingText, updateBottomRunwayHeight]);
+  }, [messages, sessionStatus, streamingText, updateBottomRunwayHeight]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1356,7 +1364,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
     if (messages.length === 0 && (pos?.anchorTurnId || !streamingText)) return;
     const shouldPreferAnchorRestore = Boolean(
-      pos?.anchorTurnId && (isTopLevelStreaming || !pos.isAtBottom),
+      pos?.anchorTurnId && (hasActiveTopLevelTurn || !pos.isAtBottom),
     );
     if (pos && shouldPreferAnchorRestore) {
       if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
@@ -1380,7 +1388,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       scrollToContentBottom("auto");
     }
     restoredSessionIdRef.current = sessionId;
-  }, [isTopLevelStreaming, messages.length, restoreTurnAnchor, scrollToContentBottom, sessionId, streamingText]);
+  }, [hasActiveTopLevelTurn, messages.length, restoreTurnAnchor, scrollToContentBottom, sessionId, streamingText]);
 
   useEffect(() => {
     if (!didMountRef.current) {
@@ -1396,18 +1404,17 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     lastSentUserMessageIdRef.current = newestMessage.id;
     lastRunwayScrollAppliedUserMessageIdRef.current = null;
     requestAnimationFrame(() => {
-      scrollToContentBottom("smooth");
+      scrollToAllowedBottom("smooth");
     });
-  }, [messages, scrollToContentBottom]);
+  }, [messages, scrollToAllowedBottom]);
 
-  useEffect(() => {
-    if (!shouldUsePendingUserRunway || newestMessage?.role !== "user") return;
+  useLayoutEffect(() => {
+    if (!isTopLevelRunning || newestMessage?.role !== "user") return;
+    if (bottomRunwayHeight <= 0) return;
     if (lastRunwayScrollAppliedUserMessageIdRef.current === newestMessage.id) return;
     lastRunwayScrollAppliedUserMessageIdRef.current = newestMessage.id;
-    requestAnimationFrame(() => {
-      scrollToContentBottom("smooth");
-    });
-  }, [newestMessage, scrollToContentBottom, shouldUsePendingUserRunway]);
+    scrollToAllowedBottom("smooth");
+  }, [bottomRunwayHeight, isTopLevelRunning, newestMessage, scrollToAllowedBottom]);
 
   const scrollToBottom = useCallback(() => {
     scrollToContentBottom("smooth");
