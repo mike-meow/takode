@@ -179,6 +179,37 @@ describe("MarkdownContent quest links", () => {
     openSpy.mockRestore();
   });
 
+  it("resolves relative file: links against the worktree root for worktree sessions", async () => {
+    mockGetSettings.mockResolvedValue({ editorConfig: { editor: "vscode-local" } });
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    useStore.setState((state) => ({
+      ...state,
+      currentSessionId: "s1",
+      sessions: new Map([[
+        "s1",
+        {
+          session_id: "s1",
+          cwd: "/worktrees/repo-branch",
+          repo_root: "/repo",
+          is_worktree: true,
+        } as never,
+      ]]),
+    }));
+
+    render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162)" />);
+    fireEvent.click(screen.getByRole("link", { name: "TopBar.tsx" }));
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        "vscode://file//worktrees/repo-branch/web/src/components/TopBar.tsx:162:1",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    });
+    openSpy.mockRestore();
+  });
+
   it("does not launch an editor for file: links when editor preference is none", async () => {
     mockGetSettings.mockResolvedValue({ editorConfig: { editor: "none" } });
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
@@ -252,6 +283,37 @@ describe("MarkdownContent quest links", () => {
     await waitFor(() => {
       expect(mockOpenVsCodeRemoteFile).toHaveBeenCalledWith({
         absolutePath: "/repo/web/src/components/TopBar.tsx",
+        line: 162,
+        column: 4,
+      });
+    });
+  });
+
+  it("routes worktree file links through the authoritative remote VSCode path using the worktree root", async () => {
+    window.history.replaceState({}, "", "/?takodeHost=vscode");
+    mockGetSettings.mockResolvedValue({ editorConfig: { editor: "vscode-remote" } });
+    mockOpenVsCodeRemoteFile.mockResolvedValue({ ok: true, sourceId: "window-a", commandId: "cmd-worktree" });
+
+    useStore.setState((state) => ({
+      ...state,
+      currentSessionId: "s1",
+      sessions: new Map([[
+        "s1",
+        {
+          session_id: "s1",
+          cwd: "/worktrees/repo-branch",
+          repo_root: "/repo",
+          is_worktree: true,
+        } as never,
+      ]]),
+    }));
+
+    render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162:4)" />);
+    fireEvent.click(screen.getByRole("link", { name: "TopBar.tsx" }));
+
+    await waitFor(() => {
+      expect(mockOpenVsCodeRemoteFile).toHaveBeenCalledWith({
+        absolutePath: "/worktrees/repo-branch/web/src/components/TopBar.tsx",
         line: 162,
         column: 4,
       });

@@ -114,18 +114,26 @@ function formatFileLinkLocation(target: Pick<FileLinkTarget, "line" | "column" |
   return `:${target.line}`;
 }
 
-function getFileLinkRepoRoot(
+function getFileLinkBasePath(
   sessionId: string | undefined,
   currentSessionId: string | null,
-  sessions: Map<string, { cwd?: string; repo_root?: string }>,
-  sdkSessions: Array<{ sessionId: string; cwd?: string; repoRoot?: string }>,
+  sessions: Map<string, { cwd?: string; repo_root?: string; is_worktree?: boolean }>,
+  sdkSessions: Array<{ sessionId: string; cwd?: string; repoRoot?: string; isWorktree?: boolean }>,
 ): string | null {
   const activeSessionId = sessionId ?? currentSessionId;
   if (!activeSessionId) return null;
 
   const bridgeState = sessions.get(activeSessionId);
   const sdkState = sdkSessions.find((session) => session.sessionId === activeSessionId);
-  return bridgeState?.repo_root || sdkState?.repoRoot || bridgeState?.cwd || sdkState?.cwd || null;
+  const sessionCwd = bridgeState?.cwd || sdkState?.cwd || null;
+  const repoRoot = bridgeState?.repo_root || sdkState?.repoRoot || null;
+  const isWorktree = bridgeState?.is_worktree || sdkState?.isWorktree || false;
+
+  if (isWorktree && sessionCwd) {
+    return sessionCwd;
+  }
+
+  return repoRoot || sessionCwd;
 }
 
 function parseFileLinkFromHref(href?: string): FileLinkTarget | null {
@@ -534,13 +542,13 @@ function FileMarkdownLink({
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sessions = useStore((s) => s.sessions);
   const sdkSessions = useStore((s) => s.sdkSessions);
-  const repoRoot = useMemo(
-    () => getFileLinkRepoRoot(sessionId, currentSessionId, sessions, sdkSessions),
+  const basePath = useMemo(
+    () => getFileLinkBasePath(sessionId, currentSessionId, sessions, sdkSessions),
     [currentSessionId, sdkSessions, sessionId, sessions],
   );
   const resolvedTarget = useMemo(
-    () => resolveFileLinkTarget(target, repoRoot),
-    [repoRoot, target],
+    () => resolveFileLinkTarget(target, basePath),
+    [basePath, target],
   );
 
   const onClick = useCallback(async (e: MouseEvent<HTMLAnchorElement>) => {
