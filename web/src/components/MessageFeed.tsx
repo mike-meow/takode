@@ -1274,7 +1274,6 @@ export function MessageFeed({
   const visibleTurns = hasMore ? turns.slice(totalTurns - visibleCount) : turns;
   const isTopLevelStreaming = Boolean(streamingText);
   const newestMessage = messages[messages.length - 1];
-  const shouldAllowRunway = Boolean(streamingText) || sessionStatus === "running" || newestMessage?.role === "user";
   const lastUserTurnId = [...visibleTurns]
     .reverse()
     .find((turn) => isUserBoundaryEntry(turn.userEntry))?.id ?? null;
@@ -1319,25 +1318,19 @@ export function MessageFeed({
     const messageRect = lastRenderableMessage.getBoundingClientRect();
     const containerRect = el.getBoundingClientRect();
     const bottomRect = bottomMarker.getBoundingClientRect();
-    const contentSinceLastMessage = Math.max(0, bottomRect.bottom - messageRect.top);
-    const desiredRunway = shouldAllowRunway
-      ? Math.max(0, Math.round(viewportHeight - contentSinceLastMessage))
-      : 0;
-    const stableAllowedBottom = Math.max(
+    const userTopTarget = Math.max(
       0,
       Math.round(messageRect.top - containerRect.top + el.scrollTop),
     );
     const realContentBottom = Math.max(0, Math.round(bottomRect.bottom - containerRect.top + el.scrollTop));
-    const preserveVisibleRunway = shouldAllowRunway
-      ? Math.max(
-        0,
-        Math.round(el.scrollTop + viewportHeight - realContentBottom),
-      )
-      : 0;
-    stableAllowedBottomRef.current = stableAllowedBottom;
+    const contentBottomTarget = Math.max(0, Math.round(realContentBottom - viewportHeight));
+    const canonicalAllowedBottom = Math.max(userTopTarget, contentBottomTarget);
+    const desiredRunway = Math.max(0, canonicalAllowedBottom - contentBottomTarget);
+    const preserveVisibleRunway = Math.max(0, Math.round(el.scrollTop - contentBottomTarget));
+    stableAllowedBottomRef.current = canonicalAllowedBottom;
     const nextHeight = Math.max(desiredRunway, preserveVisibleRunway);
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, [lastUserTurnId, shouldAllowRunway]);
+  }, [lastUserTurnId]);
 
   const getRealContentBottom = useCallback(() => {
     const container = containerRef.current;
@@ -1542,7 +1535,19 @@ export function MessageFeed({
     if (newestMessage?.role !== "user") return;
     if (newestMessage.id === lastSentUserMessageIdRef.current) return;
     lastSentUserMessageIdRef.current = newestMessage.id;
-    scrollToContentBottom("auto");
+    const container = containerRef.current;
+    const targetTurn = container?.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(newestMessage.id)}"]`) ?? null;
+    const containerRect = container?.getBoundingClientRect() ?? null;
+    const targetRect = targetTurn?.getBoundingClientRect() ?? null;
+    const isVisible = Boolean(
+      containerRect
+      && targetRect
+      && targetRect.bottom > containerRect.top
+      && targetRect.top < containerRect.bottom,
+    );
+    if (!isVisible) {
+      scrollToContentBottom("auto");
+    }
     const rafId = requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;

@@ -15,52 +15,61 @@ This file is the source of truth for Takode chat-feed scrolling behavior.
 When a new user message is added to the feed, the feed should first render that
 message in place in the conversation.
 
-After the message is rendered, the feed should move in two stages:
-
-1. jump immediately to the real content bottom region for that new turn
-2. then do only a short local alignment toward the stable user-anchored target
-
-In practice, that means:
-
-- jump immediately into the newest-turn region without animation
-- only animate the short final alignment toward the stable target
-- do not rely on one long smooth-scroll across old content
-- do not separately pin the user turn with `scrollIntoView`
-
-### 2. Scroll runway
-
-The feed includes extra scroll runway only when it is needed to align the
-newest user turn near the top while the turn is still active.
-
-The runway is always measured relative to the newest user turn, but it is
-capped by the real content bottom.
+After the message is rendered, the feed should position the viewport around
+that new turn using the shortest reliable path.
 
 The practical rule is:
 
-- find the newest user message in the visible feed
-- compute the stable user-anchored target that would place that turn at the top
-  of the viewport
-- allow extra runway only when the real content bottom is above that target
-- treat active top-level streaming as runway-eligible even if the `running`
-  status update arrives slightly later
-- once the response is complete, do not leave more blank space than needed
+- if the new user turn is not currently visible, jump immediately to the newest
+  end of the conversation so that new turn appears near the bottom of the
+  viewport
+- then do only a short local animation upward until that new user turn aligns
+  with the top of the viewport
+- if the new user turn is already visible, skip the jump and only do the short
+  upward alignment
+- do not rely on one long smooth-scroll across old history
+- do not separately pin the user turn with `scrollIntoView`
+
+This keeps send-time motion deterministic and avoids long animated travel
+through stale history.
+
+### 2. Scroll runway
+
+The feed may include extra scroll runway below the real content in order to let
+the newest user turn reach the top of the viewport.
+
+The canonical scroll targets are:
+
+- `user-top target`
+  The scroll position where the newest user turn is aligned with the top of the
+  viewport.
+- `content-bottom target`
+  The scroll position where the real end of the assistant/system content is
+  aligned with the bottom of the viewport.
+
+The allowed bottom is the larger of those two targets.
 
 Another way to say it:
 
-- the maximum readable extent should be the smaller of:
-  - one viewport below the newest user turn
-  - the real end of the assistant/system content
+- the user can keep scrolling until either:
+  - the newest user turn reaches the top of the viewport
+  - or the real last assistant/system message reaches the bottom of the viewport
+- whichever of those two endpoints allows more scrolling
 
-The runway may still shrink as real assistant content grows below the newest
+This rule is not limited to active streaming. If the session is idle and the
+newest user turn still requires extra space to reach the top, that extra
+runway should still be available.
+
+The runway may still change as real assistant content grows below the newest
 user message, but it must not shrink in a way that clamps the current scroll
 position upward while the user is already inside that extra scroll region.
 
 Implementation note:
 
-- the feed may temporarily keep a little more spacer than the stable target in
+- the feed may temporarily keep a little more spacer than the canonical target in
   order to avoid an upward clamp/jump
 - that temporary anti-clamp spacer is not part of the canonical scroll target
-- programmatic scrolling should target the stable user-anchored position, not
+- programmatic scrolling should target the canonical allowed position, not
   the temporarily inflated maximum scroll height
 
 ### 3. Running Turn
@@ -115,10 +124,10 @@ The right-side scroll buttons remain available as secondary navigation controls.
 Saved scroll position restore should keep working as before:
 
 - if the user left the session scrolled up, restore that position
-- if the user left the session at the bottom, restore to the current stable
-  allowed position for the newest user turn
-- restoring "at bottom" should target the stable position, not any temporary
-  anti-clamp spacer
+- if the user left the session at the bottom, restore to the current allowed
+  bottom for the latest turn
+- restoring "at bottom" should target the canonical allowed position, not any
+  temporary anti-clamp spacer
 
 Restore should preserve the viewport-relative placement of the saved visible
 turn anchor when that anchor is still available. If the saved anchor cannot be
@@ -137,7 +146,8 @@ content before applying.
 After send:
 
 1. the newest user message appears in the conversation
-2. the feed jumps into the newest-turn region
-3. the feed then performs only a short final alignment toward the stable target
+2. if needed, the feed jumps immediately to the newest end of the conversation
+3. the feed then performs only a short final alignment that places the new user
+   turn at the top of the viewport
 4. assistant output grows afterward without pushing the viewport
 5. the jump-to-latest control remains available for manual follow
