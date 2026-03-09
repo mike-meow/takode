@@ -48,6 +48,14 @@ The runway may still shrink as real assistant content grows below the newest
 user message, but it must not shrink in a way that clamps the current scroll
 position upward while the user is already inside that extra scroll region.
 
+Implementation note:
+
+- the feed may temporarily keep a little more spacer than the stable
+  user-anchored runway in order to avoid an upward clamp/jump
+- that temporary anti-clamp spacer is not part of the canonical scroll target
+- programmatic scrolling should target the stable user-anchored position, not
+  the temporarily inflated maximum scroll height
+
 ### 3. Running Turn
 
 While the session is running:
@@ -70,6 +78,9 @@ content.
 That control should scroll to the maximum currently allowed bottom position for
 the newest user turn.
 
+In practice, that means the stable user-anchored bottom position, excluding any
+temporary anti-clamp spacer.
+
 ### 5. Session restore
 
 Saved scroll position restore should keep working as before:
@@ -77,6 +88,8 @@ Saved scroll position restore should keep working as before:
 - if the user left the session scrolled up, restore that position
 - if the user left the session at the bottom, restore to the current allowed
   bottom position for the newest user turn
+- restoring "at bottom" should also target the stable user-anchored position,
+  not any temporary anti-clamp spacer
 
 Restore should preserve the viewport-relative placement of the saved visible
 turn anchor when that anchor is still available. If the saved anchor cannot be
