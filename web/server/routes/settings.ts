@@ -71,15 +71,18 @@ export function createSettingsRoutes(ctx: RouteContext) {
   /** Parse a transcriptionConfig from a request body.
    *  If apiKey is "***" (masked sentinel), preserve the existing key from settings. */
   function parseTranscriptionConfigFromBody(tc: Record<string, unknown>): TranscriptionConfig {
-    let apiKey = typeof tc.apiKey === "string" ? tc.apiKey.trim() : "";
-    if (apiKey === "***") {
-      apiKey = getSettings().transcriptionConfig.apiKey;
+    const current = getSettings().transcriptionConfig;
+    let apiKey = current.apiKey;
+    if (typeof tc.apiKey === "string") {
+      const trimmedApiKey = tc.apiKey.trim();
+      apiKey = trimmedApiKey === "***" ? current.apiKey : trimmedApiKey;
     }
     return {
       apiKey,
-      baseUrl: typeof tc.baseUrl === "string" ? tc.baseUrl.trim() : "https://api.openai.com/v1",
-      enhancementEnabled: typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : true,
-      enhancementModel: typeof tc.enhancementModel === "string" ? tc.enhancementModel.trim() : "gpt-5-mini",
+      baseUrl: typeof tc.baseUrl === "string" ? tc.baseUrl.trim() : current.baseUrl,
+      enhancementEnabled: typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : current.enhancementEnabled,
+      enhancementModel: typeof tc.enhancementModel === "string" ? tc.enhancementModel.trim() : current.enhancementModel,
+      customVocabulary: typeof tc.customVocabulary === "string" ? tc.customVocabulary.trim() : (current.customVocabulary || ""),
     };
   }
 

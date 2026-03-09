@@ -137,6 +137,36 @@ describe("SettingsPage", () => {
     await screen.findByText("Notifications");
   });
 
+  it("loads persisted custom transcription vocabulary from settings", async () => {
+    mockApi.getSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      editorConfig: { editor: "none" },
+      transcriptionConfig: {
+        apiKey: "***",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        customVocabulary: "Takode, WsBridge, Questmaster",
+      },
+    });
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Custom Vocabulary")).toHaveValue("Takode, WsBridge, Questmaster");
+    });
+  });
+
   it("shows error if initial load fails", async () => {
     mockApi.getSettings.mockRejectedValueOnce(new Error("load failed"));
 

@@ -2612,6 +2612,100 @@ describe("PUT /api/settings", () => {
     expect(json.maxKeepAlive).toBe(5);
   });
 
+  it("preserves custom transcription vocabulary when saving settings", async () => {
+    vi.mocked(settingsManager.getSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "persisted-transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        customVocabulary: "Takode, WsBridge",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 123,
+    });
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "persisted-transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-4.1-mini",
+        customVocabulary: "Takode, WsBridge, Questmaster",
+      },
+      editorConfig: { editor: "none" },
+      updatedAt: 456,
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcriptionConfig: {
+          apiKey: "***",
+          baseUrl: "https://api.openai.com/v1",
+          enhancementEnabled: false,
+          enhancementModel: "gpt-4.1-mini",
+          customVocabulary: "Takode, WsBridge, Questmaster",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcriptionConfig: {
+          apiKey: "persisted-transcription-secret",
+          baseUrl: "https://api.openai.com/v1",
+          enhancementEnabled: false,
+          enhancementModel: "gpt-4.1-mini",
+          customVocabulary: "Takode, WsBridge, Questmaster",
+        },
+      }),
+    );
+
+    const json = await res.json();
+    expect(json.transcriptionConfig).toEqual({
+      apiKey: "***",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: false,
+      enhancementModel: "gpt-4.1-mini",
+      customVocabulary: "Takode, WsBridge, Questmaster",
+    });
+    expect(JSON.stringify(json)).not.toContain("persisted-transcription-secret");
+  });
+
   it("updates editorConfig setting", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
       serverName: "", serverId: "",
@@ -2738,6 +2832,7 @@ describe("PUT /api/settings", () => {
           baseUrl: "https://api.openai.com/v1",
           enhancementEnabled: false,
           enhancementModel: "gpt-4.1-mini",
+          customVocabulary: "",
         },
       }),
     );

@@ -114,6 +114,39 @@ describe("settings-manager", () => {
     });
   });
 
+  it("persists transcription custom vocabulary across reloads", async () => {
+    updateSettings({
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        customVocabulary: "Takode, WsBridge, Questmaster",
+      },
+    });
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.transcriptionConfig).toEqual({
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: true,
+      enhancementModel: "gpt-5-mini",
+      customVocabulary: "Takode, WsBridge, Questmaster",
+    });
+
+    _resetForTest(settingsPath);
+
+    expect(getSettings().transcriptionConfig).toEqual({
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: true,
+      enhancementModel: "gpt-5-mini",
+      customVocabulary: "Takode, WsBridge, Questmaster",
+    });
+  });
+
   it("loads existing settings from disk", () => {
     writeFileSync(
       settingsPath,
