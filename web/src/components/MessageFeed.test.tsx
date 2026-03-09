@@ -641,14 +641,17 @@ describe("MessageFeed - streaming text", () => {
     expect(runway.style.height).toBe("260px");
   });
 
-  it("scrolls to the content bottom once after appending a new user message", () => {
+  it("scrolls to the stable user-anchored bottom once after appending a new user message", () => {
     const sid = "test-scroll-new-user-message";
     const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
     const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
     setStoreMessages(sid, [firstUser, firstAssistant]);
 
-    const { rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = document.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
+    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
 
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
@@ -658,19 +661,146 @@ describe("MessageFeed - streaming text", () => {
       configurable: true,
       value: 1600,
     });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 600,
+    });
+    scrollContainer.getBoundingClientRect = () => ({
+      x: 0,
+      y: 100,
+      top: 100,
+      bottom: 700,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    bottomMarker.getBoundingClientRect = () => ({
+      x: 0,
+      y: 760,
+      top: 760,
+      bottom: 760,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    });
+    Element.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
+        return {
+          x: 0,
+          y: 500,
+          top: 500,
+          bottom: 580,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 80,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
 
     mockScrollIntoView.mockClear();
     mockScrollTo.mockClear();
 
-    setStoreMessages(sid, [
-      firstUser,
-      firstAssistant,
-      makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
-    ]);
-    rerender(<MessageFeed sessionId={sid} />);
+    try {
+      setStoreMessages(sid, [
+        firstUser,
+        firstAssistant,
+        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
+      ]);
+      rerender(<MessageFeed sessionId={sid} />);
 
-    expect(mockScrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
-    expect(screen.queryByLabelText("Go to bottom")).toBeNull();
+      expect(mockScrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
+      expect(screen.queryByLabelText("Go to bottom")).toBeNull();
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  it("uses the stable user-anchored bottom for send-time scrolling instead of the temporary anti-clamp spacer", () => {
+    const sid = "test-scroll-new-user-message-stable-bottom";
+    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
+    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
+    setStoreMessages(sid, [firstUser, firstAssistant]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
+    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1120,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 520,
+    });
+    scrollContainer.getBoundingClientRect = () => ({
+      x: 0,
+      y: 100,
+      top: 100,
+      bottom: 700,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    bottomMarker.getBoundingClientRect = () => ({
+      x: 0,
+      y: 440,
+      top: 440,
+      bottom: 440,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    });
+    Element.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          bottom: 80,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 80,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    mockScrollTo.mockClear();
+    try {
+      setStoreMessages(sid, [
+        firstUser,
+        firstAssistant,
+        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
+      ]);
+      rerender(<MessageFeed sessionId={sid} />);
+
+      expect(runway.style.height).toBe("260px");
+      expect(mockScrollTo).toHaveBeenLastCalledWith({ top: 420, behavior: "smooth" });
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
   });
 
   it("does not keep auto-following after streaming has started", () => {
@@ -841,6 +971,7 @@ describe("MessageFeed - streaming text", () => {
 
     const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
     const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
     Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
       configurable: true,
       get() {
@@ -853,11 +984,58 @@ describe("MessageFeed - streaming text", () => {
         return this.classList.contains("overflow-y-auto") ? 900 : 0;
       },
     });
+    Element.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u1") {
+        return {
+          x: 0,
+          y: 400,
+          top: 400,
+          bottom: 480,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 80,
+          toJSON: () => ({}),
+        };
+      }
+      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
+        return {
+          x: 0,
+          y: 100,
+          top: 100,
+          bottom: 700,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 600,
+          toJSON: () => ({}),
+        };
+      }
+      if (
+        this instanceof HTMLElement &&
+        this.nextElementSibling instanceof HTMLElement &&
+        this.nextElementSibling.dataset.testid === "feed-bottom-runway"
+      ) {
+        return {
+          x: 0,
+          y: 900,
+          top: 900,
+          bottom: 900,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+          toJSON: () => ({}),
+        };
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
     try {
       render(<MessageFeed sessionId={sid} />);
 
       expect(mockScrollTo).toHaveBeenCalledWith({ top: 300, behavior: "auto" });
     } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
       if (originalClientHeight) {
         Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
       }

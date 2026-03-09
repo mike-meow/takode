@@ -1176,6 +1176,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const didMountRef = useRef(false);
   const lastSentUserMessageIdRef = useRef<string | null>(null);
+  const stableAllowedBottomRef = useRef<number | null>(null);
   const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
     0,
   );
@@ -1256,6 +1257,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const updateBottomRunwayHeight = useCallback(() => {
     const el = containerRef.current;
     if (!el || !lastUserTurnId) {
+      stableAllowedBottomRef.current = null;
       setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
@@ -1270,6 +1272,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     const lastRenderableMessage = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(lastUserTurnId)}"]`);
     const bottomMarker = bottomRef.current;
     if (!lastRenderableMessage || !bottomMarker || viewportHeight === 0) {
+      stableAllowedBottomRef.current = null;
       setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
       return;
     }
@@ -1278,11 +1281,16 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     const bottomRect = bottomMarker.getBoundingClientRect();
     const contentSinceLastMessage = Math.max(0, bottomRect.bottom - messageRect.top);
     const desiredRunway = Math.max(0, Math.round(viewportHeight - contentSinceLastMessage));
+    const stableAllowedBottom = Math.max(
+      0,
+      Math.round(messageRect.top - containerRect.top + el.scrollTop),
+    );
     const realContentBottom = Math.max(0, Math.round(bottomRect.bottom - containerRect.top + el.scrollTop));
     const preserveVisibleRunway = Math.max(
       0,
       Math.round(el.scrollTop + viewportHeight - realContentBottom),
     );
+    stableAllowedBottomRef.current = stableAllowedBottom;
     const nextHeight = Math.max(desiredRunway, preserveVisibleRunway);
     setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [lastUserTurnId]);
@@ -1305,7 +1313,12 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const scrollToAllowedBottom = useCallback((behavior: ScrollBehavior) => {
     const container = containerRef.current;
     if (container) {
-      const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const stableTargetTop = stableAllowedBottomRef.current;
+      const maxScrollableTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      const targetTop = Math.min(
+        stableTargetTop == null ? maxScrollableTop : Math.max(0, stableTargetTop),
+        maxScrollableTop,
+      );
       container.scrollTo({ top: targetTop, behavior });
       isNearBottom.current = true;
       setShowScrollButton(false);
