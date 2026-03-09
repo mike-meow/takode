@@ -207,6 +207,68 @@ describe("Session management", () => {
     expect(state.sdkSessions[0].sessionId).toBe("s2");
   });
 
+  it("setSdkSessions: hydrates non-current running status from the polled session list", () => {
+    useStore.getState().setCurrentSession("current");
+    useStore.getState().setSessionStatus("other", "idle");
+    useStore.getState().setCliDisconnectReason("other", "idle_limit");
+
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "current",
+        state: "connected",
+        cwd: "/current",
+        createdAt: Date.now(),
+        cliConnected: true,
+      },
+      {
+        sessionId: "other",
+        state: "running",
+        cwd: "/other",
+        createdAt: Date.now(),
+        cliConnected: true,
+      },
+    ]);
+
+    const state = useStore.getState();
+    expect(state.sessionStatus.get("other")).toBe("running");
+    expect(state.cliConnected.get("other")).toBe(true);
+    expect(state.cliEverConnected.get("other")).toBe(true);
+    expect(state.cliDisconnectReason.get("other")).toBeNull();
+  });
+
+  it("setSdkSessions: clears stale non-current running state when the poll reports idle", () => {
+    useStore.getState().setSessionStatus("other", "running");
+
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "other",
+        state: "connected",
+        cwd: "/other",
+        createdAt: Date.now(),
+        cliConnected: true,
+      },
+    ]);
+
+    expect(useStore.getState().sessionStatus.has("other")).toBe(false);
+  });
+
+  it("setSdkSessions: preserves the current session's live websocket status", () => {
+    useStore.getState().setCurrentSession("current");
+    useStore.getState().setSessionStatus("current", "compacting");
+
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "current",
+        state: "running",
+        cwd: "/current",
+        createdAt: Date.now(),
+        cliConnected: true,
+      },
+    ]);
+
+    expect(useStore.getState().sessionStatus.get("current")).toBe("compacting");
+  });
+
   it("removeSession: does not clear currentSessionId if a different session is removed", () => {
     useStore.getState().addSession(makeSession("s1"));
     useStore.getState().addSession(makeSession("s2"));

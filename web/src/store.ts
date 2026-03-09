@@ -751,7 +751,66 @@ export const useStore = create<AppState>((set) => ({
       };
     }),
 
-  setSdkSessions: (sessions) => set({ sdkSessions: sessions }),
+  setSdkSessions: (sessions) =>
+    set((s) => {
+      const currentSessionId = s.currentSessionId;
+      let cliConnected = s.cliConnected;
+      let cliEverConnected = s.cliEverConnected;
+      let cliDisconnectReason = s.cliDisconnectReason;
+      let sessionStatus = s.sessionStatus;
+      let cliConnectedChanged = false;
+      let cliEverConnectedChanged = false;
+      let cliDisconnectReasonChanged = false;
+      let sessionStatusChanged = false;
+
+      for (const session of sessions) {
+        const { sessionId } = session;
+        if (typeof session.cliConnected === "boolean") {
+          const prevCliConnected = cliConnected.get(sessionId);
+          if (prevCliConnected !== session.cliConnected) {
+            if (!cliConnectedChanged) cliConnected = new Map(cliConnected);
+            cliConnected.set(sessionId, session.cliConnected);
+            cliConnectedChanged = true;
+          }
+          if (session.cliConnected) {
+            if (cliDisconnectReason.get(sessionId) !== null) {
+              if (!cliDisconnectReasonChanged) cliDisconnectReason = new Map(cliDisconnectReason);
+              cliDisconnectReason.set(sessionId, null);
+              cliDisconnectReasonChanged = true;
+            }
+            if (!cliEverConnected.get(sessionId)) {
+              if (!cliEverConnectedChanged) cliEverConnected = new Map(cliEverConnected);
+              cliEverConnected.set(sessionId, true);
+              cliEverConnectedChanged = true;
+            }
+          }
+        }
+
+        // Non-current sessions no longer keep a live chat socket open, so their
+        // sidebar chip status must be refreshed from the server-authoritative
+        // /api/sessions poll. Preserve the current session's live WebSocket
+        // status so we don't clobber richer states like compacting/reverting.
+        if (sessionId === currentSessionId) continue;
+        const nextStatus = session.state === "running" ? "running" : null;
+        const prevStatus = sessionStatus.get(sessionId) ?? null;
+        if (prevStatus === nextStatus) continue;
+        if (!sessionStatusChanged) sessionStatus = new Map(sessionStatus);
+        if (nextStatus === null) {
+          sessionStatus.delete(sessionId);
+        } else {
+          sessionStatus.set(sessionId, nextStatus);
+        }
+        sessionStatusChanged = true;
+      }
+
+      return {
+        sdkSessions: sessions,
+        ...(cliConnectedChanged ? { cliConnected } : {}),
+        ...(cliEverConnectedChanged ? { cliEverConnected } : {}),
+        ...(cliDisconnectReasonChanged ? { cliDisconnectReason } : {}),
+        ...(sessionStatusChanged ? { sessionStatus } : {}),
+      };
+    }),
 
   appendMessage: (sessionId, msg) =>
     set((s) => {
