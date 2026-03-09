@@ -69,9 +69,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       || !cliEverConnected
     );
 
-  const [showLatestIndicator, setShowLatestIndicator] = useState(false);
-  const latestJumpRef = useRef<(() => void) | null>(null);
-
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* CLI starting / resuming banner */}
@@ -164,14 +161,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           onCollapse={() => setPlanCollapsed(true)}
         />
       ) : (
-        <MessageFeed
-          sessionId={sessionId}
-          latestIndicatorMode="external"
-          onLatestIndicatorVisibleChange={setShowLatestIndicator}
-          onJumpToLatestReady={(scrollToLatest) => {
-            latestJumpRef.current = scrollToLatest;
-          }}
-        />
+        <MessageFeed sessionId={sessionId} />
       )}
 
       {/* Collapsed plan chip (when plan exists but is collapsed) */}
@@ -223,18 +213,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       {/* Streaming status — hidden on mobile when plan is active to save space */}
       {planPerm ? (
         <div className="hidden sm:block">
-          <ElapsedTimer
-            sessionId={sessionId}
-            latestIndicatorVisible={showLatestIndicator}
-            onJumpToLatest={() => latestJumpRef.current?.()}
-          />
+          <ElapsedTimer sessionId={sessionId} />
         </div>
       ) : (
-        <ElapsedTimer
-          sessionId={sessionId}
-          latestIndicatorVisible={showLatestIndicator}
-          onJumpToLatest={() => latestJumpRef.current?.()}
-        />
+        <ElapsedTimer sessionId={sessionId} />
       )}
 
       {/* Compacting indicator — fixed above composer, green like running state */}

@@ -202,7 +202,6 @@ function setStoreFeedScrollPosition(
     isAtBottom: boolean;
     anchorTurnId?: string | null;
     anchorOffsetTop?: number;
-    lastSeenContentBottom?: number | null;
   },
 ) {
   const map = new Map();
@@ -396,18 +395,10 @@ describe("MessageFeed section windowing", () => {
     expect(findSectionWindowStartIndexForTarget(sections, 3, 3)).toBe(1);
   });
 
-  it("slides a bounded three-section window when the user loads older and jumps back to latest", () => {
+  it("slides a bounded three-section window when the user loads older and then loads newer", () => {
     const sid = "test-section-window";
     setStoreMessages(sid, makeSectionedMessages(4, 2));
-    const jumpToLatestRef: { current: (() => void) | null } = { current: null };
-
-    const { container } = render(
-      <MessageFeed
-        sessionId={sid}
-        sectionTurnCount={2}
-        onJumpToLatestReady={(handler) => { jumpToLatestRef.current = handler; }}
-      />
-    );
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
 
     expect(screen.queryByText("Section 1 marker")).toBeNull();
     expect(screen.getByText("Section 2 marker")).toBeTruthy();
@@ -421,9 +412,7 @@ describe("MessageFeed section windowing", () => {
     expect(screen.queryByText("Section 4 marker")).toBeNull();
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
 
-    act(() => {
-      jumpToLatestRef.current?.();
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Load newer section" }));
 
     expect(screen.queryByText("Section 1 marker")).toBeNull();
     expect(screen.getByText("Section 2 marker")).toBeTruthy();
@@ -637,241 +626,112 @@ describe("MessageFeed - message rendering", () => {
   });
 });
 
-// ─── Streaming indicator ─────────────────────────────────────────────────────
+// ─── Scroll behavior ────────────────────────────────────────────────────────
 
-describe("MessageFeed - streaming text", () => {
-  it("does not render bottom runway when there is no user turn to anchor it", () => {
-    const sid = "test-bottom-runway-no-user";
-    setStoreMessages(sid, [makeMessage({ id: "a1", role: "assistant", content: "Answer" })]);
+describe("MessageFeed - scroll behavior", () => {
+  it("restores a saved non-bottom position proportionally", () => {
+    const sid = "test-restore-scroll-position";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 300,
+      scrollHeight: 1200,
+      isAtBottom: false,
+    });
 
-    render(<MessageFeed sessionId={sid} />);
-
-    expect((screen.getByTestId("feed-bottom-runway") as HTMLDivElement).style.height).toBe("0px");
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    let scrollTopValue = 0;
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 1800 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+    try {
+      render(<MessageFeed sessionId={sid} />);
+      expect(scrollTopValue).toBe(450);
+      expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+      }
+    }
   });
 
-  it("adds runway using the newest user turn as the anchor when that turn is still the latest message", () => {
-    const sid = "test-bottom-runway-user-anchor";
+  it("restores to the real bottom when the saved state was at bottom", () => {
+    const sid = "test-restore-bottom";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 0,
+      scrollHeight: 1200,
+      isAtBottom: true,
+    });
+
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    let scrollTopValue = 0;
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 1600 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+    try {
+      mockScrollTo.mockClear();
+      render(<MessageFeed sessionId={sid} />);
+      expect(mockScrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "auto" });
+      expect(scrollTopValue).toBe(0);
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+      }
+    }
+  });
+
+  it("keeps smooth bottom-follow when the user is near bottom and a non-streaming message arrives", () => {
+    const sid = "test-bottom-follow-non-streaming";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const lastTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    lastTurn.getBoundingClientRect = () => ({
-      x: 0,
-      y: 220,
-      top: 220,
-      bottom: 300,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 80,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 300,
-      top: 300,
-      bottom: 300,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    act(() => {
-      fireEvent(window, new Event("resize"));
-    });
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("220px");
-
-    setStoreMessages(sid, [makeMessage({ id: "a1", role: "assistant", content: "Answer only" })]);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("0px");
-  });
-
-  it("sizes runway from the larger of the user-top and content-bottom targets", () => {
-    const sid = "test-bottom-runway-user-not-stream";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    setStoreMessages(sid, [user, assistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    userTurn.getBoundingClientRect = () => ({
-      x: 0,
-      y: 220,
-      top: 220,
-      bottom: 300,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 80,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 440,
-      top: 440,
-      bottom: 440,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    act(() => {
-      fireEvent(window, new Event("resize"));
-    });
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("220px");
-  });
-
-  it("collapses the persistent runway to zero once content below the newest user already exceeds one viewport", () => {
-    const sid = "test-bottom-runway-long-answer";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Long answer" });
-    setStoreMessages(sid, [user, assistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    userTurn.getBoundingClientRect = () => ({
-      x: 0,
-      y: 120,
-      top: 120,
-      bottom: 200,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 80,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 860,
-      top: 860,
-      bottom: 860,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    act(() => {
-      fireEvent(window, new Event("resize"));
-    });
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("0px");
-  });
-
-  it("does not shrink the user-anchored runway enough to clamp the current scroll position upward", () => {
-    const sid = "test-bottom-runway-no-clamp";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    setStoreMessages(sid, [user, assistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const userTurn = container.querySelector('[data-turn-id="u1"]') as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 520,
-    });
-    userTurn.getBoundingClientRect = () => ({
-      x: 0,
-      y: -100,
-      top: -100,
-      bottom: -20,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 80,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 440,
-      top: 440,
-      bottom: 440,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-
-    act(() => {
-      fireEvent(window, new Event("resize"));
-    });
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(runway.style.height).toBe("260px");
-  });
-
-  it("jumps to the real bottom region and then aligns to the stable user-anchored target after appending a new user message", () => {
-    const sid = "test-scroll-new-user-message";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    setStoreMessages(sid, [firstUser, firstAssistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
     Object.defineProperty(scrollContainer, "scrollHeight", {
       configurable: true,
       value: 1600,
@@ -879,262 +739,115 @@ describe("MessageFeed - streaming text", () => {
     Object.defineProperty(scrollContainer, "scrollTop", {
       configurable: true,
       writable: true,
-      value: 600,
+      value: 980,
     });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 760,
-      top: 760,
-      bottom: 760,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
-        return {
-          x: 0,
-          y: 760,
-          top: 760,
-          bottom: 840,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-
-    mockScrollIntoView.mockClear();
-    mockScrollTo.mockClear();
-
-    try {
-      setStoreMessages(sid, [
-        firstUser,
-        firstAssistant,
-        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
-      ]);
-      rerender(<MessageFeed sessionId={sid} />);
-
-      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "end" });
-      expect(mockScrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
-      expect(screen.queryByLabelText("Go to bottom")).toBeNull();
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("uses the stable user-anchored target for the short alignment step instead of the temporary anti-clamp spacer", () => {
-    const sid = "test-scroll-new-user-message-stable-bottom";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    setStoreMessages(sid, [firstUser, firstAssistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
       value: 600,
     });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1120,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 520,
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 440,
-      top: 440,
-      bottom: 440,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
-        return {
-          x: 0,
-          y: 0,
-          top: 0,
-          bottom: 80,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
 
-    mockScrollTo.mockClear();
-    try {
-      setStoreMessages(sid, [
-        firstUser,
-        firstAssistant,
-        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
-      ]);
-      rerender(<MessageFeed sessionId={sid} />);
-
-      expect(runway.style.height).toBe("260px");
-      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "end" });
-      expect(mockScrollTo).toHaveBeenLastCalledWith({ top: 420, behavior: "smooth" });
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("skips the jump and only performs the short alignment when the new user turn is already visible", () => {
-    const sid = "test-scroll-new-user-message-already-visible";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    setStoreMessages(sid, [firstUser, firstAssistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1600,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 540,
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 760,
-      top: 760,
-      bottom: 760,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
-        return {
-          x: 0,
-          y: 240,
-          top: 240,
-          bottom: 320,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-
-    mockScrollIntoView.mockClear();
+    fireEvent.scroll(scrollContainer);
     mockScrollTo.mockClear();
 
-    try {
-      setStoreMessages(sid, [
-        firstUser,
-        firstAssistant,
-        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
-      ]);
-      rerender(<MessageFeed sessionId={sid} />);
-
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
-      expect(mockScrollTo).toHaveBeenCalledWith({ top: 680, behavior: "smooth" });
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("does not keep auto-following after streaming has started", () => {
-    const sid = "test-no-stream-follow";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
-    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
-    setStoreSessionBackend(sid, "claude");
-
-    const { rerender } = render(<MessageFeed sessionId={sid} />);
-
-    mockScrollIntoView.mockClear();
-    mockScrollTo.mockClear();
-
-    setStoreStreaming(sid, "Assistant is streaming");
-    rerender(<MessageFeed sessionId={sid} />);
-
-    mockScrollIntoView.mockClear();
-    mockScrollTo.mockClear();
-
-    mockScrollIntoView.mockClear();
     setStoreMessages(sid, [
-      firstUser,
-      firstAssistant,
-      secondUser,
-      makeMessage({ id: "a2", role: "assistant", content: "Answer in progress" }),
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
 
-    expect(mockScrollIntoView).not.toHaveBeenCalled();
+    expect(mockScrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
+  });
+
+  it("uses immediate bottom alignment while streaming when the user is near bottom", () => {
+    const sid = "test-bottom-follow-streaming";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+    setStoreStreaming(sid, "Thinking...");
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollTopValue = 980;
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1600,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+    mockScrollTo.mockClear();
+
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Partial answer" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(scrollTopValue).toBe(1600);
     expect(mockScrollTo).not.toHaveBeenCalled();
   });
 
-  it("keeps the Go to bottom button aligned to the real content bottom", () => {
+  it("does not auto-scroll when the user is reading away from the bottom", () => {
+    const sid = "test-no-autofollow-when-scrolled-up";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1600,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 100,
+    });
+
+    fireEvent.scroll(scrollContainer);
+    mockScrollTo.mockClear();
+
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+      makeMessage({ id: "u2", role: "user", content: "Follow-up" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(mockScrollTo).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
+  });
+
+  it("does not render the removed bottom runway or latest pill affordance", () => {
+    const sid = "test-no-runway-or-latest-pill";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByTestId("feed-bottom-runway")).toBeNull();
+    expect(screen.queryByText("New content below")).toBeNull();
+  });
+
+  it("keeps the Go to bottom button aligned to the real feed bottom", () => {
     const sid = "test-go-to-bottom-real-content";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
@@ -1159,527 +872,11 @@ describe("MessageFeed - streaming text", () => {
     });
 
     fireEvent.scroll(scrollContainer);
-    mockScrollIntoView.mockClear();
     mockScrollTo.mockClear();
 
     fireEvent.click(screen.getByLabelText("Go to bottom"));
 
-    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "end" });
-    expect(mockScrollTo).not.toHaveBeenCalled();
-  });
-
-  it("shows the latest pill only after new content arrives below the current viewport", () => {
-    const sid = "test-latest-pill-after-new-content";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    setStoreMessages(sid, [user, assistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-    let bottomPosition = 1200;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1600,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 0,
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: bottomPosition,
-      top: bottomPosition,
-      bottom: bottomPosition,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    fireEvent.scroll(scrollContainer);
-    expect(screen.queryByLabelText("Jump to latest")).toBeNull();
-
-    bottomPosition = 1280;
-    setStoreMessages(sid, [
-      user,
-      assistant,
-      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
-    ]);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
-    expect(screen.getByText("New content below")).toBeTruthy();
-  });
-
-  it("uses the latest pill to jump to the real content bottom", () => {
-    const sid = "test-latest-pill-click";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    setStoreMessages(sid, [user, assistant]);
-
-    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-    let bottomPosition = 1200;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1600,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 0,
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: bottomPosition,
-      top: bottomPosition,
-      bottom: bottomPosition,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    fireEvent.scroll(scrollContainer);
-    bottomPosition = 1280;
-    setStoreMessages(sid, [
-      user,
-      assistant,
-      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
-    ]);
-    rerender(<MessageFeed sessionId={sid} />);
-
-    mockScrollIntoView.mockClear();
-    fireEvent.click(screen.getByLabelText("Jump to latest"));
-
-    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "end" });
-  });
-
-  it("shows the latest indicator immediately when a restored session progressed below the last seen content bottom", () => {
-    const sid = "test-latest-pill-on-session-restore";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    const freshAssistant = makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" });
-    setStoreMessages(sid, [user, assistant, freshAssistant]);
-    setStoreFeedScrollPosition(sid, {
-      scrollTop: 200,
-      scrollHeight: 1200,
-      isAtBottom: false,
-      lastSeenContentBottom: 1180,
-    });
-    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
-    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
-    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-
-    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
-      configurable: true,
-      get() {
-        return this.classList.contains("overflow-y-auto") ? 600 : 0;
-      },
-    });
-    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
-      configurable: true,
-      get() {
-        return this.classList.contains("overflow-y-auto") ? 1600 : 0;
-      },
-    });
-    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
-      configurable: true,
-      get() {
-        return this.classList.contains("overflow-y-auto") ? 200 : 0;
-      },
-      set() {},
-    });
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
-        return {
-          x: 0,
-          y: 100,
-          top: 100,
-          bottom: 700,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 600,
-          toJSON: () => ({}),
-        };
-      }
-      if (this instanceof HTMLElement && this.dataset.turnId === "u1") {
-        return {
-          x: 0,
-          y: 240,
-          top: 240,
-          bottom: 320,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      if (this instanceof HTMLElement && this.dataset.turnId === "a2") {
-        return {
-          x: 0,
-          y: 1180,
-          top: 1180,
-          bottom: 1380,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 200,
-          toJSON: () => ({}),
-        };
-      }
-      if (
-        this instanceof HTMLElement
-        && this.nextElementSibling instanceof HTMLElement
-        && this.nextElementSibling.dataset.testid === "feed-bottom-runway"
-      ) {
-        return {
-          x: 0,
-          y: 1380,
-          top: 1380,
-          bottom: 1380,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 0,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-
-    try {
-      render(<MessageFeed sessionId={sid} />);
-      expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
-      expect(screen.getByText("New content below")).toBeTruthy();
-    } finally {
-      if (originalClientHeight) {
-        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
-      } else {
-        delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
-      }
-      if (originalScrollHeight) {
-        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
-      } else {
-        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
-      }
-      if (originalScrollTop) {
-        Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
-      } else {
-        delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
-      }
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("does not show the latest indicator on restore when the session has not progressed beyond the saved seen bottom", () => {
-    const sid = "test-no-latest-pill-without-new-growth";
-    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
-    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
-    setStoreMessages(sid, [user, assistant]);
-    setStoreFeedScrollPosition(sid, {
-      scrollTop: 200,
-      scrollHeight: 1200,
-      isAtBottom: false,
-      lastSeenContentBottom: 1380,
-    });
-
-    const { container } = render(<MessageFeed sessionId={sid} />);
-    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-    const runway = screen.getByTestId("feed-bottom-runway") as HTMLDivElement;
-    const bottomMarker = runway.previousElementSibling as HTMLDivElement;
-
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      configurable: true,
-      value: 600,
-    });
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      configurable: true,
-      value: 1600,
-    });
-    Object.defineProperty(scrollContainer, "scrollTop", {
-      configurable: true,
-      writable: true,
-      value: 200,
-    });
-    scrollContainer.getBoundingClientRect = () => ({
-      x: 0,
-      y: 100,
-      top: 100,
-      bottom: 700,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 600,
-      toJSON: () => ({}),
-    });
-    bottomMarker.getBoundingClientRect = () => ({
-      x: 0,
-      y: 1380,
-      top: 1380,
-      bottom: 1380,
-      left: 0,
-      right: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-    });
-
-    fireEvent.scroll(scrollContainer);
-
-    expect(screen.queryByLabelText("Jump to latest")).toBeNull();
-  });
-
-  it("restores the saved streaming anchor across session switches even when the saved state was near bottom", () => {
-    const sid = "test-streaming-anchor-restore";
-    const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });
-    const firstAssistant = makeMessage({ id: "a1", role: "assistant", content: "First answer" });
-    const secondUser = makeMessage({ id: "u2", role: "user", content: "Follow-up question" });
-    setStoreMessages(sid, [firstUser, firstAssistant, secondUser]);
-    setStoreStreaming(sid, "Assistant is streaming");
-    setStoreFeedScrollPosition(sid, {
-      scrollTop: 480,
-      scrollHeight: 1200,
-      isAtBottom: true,
-      anchorTurnId: "u2",
-      anchorOffsetTop: 0,
-    });
-
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
-        return {
-          x: 0,
-          y: 320,
-          top: 320,
-          bottom: 400,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
-        return {
-          x: 0,
-          y: 100,
-          top: 100,
-          bottom: 700,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 600,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-
-    try {
-      const { container } = render(<MessageFeed sessionId={sid} />);
-      const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-
-      expect(scrollContainer.scrollTop).toBe(220);
-      expect(mockScrollIntoView).not.toHaveBeenCalledWith({ behavior: "auto", block: "end" });
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("waits for session content before applying a saved anchor restore", () => {
-    const sid = "test-delayed-anchor-restore";
-    setStoreMessages(sid, []);
-    setStoreStreaming(sid, "Assistant is streaming");
-    setStoreFeedScrollPosition(sid, {
-      scrollTop: 480,
-      scrollHeight: 1200,
-      isAtBottom: true,
-      anchorTurnId: "u2",
-      anchorOffsetTop: 0,
-    });
-
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u2") {
-        return {
-          x: 0,
-          y: 320,
-          top: 320,
-          bottom: 400,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
-        return {
-          x: 0,
-          y: 100,
-          top: 100,
-          bottom: 700,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 600,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-
-    try {
-      const { container, rerender } = render(<MessageFeed sessionId={sid} />);
-      const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
-
-      expect(scrollContainer.scrollTop).toBe(0);
-
-      setStoreMessages(sid, [
-        makeMessage({ id: "u1", role: "user", content: "First question" }),
-        makeMessage({ id: "a1", role: "assistant", content: "First answer" }),
-        makeMessage({ id: "u2", role: "user", content: "Follow-up question" }),
-      ]);
-      rerender(<MessageFeed sessionId={sid} />);
-
-      expect(scrollContainer.scrollTop).toBe(220);
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    }
-  });
-
-  it("falls back to the conversation end when a saved anchor can no longer be restored", () => {
-    const sid = "test-missing-anchor-falls-back-to-bottom";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "First question" }),
-      makeMessage({ id: "a1", role: "assistant", content: "First answer" }),
-    ]);
-    setStoreStreaming(sid, "Assistant is streaming");
-    setStoreFeedScrollPosition(sid, {
-      scrollTop: 480,
-      scrollHeight: 1200,
-      isAtBottom: false,
-      anchorTurnId: "missing-turn",
-      anchorOffsetTop: 0,
-    });
-
-    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
-    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
-      configurable: true,
-      get() {
-        return this.classList.contains("overflow-y-auto") ? 600 : 0;
-      },
-    });
-    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
-      configurable: true,
-      get() {
-        return this.classList.contains("overflow-y-auto") ? 900 : 0;
-      },
-    });
-    Element.prototype.getBoundingClientRect = function () {
-      if (this instanceof HTMLElement && this.dataset.turnId === "u1") {
-        return {
-          x: 0,
-          y: 400,
-          top: 400,
-          bottom: 480,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 80,
-          toJSON: () => ({}),
-        };
-      }
-      if (this instanceof HTMLElement && this.classList.contains("overflow-y-auto")) {
-        return {
-          x: 0,
-          y: 100,
-          top: 100,
-          bottom: 700,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 600,
-          toJSON: () => ({}),
-        };
-      }
-      if (
-        this instanceof HTMLElement &&
-        this.nextElementSibling instanceof HTMLElement &&
-        this.nextElementSibling.dataset.testid === "feed-bottom-runway"
-      ) {
-        return {
-          x: 0,
-          y: 900,
-          top: 900,
-          bottom: 900,
-          left: 0,
-          right: 0,
-          width: 0,
-          height: 0,
-          toJSON: () => ({}),
-        };
-      }
-      return originalGetBoundingClientRect.call(this);
-    };
-    try {
-      render(<MessageFeed sessionId={sid} />);
-
-      expect(mockScrollTo).toHaveBeenCalledWith({ top: 300, behavior: "auto" });
-    } finally {
-      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-      if (originalClientHeight) {
-        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
-      }
-      if (originalScrollHeight) {
-        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
-      }
-    }
+    expect(mockScrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
   });
 
   it("renders streaming text with cursor animation", () => {

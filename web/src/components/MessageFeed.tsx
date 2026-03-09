@@ -115,12 +115,8 @@ function buildMinuteBoundaryLabelMap(messages: ChatMessage[]): Map<string, strin
 // not the entire MessageFeed (which would force all images to re-layout).
 export function ElapsedTimer({
   sessionId,
-  latestIndicatorVisible = false,
-  onJumpToLatest,
 }: {
   sessionId: string;
-  latestIndicatorVisible?: boolean;
-  onJumpToLatest?: (() => void) | null;
 }) {
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
@@ -146,7 +142,7 @@ export function ElapsedTimer({
   }, [streamingStartedAt, sessionStatus, streamingPausedDuration, streamingPauseStartedAt]);
 
   const showTimer = sessionStatus === "running" && elapsed > 0;
-  if (!showTimer && !latestIndicatorVisible) return null;
+  if (!showTimer) return null;
 
   const handleRelaunch = () => {
     api.relaunchSession(sessionId).catch(() => {});
@@ -156,41 +152,24 @@ export function ElapsedTimer({
   const dotColor = isStuck ? 'text-amber-400' : streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse';
 
   return (
-    <div className="shrink-0 flex items-center justify-between gap-3 border-t border-cc-border bg-cc-card/70 px-3 sm:px-4 py-1.5 text-[11px] text-cc-muted font-mono-code backdrop-blur-sm">
-      <div className="min-w-0 flex items-center gap-1.5">
-        {showTimer && (
-          <>
-            <YarnBallDot className={dotColor} />
-            <span>{label}</span>
-            <span className="text-cc-muted/60">(</span>
-            <span>{formatElapsed(elapsed)}</span>
-            {(streamingOutputTokens ?? 0) > 0 && (
-              <>
-                <span className="text-cc-muted/40">·</span>
-                <span>↓ {formatTokens(streamingOutputTokens!)}</span>
-              </>
-            )}
-            <span className="text-cc-muted/60">)</span>
-            {isStuck && (
-              <button
-                onClick={handleRelaunch}
-                className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
-              >
-                Relaunch
-              </button>
-            )}
-          </>
-        )}
-      </div>
-      {latestIndicatorVisible && onJumpToLatest && (
+    <div className="shrink-0 flex items-center gap-1.5 border-t border-cc-border bg-cc-card px-3 sm:px-4 py-1.5 text-[11px] text-cc-muted font-mono-code">
+      <YarnBallDot className={dotColor} />
+      <span>{label}</span>
+      <span className="text-cc-muted/60">(</span>
+      <span>{formatElapsed(elapsed)}</span>
+      {(streamingOutputTokens ?? 0) > 0 && (
+        <>
+          <span className="text-cc-muted/40">·</span>
+          <span>↓ {formatTokens(streamingOutputTokens!)}</span>
+        </>
+      )}
+      <span className="text-cc-muted/60">)</span>
+      {isStuck && (
         <button
-          onClick={onJumpToLatest}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-cc-primary/25 bg-cc-card/90 px-2.5 py-1 text-[11px] font-medium text-cc-fg transition-colors hover:bg-cc-hover"
-          title="Jump to latest"
-          aria-label="Jump to latest"
+          onClick={handleRelaunch}
+          className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
         >
-          <span className="inline-flex h-2 w-2 rounded-full bg-cc-primary animate-pulse" />
-          <span className="truncate">New content below</span>
+          Relaunch
         </button>
       )}
     </div>
@@ -1239,15 +1218,9 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
 
 export function MessageFeed({
   sessionId,
-  latestIndicatorMode = "overlay",
-  onLatestIndicatorVisibleChange,
-  onJumpToLatestReady,
   sectionTurnCount = FEED_SECTION_TURN_COUNT,
 }: {
   sessionId: string;
-  latestIndicatorMode?: "overlay" | "external";
-  onLatestIndicatorVisibleChange?: (visible: boolean) => void;
-  onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
   sectionTurnCount?: number;
 }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
@@ -1256,29 +1229,20 @@ export function MessageFeed({
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
-  const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
-  const didMountRef = useRef(false);
-  const didTrackContentRef = useRef(false);
-  const lastSentUserMessageIdRef = useRef<string | null>(null);
-  const stableAllowedBottomRef = useRef<number | null>(null);
-  const lastSeenContentBottomRef = useRef<number | null>(null);
-  const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
-    0,
-  );
+  const isInitialRender = useRef(true);
+  const lastScrollTime = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const [sectionWindowStart, setSectionWindowStart] = useState<number | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
   const restoredSessionIdRef = useRef<string | null>(null);
-  const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
 
   const findVisibleTurnAnchor = useCallback((container: HTMLDivElement) => {
     const containerRect = container.getBoundingClientRect();
@@ -1295,15 +1259,6 @@ export function MessageFeed({
     return null;
   }, []);
 
-  const getRealContentBottom = useCallback(() => {
-    const container = containerRef.current;
-    const bottomMarker = bottomRef.current;
-    if (!container || !bottomMarker) return null;
-    const containerRect = container.getBoundingClientRect();
-    const bottomRect = bottomMarker.getBoundingClientRect();
-    return Math.max(0, Math.round(bottomRect.bottom - containerRect.top + container.scrollTop));
-  }, []);
-
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
   // avoiding the race where useEffect cleanup runs too late.
@@ -1318,11 +1273,10 @@ export function MessageFeed({
           isAtBottom: isNearBottom.current,
           anchorTurnId: anchor?.turnId ?? null,
           anchorOffsetTop: anchor?.offsetTop,
-          lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
         });
       }
     };
-  }, [findVisibleTurnAnchor, getRealContentBottom, sessionId]);
+  }, [findVisibleTurnAnchor, sessionId]);
 
   const { turns } = useFeedModel(messages, {
     leaderMode: isLeaderSession,
@@ -1358,11 +1312,6 @@ export function MessageFeed({
   }, [sections, visibleSectionStartIndex]);
   const hasOlderSections = previousSectionStartIndex !== null;
   const hasNewerSections = sectionWindowStart !== null && nextSectionStartIndex !== null;
-  const isTopLevelStreaming = Boolean(streamingText);
-  const newestMessage = messages[messages.length - 1];
-  const lastUserTurnId = [...visibleTurns]
-    .reverse()
-    .find((turn) => isUserBoundaryEntry(turn.userEntry))?.id ?? null;
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
   const collapsibleTurnIds = useMemo(() =>
@@ -1399,88 +1348,6 @@ export function MessageFeed({
   }, [latestVisibleSectionStartIndex, sections]);
 
   // ─── Scroll management ─────────────────────────────────────────────────
-
-  const updateBottomRunwayHeight = useCallback(() => {
-    const el = containerRef.current;
-    if (!el || !lastUserTurnId) {
-      stableAllowedBottomRef.current = null;
-      setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
-      return;
-    }
-    const viewportHeight = Math.max(
-      0,
-      Math.round(
-        el.clientHeight ||
-        el.getBoundingClientRect().height ||
-        (typeof window === "undefined" ? 0 : window.innerHeight),
-      ),
-    );
-    const lastRenderableMessage = el.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(lastUserTurnId)}"]`);
-    const bottomMarker = bottomRef.current;
-    if (!lastRenderableMessage || !bottomMarker || viewportHeight === 0) {
-      stableAllowedBottomRef.current = null;
-      setBottomRunwayHeight((prev) => (prev === 0 ? prev : 0));
-      return;
-    }
-    const messageRect = lastRenderableMessage.getBoundingClientRect();
-    const containerRect = el.getBoundingClientRect();
-    const bottomRect = bottomMarker.getBoundingClientRect();
-    const userTopTarget = Math.max(
-      0,
-      Math.round(messageRect.top - containerRect.top + el.scrollTop),
-    );
-    const realContentBottom = Math.max(0, Math.round(bottomRect.bottom - containerRect.top + el.scrollTop));
-    const contentBottomTarget = Math.max(0, Math.round(realContentBottom - viewportHeight));
-    const canonicalAllowedBottom = Math.max(userTopTarget, contentBottomTarget);
-    const desiredRunway = Math.max(0, canonicalAllowedBottom - contentBottomTarget);
-    const preserveVisibleRunway = Math.max(0, Math.round(el.scrollTop - contentBottomTarget));
-    stableAllowedBottomRef.current = canonicalAllowedBottom;
-    const nextHeight = Math.max(desiredRunway, preserveVisibleRunway);
-    setBottomRunwayHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, [lastUserTurnId]);
-
-  const isNearContentBottom = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return true;
-    return container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-  }, []);
-
-  const hasRealContentBelowViewport = useCallback(() => {
-    const container = containerRef.current;
-    const realContentBottom = getRealContentBottom();
-    if (!container || realContentBottom == null) return false;
-    return realContentBottom > container.scrollTop + container.clientHeight + 8;
-  }, [getRealContentBottom]);
-
-  const scrollToContentBottom = useCallback((behavior: ScrollBehavior) => {
-    const bottomMarker = bottomRef.current;
-    if (bottomMarker) {
-      bottomMarker.scrollIntoView({ behavior, block: "end" });
-    }
-    isNearBottom.current = true;
-    lastSeenContentBottomRef.current = getRealContentBottom();
-    setShowScrollButton(false);
-    setShowLatestPill(false);
-  }, [getRealContentBottom]);
-
-  const scrollToAllowedBottom = useCallback((behavior: ScrollBehavior) => {
-    const container = containerRef.current;
-    if (container) {
-      const stableTargetTop = stableAllowedBottomRef.current;
-      const maxScrollableTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.min(
-        stableTargetTop == null ? maxScrollableTop : Math.max(0, stableTargetTop),
-        maxScrollableTop,
-      );
-      container.scrollTo({ top: targetTop, behavior });
-      isNearBottom.current = true;
-      lastSeenContentBottomRef.current = getRealContentBottom();
-      setShowScrollButton(false);
-      setShowLatestPill(false);
-      return;
-    }
-    scrollToContentBottom(behavior);
-  }, [getRealContentBottom, scrollToContentBottom]);
 
   const restoreTurnAnchor = useCallback((anchorTurnId: string, anchorOffsetTop = 0) => {
     const container = containerRef.current;
@@ -1528,30 +1395,42 @@ export function MessageFeed({
     moveSectionWindow(nextSectionStartIndex === latestVisibleSectionStartIndex ? null : nextSectionStartIndex);
   }, [latestVisibleSectionStartIndex, moveSectionWindow, nextSectionStartIndex]);
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const performScroll = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      isNearBottom.current = true;
+      setShowScrollButton(false);
+    };
+    if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) {
+      performScroll();
+      return;
+    }
+    setSectionWindowStart(null);
+    requestAnimationFrame(performScroll);
+  }, [sectionWindowStart, totalSections]);
+
+  const handleScrollToBottomClick = useCallback(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
+
   const resetVisibleSectionsToLatest = useCallback((behavior: ScrollBehavior = "auto") => {
     if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) return;
     setSectionWindowStart(null);
-    requestAnimationFrame(() => scrollToAllowedBottom(behavior));
-  }, [scrollToAllowedBottom, sectionWindowStart, totalSections]);
-
-  useLayoutEffect(() => {
-    updateBottomRunwayHeight();
-  }, [messages, updateBottomRunwayHeight]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.addEventListener("resize", updateBottomRunwayHeight);
-    return () => window.removeEventListener("resize", updateBottomRunwayHeight);
-  }, [updateBottomRunwayHeight]);
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      container.scrollTo({ top: container.scrollHeight, behavior });
+    });
+  }, [sectionWindowStart, totalSections]);
 
   function handleScroll() {
     const el = containerRef.current;
     if (!el) return;
-    const nearBottom = isNearContentBottom();
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     isNearBottom.current = nearBottom;
     if (nearBottom) {
-      lastSeenContentBottomRef.current = getRealContentBottom();
-      setShowLatestPill(false);
       resetVisibleSectionsToLatest("auto");
     }
     // Only trigger a re-render when the button state actually changes
@@ -1569,23 +1448,20 @@ export function MessageFeed({
   useLayoutEffect(() => {
     if (restoredSessionIdRef.current === sessionId) return;
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
-    if (messages.length === 0 && (pos?.anchorTurnId || !streamingText)) return;
-    const shouldPreferAnchorRestore = Boolean(
-      pos?.anchorTurnId && (isTopLevelStreaming || !pos.isAtBottom),
-    );
-    const desiredSectionWindowStart = shouldPreferAnchorRestore && pos?.anchorTurnId
+    if (messages.length === 0 && pos?.anchorTurnId) return;
+    const desiredSectionWindowStart = pos?.anchorTurnId
       ? getSectionWindowStartForTurnId(pos.anchorTurnId)
       : null;
     if (desiredSectionWindowStart !== sectionWindowStart) {
       setSectionWindowStart(desiredSectionWindowStart);
       return;
     }
-    if (pos && shouldPreferAnchorRestore) {
+    if (pos && !pos.isAtBottom && pos.anchorTurnId) {
       if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
         isNearBottom.current = false;
         setShowScrollButton(true);
       } else {
-        scrollToAllowedBottom("auto");
+        scrollToBottom("auto");
       }
     } else if (pos && !pos.isAtBottom) {
       const el = containerRef.current;
@@ -1599,104 +1475,38 @@ export function MessageFeed({
         setShowScrollButton(true);
       }
     } else {
-      scrollToAllowedBottom("auto");
+      scrollToBottom("auto");
     }
     restoredSessionIdRef.current = sessionId;
   }, [
     getSectionWindowStartForTurnId,
-    isTopLevelStreaming,
     messages.length,
     restoreTurnAnchor,
-    scrollToAllowedBottom,
+    scrollToBottom,
     sectionWindowStart,
     sessionId,
-    streamingText,
   ]);
 
   useEffect(() => {
-    didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
-    lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
-    setShowLatestPill(false);
-  }, [savedScrollPos?.lastSeenContentBottom, sessionId]);
-
-  useEffect(() => {
-    const realContentBottom = getRealContentBottom();
-    if (!didTrackContentRef.current) {
-      didTrackContentRef.current = true;
-      lastSeenContentBottomRef.current = realContentBottom;
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
       return;
     }
     if (isNearBottom.current) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
+      const now = Date.now();
+      const throttleMs = streamingText ? 80 : 200;
+      if (now - lastScrollTime.current >= throttleMs) {
+        lastScrollTime.current = now;
+        const container = containerRef.current;
+        if (!container) return;
+        if (streamingText) {
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        }
+      }
     }
-    if (realContentBottom == null || !hasRealContentBelowViewport()) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    const baseline = lastSeenContentBottomRef.current;
-    if (baseline == null) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    setShowLatestPill(realContentBottom > baseline + 8);
-  }, [getRealContentBottom, hasRealContentBelowViewport, messages.length, newestMessage?.id, streamingText]);
-
-  useLayoutEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      lastSentUserMessageIdRef.current = newestMessage?.role === "user"
-        ? newestMessage?.id
-        : null;
-      return;
-    }
-    if (newestMessage?.role !== "user") return;
-    if (newestMessage.id === lastSentUserMessageIdRef.current) return;
-    lastSentUserMessageIdRef.current = newestMessage.id;
-    const container = containerRef.current;
-    const targetTurn = container?.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(newestMessage.id)}"]`) ?? null;
-    const containerRect = container?.getBoundingClientRect() ?? null;
-    const targetRect = targetTurn?.getBoundingClientRect() ?? null;
-    const isVisible = Boolean(
-      containerRect
-      && targetRect
-      && targetRect.bottom > containerRect.top
-      && targetRect.top < containerRect.bottom,
-    );
-    if (!isVisible) {
-      scrollToContentBottom("auto");
-    }
-    const rafId = requestAnimationFrame(() => {
-      const container = containerRef.current;
-      if (!container) return;
-      const stableTargetTop = stableAllowedBottomRef.current;
-      const maxScrollableTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.min(
-        stableTargetTop == null ? maxScrollableTop : Math.max(0, stableTargetTop),
-        maxScrollableTop,
-      );
-      if (Math.abs(container.scrollTop - targetTop) <= 4) return;
-      scrollToAllowedBottom("smooth");
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [messages, newestMessage?.id, newestMessage?.role, scrollToAllowedBottom, scrollToContentBottom]);
-
-  const scrollToBottom = useCallback(() => {
-    resetVisibleSectionsToLatest("auto");
-    scrollToContentBottom("smooth");
-  }, [resetVisibleSectionsToLatest, scrollToContentBottom]);
-
-  useEffect(() => {
-    onLatestIndicatorVisibleChange?.(showLatestPill);
-  }, [onLatestIndicatorVisibleChange, showLatestPill]);
-
-  useEffect(() => {
-    onJumpToLatestReady?.(scrollToBottom);
-    return () => onJumpToLatestReady?.(null);
-  }, [onJumpToLatestReady, scrollToBottom]);
+  }, [messages.length, streamingText]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
@@ -1915,34 +1725,10 @@ export function MessageFeed({
             </div>
           )}
           <FeedFooter sessionId={sessionId} />
-          <div ref={bottomRef} />
-          <div
-            aria-hidden="true"
-            data-testid="feed-bottom-runway"
-            style={{ height: `${bottomRunwayHeight}px` }}
-          />
         </div>
         </PawCounterContext.Provider>
         </PawScrollProvider>
       </div>
-
-      {showLatestPill && latestIndicatorMode !== "external" && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:px-4">
-          <button
-            onClick={scrollToBottom}
-            className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-cc-primary/25 bg-cc-card/95 px-4 py-2 text-sm font-medium text-cc-fg shadow-lg backdrop-blur-sm transition-colors hover:bg-cc-hover"
-            title="Jump to latest"
-            aria-label="Jump to latest"
-          >
-            <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-cc-primary animate-pulse" />
-            <span className="truncate">New content below</span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0">
-              <path d="M4 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M4 4h8" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      )}
 
       {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: top/bottom only, auto-hide */}
       {showScrollButton && (
@@ -2019,7 +1805,7 @@ export function MessageFeed({
           )}
           {/* Go to bottom */}
           <button
-            onClick={scrollToBottom}
+            onClick={handleScrollToBottomClick}
             className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
             title="Go to bottom"
             aria-label="Go to bottom"
