@@ -115,8 +115,12 @@ function buildMinuteBoundaryLabelMap(messages: ChatMessage[]): Map<string, strin
 // not the entire MessageFeed (which would force all images to re-layout).
 export function ElapsedTimer({
   sessionId,
+  latestIndicatorVisible = false,
+  onJumpToLatest,
 }: {
   sessionId: string;
+  latestIndicatorVisible?: boolean;
+  onJumpToLatest?: () => void;
 }) {
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
@@ -170,6 +174,18 @@ export function ElapsedTimer({
           className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
         >
           Relaunch
+        </button>
+      )}
+      {latestIndicatorVisible && onJumpToLatest && (
+        <button
+          type="button"
+          onClick={onJumpToLatest}
+          className="ml-auto inline-flex min-w-0 items-center gap-1.5 rounded-full border border-cc-primary/25 bg-cc-card/70 px-2.5 py-0.5 text-[11px] font-medium text-cc-fg transition-colors hover:bg-cc-hover cursor-pointer"
+          title="Jump to latest"
+          aria-label="Jump to latest"
+        >
+          <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-cc-primary animate-pulse" />
+          <span className="truncate">New content below</span>
         </button>
       )}
     </div>
@@ -1219,9 +1235,15 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
 export function MessageFeed({
   sessionId,
   sectionTurnCount = FEED_SECTION_TURN_COUNT,
+  latestIndicatorMode = "overlay",
+  onLatestIndicatorVisibleChange,
+  onJumpToLatestReady,
 }: {
   sessionId: string;
   sectionTurnCount?: number;
+  latestIndicatorMode?: "overlay" | "external";
+  onLatestIndicatorVisibleChange?: (visible: boolean) => void;
+  onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
 }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
@@ -1236,7 +1258,10 @@ export function MessageFeed({
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const isInitialRender = useRef(true);
   const lastScrollTime = useRef(0);
+  const didTrackContentRef = useRef(false);
+  const lastSeenContentBottomRef = useRef<number | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const [sectionWindowStart, setSectionWindowStart] = useState<number | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -1259,6 +1284,12 @@ export function MessageFeed({
     return null;
   }, []);
 
+  const getRealContentBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return null;
+    return Math.max(0, Math.round(container.scrollHeight));
+  }, []);
+
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
   // avoiding the race where useEffect cleanup runs too late.
@@ -1273,10 +1304,11 @@ export function MessageFeed({
           isAtBottom: isNearBottom.current,
           anchorTurnId: anchor?.turnId ?? null,
           anchorOffsetTop: anchor?.offsetTop,
+          lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
         });
       }
     };
-  }, [findVisibleTurnAnchor, sessionId]);
+  }, [findVisibleTurnAnchor, getRealContentBottom, sessionId]);
 
   const { turns } = useFeedModel(messages, {
     leaderMode: isLeaderSession,
@@ -1401,7 +1433,9 @@ export function MessageFeed({
       if (!container) return;
       container.scrollTo({ top: container.scrollHeight, behavior });
       isNearBottom.current = true;
+      lastSeenContentBottomRef.current = getRealContentBottom();
       setShowScrollButton(false);
+      setShowLatestPill(false);
     };
     if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) {
       performScroll();
@@ -1409,7 +1443,7 @@ export function MessageFeed({
     }
     setSectionWindowStart(null);
     requestAnimationFrame(performScroll);
-  }, [sectionWindowStart, totalSections]);
+  }, [getRealContentBottom, sectionWindowStart, totalSections]);
 
   const handleScrollToBottomClick = useCallback(() => {
     scrollToBottom();
@@ -1431,6 +1465,8 @@ export function MessageFeed({
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     isNearBottom.current = nearBottom;
     if (nearBottom) {
+      lastSeenContentBottomRef.current = getRealContentBottom();
+      setShowLatestPill(false);
       resetVisibleSectionsToLatest("auto");
     }
     // Only trigger a re-render when the button state actually changes
@@ -1486,6 +1522,60 @@ export function MessageFeed({
     sectionWindowStart,
     sessionId,
   ]);
+
+  useEffect(() => {
+    didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
+    lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
+    setShowLatestPill(false);
+  }, [savedScrollPos?.lastSeenContentBottom, sessionId]);
+
+  useEffect(() => {
+    const realContentBottom = getRealContentBottom();
+    if (!didTrackContentRef.current) {
+      didTrackContentRef.current = true;
+      lastSeenContentBottomRef.current = realContentBottom;
+      setShowLatestPill(false);
+      return;
+    }
+    if (isNearBottom.current) {
+      lastSeenContentBottomRef.current = realContentBottom;
+      setShowLatestPill(false);
+      return;
+    }
+    if (hasNewerSections) {
+      setShowLatestPill(true);
+      return;
+    }
+    if (realContentBottom == null) {
+      setShowLatestPill(false);
+      return;
+    }
+    const container = containerRef.current;
+    const hasContentBelowViewport = container
+      ? realContentBottom > container.scrollTop + container.clientHeight + 8
+      : false;
+    if (!hasContentBelowViewport) {
+      lastSeenContentBottomRef.current = realContentBottom;
+      setShowLatestPill(false);
+      return;
+    }
+    const baseline = lastSeenContentBottomRef.current;
+    if (baseline == null) {
+      lastSeenContentBottomRef.current = realContentBottom;
+      setShowLatestPill(false);
+      return;
+    }
+    setShowLatestPill(realContentBottom > baseline + 8);
+  }, [getRealContentBottom, hasNewerSections, messages.length, streamingText]);
+
+  useEffect(() => {
+    onLatestIndicatorVisibleChange?.(showLatestPill);
+  }, [onLatestIndicatorVisibleChange, showLatestPill]);
+
+  useEffect(() => {
+    onJumpToLatestReady?.(() => scrollToBottom());
+    return () => onJumpToLatestReady?.(null);
+  }, [onJumpToLatestReady, scrollToBottom]);
 
   useEffect(() => {
     if (isInitialRender.current) {
@@ -1729,6 +1819,21 @@ export function MessageFeed({
         </PawCounterContext.Provider>
         </PawScrollProvider>
       </div>
+
+      {showLatestPill && latestIndicatorMode !== "external" && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:px-4">
+          <button
+            type="button"
+            onClick={handleScrollToBottomClick}
+            className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-cc-primary/25 bg-cc-card/95 px-4 py-2 text-sm font-medium text-cc-fg shadow-lg backdrop-blur-sm transition-colors hover:bg-cc-hover cursor-pointer"
+            title="Jump to latest"
+            aria-label="Jump to latest"
+          >
+            <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-cc-primary animate-pulse" />
+            <span className="truncate">New content below</span>
+          </button>
+        </div>
+      )}
 
       {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: top/bottom only, auto-hide */}
       {showScrollButton && (

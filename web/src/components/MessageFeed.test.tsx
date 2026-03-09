@@ -202,6 +202,7 @@ function setStoreFeedScrollPosition(
     isAtBottom: boolean;
     anchorTurnId?: string | null;
     anchorOffsetTop?: number;
+    lastSeenContentBottom?: number | null;
   },
 ) {
   const map = new Map();
@@ -479,6 +480,25 @@ describe("MessageFeed section windowing", () => {
     expect(await screen.findByText("Section 1 marker")).toBeTruthy();
     expect(screen.queryByText("Section 4 marker")).toBeNull();
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+  });
+
+  it("shows the latest pill when restore lands on an older section with newer sections below", async () => {
+    const sid = "test-section-latest-pill-on-restore";
+    setStoreMessages(sid, makeSectionedMessages(4, 2));
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 240,
+      scrollHeight: 1600,
+      isAtBottom: false,
+      anchorTurnId: "u1",
+      anchorOffsetTop: 0,
+      lastSeenContentBottom: 1180,
+    });
+
+    render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+
+    expect(await screen.findByText("Section 1 marker")).toBeTruthy();
+    expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
+    expect(screen.getByText("New content below")).toBeTruthy();
   });
 });
 
@@ -834,7 +854,7 @@ describe("MessageFeed - scroll behavior", () => {
     expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
   });
 
-  it("does not render the removed bottom runway or latest pill affordance", () => {
+  it("does not render a runway or latest pill by default", () => {
     const sid = "test-no-runway-or-latest-pill";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
@@ -845,6 +865,100 @@ describe("MessageFeed - scroll behavior", () => {
 
     expect(screen.queryByTestId("feed-bottom-runway")).toBeNull();
     expect(screen.queryByText("New content below")).toBeNull();
+  });
+
+  it("shows the latest pill only after new content arrives below the current viewport", () => {
+    const sid = "test-latest-pill-after-new-content";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 0;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+    expect(screen.queryByLabelText("Jump to latest")).toBeNull();
+
+    scrollHeightValue = 1760;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
+    expect(screen.getByText("New content below")).toBeTruthy();
+  });
+
+  it("uses the latest pill to jump to the real content bottom", () => {
+    const sid = "test-latest-pill-click";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 0;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+    scrollHeightValue = 1760;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    mockScrollTo.mockClear();
+    fireEvent.click(screen.getByLabelText("Jump to latest"));
+
+    expect(mockScrollTo).toHaveBeenCalledWith({ top: 1760, behavior: "smooth" });
   });
 
   it("keeps the Go to bottom button aligned to the real feed bottom", () => {

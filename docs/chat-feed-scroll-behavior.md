@@ -47,7 +47,7 @@ During streaming:
 This preserves the previous behavior where streaming does not interrupt manual
 reading once the user has moved away from the bottom.
 
-### 4. Jump-to-bottom behavior
+### 4. Jump-to-bottom and latest-indicator behavior
 
 The existing jump-to-bottom button remains the manual way to return to the end
 of the conversation.
@@ -55,8 +55,16 @@ of the conversation.
 Clicking it should scroll to the real bottom of the feed so the last rendered
 message aligns naturally at the bottom of the viewport.
 
-There is no separate "latest" pill or special new-content indicator in the feed
-scroll model.
+The feed may also show a passive "New content below" indicator when:
+
+- the user is no longer sticky to the bottom, and
+- newer content has appeared below the last real content bottom they had
+  already seen, or
+- the feed has restored into an older section window that still has newer
+  sections below
+
+The latest indicator is only an affordance to jump back to the real bottom. It
+must not change the user’s current scroll position by itself.
 
 ### 5. Session restore
 
@@ -73,7 +81,6 @@ There is no special anchor-restore path tied to the latest user turn.
 
 - No send-time auto-scroll to place the newest user turn at the top
 - No extra scroll runway below the real content
-- No dedicated "new content below" pill
 - No special session-restore anchor model for running turns
 
 ## Expected UX outcome

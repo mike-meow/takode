@@ -16,6 +16,7 @@ interface MockStoreState {
 let mockState: MockStoreState;
 const mockUnarchiveSession = vi.fn().mockResolvedValue({});
 const mockRelaunchSession = vi.fn().mockResolvedValue({});
+const mockJumpToLatest = vi.fn();
 
 function resetStore(overrides: Partial<MockStoreState> = {}) {
   mockState = {
@@ -43,8 +44,43 @@ vi.mock("../api.js", () => ({
 }));
 
 vi.mock("./MessageFeed.js", () => ({
-  MessageFeed: ({ sessionId }: { sessionId: string }) => <div data-testid="message-feed">{sessionId}</div>,
-  ElapsedTimer: () => <div data-testid="elapsed-timer" />,
+  MessageFeed: ({
+    sessionId,
+    latestIndicatorMode,
+    onLatestIndicatorVisibleChange,
+    onJumpToLatestReady,
+  }: {
+    sessionId: string;
+    latestIndicatorMode?: string;
+    onLatestIndicatorVisibleChange?: (visible: boolean) => void;
+    onJumpToLatestReady?: (fn: (() => void) | null) => void;
+  }) => (
+    <div data-testid="message-feed" data-latest-indicator-mode={latestIndicatorMode}>
+      {sessionId}
+      <button type="button" onClick={() => onLatestIndicatorVisibleChange?.(true)}>
+        show latest indicator
+      </button>
+      <button type="button" onClick={() => onJumpToLatestReady?.(() => mockJumpToLatest())}>
+        register latest jump
+      </button>
+    </div>
+  ),
+  ElapsedTimer: ({
+    latestIndicatorVisible,
+    onJumpToLatest,
+  }: {
+    latestIndicatorVisible?: boolean;
+    onJumpToLatest?: () => void;
+  }) => (
+    <div data-testid="elapsed-timer">
+      <span data-testid="latest-indicator-visible">{latestIndicatorVisible ? "yes" : "no"}</span>
+      {latestIndicatorVisible && (
+        <button type="button" onClick={onJumpToLatest}>
+          jump latest
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock("./Composer.js", () => ({
@@ -76,6 +112,7 @@ beforeEach(() => {
   resetStore();
   mockUnarchiveSession.mockClear();
   mockRelaunchSession.mockClear();
+  mockJumpToLatest.mockClear();
 });
 
 describe("ChatView archived banner", () => {
@@ -138,5 +175,18 @@ describe("ChatView backend banners", () => {
     expect(scope.getByText("Codex initialization failed: Transport closed")).toBeInTheDocument();
     fireEvent.click(scope.getByRole("button", { name: "Relaunch" }));
     expect(mockRelaunchSession).toHaveBeenCalledWith("s1");
+  });
+
+  it("wires the latest indicator through the shared status rail", () => {
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-latest-indicator-mode", "external");
+    fireEvent.click(scope.getByRole("button", { name: "register latest jump" }));
+    fireEvent.click(scope.getByRole("button", { name: "show latest indicator" }));
+
+    expect(scope.getByTestId("latest-indicator-visible")).toHaveTextContent("yes");
+    fireEvent.click(scope.getByRole("button", { name: "jump latest" }));
+    expect(mockJumpToLatest).toHaveBeenCalledTimes(1);
   });
 });
