@@ -44,6 +44,7 @@ vi.mock("../store.js", () => {
       messages: mockStoreValues.messages ?? new Map(),
       messageFrozenCounts: mockStoreValues.messageFrozenCounts ?? new Map(),
       messageFrozenRevisions: mockStoreValues.messageFrozenRevisions ?? new Map(),
+      historyLoading: mockStoreValues.historyLoading ?? new Map(),
       streaming: mockStoreValues.streaming ?? new Map(),
       streamingByParentToolUseId: mockStoreValues.streamingByParentToolUseId ?? new Map(),
       streamingStartedAt: mockStoreValues.streamingStartedAt ?? new Map(),
@@ -192,6 +193,12 @@ function setStoreStreaming(sessionId: string, text: string | undefined) {
   const map = new Map();
   if (text !== undefined) map.set(sessionId, text);
   mockStoreValues.streaming = map;
+}
+
+function setStoreHistoryLoading(sessionId: string, loading: boolean) {
+  const map = new Map();
+  if (loading) map.set(sessionId, true);
+  mockStoreValues.historyLoading = map;
 }
 
 function setStoreFeedScrollPosition(
@@ -1071,6 +1078,69 @@ describe("MessageFeed - scroll behavior", () => {
     // No pre element with streaming content
     const preElements = container.querySelectorAll("pre.font-serif-assistant");
     expect(preElements.length).toBe(0);
+  });
+
+  it("shows an explicit loading conversation state instead of the empty state during cold history hydration", () => {
+    const sid = "test-loading-conversation";
+    setStoreMessages(sid, []);
+    setStoreHistoryLoading(sid, true);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Loading conversation...")).toBeTruthy();
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+  });
+
+  it("does not trigger a smooth bottom-follow when initial history lands after showing the loading conversation state", () => {
+    const sid = "test-loading-history-no-smooth-jump";
+    setStoreMessages(sid, []);
+    setStoreHistoryLoading(sid, true);
+
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    let scrollHeightValue = 1600;
+
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 600 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollHeightValue : 0;
+      },
+    });
+
+    try {
+      const { rerender } = render(<MessageFeed sessionId={sid} />);
+      expect(screen.getByText("Loading conversation...")).toBeTruthy();
+
+      mockScrollTo.mockClear();
+      setStoreHistoryLoading(sid, false);
+      setStoreMessages(sid, [
+        makeMessage({ id: "u1", role: "user", content: "Question" }),
+        makeMessage({ id: "a1", role: "assistant", content: "Loaded answer" }),
+      ]);
+      scrollHeightValue = 1800;
+      rerender(<MessageFeed sessionId={sid} />);
+
+      expect(screen.queryByText("Loading conversation...")).toBeNull();
+      expect(screen.getByText("Loaded answer")).toBeTruthy();
+      expect(mockScrollTo).not.toHaveBeenCalledWith({ top: 1800, behavior: "smooth" });
+    } finally {
+      if (originalClientHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+      }
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      }
+    }
   });
 });
 

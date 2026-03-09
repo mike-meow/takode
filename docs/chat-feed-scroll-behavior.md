@@ -77,6 +77,19 @@ Saved scroll position restore follows the older proportional model:
 
 There is no special anchor-restore path tied to the latest user turn.
 
+### 6. Cold session hydration
+
+When switching to a session whose full history is not yet loaded in the browser:
+
+- the feed should show an explicit `Loading conversation...` state instead of
+  the normal empty-conversation UI
+- the feed should not look empty and then suddenly populate
+- the first authoritative history render should not trigger a visible
+  top-to-bottom smooth scroll animation
+
+In practice, this means restore/follow logic should wait until the first
+history payload has landed for that session.
+
 ## Non-goals
 
 - No send-time auto-scroll to place the newest user turn at the top
@@ -89,3 +102,5 @@ There is no special anchor-restore path tied to the latest user turn.
 - When you scroll up, your position stays stable.
 - Switching sessions restores the old scroll position or bottom state without
   extra send/runway behavior interfering.
+- Cold session switches show a loading conversation state instead of a blank
+  feed, and history should appear without a disorienting scroll-on-appear.

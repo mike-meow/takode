@@ -29,6 +29,7 @@ import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-g
 
 const MOCK_SESSION_ID = "playground-session";
 const PLAYGROUND_SECTIONED_SESSION_ID = "playground-sectioned-feed";
+const PLAYGROUND_LOADING_SESSION_ID = "playground-loading-feed";
 const PLAYGROUND_STARTING_SESSION_ID = "playground-chat-starting";
 const PLAYGROUND_RESUMING_SESSION_ID = "playground-chat-resuming";
 const PLAYGROUND_BROKEN_SESSION_ID = "playground-chat-broken";
@@ -871,6 +872,7 @@ export function Playground() {
     const demoSessionIds = [
       sessionId,
       PLAYGROUND_SECTIONED_SESSION_ID,
+      PLAYGROUND_LOADING_SESSION_ID,
       PLAYGROUND_STARTING_SESSION_ID,
       PLAYGROUND_RESUMING_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
@@ -887,6 +889,7 @@ export function Playground() {
     const prevStreamingStartedAt = new Map(demoSessionIds.map((id) => [id, snapshot.streamingStartedAt.get(id)]));
     const prevStreamingOutputTokens = new Map(demoSessionIds.map((id) => [id, snapshot.streamingOutputTokens.get(id)]));
     const prevFeedScrollPositions = new Map(demoSessionIds.map((id) => [id, snapshot.feedScrollPosition.get(id)]));
+    const prevHistoryLoading = new Map(demoSessionIds.map((id) => [id, snapshot.historyLoading.get(id)]));
 
     const session: SessionState = {
       session_id: sessionId,
@@ -948,6 +951,19 @@ export function Playground() {
       anchorTurnId: "playground-section-u1",
       anchorOffsetTop: 0,
     });
+
+    const loadingSession: SessionState = {
+      ...session,
+      session_id: PLAYGROUND_LOADING_SESSION_ID,
+      cwd: "/Users/stan/Dev/project/cold-session",
+      num_turns: 86,
+      is_containerized: false,
+    };
+    store.addSession(loadingSession);
+    store.setConnectionStatus(PLAYGROUND_LOADING_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_LOADING_SESSION_ID, true);
+    store.setSessionStatus(PLAYGROUND_LOADING_SESSION_ID, "idle");
+    store.setHistoryLoading(PLAYGROUND_LOADING_SESSION_ID, true);
 
     // Mock tool results for ToolResultSection demo
     store.setToolResult(sessionId, "tu-1", {
@@ -1063,6 +1079,7 @@ export function Playground() {
         const streamingOutputTokens = new Map(s.streamingOutputTokens);
         const cliDisconnectReason = new Map(s.cliDisconnectReason);
         const feedScrollPosition = new Map(s.feedScrollPosition);
+        const historyLoading = new Map(s.historyLoading);
 
         for (const demoId of demoSessionIds) {
           const prevSession = prevSessions.get(demoId);
@@ -1077,6 +1094,7 @@ export function Playground() {
           const prevStreamStarted = prevStreamingStartedAt.get(demoId);
           const prevStreamTokens = prevStreamingOutputTokens.get(demoId);
           const prevFeedScrollPosition = prevFeedScrollPositions.get(demoId);
+          const prevLoading = prevHistoryLoading.get(demoId);
 
           if (prevSession) sessions.set(demoId, prevSession); else sessions.delete(demoId);
           if (prevMessageList) messages.set(demoId, prevMessageList); else messages.delete(demoId);
@@ -1090,6 +1108,7 @@ export function Playground() {
           if (typeof prevStreamStarted === "number") streamingStartedAt.set(demoId, prevStreamStarted); else streamingStartedAt.delete(demoId);
           if (typeof prevStreamTokens === "number") streamingOutputTokens.set(demoId, prevStreamTokens); else streamingOutputTokens.delete(demoId);
           if (prevFeedScrollPosition) feedScrollPosition.set(demoId, prevFeedScrollPosition); else feedScrollPosition.delete(demoId);
+          if (prevLoading) historyLoading.set(demoId, true); else historyLoading.delete(demoId);
         }
 
         return {
@@ -1105,6 +1124,7 @@ export function Playground() {
           streamingStartedAt,
           streamingOutputTokens,
           feedScrollPosition,
+          historyLoading,
         };
       });
     };
@@ -1213,6 +1233,12 @@ export function Playground() {
         <Section title="MessageFeed Section Windowing" description="Fixed 50-turn sections with older-history browsing mounted in a bounded window. This mock opens on an older section so the newer-section control is visible.">
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]">
             <MessageFeed sessionId={PLAYGROUND_SECTIONED_SESSION_ID} />
+          </div>
+        </Section>
+
+        <Section title="Conversation Loading State" description="When a cold session is selected before its authoritative history arrives, the feed shows an explicit loading conversation state instead of an empty chat.">
+          <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
+            <MessageFeed sessionId={PLAYGROUND_LOADING_SESSION_ID} />
           </div>
         </Section>
 

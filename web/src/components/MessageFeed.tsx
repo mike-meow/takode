@@ -1248,6 +1248,7 @@ export function MessageFeed({
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
+  const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
@@ -1335,6 +1336,7 @@ export function MessageFeed({
     () => visibleSections.flatMap((section) => section.turns),
     [visibleSections],
   );
+  const showConversationLoading = historyLoading && messages.length === 0 && !streamingText;
   const previousSectionStartIndex = useMemo(
     () => findPreviousSectionStartIndex(sections, visibleSectionStartIndex),
     [sections, visibleSectionStartIndex],
@@ -1483,6 +1485,7 @@ export function MessageFeed({
   // where the feed appears at scrollTop=0 for one frame before jumping.
   useLayoutEffect(() => {
     if (restoredSessionIdRef.current === sessionId) return;
+    if (showConversationLoading) return;
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
     if (messages.length === 0 && pos?.anchorTurnId) return;
     const desiredSectionWindowStart = pos?.anchorTurnId
@@ -1521,15 +1524,18 @@ export function MessageFeed({
     scrollToBottom,
     sectionWindowStart,
     sessionId,
+    showConversationLoading,
   ]);
 
   useEffect(() => {
+    if (showConversationLoading) return;
     didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
     lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
     setShowLatestPill(false);
-  }, [savedScrollPos?.lastSeenContentBottom, sessionId]);
+  }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading]);
 
   useEffect(() => {
+    if (showConversationLoading) return;
     const realContentBottom = getRealContentBottom();
     if (!didTrackContentRef.current) {
       didTrackContentRef.current = true;
@@ -1566,7 +1572,7 @@ export function MessageFeed({
       return;
     }
     setShowLatestPill(realContentBottom > baseline + 8);
-  }, [getRealContentBottom, hasNewerSections, messages.length, streamingText]);
+  }, [getRealContentBottom, hasNewerSections, messages.length, showConversationLoading, streamingText]);
 
   useEffect(() => {
     onLatestIndicatorVisibleChange?.(showLatestPill);
@@ -1578,6 +1584,7 @@ export function MessageFeed({
   }, [onJumpToLatestReady, scrollToBottom]);
 
   useEffect(() => {
+    if (showConversationLoading) return;
     if (isInitialRender.current) {
       isInitialRender.current = false;
       return;
@@ -1596,7 +1603,7 @@ export function MessageFeed({
         }
       }
     }
-  }, [messages.length, streamingText]);
+  }, [messages.length, showConversationLoading, streamingText]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
@@ -1763,6 +1770,20 @@ export function MessageFeed({
   }, [firstTaskTurnId, sessionId, setActiveTaskTurnId, taskHistory, visibleTurns]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
+
+  if (showConversationLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
+        <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
+        <div className="text-center">
+          <p className="text-sm text-cc-fg font-medium mb-1">Loading conversation...</p>
+          <p className="text-xs text-cc-muted leading-relaxed">
+            Restoring recent history for this session.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (messages.length === 0 && !streamingText) {
     return (

@@ -204,6 +204,12 @@ describe("connectSession", () => {
       JSON.stringify({ type: "session_subscribe", last_seq: 0, known_frozen_count: 0 }),
     );
   });
+
+  it("marks history as loading when connecting to a session without local messages", () => {
+    wsModule.connectSession("s1");
+
+    expect(useStore.getState().historyLoading.get("s1")).toBe(true);
+  });
 });
 
 describe("visibility reconnect", () => {
@@ -1366,6 +1372,7 @@ describe("handleMessage: message_history", () => {
     expect(msgs[1].role).toBe("assistant");
     expect(msgs[1].content).toBe("4");
     expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
+    expect(useStore.getState().historyLoading.has("s1")).toBe(false);
   });
 
   it("restores leader_user_addressed metadata from history", () => {

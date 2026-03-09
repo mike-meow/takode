@@ -59,6 +59,11 @@ handleIncomingMessage = createWsMessageHandler({
 export { resolveSessionFilePath };
 
 export function connectSession(sessionId: string) {
+  const store = useStore.getState();
+  const existingMessages = store.messages.get(sessionId);
+  if (!existingMessages || existingMessages.length === 0) {
+    store.setHistoryLoading(sessionId, true);
+  }
   transport.connectSession(sessionId);
 }
 

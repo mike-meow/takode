@@ -1165,6 +1165,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       resetAuthoritativeHistoryState(sessionId);
       const { chatMessages, frozenCount } = normalizeHistoryMessages(sessionId, data.messages);
       store.setMessages(sessionId, chatMessages, { frozenCount });
+      store.setHistoryLoading(sessionId, false);
       if (chatMessages.length > 0) {
         store.setCliEverConnected(sessionId);
       }
@@ -1201,6 +1202,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         Math.min(data.frozen_count, frozenPrefix.length + frozenDeltaMessages.length),
       );
       store.setMessages(sessionId, mergedMessages, { frozenCount: nextFrozenCount });
+      store.setHistoryLoading(sessionId, false);
       if (mergedMessages.length > 0) {
         store.setCliEverConnected(sessionId);
       }

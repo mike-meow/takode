@@ -33,6 +33,8 @@ interface AppState {
   messageFrozenCounts: Map<string, number>;
   /** Incremented when a frozen message is edited in place so feed-model caches can invalidate safely. */
   messageFrozenRevisions: Map<string, number>;
+  /** True while the browser is waiting for the first authoritative history payload for a session. */
+  historyLoading: Map<string, boolean>;
 
   // Streaming partial text per session
   streaming: Map<string, string>;
@@ -201,6 +203,7 @@ interface AppState {
   // Message actions
   appendMessage: (sessionId: string, msg: ChatMessage) => void;
   setMessages: (sessionId: string, msgs: ChatMessage[], options?: { frozenCount?: number }) => void;
+  setHistoryLoading: (sessionId: string, loading: boolean) => void;
   updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
   /** Update quest title in all quest_claimed/quest_submitted messages for a quest. */
   updateQuestTitleInMessages: (sessionId: string, questId: string, newTitle: string) => void;
@@ -414,6 +417,7 @@ export const useStore = create<AppState>((set) => ({
   messages: new Map(),
   messageFrozenCounts: new Map(),
   messageFrozenRevisions: new Map(),
+  historyLoading: new Map(),
   streaming: new Map(),
   streamingByParentToolUseId: new Map(),
   streamingStartedAt: new Map(),
@@ -624,6 +628,8 @@ export const useStore = create<AppState>((set) => ({
       messageFrozenCounts.delete(sessionId);
       const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
       messageFrozenRevisions.delete(sessionId);
+      const historyLoading = new Map(s.historyLoading);
+      historyLoading.delete(sessionId);
       const streaming = new Map(s.streaming);
       streaming.delete(sessionId);
       const streamingByParentToolUseId = new Map(s.streamingByParentToolUseId);
@@ -708,6 +714,7 @@ export const useStore = create<AppState>((set) => ({
         messages,
         messageFrozenCounts,
         messageFrozenRevisions,
+        historyLoading,
         streaming,
         streamingByParentToolUseId,
         streamingStartedAt,
@@ -841,6 +848,17 @@ export const useStore = create<AppState>((set) => ({
       const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
       messageFrozenRevisions.set(sessionId, 0);
       return { messages, messageFrozenCounts, messageFrozenRevisions };
+    }),
+
+  setHistoryLoading: (sessionId, loading) =>
+    set((s) => {
+      const historyLoading = new Map(s.historyLoading);
+      if (loading) {
+        historyLoading.set(sessionId, true);
+      } else {
+        historyLoading.delete(sessionId);
+      }
+      return { historyLoading };
     }),
 
   updateMessage: (sessionId, msgId, updates) =>
@@ -1608,6 +1626,7 @@ export const useStore = create<AppState>((set) => ({
       messages: new Map(),
       messageFrozenCounts: new Map(),
       messageFrozenRevisions: new Map(),
+      historyLoading: new Map(),
       streaming: new Map(),
       streamingByParentToolUseId: new Map(),
       streamingStartedAt: new Map(),
