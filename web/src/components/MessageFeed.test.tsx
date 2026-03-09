@@ -869,6 +869,80 @@ describe("MessageFeed - streaming text", () => {
     expect(mockScrollTo).not.toHaveBeenCalled();
   });
 
+  it("shows the latest pill only after new content arrives below the current viewport", () => {
+    const sid = "test-latest-pill-after-new-content";
+    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
+    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
+    setStoreMessages(sid, [user, assistant]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1600,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.scroll(scrollContainer);
+    expect(screen.queryByLabelText("Jump to latest")).toBeNull();
+
+    setStoreMessages(sid, [
+      user,
+      assistant,
+      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
+    expect(screen.getByText("New content below")).toBeTruthy();
+  });
+
+  it("uses the latest pill to jump to the real content bottom", () => {
+    const sid = "test-latest-pill-click";
+    const user = makeMessage({ id: "u1", role: "user", content: "Question" });
+    const assistant = makeMessage({ id: "a1", role: "assistant", content: "Answer" });
+    setStoreMessages(sid, [user, assistant]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1600,
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.scroll(scrollContainer);
+    setStoreMessages(sid, [
+      user,
+      assistant,
+      makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+
+    mockScrollIntoView.mockClear();
+    fireEvent.click(screen.getByLabelText("Jump to latest"));
+
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "end" });
+  });
+
   it("restores the saved streaming anchor across session switches even when the saved state was near bottom", () => {
     const sid = "test-streaming-anchor-restore";
     const firstUser = makeMessage({ id: "u1", role: "user", content: "First question" });

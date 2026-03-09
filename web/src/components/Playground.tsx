@@ -1279,6 +1279,28 @@ export function Playground() {
           </div>
         </Section>
 
+        <Section title="Feed Latest Pill" description="Primary new-content affordance shown above the composer when fresh content arrives below the current viewport. Side scroll buttons remain secondary controls.">
+          <div className="max-w-3xl">
+            <Card label="New content below">
+              <div className="relative h-36 rounded-xl border border-cc-border bg-cc-card/50">
+                <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 sm:px-4">
+                  <button
+                    type="button"
+                    className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-cc-primary/25 bg-cc-card/95 px-4 py-2 text-sm font-medium text-cc-fg shadow-lg backdrop-blur-sm"
+                  >
+                    <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-cc-primary animate-pulse" />
+                    <span className="truncate">New content below</span>
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0">
+                      <path d="M4 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M4 4h8" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Copy Features ──────────────────────────────── */}
         <Section title="Copy Features" description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus assistant message copy menu (Markdown/Rich Text/Plain Text)">
           <div className="space-y-4 max-w-3xl">

@@ -112,7 +112,15 @@ function buildMinuteBoundaryLabelMap(messages: ChatMessage[]): Map<string, strin
 
 // Self-contained timer component — its 1s tick only re-renders this element,
 // not the entire MessageFeed (which would force all images to re-layout).
-export function ElapsedTimer({ sessionId }: { sessionId: string }) {
+export function ElapsedTimer({
+  sessionId,
+  latestIndicatorVisible = false,
+  onJumpToLatest,
+}: {
+  sessionId: string;
+  latestIndicatorVisible?: boolean;
+  onJumpToLatest?: (() => void) | null;
+}) {
   const streamingStartedAt = useStore((s) => s.streamingStartedAt.get(sessionId));
   const streamingOutputTokens = useStore((s) => s.streamingOutputTokens.get(sessionId));
   const streamingPausedDuration = useStore((s) => s.streamingPausedDuration.get(sessionId) ?? 0);
@@ -136,7 +144,8 @@ export function ElapsedTimer({ sessionId }: { sessionId: string }) {
     return () => clearInterval(interval);
   }, [streamingStartedAt, sessionStatus, streamingPausedDuration, streamingPauseStartedAt]);
 
-  if (sessionStatus !== "running" || elapsed <= 0) return null;
+  const showTimer = sessionStatus === "running" && elapsed > 0;
+  if (!showTimer && !latestIndicatorVisible) return null;
 
   const handleRelaunch = () => {
     api.relaunchSession(sessionId).catch(() => {});
@@ -146,24 +155,41 @@ export function ElapsedTimer({ sessionId }: { sessionId: string }) {
   const dotColor = isStuck ? 'text-amber-400' : streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse';
 
   return (
-    <div className="shrink-0 flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code px-4 py-1">
-      <YarnBallDot className={dotColor} />
-      <span>{label}</span>
-      <span className="text-cc-muted/60">(</span>
-      <span>{formatElapsed(elapsed)}</span>
-      {(streamingOutputTokens ?? 0) > 0 && (
-        <>
-          <span className="text-cc-muted/40">·</span>
-          <span>↓ {formatTokens(streamingOutputTokens!)}</span>
-        </>
-      )}
-      <span className="text-cc-muted/60">)</span>
-      {isStuck && (
+    <div className="shrink-0 flex items-center justify-between gap-3 border-t border-cc-border bg-cc-card/70 px-3 sm:px-4 py-1.5 text-[11px] text-cc-muted font-mono-code backdrop-blur-sm">
+      <div className="min-w-0 flex items-center gap-1.5">
+        {showTimer && (
+          <>
+            <YarnBallDot className={dotColor} />
+            <span>{label}</span>
+            <span className="text-cc-muted/60">(</span>
+            <span>{formatElapsed(elapsed)}</span>
+            {(streamingOutputTokens ?? 0) > 0 && (
+              <>
+                <span className="text-cc-muted/40">·</span>
+                <span>↓ {formatTokens(streamingOutputTokens!)}</span>
+              </>
+            )}
+            <span className="text-cc-muted/60">)</span>
+            {isStuck && (
+              <button
+                onClick={handleRelaunch}
+                className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
+              >
+                Relaunch
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {latestIndicatorVisible && onJumpToLatest && (
         <button
-          onClick={handleRelaunch}
-          className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
+          onClick={onJumpToLatest}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-cc-primary/25 bg-cc-card/90 px-2.5 py-1 text-[11px] font-medium text-cc-fg transition-colors hover:bg-cc-hover"
+          title="Jump to latest"
+          aria-label="Jump to latest"
         >
-          Relaunch
+          <span className="inline-flex h-2 w-2 rounded-full bg-cc-primary animate-pulse" />
+          <span className="truncate">New content below</span>
         </button>
       )}
     </div>
@@ -1160,7 +1186,17 @@ const TurnEntries = memo(function TurnEntries({ turns, sessionId, leaderMode }: 
 
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
-export function MessageFeed({ sessionId }: { sessionId: string }) {
+export function MessageFeed({
+  sessionId,
+  latestIndicatorMode = "overlay",
+  onLatestIndicatorVisibleChange,
+  onJumpToLatestReady,
+}: {
+  sessionId: string;
+  latestIndicatorMode?: "overlay" | "external";
+  onLatestIndicatorVisibleChange?: (visible: boolean) => void;
+  onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
+}) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
@@ -1175,12 +1211,14 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const didMountRef = useRef(false);
+  const didTrackContentRef = useRef(false);
   const lastSentUserMessageIdRef = useRef<string | null>(null);
   const stableAllowedBottomRef = useRef<number | null>(null);
   const [bottomRunwayHeight, setBottomRunwayHeight] = useState(
     0,
   );
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
@@ -1308,6 +1346,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     }
     isNearBottom.current = true;
     setShowScrollButton(false);
+    setShowLatestPill(false);
   }, []);
 
   const scrollToAllowedBottom = useCallback((behavior: ScrollBehavior) => {
@@ -1322,6 +1361,7 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
       container.scrollTo({ top: targetTop, behavior });
       isNearBottom.current = true;
       setShowScrollButton(false);
+      setShowLatestPill(false);
       return;
     }
     scrollToContentBottom(behavior);
@@ -1388,6 +1428,9 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
     if (!el) return;
     const nearBottom = isNearContentBottom();
     isNearBottom.current = nearBottom;
+    if (nearBottom) {
+      setShowLatestPill(false);
+    }
     // Only trigger a re-render when the button state actually changes
     const shouldShow = !nearBottom;
     setShowScrollButton((prev) => (prev === shouldShow ? prev : shouldShow));
@@ -1432,6 +1475,23 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   }, [isTopLevelStreaming, messages.length, restoreTurnAnchor, scrollToAllowedBottom, sessionId, streamingText]);
 
   useEffect(() => {
+    didTrackContentRef.current = false;
+    setShowLatestPill(false);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!didTrackContentRef.current) {
+      didTrackContentRef.current = true;
+      return;
+    }
+    if (isNearBottom.current) {
+      setShowLatestPill(false);
+      return;
+    }
+    setShowLatestPill(true);
+  }, [messages.length, newestMessage?.id, streamingText]);
+
+  useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       lastSentUserMessageIdRef.current = newestMessage?.role === "user"
@@ -1450,6 +1510,15 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
   const scrollToBottom = useCallback(() => {
     scrollToContentBottom("smooth");
   }, [scrollToContentBottom]);
+
+  useEffect(() => {
+    onLatestIndicatorVisibleChange?.(showLatestPill);
+  }, [onLatestIndicatorVisibleChange, showLatestPill]);
+
+  useEffect(() => {
+    onJumpToLatestReady?.(scrollToBottom);
+    return () => onJumpToLatestReady?.(null);
+  }, [onJumpToLatestReady, scrollToBottom]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
@@ -1647,6 +1716,24 @@ export function MessageFeed({ sessionId }: { sessionId: string }) {
         </PawCounterContext.Provider>
         </PawScrollProvider>
       </div>
+
+      {showLatestPill && latestIndicatorMode !== "external" && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:px-4">
+          <button
+            onClick={scrollToBottom}
+            className="pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-cc-primary/25 bg-cc-card/95 px-4 py-2 text-sm font-medium text-cc-fg shadow-lg backdrop-blur-sm transition-colors hover:bg-cc-hover"
+            title="Jump to latest"
+            aria-label="Jump to latest"
+          >
+            <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-cc-primary animate-pulse" />
+            <span className="truncate">New content below</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0">
+              <path d="M4 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 4h8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: top/bottom only, auto-hide */}
       {showScrollButton && (

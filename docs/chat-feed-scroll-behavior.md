@@ -84,6 +84,23 @@ In practice, that means:
 - ignore the extra user-anchored runway when the user explicitly asks to go to
   bottom
 
+### 4.1. New-content indicator
+
+When the user is no longer at the bottom and new content arrives below the
+current viewport, the feed should show a bottom-docked "latest" pill as the
+primary affordance.
+
+The practical rule is:
+
+- do not show the pill just because the user scrolled up
+- show it only after new content arrives while the user is away from bottom
+- render it in the bottom status rail above the composer so it shares space with
+  running-state text instead of stacking a second overlay over the feed
+- clicking it should use the same real-content-bottom behavior as the manual
+  go-to-bottom control
+
+The right-side scroll buttons remain available as secondary navigation controls.
+
 ### 5. Session restore
 
 Saved scroll position restore should keep working as before:
