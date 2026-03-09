@@ -2575,6 +2575,27 @@ describe("CLI message routing", () => {
     expect(streamEvent.parent_tool_use_id).toBeNull();
   });
 
+  it("stream_event: does not log zero-browser warnings when no browser is connected", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    bridge.handleBrowserClose(browser);
+
+    const msg = JSON.stringify({
+      type: "stream_event",
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } },
+      parent_tool_use_id: null,
+      uuid: "uuid-6b",
+      session_id: "s1",
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+
+    const zeroBrowserWarning = logSpy.mock.calls.find(([line]) =>
+      String(line).includes("Broadcasting stream_event to 0 browsers")
+    );
+    expect(zeroBrowserWarning).toBeUndefined();
+    logSpy.mockRestore();
+  });
+
   it("control_request (can_use_tool): adds to pending and broadcasts", async () => {
     const msg = JSON.stringify({
       type: "control_request",

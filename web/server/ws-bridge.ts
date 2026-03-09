@@ -6038,11 +6038,20 @@ export class WsBridge {
       }
     }
     const fullHistory = computeHistoryMessagesSyncHash(session.messageHistory);
+    const frozenDelta = session.messageHistory.slice(normalizedKnownFrozenCount, frozenCount);
+    const hotMessages = session.messageHistory.slice(frozenCount);
+    trafficStats.recordHistorySyncBreakdown({
+      sessionId: session.id,
+      frozenDeltaBytes: Buffer.byteLength(JSON.stringify(frozenDelta), "utf-8"),
+      hotMessagesBytes: Buffer.byteLength(JSON.stringify(hotMessages), "utf-8"),
+      frozenDeltaMessages: frozenDelta.length,
+      hotMessagesCount: hotMessages.length,
+    });
     this.sendToBrowser(ws, {
       type: "history_sync",
       frozen_base_count: normalizedKnownFrozenCount,
-      frozen_delta: session.messageHistory.slice(normalizedKnownFrozenCount, frozenCount),
-      hot_messages: session.messageHistory.slice(frozenCount),
+      frozen_delta: frozenDelta,
+      hot_messages: hotMessages,
       frozen_count: frozenCount,
       expected_frozen_hash: frozenPrefix.hash,
       expected_full_hash: fullHistory.hash,
@@ -7549,7 +7558,7 @@ export class WsBridge {
 
   private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage) {
     // Debug: warn when assistant messages are broadcast to 0 browsers (they may be lost)
-    if (session.browserSockets.size === 0 && (msg.type === "assistant" || msg.type === "stream_event" || msg.type === "result")) {
+    if (session.browserSockets.size === 0 && (msg.type === "assistant" || msg.type === "result")) {
       console.log(`[ws-bridge] ⚠ Broadcasting ${msg.type} to 0 browsers for session ${sessionTag(session.id)} (stored in history: ${msg.type === "assistant" || msg.type === "result"})`);
     }
     const serStart = performance.now();

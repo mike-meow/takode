@@ -26,6 +26,7 @@ export interface TrafficStatsSnapshot {
   totals: TrafficTotals;
   buckets: TrafficBucketSnapshot[];
   sessions: Record<string, TrafficSessionSnapshot>;
+  historySyncBreakdown: HistorySyncBreakdownSnapshot;
   toolResultFetches: ToolResultFetchSnapshot;
 }
 
@@ -69,6 +70,29 @@ export interface ToolResultFetchSnapshot {
   topRepeated: ToolResultFetchEntrySnapshot[];
 }
 
+export interface HistorySyncBreakdownRecord {
+  sessionId: string;
+  frozenDeltaBytes: number;
+  hotMessagesBytes: number;
+  frozenDeltaMessages: number;
+  hotMessagesCount: number;
+}
+
+export interface HistorySyncBreakdownTotals {
+  requests: number;
+  frozenDeltaBytes: number;
+  hotMessagesBytes: number;
+  frozenDeltaMessages: number;
+  hotMessagesCount: number;
+}
+
+export interface HistorySyncBreakdownSessionSnapshot extends HistorySyncBreakdownTotals {}
+
+export interface HistorySyncBreakdownSnapshot {
+  totals: HistorySyncBreakdownTotals;
+  sessions: Record<string, HistorySyncBreakdownSessionSnapshot>;
+}
+
 interface TrafficBucket extends TrafficTotals {
   fanoutSum: number;
   maxFanout: number;
@@ -85,6 +109,16 @@ function createTotals(): TrafficTotals {
 
 function createBucket(): TrafficBucket {
   return { ...createTotals(), fanoutSum: 0, maxFanout: 0 };
+}
+
+function createHistorySyncBreakdownTotals(): HistorySyncBreakdownTotals {
+  return {
+    requests: 0,
+    frozenDeltaBytes: 0,
+    hotMessagesBytes: 0,
+    frozenDeltaMessages: 0,
+    hotMessagesCount: 0,
+  };
 }
 
 function createToolResultFetchTotals(): ToolResultFetchTotals {
@@ -138,6 +172,8 @@ export class TrafficStatsCollector {
   private buckets = new Map<string, TrafficBucket>();
   private sessionTotals = new Map<string, TrafficTotals>();
   private sessionBuckets = new Map<string, Map<string, TrafficBucket>>();
+  private historySyncBreakdownTotals: HistorySyncBreakdownTotals = createHistorySyncBreakdownTotals();
+  private historySyncBreakdownBySession = new Map<string, HistorySyncBreakdownTotals>();
   private toolResultFetchTotals: ToolResultFetchTotals = createToolResultFetchTotals();
   private toolResultFetchesBySession = new Map<string, Map<string, ToolResultFetchEntry>>();
 
@@ -167,6 +203,28 @@ export class TrafficStatsCollector {
     sessionBucket.maxFanout = Math.max(sessionBucket.maxFanout, fanout);
     perSessionBuckets.set(globalKey, sessionBucket);
     this.sessionBuckets.set(event.sessionId, perSessionBuckets);
+  }
+
+  recordHistorySyncBreakdown(event: HistorySyncBreakdownRecord): void {
+    const frozenDeltaBytes = Math.max(0, Math.floor(event.frozenDeltaBytes));
+    const hotMessagesBytes = Math.max(0, Math.floor(event.hotMessagesBytes));
+    const frozenDeltaMessages = Math.max(0, Math.floor(event.frozenDeltaMessages));
+    const hotMessagesCount = Math.max(0, Math.floor(event.hotMessagesCount));
+
+    this.historySyncBreakdownTotals.requests += 1;
+    this.historySyncBreakdownTotals.frozenDeltaBytes += frozenDeltaBytes;
+    this.historySyncBreakdownTotals.hotMessagesBytes += hotMessagesBytes;
+    this.historySyncBreakdownTotals.frozenDeltaMessages += frozenDeltaMessages;
+    this.historySyncBreakdownTotals.hotMessagesCount += hotMessagesCount;
+
+    const sessionTotals =
+      this.historySyncBreakdownBySession.get(event.sessionId) ?? createHistorySyncBreakdownTotals();
+    sessionTotals.requests += 1;
+    sessionTotals.frozenDeltaBytes += frozenDeltaBytes;
+    sessionTotals.hotMessagesBytes += hotMessagesBytes;
+    sessionTotals.frozenDeltaMessages += frozenDeltaMessages;
+    sessionTotals.hotMessagesCount += hotMessagesCount;
+    this.historySyncBreakdownBySession.set(event.sessionId, sessionTotals);
   }
 
   recordToolResultFetch(event: ToolResultFetchRecord): void {
@@ -205,6 +263,7 @@ export class TrafficStatsCollector {
       totals: { ...this.totals },
       buckets,
       sessions,
+      historySyncBreakdown: this.serializeHistorySyncBreakdown(),
       toolResultFetches: this.serializeToolResultFetches(),
     };
   }
@@ -215,6 +274,8 @@ export class TrafficStatsCollector {
     this.buckets.clear();
     this.sessionTotals.clear();
     this.sessionBuckets.clear();
+    this.historySyncBreakdownTotals = createHistorySyncBreakdownTotals();
+    this.historySyncBreakdownBySession.clear();
     this.toolResultFetchTotals = createToolResultFetchTotals();
     this.toolResultFetchesBySession.clear();
   }
@@ -244,6 +305,17 @@ export class TrafficStatsCollector {
       if (a.direction !== b.direction) return a.direction.localeCompare(b.direction);
       return a.messageType.localeCompare(b.messageType);
     });
+  }
+
+  private serializeHistorySyncBreakdown(): HistorySyncBreakdownSnapshot {
+    const sessions: Record<string, HistorySyncBreakdownSessionSnapshot> = {};
+    for (const [sessionId, totals] of this.historySyncBreakdownBySession) {
+      sessions[sessionId] = { ...totals };
+    }
+    return {
+      totals: { ...this.historySyncBreakdownTotals },
+      sessions,
+    };
   }
 
   private serializeToolResultFetches(): ToolResultFetchSnapshot {

@@ -255,6 +255,16 @@ function createMockBridge() {
       totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
       buckets: [],
       sessions: {},
+      historySyncBreakdown: {
+        totals: {
+          requests: 0,
+          frozenDeltaBytes: 0,
+          hotMessagesBytes: 0,
+          frozenDeltaMessages: 0,
+          hotMessagesCount: 0,
+        },
+        sessions: {},
+      },
       toolResultFetches: {
         totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
         sessions: {},
@@ -1455,6 +1465,16 @@ describe("GET /api/traffic/stats", () => {
         totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
         buckets: [],
         sessions: {},
+        historySyncBreakdown: {
+          totals: {
+            requests: 0,
+            frozenDeltaBytes: 0,
+            hotMessagesBytes: 0,
+            frozenDeltaMessages: 0,
+            hotMessagesCount: 0,
+          },
+          sessions: {},
+        },
         toolResultFetches: {
           totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
           sessions: {},
@@ -1485,6 +1505,16 @@ describe("POST /api/traffic/stats/reset", () => {
         totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
         buckets: [],
         sessions: {},
+        historySyncBreakdown: {
+          totals: {
+            requests: 0,
+            frozenDeltaBytes: 0,
+            hotMessagesBytes: 0,
+            frozenDeltaMessages: 0,
+            hotMessagesCount: 0,
+          },
+          sessions: {},
+        },
         toolResultFetches: {
           totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
           sessions: {},

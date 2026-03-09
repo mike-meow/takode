@@ -78,10 +78,59 @@ describe("TrafficStatsCollector", () => {
       payloadBytes: 25,
       wireBytes: 25,
     });
+    expect(snapshot.historySyncBreakdown).toEqual({
+      totals: {
+        requests: 0,
+        frozenDeltaBytes: 0,
+        hotMessagesBytes: 0,
+        frozenDeltaMessages: 0,
+        hotMessagesCount: 0,
+      },
+      sessions: {},
+    });
     expect(snapshot.toolResultFetches).toEqual({
       totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
       sessions: {},
       topRepeated: [],
+    });
+  });
+
+  it("tracks history_sync frozen delta and hot tail bytes separately", () => {
+    const stats = new TrafficStatsCollector();
+
+    stats.recordHistorySyncBreakdown({
+      sessionId: "s1",
+      frozenDeltaBytes: 1000,
+      hotMessagesBytes: 250,
+      frozenDeltaMessages: 12,
+      hotMessagesCount: 3,
+    });
+    stats.recordHistorySyncBreakdown({
+      sessionId: "s1",
+      frozenDeltaBytes: 150,
+      hotMessagesBytes: 400,
+      frozenDeltaMessages: 2,
+      hotMessagesCount: 5,
+    });
+
+    const snapshot = stats.snapshot();
+    expect(snapshot.historySyncBreakdown).toEqual({
+      totals: {
+        requests: 2,
+        frozenDeltaBytes: 1150,
+        hotMessagesBytes: 650,
+        frozenDeltaMessages: 14,
+        hotMessagesCount: 8,
+      },
+      sessions: {
+        s1: {
+          requests: 2,
+          frozenDeltaBytes: 1150,
+          hotMessagesBytes: 650,
+          frozenDeltaMessages: 14,
+          hotMessagesCount: 8,
+        },
+      },
     });
   });
 
@@ -169,6 +218,16 @@ describe("TrafficStatsCollector", () => {
       totals: { messages: 0, payloadBytes: 0, wireBytes: 0 },
       buckets: [],
       sessions: {},
+      historySyncBreakdown: {
+        totals: {
+          requests: 0,
+          frozenDeltaBytes: 0,
+          hotMessagesBytes: 0,
+          frozenDeltaMessages: 0,
+          hotMessagesCount: 0,
+        },
+        sessions: {},
+      },
       toolResultFetches: {
         totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
         sessions: {},
