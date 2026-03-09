@@ -8,7 +8,7 @@ vi.mock("node:crypto", () => ({ randomUUID: () => "test-uuid" }));
 import { WsBridge, type SocketData } from "./ws-bridge.js";
 import { SessionStore } from "./session-store.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 
@@ -2050,6 +2050,130 @@ describe("CLI message routing", () => {
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "idle" }));
+  });
+
+  it("user replay: does not append duplicate tool_result_preview after a completed turn", async () => {
+    const sid = "s-replay-preview";
+    const cliReplay = makeCliSocket(sid);
+    const browserReplay = makeBrowserSocket(sid);
+    const session = bridge.getOrCreateSession(sid);
+
+    session.messageHistory.push({
+      type: "tool_result_preview",
+      previews: [{
+        tool_use_id: "tool-preview-1",
+        content: "existing preview",
+        is_error: false,
+        total_size: 16,
+        is_truncated: false,
+      }],
+    } as any);
+    session.messageHistory.push({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Done!",
+        duration_ms: 100,
+        duration_api_ms: 50,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "result-preview-1",
+        session_id: sid,
+      },
+    } as any);
+    session.toolResults.set("tool-preview-1", {
+      content: "existing preview",
+      is_error: false,
+      timestamp: Date.now(),
+    });
+    session.toolStartTimes.set("tool-preview-1", Date.now() - 1000);
+
+    bridge.handleBrowserOpen(browserReplay, sid);
+    bridge.handleCLIOpen(cliReplay, sid);
+    expect(session.cliResuming).toBe(true);
+    browserReplay.send.mockClear();
+
+    bridge.handleCLIMessage(cliReplay, JSON.stringify({
+      type: "user",
+      message: {
+        content: [{
+          type: "tool_result",
+          tool_use_id: "tool-preview-1",
+          content: "existing preview",
+          is_error: false,
+        }],
+      },
+    }));
+
+    expect(session.messageHistory.filter((m: any) => m.type === "tool_result_preview")).toHaveLength(1);
+    expect(session.toolStartTimes.has("tool-preview-1")).toBe(false);
+    const replayCalls = browserReplay.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(replayCalls.some((msg: any) => msg.type === "tool_result_preview")).toBe(false);
+  });
+
+  it("persisted hot tail does not grow when replayed tool_result_preview is deduplicated", async () => {
+    const sid = "s-replay-preview-persist";
+    const cliReplay = makeCliSocket(sid);
+    const session = bridge.getOrCreateSession(sid);
+
+    session.messageHistory.push({
+      type: "tool_result_preview",
+      previews: [{
+        tool_use_id: "tool-preview-2",
+        content: "persisted preview",
+        is_error: false,
+        total_size: 17,
+        is_truncated: false,
+      }],
+    } as any);
+    session.messageHistory.push({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Persisted",
+        duration_ms: 100,
+        duration_api_ms: 50,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "result-preview-2",
+        session_id: sid,
+      },
+    } as any);
+    session.toolResults.set("tool-preview-2", {
+      content: "persisted preview",
+      is_error: false,
+      timestamp: Date.now(),
+    });
+
+    bridge.handleCLIOpen(cliReplay, sid);
+    expect(session.cliResuming).toBe(true);
+
+    bridge.handleCLIMessage(cliReplay, JSON.stringify({
+      type: "user",
+      message: {
+        content: [{
+          type: "tool_result",
+          tool_use_id: "tool-preview-2",
+          content: "persisted preview",
+          is_error: false,
+        }],
+      },
+    }));
+
+    bridge.persistSessionSync(sid);
+    await store.flushAll();
+
+    const persisted = JSON.parse(readFileSync(join(tempDir, `${sid}.json`), "utf-8"));
+    expect(persisted._frozenCount).toBe(2);
+    expect(persisted.messageHistory).toHaveLength(0);
   });
 
   it("result: suppresses review attention for leader turns without @to(user) response", () => {

@@ -1951,6 +1951,76 @@ export class WsBridge {
     return this.sessions.get(sessionId);
   }
 
+  private findHistoryReplayEntry<T extends BrowserIncomingMessage>(
+    session: Session,
+    predicate: (message: BrowserIncomingMessage) => message is T,
+  ): T | undefined {
+    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+      const entry = session.messageHistory[i];
+      if (predicate(entry)) return entry;
+    }
+    return undefined;
+  }
+
+  private hasAssistantReplay(session: Session, messageId: string): boolean {
+    return !!this.findHistoryReplayEntry(
+      session,
+      (message): message is BrowserIncomingMessage & { type: "assistant"; message: { id?: string } } =>
+        message.type === "assistant" && (message as { message?: { id?: string } }).message?.id === messageId,
+    );
+  }
+
+  private hasUserPromptReplay(session: Session, cliUuid: string): boolean {
+    return !!this.findHistoryReplayEntry(
+      session,
+      (message): message is BrowserIncomingMessage & { type: "user_message"; cliUuid?: string } =>
+        message.type === "user_message" && (message as { cliUuid?: string }).cliUuid === cliUuid,
+    );
+  }
+
+  private hasResultReplay(session: Session, resultUuid: string): boolean {
+    return !!this.findHistoryReplayEntry(
+      session,
+      (message): message is BrowserIncomingMessage & { type: "result"; data?: { uuid?: string } } =>
+        message.type === "result" && (message as { data?: { uuid?: string } }).data?.uuid === resultUuid,
+    );
+  }
+
+  private hasToolResultPreviewReplay(session: Session, toolUseId: string): boolean {
+    return !!this.findHistoryReplayEntry(
+      session,
+      (message): message is BrowserIncomingMessage & { type: "tool_result_preview"; previews?: ToolResultPreview[] } =>
+        message.type === "tool_result_preview"
+          && Array.isArray((message as { previews?: ToolResultPreview[] }).previews)
+          && ((message as { previews?: ToolResultPreview[] }).previews || []).some(
+            (preview) => preview.tool_use_id === toolUseId,
+          ),
+    );
+  }
+
+  private hasCompactBoundaryReplay(
+    session: Session,
+    cliUuid: string | undefined,
+    meta: CLISystemCompactBoundaryMessage["compact_metadata"],
+  ): boolean {
+    if (cliUuid) {
+      const matchedUuid = this.findHistoryReplayEntry(
+        session,
+        (message): message is BrowserIncomingMessage & { type: "compact_marker"; cliUuid?: string } =>
+          message.type === "compact_marker" && (message as { cliUuid?: string }).cliUuid === cliUuid,
+      );
+      if (matchedUuid) return true;
+    }
+
+    const last = session.messageHistory[session.messageHistory.length - 1] as
+      | { type?: string; trigger?: string; preTokens?: number; summary?: string }
+      | undefined;
+    return last?.type === "compact_marker"
+      && !last.summary
+      && (last.trigger ?? null) === (meta?.trigger ?? null)
+      && (last.preTokens ?? null) === (meta?.pre_tokens ?? null);
+  }
+
   // ─── Attention state (server-authoritative read/unread) ───────────────────
 
   private static readonly ATTENTION_PRIORITY: Record<string, number> = { action: 3, error: 2, review: 1 };
@@ -4118,22 +4188,7 @@ export class WsBridge {
 
       // Dedup: CLI replays compact_boundary on --resume. Skip if a marker with
       // the same CLI uuid already exists in history (replay after server restart).
-      const alreadyExists = cliUuid && session.messageHistory.some(
-        (m) => m.type === "compact_marker" && (m as { cliUuid?: string }).cliUuid === cliUuid,
-      );
-      if (alreadyExists) return;
-
-      // Some CLIs don't provide compact_boundary uuid. On resume/replay this can
-      // duplicate the marker immediately. If the latest history entry is an
-      // equivalent unsummarized marker, treat it as a replay and skip.
-      const last = session.messageHistory[session.messageHistory.length - 1] as
-        | { type?: string; trigger?: string; preTokens?: number; summary?: string }
-        | undefined;
-      const duplicateEquivalentBoundary = last?.type === "compact_marker"
-        && !last.summary
-        && (last.trigger ?? null) === (meta?.trigger ?? null)
-        && (last.preTokens ?? null) === (meta?.pre_tokens ?? null);
-      if (duplicateEquivalentBoundary) return;
+      if (this.hasCompactBoundaryReplay(session, cliUuid, meta)) return;
 
       const ts = Date.now();
       const markerId = `compact-boundary-${ts}`;
@@ -4212,10 +4267,7 @@ export class WsBridge {
     if (!acc) {
       // No accumulator — either first time seeing this message, or a replay
       // after server restart (accumulators are in-memory only).
-      const alreadyInHistory = session.messageHistory.some(
-        (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
-      );
-      if (alreadyInHistory) return;
+      if (this.hasAssistantReplay(session, msgId)) return;
 
       {
         // Truly first occurrence — store and broadcast
@@ -4389,10 +4441,7 @@ export class WsBridge {
     // Still reconcile lifecycle drift so a replayed terminal result can clear
     // stale running/stuck state after reconnect.
     if (msg.uuid) {
-      const alreadyInHistory = session.messageHistory.some(
-        (m) => m.type === "result" && (m as { data?: { uuid?: string } }).data?.uuid === msg.uuid,
-      );
-      if (alreadyInHistory) {
+      if (this.hasResultReplay(session, msg.uuid)) {
         const reconciled = reconcileTerminalResultStateLifecycle(
           this.getGenerationLifecycleDeps(),
           session,
@@ -4989,10 +5038,7 @@ export class WsBridge {
     // Dedup: skip if a user_message with this CLI uuid already exists
     const cliUuid = msg.uuid;
     if (cliUuid) {
-      const alreadyInHistory = session.messageHistory.some(
-        (m) => m.type === "user_message" && (m as { cliUuid?: string }).cliUuid === cliUuid,
-      );
-      if (alreadyInHistory) return;
+      if (this.hasUserPromptReplay(session, cliUuid)) return;
     }
 
     const ts = Date.now();
@@ -5026,8 +5072,17 @@ export class WsBridge {
     if (!Array.isArray(content)) return;
 
     const toolResults = content.filter((b): b is Extract<ContentBlock, { type: "tool_result" }> => b.type === "tool_result");
-    const completedToolStartTimes = this.collectCompletedToolStartTimes(session, toolResults);
-    const previews = this.buildToolResultPreviews(session, toolResults);
+    const newToolResults = toolResults.filter((block) => {
+      if (!this.hasToolResultPreviewReplay(session, block.tool_use_id)) return true;
+      // Replay must be idempotent: if the preview is already in history, do
+      // not append it again or it becomes an ever-growing hot tail after the
+      // replayed result is deduplicated.
+      this.clearCodexToolResultWatchdog(session, block.tool_use_id);
+      session.toolStartTimes.delete(block.tool_use_id);
+      return false;
+    });
+    const completedToolStartTimes = this.collectCompletedToolStartTimes(session, newToolResults);
+    const previews = this.buildToolResultPreviews(session, newToolResults);
 
     if (previews.length === 0) return;
 
@@ -5077,6 +5132,11 @@ export class WsBridge {
     reason: string,
   ): void {
     if (!session.toolStartTimes.has(toolUseId)) return;
+    if (this.hasToolResultPreviewReplay(session, toolUseId)) {
+      this.clearCodexToolResultWatchdog(session, toolUseId);
+      session.toolStartTimes.delete(toolUseId);
+      return;
+    }
     this.clearCodexToolResultWatchdog(session, toolUseId);
 
     const totalSize = content.length;
