@@ -24,6 +24,7 @@ import {
 
 const DEFAULT_VISIBLE_SECTION_COUNT = 3;
 const FEED_SECTION_TURN_COUNT = 50;
+const CODEX_TERMINAL_RAIL_DWELL_MS = 5_000;
 
 function formatElapsed(ms: number): string {
   const secs = Math.floor(ms / 1000);
@@ -310,6 +311,10 @@ interface CodexTerminalEntry {
   startTimestamp?: number;
 }
 
+function getCodexTerminalRevealAt(entry: CodexTerminalEntry): number {
+  return (entry.startTimestamp ?? entry.timestamp) + CODEX_TERMINAL_RAIL_DWELL_MS;
+}
+
 function collectCodexTerminalEntries(
   messages: ChatMessage[],
   toolResults?: Map<string, {
@@ -382,7 +387,7 @@ function LiveCodexTerminalStub({
       <div className="mt-1 flex items-center gap-2 text-[11px] text-cc-muted">
         <span className="inline-flex items-center gap-1">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cc-primary animate-pulse" />
-          Live terminal in chip
+          Live terminal
         </span>
         {onInspect && (
           <button
@@ -399,7 +404,7 @@ function LiveCodexTerminalStub({
   );
 }
 
-function CodexTerminalChips({
+function CodexTerminalRail({
   terminals,
   selectedToolUseId,
   onSelect,
@@ -414,17 +419,16 @@ function CodexTerminalChips({
   if (visibleTerminals.length === 0) return null;
 
   return (
-    <div data-testid="codex-live-terminal-band" className="border-t border-cc-border/80 bg-cc-bg/95 px-3 py-2 backdrop-blur-sm sm:px-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <ToolIcon type="terminal" />
-          <span className="text-xs font-medium text-cc-fg">Live terminals</span>
-          <span className="rounded-full bg-cc-hover px-1.5 py-0.5 text-[10px] font-medium text-cc-muted">
-            {terminals.length}
+    <div
+      data-testid="codex-live-terminal-rail"
+      className="pointer-events-none absolute inset-x-3 top-3 z-10 flex justify-center sm:top-4 sm:inset-x-4"
+    >
+      <div className="pointer-events-auto flex w-full max-w-3xl justify-start">
+        <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-cc-border/80 bg-cc-bg/96 px-2.5 py-2 shadow-lg backdrop-blur-sm">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-cc-hover px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-cc-muted">
+            <ToolIcon type="terminal" />
+            Live
           </span>
-          <span className="text-[11px] text-cc-muted">Inspect without covering the chat</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
           {visibleTerminals.map((terminal) => {
             const isSelected = selectedToolUseId === terminal.toolUseId;
             return (
@@ -1723,6 +1727,7 @@ export function MessageFeed({
   const [isScrolling, setIsScrolling] = useState(false);
   const [sectionWindowStart, setSectionWindowStart] = useState<number | null>(null);
   const [selectedCodexTerminalId, setSelectedCodexTerminalId] = useState<string | null>(null);
+  const [codexTerminalRailVersion, setCodexTerminalRailVersion] = useState(0);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
@@ -1743,6 +1748,10 @@ export function MessageFeed({
     () => codexTerminalEntries.filter((entry) => entry.result == null),
     [codexTerminalEntries],
   );
+  const visibleCodexTerminalRailEntries = useMemo(() => {
+    const now = Date.now();
+    return activeCodexTerminalEntries.filter((entry) => getCodexTerminalRevealAt(entry) <= now);
+  }, [activeCodexTerminalEntries, codexTerminalRailVersion]);
   const activeCodexTerminalIds = useMemo(
     () => new Set(activeCodexTerminalEntries.map((entry) => entry.toolUseId)),
     [activeCodexTerminalEntries],
@@ -1757,6 +1766,20 @@ export function MessageFeed({
     if (codexTerminalEntries.some((entry) => entry.toolUseId === selectedCodexTerminalId)) return;
     setSelectedCodexTerminalId(null);
   }, [codexTerminalEntries, selectedCodexTerminalId]);
+
+  useEffect(() => {
+    if (!isCodexSession || activeCodexTerminalEntries.length === 0) return;
+    const now = Date.now();
+    const pendingRevealTimes = activeCodexTerminalEntries
+      .map((entry) => getCodexTerminalRevealAt(entry))
+      .filter((revealAt) => revealAt > now);
+    if (pendingRevealTimes.length === 0) return;
+    const nextRevealAt = Math.min(...pendingRevealTimes);
+    const timeout = setTimeout(() => {
+      setCodexTerminalRailVersion((version) => version + 1);
+    }, nextRevealAt - now);
+    return () => clearTimeout(timeout);
+  }, [activeCodexTerminalEntries, isCodexSession]);
 
   const findVisibleTurnAnchor = useCallback((container: HTMLDivElement) => {
     const containerRect = container.getBoundingClientRect();
@@ -2629,6 +2652,14 @@ export function MessageFeed({
           </PawScrollProvider>
         </div>
 
+        {isCodexSession && visibleCodexTerminalRailEntries.length > 0 && (
+          <CodexTerminalRail
+            terminals={visibleCodexTerminalRailEntries}
+            selectedToolUseId={selectedCodexTerminalId}
+            onSelect={setSelectedCodexTerminalId}
+          />
+        )}
+
         {isCodexSession && selectedCodexTerminal && (
           <CodexTerminalInspector
             sessionId={sessionId}
@@ -2740,14 +2771,6 @@ export function MessageFeed({
           </div>
         )}
       </div>
-
-      {isCodexSession && activeCodexTerminalEntries.length > 0 && (
-        <CodexTerminalChips
-          terminals={activeCodexTerminalEntries}
-          selectedToolUseId={selectedCodexTerminalId}
-          onSelect={setSelectedCodexTerminalId}
-        />
-      )}
     </div>
   );
 }

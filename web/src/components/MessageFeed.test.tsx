@@ -1635,7 +1635,7 @@ describe("MessageFeed - tool timer footer", () => {
 });
 
 describe("MessageFeed - Codex terminal chips", () => {
-  it("renders a floating chip and compact inline stub for a live Codex Bash command", () => {
+  it("renders a top rail chip and compact inline stub for a long-running Codex Bash command", () => {
     const sid = "test-codex-live-terminal";
     setStoreSessionBackend(sid, "codex");
     setStoreMessages(sid, [
@@ -1653,11 +1653,45 @@ describe("MessageFeed - Codex terminal chips", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getByTestId("codex-live-terminal-band")).toBeTruthy();
-    expect(screen.getByText("Live terminals")).toBeTruthy();
+    expect(screen.getByTestId("codex-live-terminal-rail")).toBeTruthy();
     expect(screen.getByTestId("codex-live-terminal-chip").textContent).toContain("bun test src/ws-bridge.test.ts");
-    expect(screen.getByText("Live terminal in chip")).toBeTruthy();
+    expect(screen.getByText("Live terminal")).toBeTruthy();
     expect(screen.queryByText("Live output")).toBeNull();
+  });
+
+  it("waits five seconds before showing the top live-terminal rail", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-03-10T12:00:00.000Z"));
+      const sid = "test-codex-live-terminal-dwell";
+      setStoreSessionBackend(sid, "codex");
+      setStoreMessages(sid, [
+        makeMessage({
+          id: "codex-live-dwell-1",
+          role: "assistant",
+          content: "",
+          contentBlocks: [
+            { type: "tool_use", id: "tu-live-dwell", name: "Bash", input: { command: "npm run lint" } },
+          ],
+        }),
+      ]);
+      setStoreToolProgress(sid, [{ toolUseId: "tu-live-dwell", toolName: "Bash", elapsedSeconds: 1, output: "linting...\n" }]);
+      setStoreToolStartTimestamps(sid, { "tu-live-dwell": new Date("2026-03-10T11:59:56.000Z").getTime() });
+
+      render(<MessageFeed sessionId={sid} />);
+
+      expect(screen.queryByTestId("codex-live-terminal-rail")).toBeNull();
+      expect(screen.getByText("Live terminal")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+
+      expect(screen.getByTestId("codex-live-terminal-rail")).toBeTruthy();
+      expect(screen.getByTestId("codex-live-terminal-chip").textContent).toContain("npm run lint");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens the read-only inspector from the live chip", () => {
@@ -1709,7 +1743,8 @@ describe("MessageFeed - Codex terminal chips", () => {
     render(<MessageFeed sessionId={sid} />);
 
     expect(screen.queryByTestId("codex-live-terminal-chip")).toBeNull();
-    expect(screen.queryByText("Live terminal in chip")).toBeNull();
+    expect(screen.queryByTestId("codex-live-terminal-rail")).toBeNull();
+    expect(screen.queryByText("Live terminal")).toBeNull();
     expect(screen.getByText("bun run test")).toBeTruthy();
   });
 
@@ -1742,7 +1777,7 @@ describe("MessageFeed - Codex terminal chips", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.queryByTestId("codex-live-terminal-band")).toBeNull();
+    expect(screen.queryByTestId("codex-live-terminal-rail")).toBeNull();
     expect(screen.getByText("live")).toBeTruthy();
 
     fireEvent.click(screen.getByText("find . -name '*.ts'"));
