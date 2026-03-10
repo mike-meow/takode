@@ -11,6 +11,7 @@ import type { WorktreeTracker } from "../worktree-tracker.js";
 import type { TerminalManager } from "../terminal-manager.js";
 import type { PerfTracer } from "../perf-tracer.js";
 import { GIT_CMD_TIMEOUT } from "../constants.js";
+import { TAKODE_LINK_SYNTAX_INSTRUCTIONS } from "../link-syntax.js";
 import { validateCompanionAuth } from "./auth.js";
 import { createSessionsRoutes } from "./sessions.js";
 import { createGitRoutes } from "./git.js";
@@ -47,7 +48,7 @@ export function buildOrchestratorSystemPrompt(
   return `[System] You are a leader session. Your job is to coordinate worker sessions in your herd.\n\n` +
     `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers. Forwarded messages from other sessions may also appear with their own source tags.\n\n` +
     `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
-    `When mentioning quests, use \`[q-42](quest:q-42)\`. When referencing files, prefer short labels and repo-root-relative file links like \`[app.ts:42](file:src/app.ts:42)\`. Supported file-link suffixes are \`:line\`, \`:line:column\`, and line ranges like \`:53-54\` (example: \`[app.ts:53-54](file:src/app.ts:53-54)\`). Absolute \`file:\` links also work. When referencing sessions, use \`[#5](session:5)\`.\n\n` +
+    `${TAKODE_LINK_SYNTAX_INSTRUCTIONS}\n\n` +
     `**On startup**: Acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
     `**Events**: Herd events arrive automatically — no polling needed. React to events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
     `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +

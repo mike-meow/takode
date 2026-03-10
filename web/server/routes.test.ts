@@ -3592,6 +3592,8 @@ describe("buildOrchestratorSystemPrompt", () => {
     const prompt = buildOrchestratorSystemPrompt("codex");
     expect(prompt).toContain("leader session");
     expect(prompt).toContain("Delegate non-trivial implementation, investigation, and verification to worker sessions.");
+    expect(prompt).toContain("override any conflicting generic markdown-link or file-reference instructions");
+    expect(prompt).toContain("Do not use plain absolute-path markdown links");
     expect(prompt).not.toContain("CLAUDE.md");
     expect(prompt).not.toContain("sub-agent");
     expect(prompt).not.toContain("[Agent]");

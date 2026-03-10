@@ -1791,6 +1791,8 @@ describe("symlinkProjectSettings", () => {
     expect(prompt).toContain("do **NOT** transition it to `needs_verification`");
     expect(prompt).toContain("main repo contains the changes");
     expect(prompt).toContain("branch has been pushed");
+    expect(prompt).toContain("override any conflicting generic markdown-link or file-reference instructions");
+    expect(prompt).toContain("Do not use plain absolute-path markdown links");
   });
 });
 
@@ -1812,6 +1814,8 @@ describe("getOrchestratorGuardrails", () => {
     const guardrails = launcher.getOrchestratorGuardrails(3456, "codex");
     expect(guardrails).toContain("leader session");
     expect(guardrails).toContain("Delegate larger work to a herded worker session");
+    expect(guardrails).toContain("override any conflicting generic markdown-link or file-reference instructions");
+    expect(guardrails).toContain("Do not use plain absolute-path markdown links");
     expect(guardrails).toContain("After your own context compaction, refresh worker state before dispatching.");
     expect(guardrails).toContain("Prefer reusing an idle existing worker over spawning a new one.");
     expect(guardrails).toContain("Only use `takode spawn` when no suitable worker exists or when you explicitly need isolation.");
