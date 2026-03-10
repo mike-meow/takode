@@ -930,7 +930,9 @@ describe("ToolBlock", () => {
       />
     );
 
-    expect(screen.getByText("live")).toBeTruthy();
+    const liveBadge = screen.getByTestId("completed-live-badge");
+    expect(liveBadge.textContent).toBe("live");
+    expect(liveBadge.className).toContain("text-cc-muted");
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("previously live")).toBeTruthy();
     expect(screen.getByText("showing captured transcript")).toBeTruthy();

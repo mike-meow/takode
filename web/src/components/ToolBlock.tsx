@@ -189,7 +189,7 @@ export const ToolBlock = memo(function ToolBlock({
           </span>
         )}
         {showCompletedLiveBadge && (
-          <span className="shrink-0 rounded-full bg-cc-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-cc-primary">
+          <span className="shrink-0 rounded-full bg-cc-hover px-1.5 py-0.5 text-[10px] font-medium text-cc-muted" data-testid="completed-live-badge">
             live
           </span>
         )}
