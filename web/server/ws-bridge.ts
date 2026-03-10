@@ -2999,6 +2999,23 @@ export class WsBridge {
     // returns false → herd events are never delivered.
     session.cliInitReceived = true;
 
+    // Flush messages that were queued while the adapter was disconnected
+    // (e.g., herd events or user messages that arrived during a reconnect cycle).
+    // Without this, queued messages are stranded forever since the SDK path
+    // has no equivalent of the WebSocket handleCLIOpen flush (line ~3256).
+    if (session.pendingMessages.length > 0) {
+      console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on SDK adapter attach for session ${sessionTag(sessionId)}`);
+      const queued = session.pendingMessages.splice(0);
+      for (const raw of queued) {
+        try {
+          const msg = JSON.parse(raw) as BrowserOutgoingMessage;
+          adapter.sendBrowserMessage(msg);
+        } catch {
+          // Corrupt queued message — skip
+        }
+      }
+    }
+
     // Flush pending herd events now that isSessionIdle() can return true.
     if (this.herdEventDispatcher) {
       const orchInfo = this.launcher?.getSession(session.id);
