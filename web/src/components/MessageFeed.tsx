@@ -2004,6 +2004,7 @@ export function MessageFeed({
   const didTrackContentRef = useRef(false);
   const lastSeenContentBottomRef = useRef<number | null>(null);
   const lastObservedContentBottomRef = useRef<number | null>(null);
+  const suppressLatestPillOnRestoreRef = useRef(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
@@ -2554,6 +2555,13 @@ export function MessageFeed({
       setShowLatestPill(true);
       return;
     }
+    if (suppressLatestPillOnRestoreRef.current) {
+      suppressLatestPillOnRestoreRef.current = false;
+      lastSeenContentBottomRef.current = realContentBottom;
+      lastObservedContentBottomRef.current = realContentBottom;
+      setShowLatestPill(false);
+      return;
+    }
     if (realContentBottom == null) {
       setShowLatestPill(false);
       return;
@@ -2670,6 +2678,7 @@ export function MessageFeed({
     didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
     lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
     lastObservedContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
+    suppressLatestPillOnRestoreRef.current = savedScrollPos?.lastSeenContentBottom != null;
     setShowLatestPill(false);
   }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading]);
 

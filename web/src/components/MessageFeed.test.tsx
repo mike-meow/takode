@@ -1603,6 +1603,61 @@ describe("MessageFeed - scroll behavior", () => {
     expect(screen.getByText("New content below")).toBeTruthy();
   });
 
+  it("does not resurrect the latest pill on session restore until new content arrives afterward", async () => {
+    const sid = "test-latest-pill-no-resurrect-on-restore";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Previously unseen content" }),
+    ]);
+    setStoreFeedScrollPosition(sid, {
+      scrollTop: 100,
+      scrollHeight: 1760,
+      isAtBottom: false,
+      lastSeenContentBottom: 1400,
+    });
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1760;
+    let scrollTopValue = 100;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    await flushFeedObservers();
+    expect(screen.queryByLabelText("Jump to latest")).toBeNull();
+
+    scrollHeightValue = 1920;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Previously unseen content" }),
+      makeMessage({ id: "a3", role: "assistant", content: "Fresh content after restore" }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
+  });
+
   it("uses the latest pill to jump to the real content bottom", async () => {
     const sid = "test-latest-pill-click";
     setStoreMessages(sid, [

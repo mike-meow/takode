@@ -66,6 +66,17 @@ The feed may also show a passive "New content below" indicator when:
 The latest indicator is only an affordance to jump back to the real bottom. It
 must not change the user’s current scroll position by itself.
 
+Switching away from a session and then back again must not resurrect the latest
+indicator purely because the browser restored an older saved baseline. On
+session restore, the browser should treat the currently restored content bottom
+as the new baseline for that viewing pass.
+
+After a restore, the latest indicator should only appear again when:
+
+- genuinely new content arrives after the restore while the user remains away
+  from the bottom, or
+- the restored section window still has newer hidden sections below
+
 ### 5. Session restore
 
 Saved scroll position restore follows the older proportional model:
@@ -74,6 +85,10 @@ Saved scroll position restore follows the older proportional model:
 - if the saved content height has changed, restore proportionally based on the
   old and new scroll heights
 - if the user left the session at the bottom, restore to the real bottom
+
+If the user left the session scrolled up, restoring that position must not by
+itself imply "new content below". The latest-indicator baseline resets to the
+restored content bottom for the new viewing pass.
 
 There is no special anchor-restore path tied to the latest user turn.
 
