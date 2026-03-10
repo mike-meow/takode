@@ -32,10 +32,12 @@ vi.mock("node:child_process", async (importOriginal) => {
 // Mock path-resolver for binary resolution
 const mockResolveBinary = vi.hoisted(() => vi.fn((_name: string): string | null => "/usr/bin/claude"));
 const mockGetEnrichedPath = vi.hoisted(() => vi.fn(() => "/usr/bin:/usr/local/bin"));
+const mockCaptureUserShellPath = vi.hoisted(() => vi.fn(() => "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"));
 const mockCaptureUserShellEnv = vi.hoisted(() => vi.fn((): Record<string, string> => ({})));
 vi.mock("./path-resolver.js", () => ({
   resolveBinary: mockResolveBinary,
   getEnrichedPath: mockGetEnrichedPath,
+  captureUserShellPath: mockCaptureUserShellPath,
   captureUserShellEnv: mockCaptureUserShellEnv,
 }));
 
@@ -249,6 +251,7 @@ beforeEach(() => {
   mockSpawn.mockReturnValue(createMockProc());
   mockResolveBinary.mockReturnValue("/usr/bin/claude");
   mockGetEnrichedPath.mockReturnValue("/usr/bin:/usr/local/bin");
+  mockCaptureUserShellPath.mockReturnValue("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
   mockCaptureUserShellEnv.mockReturnValue({});
 });
 
@@ -664,6 +667,8 @@ describe("launch", () => {
       const updatedConfig = realReadFileSync(configPath, "utf-8");
       expect(updatedConfig).toContain("[features]");
       expect(updatedConfig).toContain("multi_agent = true");
+      expect(updatedConfig).toContain("[shell_environment_policy]");
+      expect(updatedConfig).toContain("\"PATH\"");
     } finally {
       rmSync(customHome, { recursive: true, force: true });
     }
@@ -735,9 +740,10 @@ describe("launch", () => {
     }
   });
 
-  it("adds companion and bun bin directories to PATH for host Codex sessions", async () => {
+  it("inherits the user's PATH for host Codex sessions", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
+    mockCaptureUserShellPath.mockReturnValue("/opt/homebrew/bin:/Users/test/.bun/bin:/usr/bin:/bin");
 
     await launcher.launch({
       backendType: "codex",
@@ -748,8 +754,7 @@ describe("launch", () => {
     await waitForSpawnCalls(1);
 
     const [, options] = mockSpawn.mock.calls[0];
-    expect(options.env.PATH).toContain(`${homedir()}/.companion/bin`);
-    expect(options.env.PATH).toContain(`${homedir()}/.bun/bin`);
+    expect(options.env.PATH).toBe("/opt/homebrew/bin:/Users/test/.bun/bin:/usr/bin:/bin");
   });
 
   it("spawns codex via sibling node binary to bypass shebang issues", async () => {

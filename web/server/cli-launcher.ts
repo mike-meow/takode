@@ -23,7 +23,7 @@ import type { BackendType } from "./session-types.js";
 import { assertNever, isClaudeFamily } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { CodexAdapter } from "./codex-adapter.js";
-import { resolveBinary, getEnrichedPath, captureUserShellEnv } from "./path-resolver.js";
+import { resolveBinary, getEnrichedPath, captureUserShellEnv, captureUserShellPath } from "./path-resolver.js";
 import { containerManager } from "./container-manager.js";
 import {
   getLegacyCodexHome,
@@ -1763,9 +1763,7 @@ export class CliLauncher {
       CODEX_MULTI_AGENT_FEATURE,
       true,
     );
-    if (envVars.length > 0) {
-      next = upsertShellEnvironmentIncludeOnly(next, envVars);
-    }
+    next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...envVars]);
     if (next !== current) {
       await writeFile(configPath, next, "utf-8");
     }
@@ -1859,6 +1857,8 @@ export class CliLauncher {
         spawnCmd = [binary, ...args];
       }
 
+      const userShellPath = captureUserShellPath();
+
       // Capture LiteLLM env vars from the user's login shell. When the
       // Companion server runs outside the user's normal shell (e.g. started
       // via `bun server/index.ts` without sourcing mai-agents .env), these
@@ -1879,7 +1879,7 @@ export class CliLauncher {
         CLAUDECODE: undefined,
         ...options.env,
         CODEX_HOME: codexHome,
-        PATH: spawnPath,
+        PATH: userShellPath || spawnPath,
       };
       spawnCwd = info.cwd;
     }
