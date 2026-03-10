@@ -272,7 +272,7 @@ function setStoreToolStartTimestamps(sessionId: string, timestamps: Record<strin
 
 function setStoreToolResults(
   sessionId: string,
-  results: Record<string, { content: string; is_truncated: boolean; duration_seconds?: number }>
+  results: Record<string, { content: string; is_truncated: boolean; duration_seconds?: number; is_error?: boolean }>
 ) {
   const map = new Map();
   map.set(sessionId, new Map(Object.entries(results)));
@@ -1203,6 +1203,84 @@ describe("MessageFeed - tool timer footer", () => {
 
     expect(screen.queryByText("Terminal")).toBeNull();
     expect(screen.queryByText("12s")).toBeNull();
+  });
+});
+
+describe("MessageFeed - Codex terminal chips", () => {
+  it("renders a floating chip and compact inline stub for a live Codex Bash command", () => {
+    const sid = "test-codex-live-terminal";
+    setStoreSessionBackend(sid, "codex");
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "codex-live-1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-live", name: "Bash", input: { command: "bun test src/ws-bridge.test.ts" } },
+        ],
+      }),
+    ]);
+    setStoreToolProgress(sid, [{ toolUseId: "tu-live", toolName: "Bash", elapsedSeconds: 12, output: "RUN  src/ws-bridge.test.ts\n" }]);
+    setStoreToolStartTimestamps(sid, { "tu-live": Date.now() - 12_000 });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByTestId("codex-live-terminal-chip").textContent).toContain("bun test src/ws-bridge.test.ts");
+    expect(screen.getByText("Live terminal in chip")).toBeTruthy();
+    expect(screen.queryByText("Live output")).toBeNull();
+  });
+
+  it("opens the read-only inspector from the live chip", () => {
+    const sid = "test-codex-live-inspector";
+    setStoreSessionBackend(sid, "codex");
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "codex-live-2",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-live-2", name: "Bash", input: { command: "npm run flaky:test" } },
+        ],
+      }),
+    ]);
+    setStoreToolProgress(sid, [{ toolUseId: "tu-live-2", toolName: "Bash", elapsedSeconds: 9, output: "Waiting for reconnect watchdog...\n" }]);
+    setStoreToolStartTimestamps(sid, { "tu-live-2": Date.now() - 9_000 });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    fireEvent.click(screen.getByTestId("codex-live-terminal-chip"));
+
+    expect(screen.getByTestId("codex-terminal-inspector")).toBeTruthy();
+    expect(screen.getByText("Live output")).toBeTruthy();
+    expect(screen.getByText("Waiting for reconnect watchdog...")).toBeTruthy();
+  });
+
+  it("removes the live chip once the Codex Bash command has a final result", () => {
+    const sid = "test-codex-live-complete";
+    setStoreSessionBackend(sid, "codex");
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "codex-live-3",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-live-3", name: "Bash", input: { command: "bun run test" } },
+        ],
+      }),
+    ]);
+    setStoreToolResults(sid, {
+      "tu-live-3": {
+        content: "12 passed",
+        is_truncated: false,
+        duration_seconds: 15.2,
+      },
+    });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByTestId("codex-live-terminal-chip")).toBeNull();
+    expect(screen.queryByText("Live terminal in chip")).toBeNull();
+    expect(screen.getByText("bun run test")).toBeTruthy();
   });
 });
 

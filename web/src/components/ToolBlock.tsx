@@ -138,14 +138,16 @@ export const ToolBlock = memo(function ToolBlock({
   toolUseId,
   sessionId,
   hideLabel = false,
+  defaultOpen = false,
 }: {
   name: string;
   input: Record<string, unknown>;
   toolUseId: string;
   sessionId?: string;
   hideLabel?: boolean;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);

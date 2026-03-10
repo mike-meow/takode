@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, memo, type ReactNode } from "react";
 import { useStore } from "../store.js";
 import { MessageBubble } from "./MessageBubble.js";
-import { ToolBlock, getToolIcon, getToolLabel, ToolIcon, formatDuration } from "./ToolBlock.js";
+import { ToolBlock, getPreview, getToolIcon, getToolLabel, ToolIcon, formatDuration } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
@@ -251,9 +251,229 @@ function LiveDurationBadge({
   );
 }
 
+interface CodexTerminalEntry {
+  toolUseId: string;
+  input: Record<string, unknown>;
+  timestamp: number;
+  preview: string;
+  result: {
+    content: string;
+    is_error: boolean;
+    is_truncated: boolean;
+    duration_seconds?: number;
+  } | null;
+  progress: {
+    elapsedSeconds?: number;
+    output?: string;
+  } | null;
+  startTimestamp?: number;
+}
+
+function collectCodexTerminalEntries(
+  messages: ChatMessage[],
+  toolResults?: Map<string, {
+    content: string;
+    is_error: boolean;
+    is_truncated: boolean;
+    duration_seconds?: number;
+  }>,
+  toolProgress?: Map<string, {
+    toolName: string;
+    elapsedSeconds: number;
+    output?: string;
+  }>,
+  toolStartTimestamps?: Map<string, number>,
+): CodexTerminalEntry[] {
+  const entries = new Map<string, CodexTerminalEntry>();
+
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    const blocks = msg.contentBlocks || [];
+    for (const block of blocks) {
+      if (block.type !== "tool_use" || block.name !== "Bash") continue;
+      if (!block.id || entries.has(block.id)) continue;
+
+      entries.set(block.id, {
+        toolUseId: block.id,
+        input: block.input,
+        timestamp: msg.timestamp,
+        preview: getPreview("Bash", block.input) || "Terminal command",
+        result: toolResults?.get(block.id) ?? null,
+        progress: toolProgress?.get(block.id) ?? null,
+        startTimestamp: toolStartTimestamps?.get(block.id),
+      });
+    }
+  }
+
+  return Array.from(entries.values()).sort((a, b) => {
+    const aTs = a.startTimestamp ?? a.timestamp;
+    const bTs = b.startTimestamp ?? b.timestamp;
+    return bTs - aTs;
+  });
+}
+
+function LiveCodexTerminalStub({
+  sessionId,
+  toolUseId,
+  input,
+  onInspect,
+}: {
+  sessionId: string;
+  toolUseId: string;
+  input: Record<string, unknown>;
+  onInspect?: () => void;
+}) {
+  const progress = useStore((s) => s.toolProgress.get(sessionId)?.get(toolUseId));
+  const startTimestamp = useStore((s) => s.toolStartTimestamps.get(sessionId)?.get(toolUseId));
+  const preview = getPreview("Bash", input) || "Terminal command";
+
+  return (
+    <div className="border border-cc-border rounded-[10px] bg-cc-card/70 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <ToolIcon type="terminal" />
+        <span className="min-w-0 flex-1 truncate text-xs font-mono-code text-cc-fg">{preview}</span>
+        <LiveDurationBadge
+          progressElapsedSeconds={progress?.elapsedSeconds}
+          startTimestamp={startTimestamp}
+          isComplete={false}
+        />
+      </div>
+      <div className="mt-1 flex items-center gap-2 text-[11px] text-cc-muted">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cc-primary animate-pulse" />
+          Live terminal in chip
+        </span>
+        {onInspect && (
+          <button
+            type="button"
+            onClick={onInspect}
+            data-testid="codex-live-terminal-stub-inspect"
+            className="ml-auto text-cc-primary hover:underline cursor-pointer"
+          >
+            Inspect
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CodexTerminalChips({
+  terminals,
+  selectedToolUseId,
+  onSelect,
+}: {
+  terminals: CodexTerminalEntry[];
+  selectedToolUseId: string | null;
+  onSelect: (toolUseId: string) => void;
+}) {
+  const visibleTerminals = terminals.slice(0, 3);
+  const overflowCount = Math.max(0, terminals.length - visibleTerminals.length);
+
+  if (visibleTerminals.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-col gap-2 sm:bottom-4 sm:left-4 sm:max-w-sm">
+      {visibleTerminals.map((terminal) => {
+        const isSelected = selectedToolUseId === terminal.toolUseId;
+        return (
+          <button
+            key={terminal.toolUseId}
+            type="button"
+            onClick={() => onSelect(terminal.toolUseId)}
+            data-testid="codex-live-terminal-chip"
+            className={`pointer-events-auto flex items-center gap-2 rounded-full border px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors cursor-pointer ${
+              isSelected
+                ? "border-cc-primary/40 bg-cc-card text-cc-fg"
+                : "border-cc-border bg-cc-card/95 text-cc-fg hover:bg-cc-hover"
+            }`}
+            title={terminal.preview}
+            aria-label={`Open live terminal for ${terminal.preview}`}
+          >
+            <ToolIcon type="terminal" />
+            <span className="min-w-0 flex-1 truncate text-xs font-mono-code">{terminal.preview}</span>
+            <LiveDurationBadge
+              progressElapsedSeconds={terminal.progress?.elapsedSeconds}
+              startTimestamp={terminal.startTimestamp}
+              isComplete={false}
+            />
+          </button>
+        );
+      })}
+      {overflowCount > 0 && (
+        <div className="pointer-events-auto self-start rounded-full border border-cc-border bg-cc-card/95 px-3 py-1.5 text-[11px] text-cc-muted shadow-lg backdrop-blur-sm">
+          +{overflowCount} more live terminal{overflowCount !== 1 ? "s" : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CodexTerminalInspector({
+  sessionId,
+  terminal,
+  onClose,
+}: {
+  sessionId: string;
+  terminal: CodexTerminalEntry;
+  onClose: () => void;
+}) {
+  const statusLabel = terminal.result
+    ? (terminal.result.is_error ? "error" : "complete")
+    : "running";
+  const statusClass = terminal.result
+    ? (terminal.result.is_error ? "bg-cc-error/10 text-cc-error" : "bg-cc-success/10 text-cc-success")
+    : "bg-cc-primary/10 text-cc-primary";
+
+  return (
+    <div className="pointer-events-none absolute inset-x-3 bottom-20 z-20 flex justify-start sm:inset-x-auto sm:bottom-4 sm:left-4">
+      <div data-testid="codex-terminal-inspector" className="pointer-events-auto w-full max-w-[min(32rem,100%)] rounded-2xl border border-cc-border bg-cc-bg/98 shadow-2xl backdrop-blur-sm">
+        <div className="flex items-center gap-2 border-b border-cc-border px-4 py-3">
+          <ToolIcon type="terminal" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-cc-fg">Terminal transcript</div>
+            <div className="truncate text-[11px] font-mono-code text-cc-muted">{terminal.preview}</div>
+          </div>
+          <span className={`rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-wide ${statusClass}`}>
+            {statusLabel}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-[11px] text-cc-muted hover:bg-cc-hover hover:text-cc-fg cursor-pointer"
+          >
+            Minimize
+          </button>
+        </div>
+        <div className="p-3">
+          <ToolBlock
+            name="Bash"
+            input={terminal.input}
+            toolUseId={terminal.toolUseId}
+            sessionId={sessionId}
+            defaultOpen
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Components ──────────────────────────────────────────────────────────────
 
-const ToolMessageGroup = memo(function ToolMessageGroup({ group, sessionId }: { group: ToolMsgGroup; sessionId: string }) {
+const ToolMessageGroup = memo(function ToolMessageGroup({
+  group,
+  sessionId,
+  isCodexSession,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
+}: {
+  group: ToolMsgGroup;
+  sessionId: string;
+  isCodexSession: boolean;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
+}) {
   const [open, setOpen] = useState(true);
   const iconType = getToolIcon(group.toolName);
   const label = getToolLabel(group.toolName);
@@ -262,12 +482,25 @@ const ToolMessageGroup = memo(function ToolMessageGroup({ group, sessionId }: { 
   // Single item — render using ToolBlock which includes result section
   if (count === 1) {
     const item = group.items[0];
+    const showLiveCodexTerminalStub =
+      isCodexSession
+      && item.name === "Bash"
+      && activeCodexTerminalIds.has(item.id);
     return (
       <div className="animate-[fadeSlideIn_0.2s_ease-out]">
         <div className="flex items-start gap-3">
           <PawTrailAvatar />
           <div className="flex-1 min-w-0">
-            <ToolBlock name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+            {showLiveCodexTerminalStub ? (
+              <LiveCodexTerminalStub
+                sessionId={sessionId}
+                toolUseId={item.id}
+                input={item.input}
+                onInspect={() => onOpenCodexTerminal(item.id)}
+              />
+            ) : (
+              <ToolBlock name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+            )}
           </div>
         </div>
       </div>
@@ -298,14 +531,24 @@ const ToolMessageGroup = memo(function ToolMessageGroup({ group, sessionId }: { 
             {open && (
               <div className="border-t border-cc-border px-3 py-2 flex flex-col gap-1.5">
                 {group.items.map((item, i) => (
-                  <ToolBlock
-                    key={item.id || i}
-                    name={item.name}
-                    input={item.input}
-                    toolUseId={item.id}
-                    sessionId={sessionId}
-                    hideLabel={group.toolName === "Bash"}
-                  />
+                  isCodexSession && item.name === "Bash" && activeCodexTerminalIds.has(item.id) ? (
+                    <LiveCodexTerminalStub
+                      key={item.id || i}
+                      sessionId={sessionId}
+                      toolUseId={item.id}
+                      input={item.input}
+                      onInspect={() => onOpenCodexTerminal(item.id)}
+                    />
+                  ) : (
+                    <ToolBlock
+                      key={item.id || i}
+                      name={item.name}
+                      input={item.input}
+                      toolUseId={item.id}
+                      sessionId={sessionId}
+                      hideLabel={group.toolName === "Bash"}
+                    />
+                  )
                 ))}
               </div>
             )}
@@ -536,10 +779,16 @@ const FeedEntries = memo(function FeedEntries({
   entries,
   sessionId,
   minuteBoundaryLabels,
+  isCodexSession,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
 }: {
   entries: FeedEntry[];
   sessionId: string;
   minuteBoundaryLabels?: Map<string, string>;
+  isCodexSession: boolean;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
 }) {
   // Pre-compute batched rendering: merge consecutive approval messages into
   // single ApprovalBatchGroup components to reduce visual noise.
@@ -564,11 +813,38 @@ const FeedEntries = memo(function FeedEntries({
         // Single approval — render normally (fall through below)
       }
       if (entry.kind === "tool_msg_group") {
-        result.push(<ToolMessageGroup key={entry.firstId || i} group={entry} sessionId={sessionId} />);
+        result.push(
+          <ToolMessageGroup
+            key={entry.firstId || i}
+            group={entry}
+            sessionId={sessionId}
+            isCodexSession={isCodexSession}
+            activeCodexTerminalIds={activeCodexTerminalIds}
+            onOpenCodexTerminal={onOpenCodexTerminal}
+          />,
+        );
       } else if (entry.kind === "subagent") {
-        result.push(<SubagentContainer key={entry.taskToolUseId} group={entry} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />);
+        result.push(
+          <SubagentContainer
+            key={entry.taskToolUseId}
+            group={entry}
+            sessionId={sessionId}
+            minuteBoundaryLabels={minuteBoundaryLabels}
+            activeCodexTerminalIds={activeCodexTerminalIds}
+            onOpenCodexTerminal={onOpenCodexTerminal}
+          />,
+        );
       } else if (entry.kind === "subagent_batch") {
-        result.push(<SubagentBatchContainer key={entry.subagents[0]?.taskToolUseId || i} batch={entry} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />);
+        result.push(
+          <SubagentBatchContainer
+            key={entry.subagents[0]?.taskToolUseId || i}
+            batch={entry}
+            sessionId={sessionId}
+            minuteBoundaryLabels={minuteBoundaryLabels}
+            activeCodexTerminalIds={activeCodexTerminalIds}
+            onOpenCodexTerminal={onOpenCodexTerminal}
+          />,
+        );
       } else if (isTimedChatMessage(entry.msg)) {
         const markerLabel = minuteBoundaryLabels?.get(entry.msg.id);
         const showTimestamp = entry.msg.role === "assistant" && typeof entry.msg.turnDurationMs === "number";
@@ -584,7 +860,7 @@ const FeedEntries = memo(function FeedEntries({
       i++;
     }
     return result;
-  }, [entries, sessionId, minuteBoundaryLabels]);
+  }, [activeCodexTerminalIds, entries, isCodexSession, minuteBoundaryLabels, onOpenCodexTerminal, sessionId]);
 
   return <>{rendered}</>;
 });
@@ -645,12 +921,18 @@ const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
   durationMs,
   onCollapse,
   minuteBoundaryLabels,
+  isCodexSession,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
 }: {
   turn: Turn;
   sessionId: string;
   durationMs: number | null;
   onCollapse: () => void;
   minuteBoundaryLabels: Map<string, string>;
+  isCodexSession: boolean;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
 }) {
   const headerRef = useRef<HTMLButtonElement>(null);
 
@@ -666,7 +948,14 @@ const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
         />
       )}
       {/* Render all entries interleaved in original chronological order */}
-      <FeedEntries entries={turn.allEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+      <FeedEntries
+        entries={turn.allEntries}
+        sessionId={sessionId}
+        minuteBoundaryLabels={minuteBoundaryLabels}
+        isCodexSession={isCodexSession}
+        activeCodexTerminalIds={activeCodexTerminalIds}
+        onOpenCodexTerminal={onOpenCodexTerminal}
+      />
       {/* Bottom collapse bar — appears when top bar scrolls out of view */}
       {turn.agentEntries.length > 0 && (
         <TurnCollapseFooter headerRef={headerRef} onCollapse={onCollapse} />
@@ -710,10 +999,14 @@ const SubagentBatchContainer = memo(function SubagentBatchContainer({
   batch,
   sessionId,
   minuteBoundaryLabels,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
 }: {
   batch: SubagentBatch;
   sessionId: string;
   minuteBoundaryLabels?: Map<string, string>;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
 }) {
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
@@ -721,7 +1014,15 @@ const SubagentBatchContainer = memo(function SubagentBatchContainer({
         <PawTrailAvatar />
         <div className="flex-1 min-w-0 space-y-2">
           {batch.subagents.map((sg) => (
-            <SubagentContainer key={sg.taskToolUseId} group={sg} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} inBatch />
+            <SubagentContainer
+              key={sg.taskToolUseId}
+              group={sg}
+              sessionId={sessionId}
+              minuteBoundaryLabels={minuteBoundaryLabels}
+              activeCodexTerminalIds={activeCodexTerminalIds}
+              onOpenCodexTerminal={onOpenCodexTerminal}
+              inBatch
+            />
           ))}
         </div>
       </div>
@@ -759,11 +1060,15 @@ const SubagentContainer = memo(function SubagentContainer({
   sessionId,
   inBatch,
   minuteBoundaryLabels,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
 }: {
   group: SubagentGroup;
   sessionId: string;
   inBatch?: boolean;
   minuteBoundaryLabels?: Map<string, string>;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -908,7 +1213,14 @@ const SubagentContainer = memo(function SubagentContainer({
               {activitiesOpen && (
                 <div className="px-3 pb-2 space-y-3">
                   {childCount > 0 && (
-                    <FeedEntries entries={group.children} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                    <FeedEntries
+                      entries={group.children}
+                      sessionId={sessionId}
+                      minuteBoundaryLabels={minuteBoundaryLabels}
+                      isCodexSession={isCodexSession}
+                      activeCodexTerminalIds={activeCodexTerminalIds}
+                      onOpenCodexTerminal={onOpenCodexTerminal}
+                    />
                   )}
                   {rawStreamingText && (
                     <div className="rounded-[8px] border border-cc-border/50 bg-cc-hover/20 px-3 py-2">
@@ -1122,7 +1434,21 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
 
 // ─── Turn list (owns collapse state so MessageFeed doesn't re-render on toggle) ─
 
-const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode }: { sections: FeedSection[]; sessionId: string; leaderMode: boolean }) {
+const TurnEntries = memo(function TurnEntries({
+  sections,
+  sessionId,
+  leaderMode,
+  isCodexSession,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
+}: {
+  sections: FeedSection[];
+  sessionId: string;
+  leaderMode: boolean;
+  isCodexSession: boolean;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
+}) {
   const turns = useMemo(() => sections.flatMap((section) => section.turns), [sections]);
   const { turnStates, toggleTurn } = useCollapsePolicy({ sessionId, turns, leaderMode });
   const minuteBoundaryLabels = useMemo(() => {
@@ -1174,7 +1500,14 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
                   >
                     {/* User message — always visible */}
                     {turn.userEntry && (
-                      <FeedEntries entries={[turn.userEntry]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                      <FeedEntries
+                        entries={[turn.userEntry]}
+                        sessionId={sessionId}
+                        minuteBoundaryLabels={minuteBoundaryLabels}
+                        isCodexSession={isCodexSession}
+                        activeCodexTerminalIds={activeCodexTerminalIds}
+                        onOpenCodexTerminal={onOpenCodexTerminal}
+                      />
                     )}
 
                     {isActivityExpanded ? (
@@ -1185,6 +1518,9 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
                           sessionId={sessionId}
                           durationMs={turnSummaryDuration}
                           minuteBoundaryLabels={minuteBoundaryLabels}
+                          isCodexSession={isCodexSession}
+                          activeCodexTerminalIds={activeCodexTerminalIds}
+                          onOpenCodexTerminal={onOpenCodexTerminal}
                           onCollapse={() => toggleTurn(turn.id)}
                         />
                       )
@@ -1192,7 +1528,14 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
                       <>
                         {/* System messages — always visible */}
                         {turn.systemEntries.length > 0 && (
-                          <FeedEntries entries={turn.systemEntries} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                          <FeedEntries
+                            entries={turn.systemEntries}
+                            sessionId={sessionId}
+                            minuteBoundaryLabels={minuteBoundaryLabels}
+                            isCodexSession={isCodexSession}
+                            activeCodexTerminalIds={activeCodexTerminalIds}
+                            onOpenCodexTerminal={onOpenCodexTerminal}
+                          />
                         )}
                         {/* Collapsed: single paw outside, activity bar + promoted entries + response in shared card */}
                         {(turn.agentEntries.length > 0 || turn.promotedEntries.length > 0 || turn.responseEntry) && (
@@ -1209,7 +1552,14 @@ const TurnEntries = memo(function TurnEntries({ sections, sessionId, leaderMode 
                               {(turn.promotedEntries.length > 0 || turn.responseEntry) && (
                                 <div className="px-3 py-2.5">
                                   <HidePawContext.Provider value={true}>
-                                    <FeedEntries entries={[...turn.promotedEntries, ...(turn.responseEntry ? [turn.responseEntry] : [])]} sessionId={sessionId} minuteBoundaryLabels={minuteBoundaryLabels} />
+                                    <FeedEntries
+                                      entries={[...turn.promotedEntries, ...(turn.responseEntry ? [turn.responseEntry] : [])]}
+                                      sessionId={sessionId}
+                                      minuteBoundaryLabels={minuteBoundaryLabels}
+                                      isCodexSession={isCodexSession}
+                                      activeCodexTerminalIds={activeCodexTerminalIds}
+                                      onOpenCodexTerminal={onOpenCodexTerminal}
+                                    />
                                   </HidePawContext.Provider>
                                 </div>
                               )}
@@ -1250,6 +1600,10 @@ export function MessageFeed({
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
   const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
+  const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
+  const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
+  const toolResults = useStore((s) => s.toolResults.get(sessionId));
+  const toolStartTimestamps = useStore((s) => s.toolStartTimestamps.get(sessionId));
   const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1265,10 +1619,36 @@ export function MessageFeed({
   const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
   const [sectionWindowStart, setSectionWindowStart] = useState<number | null>(null);
+  const [selectedCodexTerminalId, setSelectedCodexTerminalId] = useState<string | null>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
   const restoredSessionIdRef = useRef<string | null>(null);
+
+  const codexTerminalEntries = useMemo(
+    () => isCodexSession
+      ? collectCodexTerminalEntries(messages, toolResults, toolProgress, toolStartTimestamps)
+      : [],
+    [isCodexSession, messages, toolProgress, toolResults, toolStartTimestamps],
+  );
+  const activeCodexTerminalEntries = useMemo(
+    () => codexTerminalEntries.filter((entry) => entry.result == null),
+    [codexTerminalEntries],
+  );
+  const activeCodexTerminalIds = useMemo(
+    () => new Set(activeCodexTerminalEntries.map((entry) => entry.toolUseId)),
+    [activeCodexTerminalEntries],
+  );
+  const selectedCodexTerminal = useMemo(
+    () => codexTerminalEntries.find((entry) => entry.toolUseId === selectedCodexTerminalId) ?? null,
+    [codexTerminalEntries, selectedCodexTerminalId],
+  );
+
+  useEffect(() => {
+    if (!selectedCodexTerminalId) return;
+    if (codexTerminalEntries.some((entry) => entry.toolUseId === selectedCodexTerminalId)) return;
+    setSelectedCodexTerminalId(null);
+  }, [codexTerminalEntries, selectedCodexTerminalId]);
 
   const findVisibleTurnAnchor = useCallback((container: HTMLDivElement) => {
     const containerRect = container.getBoundingClientRect();
@@ -1822,7 +2202,14 @@ export function MessageFeed({
               </button>
             </div>
           )}
-          <TurnEntries sections={visibleSections} sessionId={sessionId} leaderMode={isLeaderSession} />
+          <TurnEntries
+            sections={visibleSections}
+            sessionId={sessionId}
+            leaderMode={isLeaderSession}
+            isCodexSession={isCodexSession}
+            activeCodexTerminalIds={activeCodexTerminalIds}
+            onOpenCodexTerminal={setSelectedCodexTerminalId}
+          />
           {hasNewerSections && (
             <div className="flex justify-center pt-1">
               <button
@@ -1840,6 +2227,23 @@ export function MessageFeed({
         </PawCounterContext.Provider>
         </PawScrollProvider>
       </div>
+
+      {isCodexSession && (
+        <>
+          <CodexTerminalChips
+            terminals={activeCodexTerminalEntries}
+            selectedToolUseId={selectedCodexTerminalId}
+            onSelect={setSelectedCodexTerminalId}
+          />
+          {selectedCodexTerminal && (
+            <CodexTerminalInspector
+              sessionId={sessionId}
+              terminal={selectedCodexTerminal}
+              onClose={() => setSelectedCodexTerminalId(null)}
+            />
+          )}
+        </>
+      )}
 
       {showLatestPill && latestIndicatorMode !== "external" && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:px-4">

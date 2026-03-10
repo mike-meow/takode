@@ -30,6 +30,7 @@ import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-g
 const MOCK_SESSION_ID = "playground-session";
 const PLAYGROUND_SECTIONED_SESSION_ID = "playground-sectioned-feed";
 const PLAYGROUND_LOADING_SESSION_ID = "playground-loading-feed";
+const PLAYGROUND_CODEX_TERMINAL_SESSION_ID = "playground-codex-terminal-feed";
 const PLAYGROUND_STARTING_SESSION_ID = "playground-chat-starting";
 const PLAYGROUND_RESUMING_SESSION_ID = "playground-chat-resuming";
 const PLAYGROUND_BROKEN_SESSION_ID = "playground-chat-broken";
@@ -873,6 +874,7 @@ export function Playground() {
       sessionId,
       PLAYGROUND_SECTIONED_SESSION_ID,
       PLAYGROUND_LOADING_SESSION_ID,
+      PLAYGROUND_CODEX_TERMINAL_SESSION_ID,
       PLAYGROUND_STARTING_SESSION_ID,
       PLAYGROUND_RESUMING_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
@@ -964,6 +966,62 @@ export function Playground() {
     store.setCliConnected(PLAYGROUND_LOADING_SESSION_ID, true);
     store.setSessionStatus(PLAYGROUND_LOADING_SESSION_ID, "idle");
     store.setHistoryLoading(PLAYGROUND_LOADING_SESSION_ID, true);
+
+    const codexTerminalSession: SessionState = {
+      ...session,
+      session_id: PLAYGROUND_CODEX_TERMINAL_SESSION_ID,
+      backend_type: "codex",
+      model: "gpt-5.3-codex",
+      cwd: "/Users/stan/Dev/project/codex-live-terminal",
+      is_containerized: false,
+    };
+    store.addSession(codexTerminalSession);
+    store.setConnectionStatus(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, true);
+    store.setSessionStatus(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "running");
+    store.setMessages(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, [
+      {
+        id: "playground-codex-terminal-user",
+        role: "user",
+        content: "Run the flaky test shard and tell me why it stalls.",
+        timestamp: Date.now() - 60_000,
+      },
+      {
+        id: "playground-codex-terminal-bash",
+        role: "assistant",
+        content: "",
+        timestamp: Date.now() - 55_000,
+        model: "gpt-5.3-codex",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "playground-codex-live-bash",
+            name: "Bash",
+            input: {
+              command: "bun test src/session/ws-bridge.test.ts --runInBand --reporter=verbose",
+            },
+          },
+        ],
+      },
+    ]);
+    store.setToolStartTimestamps(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, {
+      "playground-codex-live-bash": Date.now() - 49_000,
+    });
+    store.setToolProgress(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "playground-codex-live-bash", {
+      toolName: "Bash",
+      elapsedSeconds: 49,
+      outputDelta: "RUN  src/session/ws-bridge.test.ts\n",
+    });
+    store.setToolProgress(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "playground-codex-live-bash", {
+      toolName: "Bash",
+      elapsedSeconds: 50,
+      outputDelta: "  ✓ keeps tool_result_preview tails idempotent\n",
+    });
+    store.setToolProgress(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "playground-codex-live-bash", {
+      toolName: "Bash",
+      elapsedSeconds: 51,
+      outputDelta: "  ... waiting on ws reconnect watchdog case ...\n",
+    });
 
     // Mock tool results for ToolResultSection demo
     store.setToolResult(sessionId, "tu-1", {
@@ -1239,6 +1297,12 @@ export function Playground() {
         <Section title="Conversation Loading State" description="When a cold session is selected before its authoritative history arrives, the feed shows an explicit loading conversation state instead of an empty chat.">
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
             <MessageFeed sessionId={PLAYGROUND_LOADING_SESSION_ID} />
+          </div>
+        </Section>
+
+        <Section title="Codex Terminal Chips" description="Live Codex Bash commands float as temporary terminal chips while the inline feed entry stays compact. When the command completes, the chip disappears and the inline tool card remains as durable history.">
+          <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[420px]">
+            <MessageFeed sessionId={PLAYGROUND_CODEX_TERMINAL_SESSION_ID} />
           </div>
         </Section>
 
