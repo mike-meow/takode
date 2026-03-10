@@ -62,6 +62,8 @@ describe("toSessionViewModel", () => {
       gitBehind: 0,
       totalLinesAdded: 3,
       totalLinesRemoved: 2,
+      contextUsedPercent: 27,
+      codexTokenDetails,
       repoRoot: "/work",
       sessionNum: 9,
       name: "Test",
@@ -73,6 +75,8 @@ describe("toSessionViewModel", () => {
     expect(vm.backendType).toBe("claude");
     expect(vm.gitBranch).toBe("main");
     expect(vm.totalLinesRemoved).toBe(2);
+    expect(vm.contextUsedPercent).toBe(27);
+    expect(vm.modelContextWindow).toBe(258_400);
     expect(vm.sessionNum).toBe(9);
   });
 });

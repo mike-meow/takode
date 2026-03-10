@@ -142,4 +142,8 @@ export interface SdkSessionInfo {
   keywords?: string[];
   /** Epoch ms of last real activity (user/assistant message, not keep_alive) */
   lastActivityAt?: number;
+  /** Last server-reported context usage percent for this session. */
+  contextUsedPercent?: number;
+  /** Last server-reported Codex token details for this session. */
+  codexTokenDetails?: SessionState["codex_token_details"];
 }

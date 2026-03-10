@@ -76,6 +76,8 @@ export function toSessionViewModel(session: SessionState | SdkSessionInfo): Sess
     gitBehind: session.gitBehind,
     totalLinesAdded: session.totalLinesAdded,
     totalLinesRemoved: session.totalLinesRemoved,
+    contextUsedPercent: session.contextUsedPercent,
+    modelContextWindow: session.codexTokenDetails?.modelContextWindow,
     state: session.state,
     createdAt: session.createdAt,
     cliSessionId: session.cliSessionId,

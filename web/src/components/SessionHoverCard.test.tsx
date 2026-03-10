@@ -6,7 +6,11 @@ import type { SessionItem as SessionItemType } from "../utils/project-grouping.j
 
 const mockStoreState = {
   zoomLevel: 1,
-  sdkSessions: [],
+  sdkSessions: [] as Array<{
+    sessionId: string;
+    contextUsedPercent?: number;
+    codexTokenDetails?: { modelContextWindow?: number };
+  }>,
   sessionNames: new Map<string, string>(),
 };
 
@@ -90,5 +94,34 @@ describe("SessionHoverCard", () => {
 
     expect(screen.getByText("73% context")).toBeInTheDocument();
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+  });
+
+  it("falls back to sdk session metadata when no live session state is present", () => {
+    mockStoreState.sdkSessions = [{
+      sessionId: "s1",
+      contextUsedPercent: 73,
+      codexTokenDetails: { modelContextWindow: 258_400 },
+    }];
+
+    try {
+      render(
+        <SessionHoverCard
+          session={makeSession()}
+          sessionName="Explain Codex Session Steering"
+          sessionPreview={undefined}
+          taskHistory={undefined}
+          sessionState={undefined}
+          cliSessionId="cli-1"
+          anchorRect={new DOMRect(120, 80, 200, 40)}
+          onMouseEnter={() => {}}
+          onMouseLeave={() => {}}
+        />,
+      );
+
+      expect(screen.getByText("73% context")).toBeInTheDocument();
+      expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+    } finally {
+      mockStoreState.sdkSessions = [];
+    }
   });
 });

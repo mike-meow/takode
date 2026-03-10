@@ -21,7 +21,13 @@ interface MockStoreState {
     total_lines_removed?: number;
     repo_root?: string;
   }>;
-  sdkSessions: Array<{ sessionId: string; cwd?: string; backendType?: "claude" | "codex" }>;
+  sdkSessions: Array<{
+    sessionId: string;
+    cwd?: string;
+    backendType?: "claude" | "codex";
+    contextUsedPercent?: number;
+    codexTokenDetails?: { modelContextWindow?: number };
+  }>;
   sessionTaskHistory: Map<string, Array<{ title: string; source?: "quest"; questId?: string }>>;
 }
 
@@ -169,6 +175,23 @@ describe("SessionInfoPopover", () => {
     if (!session) throw new Error("missing session fixture");
     session.context_used_percent = 73;
     session.codex_token_details = { modelContextWindow: 258_400 };
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    expect(screen.getByText("73% context")).toBeInTheDocument();
+    expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+  });
+
+  it("falls back to sdk session metadata for context stats after restore", () => {
+    resetStore([]);
+    storeState.sessions = new Map();
+    storeState.sdkSessions = [{
+      sessionId: "s1",
+      cwd: "/repo",
+      backendType: "codex",
+      contextUsedPercent: 73,
+      codexTokenDetails: { modelContextWindow: 258_400 },
+    }];
 
     render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
 

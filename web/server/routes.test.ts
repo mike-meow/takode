@@ -893,13 +893,13 @@ describe("GET /api/sessions", () => {
       {
         sessionId: "s1", state: "running", cwd: "/a", name: "Fix auth bug", sessionNum: null,
         gitBranch: "", gitAhead: 0, gitBehind: 0, totalLinesAdded: 0, totalLinesRemoved: 0,
-        lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
+        contextUsedPercent: 0, lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
         claimedQuestId: null, claimedQuestStatus: null,
       },
       {
         sessionId: "s2", state: "stopped", cwd: "/b", sessionNum: null,
         gitBranch: "", gitAhead: 0, gitBehind: 0, totalLinesAdded: 0, totalLinesRemoved: 0,
-        lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
+        contextUsedPercent: 0, lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
         claimedQuestId: null, claimedQuestStatus: null,
       },
     ]);
@@ -944,6 +944,42 @@ describe("GET /api/sessions", () => {
       gitBehind: 0,
       totalLinesAdded: 0,
       totalLinesRemoved: 0,
+    });
+  });
+
+  it("includes restored context usage metadata from bridge state", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s1", state: "connected", cwd: "/a", backendType: "codex" },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    bridge.getAllSessions.mockReturnValue([
+      {
+        session_id: "s1",
+        context_used_percent: 73,
+        codex_token_details: {
+          inputTokens: 1200,
+          outputTokens: 300,
+          cachedInputTokens: 100,
+          reasoningOutputTokens: 50,
+          modelContextWindow: 258400,
+        },
+      },
+    ]);
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json[0]).toMatchObject({
+      sessionId: "s1",
+      contextUsedPercent: 73,
+      codexTokenDetails: {
+        inputTokens: 1200,
+        outputTokens: 300,
+        cachedInputTokens: 100,
+        reasoningOutputTokens: 50,
+        modelContextWindow: 258400,
+      },
     });
   });
 

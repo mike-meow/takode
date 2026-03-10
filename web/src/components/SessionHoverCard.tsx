@@ -56,6 +56,10 @@ export function SessionHoverCard({
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);
   const sessionNames = useStore((st) => st.sessionNames);
+  const sdkSessionMeta = useMemo(
+    () => sdkSessions.find((sdk) => sdk.sessionId === s.id),
+    [sdkSessions, s.id],
+  );
   const herdedSessions = useMemo(() => {
     if (!s.isOrchestrator) return [];
     return sdkSessions
@@ -114,8 +118,8 @@ export function SessionHoverCard({
   // Stats from sessionState
   const turns = sessionState?.num_turns ?? 0;
   const cost = sessionState?.total_cost_usd ?? 0;
-  const contextPercent = sessionState?.context_used_percent ?? 0;
-  const contextWindow = sessionState?.codex_token_details?.modelContextWindow ?? 0;
+  const contextPercent = sessionState?.context_used_percent ?? sdkSessionMeta?.contextUsedPercent ?? 0;
+  const contextWindow = sessionState?.codex_token_details?.modelContextWindow ?? sdkSessionMeta?.codexTokenDetails?.modelContextWindow ?? 0;
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
 
