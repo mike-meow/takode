@@ -962,6 +962,36 @@ describe("handleMessage: result", () => {
     expect(state.messageFrozenCounts.get("s1")).toBe(2);
   });
 
+  it("clears transient todo state when a turn completes", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setTasks("s1", [
+      { id: "1", subject: "Inspect worktree", description: "", status: "in_progress", activeForm: "Inspecting worktree" },
+      { id: "2", subject: "Run tests", description: "", status: "pending" },
+    ]);
+    useStore.getState().setSessionTaskPreview("s1", "Inspecting worktree");
+
+    fireMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 3,
+        total_cost_usd: 0.05,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "u1-clear-tasks",
+        session_id: "s1",
+      },
+    });
+
+    expect(useStore.getState().sessionTasks.get("s1")).toEqual([]);
+    expect(useStore.getState().sessionTaskPreview.has("s1")).toBe(false);
+  });
+
   it("suppresses completion notifications for leader sessions without @to(user) assistant messages", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
@@ -1373,6 +1403,65 @@ describe("handleMessage: message_history", () => {
     expect(msgs[1].content).toBe("4");
     expect(useStore.getState().messageFrozenCounts.get("s1")).toBe(2);
     expect(useStore.getState().historyLoading.has("s1")).toBe(false);
+  });
+
+  it("clears stale todo state on history replay once a result is encountered", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setTasks("s1", [
+      { id: "stale-1", subject: "Old task", description: "", status: "in_progress" },
+    ]);
+    useStore.getState().setSessionTaskPreview("s1", "Old task");
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "assistant",
+          message: {
+            id: "msg-hist-todo-1",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [
+              {
+                type: "tool_use",
+                id: "hist-todo-1",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "Inspect worktree", status: "in_progress", activeForm: "Inspecting worktree" },
+                    { content: "Run tests", status: "pending" },
+                  ],
+                },
+              },
+            ],
+            stop_reason: "tool_use",
+            usage: { input_tokens: 5, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+        },
+        {
+          type: "result",
+          data: {
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            duration_ms: 100,
+            duration_api_ms: 50,
+            num_turns: 1,
+            total_cost_usd: 0.01,
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+            uuid: "u-hist-clear",
+            session_id: "s1",
+          },
+        },
+      ],
+    });
+
+    expect(useStore.getState().sessionTasks.get("s1")).toEqual([]);
+    expect(useStore.getState().sessionTaskPreview.has("s1")).toBe(false);
   });
 
   it("restores leader_user_addressed metadata from history", () => {
@@ -1805,6 +1894,62 @@ describe("task extraction: TodoWrite", () => {
     expect(tasks[0].activeForm).toBe("Fixing bug");
     expect(tasks[1].subject).toBe("Write tests");
     expect(tasks[1].status).toBe("pending");
+  });
+
+  it("clears tasks when TodoWrite sends an empty list", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-todo-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [
+          {
+            type: "tool_use",
+            id: "tu-todo-1",
+            name: "TodoWrite",
+            input: {
+              todos: [
+                { content: "Fix bug", status: "in_progress", activeForm: "Fixing bug" },
+                { content: "Write tests", status: "pending" },
+              ],
+            },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    fireMessage({
+      type: "assistant",
+      message: {
+        id: "msg-todo-2",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-20250514",
+        content: [
+          {
+            type: "tool_use",
+            id: "tu-todo-2",
+            name: "TodoWrite",
+            input: {
+              todos: [],
+            },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    expect(useStore.getState().sessionTasks.get("s1")).toEqual([]);
   });
 });
 

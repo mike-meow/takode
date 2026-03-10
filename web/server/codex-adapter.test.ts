@@ -2893,6 +2893,53 @@ describe("CodexAdapter", () => {
     expect(todoToolUses).toHaveLength(1);
   });
 
+  it("emits an empty TodoWrite when a previously non-empty plan is cleared", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "turn/plan/updated",
+      params: {
+        turnId: "turn_plan_clear",
+        plan: {
+          steps: [
+            { content: "Inspect worktree", status: "in_progress" },
+            { content: "Run tests", status: "pending" },
+          ],
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    stdout.push(JSON.stringify({
+      method: "turn/plan/updated",
+      params: {
+        turnId: "turn_plan_clear",
+        plan: {
+          steps: [],
+        },
+      },
+    }) + "\n");
+    await tick();
+
+    const todoToolUses = messages.filter((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
+      return content.some((b) => b.type === "tool_use" && b.name === "TodoWrite");
+    }) as Array<{ message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }>;
+
+    expect(todoToolUses).toHaveLength(2);
+    const clearedBlock = todoToolUses[1]!.message.content.find((b) => b.type === "tool_use" && b.name === "TodoWrite");
+    expect(clearedBlock?.input?.todos).toEqual([]);
+  });
+
   it("fetches rate limits after initialization via account/rateLimits/read", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 

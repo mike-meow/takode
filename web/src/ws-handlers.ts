@@ -334,6 +334,8 @@ function normalizeHistoryMessages(
       }
     } else if (histMsg.type === "result") {
       const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
+      store.setTasks(sessionId, []);
+      store.setSessionTaskPreview(sessionId, null);
       if (r.is_error) {
         const errorText = r.errors?.length
           ? r.errors.join(", ")
@@ -368,6 +370,8 @@ function resetAuthoritativeHistoryState(sessionId: string): void {
   const store = useStore.getState();
   store.clearPermissions(sessionId);
   store.clearAutoExpandedTurns(sessionId);
+  store.setTasks(sessionId, []);
+  store.setSessionTaskPreview(sessionId, null);
 }
 
 function verifyHistorySync(
@@ -588,6 +592,8 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       store.clearToolProgress(sessionId);
       store.setSessionStatus(sessionId, "idle");
       store.setSessionStuck(sessionId, false);
+      store.setTasks(sessionId, []);
+      store.setSessionTaskPreview(sessionId, null);
       const notifyOnResult = shouldNotifyOnResult(sessionId, store);
       // Play notification sound if enabled and tab is not focused
       if (notifyOnResult && !document.hasFocus() && store.notificationSound) {

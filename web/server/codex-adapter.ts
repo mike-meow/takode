@@ -2144,12 +2144,16 @@ export class CodexAdapter
 
   private emitPlanTodoWrite(params: Record<string, unknown>, source: "item_plan_delta" | "turn_plan_updated"): void {
     const todos = this.extractPlanTodos(params);
-    if (todos.length === 0) return;
-
     const key = toSafeText(params.turnId ?? params.itemId ?? params.threadId ?? source) || source;
     const signature = JSON.stringify(todos);
-    if (this.planSignatureByKey.get(key) === signature) return;
-    this.planSignatureByKey.set(key, signature);
+    const previousSignature = this.planSignatureByKey.get(key);
+    if (previousSignature === signature) return;
+    if (todos.length === 0) {
+      if (previousSignature == null) return;
+      this.planSignatureByKey.delete(key);
+    } else {
+      this.planSignatureByKey.set(key, signature);
+    }
 
     const toolUseId = `codex-plan-${key}-${++this.planToolUseSeq}`;
     this.emitToolUseTracked(toolUseId, "TodoWrite", { todos }, {
