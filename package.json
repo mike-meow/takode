@@ -11,9 +11,6 @@
   },
   "author": "The Vibe Company",
   "license": "MIT",
-  "dependencies": {
-    "the-companion": "^0.2.2"
-  },
   "devDependencies": {
     "husky": "^9.1.7"
   }
