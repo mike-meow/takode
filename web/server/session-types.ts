@@ -122,6 +122,7 @@ export interface CLIToolProgressMessage {
   tool_name: string;
   parent_tool_use_id: string | null;
   elapsed_time_seconds: number;
+  output_delta?: string;
   uuid: string;
   session_id: string;
 }

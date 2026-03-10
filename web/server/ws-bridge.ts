@@ -7,6 +7,7 @@ import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../shared/history-sync-hash.js";
 
 const execPromise = promisify(execCb);
+const TOOL_PROGRESS_OUTPUT_LIMIT = 12_000;
 
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve, join } from "node:path";
@@ -266,6 +267,8 @@ interface Session {
   processedClientMessageIdSet: Set<string>;
   /** Full tool results indexed by tool_use_id for lazy fetch */
   toolResults: Map<string, { content: string; is_error: boolean; timestamp: number }>;
+  /** Retained live tool output tails (tool_use_id -> output) for transcript fallback. */
+  toolProgressOutput: Map<string, string>;
   /** Parsed quest lifecycle commands pending completion, keyed by tool_use_id. */
   pendingQuestCommands: Map<string, { questId: string; targetStatus?: QuestLifecycleStatus }>;
   /** Set after compact_boundary; the next user text message is the summary */
@@ -1542,6 +1545,7 @@ export class WsBridge {
           Array.isArray(p.processedClientMessageIds) ? p.processedClientMessageIds : [],
         ),
         toolResults: new Map(Array.isArray(p.toolResults) ? p.toolResults : []),
+        toolProgressOutput: new Map(),
         pendingQuestCommands: new Map(),
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
@@ -1923,6 +1927,7 @@ export class WsBridge {
         processedClientMessageIds: [],
         processedClientMessageIdSet: new Set(),
         toolResults: new Map(),
+        toolProgressOutput: new Map(),
         pendingQuestCommands: new Map(),
         assistantAccumulator: new Map(),
         toolStartTimes: new Map(),
@@ -2600,6 +2605,7 @@ export class WsBridge {
         for (const block of content) {
           if (block.type === "tool_use" && block.id && !session.toolStartTimes.has(block.id)) {
             session.toolStartTimes.set(block.id, now);
+            session.toolProgressOutput.delete(block.id);
           }
         }
         this.trackCodexQuestCommands(session, content);
@@ -2633,6 +2639,17 @@ export class WsBridge {
               message: { ...msg.message, content: nonResult },
             };
           }
+        }
+      } else if (msg.type === "tool_progress") {
+        if (typeof msg.output_delta === "string" && msg.output_delta.length > 0) {
+          const prev = session.toolProgressOutput.get(msg.tool_use_id) || "";
+          const merged = prev + msg.output_delta;
+          session.toolProgressOutput.set(
+            msg.tool_use_id,
+            merged.length > TOOL_PROGRESS_OUTPUT_LIMIT
+              ? merged.slice(-TOOL_PROGRESS_OUTPUT_LIMIT)
+              : merged,
+          );
         }
       }
 
@@ -4312,6 +4329,7 @@ export class WsBridge {
             if (!session.toolStartTimes.has(block.id)) {
               session.toolStartTimes.set(block.id, now);
             }
+            session.toolProgressOutput.delete(block.id);
             toolStartTimesMap[block.id] = session.toolStartTimes.get(block.id)!;
           }
         }
@@ -4352,6 +4370,7 @@ export class WsBridge {
           if (!session.toolStartTimes.has(block.id)) {
             session.toolStartTimes.set(block.id, Date.now());
           }
+          session.toolProgressOutput.delete(block.id);
         }
         historyEntry.message.content.push(block);
       }
@@ -5020,11 +5039,22 @@ export class WsBridge {
   }
 
   private handleToolProgress(session: Session, msg: CLIToolProgressMessage) {
+    if (typeof msg.output_delta === "string" && msg.output_delta.length > 0) {
+      const prev = session.toolProgressOutput.get(msg.tool_use_id) || "";
+      const merged = prev + msg.output_delta;
+      session.toolProgressOutput.set(
+        msg.tool_use_id,
+        merged.length > TOOL_PROGRESS_OUTPUT_LIMIT
+          ? merged.slice(-TOOL_PROGRESS_OUTPUT_LIMIT)
+          : merged,
+      );
+    }
     this.broadcastToBrowsers(session, {
       type: "tool_progress",
       tool_use_id: msg.tool_use_id,
       tool_name: msg.tool_name,
       elapsed_time_seconds: msg.elapsed_time_seconds,
+      ...(typeof msg.output_delta === "string" ? { output_delta: msg.output_delta } : {}),
     });
   }
 
@@ -5176,6 +5206,11 @@ export class WsBridge {
     }
     this.clearCodexToolResultWatchdog(session, toolUseId);
 
+    const retainedOutput = session.toolProgressOutput.get(toolUseId)?.trim();
+    if (retainedOutput) {
+      content = retainedOutput;
+    }
+
     const totalSize = content.length;
     const isTruncated = totalSize > TOOL_RESULT_PREVIEW_LIMIT;
     const startedAt = session.toolStartTimes.get(toolUseId);
@@ -5183,6 +5218,7 @@ export class WsBridge {
       ? Math.round((Date.now() - startedAt) / 100) / 10
       : undefined;
     session.toolStartTimes.delete(toolUseId);
+    session.toolProgressOutput.delete(toolUseId);
     session.toolResults.set(toolUseId, {
       content,
       is_error: isError,
@@ -5518,6 +5554,7 @@ export class WsBridge {
         : undefined;
       this.clearCodexToolResultWatchdog(session, block.tool_use_id);
       session.toolStartTimes.delete(block.tool_use_id);
+      session.toolProgressOutput.delete(block.tool_use_id);
 
       // Store full result for lazy fetch
       session.toolResults.set(block.tool_use_id, {

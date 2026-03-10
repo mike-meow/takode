@@ -2835,6 +2835,7 @@ describe("CLI message routing", () => {
       tool_name: "Bash",
       parent_tool_use_id: null,
       elapsed_time_seconds: 3.5,
+      output_delta: "hello\n",
       uuid: "uuid-7",
       session_id: "s1",
     });
@@ -2847,6 +2848,7 @@ describe("CLI message routing", () => {
     expect(progressMsg.tool_use_id).toBe("tu-10");
     expect(progressMsg.tool_name).toBe("Bash");
     expect(progressMsg.elapsed_time_seconds).toBe(3.5);
+    expect(progressMsg.output_delta).toBe("hello\n");
   });
 
   it("tool_use_summary: broadcasts", () => {
@@ -9460,6 +9462,87 @@ describe("Codex resumed-turn recovery", () => {
     expect(preview.previews[0].is_error).toBe(false);
     expect(preview.previews[0].content).toContain("no output was captured");
     expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_silent")).toBe(false);
+  });
+
+  it("prefers retained terminal transcript when superseded codex bash tool lacks a final result", async () => {
+    const sid = "s-superseded-terminal-transcript";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "run two commands",
+    }));
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "assistant-old-terminal",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_use", id: "cmd_old", name: "Bash", input: { command: "git --no-optional-locks status --short" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now() - 1000,
+      tool_start_times: { cmd_old: Date.now() - 1000 },
+    });
+
+    adapter.emitBrowserMessage({
+      type: "tool_progress",
+      tool_use_id: "cmd_old",
+      tool_name: "Bash",
+      elapsed_time_seconds: 1,
+      output_delta: " M web/src/components/MessageFeed.tsx\n",
+    } as any);
+
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "assistant-new-terminal",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_use", id: "cmd_new", name: "Bash", input: { command: "echo done" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+      tool_start_times: { cmd_new: Date.now() },
+    });
+    bridge.getSession(sid)!.toolStartTimes.set("cmd_old", Date.now() - 1_000);
+    bridge.getSession(sid)!.toolStartTimes.set("cmd_new", Date.now());
+
+    browser.send.mockClear();
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "assistant-new-result",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "tool_result", tool_use_id: "cmd_new", content: "done", is_error: false }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now(),
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const stalePreview = calls.find((c: any) =>
+      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_old"));
+
+    expect(stalePreview).toBeDefined();
+    expect(stalePreview.previews[0].content).toContain("M web/src/components/MessageFeed.tsx");
+    expect(stalePreview.previews[0].content).not.toContain("later tool completed");
   });
 
   it("retries stale recovery when resumed turn is inProgress but thread is idle", async () => {
