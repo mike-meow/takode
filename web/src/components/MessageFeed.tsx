@@ -1927,6 +1927,7 @@ export function MessageFeed({
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const lastScrollTopRef = useRef(savedScrollPos?.scrollTop ?? 0);
   const programmaticScrollTargetRef = useRef<number | null>(null);
+  const bottomAlignMessageIdRef = useRef<string | null>(null);
   const pendingChangedFeedBlockIdsRef = useRef<Set<string>>(new Set());
   const pendingAutoFollowFallbackRef = useRef(false);
   const autoFollowRafRef = useRef<number | null>(null);
@@ -2415,9 +2416,16 @@ export function MessageFeed({
 
     const lowestBottom = getLowestFeedBlockBottom(changedBlockIds, useFallback);
     if (lowestBottom == null) return;
+    const bottomAlignMessageId = bottomAlignMessageIdRef.current;
+    const bottomAlignTarget = bottomAlignMessageId
+      ? contentRootRef.current?.querySelector<HTMLElement>(`[data-message-id="${escapeSelectorValue(bottomAlignMessageId)}"]`)
+      : null;
+    const targetBottom = bottomAlignTarget
+      ? getFeedBlockBottom(container, bottomAlignTarget)
+      : lowestBottom;
 
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(lowestBottom - container.clientHeight)));
+    const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(targetBottom - container.clientHeight)));
     // A long-lived subagent can keep mutating above newer bottom content. While
     // auto-follow is enabled, never let those older updates yank the viewport
     // upward; only move farther down toward the latest active content.
@@ -2432,7 +2440,11 @@ export function MessageFeed({
     lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
     setShowScrollButton(false);
     setShowLatestPill(false);
+    if (bottomAlignMessageId) {
+      bottomAlignMessageIdRef.current = null;
+    }
   }, [
+    getFeedBlockBottom,
     getLowestFeedBlockBottom,
     getRealContentBottom,
     sectionWindowStart,
@@ -2619,6 +2631,7 @@ export function MessageFeed({
       lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
       setShowScrollButton(false);
       setShowLatestPill(false);
+      bottomAlignMessageIdRef.current = latestMessage.id;
       useStore.getState().clearBottomAlignOnNextUserMessage(sessionId);
     };
 
