@@ -8,11 +8,24 @@ import type { SessionState, SdkSessionInfo } from "../types.js";
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
+const mockQueuePendingSession = vi.fn();
+const mockGetGroupNewSessionDefaults = vi.fn();
+const mockSaveGroupNewSessionDefaults = vi.fn();
 
 vi.mock("../ws.js", () => ({
   connectSession: (...args: unknown[]) => mockConnectSession(...args),
   connectAllSessions: (...args: unknown[]) => mockConnectAllSessions(...args),
   disconnectSession: (...args: unknown[]) => mockDisconnectSession(...args),
+}));
+
+vi.mock("../utils/pending-creation.js", () => ({
+  cancelPendingCreation: vi.fn(),
+  queuePendingSession: (...args: unknown[]) => mockQueuePendingSession(...args),
+}));
+
+vi.mock("../utils/new-session-defaults.js", () => ({
+  getGroupNewSessionDefaults: (...args: unknown[]) => mockGetGroupNewSessionDefaults(...args),
+  saveGroupNewSessionDefaults: (...args: unknown[]) => mockSaveGroupNewSessionDefaults(...args),
 }));
 
 const mockApi = {
@@ -209,6 +222,16 @@ import { Sidebar } from "./Sidebar.js";
 beforeEach(() => {
   vi.clearAllMocks();
   mockState = createMockState();
+  mockGetGroupNewSessionDefaults.mockReturnValue({
+    backend: "claude",
+    model: "claude-sonnet-4-5-20250929",
+    mode: "agent",
+    askPermission: true,
+    envSlug: "",
+    useWorktree: true,
+    codexInternetAccess: false,
+    codexReasoningEffort: "",
+  });
   window.location.hash = "";
   setTouchDevice(false);
 });
@@ -524,6 +547,57 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     // handleNewSession now opens the modal instead of navigating home + calling newSession
     expect(mockState.setShowNewSessionModal).toHaveBeenCalledWith(true);
+  });
+
+  it("group header plus button creates a session directly in that group", () => {
+    const session = makeSession("s1", {
+      cwd: "/home/user/projects/myapp",
+      repo_root: "/home/user/projects/myapp",
+    });
+    const sdk = makeSdkSession("s1");
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+    });
+    mockGetGroupNewSessionDefaults.mockReturnValue({
+      backend: "codex",
+      model: "gpt-5.4",
+      mode: "agent",
+      askPermission: false,
+      envSlug: "prod",
+      useWorktree: false,
+      codexInternetAccess: true,
+      codexReasoningEffort: "high",
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByLabelText("Create session in myapp"));
+
+    expect(mockState.setShowNewSessionModal).not.toHaveBeenCalled();
+    expect(mockGetGroupNewSessionDefaults).toHaveBeenCalledWith("/home/user/projects/myapp");
+    expect(mockSaveGroupNewSessionDefaults).toHaveBeenCalledWith(
+      "/home/user/projects/myapp",
+      expect.objectContaining({
+        backend: "codex",
+        useWorktree: false,
+      }),
+    );
+    expect(mockQueuePendingSession).toHaveBeenCalledWith({
+      backend: "codex",
+      createOpts: {
+        model: "gpt-5.4",
+        permissionMode: "bypassPermissions",
+        cwd: "/home/user/projects/myapp",
+        envSlug: "prod",
+        useWorktree: undefined,
+        backend: "codex",
+        codexInternetAccess: true,
+        codexReasoningEffort: "high",
+        assistantMode: undefined,
+        askPermission: false,
+      },
+      cwd: "/home/user/projects/myapp",
+    });
   });
 
   it("double-clicking a session enters edit mode", async () => {

@@ -40,6 +40,7 @@ const SCOPED_KEYS = [
   "cc-selected-env",
   "cc-worktree",
   "cc-branch",
+  "cc-new-session-groups",
   "cc-diff-base",
   "cc-recent-dirs",
   "cc-questmaster-view",

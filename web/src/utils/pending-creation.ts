@@ -4,7 +4,7 @@
  * Decoupled from React components so the SSE stream keeps running even after
  * the NewSessionModal unmounts. Operates on the Zustand store directly.
  */
-import { createSessionStream } from "../api.js";
+import { createSessionStream, type CreateSessionOpts } from "../api.js";
 import { connectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession } from "./routing.js";
 import { addRecentDir } from "./recent-dirs.js";
@@ -36,6 +36,29 @@ export function startPendingCreation(pendingId: string): void {
   _runCreation(pendingId, pending, controller.signal).catch(() => {
     // Errors are handled inside _runCreation; this catch prevents unhandled rejection
   });
+}
+
+export function queuePendingSession(params: {
+  backend: "claude" | "codex";
+  createOpts: CreateSessionOpts;
+  cwd?: string | null;
+}): string {
+  const pendingId = createPendingId();
+  useStore.getState().addPendingSession({
+    id: pendingId,
+    backend: params.backend,
+    createOpts: params.createOpts,
+    progress: [],
+    error: null,
+    status: "creating",
+    realSessionId: null,
+    cwd: params.cwd ?? params.createOpts.cwd ?? null,
+    createdAt: Date.now(),
+  });
+
+  navigateToSession(pendingId);
+  startPendingCreation(pendingId);
+  return pendingId;
 }
 
 /**

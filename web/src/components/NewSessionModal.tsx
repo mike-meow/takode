@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { useStore } from "../store.js";
 import { api, type CompanionEnv, type GitRepoInfo, type GitBranchInfo, type BackendInfo, type CliSession } from "../api.js";
 import { getRecentDirs } from "../utils/recent-dirs.js";
-import { navigateToSession } from "../utils/routing.js";
-import { createPendingId, startPendingCreation } from "../utils/pending-creation.js";
+import { queuePendingSession } from "../utils/pending-creation.js";
 import {
   CODEX_REASONING_EFFORTS,
   getModelsForBackend,
@@ -19,6 +17,7 @@ import {
 } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
+import { getGlobalNewSessionDefaults, saveGroupNewSessionDefaults } from "../utils/new-session-defaults.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
 import { YarnBallSpinner } from "./CatIcons.js";
@@ -44,41 +43,17 @@ function saveBranch(repoRoot: string, branchName: string) {
 }
 
 export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [backend, setBackend] = useState<BackendType>(() =>
-    (scopedGetItem("cc-backend") as BackendType) || "claude",
-  );
+  const [backend, setBackend] = useState<BackendType>(() => getGlobalNewSessionDefaults().backend);
   const [backends, setBackends] = useState<BackendInfo[]>([]);
-  const [model, setModel] = useState(() => {
-    const b = (scopedGetItem("cc-backend") as BackendType) || "claude";
-    const saved = scopedGetItem(`cc-model-${b}`);
-    if (saved !== null) {
-      const statics = getModelsForBackend(b);
-      if (statics.some((m) => m.value === saved) || b === "codex") return saved;
-    }
-    return getDefaultModel(b);
-  });
-  const [mode, setMode] = useState(() => {
-    const saved = scopedGetItem("cc-mode");
-    const b = (scopedGetItem("cc-backend") as BackendType) || "claude";
-    const modes = getModesForBackend(b);
-    if (saved && modes.some((m) => m.value === saved)) return saved;
-    return getDefaultMode(b);
-  });
+  const [model, setModel] = useState(() => getGlobalNewSessionDefaults().model);
+  const [mode, setMode] = useState(() => getGlobalNewSessionDefaults().mode);
   const [cwd, setCwd] = useState(() => getRecentDirs()[0] || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [dynamicModels, setDynamicModels] = useState<ModelOption[] | null>(null);
-  const [codexInternetAccess, setCodexInternetAccess] = useState(() =>
-    scopedGetItem("cc-codex-internet-access") === "1",
-  );
-  const [codexReasoningEffort, setCodexReasoningEffort] = useState(() => {
-    const stored = scopedGetItem("cc-codex-reasoning-effort");
-    return stored ?? "";
-  });
-  const [askPermission, setAskPermission] = useState(() => {
-    const stored = scopedGetItem("cc-ask-permission");
-    return stored !== null ? stored === "true" : true;
-  });
+  const [codexInternetAccess, setCodexInternetAccess] = useState(() => getGlobalNewSessionDefaults().codexInternetAccess);
+  const [codexReasoningEffort, setCodexReasoningEffort] = useState(() => getGlobalNewSessionDefaults().codexReasoningEffort);
+  const [askPermission, setAskPermission] = useState(() => getGlobalNewSessionDefaults().askPermission);
 
   // Resume mode state
   const [resumeMode, setResumeMode] = useState(false);
@@ -91,7 +66,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   // Environment state
   const [envs, setEnvs] = useState<CompanionEnv[]>([]);
-  const [selectedEnv, setSelectedEnv] = useState(() => scopedGetItem("cc-selected-env") || "");
+  const [selectedEnv, setSelectedEnv] = useState(() => getGlobalNewSessionDefaults().envSlug);
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
   const [showEnvManager, setShowEnvManager] = useState(false);
 
@@ -104,11 +79,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const [gitRepoInfo, setGitRepoInfo] = useState<GitRepoInfo | null>(null);
   const [repoInfoLoading, setRepoInfoLoading] = useState(false);
   const [useWorktree, setUseWorktree] = useState(
-    () => {
-      const stored = scopedGetItem("cc-worktree");
-      // Default to true (matching takode spawn behavior) when not explicitly set.
-      return stored === null ? true : stored === "true";
-    },
+    () => getGlobalNewSessionDefaults().useWorktree,
   );
   const [sessionRole, setSessionRole] = useState<"worker" | "orchestrator">("worker");
   const [selectedBranch, setSelectedBranch] = useState("");
@@ -126,8 +97,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const envDropdownRef = useRef<HTMLDivElement>(null);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
-
-  const currentSessionId = useStore((s) => s.currentSessionId);
 
   // Load server home/cwd and available backends on mount
   useEffect(() => {
@@ -299,8 +268,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   }
 
   async function doCreateSession() {
-    const store = useStore.getState();
-
     const branchName = selectedBranch.trim()
       || (useWorktree ? gitRepoInfo?.currentBranch : undefined)
       || undefined;
@@ -326,27 +293,28 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       role: sessionRole === "orchestrator" ? "orchestrator" as const : undefined,
     };
 
-    // Create a pending session and add it to the store
-    const pendingId = createPendingId();
-    store.addPendingSession({
-      id: pendingId,
-      backend: backend as "claude" | "codex",
-      createOpts,
-      progress: [],
-      error: null,
-      status: "creating",
-      realSessionId: null,
-      cwd: cwdSnapshot || null,
-      createdAt: Date.now(),
-    });
+    const defaultsGroupKey = (gitRepoInfo?.repoRoot || cwdSnapshot || "").trim();
+    if (defaultsGroupKey) {
+      saveGroupNewSessionDefaults(defaultsGroupKey, {
+        backend: backend as "claude" | "codex",
+        model,
+        mode,
+        askPermission,
+        envSlug: selectedEnv,
+        useWorktree,
+        codexInternetAccess,
+        codexReasoningEffort,
+      });
+    }
 
     // Close modal and navigate to the pending session
     onClose();
     setSending(false);
-    navigateToSession(pendingId);
-
-    // Start the SSE creation stream in the background (decoupled from this component)
-    startPendingCreation(pendingId);
+    queuePendingSession({
+      backend: backend as "claude" | "codex",
+      createOpts,
+      cwd: cwdSnapshot || null,
+    });
   }
 
   async function handlePullAndContinue() {
@@ -386,8 +354,6 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
     setSending(true);
     setError("");
 
-    const store = useStore.getState();
-
     const createOpts = {
       backend: "claude" as const,
       cwd: cwd || undefined,
@@ -396,24 +362,13 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       askPermission,
     };
 
-    const pendingId = createPendingId();
-    store.addPendingSession({
-      id: pendingId,
-      backend: "claude",
-      createOpts,
-      progress: [],
-      error: null,
-      status: "creating",
-      realSessionId: null,
-      cwd: cwd || null,
-      createdAt: Date.now(),
-    });
-
     onClose();
     setSending(false);
-    navigateToSession(pendingId);
-
-    startPendingCreation(pendingId);
+    queuePendingSession({
+      backend: "claude",
+      createOpts,
+      cwd: cwd || null,
+    });
   }
 
   if (!open) return null;

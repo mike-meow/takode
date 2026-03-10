@@ -21,7 +21,7 @@ import { api, type SessionSearchResult } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
 import { connectSession, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
-import { cancelPendingCreation } from "../utils/pending-creation.js";
+import { cancelPendingCreation, queuePendingSession } from "../utils/pending-creation.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
@@ -34,6 +34,8 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId, type HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
+import { getGroupNewSessionDefaults, saveGroupNewSessionDefaults } from "../utils/new-session-defaults.js";
+import { resolveClaudeCliMode, resolveCodexCliMode } from "../utils/backends.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -306,6 +308,39 @@ export function Sidebar() {
 
   function handleNewSession() {
     useStore.getState().setShowNewSessionModal(true);
+    if (!isDesktopLayout) {
+      useStore.getState().setSidebarOpen(false);
+    }
+  }
+
+  function handleCreateSessionInGroup(groupKey: string) {
+    const normalizedGroupKey = groupKey.trim();
+    if (!normalizedGroupKey) return;
+
+    const defaults = getGroupNewSessionDefaults(normalizedGroupKey);
+    saveGroupNewSessionDefaults(normalizedGroupKey, defaults);
+
+    const permissionMode = defaults.backend === "codex"
+      ? resolveCodexCliMode(defaults.mode, defaults.askPermission)
+      : resolveClaudeCliMode(defaults.mode, defaults.askPermission);
+
+    queuePendingSession({
+      backend: defaults.backend,
+      createOpts: {
+        model: defaults.model,
+        permissionMode,
+        cwd: normalizedGroupKey,
+        envSlug: defaults.envSlug || undefined,
+        useWorktree: defaults.useWorktree || undefined,
+        backend: defaults.backend,
+        codexInternetAccess: defaults.backend === "codex" ? defaults.codexInternetAccess : undefined,
+        codexReasoningEffort: defaults.backend === "codex" ? (defaults.codexReasoningEffort || undefined) : undefined,
+        assistantMode: undefined,
+        askPermission: defaults.askPermission,
+      },
+      cwd: normalizedGroupKey,
+    });
+
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
     }
@@ -854,6 +889,7 @@ export function Sidebar() {
                           group={group}
                           isCollapsed={collapsedProjects.has(group.key)}
                           onToggleCollapse={toggleProjectCollapse}
+                          onCreateSession={handleCreateSessionInGroup}
                           currentSessionId={currentSessionId}
                           sessionNames={sessionNames}
                           sessionPreviews={sessionPreviews}

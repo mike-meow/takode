@@ -33,6 +33,7 @@ interface ProjectGroupProps {
   group: ProjectGroupType;
   isCollapsed: boolean;
   onToggleCollapse: (projectKey: string) => void;
+  onCreateSession: (projectKey: string) => void;
   currentSessionId: string | null;
   sessionNames: Map<string, string>;
   sessionPreviews: Map<string, string>;
@@ -106,6 +107,7 @@ export function ProjectGroup({
   group,
   isCollapsed,
   onToggleCollapse,
+  onCreateSession,
   currentSessionId,
   sessionNames,
   sessionPreviews,
@@ -203,6 +205,20 @@ export function ProjectGroup({
           <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">
             {group.sessions.length}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreateSession(group.key);
+          }}
+          className="shrink-0 w-5 h-5 inline-flex items-center justify-center rounded text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+          title={`Create session in ${group.label}`}
+          aria-label={`Create session in ${group.label}`}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
+            <path d="M8 3.5v9M3.5 8h9" strokeLinecap="round" />
+          </svg>
         </button>
         {groupDragHandleProps && (
           <button
