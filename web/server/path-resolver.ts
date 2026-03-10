@@ -200,11 +200,14 @@ export function getEnrichedPath(): string {
   const currentPath = process.env.PATH || "";
   const userPath = captureUserShellPath();
 
-  // Companion bin is always first so quest CLI is always discoverable
+  // Agent-facing shims always come first so built-in commands remain
+  // discoverable even when the user's shell PATH omits ~/.companion/bin
+  // or ~/.local/bin.
   const companionBin = join(homedir(), ".companion", "bin");
+  const localBin = join(homedir(), ".local", "bin");
 
-  // Merge: companion bin first, then user shell PATH, then current process PATH
-  const allDirs = [companionBin, ...userPath.split(":"), ...currentPath.split(":")];
+  // Merge: companion/local shims first, then user shell PATH, then current process PATH
+  const allDirs = [companionBin, localBin, ...userPath.split(":"), ...currentPath.split(":")];
   const seen = new Set<string>();
   const deduped: string[] = [];
   for (const dir of allDirs) {

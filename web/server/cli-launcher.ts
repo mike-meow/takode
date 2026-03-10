@@ -135,6 +135,19 @@ function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function mergePathStrings(paths: Array<string | undefined>): string {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const pathValue of paths) {
+    for (const entry of (pathValue || "").split(":")) {
+      if (!entry || seen.has(entry)) continue;
+      seen.add(entry);
+      merged.push(entry);
+    }
+  }
+  return merged.join(":");
+}
+
 function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: string[]): string {
   if (requiredVars.length === 0) return configToml;
   const normalizedRequired = Array.from(new Set(requiredVars)).sort();
@@ -1841,9 +1854,18 @@ export class CliLauncher {
       const binaryDir = resolve(binary, "..");
       const siblingNode = join(binaryDir, "node");
       const companionBinDir = join(homedir(), ".companion", "bin");
+      const localBinDir = join(homedir(), ".local", "bin");
       const bunBinDir = join(homedir(), ".bun", "bin");
       const enrichedPath = getEnrichedPath();
-      const spawnPath = [binaryDir, companionBinDir, bunBinDir, ...enrichedPath.split(":")].filter(Boolean).join(":");
+      const userShellPath = captureUserShellPath();
+      const spawnPath = mergePathStrings([
+        binaryDir,
+        companionBinDir,
+        localBinDir,
+        bunBinDir,
+        userShellPath,
+        enrichedPath,
+      ]);
 
       if (await fileExists(siblingNode)) {
         let codexScript: string;
@@ -1856,8 +1878,6 @@ export class CliLauncher {
       } else {
         spawnCmd = [binary, ...args];
       }
-
-      const userShellPath = captureUserShellPath();
 
       // Capture LiteLLM env vars from the user's login shell. When the
       // Companion server runs outside the user's normal shell (e.g. started
@@ -1879,7 +1899,7 @@ export class CliLauncher {
         CLAUDECODE: undefined,
         ...options.env,
         CODEX_HOME: codexHome,
-        PATH: userShellPath || spawnPath,
+        PATH: spawnPath,
       };
       spawnCwd = info.cwd;
     }

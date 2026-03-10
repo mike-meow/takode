@@ -283,6 +283,22 @@ describe("getEnrichedPath", () => {
       dirs.indexOf("/bin"),
     );
   });
+
+  it("always prefixes built-in shim directories", () => {
+    process.env.PATH = "/usr/bin:/bin";
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("-lic")) {
+        return "___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n";
+      }
+      return "";
+    });
+
+    const result = getEnrichedPath();
+    const dirs = result.split(":");
+    expect(dirs[0]).toBe("/home/testuser/.companion/bin");
+    expect(dirs[1]).toBe("/home/testuser/.local/bin");
+    expect(dirs).toContain("/opt/homebrew/bin");
+  });
 });
 
 // ─── resolveBinary ──────────────────────────────────────────────────────────

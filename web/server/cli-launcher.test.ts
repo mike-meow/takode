@@ -740,10 +740,11 @@ describe("launch", () => {
     }
   });
 
-  it("inherits the user's PATH for host Codex sessions", async () => {
+  it("preserves built-in shim directories for host Codex sessions", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
     mockCaptureUserShellPath.mockReturnValue("/opt/homebrew/bin:/Users/test/.bun/bin:/usr/bin:/bin");
+    mockGetEnrichedPath.mockReturnValue("/usr/local/share/companion-extra:/usr/bin:/bin");
 
     await launcher.launch({
       backendType: "codex",
@@ -754,7 +755,16 @@ describe("launch", () => {
     await waitForSpawnCalls(1);
 
     const [, options] = mockSpawn.mock.calls[0];
-    expect(options.env.PATH).toBe("/opt/homebrew/bin:/Users/test/.bun/bin:/usr/bin:/bin");
+    const dirs = options.env.PATH.split(":");
+    expect(dirs.slice(0, 6)).toEqual([
+      "/opt/fake",
+      join(homedir(), ".companion", "bin"),
+      join(homedir(), ".local", "bin"),
+      join(homedir(), ".bun", "bin"),
+      "/opt/homebrew/bin",
+      "/Users/test/.bun/bin",
+    ]);
+    expect(dirs).toContain("/usr/local/share/companion-extra");
   });
 
   it("spawns codex via sibling node binary to bypass shebang issues", async () => {
