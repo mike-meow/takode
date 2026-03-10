@@ -46,6 +46,47 @@ function escapeSelectorValue(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
 }
 
+function getMessageFeedBlockId(messageId: string): string {
+  return `message:${messageId}`;
+}
+
+function getApprovalBatchFeedBlockId(messageId: string): string {
+  return `approval:${messageId}`;
+}
+
+function getToolGroupFeedBlockId(group: ToolMsgGroup): string {
+  return `tool-group:${group.firstId || group.items[0]?.id || group.toolName}`;
+}
+
+function getSubagentFeedBlockId(toolUseId: string): string {
+  return `subagent:${toolUseId}`;
+}
+
+function getTurnFeedBlockId(turnId: string): string {
+  return `turn:${turnId}`;
+}
+
+function getFooterFeedBlockId(kind: string): string {
+  return `footer:${kind}`;
+}
+
+function getFeedBlockIdFromNode(node: Node | null): string | null {
+  const element = node instanceof Element ? node : node?.parentElement;
+  return (element?.closest("[data-feed-block-id]") as HTMLElement | null)?.dataset.feedBlockId ?? null;
+}
+
+function collectFeedBlockIdsFromNode(node: Node | null, blockIds: Set<string>) {
+  const ownId = getFeedBlockIdFromNode(node);
+  if (ownId) blockIds.add(ownId);
+  if (!(node instanceof Element)) return;
+  const element = node as HTMLElement;
+  if (element.dataset.feedBlockId) blockIds.add(element.dataset.feedBlockId);
+  const descendants = element.querySelectorAll<HTMLElement>("[data-feed-block-id]");
+  for (const descendant of descendants) {
+    if (descendant.dataset.feedBlockId) blockIds.add(descendant.dataset.feedBlockId);
+  }
+}
+
 function minuteBucket(timestamp: number): string | null {
   const d = new Date(timestamp);
   if (Number.isNaN(d.getTime())) return null;
@@ -499,7 +540,10 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
       && item.name === "Bash"
       && activeCodexTerminalIds.has(item.id);
     return (
-      <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+      <div
+        className="animate-[fadeSlideIn_0.2s_ease-out]"
+        data-feed-block-id={getToolGroupFeedBlockId(group)}
+      >
         <div className="flex items-start gap-3">
           <PawTrailAvatar />
           <div className="flex-1 min-w-0">
@@ -521,7 +565,10 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
 
   // Multi-item group
   return (
-    <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+    <div
+      className="animate-[fadeSlideIn_0.2s_ease-out]"
+      data-feed-block-id={getToolGroupFeedBlockId(group)}
+    >
       <div className="flex items-start gap-3">
         <PawTrailAvatar />
         <div className="flex-1 min-w-0">
@@ -765,7 +812,10 @@ function ApprovalBatchGroup({ messages }: { messages: ChatMessage[] }) {
   const [expanded, setExpanded] = useState(false);
   const count = messages.length;
   return (
-    <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
+    <div
+      className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]"
+      data-feed-block-id={getApprovalBatchFeedBlockId(messages[0]?.id ?? `count:${count}`)}
+    >
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs text-green-400/80 font-mono-code max-w-[85%] text-left cursor-pointer hover:bg-green-500/15 transition-colors"
@@ -867,13 +917,25 @@ const FeedEntries = memo(function FeedEntries({
         const markerLabel = minuteBoundaryLabels?.get(entry.msg.id);
         const showTimestamp = entry.msg.role === "assistant" && typeof entry.msg.turnDurationMs === "number";
         result.push(
-          <div key={entry.msg.id} data-message-id={entry.msg.id}>
+          <div
+            key={entry.msg.id}
+            data-message-id={entry.msg.id}
+            data-feed-block-id={getMessageFeedBlockId(entry.msg.id)}
+          >
             {markerLabel && <MinuteBoundaryTimestamp timestamp={entry.msg.timestamp} label={markerLabel} />}
             <MessageBubble message={entry.msg} sessionId={sessionId} showTimestamp={showTimestamp} />
           </div>
         );
       } else {
-        result.push(<div key={entry.msg.id} data-message-id={entry.msg.id}><MessageBubble message={entry.msg} sessionId={sessionId} /></div>);
+        result.push(
+          <div
+            key={entry.msg.id}
+            data-message-id={entry.msg.id}
+            data-feed-block-id={getMessageFeedBlockId(entry.msg.id)}
+          >
+            <MessageBubble message={entry.msg} sessionId={sessionId} />
+          </div>,
+        );
       }
       i++;
     }
@@ -1027,7 +1089,10 @@ const SubagentBatchContainer = memo(function SubagentBatchContainer({
   onOpenCodexTerminal: (toolUseId: string) => void;
 }) {
   return (
-    <div className="animate-[fadeSlideIn_0.2s_ease-out]">
+    <div
+      className="animate-[fadeSlideIn_0.2s_ease-out]"
+      data-feed-block-id={`subagent-batch:${batch.subagents[0]?.taskToolUseId || "empty"}`}
+    >
       <div className="flex items-start gap-3">
         <PawTrailAvatar />
         <div className="flex-1 min-w-0 space-y-2">
@@ -1166,7 +1231,10 @@ const SubagentContainer = memo(function SubagentContainer({
   }, [parsedResultPreview, streamingText, lastPreview]);
 
   const card = (
-    <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
+    <div
+      className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card"
+      data-feed-block-id={getSubagentFeedBlockId(group.taskToolUseId)}
+    >
       {/* Header */}
       <button
         ref={headerRef}
@@ -1397,7 +1465,10 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
     <>
       {/* Compaction indicator — shown prominently in the feed when agent is compacting context */}
       {sessionStatus === "compacting" && !rawStreamingText && (
-        <div className="flex items-center gap-2 text-[12px] text-cc-muted font-mono-code pl-9 py-1 animate-[fadeSlideIn_0.2s_ease-out]">
+        <div
+          className="flex items-center gap-2 text-[12px] text-cc-muted font-mono-code pl-9 py-1 animate-[fadeSlideIn_0.2s_ease-out]"
+          data-feed-block-id={getFooterFeedBlockId("compacting")}
+        >
           <YarnBallDot className="text-cc-primary animate-pulse" />
           <span>Compacting conversation...</span>
         </div>
@@ -1408,7 +1479,10 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
         const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => !isSubagentToolName(p.toolName));
         if (nonTaskProgress.length === 0) return null;
         return (
-          <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9">
+          <div
+            className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9"
+            data-feed-block-id={getFooterFeedBlockId("tool-progress")}
+          >
             <YarnBallDot className="text-cc-primary animate-pulse" />
             {nonTaskProgress.map((p, i) => (
               <span key={i} className="flex items-center gap-1">
@@ -1426,6 +1500,7 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
         <div
           className="animate-[fadeSlideIn_0.2s_ease-out]"
           data-feed-streaming-message="true"
+          data-feed-block-id={getFooterFeedBlockId("streaming")}
         >
           <div className="flex items-start gap-3">
             <PawTrailAvatar isStreaming />
@@ -1516,6 +1591,7 @@ const TurnEntries = memo(function TurnEntries({
                 <div key={turn.id}>
                   <div
                     data-turn-id={turn.id}
+                    data-feed-block-id={getTurnFeedBlockId(turn.id)}
                     className="turn-container space-y-3 sm:space-y-5"
                     data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
                   >
@@ -1628,14 +1704,20 @@ export function MessageFeed({
   const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRootRef = useRef<HTMLDivElement>(null);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
+  const autoFollowEnabledRef = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
-  const isInitialRender = useRef(true);
-  const lastScrollTime = useRef(0);
+  const lastScrollTopRef = useRef(savedScrollPos?.scrollTop ?? 0);
+  const programmaticScrollTargetRef = useRef<number | null>(null);
+  const pendingChangedFeedBlockIdsRef = useRef<Set<string>>(new Set());
+  const pendingAutoFollowFallbackRef = useRef(false);
+  const autoFollowRafRef = useRef<number | null>(null);
   const didTrackContentRef = useRef(false);
   const lastSeenContentBottomRef = useRef<number | null>(null);
+  const lastObservedContentBottomRef = useRef<number | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showLatestPill, setShowLatestPill] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
@@ -1647,7 +1729,7 @@ export function MessageFeed({
   const restoredSessionIdRef = useRef<string | null>(null);
   const lastViewportAnchorRef = useRef<{
     signature: string;
-    wasNearBottom: boolean;
+    wasAutoFollowing: boolean;
     anchor: FeedViewportAnchor | null;
   } | null>(null);
 
@@ -1730,6 +1812,63 @@ export function MessageFeed({
     return Math.max(0, Math.round(container.scrollHeight));
   }, []);
 
+  const markProgrammaticScroll = useCallback((top: number) => {
+    programmaticScrollTargetRef.current = top;
+  }, []);
+
+  const setContainerScrollTop = useCallback((top: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    markProgrammaticScroll(top);
+    container.scrollTop = top;
+    lastScrollTopRef.current = top;
+  }, [markProgrammaticScroll]);
+
+  const scrollContainerTo = useCallback((top: number, behavior: ScrollBehavior) => {
+    const container = containerRef.current;
+    if (!container) return;
+    markProgrammaticScroll(top);
+    container.scrollTo({ top, behavior });
+    if (behavior !== "smooth") {
+      lastScrollTopRef.current = top;
+    }
+  }, [markProgrammaticScroll]);
+
+  const getFeedBlockBottom = useCallback((container: HTMLDivElement, element: HTMLElement) => {
+    const offsetBottom = element.offsetTop + element.offsetHeight;
+    if (offsetBottom > 0) {
+      return offsetBottom;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    if (rect.height > 0 || rect.bottom !== containerRect.top) {
+      return container.scrollTop + (rect.bottom - containerRect.top);
+    }
+    return container.scrollHeight;
+  }, []);
+
+  const getLowestFeedBlockBottom = useCallback((blockIds: Iterable<string>, fallbackToLatestBlock = false) => {
+    const container = containerRef.current;
+    const contentRoot = contentRootRef.current;
+    if (!container || !contentRoot) return null;
+
+    let maxBottom: number | null = null;
+    for (const blockId of blockIds) {
+      const element = contentRoot.querySelector<HTMLElement>(`[data-feed-block-id="${escapeSelectorValue(blockId)}"]`);
+      if (!element) continue;
+      const bottom = getFeedBlockBottom(container, element);
+      maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+    }
+
+    if (maxBottom != null || !fallbackToLatestBlock) {
+      return maxBottom;
+    }
+
+    const blocks = contentRoot.querySelectorAll<HTMLElement>("[data-feed-block-id]");
+    const lastBlock = blocks[blocks.length - 1];
+    return lastBlock ? getFeedBlockBottom(container, lastBlock) : null;
+  }, [getFeedBlockBottom]);
+
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
   // avoiding the race where useEffect cleanup runs too late.
@@ -1741,7 +1880,7 @@ export function MessageFeed({
         useStore.getState().setFeedScrollPosition(sessionId, {
           scrollTop: el.scrollTop,
           scrollHeight: el.scrollHeight,
-          isAtBottom: isNearBottom.current,
+          isAtBottom: autoFollowEnabledRef.current && isNearBottom.current,
           anchorTurnId: anchor?.turnId ?? null,
           anchorOffsetTop: anchor?.offsetTop,
           lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
@@ -1838,9 +1977,12 @@ export function MessageFeed({
     if (!target) return false;
     const containerRect = container.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    container.scrollTop += targetRect.top - containerRect.top - anchorOffsetTop;
+    const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchorOffsetTop;
+    markProgrammaticScroll(nextTop);
+    container.scrollTop = nextTop;
+    lastScrollTopRef.current = container.scrollTop;
     return true;
-  }, []);
+  }, [markProgrammaticScroll]);
 
   const restoreFeedAnchor = useCallback((anchor: FeedViewportAnchor) => {
     const container = containerRef.current;
@@ -1851,7 +1993,10 @@ export function MessageFeed({
       if (!target) return false;
       const containerRect = container.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
-      container.scrollTop += targetRect.top - containerRect.top - anchor.offsetTop;
+      const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchor.offsetTop;
+      markProgrammaticScroll(nextTop);
+      container.scrollTop = nextTop;
+      lastScrollTopRef.current = container.scrollTop;
       return true;
     };
 
@@ -1864,12 +2009,12 @@ export function MessageFeed({
     }
 
     return false;
-  }, []);
+  }, [markProgrammaticScroll]);
 
   const snapshotViewportAnchor = useCallback((container: HTMLDivElement) => {
     lastViewportAnchorRef.current = {
       signature: collapseLayoutSignature,
-      wasNearBottom: isNearBottom.current,
+      wasAutoFollowing: autoFollowEnabledRef.current,
       anchor: findVisibleFeedAnchor(container),
     };
   }, [collapseLayoutSignature, findVisibleFeedAnchor]);
@@ -1901,11 +2046,14 @@ export function MessageFeed({
 
   const handleLoadOlderSection = useCallback(() => {
     if (previousSectionStartIndex == null) return;
+    autoFollowEnabledRef.current = false;
+    setShowScrollButton(true);
     moveSectionWindow(previousSectionStartIndex);
   }, [moveSectionWindow, previousSectionStartIndex]);
 
   const handleLoadNewerSection = useCallback(() => {
     if (nextSectionStartIndex == null) return;
+    autoFollowEnabledRef.current = false;
     moveSectionWindow(nextSectionStartIndex === latestVisibleSectionStartIndex ? null : nextSectionStartIndex);
   }, [latestVisibleSectionStartIndex, moveSectionWindow, nextSectionStartIndex]);
 
@@ -1913,9 +2061,11 @@ export function MessageFeed({
     const performScroll = () => {
       const container = containerRef.current;
       if (!container) return;
-      container.scrollTo({ top: container.scrollHeight, behavior });
+      autoFollowEnabledRef.current = true;
+      scrollContainerTo(container.scrollHeight, behavior);
       isNearBottom.current = true;
       lastSeenContentBottomRef.current = getRealContentBottom();
+      lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
       setShowScrollButton(false);
       setShowLatestPill(false);
     };
@@ -1925,7 +2075,7 @@ export function MessageFeed({
     }
     setSectionWindowStart(null);
     requestAnimationFrame(performScroll);
-  }, [getRealContentBottom, sectionWindowStart, totalSections]);
+  }, [getRealContentBottom, scrollContainerTo, sectionWindowStart, totalSections]);
 
   const handleScrollToBottomClick = useCallback(() => {
     scrollToBottom();
@@ -1933,98 +2083,82 @@ export function MessageFeed({
 
   const resetVisibleSectionsToLatest = useCallback((behavior: ScrollBehavior = "auto") => {
     if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) return;
+    autoFollowEnabledRef.current = true;
     setSectionWindowStart(null);
     requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;
-      container.scrollTo({ top: container.scrollHeight, behavior });
+      scrollContainerTo(container.scrollHeight, behavior);
     });
-  }, [sectionWindowStart, totalSections]);
+  }, [scrollContainerTo, sectionWindowStart, totalSections]);
 
-  function handleScroll() {
-    const el = containerRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    isNearBottom.current = nearBottom;
-    if (nearBottom) {
-      lastSeenContentBottomRef.current = getRealContentBottom();
-      setShowLatestPill(false);
-      resetVisibleSectionsToLatest("auto");
-    }
-    // Only trigger a re-render when the button state actually changes
-    const shouldShow = !nearBottom;
-    setShowScrollButton((prev) => (prev === shouldShow ? prev : shouldShow));
-    // Track active scrolling for mobile FAB auto-hide
-    setIsScrolling(true);
-    clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => setIsScrolling(false), 1500);
-    snapshotViewportAnchor(el);
-  }
+  const flushAutoFollow = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-  // Restore scroll position synchronously before the first paint.
-  // useLayoutEffect runs before the browser paints, preventing the flash
-  // where the feed appears at scrollTop=0 for one frame before jumping.
-  useLayoutEffect(() => {
-    if (restoredSessionIdRef.current === sessionId) return;
-    if (showConversationLoading) return;
-    const pos = useStore.getState().feedScrollPosition.get(sessionId);
-    if (messages.length === 0 && pos?.anchorTurnId) return;
-    const desiredSectionWindowStart = pos?.anchorTurnId
-      ? getSectionWindowStartForTurnId(pos.anchorTurnId)
-      : null;
-    if (desiredSectionWindowStart !== sectionWindowStart) {
-      setSectionWindowStart(desiredSectionWindowStart);
+    const changedBlockIds = new Set(pendingChangedFeedBlockIdsRef.current);
+    pendingChangedFeedBlockIdsRef.current.clear();
+    const useFallback = pendingAutoFollowFallbackRef.current;
+    pendingAutoFollowFallbackRef.current = false;
+
+    if (!autoFollowEnabledRef.current) return;
+
+    if (sectionWindowStart != null && totalSections > DEFAULT_VISIBLE_SECTION_COUNT) {
+      changedBlockIds.forEach((blockId) => pendingChangedFeedBlockIdsRef.current.add(blockId));
+      pendingAutoFollowFallbackRef.current = true;
+      setSectionWindowStart(null);
+      requestAnimationFrame(() => {
+        if (autoFollowEnabledRef.current) {
+          if (autoFollowRafRef.current != null) return;
+          autoFollowRafRef.current = requestAnimationFrame(() => {
+            autoFollowRafRef.current = null;
+            flushAutoFollow();
+          });
+        }
+      });
       return;
     }
-    if (pos && !pos.isAtBottom && pos.anchorTurnId) {
-      if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
-        isNearBottom.current = false;
-        setShowScrollButton(true);
-      } else {
-        scrollToBottom("auto");
-      }
-    } else if (pos && !pos.isAtBottom) {
-      const el = containerRef.current;
-      if (el) {
-        if (el.scrollHeight === pos.scrollHeight) {
-          el.scrollTop = pos.scrollTop;
-        } else if (pos.scrollHeight > 0) {
-          el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
-        }
-        isNearBottom.current = false;
-        setShowScrollButton(true);
-      }
-    } else {
-      scrollToBottom("auto");
+
+    const lowestBottom = getLowestFeedBlockBottom(changedBlockIds, useFallback);
+    if (lowestBottom == null) return;
+
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(lowestBottom - container.clientHeight)));
+    if (Math.abs(container.scrollTop - targetTop) > 1) {
+      setContainerScrollTop(targetTop);
     }
-    restoredSessionIdRef.current = sessionId;
+    isNearBottom.current = container.scrollHeight - targetTop - container.clientHeight < 120;
+    lastSeenContentBottomRef.current = getRealContentBottom();
+    lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
+    setShowScrollButton(false);
+    setShowLatestPill(false);
   }, [
-    getSectionWindowStartForTurnId,
-    messages.length,
-    restoreTurnAnchor,
-    scrollToBottom,
+    getLowestFeedBlockBottom,
+    getRealContentBottom,
     sectionWindowStart,
-    sessionId,
-    showConversationLoading,
+    setContainerScrollTop,
+    totalSections,
   ]);
 
-  useEffect(() => {
-    if (showConversationLoading) return;
-    didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
-    lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
-    setShowLatestPill(false);
-  }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading]);
+  const scheduleAutoFollowFlush = useCallback((useFallback = false) => {
+    if (useFallback) {
+      pendingAutoFollowFallbackRef.current = true;
+    }
+    if (autoFollowRafRef.current != null) return;
+    autoFollowRafRef.current = requestAnimationFrame(() => {
+      autoFollowRafRef.current = null;
+      flushAutoFollow();
+    });
+  }, [flushAutoFollow]);
 
-  useEffect(() => {
-    if (showConversationLoading) return;
-    const realContentBottom = getRealContentBottom();
+  const updateLatestPillForContentBottom = useCallback((realContentBottom: number | null) => {
     if (!didTrackContentRef.current) {
       didTrackContentRef.current = true;
       lastSeenContentBottomRef.current = realContentBottom;
       setShowLatestPill(false);
       return;
     }
-    if (isNearBottom.current) {
+    if (autoFollowEnabledRef.current) {
       lastSeenContentBottomRef.current = realContentBottom;
       setShowLatestPill(false);
       return;
@@ -2053,7 +2187,108 @@ export function MessageFeed({
       return;
     }
     setShowLatestPill(realContentBottom > baseline + 8);
-  }, [getRealContentBottom, hasNewerSections, messages.length, showConversationLoading, streamingText]);
+  }, [hasNewerSections]);
+
+  function handleScroll() {
+    const el = containerRef.current;
+    if (!el) return;
+    const currentScrollTop = el.scrollTop;
+    const nearBottom = el.scrollHeight - currentScrollTop - el.clientHeight < 120;
+    const isProgrammaticScroll = programmaticScrollTargetRef.current != null
+      && Math.abs(currentScrollTop - programmaticScrollTargetRef.current) <= 2;
+    if (isProgrammaticScroll) {
+      programmaticScrollTargetRef.current = null;
+    }
+    const scrollingUp = currentScrollTop < lastScrollTopRef.current - 4;
+    if (!isProgrammaticScroll) {
+      if (scrollingUp) {
+        autoFollowEnabledRef.current = false;
+      } else if (!nearBottom) {
+        autoFollowEnabledRef.current = false;
+      } else if (nearBottom) {
+        autoFollowEnabledRef.current = true;
+      }
+    }
+    isNearBottom.current = nearBottom;
+    if (autoFollowEnabledRef.current && nearBottom) {
+      lastSeenContentBottomRef.current = getRealContentBottom();
+      lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
+      setShowLatestPill(false);
+      resetVisibleSectionsToLatest("auto");
+    }
+    // Only trigger a re-render when the button state actually changes
+    const shouldShow = !nearBottom || !autoFollowEnabledRef.current;
+    setShowScrollButton((prev) => (prev === shouldShow ? prev : shouldShow));
+    // Track active scrolling for mobile FAB auto-hide
+    setIsScrolling(true);
+    clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => setIsScrolling(false), 1500);
+    lastScrollTopRef.current = currentScrollTop;
+    snapshotViewportAnchor(el);
+  }
+
+  // Restore scroll position synchronously before the first paint.
+  // useLayoutEffect runs before the browser paints, preventing the flash
+  // where the feed appears at scrollTop=0 for one frame before jumping.
+  useLayoutEffect(() => {
+    if (restoredSessionIdRef.current === sessionId) return;
+    if (showConversationLoading) return;
+    const pos = useStore.getState().feedScrollPosition.get(sessionId);
+    if (messages.length === 0 && pos?.anchorTurnId) return;
+    const desiredSectionWindowStart = pos?.anchorTurnId
+      ? getSectionWindowStartForTurnId(pos.anchorTurnId)
+      : null;
+    if (desiredSectionWindowStart !== sectionWindowStart) {
+      setSectionWindowStart(desiredSectionWindowStart);
+      return;
+    }
+    if (pos && !pos.isAtBottom && pos.anchorTurnId) {
+      if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
+        autoFollowEnabledRef.current = false;
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      } else {
+        scrollToBottom("auto");
+      }
+    } else if (pos && !pos.isAtBottom) {
+      const el = containerRef.current;
+      if (el) {
+        if (el.scrollHeight === pos.scrollHeight) {
+          el.scrollTop = pos.scrollTop;
+        } else if (pos.scrollHeight > 0) {
+          el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
+        }
+        autoFollowEnabledRef.current = false;
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+        lastScrollTopRef.current = el.scrollTop;
+      }
+    } else {
+      scrollToBottom("auto");
+    }
+    restoredSessionIdRef.current = sessionId;
+  }, [
+    getSectionWindowStartForTurnId,
+    messages.length,
+    restoreTurnAnchor,
+    scrollToBottom,
+    sectionWindowStart,
+    sessionId,
+    showConversationLoading,
+  ]);
+
+  useEffect(() => {
+    if (showConversationLoading) return;
+    didTrackContentRef.current = savedScrollPos?.lastSeenContentBottom != null;
+    lastSeenContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
+    lastObservedContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
+    setShowLatestPill(false);
+  }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading]);
+
+  useEffect(() => {
+    if (showConversationLoading) return;
+    updateLatestPillForContentBottom(getRealContentBottom());
+  }, [getRealContentBottom, messages.length, showConversationLoading, streamingText, toolProgress, updateLatestPillForContentBottom]);
 
   useEffect(() => {
     onLatestIndicatorVisibleChange?.(showLatestPill);
@@ -2066,25 +2301,63 @@ export function MessageFeed({
 
   useEffect(() => {
     if (showConversationLoading) return;
-    if (isInitialRender.current) {
-      isInitialRender.current = false;
-      return;
-    }
-    if (isNearBottom.current) {
-      const now = Date.now();
-      const throttleMs = streamingText ? 80 : 200;
-      if (now - lastScrollTime.current >= throttleMs) {
-        lastScrollTime.current = now;
-        const container = containerRef.current;
-        if (!container) return;
-        if (streamingText) {
-          container.scrollTop = container.scrollHeight;
-        } else {
-          container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-        }
+    if (!toolProgress || toolProgress.size === 0) return;
+    scheduleAutoFollowFlush(true);
+  }, [scheduleAutoFollowFlush, showConversationLoading, toolProgress]);
+
+  useEffect(() => {
+    if (showConversationLoading) return;
+    const container = containerRef.current;
+    const contentRoot = contentRootRef.current;
+    if (!container || !contentRoot) return;
+
+    lastObservedContentBottomRef.current = getRealContentBottom();
+
+    const mutationObserver = typeof MutationObserver === "undefined"
+      ? null
+      : new MutationObserver((mutations) => {
+          let sawMutation = false;
+          for (const mutation of mutations) {
+            sawMutation = true;
+            collectFeedBlockIdsFromNode(mutation.target, pendingChangedFeedBlockIdsRef.current);
+            mutation.addedNodes.forEach((node) => collectFeedBlockIdsFromNode(node, pendingChangedFeedBlockIdsRef.current));
+          }
+          if (sawMutation) {
+            scheduleAutoFollowFlush();
+          }
+        });
+
+    mutationObserver?.observe(contentRoot, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+          const realContentBottom = getRealContentBottom();
+          if (realContentBottom == null || realContentBottom === lastObservedContentBottomRef.current) return;
+          lastObservedContentBottomRef.current = realContentBottom;
+          if (!autoFollowEnabledRef.current) {
+            updateLatestPillForContentBottom(realContentBottom);
+          }
+          scheduleAutoFollowFlush(true);
+        });
+
+    resizeObserver?.observe(contentRoot);
+
+    return () => {
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      if (autoFollowRafRef.current != null) {
+        cancelAnimationFrame(autoFollowRafRef.current);
+        autoFollowRafRef.current = null;
       }
-    }
-  }, [messages.length, showConversationLoading, streamingText]);
+      pendingChangedFeedBlockIdsRef.current.clear();
+      pendingAutoFollowFallbackRef.current = false;
+    };
+  }, [getRealContentBottom, scheduleAutoFollowFlush, showConversationLoading, updateLatestPillForContentBottom]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -2092,19 +2365,21 @@ export function MessageFeed({
 
     const previous = lastViewportAnchorRef.current;
     if (previous && previous.signature !== collapseLayoutSignature) {
-      if (previous.wasNearBottom) {
-        container.scrollTop = container.scrollHeight;
+      if (previous.wasAutoFollowing) {
+        setContainerScrollTop(container.scrollHeight);
         isNearBottom.current = true;
         lastSeenContentBottomRef.current = getRealContentBottom();
+        lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
         setShowScrollButton(false);
         setShowLatestPill(false);
       } else if (previous.anchor && restoreFeedAnchor(previous.anchor)) {
+        autoFollowEnabledRef.current = false;
         isNearBottom.current = false;
         setShowScrollButton(true);
       }
     }
     snapshotViewportAnchor(container);
-  }, [collapseLayoutSignature, getRealContentBottom, restoreFeedAnchor, snapshotViewportAnchor]);
+  }, [collapseLayoutSignature, getRealContentBottom, restoreFeedAnchor, setContainerScrollTop, snapshotViewportAnchor]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));
@@ -2112,6 +2387,7 @@ export function MessageFeed({
   useEffect(() => {
     if (!scrollToTurnId) return;
     clearScrollToTurn(sessionId);
+    autoFollowEnabledRef.current = false;
     // Expand the target turn's activity if needed.
     const overrides = useStore.getState().turnActivityOverrides.get(sessionId);
     const isExpanded = overrides?.get(scrollToTurnId);
@@ -2144,6 +2420,7 @@ export function MessageFeed({
   useEffect(() => {
     if (!scrollToMessageId) return;
     clearScrollToMessage(sessionId);
+    autoFollowEnabledRef.current = false;
 
     // Find which turn contains this message
     const targetTurn = turns.find((t) =>
@@ -2311,7 +2588,7 @@ export function MessageFeed({
         >
           <PawScrollProvider scrollRef={containerRef}>
           <PawCounterContext.Provider value={pawCounter}>
-          <div className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
+          <div ref={contentRootRef} className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
             {hasOlderSections && (
               <div className="flex justify-center pb-2">
                 <button

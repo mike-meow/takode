@@ -353,6 +353,13 @@ function setStoreAutoExpandedTurns(sessionId: string, turnIds: string[]) {
   mockStoreValues.autoExpandedTurnIds = map;
 }
 
+async function flushFeedObservers() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 beforeEach(() => {
   resetStore();
   mockScrollIntoView.mockClear();
@@ -753,20 +760,28 @@ describe("MessageFeed - scroll behavior", () => {
     }
   });
 
-  it("keeps smooth bottom-follow when the user is near bottom and a non-streaming message arrives", () => {
+  it("keeps immediate bottom-follow when the user is near bottom and a non-streaming message arrives", async () => {
     const sid = "test-bottom-follow-non-streaming";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 980;
     Object.defineProperty(scrollContainer, "scrollHeight", {
       configurable: true,
-      value: 1600,
+      get() {
+        return scrollHeightValue;
+      },
     });
     Object.defineProperty(scrollContainer, "scrollTop", {
       configurable: true,
-      writable: true,
-      value: 980,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
     });
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
@@ -776,26 +791,32 @@ describe("MessageFeed - scroll behavior", () => {
     fireEvent.scroll(scrollContainer);
     mockScrollTo.mockClear();
 
+    scrollHeightValue = 1760;
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
       makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
 
-    expect(mockScrollTo).toHaveBeenCalledWith({ top: 1600, behavior: "smooth" });
+    expect(scrollTopValue).toBe(1160);
+    expect(mockScrollTo).not.toHaveBeenCalled();
   });
 
-  it("uses immediate bottom alignment while streaming when the user is near bottom", () => {
+  it("uses immediate bottom alignment while streaming when the user is near bottom", async () => {
     const sid = "test-bottom-follow-streaming";
     setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
     setStoreStreaming(sid, "Thinking...");
 
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
     let scrollTopValue = 980;
     Object.defineProperty(scrollContainer, "scrollHeight", {
       configurable: true,
-      value: 1600,
+      get() {
+        return scrollHeightValue;
+      },
     });
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
@@ -814,17 +835,165 @@ describe("MessageFeed - scroll behavior", () => {
     fireEvent.scroll(scrollContainer);
     mockScrollTo.mockClear();
 
+    scrollHeightValue = 1760;
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
       makeMessage({ id: "a1", role: "assistant", content: "Partial answer" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
 
-    expect(scrollTopValue).toBe(1600);
+    expect(scrollTopValue).toBe(1160);
     expect(mockScrollTo).not.toHaveBeenCalled();
   });
 
-  it("does not auto-scroll when the user is reading away from the bottom", () => {
+  it("keeps following when an existing assistant message grows without changing message count", async () => {
+    const sid = "test-same-message-growth";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Short answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 980;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    scrollHeightValue = 1760;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "A much longer answer that keeps growing in place." }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(scrollTopValue).toBe(1160);
+  });
+
+  it("keeps grouped tool containers visible when in-place tool results expand them", async () => {
+    const sid = "test-grouped-tool-growth";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } },
+        ],
+      }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/b.ts" } },
+        ],
+      }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 980;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+    fireEvent.click(screen.getByText("/b.ts"));
+
+    scrollHeightValue = 1760;
+    setStoreToolResults(sid, {
+      "tu-2": {
+        content: "Expanded grouped tool result",
+        is_truncated: false,
+      },
+    });
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(scrollTopValue).toBe(1160);
+  });
+
+  it("follows footer tool progress updates even when the message list is unchanged", async () => {
+    const sid = "test-tool-progress-growth";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Question" })]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1000;
+    let scrollTopValue = 380;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    scrollHeightValue = 1120;
+    setStoreToolProgress(sid, [{ toolUseId: "tu-1", toolName: "Bash", elapsedSeconds: 12 }]);
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(scrollTopValue).toBe(520);
+  });
+
+  it("does not auto-scroll when the user is reading away from the bottom", async () => {
     const sid = "test-no-autofollow-when-scrolled-up";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
@@ -856,9 +1025,111 @@ describe("MessageFeed - scroll behavior", () => {
       makeMessage({ id: "u2", role: "user", content: "Follow-up" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
 
     expect(mockScrollTo).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
+  });
+
+  it("stops following immediately when the user scrolls upward, even before leaving the bottom threshold", async () => {
+    const sid = "test-upward-scroll-disables-follow";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Short answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 980;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    scrollTopValue = 940;
+    fireEvent.scroll(scrollContainer);
+
+    scrollHeightValue = 1760;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "A much longer answer that grows in place." }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(scrollTopValue).toBe(940);
+    expect(screen.getByLabelText("Go to bottom")).toBeTruthy();
+  });
+
+  it("re-enables follow after the user deliberately returns to the bottom", async () => {
+    const sid = "test-return-to-bottom-reenables-follow";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Short answer" }),
+    ]);
+
+    const { container, rerender } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollHeightValue = 1600;
+    let scrollTopValue = 980;
+
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeightValue;
+      },
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get() {
+        return scrollTopValue;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    fireEvent.scroll(scrollContainer);
+
+    scrollTopValue = 940;
+    fireEvent.scroll(scrollContainer);
+
+    scrollHeightValue = 1760;
+    scrollTopValue = 1160;
+    fireEvent.scroll(scrollContainer);
+
+    scrollHeightValue = 1920;
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "An even longer answer after returning to bottom." }),
+    ]);
+    rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
+
+    expect(scrollTopValue).toBe(1320);
   });
 
   it("keeps the real bottom visible when an older turn collapses near bottom", () => {
@@ -1029,7 +1300,7 @@ describe("MessageFeed - scroll behavior", () => {
     expect(screen.queryByText("New content below")).toBeNull();
   });
 
-  it("shows the latest pill only after new content arrives below the current viewport", () => {
+  it("shows the latest pill only after new content arrives below the current viewport", async () => {
     const sid = "test-latest-pill-after-new-content";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
@@ -1039,7 +1310,7 @@ describe("MessageFeed - scroll behavior", () => {
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
     let scrollHeightValue = 1600;
-    let scrollTopValue = 0;
+    let scrollTopValue = 100;
 
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
@@ -1071,12 +1342,13 @@ describe("MessageFeed - scroll behavior", () => {
       makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
 
     expect(screen.getByLabelText("Jump to latest")).toBeTruthy();
     expect(screen.getByText("New content below")).toBeTruthy();
   });
 
-  it("uses the latest pill to jump to the real content bottom", () => {
+  it("uses the latest pill to jump to the real content bottom", async () => {
     const sid = "test-latest-pill-click";
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Question" }),
@@ -1086,7 +1358,7 @@ describe("MessageFeed - scroll behavior", () => {
     const { container, rerender } = render(<MessageFeed sessionId={sid} />);
     const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
     let scrollHeightValue = 1600;
-    let scrollTopValue = 0;
+    let scrollTopValue = 100;
 
     Object.defineProperty(scrollContainer, "clientHeight", {
       configurable: true,
@@ -1116,6 +1388,7 @@ describe("MessageFeed - scroll behavior", () => {
       makeMessage({ id: "a2", role: "assistant", content: "Fresh content below" }),
     ]);
     rerender(<MessageFeed sessionId={sid} />);
+    await flushFeedObservers();
 
     mockScrollTo.mockClear();
     fireEvent.click(screen.getByLabelText("Jump to latest"));
