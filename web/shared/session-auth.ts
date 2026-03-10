@@ -13,8 +13,52 @@ export function getSessionAuthDir(homeDir = homedir()): string {
   return join(homeDir, ".companion", "session-auth");
 }
 
+function hashCwdForSessionAuth(cwd: string): string {
+  return createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+}
+
+function normalizeSessionAuthCwd(cwd: string): string {
+  const resolvedCwd = resolve(cwd);
+  if (process.platform !== "darwin") return resolvedCwd;
+
+  // Bun on macOS can surface temp/worktree paths with or without a /private
+  // prefix. Normalize those aliases so session-auth filenames stay stable
+  // across the server and child CLI processes.
+  if (resolvedCwd === "/private/tmp" || resolvedCwd.startsWith("/private/tmp/")) {
+    return resolvedCwd.slice("/private".length);
+  }
+  if (resolvedCwd === "/private/var" || resolvedCwd.startsWith("/private/var/")) {
+    return resolvedCwd.slice("/private".length);
+  }
+  return resolvedCwd;
+}
+
+function getSessionAuthAliasCwd(cwd: string): string | null {
+  if (process.platform !== "darwin") return null;
+  if (cwd === "/tmp" || cwd.startsWith("/tmp/")) return `/private${cwd}`;
+  if (cwd === "/var" || cwd.startsWith("/var/")) return `/private${cwd}`;
+  return null;
+}
+
+export function getSessionAuthFilePrefixes(cwd: string): string[] {
+  const canonicalCwd = normalizeSessionAuthCwd(cwd);
+  const variants = [canonicalCwd];
+  const aliasCwd = getSessionAuthAliasCwd(canonicalCwd);
+  if (aliasCwd) variants.push(aliasCwd);
+
+  const seen = new Set<string>();
+  const prefixes: string[] = [];
+  for (const variant of variants) {
+    const prefix = hashCwdForSessionAuth(variant);
+    if (seen.has(prefix)) continue;
+    seen.add(prefix);
+    prefixes.push(prefix);
+  }
+  return prefixes;
+}
+
 export function getSessionAuthFilePrefix(cwd: string): string {
-  return createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 16);
+  return getSessionAuthFilePrefixes(cwd)[0];
 }
 
 export function getSessionAuthPath(

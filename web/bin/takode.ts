@@ -7,9 +7,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import {
-  getLegacySessionAuthPath,
   getSessionAuthDir,
-  getSessionAuthFilePrefix,
+  getSessionAuthFilePrefixes,
   parseSessionAuthFileData,
   type SessionAuthFileData,
 } from "../shared/session-auth.js";
@@ -31,9 +30,26 @@ function readSessionAuthFile(path: string): SessionAuthFileData | null {
   }
 }
 
+function dedupeSessionAuthCandidates(candidates: SessionAuthFileData[]): SessionAuthFileData[] {
+  const seen = new Set<string>();
+  const deduped: SessionAuthFileData[] = [];
+  for (const candidate of candidates) {
+    const key = [
+      candidate.serverId || "",
+      candidate.sessionId,
+      candidate.authToken,
+      candidate.port ?? "",
+    ].join("\0");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(candidate);
+  }
+  return deduped;
+}
+
 function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | null {
   const authDir = getSessionAuthDir();
-  const prefix = `${getSessionAuthFilePrefix(process.cwd())}-`;
+  const prefixes = getSessionAuthFilePrefixes(process.cwd()).map((prefix) => `${prefix}-`);
 
   let fileNames: string[];
   try {
@@ -43,28 +59,25 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
   }
 
   const candidates = fileNames
-    .filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
+    .filter((name) => name.endsWith(".json") && prefixes.some((prefix) => name.startsWith(prefix)))
     .map((name) => readSessionAuthFile(`${authDir}/${name}`))
     .filter((value): value is SessionAuthFileData => value !== null);
+  const uniqueCandidates = dedupeSessionAuthCandidates(candidates);
 
-  if (candidates.length === 0) return null;
+  if (uniqueCandidates.length === 0) return null;
 
   const envServerId = process.env.COMPANION_SERVER_ID?.trim();
   if (envServerId) {
-    const serverMatches = candidates.filter((candidate) => candidate.serverId === envServerId);
-    if (serverMatches.length === 0) {
-      err(`No Companion auth context matched server ${envServerId} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
-    }
+    const serverMatches = uniqueCandidates.filter((candidate) => candidate.serverId === envServerId);
     if (serverMatches.length === 1) return serverMatches[0];
-    err(`Multiple Companion auth contexts matched server ${envServerId} for ${process.cwd()}. Refusing to guess which server to use.`);
+    if (serverMatches.length > 1) {
+      err(`Multiple Companion auth contexts matched server ${envServerId} for ${process.cwd()}. Refusing to guess which server to use.`);
+    }
   }
 
   const envSessionId = process.env.COMPANION_SESSION_ID?.trim();
   if (envSessionId) {
-    const sessionMatches = candidates.filter((candidate) => candidate.sessionId === envSessionId);
-    if (sessionMatches.length === 0) {
-      err(`No Companion auth context matched session ${envSessionId} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
-    }
+    const sessionMatches = uniqueCandidates.filter((candidate) => candidate.sessionId === envSessionId);
     if (sessionMatches.length === 1) return sessionMatches[0];
     if (sessionMatches.length > 1) {
       err(`Multiple Companion auth contexts matched session ${envSessionId} for ${process.cwd()}. Refusing to guess which server to use.`);
@@ -75,17 +88,16 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
     .map((value) => Number(value))
     .find((value) => Number.isFinite(value) && value > 0);
   if (envPreferredPort) {
-    const portMatches = candidates.filter((candidate) => candidate.port === envPreferredPort);
-    if (portMatches.length === 0) {
-      err(`No Companion auth context matched port ${envPreferredPort} for ${process.cwd()}. Relaunch this session to refresh orchestration auth.`);
-    }
+    const portMatches = uniqueCandidates.filter((candidate) => candidate.port === envPreferredPort);
     if (portMatches.length === 1) return portMatches[0];
-    err(`Multiple Companion auth contexts matched port ${envPreferredPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+    if (portMatches.length > 1) {
+      err(`Multiple Companion auth contexts matched port ${envPreferredPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+    }
   }
 
   const explicitPort = getRequestedPort(argv);
-  if (explicitPort && candidates.length > 1) {
-    const portMatches = candidates.filter((candidate) => candidate.port === explicitPort);
+  if (explicitPort && uniqueCandidates.length > 1) {
+    const portMatches = uniqueCandidates.filter((candidate) => candidate.port === explicitPort);
     if (portMatches.length === 0) {
       err(`No Companion auth context matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
     }
@@ -93,7 +105,7 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
     err(`Multiple Companion auth contexts matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
   }
 
-  if (candidates.length === 1) return candidates[0];
+  if (uniqueCandidates.length === 1) return uniqueCandidates[0];
 
   err(
     `Multiple Companion auth contexts were found for ${process.cwd()}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars, or rerun with --port <server-port>.`,
@@ -104,8 +116,11 @@ function getSessionAuthFileData(argv: string[] = process.argv.slice(2)): Session
   const scoped = getScopedSessionAuthFileData(argv);
   if (scoped) return scoped;
 
-  const legacyCentral = readSessionAuthFile(getLegacySessionAuthPath(process.cwd()));
-  if (legacyCentral) return legacyCentral;
+  const authDir = getSessionAuthDir();
+  for (const prefix of getSessionAuthFilePrefixes(process.cwd())) {
+    const legacyCentral = readSessionAuthFile(`${authDir}/${prefix}.json`);
+    if (legacyCentral) return legacyCentral;
+  }
 
   // Legacy fallback: auth files in the user's repo (for backwards compatibility)
   const legacyCandidates = [

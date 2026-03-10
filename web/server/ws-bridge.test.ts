@@ -8117,6 +8117,7 @@ describe("Codex user-message-driven relaunch for idle sessions", () => {
 describe("Codex broken-session recovery regression", () => {
   it("keeps the acknowledged image turn authoritative and blocks later messages after init failure", async () => {
     const sid = "s-image-init-failure";
+    const expectedAttachmentPath = join(homedir(), ".companion", "images", sid, "img-140.orig.jpeg");
     const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
     const adapter1 = makeCodexAdapterMock();
     const imageStore = {
@@ -8143,7 +8144,7 @@ describe("Codex broken-session recovery regression", () => {
       adapterMsg: expect.objectContaining({
         type: "user_message",
         local_images: ["/tmp/companion-images/img-140.transport.jpeg"],
-        content: expect.stringContaining("/home/jiayiwei/.companion/images/s-image-init-failure/img-140.orig.jpeg"),
+        content: expect.stringContaining(expectedAttachmentPath),
       }),
     });
 
@@ -8161,7 +8162,7 @@ describe("Codex broken-session recovery regression", () => {
       status: "blocked_broken_session",
       turnId: "turn-image-140",
       lastError: "Transport closed",
-      userContent: expect.stringContaining("/home/jiayiwei/.companion/images/s-image-init-failure/img-140.orig.jpeg"),
+      userContent: expect.stringContaining(expectedAttachmentPath),
     });
 
     browser.send.mockClear();

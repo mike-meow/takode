@@ -50,9 +50,8 @@ import { readFile } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import {
-  getLegacySessionAuthPath,
   getSessionAuthDir,
-  getSessionAuthFilePrefix,
+  getSessionAuthFilePrefixes,
   parseSessionAuthFileData,
 } from "../shared/session-auth.js";
 
@@ -66,6 +65,23 @@ type CompanionCredentials = {
   port?: number;
   serverId?: string;
 };
+
+function dedupeCompanionCredentials(candidates: CompanionCredentials[]): CompanionCredentials[] {
+  const seen = new Set<string>();
+  const deduped: CompanionCredentials[] = [];
+  for (const candidate of candidates) {
+    const key = [
+      candidate.serverId || "",
+      candidate.sessionId,
+      candidate.authToken,
+      candidate.port ?? "",
+    ].join("\0");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(candidate);
+  }
+  return deduped;
+}
 
 // ─── Arg parsing helpers ────────────────────────────────────────────────────
 
@@ -161,7 +177,7 @@ function getCredentials(): CompanionCredentials | null {
 
   const cwd = process.cwd();
   const authDir = getSessionAuthDir();
-  const prefix = `${getSessionAuthFilePrefix(cwd)}-`;
+  const prefixes = getSessionAuthFilePrefixes(cwd).map((prefix) => `${prefix}-`);
 
   let fileNames: string[] = [];
   try {
@@ -171,7 +187,7 @@ function getCredentials(): CompanionCredentials | null {
   }
 
   const candidates = fileNames
-    .filter((name) => name.startsWith(prefix) && name.endsWith(".json"))
+    .filter((name) => name.endsWith(".json") && prefixes.some((prefix) => name.startsWith(prefix)))
     .map((name) => {
       try {
         return parseSessionAuthFileData(JSON.parse(readFileSync(`${authDir}/${name}`, "utf-8")));
@@ -180,24 +196,21 @@ function getCredentials(): CompanionCredentials | null {
       }
     })
     .filter((value): value is CompanionCredentials => value !== null);
+  const uniqueCandidates = dedupeCompanionCredentials(candidates);
 
-  if (candidates.length > 0) {
+  if (uniqueCandidates.length > 0) {
     const envServerId = process.env.COMPANION_SERVER_ID?.trim();
     if (envServerId) {
-      const serverMatches = candidates.filter((candidate) => candidate.serverId === envServerId);
-      if (serverMatches.length === 0) {
-        die(`No Companion auth context matched server ${envServerId} for ${cwd}. Relaunch this session to refresh quest auth.`);
-      }
+      const serverMatches = uniqueCandidates.filter((candidate) => candidate.serverId === envServerId);
       if (serverMatches.length === 1) return serverMatches[0];
-      die(`Multiple Companion auth contexts matched server ${envServerId} for ${cwd}. Refusing to guess which server to use.`);
+      if (serverMatches.length > 1) {
+        die(`Multiple Companion auth contexts matched server ${envServerId} for ${cwd}. Refusing to guess which server to use.`);
+      }
     }
 
     const envSessionId = process.env.COMPANION_SESSION_ID?.trim();
     if (envSessionId) {
-      const sessionMatches = candidates.filter((candidate) => candidate.sessionId === envSessionId);
-      if (sessionMatches.length === 0) {
-        die(`No Companion auth context matched session ${envSessionId} for ${cwd}. Relaunch this session to refresh quest auth.`);
-      }
+      const sessionMatches = uniqueCandidates.filter((candidate) => candidate.sessionId === envSessionId);
       if (sessionMatches.length === 1) return sessionMatches[0];
       if (sessionMatches.length > 1) {
         die(`Multiple Companion auth contexts matched session ${envSessionId} for ${cwd}. Refusing to guess which server to use.`);
@@ -205,24 +218,27 @@ function getCredentials(): CompanionCredentials | null {
     }
 
     if (Number.isFinite(envPort) && envPort > 0) {
-      const portMatches = candidates.filter((candidate) => candidate.port === envPort);
-      if (portMatches.length === 0) {
-        die(`No Companion auth context matched port ${envPort} for ${cwd}. Relaunch this session to refresh quest auth.`);
-      }
+      const portMatches = uniqueCandidates.filter((candidate) => candidate.port === envPort);
       if (portMatches.length === 1) return portMatches[0];
-      die(`Multiple Companion auth contexts matched port ${envPort} for ${cwd}. Refusing to guess which server to use.`);
+      if (portMatches.length > 1) {
+        die(`Multiple Companion auth contexts matched port ${envPort} for ${cwd}. Refusing to guess which server to use.`);
+      }
     }
 
-    if (candidates.length === 1) return candidates[0];
+    if (uniqueCandidates.length === 1) return uniqueCandidates[0];
     die(`Multiple Companion auth contexts were found for ${cwd}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars.`);
   }
 
   const legacyCentral = (() => {
-    try {
-      return parseSessionAuthFileData(JSON.parse(readFileSync(getLegacySessionAuthPath(cwd), "utf-8")));
-    } catch {
-      return null;
+    for (const prefix of getSessionAuthFilePrefixes(cwd)) {
+      try {
+        const data = parseSessionAuthFileData(JSON.parse(readFileSync(`${authDir}/${prefix}.json`, "utf-8")));
+        if (data) return data;
+      } catch {
+        // Try next candidate
+      }
     }
+    return null;
   })();
   if (legacyCentral) return legacyCentral;
 
