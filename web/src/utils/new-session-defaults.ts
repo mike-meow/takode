@@ -10,6 +10,8 @@ import {
 
 export type NewSessionBackend = "claude" | "codex" | "claude-sdk";
 
+const VALID_BACKENDS = new Set<NewSessionBackend>(["claude", "codex", "claude-sdk"]);
+
 export interface NewSessionDefaults {
   backend: NewSessionBackend;
   model: string;
@@ -25,12 +27,6 @@ type StoredGroupDefaults = Partial<NewSessionDefaults> & { updatedAt?: number };
 
 const GROUP_DEFAULTS_KEY = "cc-new-session-groups";
 const MAX_GROUP_DEFAULTS = 50;
-
-function normalizeBackend(raw: string | null | undefined): NewSessionBackend {
-  if (raw === "codex") return "codex";
-  if (raw === "claude-sdk") return "claude-sdk";
-  return "claude";
-}
 
 function normalizeAskPermission(raw: boolean | null | undefined): boolean {
   return raw ?? true;
@@ -82,7 +78,7 @@ function parseGroupDefaultsMap(): Record<string, StoredGroupDefaults> {
 }
 
 function buildDefaults(candidate: Partial<NewSessionDefaults>): NewSessionDefaults {
-  const backend = normalizeBackend(candidate.backend);
+  const backend = (candidate.backend && VALID_BACKENDS.has(candidate.backend)) ? candidate.backend : "claude";
   const { mode, askPermission } = normalizeMode(backend, candidate.mode, candidate.askPermission);
   return {
     backend,
@@ -97,7 +93,8 @@ function buildDefaults(candidate: Partial<NewSessionDefaults>): NewSessionDefaul
 }
 
 export function getGlobalNewSessionDefaults(): NewSessionDefaults {
-  const backend = normalizeBackend(scopedGetItem("cc-backend"));
+  const raw = scopedGetItem("cc-backend");
+  const backend = (raw && VALID_BACKENDS.has(raw as NewSessionBackend)) ? raw as NewSessionBackend : "claude";
   const askPermissionRaw = (() => {
     const stored = scopedGetItem("cc-ask-permission");
     return stored !== null ? stored === "true" : null;
