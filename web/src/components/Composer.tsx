@@ -368,7 +368,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
-  const claudeModelOptions = dynamicClaudeModels || getModelsForBackend("claude");
+  // Filter out the "Default" (value="") option — it makes sense for new session
+  // creation but not mid-session switching (empty model string causes the model
+  // selector to disappear since sessionData.model becomes falsy).
+  const claudeModelOptions = (dynamicClaudeModels || getModelsForBackend("claude")).filter((m) => m.value !== "");
   const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionData?.repo_root, sessionData?.cwd);
   const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionState?.selection
     ? resolveVsCodeSelectionForSession(vscodeSelectionState.selection, sessionSelectionRoot)
@@ -391,14 +394,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     let cancelled = false;
     api.getBackendModels("claude").then((models) => {
       if (cancelled || models.length === 0) return;
-      const options = toModelOptions(models);
-      // Prepend a "Default" option so users can reset to their config default
-      const staticModels = getModelsForBackend("claude");
-      const defaultOpt = staticModels.find((m) => m.value === "");
-      const withDefault = defaultOpt
-        ? [defaultOpt, ...options.filter((m) => m.value !== "")]
-        : options;
-      setDynamicClaudeModels(withDefault);
+      setDynamicClaudeModels(toModelOptions(models));
     }).catch(() => {
       // Fall back to static model list silently.
     });
@@ -1465,7 +1461,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                         <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
                           {claudeModelOptions.map((m) => (
                             <button
-                              key={m.value || "__default__"}
+                              key={m.value}
                               onClick={() => {
                                 sendToSession(sessionId, { type: "set_model", model: m.value });
                                 setShowModelDropdown(false);
