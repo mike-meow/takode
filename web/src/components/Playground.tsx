@@ -58,7 +58,7 @@ const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName:
       isOrchestrator: true,
       sessionNum: 7,
     },
-    sessionName: "Orchestrator Alpha",
+    sessionName: "Leader Alpha",
     preview: "Routing work across frontend, backend, and review sessions.",
   },
   {
@@ -108,7 +108,7 @@ const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName:
       isOrchestrator: true,
       sessionNum: 12,
     },
-    sessionName: "Orchestrator Beta",
+    sessionName: "Leader Beta",
     preview: "Keeping infra workers organized during long-running tasks.",
   },
   {
@@ -436,7 +436,7 @@ const MSG_USER_AGENT: ChatMessage = {
   timestamp: Date.now() - 53000,
   agentSource: {
     sessionId: "abc123def456",
-    sessionLabel: "#3 orchestrator",
+    sessionLabel: "#3 leader",
   },
 };
 
@@ -1827,7 +1827,7 @@ export function Playground() {
           </div>
         </Section>
 
-        <Section title="Session List Herd Groups" description="Leader and worker pills share a herd-group color so different orchestrator groups are easier to scan in the sidebar.">
+        <Section title="Session List Herd Groups" description="Leader and worker pills share a herd-group color so different leader groups are easier to scan in the sidebar.">
           <div className="max-w-md">
             <Card label="Session list pills">
               <div className="space-y-1 rounded-xl bg-cc-sidebar p-2">

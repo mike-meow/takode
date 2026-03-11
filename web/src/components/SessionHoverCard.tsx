@@ -226,7 +226,7 @@ export function SessionHoverCard({
           )}
         </div>
 
-        {/* Herded sessions — shown for leader/orchestrator sessions */}
+        {/* Herded sessions — shown for leader sessions */}
         {herdedSessions.length > 0 && (
           <div className="px-4 py-2 border-t border-cc-border/50">
             <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Herding</span>

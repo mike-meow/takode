@@ -2760,12 +2760,12 @@ function PickerSessionChip({
               </span>
             )}
             {s.isOrchestrator && (
-              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Orchestrator session">
+              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-500 bg-amber-500/10" title="Leader session">
                 leader
               </span>
             )}
             {!s.isOrchestrator && s.herdedBy && s.herdedBy.length > 0 && (
-              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by an orchestrator">
+              <span className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-amber-400 bg-amber-500/10" title="Herded by a leader">
                 herd
               </span>
             )}

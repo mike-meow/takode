@@ -230,7 +230,7 @@ export function SessionInfoPopover({
           </div>
         )}
 
-        {/* Herd diagnostics — only for orchestrator/leader sessions */}
+        {/* Herd diagnostics — only for leader sessions */}
         {sdkSession?.isOrchestrator && (
           <div className="border-t border-cc-border/50">
             <HerdDiagnosticsSection sessionId={sessionId} />

@@ -416,7 +416,7 @@ export function SessionItem({
               {!isEditing && s.isOrchestrator && (
                 <span
                   className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 border"
-                  title="Orchestrator session"
+                  title="Leader session"
                   data-testid="session-role-badge"
                   data-herd-group-tone={herdGroupBadgeTheme?.token}
                   style={roleBadgeStyle}
@@ -427,7 +427,7 @@ export function SessionItem({
               {!isEditing && !s.isOrchestrator && !!s.herdedBy && (
                 <span
                   className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 border"
-                  title="Herded by an orchestrator"
+                  title="Herded by a leader"
                   data-testid="session-role-badge"
                   data-herd-group-tone={herdGroupBadgeTheme?.token}
                   style={roleBadgeStyle}

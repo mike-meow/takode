@@ -165,7 +165,7 @@ describe("SessionItem search match context", () => {
 });
 
 describe("SessionItem herd role badges", () => {
-  it("renders a themed leader badge for orchestrator sessions", () => {
+  it("renders a themed leader badge for leader sessions", () => {
     renderSessionItem({
       session: makeSession({ isOrchestrator: true }),
       herdGroupBadgeTheme: SAGE_THEME,

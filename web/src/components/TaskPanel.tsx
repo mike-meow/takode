@@ -638,7 +638,7 @@ function SessionTasksSection({ sessionId }: { sessionId: string }) {
   );
 }
 
-// ─── Herded sessions (orchestrator panel) ────────────────────────────────────
+// ─── Herded sessions (leader panel) ──────────────────────────────────────────
 
 function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
   const [collapsed, toggle] = usePersistedCollapse("cc-collapse-herded");
@@ -711,7 +711,7 @@ function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
   );
 }
 
-// ─── Herd diagnostics (orchestrator debug panel) ─────────────────────────────
+// ─── Herd diagnostics (leader debug panel) ───────────────────────────────────
 
 export function HerdDiagnosticsSection({ sessionId }: { sessionId: string }) {
   const [collapsed, toggle] = usePersistedCollapse("cc-collapse-herd-diag");
@@ -855,10 +855,10 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
         {/* Session-level tasks recognized by the auto-namer */}
         {showTasks && <SessionTasksSection sessionId={sessionId} />}
 
-        {/* Herded sessions — only for orchestrator sessions */}
+        {/* Herded sessions — only for leader sessions */}
         {sdkSession?.isOrchestrator && <HerdedSessionsSection sessionId={sessionId} />}
 
-        {/* Herd diagnostics — only for orchestrator sessions */}
+        {/* Herd diagnostics — only for leader sessions */}
         {sdkSession?.isOrchestrator && <HerdDiagnosticsSection sessionId={sessionId} />}
 
         {/* Agent to-do items — hidden when empty or all completed */}
