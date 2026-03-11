@@ -209,6 +209,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [showCodexReasoningDropdown, setShowCodexReasoningDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
   const [dynamicCodexModels, setDynamicCodexModels] = useState<ModelOption[] | null>(null);
+  const [dynamicClaudeModels, setDynamicClaudeModels] = useState<ModelOption[] | null>(null);
   const [sendPressing, setSendPressing] = useState(false);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [isImageDragOver, setIsImageDragOver] = useState(false);
@@ -367,6 +368,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
+  const claudeModelOptions = dynamicClaudeModels || getModelsForBackend("claude").filter((m) => m.value !== "");
   const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionData?.repo_root, sessionData?.cwd);
   const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionState?.selection
     ? resolveVsCodeSelectionForSession(vscodeSelectionState.selection, sessionSelectionRoot)
@@ -378,6 +380,18 @@ export function Composer({ sessionId }: { sessionId: string }) {
     api.getBackendModels("codex").then((models) => {
       if (cancelled || models.length === 0) return;
       setDynamicCodexModels(toModelOptions(models));
+    }).catch(() => {
+      // Fall back to static model list silently.
+    });
+    return () => { cancelled = true; };
+  }, [isCodex]);
+
+  useEffect(() => {
+    if (isCodex) return;
+    let cancelled = false;
+    api.getBackendModels("claude").then((models) => {
+      if (cancelled || models.length === 0) return;
+      setDynamicClaudeModels(toModelOptions(models));
     }).catch(() => {
       // Fall back to static model list silently.
     });
@@ -1441,8 +1455,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
                         </svg>
                       </button>
                       {showModelDropdown && (
-                        <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
-                          {getModelsForBackend("claude").filter((m) => m.value !== "").map((m) => (
+                        <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
+                          {claudeModelOptions.map((m) => (
                             <button
                               key={m.value}
                               onClick={() => {
@@ -1478,7 +1492,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                           </svg>
                         </button>
                         {showModelDropdown && (
-                          <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                          <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
                             {codexModelOptions.map((m) => (
                               <button
                                 key={m.value}
