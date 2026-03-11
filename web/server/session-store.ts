@@ -9,6 +9,7 @@ import type {
   BufferedBrowserEvent,
   SessionTaskEntry,
   CodexOutboundTurn,
+  PendingCodexInput,
 } from "./session-types.js";
 
 // ─── Two-Tier Persistence Design ────────────────────────────────────────────
@@ -67,6 +68,7 @@ export interface PersistedSession {
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
   pendingCodexTurns?: CodexOutboundTurn[];
+  pendingCodexInputs?: PendingCodexInput[];
   pendingPermissions: [string, PermissionRequest][];
   eventBuffer?: BufferedBrowserEvent[];
   nextEventSeq?: number;

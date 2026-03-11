@@ -280,6 +280,31 @@ export interface VsCodeOpenFileCommand {
   createdAt: number;
 }
 
+export interface PendingCodexInputImageDraft {
+  name: string;
+  base64: string;
+  mediaType: string;
+}
+
+export interface PendingCodexInput {
+  id: string;
+  content: string;
+  timestamp: number;
+  cancelable: boolean;
+  imageRefs?: import("./image-store.js").ImageRef[];
+  draftImages?: PendingCodexInputImageDraft[];
+  deliveryContent?: string;
+  localImagePaths?: string[];
+  agentSource?: { sessionId: string; sessionLabel?: string };
+  vscodeSelection?: VsCodeSelectionMetadata;
+}
+
+export interface CodexPendingBatchInput {
+  content: string;
+  local_images?: string[];
+  vscodeSelection?: VsCodeSelectionMetadata;
+}
+
 // ─── Browser Message Types (browser <-> bridge) ──────────────────────────────
 
 /** Messages the browser sends to the bridge */
@@ -298,6 +323,17 @@ export type BrowserOutgoingMessage =
     client_msg_id?: string;
     /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
     agentSource?: { sessionId: string; sessionLabel?: string };
+  }
+  | {
+    type: "codex_start_pending";
+    pendingInputIds: string[];
+    inputs: CodexPendingBatchInput[];
+  }
+  | {
+    type: "codex_steer_pending";
+    pendingInputIds: string[];
+    expectedTurnId: string;
+    inputs: CodexPendingBatchInput[];
   }
   | {
     type: "vscode_selection_update";
@@ -320,6 +356,7 @@ export type BrowserOutgoingMessage =
   }
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string; interruptSource?: "user" | "leader" | "system" }
+  | { type: "cancel_pending_codex_input"; id: string; client_msg_id?: string }
   | { type: "set_model"; model: string; client_msg_id?: string }
   | { type: "set_codex_reasoning_effort"; effort: string; client_msg_id?: string }
   | { type: "set_permission_mode"; mode: string; client_msg_id?: string }
@@ -369,6 +406,8 @@ export type BrowserIncomingMessageBase =
   | { type: "backend_connected" }
   | { type: "vscode_selection_state"; state: VsCodeSelectionState | null }
   | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[]; agentSource?: { sessionId: string; sessionLabel?: string }; vscodeSelection?: VsCodeSelectionMetadata }
+  | { type: "codex_pending_inputs"; inputs: PendingCodexInput[] }
+  | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | {
     type: "history_sync";
@@ -451,6 +490,7 @@ export type CodexOutboundTurnStatus =
 export interface CodexOutboundTurn {
   adapterMsg: BrowserOutgoingMessage;
   userMessageId: string;
+  pendingInputIds?: string[];
   userContent: string;
   historyIndex: number;
   status: CodexOutboundTurnStatus;

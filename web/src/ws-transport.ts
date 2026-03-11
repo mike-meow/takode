@@ -13,6 +13,7 @@ const IDEMPOTENT_OUTGOING_TYPES = new Set<BrowserOutgoingMessage["type"]>([
   "vscode_selection_update",
   "permission_response",
   "interrupt",
+  "cancel_pending_codex_input",
   "set_model",
   "set_codex_reasoning_effort",
   "set_permission_mode",

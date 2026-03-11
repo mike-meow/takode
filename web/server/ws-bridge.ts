@@ -44,6 +44,8 @@ import type {
   McpServerConfig,
   SessionTaskEntry,
   CodexOutboundTurn,
+  PendingCodexInput,
+  PendingCodexInputImageDraft,
   VsCodeSelectionState,
   VsCodeWindowState,
   VsCodeOpenFileCommand,
@@ -92,7 +94,9 @@ import type {
   BackendAdapter,
   CurrentTurnIdAwareAdapter,
   RateLimitsAwareAdapter,
+  TurnSteerFailedAwareAdapter,
   TurnStartedAwareAdapter,
+  TurnSteeredAwareAdapter,
   TurnStartFailedAwareAdapter,
 } from "./bridge/adapter-interface.js";
 
@@ -172,6 +176,17 @@ function formatAttachmentPathAnnotation(paths: string[]): string {
   return `\n[📎 Inline image file paths (same order as images above):\n${numbered}]`;
 }
 
+function buildPendingCodexImageDrafts(
+  images: { media_type: string; data: string }[] | undefined,
+): PendingCodexInputImageDraft[] | undefined {
+  if (!images?.length) return undefined;
+  return images.map((img, idx) => ({
+    name: `attachment-${idx + 1}.${MIME_TO_EXT[img.media_type] || "bin"}`,
+    base64: img.data,
+    mediaType: img.media_type,
+  }));
+}
+
 const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
 const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
 const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
@@ -234,6 +249,8 @@ type TurnTriggerSource = "user" | "leader" | "system" | "unknown";
 type InterruptSource = GenerationInterruptSource;
 type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta>
   & TurnStartedAwareAdapter
+  & TurnSteeredAwareAdapter
+  & TurnSteerFailedAwareAdapter
   & TurnStartFailedAwareAdapter
   & CurrentTurnIdAwareAdapter
   & RateLimitsAwareAdapter;
@@ -257,6 +274,8 @@ interface Session {
   pendingMessages: string[];
   /** Authoritative Codex outbound user-turn queue (persisted across disconnect/relaunch). */
   pendingCodexTurns: CodexOutboundTurn[];
+  /** Codex inputs accepted by Takode but not yet delivered to Codex. */
+  pendingCodexInputs: PendingCodexInput[];
   /** Monotonic sequence for broadcast events */
   nextEventSeq: number;
   /** Recent broadcast events for reconnect replay */
@@ -1559,6 +1578,7 @@ export class WsBridge {
         frozenCount: typeof p._frozenCount === "number" ? Math.max(0, Math.min(p._frozenCount, (p.messageHistory || []).length)) : 0,
         pendingMessages: p.pendingMessages || [],
         pendingCodexTurns: restoredCodexTurns,
+        pendingCodexInputs: Array.isArray(p.pendingCodexInputs) ? p.pendingCodexInputs : [],
         nextEventSeq: p.nextEventSeq && p.nextEventSeq > 0 ? p.nextEventSeq : 1,
         eventBuffer: Array.isArray(p.eventBuffer) ? p.eventBuffer : [],
         lastAckSeq: typeof p.lastAckSeq === "number" ? p.lastAckSeq : 0,
@@ -1655,6 +1675,7 @@ export class WsBridge {
       messageHistory: session.messageHistory,
       pendingMessages: session.pendingMessages,
       pendingCodexTurns: session.pendingCodexTurns,
+      pendingCodexInputs: session.pendingCodexInputs,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -1679,6 +1700,7 @@ export class WsBridge {
       messageHistory: session.messageHistory,
       pendingMessages: session.pendingMessages,
       pendingCodexTurns: session.pendingCodexTurns,
+      pendingCodexInputs: session.pendingCodexInputs,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -2003,6 +2025,7 @@ export class WsBridge {
         frozenCount: 0,
         pendingMessages: [],
         pendingCodexTurns: [],
+        pendingCodexInputs: [],
         nextEventSeq: 1,
         eventBuffer: [],
         lastAckSeq: 0,
@@ -2232,18 +2255,35 @@ export class WsBridge {
   }
 
   private buildPendingCodexRecoveryUserText(msg: BrowserOutgoingMessage): string {
-    if (msg.type !== "user_message") return "";
-    const parts: string[] = [];
-    if (msg.content) parts.push(msg.content);
-    if (msg.vscodeSelection) {
-      parts.push(this.formatVsCodeSelectionPrompt(msg.vscodeSelection));
+    if (msg.type === "user_message") {
+      const parts: string[] = [];
+      if (msg.content) parts.push(msg.content);
+      if (msg.vscodeSelection) {
+        parts.push(this.formatVsCodeSelectionPrompt(msg.vscodeSelection));
+      }
+      return parts.join("\n");
     }
-    return parts.join("\n");
+    if (msg.type === "codex_start_pending") {
+      return msg.inputs
+        .map((input) => {
+          const parts = [input.content];
+          if (input.vscodeSelection) {
+            parts.push(this.formatVsCodeSelectionPrompt(input.vscodeSelection));
+          }
+          return parts.filter(Boolean).join("\n");
+        })
+        .filter(Boolean)
+        .join("\n\n");
+    }
+    return "";
   }
 
   private normalizePersistedCodexTurn(turn: CodexOutboundTurn, now = Date.now()): CodexOutboundTurn {
     return {
       ...turn,
+      pendingInputIds: Array.isArray(turn.pendingInputIds) && turn.pendingInputIds.length > 0
+        ? turn.pendingInputIds
+        : [turn.userMessageId],
       historyIndex: turn.historyIndex ?? -1,
       status: turn.status ?? "queued",
       dispatchCount: turn.dispatchCount ?? 0,
@@ -2462,9 +2502,10 @@ export class WsBridge {
     const head = this.getCodexHeadTurn(session);
     if (!head) return null;
     if (
-      head.status === "backend_acknowledged"
-      || head.status === "blocked_broken_session"
+      head.status === "queued"
       || head.status === "dispatched"
+      || head.status === "backend_acknowledged"
+      || head.status === "blocked_broken_session"
     ) {
       return head;
     }
@@ -2525,6 +2566,7 @@ export class WsBridge {
     head.dispatchCount += 1;
     head.updatedAt = now;
     head.lastError = null;
+    this.setPendingCodexInputsCancelable(session, head.pendingInputIds ?? [head.userMessageId], false);
     this.persistSession(session);
     console.log(
       `[ws-bridge] Dispatched queued Codex turn for session ${sessionTag(session.id)} (${reason}, attempt ${head.dispatchCount})`,
@@ -2766,6 +2808,9 @@ export class WsBridge {
         // Route through the unified result handler so Codex gets the same
         // post-turn state refresh (git + diff stats + attention) as Claude.
         this.handleResultMessage(session, outgoing.data);
+        if (!session.isGenerating) {
+          this.queueCodexPendingStartBatch(session, "codex_turn_completed");
+        }
         this.dispatchQueuedCodexTurns(session, "codex_turn_completed");
         this.maybeFlushQueuedCodexMessages(session, "codex_turn_completed_non_user");
         return;
@@ -2871,7 +2916,13 @@ export class WsBridge {
       }
       if (meta.cwd) session.state.cwd = meta.cwd;
       session.state.backend_type = "codex";
-      this.dispatchQueuedCodexTurns(session, "session_meta");
+      const steeredPending = this.trySteerPendingCodexInputs(session, "session_meta");
+      if (!steeredPending) {
+        this.dispatchQueuedCodexTurns(session, "session_meta");
+        if (!session.isGenerating) {
+          this.queueCodexPendingStartBatch(session, "session_meta");
+        }
+      }
       this.flushQueuedMessagesToCodexAdapter(session, adapter, "session_meta");
       this.broadcastToBrowsers(session, { type: "backend_connected" });
       this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true, notifyPoller: true });
@@ -2882,6 +2933,17 @@ export class WsBridge {
       if (session.codexAdapter !== adapter) return;
       const pending = this.getCodexTurnAwaitingAck(session);
       if (!pending) return;
+      const committedHistoryIndexes = this.commitPendingCodexInputs(
+        session,
+        pending.pendingInputIds ?? [pending.userMessageId],
+      );
+      if (committedHistoryIndexes.length > 0) {
+        pending.historyIndex = committedHistoryIndexes[0];
+      }
+      const trackedHistoryIndexes =
+        committedHistoryIndexes.length > 0
+          ? committedHistoryIndexes
+          : (pending.historyIndex >= 0 ? [pending.historyIndex] : []);
       pending.turnId = turnId;
       pending.status = "backend_acknowledged";
       pending.acknowledgedAt = Date.now();
@@ -2890,11 +2952,34 @@ export class WsBridge {
         this.rearmRecoveredQueuedHeadTurn(session, pending, "codex_turn_started_recovered");
       }
       if (pending.turnTarget === null) {
-        const target = this.markRunningFromUserDispatch(session, "codex_turn_started");
+        const target = session.isGenerating
+          ? "current"
+          : this.markRunningFromUserDispatch(session, "codex_turn_started");
         pending.turnTarget = target;
-        this.trackUserMessageForTurn(session, pending.historyIndex, target);
+        for (const idx of trackedHistoryIndexes) {
+          this.trackUserMessageForTurn(session, idx, target);
+        }
+      } else if (trackedHistoryIndexes.length > 0) {
+        for (const idx of trackedHistoryIndexes) {
+          this.trackUserMessageForTurn(session, idx, pending.turnTarget);
+        }
       }
       this.persistSession(session);
+      this.trySteerPendingCodexInputs(session, "codex_turn_started");
+    });
+
+    adapter.onTurnSteered((turnId, pendingInputIds) => {
+      if (session.codexAdapter !== adapter) return;
+      const steeredInputs = this.getPendingCodexInputsByIds(session, pendingInputIds);
+      const committedHistoryIndexes = this.commitPendingCodexInputs(session, pendingInputIds);
+      this.recordSteeredCodexTurn(session, turnId, steeredInputs, committedHistoryIndexes);
+      this.persistSession(session);
+      this.trySteerPendingCodexInputs(session, "codex_turn_steered");
+    });
+
+    adapter.onTurnSteerFailed((pendingInputIds) => {
+      if (session.codexAdapter !== adapter) return;
+      this.setPendingCodexInputsCancelable(session, pendingInputIds, true);
     });
 
     adapter.onInitError((error) => {
@@ -2906,6 +2991,7 @@ export class WsBridge {
         pending.status = "blocked_broken_session";
         pending.lastError = error;
         pending.updatedAt = Date.now();
+        this.setPendingCodexInputsCancelable(session, pending.pendingInputIds ?? [pending.userMessageId], true);
       }
       this.setBackendState(session, "broken", error);
       this.setAttention(session, "error");
@@ -2942,6 +3028,11 @@ export class WsBridge {
       this.onSessionActivityStateChanged(session.id, "codex_disconnect_permissions_cleared");
       session.pendingQuestCommands.clear();
       session.codexAdapter = null;
+      this.setPendingCodexInputsCancelable(
+        session,
+        session.pendingCodexInputs.map((input) => input.id),
+        true,
+      );
       this.setBackendState(session, "disconnected", null);
       if (!intentionalRelaunch) {
         if (
@@ -2999,10 +3090,10 @@ export class WsBridge {
     // Re-queue user messages whose turn/start dispatch failed (e.g. transport closed mid-call)
     adapter.onTurnStartFailed((msg) => {
       console.log(`[ws-bridge] Turn start failed for session ${sessionTag(sessionId)}, re-queuing ${msg.type}`);
-      if (msg.type === "user_message") {
+      if (msg.type === "user_message" || msg.type === "codex_start_pending") {
         const pending = this.getCodexTurnAwaitingAck(session)
           ?? session.pendingCodexTurns.find((turn) =>
-            turn.adapterMsg.type === "user_message"
+            turn.adapterMsg.type === msg.type
             && JSON.stringify(turn.adapterMsg) === JSON.stringify(msg)
             && turn.status !== "completed");
         if (pending) {
@@ -3010,6 +3101,7 @@ export class WsBridge {
           pending.turnId = null;
           pending.updatedAt = Date.now();
           pending.lastError = "turn/start failed before acknowledgement";
+          this.setPendingCodexInputsCancelable(session, pending.pendingInputIds ?? [pending.userMessageId], true);
         }
         this.dispatchQueuedCodexTurns(session, "turn_start_failed");
       } else {
@@ -3631,6 +3723,10 @@ export class WsBridge {
       nextEventSeq: session.nextEventSeq,
     };
     this.sendToBrowser(ws, snapshot);
+    this.sendToBrowser(ws, {
+      type: "codex_pending_inputs",
+      inputs: session.pendingCodexInputs,
+    });
     this.sendToBrowser(ws, {
       type: "session_order_update",
       sessionOrder: this.getSessionOrderState(),
@@ -5894,7 +5990,9 @@ export class WsBridge {
 
       if (msg.type === "user_message") {
         try {
-          const maybeIngested = this.ingestUserMessage(session, msg, "adapter");
+          const maybeIngested = this.ingestUserMessage(session, msg, "adapter", {
+            commit: session.backendType !== "codex",
+          });
           ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
         } catch (err) {
           if (msg.images?.length) {
@@ -5905,8 +6003,9 @@ export class WsBridge {
         }
         userImageRefs = ingested.imageRefs;
         codexUserMessageId = ingested.historyEntry.id || null;
-        // Trigger auto-naming evaluation (async, fire-and-forget).
-        if (this.onUserMessage) {
+        // Trigger auto-naming evaluation (async, fire-and-forget) only after
+        // the message is committed to authoritative history.
+        if (this.onUserMessage && session.backendType !== "codex") {
           this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, ingested.wasGenerating);
         }
       }
@@ -5953,6 +6052,24 @@ export class WsBridge {
           });
         }
         this.persistSession(session);
+      }
+
+      if (session.backendType === "codex" && msg.type === "cancel_pending_codex_input") {
+        const pendingInput = session.pendingCodexInputs.find((input) => input.id === msg.id);
+        if (!pendingInput?.cancelable) return;
+        const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+        session.pendingCodexTurns = session.pendingCodexTurns.filter((turn) =>
+          !!activeTurnId && turn.turnId === activeTurnId);
+        replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
+        const removed = this.removePendingCodexInput(session, msg.id);
+        if ((!session.isGenerating || !activeTurnId) && this.getCancelablePendingCodexInputs(session).length > 0) {
+          this.queueCodexPendingStartBatch(session, "cancel_pending_codex_input");
+        }
+        if (removed && ws) {
+          this.sendToBrowser(ws, { type: "codex_pending_input_cancelled", input: removed });
+        }
+        this.persistSession(session);
+        return;
       }
 
       if (msg.type === "set_model") {
@@ -6060,38 +6177,47 @@ export class WsBridge {
               : "user")
           : undefined;
         pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource ?? null);
-        this.trackUserMessageForTurn(session, ingested.historyIndex, pendingTurnTarget);
+        if (ingested.historyIndex >= 0) {
+          this.trackUserMessageForTurn(session, ingested.historyIndex, pendingTurnTarget);
+        }
       }
 
       if (session.backendType === "codex" && msg.type === "user_message") {
-        const now = Date.now();
-        const isHead = session.pendingCodexTurns.length === 0;
-        const pending = this.enqueueCodexTurn(session, {
-          adapterMsg,
-          userMessageId: codexUserMessageId || `user-recovery-${now}`,
-          userContent: this.buildPendingCodexRecoveryUserText(adapterMsg),
-          historyIndex: ingested?.historyIndex ?? -1,
-          status: session.state.backend_state === "broken" && isHead ? "blocked_broken_session" : "queued",
-          dispatchCount: 0,
-          createdAt: now,
-          updatedAt: now,
-          acknowledgedAt: null,
-          turnTarget: pendingTurnTarget,
-          lastError: session.state.backend_state === "broken" && isHead
-            ? (session.state.backend_error || "Codex session needs relaunch before queued messages can run.")
-            : null,
-          turnId: null,
-          disconnectedAt: null,
-          resumeConfirmedAt: null,
-        });
+        if (ingested?.historyEntry.id) {
+          this.addPendingCodexInput(session, {
+            id: ingested.historyEntry.id,
+            content: ingested.historyEntry.content,
+            timestamp: ingested.timestamp,
+            cancelable: true,
+            ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
+            ...(msg.images?.length ? { draftImages: buildPendingCodexImageDrafts(msg.images) } : {}),
+            ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
+            ...(adapterMsg.type === "user_message" && adapterMsg.local_images?.length ? { localImagePaths: adapterMsg.local_images } : {}),
+            ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+            ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
+          });
+          this.emitTakodeEvent(session.id, "user_message", {
+            content: (ingested.historyEntry.content || "").slice(0, 120),
+            ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+          });
+        }
+        const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+        if (currentTurnId) {
+          this.trySteerPendingCodexInputs(session, "browser_user_message");
+        } else {
+          if (session.codexAdapter && ingested?.wasGenerating) {
+            this.persistSession(session);
+          } else {
+            this.queueCodexPendingStartBatch(session, "browser_user_message");
+          }
+        }
+
         if (session.state.backend_state === "broken") {
           this.broadcastToBrowsers(session, {
             type: "error",
             message: "Codex session is broken. Your message was queued and will run after relaunch.",
           });
         }
-        this.dispatchQueuedCodexTurns(session, "browser_user_message");
-        this.persistSession(session);
 
         if (!session.codexAdapter) {
           console.log(`[ws-bridge] Codex adapter not yet attached for session ${sessionTag(session.id)}, queued user_message`);
@@ -6436,6 +6562,7 @@ export class WsBridge {
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     },
     source: "adapter" | "cli",
+    options?: { commit?: boolean },
   ): {
     timestamp: number;
     historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
@@ -6450,6 +6577,7 @@ export class WsBridge {
     wasGenerating: boolean;
   }> {
     const ts = Date.now();
+    const commit = options?.commit !== false;
 
     const finalize = (imageRefs?: import("./image-store.js").ImageRef[]) => {
       const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
@@ -6461,16 +6589,19 @@ export class WsBridge {
         ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
         ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
       };
-      session.messageHistory.push(userHistoryEntry);
-      const userMsgHistoryIdx = session.messageHistory.length - 1;
-      session.lastUserMessage = (msg.content || "").slice(0, 80);
+      let userMsgHistoryIdx = -1;
+      if (commit) {
+        session.messageHistory.push(userHistoryEntry);
+        userMsgHistoryIdx = session.messageHistory.length - 1;
+        session.lastUserMessage = (msg.content || "").slice(0, 80);
 
-      // Server-authoritative user message fan-out: browsers render only what ws-bridge broadcasts.
-      this.broadcastToBrowsers(session, userHistoryEntry);
-      this.emitTakodeEvent(session.id, "user_message", {
-        content: (msg.content || "").slice(0, 120),
-        ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-      });
+        // Server-authoritative user message fan-out: browsers render only what ws-bridge broadcasts.
+        this.broadcastToBrowsers(session, userHistoryEntry);
+        this.emitTakodeEvent(session.id, "user_message", {
+          content: (msg.content || "").slice(0, 120),
+          ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+        });
+      }
 
       const wasGenerating = session.isGenerating;
       return {
@@ -6729,6 +6860,17 @@ export class WsBridge {
   }
 
   private handleInterrupt(session: Session, source: InterruptSource = "user") {
+    if (session.backendType === "codex" && source === "user") {
+      if (session.pendingCodexTurns.length > 1) {
+        const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+        const preservedTurn = activeTurnId
+          ? (session.pendingCodexTurns.find((turn) => turn.turnId === activeTurnId) ?? null)
+          : null;
+        session.pendingCodexTurns = preservedTurn ? [preservedTurn] : [];
+      }
+      replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
+      this.persistSession(session);
+    }
     this.markTurnInterrupted(session, source);
     const ndjson = JSON.stringify({
       type: "control_request",
@@ -7211,6 +7353,225 @@ export class WsBridge {
     return this.sessions.get(sessionId)?.taskHistory ?? [];
   }
 
+  private broadcastPendingCodexInputs(session: Session): void {
+    this.broadcastToBrowsers(session, {
+      type: "codex_pending_inputs",
+      inputs: session.pendingCodexInputs,
+    });
+  }
+
+  private addPendingCodexInput(session: Session, input: PendingCodexInput): void {
+    session.pendingCodexInputs.push(input);
+    session.lastUserMessage = (input.content || "").slice(0, 80);
+    this.broadcastPendingCodexInputs(session);
+  }
+
+  private setPendingCodexInputCancelable(session: Session, id: string, cancelable: boolean): void {
+    const pending = session.pendingCodexInputs.find((item) => item.id === id);
+    if (!pending || pending.cancelable === cancelable) return;
+    pending.cancelable = cancelable;
+    this.broadcastPendingCodexInputs(session);
+    this.persistSession(session);
+  }
+
+  private setPendingCodexInputsCancelable(session: Session, ids: string[], cancelable: boolean): void {
+    let changed = false;
+    const idSet = new Set(ids);
+    for (const pending of session.pendingCodexInputs) {
+      if (!idSet.has(pending.id) || pending.cancelable === cancelable) continue;
+      pending.cancelable = cancelable;
+      changed = true;
+    }
+    if (!changed) return;
+    this.broadcastPendingCodexInputs(session);
+    this.persistSession(session);
+  }
+
+  private getCancelablePendingCodexInputs(session: Session): PendingCodexInput[] {
+    return session.pendingCodexInputs.filter((item) => item.cancelable);
+  }
+
+  private commitPendingCodexInputs(session: Session, ids: string[]): number[] {
+    const indexes: number[] = [];
+    for (const id of ids) {
+      const idx = this.commitPendingCodexInput(session, id);
+      if (typeof idx === "number" && idx >= 0) indexes.push(idx);
+    }
+    return indexes;
+  }
+
+  private getPendingCodexInputsByIds(session: Session, ids: string[]): PendingCodexInput[] {
+    const idSet = new Set(ids);
+    return session.pendingCodexInputs.filter((input) => idSet.has(input.id));
+  }
+
+  private recordSteeredCodexTurn(
+    session: Session,
+    turnId: string,
+    inputs: PendingCodexInput[],
+    committedHistoryIndexes: number[],
+  ): void {
+    if (inputs.length === 0) return;
+    const now = Date.now();
+    const pendingInputIds = inputs.map((input) => input.id);
+    this.enqueueCodexTurn(session, {
+      adapterMsg: {
+        type: "codex_start_pending",
+        pendingInputIds,
+        inputs: this.buildCodexBatchMessageInputs(inputs),
+      },
+      userMessageId: pendingInputIds[0]!,
+      pendingInputIds,
+      userContent: this.buildCodexPendingBatchRecoveryText(inputs),
+      historyIndex: committedHistoryIndexes[0] ?? -1,
+      status: "backend_acknowledged",
+      dispatchCount: 1,
+      createdAt: now,
+      updatedAt: now,
+      acknowledgedAt: now,
+      turnTarget: "queued",
+      lastError: null,
+      turnId,
+      disconnectedAt: null,
+      resumeConfirmedAt: null,
+    });
+    for (const idx of committedHistoryIndexes) {
+      this.trackUserMessageForTurn(session, idx, "queued");
+    }
+  }
+
+  private buildCodexBatchMessageInputs(inputs: PendingCodexInput[]): import("./session-types.js").CodexPendingBatchInput[] {
+    return inputs.map((input) => ({
+      content: input.deliveryContent || input.content,
+      ...(input.localImagePaths?.length ? { local_images: input.localImagePaths } : {}),
+      ...(input.vscodeSelection ? { vscodeSelection: input.vscodeSelection } : {}),
+    }));
+  }
+
+  private buildCodexPendingBatchRecoveryText(inputs: PendingCodexInput[]): string {
+    return inputs
+      .map((input) => {
+        const parts = [input.deliveryContent || input.content];
+        if (input.vscodeSelection) {
+          parts.push(this.formatVsCodeSelectionPrompt(input.vscodeSelection));
+        }
+        return parts.filter(Boolean).join("\n");
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  private queueCodexPendingStartBatch(session: Session, reason: string): void {
+    const deliverable = this.getCancelablePendingCodexInputs(session);
+    if (deliverable.length === 0) return;
+
+    const existingHead = this.getCodexHeadTurn(session);
+    if (existingHead && existingHead.status === "queued" && existingHead.turnId == null) {
+      existingHead.adapterMsg = {
+        type: "codex_start_pending",
+        pendingInputIds: deliverable.map((input) => input.id),
+        inputs: this.buildCodexBatchMessageInputs(deliverable),
+      };
+      existingHead.userMessageId = deliverable[0].id;
+      existingHead.pendingInputIds = deliverable.map((input) => input.id);
+      existingHead.userContent = this.buildCodexPendingBatchRecoveryText(deliverable);
+      existingHead.updatedAt = Date.now();
+      existingHead.lastError = null;
+      this.persistSession(session);
+      this.dispatchQueuedCodexTurns(session, reason);
+      return;
+    }
+
+    if (existingHead) return;
+
+    const now = Date.now();
+    this.enqueueCodexTurn(session, {
+      adapterMsg: {
+        type: "codex_start_pending",
+        pendingInputIds: deliverable.map((input) => input.id),
+        inputs: this.buildCodexBatchMessageInputs(deliverable),
+      },
+      userMessageId: deliverable[0].id,
+      pendingInputIds: deliverable.map((input) => input.id),
+      userContent: this.buildCodexPendingBatchRecoveryText(deliverable),
+      historyIndex: -1,
+      status: session.state.backend_state === "broken" ? "blocked_broken_session" : "queued",
+      dispatchCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      acknowledgedAt: null,
+      turnTarget: null,
+      lastError: session.state.backend_state === "broken"
+        ? (session.state.backend_error || "Codex session needs relaunch before queued messages can run.")
+        : null,
+      turnId: null,
+      disconnectedAt: null,
+      resumeConfirmedAt: null,
+    });
+    this.persistSession(session);
+    this.dispatchQueuedCodexTurns(session, reason);
+  }
+
+  private trySteerPendingCodexInputs(session: Session, reason: string): boolean {
+    const adapter = session.codexAdapter;
+    const expectedTurnId = adapter?.getCurrentTurnId() ?? null;
+    if (!adapter || !expectedTurnId || session.state.backend_state !== "connected" || !adapter.isConnected()) {
+      return false;
+    }
+    const deliverable = this.getCancelablePendingCodexInputs(session);
+    if (deliverable.length === 0) return false;
+    const ids = deliverable.map((input) => input.id);
+    this.setPendingCodexInputsCancelable(session, ids, false);
+    const accepted = adapter.sendBrowserMessage({
+      type: "codex_steer_pending",
+      pendingInputIds: ids,
+      expectedTurnId,
+      inputs: this.buildCodexBatchMessageInputs(deliverable),
+    });
+    if (!accepted) {
+      this.setPendingCodexInputsCancelable(session, ids, true);
+      return false;
+    }
+    console.log(`[ws-bridge] Steered ${ids.length} pending Codex input(s) for session ${sessionTag(session.id)} (${reason})`);
+    return true;
+  }
+
+  private commitPendingCodexInput(session: Session, id: string): number | null {
+    const idx = session.pendingCodexInputs.findIndex((item) => item.id === id);
+    if (idx < 0) return null;
+    const pending = session.pendingCodexInputs[idx];
+    session.pendingCodexInputs.splice(idx, 1);
+
+    const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
+      type: "user_message",
+      content: pending.content,
+      timestamp: pending.timestamp,
+      id: pending.id,
+      ...(pending.imageRefs?.length ? { images: pending.imageRefs } : {}),
+      ...(pending.vscodeSelection ? { vscodeSelection: pending.vscodeSelection } : {}),
+      ...(pending.agentSource ? { agentSource: pending.agentSource } : {}),
+    };
+    session.messageHistory.push(userHistoryEntry);
+    const userMsgHistoryIdx = session.messageHistory.length - 1;
+    session.lastUserMessage = (pending.content || "").slice(0, 80);
+    this.broadcastToBrowsers(session, userHistoryEntry);
+    this.broadcastPendingCodexInputs(session);
+    if (this.onUserMessage) {
+      this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, session.isGenerating);
+    }
+    this.persistSession(session);
+    return userMsgHistoryIdx;
+  }
+
+  private removePendingCodexInput(session: Session, id: string): PendingCodexInput | null {
+    const idx = session.pendingCodexInputs.findIndex((item) => item.id === id);
+    if (idx < 0) return null;
+    const [removed] = session.pendingCodexInputs.splice(idx, 1);
+    this.broadcastPendingCodexInputs(session);
+    this.persistSession(session);
+    return removed;
+  }
+
   private reconcileCodexResumedTurn(session: Session, snapshot: CodexResumeSnapshot): void {
     const pending = this.getCodexTurnInRecovery(session);
     const lastTurn = snapshot.lastTurn;
@@ -7253,6 +7614,14 @@ export class WsBridge {
       return;
     }
 
+    const committedHistoryIndexes = this.commitPendingCodexInputs(
+      session,
+      pending.pendingInputIds ?? [pending.userMessageId],
+    );
+    if (committedHistoryIndexes.length > 0 && pending.historyIndex < 0) {
+      pending.historyIndex = committedHistoryIndexes[0];
+    }
+
     const nonUserItems = lastTurn.items.filter((item) => item.type !== "userMessage");
     if (nonUserItems.length === 0) {
       console.log(
@@ -7291,6 +7660,13 @@ export class WsBridge {
       pending.turnId = lastTurn.id;
       pending.resumeConfirmedAt = Date.now();
       pending.updatedAt = pending.resumeConfirmedAt;
+      if (pending.turnTarget !== "queued" && !session.isGenerating) {
+        const target = this.markRunningFromUserDispatch(session, "codex_resume_in_progress");
+        pending.turnTarget = target;
+        if (pending.historyIndex >= 0) {
+          this.trackUserMessageForTurn(session, pending.historyIndex, target);
+        }
+      }
       this.rearmRecoveredQueuedHeadTurn(session, pending, "codex_resume_in_progress");
       this.persistSession(session);
       return;

@@ -460,6 +460,23 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       break;
     }
 
+    case "codex_pending_inputs": {
+      store.setPendingCodexInputs(sessionId, data.inputs);
+      break;
+    }
+
+    case "codex_pending_input_cancelled": {
+      store.setComposerDraft(sessionId, {
+        text: data.input.content,
+        images: (data.input.draftImages ?? []).map((img) => ({
+          name: img.name,
+          base64: img.base64,
+          mediaType: img.mediaType,
+        })),
+      });
+      break;
+    }
+
     case "vscode_selection_state": {
       store.setVsCodeSelectionContext(data.state);
       break;

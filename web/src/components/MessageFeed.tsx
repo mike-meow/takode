@@ -5,11 +5,12 @@ import { ToolBlock, getPreview, getToolIcon, getToolLabel, ToolIcon, formatDurat
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
-import type { ChatMessage, ContentBlock } from "../types.js";
+import type { ChatMessage, ContentBlock, PendingCodexInput } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
 import { isTouchDevice } from "../utils/mobile.js";
+import { sendToSession } from "../ws.js";
 import { useCollapsePolicy } from "../hooks/use-collapse-policy.js";
 import {
   isUserBoundaryEntry,
@@ -41,6 +42,7 @@ function formatTokens(n: number): string {
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const EMPTY_PENDING_CODEX_INPUTS: PendingCodexInput[] = [];
 
 function escapeSelectorValue(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -71,6 +73,10 @@ function getTurnFeedBlockId(turnId: string): string {
 
 function getFooterFeedBlockId(kind: string): string {
   return `footer:${kind}`;
+}
+
+function getPendingCodexFeedBlockId(inputId: string): string {
+  return `pending-codex:${inputId}`;
 }
 
 function getFeedBlockIdFromNode(node: Node | null): string | null {
@@ -298,6 +304,58 @@ function FeedStatusPill({
         variant="floating"
         onVisibleHeightChange={onVisibleHeightChange}
       />
+    </div>
+  );
+}
+
+function PendingCodexInputList({
+  sessionId,
+  inputs,
+}: {
+  sessionId: string;
+  inputs: PendingCodexInput[];
+}) {
+  if (inputs.length === 0) return null;
+
+  return (
+    <div className="space-y-2" data-feed-block-id={getFooterFeedBlockId("pending-codex-inputs")}>
+      <div className="px-1 text-[10px] uppercase tracking-wider text-cc-muted/60">Pending delivery</div>
+      <div className="flex flex-col gap-2">
+        {inputs.map((input) => {
+          const preview = input.content.trim().replace(/\s+/g, " ");
+          const truncated = preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
+          return (
+            <div
+              key={input.id}
+              data-feed-block-id={getPendingCodexFeedBlockId(input.id)}
+              className="flex items-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/8 px-3 py-2 text-sm text-cc-fg"
+            >
+              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+              <span className="min-w-0 flex-1 truncate" title={preview || "Pending message"}>
+                {truncated || "Pending message"}
+              </span>
+              <button
+                type="button"
+                disabled={!input.cancelable}
+                onClick={() => {
+                  sendToSession(sessionId, { type: "cancel_pending_codex_input", id: input.id });
+                }}
+                className={`shrink-0 rounded-full p-1 transition-colors ${
+                  input.cancelable
+                    ? "text-cc-muted hover:bg-cc-hover hover:text-cc-fg cursor-pointer"
+                    : "text-cc-muted/40 cursor-not-allowed"
+                }`}
+                title={input.cancelable ? "Cancel pending message" : "Already being delivered"}
+                aria-label={input.cancelable ? "Cancel pending message" : "Pending message is already being delivered"}
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5">
+                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -2001,6 +2059,7 @@ export function MessageFeed({
   onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
 }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const pendingCodexInputs = useStore((s) => s.pendingCodexInputs.get(sessionId) ?? EMPTY_PENDING_CODEX_INPUTS);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
   const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
@@ -3030,7 +3089,7 @@ export function MessageFeed({
     );
   }
 
-  if (messages.length === 0 && !streamingText) {
+  if (messages.length === 0 && pendingCodexInputs.length === 0 && !streamingText) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
         <SleepingCat className="w-20 h-14" />
@@ -3089,6 +3148,9 @@ export function MessageFeed({
                   Load newer section
                 </button>
               </div>
+            )}
+            {isCodexSession && pendingCodexInputs.length > 0 && (
+              <PendingCodexInputList sessionId={sessionId} inputs={pendingCodexInputs} />
             )}
             <FeedFooter sessionId={sessionId} />
             <div

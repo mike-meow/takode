@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview, SessionTaskEntry, QuestmasterTask, VsCodeSelectionState } from "./types.js";
+import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview, SessionTaskEntry, PendingCodexInput, QuestmasterTask, VsCodeSelectionState } from "./types.js";
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
 import { isEmbeddedInVsCode } from "./utils/embed-context.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
@@ -96,6 +96,8 @@ interface AppState {
   sessionPreviewUpdatedAt: Map<string, number>;
   // High-level task history recognized by the session auto-namer
   sessionTaskHistory: Map<string, SessionTaskEntry[]>;
+  // Codex inputs accepted by Takode but not yet delivered to Codex.
+  pendingCodexInputs: Map<string, PendingCodexInput[]>;
   // Accumulated search keywords from the session auto-namer
   sessionKeywords: Map<string, string[]>;
   // Scroll-to-turn request per session (session → turn ID to scroll to)
@@ -211,6 +213,7 @@ interface AppState {
   appendMessage: (sessionId: string, msg: ChatMessage) => void;
   setMessages: (sessionId: string, msgs: ChatMessage[], options?: { frozenCount?: number }) => void;
   setHistoryLoading: (sessionId: string, loading: boolean) => void;
+  setPendingCodexInputs: (sessionId: string, inputs: PendingCodexInput[]) => void;
   updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
   /** Update quest title in all quest_claimed/quest_submitted messages for a quest. */
   updateQuestTitleInMessages: (sessionId: string, questId: string, newTitle: string) => void;
@@ -454,6 +457,7 @@ export const useStore = create<AppState>((set) => ({
   sessionPreviews: new Map(),
   sessionPreviewUpdatedAt: new Map(),
   sessionTaskHistory: new Map(),
+  pendingCodexInputs: new Map(),
   sessionKeywords: new Map(),
   scrollToTurnId: new Map(),
   scrollToMessageId: new Map(),
@@ -691,6 +695,8 @@ export const useStore = create<AppState>((set) => ({
       sessionPreviews.delete(sessionId);
       const sessionTaskHistory = new Map(s.sessionTaskHistory);
       sessionTaskHistory.delete(sessionId);
+      const pendingCodexInputs = new Map(s.pendingCodexInputs);
+      pendingCodexInputs.delete(sessionId);
       const sessionKeywords = new Map(s.sessionKeywords);
       sessionKeywords.delete(sessionId);
       const scrollToTurnId = new Map(s.scrollToTurnId);
@@ -756,6 +762,7 @@ export const useStore = create<AppState>((set) => ({
         recentlyRenamed,
         sessionPreviews,
         sessionTaskHistory,
+        pendingCodexInputs,
         sessionKeywords,
         scrollToTurnId,
         diffPanelSelectedFile,
@@ -878,6 +885,17 @@ export const useStore = create<AppState>((set) => ({
         historyLoading.delete(sessionId);
       }
       return { historyLoading };
+    }),
+
+  setPendingCodexInputs: (sessionId, inputs) =>
+    set((s) => {
+      const pendingCodexInputs = new Map(s.pendingCodexInputs);
+      if (inputs.length === 0) {
+        pendingCodexInputs.delete(sessionId);
+      } else {
+        pendingCodexInputs.set(sessionId, inputs);
+      }
+      return { pendingCodexInputs };
     }),
 
   updateMessage: (sessionId, msgId, updates) =>
@@ -1718,6 +1736,7 @@ export const useStore = create<AppState>((set) => ({
       sessionPreviews: new Map(),
       sessionPreviewUpdatedAt: new Map(),
       sessionTaskHistory: new Map(),
+      pendingCodexInputs: new Map(),
       sessionKeywords: new Map(),
       scrollToTurnId: new Map(),
       scrollToMessageId: new Map(),

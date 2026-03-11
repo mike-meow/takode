@@ -612,6 +612,8 @@ export class CodexAdapter
   private initErrorCb: ((error: string) => void) | null = null;
   private turnStartFailedCb: ((msg: BrowserOutgoingMessage) => void) | null = null;
   private turnStartedCb: ((turnId: string) => void) | null = null;
+  private turnSteeredCb: ((turnId: string, pendingInputIds: string[]) => void) | null = null;
+  private turnSteerFailedCb: ((pendingInputIds: string[]) => void) | null = null;
 
   // State
   private threadId: string | null = null;
@@ -815,6 +817,8 @@ export class CodexAdapter
     if (!this.initialized || !this.threadId) {
       if (
         msg.type === "user_message"
+        || msg.type === "codex_start_pending"
+        || msg.type === "codex_steer_pending"
         || msg.type === "permission_response"
         || msg.type === "mcp_get_status"
         || msg.type === "mcp_toggle"
@@ -835,6 +839,12 @@ export class CodexAdapter
     switch (msg.type) {
       case "user_message":
         this.enqueueOutgoingDispatch("user_message", () => this.handleOutgoingUserMessage(msg));
+        return true;
+      case "codex_start_pending":
+        this.enqueueOutgoingDispatch("codex_start_pending", () => this.handleOutgoingPendingBatchStart(msg));
+        return true;
+      case "codex_steer_pending":
+        this.enqueueOutgoingDispatch("codex_steer_pending", () => this.handleOutgoingPendingBatchSteer(msg));
         return true;
       case "permission_response":
         this.enqueueOutgoingDispatch("permission_response", () => this.handleOutgoingPermissionResponse(msg));
@@ -898,6 +908,14 @@ export class CodexAdapter
 
   onTurnStarted(cb: (turnId: string) => void): void {
     this.turnStartedCb = cb;
+  }
+
+  onTurnSteered(cb: (turnId: string, pendingInputIds: string[]) => void): void {
+    this.turnSteeredCb = cb;
+  }
+
+  onTurnSteerFailed(cb: (pendingInputIds: string[]) => void): void {
+    this.turnSteerFailedCb = cb;
   }
 
   isConnected(): boolean {
@@ -1220,6 +1238,109 @@ export class CodexAdapter
         return;
       }
       this.emit({ type: "error", message: `Failed to start turn: ${err}` });
+    }
+  }
+
+  private buildCodexBatchInput(
+    entries: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>,
+  ): Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> {
+    const input: Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> = [];
+    for (const entry of entries) {
+      if (entry.local_images?.length) {
+        for (const path of entry.local_images) {
+          input.push({ type: "localImage", path });
+        }
+      }
+      input.push({ type: "text", text: entry.content, text_elements: [] });
+      if (entry.vscodeSelection) {
+        const selection = entry.vscodeSelection;
+        const selectionText = selection.startLine === selection.endLine
+          ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
+          : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+        input.push({ type: "text", text: selectionText, text_elements: [] });
+      }
+    }
+    return input;
+  }
+
+  private async handleOutgoingPendingBatchStart(
+    msg: {
+      type: "codex_start_pending";
+      pendingInputIds: string[];
+      inputs: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>;
+    },
+  ): Promise<void> {
+    if (!this.threadId) {
+      this.emit({ type: "error", message: "No Codex thread started yet" });
+      return;
+    }
+    if (this.currentTurnId) {
+      console.log(
+        `[codex-adapter] Turn ${this.currentTurnId} already in progress for session ${this.sessionId}, interrupting before pending batch start`,
+      );
+      await this.interruptAndWaitForTurnEnd();
+    }
+
+    const input = this.buildCodexBatchInput(msg.inputs);
+    const turnStartParams: Record<string, unknown> = {
+      threadId: this.threadId,
+      input,
+      cwd: this.options.cwd,
+    };
+    const collaborationMode = this.collaborationModeSupported
+      ? this.buildCollaborationModeOverride()
+      : null;
+    if (collaborationMode) turnStartParams.collaborationMode = collaborationMode;
+
+    try {
+      const result = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+      this.currentTurnId = result.turn.id;
+      this.turnStartedCb?.(result.turn.id);
+    } catch (err) {
+      if (collaborationMode && this.isCollaborationModeUnsupportedError(err)) {
+        this.collaborationModeSupported = false;
+        delete turnStartParams.collaborationMode;
+        try {
+          const retry = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+          this.currentTurnId = retry.turn.id;
+          this.turnStartedCb?.(retry.turn.id);
+          return;
+        } catch (retryErr) {
+          const requeued = this.handleTurnStartDispatchFailure(msg);
+          if (requeued && this.isTransportClosedError(retryErr)) return;
+          this.emit({ type: "error", message: `Failed to start pending Codex batch: ${retryErr}` });
+          return;
+        }
+      }
+      const requeued = this.handleTurnStartDispatchFailure(msg);
+      if (requeued && this.isTransportClosedError(err)) return;
+      this.emit({ type: "error", message: `Failed to start pending Codex batch: ${err}` });
+    }
+  }
+
+  private async handleOutgoingPendingBatchSteer(
+    msg: {
+      type: "codex_steer_pending";
+      pendingInputIds: string[];
+      expectedTurnId: string;
+      inputs: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>;
+    },
+  ): Promise<void> {
+    if (!this.threadId) {
+      this.emit({ type: "error", message: "No Codex thread started yet" });
+      return;
+    }
+    const input = this.buildCodexBatchInput(msg.inputs);
+    try {
+      const result = await this.transport.call("turn/steer", {
+        threadId: this.threadId,
+        input,
+        expectedTurnId: msg.expectedTurnId,
+      }) as { turnId: string };
+      this.turnSteeredCb?.(result.turnId, msg.pendingInputIds);
+    } catch (err) {
+      this.turnSteerFailedCb?.(msg.pendingInputIds);
+      this.emit({ type: "error", message: `Failed to steer active Codex turn: ${err}` });
     }
   }
 

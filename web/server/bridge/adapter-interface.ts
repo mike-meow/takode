@@ -29,6 +29,14 @@ export interface TurnStartedAwareAdapter {
   onTurnStarted(cb: (turnId: string) => void): void;
 }
 
+export interface TurnSteeredAwareAdapter {
+  onTurnSteered(cb: (turnId: string, pendingInputIds: string[]) => void): void;
+}
+
+export interface TurnSteerFailedAwareAdapter {
+  onTurnSteerFailed(cb: (pendingInputIds: string[]) => void): void;
+}
+
 export interface CurrentTurnIdAwareAdapter {
   getCurrentTurnId(): string | null;
 }

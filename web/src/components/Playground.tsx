@@ -31,6 +31,7 @@ const MOCK_SESSION_ID = "playground-session";
 const PLAYGROUND_SECTIONED_SESSION_ID = "playground-sectioned-feed";
 const PLAYGROUND_LOADING_SESSION_ID = "playground-loading-feed";
 const PLAYGROUND_CODEX_TERMINAL_SESSION_ID = "playground-codex-terminal-feed";
+const PLAYGROUND_CODEX_PENDING_SESSION_ID = "playground-codex-pending-feed";
 const PLAYGROUND_STARTING_SESSION_ID = "playground-chat-starting";
 const PLAYGROUND_RESUMING_SESSION_ID = "playground-chat-resuming";
 const PLAYGROUND_BROKEN_SESSION_ID = "playground-chat-broken";
@@ -177,6 +178,17 @@ function makePlaygroundSectionedMessages(sectionCount: number, turnsPerSection =
   }
 
   return messages;
+}
+
+function makePlaygroundMessage(
+  overrides: Partial<ChatMessage> & { role: ChatMessage["role"] },
+): ChatMessage {
+  return {
+    id: `playground-msg-${Math.random().toString(36).slice(2, 8)}`,
+    content: "",
+    timestamp: Date.now(),
+    ...overrides,
+  };
 }
 
 const PERM_BASH = mockPermission({
@@ -875,6 +887,7 @@ export function Playground() {
       PLAYGROUND_SECTIONED_SESSION_ID,
       PLAYGROUND_LOADING_SESSION_ID,
       PLAYGROUND_CODEX_TERMINAL_SESSION_ID,
+      PLAYGROUND_CODEX_PENDING_SESSION_ID,
       PLAYGROUND_STARTING_SESSION_ID,
       PLAYGROUND_RESUMING_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
@@ -892,6 +905,7 @@ export function Playground() {
     const prevStreamingOutputTokens = new Map(demoSessionIds.map((id) => [id, snapshot.streamingOutputTokens.get(id)]));
     const prevFeedScrollPositions = new Map(demoSessionIds.map((id) => [id, snapshot.feedScrollPosition.get(id)]));
     const prevHistoryLoading = new Map(demoSessionIds.map((id) => [id, snapshot.historyLoading.get(id)]));
+    const prevPendingCodexInputs = new Map(demoSessionIds.map((id) => [id, snapshot.pendingCodexInputs.get(id)]));
 
     const session: SessionState = {
       session_id: sessionId,
@@ -1053,6 +1067,48 @@ export function Playground() {
       duration_seconds: 14.1,
     });
 
+    store.addSession({
+      ...session,
+      session_id: PLAYGROUND_CODEX_PENDING_SESSION_ID,
+      backend_type: "codex",
+      backend_state: "connected",
+      backend_error: null,
+      model: "gpt-5.4",
+      num_turns: 3,
+      context_used_percent: 38,
+    });
+    store.setConnectionStatus(PLAYGROUND_CODEX_PENDING_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_CODEX_PENDING_SESSION_ID, true);
+    store.setSessionStatus(PLAYGROUND_CODEX_PENDING_SESSION_ID, "running");
+    store.setMessages(PLAYGROUND_CODEX_PENDING_SESSION_ID, [
+      makePlaygroundMessage({
+        id: "playground-codex-pending-user",
+        role: "user",
+        content: "Inspect the auth flow and summarize what is broken.",
+      }),
+      makePlaygroundMessage({
+        id: "playground-codex-pending-assistant",
+        role: "assistant",
+        content: "Searching the auth pipeline now.",
+      }),
+    ]);
+    store.setPendingCodexInputs(PLAYGROUND_CODEX_PENDING_SESSION_ID, [
+      {
+        id: "playground-pending-codex-1",
+        content: "Also check whether refresh-token rotation races with logout.",
+        timestamp: Date.now(),
+        cancelable: true,
+        draftImages: [],
+      },
+      {
+        id: "playground-pending-codex-2",
+        content: "If you find a race, propose the smallest safe fix first.",
+        timestamp: Date.now() + 1,
+        cancelable: false,
+        draftImages: [],
+      },
+    ]);
+
     // Mock tool results for ToolResultSection demo
     store.setToolResult(sessionId, "tu-1", {
       tool_use_id: "tu-1",
@@ -1168,6 +1224,7 @@ export function Playground() {
         const cliDisconnectReason = new Map(s.cliDisconnectReason);
         const feedScrollPosition = new Map(s.feedScrollPosition);
         const historyLoading = new Map(s.historyLoading);
+        const pendingCodexInputs = new Map(s.pendingCodexInputs);
 
         for (const demoId of demoSessionIds) {
           const prevSession = prevSessions.get(demoId);
@@ -1183,6 +1240,7 @@ export function Playground() {
           const prevStreamTokens = prevStreamingOutputTokens.get(demoId);
           const prevFeedScrollPosition = prevFeedScrollPositions.get(demoId);
           const prevLoading = prevHistoryLoading.get(demoId);
+          const prevPendingCodex = prevPendingCodexInputs.get(demoId);
 
           if (prevSession) sessions.set(demoId, prevSession); else sessions.delete(demoId);
           if (prevMessageList) messages.set(demoId, prevMessageList); else messages.delete(demoId);
@@ -1197,6 +1255,7 @@ export function Playground() {
           if (typeof prevStreamTokens === "number") streamingOutputTokens.set(demoId, prevStreamTokens); else streamingOutputTokens.delete(demoId);
           if (prevFeedScrollPosition) feedScrollPosition.set(demoId, prevFeedScrollPosition); else feedScrollPosition.delete(demoId);
           if (prevLoading) historyLoading.set(demoId, true); else historyLoading.delete(demoId);
+          if (prevPendingCodex) pendingCodexInputs.set(demoId, prevPendingCodex); else pendingCodexInputs.delete(demoId);
         }
 
         return {
@@ -1213,6 +1272,7 @@ export function Playground() {
           streamingOutputTokens,
           feedScrollPosition,
           historyLoading,
+          pendingCodexInputs,
         };
       });
     };
@@ -1331,6 +1391,12 @@ export function Playground() {
         <Section title="Codex Terminal Chips" description="Live Codex Bash commands sit in a reserved bottom band so they do not cover chat text. Completed live shells keep a small badge plus the captured transcript in the inline Bash card when the final tool result is empty.">
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[420px]">
             <MessageFeed sessionId={PLAYGROUND_CODEX_TERMINAL_SESSION_ID} />
+          </div>
+        </Section>
+
+        <Section title="Codex Pending Inputs" description="Accepted but not yet delivered Codex follow-up messages render as lightweight pending chips instead of committed chat history.">
+          <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[320px]">
+            <MessageFeed sessionId={PLAYGROUND_CODEX_PENDING_SESSION_ID} />
           </div>
         </Section>
 

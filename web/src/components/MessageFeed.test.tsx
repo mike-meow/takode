@@ -38,6 +38,12 @@ const mockSetCollapsibleTurnIds = vi.fn();
 const mockSetFeedScrollPosition = vi.fn();
 const mockCollapseAllTurnActivity = vi.fn();
 const mockClearBottomAlignOnNextUserMessage = vi.fn();
+const mockSetComposerDraft = vi.fn();
+const mockSendToSession: any = vi.fn(() => true);
+
+vi.mock("../ws.js", () => ({
+  sendToSession: (sessionId: string, msg: any) => mockSendToSession(sessionId, msg),
+}));
 
 vi.mock("../store.js", () => {
   const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
@@ -71,6 +77,7 @@ vi.mock("../store.js", () => {
       clearScrollToMessage: mockClearScrollToMessage,
       bottomAlignNextUserMessage: mockStoreValues.bottomAlignNextUserMessage ?? new Set(),
       sessionTaskHistory: mockStoreValues.sessionTaskHistory ?? new Map(),
+      pendingCodexInputs: mockStoreValues.pendingCodexInputs ?? new Map(),
       activeTaskTurnId: mockStoreValues.activeTaskTurnId ?? new Map(),
       setActiveTaskTurnId: mockSetActiveTaskTurnId,
       backgroundAgentNotifs: mockStoreValues.backgroundAgentNotifs ?? new Map(),
@@ -88,6 +95,7 @@ vi.mock("../store.js", () => {
     focusTurn: mockFocusTurn,
     keepTurnExpanded: mockKeepTurnExpanded,
     clearBottomAlignOnNextUserMessage: mockClearBottomAlignOnNextUserMessage,
+    setComposerDraft: mockSetComposerDraft,
   });
   return { useStore };
 });
@@ -204,6 +212,12 @@ function setStoreThinking(sessionId: string, text: string | undefined) {
   const map = new Map();
   if (text !== undefined) map.set(sessionId, text);
   mockStoreValues.streamingThinking = map;
+}
+
+function setStorePendingCodexInputs(sessionId: string, inputs: Array<Record<string, unknown>>) {
+  const map = new Map();
+  map.set(sessionId, inputs);
+  mockStoreValues.pendingCodexInputs = map;
 }
 
 function setStoreHistoryLoading(sessionId: string, loading: boolean) {
@@ -339,6 +353,9 @@ function resetStore() {
   mockSetFeedScrollPosition.mockReset();
   mockCollapseAllTurnActivity.mockReset();
   mockClearBottomAlignOnNextUserMessage.mockReset();
+  mockSetComposerDraft.mockReset();
+  mockSendToSession.mockReset();
+  mockSendToSession.mockReturnValue(true);
   mockStoreValues.messages = new Map();
   mockStoreValues.messageFrozenCounts = new Map();
   mockStoreValues.messageFrozenRevisions = new Map();
@@ -360,6 +377,7 @@ function resetStore() {
   mockStoreValues.scrollToMessageId = new Map();
   mockStoreValues.bottomAlignNextUserMessage = new Set();
   mockStoreValues.sessionTaskHistory = new Map();
+  mockStoreValues.pendingCodexInputs = new Map();
   mockStoreValues.activeTaskTurnId = new Map();
   mockStoreValues.sdkSessions = [];
 }
@@ -636,6 +654,25 @@ describe("MessageFeed - empty state", () => {
     render(<MessageFeed sessionId={sid} />);
 
     expect(screen.queryByText("Start a conversation")).toBeNull();
+  });
+
+  it("shows pending Codex inputs instead of the empty state", () => {
+    const sid = "test-pending-codex";
+    setStoreMessages(sid, []);
+    setStoreSessionBackend(sid, "codex");
+    setStorePendingCodexInputs(sid, [{
+      id: "pending-1",
+      content: "Steer the active turn toward auth fixes",
+      timestamp: Date.now(),
+      cancelable: true,
+      draftImages: [],
+    }]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getByText("Pending delivery")).toBeTruthy();
+    expect(screen.getByText(/Steer the active turn toward auth fixes/)).toBeTruthy();
   });
 });
 

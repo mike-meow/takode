@@ -36,6 +36,8 @@ function makeCodexAdapterMock() {
   let onInitErrorCb: ((error: string) => void) | undefined;
   let onTurnStartFailedCb: ((msg: any) => void) | undefined;
   let onTurnStartedCb: ((turnId: string) => void) | undefined;
+  let onTurnSteeredCb: ((turnId: string, pendingInputIds: string[]) => void) | undefined;
+  let onTurnSteerFailedCb: ((pendingInputIds: string[]) => void) | undefined;
   let currentTurnId: string | null = null;
 
   return {
@@ -45,6 +47,8 @@ function makeCodexAdapterMock() {
     onInitError: vi.fn((cb: (error: string) => void) => { onInitErrorCb = cb; }),
     onTurnStartFailed: vi.fn((cb: (msg: any) => void) => { onTurnStartFailedCb = cb; }),
     onTurnStarted: vi.fn((cb: (turnId: string) => void) => { onTurnStartedCb = cb; }),
+    onTurnSteered: vi.fn((cb: (turnId: string, pendingInputIds: string[]) => void) => { onTurnSteeredCb = cb; }),
+    onTurnSteerFailed: vi.fn((cb: (pendingInputIds: string[]) => void) => { onTurnSteerFailedCb = cb; }),
     sendBrowserMessage: vi.fn(() => true),
     isConnected: vi.fn(() => true),
     disconnect: vi.fn(async () => {}),
@@ -60,6 +64,12 @@ function makeCodexAdapterMock() {
     emitTurnStarted: (turnId: string) => {
       currentTurnId = turnId;
       onTurnStartedCb?.(turnId);
+    },
+    emitTurnSteered: (turnId: string, pendingInputIds: string[]) => {
+      onTurnSteeredCb?.(turnId, pendingInputIds);
+    },
+    emitTurnSteerFailed: (pendingInputIds: string[]) => {
+      onTurnSteerFailedCb?.(pendingInputIds);
     },
   };
 }
@@ -78,6 +88,55 @@ function emitCodexSessionReady(
 
 function getPendingCodexTurn(session: { pendingCodexTurns?: unknown[] }) {
   return (session.pendingCodexTurns?.[0] ?? null) as any;
+}
+
+function getCodexStartPendingInputs(msg: any) {
+  expect(msg?.type).toBe("codex_start_pending");
+  expect(Array.isArray(msg?.inputs)).toBe(true);
+  return msg.inputs as Array<{ content: string; local_images?: string[] }>;
+}
+
+function expectCodexStartPendingTurnLike(
+  turn: any,
+  expected: {
+    firstContent?: string;
+    firstContentContaining?: string;
+    firstLocalImages?: string[];
+    status?: string;
+    dispatchCount?: number;
+    userContent?: string;
+    turnId?: string | null;
+    turnTarget?: string | null;
+  } = {},
+) {
+  expect(turn).toBeTruthy();
+  expect(turn.adapterMsg?.type).toBe("codex_start_pending");
+  const inputs = getCodexStartPendingInputs(turn.adapterMsg);
+  expect(inputs.length).toBeGreaterThan(0);
+  if (expected.firstContent !== undefined) {
+    expect(inputs[0]?.content).toBe(expected.firstContent);
+  }
+  if (expected.firstContentContaining !== undefined) {
+    expect(inputs[0]?.content).toContain(expected.firstContentContaining);
+  }
+  if (expected.firstLocalImages !== undefined) {
+    expect(inputs[0]?.local_images).toEqual(expected.firstLocalImages);
+  }
+  if (expected.status !== undefined) {
+    expect(turn.status).toBe(expected.status);
+  }
+  if (expected.dispatchCount !== undefined) {
+    expect(turn.dispatchCount).toBe(expected.dispatchCount);
+  }
+  if (expected.userContent !== undefined) {
+    expect(turn.userContent).toBe(expected.userContent);
+  }
+  if ("turnId" in expected) {
+    expect(turn.turnId).toBe(expected.turnId);
+  }
+  if ("turnTarget" in expected) {
+    expect(turn.turnTarget).toBe(expected.turnTarget);
+  }
 }
 
 function makeClaudeSdkAdapterMock() {
@@ -212,6 +271,103 @@ describe("traffic accounting", () => {
 
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
+});
+
+describe("Codex pending input delivery", () => {
+  it("keeps Codex user input pending until turn/start acknowledges delivery", async () => {
+    const sid = "s-codex-pending";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-pending", model: "gpt-5.4", cwd: "/repo" });
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "steer me later",
+    }));
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]).toMatchObject({
+      content: "steer me later",
+    });
+    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later")).toBe(false);
+
+    const pendingBroadcast = browser.send.mock.calls
+      .map(([arg]: [string]) => JSON.parse(arg))
+      .find((msg: any) => msg.type === "codex_pending_inputs");
+    expect(pendingBroadcast?.inputs).toHaveLength(1);
+
+    adapter.emitTurnStarted("turn-pending");
+
+    expect(session.pendingCodexInputs).toHaveLength(0);
+    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later")).toBe(true);
+  });
+
+  it("cancels still-local pending Codex input before delivery", async () => {
+    const sid = "s-codex-cancel-pending";
+    const browser = makeBrowserSocket(sid);
+    bridge.getOrCreateSession(sid, "codex");
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "do not deliver this",
+    }));
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    const pendingId = session.pendingCodexInputs[0]?.id;
+    expect(pendingId).toBeTruthy();
+    expect(session.pendingCodexInputs[0]?.cancelable).toBe(true);
+    expect(session.pendingCodexTurns).toHaveLength(1);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "cancel_pending_codex_input",
+      id: pendingId,
+    }));
+    await Promise.resolve();
+
+    expect(session.pendingCodexInputs).toHaveLength(0);
+    expect(session.pendingCodexTurns).toHaveLength(0);
+    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "do not deliver this")).toBe(false);
+  });
+
+  it("restores pending Codex inputs across restart and delivers them on reconnect", async () => {
+    const sid = "s-codex-persisted-pending";
+    store.saveSync({
+      id: sid,
+      state: bridge.getOrCreateSession(sid, "codex").state,
+      messageHistory: [],
+      pendingMessages: [],
+      pendingCodexInputs: [{
+        id: "pending-persisted-1",
+        content: "re-deliver me after restart",
+        timestamp: 1,
+        cancelable: true,
+        draftImages: [],
+        deliveryContent: "re-deliver me after restart",
+      }],
+      pendingPermissions: [],
+    });
+
+    const restored = new WsBridge();
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const adapter = makeCodexAdapterMock();
+    restored.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-restored-pending" });
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "codex_start_pending",
+      pendingInputIds: ["pending-persisted-1"],
+    }));
+  });
 });
 
 // ─── Helper: build a system.init NDJSON string ────────────────────────────────
@@ -3842,20 +3998,15 @@ describe("Persistence", () => {
       .map(([arg]) => arg)
       .find((call) => call.id === sid && Array.isArray(call.pendingCodexTurns) && call.pendingCodexTurns.length > 0);
 
-    expect(persistedWithRecovery?.pendingCodexTurns?.[0]).toMatchObject({
-      adapterMsg: { type: "user_message", content: "persist this retry context" },
-      userMessageId: expect.any(String),
+    expectCodexStartPendingTurnLike(persistedWithRecovery?.pendingCodexTurns?.[0], {
+      firstContent: "persist this retry context",
       userContent: "persist this retry context",
-      historyIndex: 0,
       status: "dispatched",
       dispatchCount: 1,
       turnId: null,
-      disconnectedAt: null,
-      resumeConfirmedAt: null,
-      // turnTarget is set by markRunningFromUserDispatch (optimistic running state)
-      turnTarget: expect.any(String),
-      lastError: null,
+      turnTarget: null,
     });
+    expect(persistedWithRecovery?.pendingCodexTurns?.[0]?.lastError).toBeNull();
   });
 
   it("restoreFromDisk: preserves unexpected raw Codex pendingMessages without auto-migrating them", async () => {
@@ -5716,7 +5867,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const firstRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstRetryCall).toBeDefined();
     const retried = ((firstRetryCall as unknown as [any])[0]) as any;
-    expect(retried.content).toBe("implement the feature and run tests");
+    expect(getCodexStartPendingInputs(retried)[0]?.content).toBe("implement the feature and run tests");
   });
 
   it("retries image user message when resumed turn is inProgress but thread is idle", async () => {
@@ -5764,13 +5915,12 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "user_message",
-        content: expect.stringContaining("implement the fix from this screenshot"),
-        local_images: ["/tmp/companion-images/img-1.transport.jpeg"],
-      }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const retriedImageCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
+    expect(retriedImageMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
     const retried = ((firstImageRetryCall as unknown as [any])[0]) as any;
@@ -7891,8 +8041,8 @@ describe("Codex turn-start failure re-queue", () => {
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages).toHaveLength(0);
-    expect(getPendingCodexTurn(session)).toMatchObject({
-      adapterMsg: failedMsg,
+    expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
+      firstContent: "hello",
       status: "dispatched",
       dispatchCount: 2,
     });
@@ -7914,13 +8064,15 @@ describe("Codex turn-start failure re-queue", () => {
     bridge.attachCodexAdapter("s1", adapter2 as any);
     emitCodexSessionReady(adapter2, { cliSessionId: "thread-reattach" });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "hello" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const reattachedCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const reattachedMsg = reattachedCalls[0]?.[0] as any;
+    expect(reattachedMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(reattachedMsg)[0]?.content).toBe("hello");
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages).toHaveLength(0);
-    expect(getPendingCodexTurn(session)).toMatchObject({
-      adapterMsg: { type: "user_message", content: "hello" },
+    expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
+      firstContent: "hello",
       status: "dispatched",
     });
   });
@@ -7978,13 +8130,15 @@ describe("Codex turn-start failure re-queue", () => {
 
     adapter1.emitTurnStartFailed({ type: "user_message", content: "replay me" });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "replay me" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const replayedCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const replayedMsg = replayedCalls[0]?.[0] as any;
+    expect(replayedMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(replayedMsg)[0]?.content).toBe("replay me");
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages).toHaveLength(0);
-    expect(getPendingCodexTurn(session)).toMatchObject({
-      adapterMsg: { type: "user_message", content: "replay me" },
+    expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
+      firstContent: "replay me",
       status: "dispatched",
     });
   });
@@ -8263,12 +8417,9 @@ describe("Codex broken-session recovery regression", () => {
     await flush();
 
     const session = bridge.getSession(sid)!;
-    expect(getPendingCodexTurn(session)).toMatchObject({
-      adapterMsg: expect.objectContaining({
-        type: "user_message",
-        local_images: ["/tmp/companion-images/img-140.transport.jpeg"],
-        content: expect.stringContaining(expectedAttachmentPath),
-      }),
+    expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
+      firstContentContaining: expectedAttachmentPath,
+      firstLocalImages: ["/tmp/companion-images/img-140.transport.jpeg"],
     });
 
     adapter1.emitTurnStarted("turn-image-140");
@@ -8302,10 +8453,8 @@ describe("Codex broken-session recovery regression", () => {
       lastError: "Transport closed",
     });
     expect(session.pendingMessages).toHaveLength(0);
-    expect(session.pendingCodexTurns[1]).toMatchObject({
-      adapterMsg: { type: "user_message", content: "Hello" },
-      status: "queued",
-    });
+    expect(session.pendingCodexTurns[1]).toBeUndefined();
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("Hello");
     expect(session.isGenerating).toBe(false);
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -8352,13 +8501,16 @@ describe("Codex broken-session recovery regression", () => {
     adapter3.emitSessionMeta({ cliSessionId: "thread-recovered", model: "gpt-5.3-codex", cwd: "/repo" });
 
     expect(adapter3.sendBrowserMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "queued behind broken turn" }),
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: expect.arrayContaining([
+          expect.objectContaining({ content: "queued behind broken turn" }),
+        ]),
+      }),
     );
     expect(session.pendingMessages).toHaveLength(0);
-    expect(session.pendingCodexTurns[1]).toMatchObject({
-      adapterMsg: { type: "user_message", content: "queued behind broken turn" },
-      status: "queued",
-    });
+    expect(session.pendingCodexTurns[1]).toBeUndefined();
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("queued behind broken turn");
 
     adapter3.emitBrowserMessage({
       type: "result",
@@ -8376,9 +8528,9 @@ describe("Codex broken-session recovery regression", () => {
       },
     } as any);
 
-    expect(adapter3.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "queued behind broken turn" }),
-    );
+    const resumedQueuedMsg = (adapter3.sendBrowserMessage.mock.calls as any[])[1]?.[0];
+    expect(resumedQueuedMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(resumedQueuedMsg)[0]?.content).toBe("queued behind broken turn");
   });
 
   it("ignores stale turn-start and init-error callbacks after a replacement adapter attaches", () => {
@@ -8710,6 +8862,11 @@ describe("Codex resumed-turn recovery", () => {
       type: "user_message",
       content: "Then add the reconnect details",
     }));
+    await Promise.resolve();
+    const steeredPendingId = bridge.getSession(sid)?.pendingCodexInputs[0]?.id;
+    expect(steeredPendingId).toBeDefined();
+    if (!steeredPendingId) throw new Error("missing steered pending input");
+    adapter1.emitTurnSteered("turn-rearm-resumed-followup-2", [steeredPendingId]);
 
     adapter1.emitBrowserMessage({
       type: "result",
@@ -8738,6 +8895,8 @@ describe("Codex resumed-turn recovery", () => {
     const promotedSession = bridge.getSession(sid)!;
     expect(getPendingCodexTurn(promotedSession)).toMatchObject({
       userContent: "Then add the reconnect details",
+      status: "backend_acknowledged",
+      turnId: "turn-rearm-resumed-followup-2",
       turnTarget: "queued",
     });
     expect(promotedSession.isGenerating).toBe(true);
@@ -8845,9 +9004,11 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "retry me" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const retryCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const retryMsg = retryCalls[0]?.[0] as any;
+    expect(retryMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(retryMsg)[0]?.content).toBe("retry me");
     const session = bridge.getSession(sid)!;
     expect(getPendingCodexTurn(session)).not.toBeNull();
   });
@@ -8890,9 +9051,11 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "plan this safely" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const reasoningRetryCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const reasoningRetryMsg = reasoningRetryCalls[0]?.[0] as any;
+    expect(reasoningRetryMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(reasoningRetryMsg)[0]?.content).toBe("plan this safely");
     const session = bridge.getSession(sid)!;
     expect(getPendingCodexTurn(session)).not.toBeNull();
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -8934,9 +9097,11 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "resume without last turn" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const missingTurnRetryCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const missingTurnRetryMsg = missingTurnRetryCalls[0]?.[0] as any;
+    expect(missingTurnRetryMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(missingTurnRetryMsg)[0]?.content).toBe("resume without last turn");
   });
 
   it("retries stale idle-thread resumes even when disconnect happened before turn id was recorded", async () => {
@@ -8978,9 +9143,11 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "retry the orphaned dispatch" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const orphanedRetryCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const orphanedRetryMsg = orphanedRetryCalls[0]?.[0] as any;
+    expect(orphanedRetryMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(orphanedRetryMsg)[0]?.content).toBe("retry the orphaned dispatch");
     expect((getPendingCodexTurn(bridge.getSession(sid)!) as any)?.turnId).toBeNull();
   });
 
@@ -9047,13 +9214,12 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "user_message",
-        content: expect.stringContaining("describe this screenshot"),
-        local_images: ["/tmp/companion-images/img-1.transport.jpeg"],
-      }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const retriedImageCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
+    expect(retriedImageMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
   });
 
   it("retries when resumed snapshot lastTurn does not match pending disconnected turn", async () => {
@@ -9095,9 +9261,11 @@ describe("Codex resumed-turn recovery", () => {
       },
     });
 
-    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "retry unmatched turn" }),
-    );
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
+    const unmatchedRetryCalls = adapter2.sendBrowserMessage.mock.calls as any[];
+    const unmatchedRetryMsg = unmatchedRetryCalls[0]?.[0] as any;
+    expect(unmatchedRetryMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(unmatchedRetryMsg)[0]?.content).toBe("retry unmatched turn");
   });
 
   it("synthesizes missing tool result previews from terminal resumed turns", async () => {
@@ -9666,7 +9834,7 @@ describe("Codex resumed-turn recovery", () => {
     const firstToolRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstToolRetryCall).toBeDefined();
     const retried = (((firstToolRetryCall as unknown as [any])[0]) as any);
-    expect(retried.content).toBe("run a command");
+    expect(getCodexStartPendingInputs(retried)[0]?.content).toBe("run a command");
 
     // No "non-text tool activity" error sent
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -9976,9 +10144,11 @@ describe("Codex /compact passthrough", () => {
     adapter.emitTurnStarted("turn-compact");
 
     // Adapter should receive the message.
-    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "/compact" }),
-    );
+    expect(adapter.sendBrowserMessage).toHaveBeenCalled();
+    const compactCalls = adapter.sendBrowserMessage.mock.calls as any[];
+    const compactMsg = compactCalls[0]?.[0] as any;
+    expect(compactMsg).toBeDefined();
+    expect(getCodexStartPendingInputs(compactMsg)[0]?.content).toBe("/compact");
 
     // User message is recorded and generation begins.
     const session = bridge.getSession("s1")!;
@@ -10002,9 +10172,11 @@ describe("Codex /compact passthrough", () => {
         content,
       }));
 
-      expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "user_message", content }),
-      );
+      expect(adapter.sendBrowserMessage).toHaveBeenCalled();
+      const compactVariationCalls = adapter.sendBrowserMessage.mock.calls as any[];
+      const compactVariationMsg = compactVariationCalls[0]?.[0] as any;
+      expect(compactVariationMsg).toBeDefined();
+      expect(getCodexStartPendingInputs(compactVariationMsg)[0]?.content).toBe(content);
     }
   });
 });
@@ -10030,16 +10202,16 @@ describe("Codex injected user_message metadata", () => {
     await Promise.resolve();
 
     const session = bridge.getSession(sid)!;
-    const userMsgs = session.messageHistory.filter((m: any) => m.type === "user_message");
-    expect(userMsgs).toHaveLength(1);
-    expect((userMsgs[0] as any).agentSource).toEqual({
+    expect(session.messageHistory.filter((m: any) => m.type === "user_message")).toHaveLength(0);
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]?.agentSource).toEqual({
       sessionId: "herd-events",
       sessionLabel: "Herd Events",
     });
 
     const outbound = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const broadcastUser = outbound.find((m: any) => m.type === "user_message");
-    expect(broadcastUser?.agentSource).toEqual({
+    const broadcastPending = outbound.find((m: any) => m.type === "codex_pending_inputs");
+    expect(broadcastPending?.inputs?.[0]?.agentSource).toEqual({
       sessionId: "herd-events",
       sessionLabel: "Herd Events",
     });
@@ -10674,6 +10846,111 @@ describe("Codex user_message takode events", () => {
   });
 });
 
+describe("Codex explicit stop semantics", () => {
+  it("clears queued follow-up turns on explicit user interrupt while preserving pending inputs", async () => {
+    const sid = "codex-stop-clears-queue";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stop-clears-queue" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "initial active turn",
+    }));
+    adapter.emitTurnStarted("turn-initial");
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "queued follow-up after stop",
+    }));
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("queued follow-up after stop");
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "codex_steer_pending",
+      expectedTurnId: "turn-initial",
+    }));
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "interrupt",
+      interruptSource: "user",
+    }));
+    await Promise.resolve();
+
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("queued follow-up after stop");
+  });
+});
+
+describe("Codex active-turn steering", () => {
+  it("steers a follow-up immediately instead of queueing a future turn", async () => {
+    const sid = "codex-steer-active-turn";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-active" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "initial turn",
+    }));
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-initial");
+
+    const session = bridge.getSession(sid)!;
+    const beforeCount = session.pendingCodexTurns.length;
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "follow-up steer",
+    }));
+    await Promise.resolve();
+
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("follow-up steer");
+    expect(session.pendingCodexTurns.length).toBe(beforeCount);
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "codex_steer_pending",
+      expectedTurnId: "turn-initial",
+    }));
+  });
+
+  it("restores pending Codex input to cancelable state when steer delivery fails", async () => {
+    const sid = "codex-steer-failure";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-failure" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "initial turn",
+    }));
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-initial");
+
+    await bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "follow-up steer failure",
+    }));
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexInputs.find((input: any) => input.content === "follow-up steer failure")?.cancelable).toBe(false);
+
+    const pendingId = session.pendingCodexInputs.find((input: any) => input.content === "follow-up steer failure")?.id;
+    expect(pendingId).toBeTruthy();
+    if (!pendingId) throw new Error("missing pending Codex input id");
+    const ensuredPendingId: string = pendingId;
+    adapter.emitTurnSteerFailed([ensuredPendingId]);
+
+    expect(session.pendingCodexInputs.find((input: any) => input.id === ensuredPendingId)?.cancelable).toBe(true);
+  });
+});
+
 describe("Codex image transport", () => {
   // Prefer local image paths for Codex turn/start to avoid persisting large
   // data: URLs in thread history. Transport JPEG paths are preferred, with
@@ -10717,8 +10994,9 @@ describe("Codex image transport", () => {
     expect(firstImageCall).toBeDefined();
     const sentMsg = ((firstImageCall as unknown as [any])[0]) as any;
     const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
-    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
+    expect(sentMsg.type).toBe("codex_start_pending");
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
+    expect(sentMsg.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
     expect(sentMsg.images).toBeUndefined();
     expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
@@ -10755,8 +11033,9 @@ describe("Codex image transport", () => {
     expect(firstFallbackCall).toBeDefined();
     const sentMsg = ((firstFallbackCall as unknown as [any])[0]) as any;
     const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
-    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
+    expect(sentMsg.type).toBe("codex_start_pending");
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
+    expect(sentMsg.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
     expect(sentMsg.images).toBeUndefined();
     expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
@@ -10800,9 +11079,10 @@ describe("Codex image transport", () => {
     const sentMsg = ((firstMultiImageCall as unknown as [any])[0]) as any;
     const expectedPath1 = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     const expectedPath2 = join(homedir(), ".companion", "images", "s1", "img-2.orig.png");
-    expect(sentMsg.content).toContain(`Attachment 1: ${expectedPath1}`);
-    expect(sentMsg.content).toContain(`Attachment 2: ${expectedPath2}`);
-    expect(sentMsg.local_images).toEqual([
+    expect(sentMsg.type).toBe("codex_start_pending");
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath1}`);
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 2: ${expectedPath2}`);
+    expect(sentMsg.inputs[0]?.local_images).toEqual([
       "/tmp/companion-images/img-1.transport.jpeg",
       "/tmp/companion-images/img-2.transport.jpeg",
     ]);
