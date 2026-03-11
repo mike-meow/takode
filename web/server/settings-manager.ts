@@ -48,6 +48,9 @@ export interface CompanionSettings {
   updatedAt: number;
 }
 
+/** Enhancement output style: "default" = clean prose paragraphs, "bullet" = structured bullet points. */
+export type EnhancementMode = "default" | "bullet";
+
 /** Configuration for voice transcription (STT + optional LLM enhancement). */
 export interface TranscriptionConfig {
   /** OpenAI-compatible API key (used for both Whisper STT and enhancement) */
@@ -60,6 +63,8 @@ export interface TranscriptionConfig {
   enhancementModel: string;
   /** Comma-separated custom vocabulary terms for STT recognition (e.g. "Takode, LiteLLM, worktree") */
   customVocabulary?: string;
+  /** Enhancement output style. Optional for backward compat — undefined treated as "default". */
+  enhancementMode?: EnhancementMode;
 }
 
 export type EditorKind = "vscode-local" | "vscode-remote" | "cursor" | "none";
@@ -106,7 +111,7 @@ let settings: CompanionSettings = {
   autoApprovalTimeoutSeconds: 45,
   namerConfig: { backend: "claude" },
   autoNamerEnabled: true,
-  transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini", customVocabulary: "" },
+  transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini", customVocabulary: "", enhancementMode: "default" },
   editorConfig: { editor: "none" },
   updatedAt: 0,
 };

@@ -320,6 +320,7 @@ export interface TranscriptionConfig {
   enhancementEnabled: boolean;
   enhancementModel: string;
   customVocabulary?: string;
+  enhancementMode?: "default" | "bullet";
 }
 
 export type EditorKind = "vscode-local" | "vscode-remote" | "cursor" | "none";

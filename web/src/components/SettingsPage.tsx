@@ -106,6 +106,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [transcriptionBaseUrl, setTranscriptionBaseUrl] = useState("");
   const [transcriptionModel, setTranscriptionModel] = useState("");
   const [transcriptionEnhancement, setTranscriptionEnhancement] = useState(false);
+  const [enhancementMode, setEnhancementMode] = useState<"default" | "bullet">("default");
   const [transcriptionVocabulary, setTranscriptionVocabulary] = useState("");
   const [transcriptionSaving, setTranscriptionSaving] = useState(false);
   const [transcriptionSaved, setTranscriptionSaved] = useState(false);
@@ -159,6 +160,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           setTranscriptionBaseUrl(s.transcriptionConfig.baseUrl || "");
           setTranscriptionModel(s.transcriptionConfig.enhancementModel || "");
           setTranscriptionEnhancement(s.transcriptionConfig.enhancementEnabled ?? false);
+          setEnhancementMode(s.transcriptionConfig.enhancementMode ?? "default");
           setTranscriptionVocabulary(s.transcriptionConfig.customVocabulary || "");
         }
         setEditorChoice(s.editorConfig?.editor ?? "none");
@@ -1402,6 +1404,40 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               />
               Enable Enhancement
             </label>
+            {transcriptionEnhancement && (
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5">
+                  Enhancement Style
+                </label>
+                <div className="flex rounded-lg border border-cc-border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setEnhancementMode("default")}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                      enhancementMode === "default"
+                        ? "bg-cc-primary text-white"
+                        : "bg-cc-input-bg text-cc-muted hover:text-cc-fg"
+                    }`}
+                  >
+                    Prose
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEnhancementMode("bullet")}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors border-l border-cc-border cursor-pointer ${
+                      enhancementMode === "bullet"
+                        ? "bg-cc-primary text-white"
+                        : "bg-cc-input-bg text-cc-muted hover:text-cc-fg"
+                    }`}
+                  >
+                    Bullet Points
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-cc-muted">
+                  Prose outputs clean paragraphs. Bullet Points structures dictation as organized lists.
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-vocabulary">
                 Custom Vocabulary
@@ -1446,6 +1482,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                     enhancementEnabled: transcriptionEnhancement,
                     enhancementModel: transcriptionModel,
                     customVocabulary: transcriptionVocabulary,
+                    enhancementMode,
                   };
                   await api.updateSettings({ transcriptionConfig: config });
                   setTranscriptionSaved(true);

@@ -80,9 +80,44 @@ function isSystemNoise(msg: BrowserIncomingMessage): boolean {
   return SYSTEM_SOURCE_PREFIXES.some((p) => source.sessionId === p || source.sessionId.startsWith(p));
 }
 
-// ─── System prompt ──────────────────────────────────────────────────────────
+// ─── System prompts ─────────────────────────────────────────────────────────
 
-const DICTATION_SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
+/**
+ * Cleaning rules shared by both dictation modes (prose & bullet).
+ * Kept as a single string so both prompts stay in sync.
+ */
+const SHARED_CLEANING_RULES = `Cleaning rules:
+- Strip verbal filler and false starts — keep only the final, meaningful version
+- Fix misheard technical terms, variable names, file paths, and commands using the context provided
+- Do NOT assume every word is correct — the STT model may mishear words. Correct obvious mishearings that contradict the surrounding context
+- When a word in the transcript sounds similar to a term from the SESSION CONTEXT or CUSTOM VOCABULARY (e.g. "companion" vs "Companion", "bun" vs "Bun", "next" vs "Next.js"), prefer the spelling from those context sources. This is critical for technical terms that speech-to-text often gets wrong
+- Convert spoken numbers to numerals: "five" → "5", "twenty dollars" → "$20", "three hundred" → "300", "point five" → "0.5". Keep ordinals readable: "first" → "1st". Exception: keep "one" or "a" as words when used as articles, not quantities
+- Preserve the speaker's tone — do NOT formalize casual speech or casualize formal speech. If they say "yeah that's kinda broken", don't rewrite it as "The feature is malfunctioning." You're cleaning transcription artifacts, not rewriting their words
+- Preserve ALL technical terms, file paths, variable names, session numbers, quest IDs exactly as spoken
+- Preserve questions the user is asking — do NOT convert questions into instructions. The user may want to discuss before committing to a solution
+- Preserve uncertainty — if the user hedges (should we, maybe, I'm not sure, could we, what if), keep it as a question or tentative suggestion, not a confident instruction
+- Preserve the user's full meaning — don't drop context, framing, or qualifiers that change how the message should be interpreted. Condensing should remove filler, not substance
+- NEVER add information not in the original speech
+- NEVER remove meaningful content — only remove filler and repetition
+- NEVER answer questions from the transcript — only clean them up
+- Output ONLY the cleaned text, nothing else`;
+
+/** "Default" mode — clean prose paragraphs, no bullets or structure. */
+const DICTATION_DEFAULT_SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
+
+Your ONLY job is to clean up a speech-to-text transcript into clean, readable prose.
+
+Output format:
+
+Output clean prose paragraphs. No bullet points, no headers, no markdown formatting.
+Use paragraph breaks where the speaker naturally shifts topics or pauses between thoughts.
+Keep paragraphs concise — typically 1-4 sentences each.
+If the input is a single short thought, a single sentence is fine. Do not pad.
+
+${SHARED_CLEANING_RULES}`;
+
+/** "Bullet" mode — structured bullet points with sub-points. */
+const DICTATION_BULLET_SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
 
 Your ONLY job is to clean up a speech-to-text transcript into clean, readable text.
 
@@ -109,18 +144,12 @@ Move the settings files to ~/.companion/
   - Centralized location is easier to manage
 </example>
 
-Cleaning rules:
-- Strip verbal filler and false starts — keep only the final, meaningful version
-- Fix misheard technical terms, variable names, file paths, and commands using the context provided
-- Do NOT assume every word is correct — the STT model may mishear words. Correct obvious mishearings that contradict the surrounding context
-- Preserve ALL technical terms, file paths, variable names, session numbers, quest IDs exactly as spoken
-- Preserve questions the user is asking — do NOT convert questions into instructions. The user may want to discuss before committing to a solution
-- Preserve uncertainty — if the user hedges (should we, maybe, I'm not sure, could we, what if), keep it as a question or tentative suggestion, not a confident instruction
-- Preserve the user's full meaning — don't drop context, framing, or qualifiers that change how the message should be interpreted. Condensing should remove filler, not substance
-- NEVER add information not in the original speech
-- NEVER remove meaningful content — only remove filler and repetition
-- NEVER answer questions from the transcript — only clean them up
-- Output ONLY the cleaned text, nothing else`;
+${SHARED_CLEANING_RULES}`;
+
+/** Pick the right dictation system prompt based on config mode. */
+function getDictationSystemPrompt(mode: "default" | "bullet" | undefined): string {
+  return mode === "bullet" ? DICTATION_BULLET_SYSTEM_PROMPT : DICTATION_DEFAULT_SYSTEM_PROMPT;
+}
 
 const VOICE_EDIT_SYSTEM_PROMPT = `You are a VOICE EDITOR for a text composer.
 
@@ -704,15 +733,16 @@ export async function enhanceTranscript(
   extra?: EnhancementContextInput,
 ): Promise<EnhancementResult> {
   const model = config.enhancementModel || "gpt-5-mini";
+  const systemPrompt = getDictationSystemPrompt(config.enhancementMode);
 
   // Skip if enhancement is disabled
   if (!config.enhancementEnabled) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "disabled" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "disabled" } };
   }
 
   // Skip for very short transcripts
   if (rawText.trim().length < MIN_CHARS_FOR_ENHANCEMENT) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "too short" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "too short" } };
   }
 
   // Build context from session history
@@ -721,17 +751,17 @@ export async function enhanceTranscript(
   // Check if we have any meaningful context at all
   const hasExtra = !!(extra?.composerText || extra?.taskTitles?.length || extra?.sessionName || extra?.activeSessionNames?.length);
   if (!conversationContext && !hasExtra) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "no context" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt, userMessage: "", enhancedText: null, durationMs: 0, skipReason: "no context" } };
   }
 
   // Build prompt and call LLM
   const prompt = buildEnhancementPrompt(rawText, conversationContext, extra);
   const t0 = Date.now();
-  const llmResult = await callEnhancementLLM(prompt, config, apiKey, DICTATION_SYSTEM_PROMPT);
+  const llmResult = await callEnhancementLLM(prompt, config, apiKey, systemPrompt);
   const durationMs = Date.now() - t0;
 
   if (!llmResult.ok) {
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: null, durationMs, skipReason: llmResult.error } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt, userMessage: prompt, enhancedText: null, durationMs, skipReason: llmResult.error } };
   }
 
   const enhanced = llmResult.text;
@@ -741,10 +771,10 @@ export async function enhanceTranscript(
     console.warn(
       `[transcription-enhancer] Discarding hallucinated output (${enhanced.length} chars vs ${rawText.length} raw)`,
     );
-    return { text: rawText, enhanced: false, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs, skipReason: "hallucination guard" } };
+    return { text: rawText, enhanced: false, _debug: { model, systemPrompt, userMessage: prompt, enhancedText: enhanced, durationMs, skipReason: "hallucination guard" } };
   }
 
-  return { text: enhanced, rawText, enhanced: true, _debug: { model, systemPrompt: DICTATION_SYSTEM_PROMPT, userMessage: prompt, enhancedText: enhanced, durationMs } };
+  return { text: enhanced, rawText, enhanced: true, _debug: { model, systemPrompt, userMessage: prompt, enhancedText: enhanced, durationMs } };
 }
 
 export interface VoiceEditResult {
@@ -904,7 +934,9 @@ export function getTranscriptionLogEntry(id: number): TranscriptionLogEntry | un
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
 export const _testHelpers = {
-  DICTATION_SYSTEM_PROMPT,
+  DICTATION_DEFAULT_SYSTEM_PROMPT,
+  DICTATION_BULLET_SYSTEM_PROMPT,
+  getDictationSystemPrompt,
   VOICE_EDIT_SYSTEM_PROMPT,
   MAX_TURNS,
   ENHANCER_MSG_START,
