@@ -305,6 +305,7 @@ export interface AppSettings {
   transcriptionConfig: TranscriptionConfig;
   editorConfig: EditorConfig;
   restartSupported: boolean;
+  claudeDefaultModel?: string;
 }
 
 /** Discriminated union for session auto-namer backend. */

@@ -2288,6 +2288,7 @@ describe("GET /api/settings", () => {
       editorConfig: { editor: "none" },
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
+      claudeDefaultModel: expect.any(String),
     });
   });
 
@@ -2329,6 +2330,7 @@ describe("GET /api/settings", () => {
       editorConfig: { editor: "none" },
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
+      claudeDefaultModel: expect.any(String),
     });
   });
 

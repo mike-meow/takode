@@ -47,6 +47,7 @@ vi.mock("../api.js", () => ({
   api: {
     gitPull: vi.fn().mockResolvedValue({ success: true, output: "", git_ahead: 0, git_behind: 0 }),
     getBackendModels: (...args: unknown[]) => mockGetBackendModels(...args),
+    getSettings: vi.fn().mockResolvedValue({ claudeDefaultModel: "" }),
     refreshSessionSkills: (...args: unknown[]) => mockRefreshSessionSkills(...args),
     transcribe: (...args: unknown[]) => mockTranscribe(...args),
   },

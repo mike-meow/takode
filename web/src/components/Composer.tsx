@@ -368,10 +368,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
-  // Filter out the "Default" (value="") option — it makes sense for new session
-  // creation but not mid-session switching (empty model string causes the model
-  // selector to disappear since sessionData.model becomes falsy).
-  const claudeModelOptions = (dynamicClaudeModels || getModelsForBackend("claude")).filter((m) => m.value !== "");
+  // Resolve the "Default" option: replace the empty-value placeholder with
+  // the user's actual configured model from ~/.claude/settings.json so we
+  // never send an empty string to set_model (which would make the model
+  // selector disappear since sessionData.model becomes falsy).
+  const claudeModelOptions = useMemo(() => {
+    const raw = dynamicClaudeModels || getModelsForBackend("claude");
+    return raw.filter((m) => m.value !== "");
+  }, [dynamicClaudeModels]);
   const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionData?.repo_root, sessionData?.cwd);
   const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionState?.selection
     ? resolveVsCodeSelectionForSession(vscodeSelectionState.selection, sessionSelectionRoot)
@@ -392,11 +396,34 @@ export function Composer({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (isCodex) return;
     let cancelled = false;
-    api.getBackendModels("claude").then((models) => {
-      if (cancelled || models.length === 0) return;
-      setDynamicClaudeModels(toModelOptions(models));
-    }).catch(() => {
-      // Fall back to static model list silently.
+    // Fetch dynamic models and the user's configured default in parallel
+    Promise.all([
+      api.getBackendModels("claude").catch(() => [] as { value: string; label: string; description: string }[]),
+      api.getSettings().catch(() => null),
+    ]).then(([models, settings]) => {
+      if (cancelled) return;
+      const options = models.length > 0 ? toModelOptions(models) : [];
+      // If the user has a default model configured in ~/.claude/settings.json,
+      // prepend a "Default (model)" option that sends the actual model ID
+      // instead of an empty string (which would hide the model selector).
+      const defaultModel = settings?.claudeDefaultModel;
+      if (defaultModel) {
+        const defaultOption: ModelOption = {
+          value: defaultModel,
+          label: `Default (${defaultModel})`,
+          icon: "\u25C6",
+        };
+        // Use dynamic models if available, otherwise fall back to static list
+        // (filtered to remove the empty-value "Default" placeholder).
+        const baseOptions = options.length > 0
+          ? options
+          : getModelsForBackend("claude").filter((m) => m.value !== "");
+        setDynamicClaudeModels([defaultOption, ...baseOptions]);
+      } else if (options.length > 0) {
+        setDynamicClaudeModels(options);
+      }
+      // If neither dynamic models nor default model are available,
+      // dynamicClaudeModels stays null and the static fallback is used.
     });
     return () => { cancelled = true; };
   }, [isCodex]);

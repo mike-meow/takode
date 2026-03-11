@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { resolveBinary, getEnrichedPath } from "../path-resolver.js";
 import { getSettings, updateSettings, getServerName, setServerName, getServerId, type NamerConfig, type TranscriptionConfig, type EditorConfig } from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
@@ -95,8 +98,17 @@ export function createSettingsRoutes(ctx: RouteContext) {
     return { editor: "none" };
   }
 
-  api.get("/settings", (c) => {
+  api.get("/settings", async (c) => {
     const settings = getSettings();
+    // Read Claude's configured default model from ~/.claude/settings.json
+    let claudeDefaultModel = "";
+    try {
+      const raw = await readFile(join(homedir(), ".claude", "settings.json"), "utf-8");
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.model === "string") claudeDefaultModel = parsed.model;
+    } catch {
+      // File doesn't exist or isn't valid JSON — no default model configured
+    }
     return c.json({
       serverName: getServerName(),
       serverId: getServerId(),
@@ -115,6 +127,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       editorConfig: settings.editorConfig,
       restartSupported: !!process.env.COMPANION_SUPERVISED,
       logFile: getLogPath(),
+      claudeDefaultModel,
     });
   });
 
