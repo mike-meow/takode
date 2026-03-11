@@ -1,26 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
-/**
- * Hook that tracks whether an element is visible in the viewport.
- * Uses IntersectionObserver for efficient, passive detection.
- */
-export function useIsVisible(ref: RefObject<HTMLElement | null>) {
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
-      { threshold: 0 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return isVisible;
-}
+/** Minimum distance (px) between header and footer to show the collapse button. */
+const MIN_HEIGHT_FOR_FOOTER = 200;
 
 /** Walk up the DOM to find the nearest scrollable ancestor. */
 function findScrollParent(el: HTMLElement): HTMLElement | null {
@@ -56,15 +38,9 @@ function collapseAndSnap(
 }
 
 /**
- * A subtle collapse button that appears at the bottom of expanded content
- * when the header (toggle) has scrolled out of view. Clicking it collapses
- * the section and scrolls the header back into view.
- *
- * Usage:
- *   const headerRef = useRef<HTMLButtonElement>(null);
- *   // ... <button ref={headerRef} onClick={...}>Header</button> ...
- *   // ... expanded content ...
- *   <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
+ * A compact collapse button rendered at the bottom of expanded content.
+ * Only visible when the content is tall enough (header is far from footer),
+ * but always occupies zero layout space when hidden to prevent jank.
  */
 export function CollapseFooter({
   headerRef,
@@ -75,19 +51,34 @@ export function CollapseFooter({
   onCollapse: () => void;
   label?: string;
 }) {
-  const headerVisible = useIsVisible(headerRef);
+  const footerRef = useRef<HTMLButtonElement>(null);
+  const [tall, setTall] = useState(false);
 
-  if (headerVisible) return null;
+  // Measure distance between header and footer after mount/content changes.
+  // This is a one-shot check — content doesn't resize after expansion.
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    const footer = footerRef.current;
+    if (!header || !footer) return;
+    const distance = footer.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+    setTall(distance >= MIN_HEIGHT_FOR_FOOTER);
+  });
+
+  if (!tall) {
+    // Render an invisible placeholder so layout doesn't shift if content grows
+    return <button ref={footerRef} className="h-0 w-0 overflow-hidden" aria-hidden />;
+  }
 
   return (
     <button
+      ref={footerRef}
       onClick={(e) => collapseAndSnap(e, headerRef, onCollapse)}
-      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] text-cc-muted/50 hover:text-cc-muted hover:bg-cc-hover/40 transition-colors cursor-pointer border-t border-cc-border/30"
+      className="w-full flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-cc-muted/40 hover:text-cc-muted hover:bg-cc-hover/40 transition-colors cursor-pointer"
     >
       <svg
         viewBox="0 0 16 16"
         fill="currentColor"
-        className="w-3 h-3 shrink-0"
+        className="w-2.5 h-2.5 shrink-0"
       >
         <path d="M4 10l4-4 4 4" />
       </svg>
@@ -98,7 +89,7 @@ export function CollapseFooter({
 
 /**
  * A variant for turn-level collapse (matches the TurnCollapseBar style).
- * Appears at the bottom of expanded turn entries when the top bar scrolls away.
+ * Always visible at the bottom of expanded turn entries.
  */
 export function TurnCollapseFooter({
   headerRef,
@@ -107,20 +98,16 @@ export function TurnCollapseFooter({
   headerRef: RefObject<HTMLElement | null>;
   onCollapse: () => void;
 }) {
-  const headerVisible = useIsVisible(headerRef);
-
-  if (headerVisible) return null;
-
   return (
     <button
       onClick={(e) => collapseAndSnap(e, headerRef, onCollapse)}
-      className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded hover:bg-cc-hover/40 transition-colors cursor-pointer text-[11px] text-cc-muted/50 hover:text-cc-muted font-mono-code"
+      className="w-full flex items-center justify-center gap-1 py-0.5 px-2 rounded hover:bg-cc-hover/40 transition-colors cursor-pointer text-[10px] text-cc-muted/40 hover:text-cc-muted font-mono-code"
       title="Collapse this turn"
     >
       <svg
         viewBox="0 0 16 16"
         fill="currentColor"
-        className="w-3 h-3 shrink-0"
+        className="w-2.5 h-2.5 shrink-0"
       >
         <path d="M4 10l4-4 4 4" />
       </svg>
