@@ -12,9 +12,10 @@ export interface PendingSession {
   createOpts: CreateSessionOpts;       // stored for retry
   progress: CreationProgressEvent[];
   error: string | null;
-  status: "creating" | "error" | "succeeded";
+  status: "draft" | "creating" | "error" | "succeeded";
   realSessionId: string | null;        // set on success, before cleanup
   cwd: string | null;                  // for sidebar display (folder name)
+  groupKey?: string | null;            // originating sidebar group for per-group defaults
   createdAt: number;
 }
 import { scopedGetItem, scopedSetItem, scopedRemoveItem } from "./utils/scoped-storage.js";

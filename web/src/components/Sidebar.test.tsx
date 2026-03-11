@@ -8,7 +8,7 @@ import type { SessionState, SdkSessionInfo } from "../types.js";
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
-const mockQueuePendingSession = vi.fn();
+const mockCreatePendingDraftSession = vi.fn();
 const mockGetGroupNewSessionDefaults = vi.fn();
 const mockSaveGroupNewSessionDefaults = vi.fn();
 
@@ -20,7 +20,7 @@ vi.mock("../ws.js", () => ({
 
 vi.mock("../utils/pending-creation.js", () => ({
   cancelPendingCreation: vi.fn(),
-  queuePendingSession: (...args: unknown[]) => mockQueuePendingSession(...args),
+  createPendingDraftSession: (...args: unknown[]) => mockCreatePendingDraftSession(...args),
 }));
 
 vi.mock("../utils/new-session-defaults.js", () => ({
@@ -575,28 +575,19 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     expect(mockState.setShowNewSessionModal).not.toHaveBeenCalled();
     expect(mockGetGroupNewSessionDefaults).toHaveBeenCalledWith("/home/user/projects/myapp");
-    expect(mockSaveGroupNewSessionDefaults).toHaveBeenCalledWith(
-      "/home/user/projects/myapp",
-      expect.objectContaining({
+    expect(mockSaveGroupNewSessionDefaults).not.toHaveBeenCalled();
+    expect(mockCreatePendingDraftSession).toHaveBeenCalledWith({
+      groupKey: "/home/user/projects/myapp",
+      defaults: {
         backend: "codex",
-        useWorktree: false,
-      }),
-    );
-    expect(mockQueuePendingSession).toHaveBeenCalledWith({
-      backend: "codex",
-      createOpts: {
         model: "gpt-5.4",
-        permissionMode: "bypassPermissions",
-        cwd: "/home/user/projects/myapp",
+        mode: "agent",
+        askPermission: false,
         envSlug: "prod",
-        useWorktree: undefined,
-        backend: "codex",
+        useWorktree: false,
         codexInternetAccess: true,
         codexReasoningEffort: "high",
-        assistantMode: undefined,
-        askPermission: false,
       },
-      cwd: "/home/user/projects/myapp",
     });
   });
 
