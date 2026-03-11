@@ -336,6 +336,7 @@ export function buildEnhancementPrompt(
   rawTranscript: string,
   conversationContext: string,
   extra?: EnhancementContextInput,
+  enhancementMode?: "default" | "bullet",
 ): string {
   const parts: string[] = [];
 
@@ -364,8 +365,10 @@ export function buildEnhancementPrompt(
   // 3. Transcript (narrowest — the raw audio to enhance)
   parts.push(`<TRANSCRIPT>\n${rawTranscript}\n</TRANSCRIPT>`);
 
-  // 4. Format reminder (last — recency bias)
-  parts.push("\nRemember: for 2+ sentences, use plain text lines for top-level points (no bullet marker) and indented \"  - \" for sub-points. Keep top-level lines short; put details in sub-points.");
+  // 4. Mode-specific format reminder (last — recency bias)
+  if (enhancementMode === "bullet") {
+    parts.push("\nRemember: for 2+ sentences, use plain text lines for top-level points (no bullet marker) and indented \"  - \" for sub-points. Keep top-level lines short; put details in sub-points.");
+  }
 
   return parts.join("\n");
 }
@@ -755,7 +758,7 @@ export async function enhanceTranscript(
   }
 
   // Build prompt and call LLM
-  const prompt = buildEnhancementPrompt(rawText, conversationContext, extra);
+  const prompt = buildEnhancementPrompt(rawText, conversationContext, extra, config.enhancementMode);
   const t0 = Date.now();
   const llmResult = await callEnhancementLLM(prompt, config, apiKey, systemPrompt);
   const durationMs = Date.now() - t0;
