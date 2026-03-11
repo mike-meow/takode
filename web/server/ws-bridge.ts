@@ -4300,6 +4300,18 @@ export class WsBridge {
       }
 
       session.state.model = msg.model;
+      // Initialize context usage details from the model name so the UI shows
+      // the context bar immediately, before the first result message arrives
+      // with actual token counts.
+      const inferredContextWindow = inferContextWindowFromModel(msg.model);
+      if (inferredContextWindow && !session.state.claude_token_details) {
+        session.state.claude_token_details = {
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedInputTokens: 0,
+          modelContextWindow: inferredContextWindow,
+        };
+      }
       // For containerized sessions, the CLI reports /workspace as its cwd.
       // Keep the host path (set by markContainerized()) for correct project grouping.
       if (!session.state.is_containerized) {
