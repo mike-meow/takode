@@ -3339,6 +3339,15 @@ export class WsBridge {
         return;
       }
 
+      // Persist task_notification in messageHistory so sub-agent completion
+      // survives reconnects — mirrors the WebSocket path in handleCLISystemMessage.
+      if (msg.type === "task_notification") {
+        session.messageHistory.push(msg);
+        this.broadcastToBrowsers(session, msg);
+        this.persistSession(session);
+        return;
+      }
+
       // Forward to all browsers + store in history
       this.broadcastToBrowsers(session, msg);
     });

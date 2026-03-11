@@ -11710,3 +11710,42 @@ describe("stuck session watchdog", () => {
     vi.useRealTimers();
   });
 });
+
+// ─── SDK task_notification forwarding ────────────────────────────────────────
+
+describe("Claude SDK task_notification forwarding", () => {
+  it("persists task_notification from SDK adapter to messageHistory and broadcasts to browser", () => {
+    // Validates that sub-agent completion notifications from Claude SDK sessions
+    // are persisted (surviving reconnects) and forwarded to browsers, enabling
+    // the floating agent chip UI to show sub-agent completion state.
+    const sid = "sdk-task-notif";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "task_notification",
+      task_id: "task-123",
+      tool_use_id: "tooluse-abc",
+      status: "completed",
+      summary: "Found 3 auth patterns",
+    });
+
+    // Should be broadcast to browser
+    const sent = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const notif = sent.find((m: any) => m.type === "task_notification");
+    expect(notif).toBeDefined();
+    expect(notif.tool_use_id).toBe("tooluse-abc");
+    expect(notif.status).toBe("completed");
+    expect(notif.summary).toBe("Found 3 auth patterns");
+
+    // Should be persisted in messageHistory
+    const session = bridge.getSession(sid)!;
+    const histNotif = session.messageHistory.find((m: any) => m.type === "task_notification");
+    expect(histNotif).toBeDefined();
+    expect((histNotif as any).tool_use_id).toBe("tooluse-abc");
+  });
+});

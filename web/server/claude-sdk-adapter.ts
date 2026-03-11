@@ -381,6 +381,21 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta> {
             type: "status_change",
             status: msg.status || "idle",
           } as any);
+        } else if (msg.subtype === "task_notification") {
+          // Forward background agent completion notifications so the bridge
+          // can persist them and the browser can show sub-agent chip state.
+          this.emitBrowserMessage({
+            type: "task_notification",
+            task_id: msg.task_id,
+            tool_use_id: msg.tool_use_id,
+            status: msg.status,
+            output_file: msg.output_file,
+            summary: msg.summary,
+          } as any);
+        } else if (msg.subtype === "compact_boundary") {
+          // Forward compaction boundary markers so the bridge can track
+          // compaction state for SDK sessions.
+          this.emitBrowserMessage(msg as BrowserIncomingMessage);
         }
         break;
       }
