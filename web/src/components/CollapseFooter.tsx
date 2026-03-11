@@ -1,8 +1,13 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
-/** Minimum distance (px) between header and footer to show the collapse button. */
-const MIN_HEIGHT_FOR_FOOTER = 200;
+/**
+ * Minimum distance (px) between header and footer to show the collapse button.
+ * Set high enough that the header would realistically be off-screen before the
+ * footer appears (~half a typical viewport). Too low and every short tool
+ * output gets a redundant "Collapse" button.
+ */
+const MIN_HEIGHT_FOR_FOOTER = 400;
 
 /** Walk up the DOM to find the nearest scrollable ancestor. */
 function findScrollParent(el: HTMLElement): HTMLElement | null {
