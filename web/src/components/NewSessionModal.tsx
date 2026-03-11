@@ -17,7 +17,7 @@ import {
 } from "../utils/backends.js";
 import type { BackendType } from "../types.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
-import { getGlobalNewSessionDefaults, saveGroupNewSessionDefaults } from "../utils/new-session-defaults.js";
+import { getGlobalNewSessionDefaults, getGroupNewSessionDefaults, saveGroupNewSessionDefaults } from "../utils/new-session-defaults.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
 import { YarnBallSpinner } from "./CatIcons.js";
@@ -42,18 +42,28 @@ function saveBranch(repoRoot: string, branchName: string) {
   scopedSetItem("cc-branch", JSON.stringify(map));
 }
 
-export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [backend, setBackend] = useState<BackendType>(() => getGlobalNewSessionDefaults().backend);
+export function NewSessionModal({ open, onClose, groupKey, groupCwd }: {
+  open: boolean;
+  onClose: () => void;
+  /** When set, pre-fill from this group's saved defaults */
+  groupKey?: string;
+  /** Working directory to pre-fill (typically the group's project root) */
+  groupCwd?: string;
+}) {
+  // Resolve defaults: group-specific when opening for a group, global otherwise
+  const defaults = groupKey ? getGroupNewSessionDefaults(groupKey) : getGlobalNewSessionDefaults();
+
+  const [backend, setBackend] = useState<BackendType>(() => defaults.backend);
   const [backends, setBackends] = useState<BackendInfo[]>([]);
-  const [model, setModel] = useState(() => getGlobalNewSessionDefaults().model);
-  const [mode, setMode] = useState(() => getGlobalNewSessionDefaults().mode);
-  const [cwd, setCwd] = useState(() => getRecentDirs()[0] || "");
+  const [model, setModel] = useState(() => defaults.model);
+  const [mode, setMode] = useState(() => defaults.mode);
+  const [cwd, setCwd] = useState(() => groupCwd || getRecentDirs()[0] || "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [dynamicModels, setDynamicModels] = useState<ModelOption[] | null>(null);
-  const [codexInternetAccess, setCodexInternetAccess] = useState(() => getGlobalNewSessionDefaults().codexInternetAccess);
-  const [codexReasoningEffort, setCodexReasoningEffort] = useState(() => getGlobalNewSessionDefaults().codexReasoningEffort);
-  const [askPermission, setAskPermission] = useState(() => getGlobalNewSessionDefaults().askPermission);
+  const [codexInternetAccess, setCodexInternetAccess] = useState(() => defaults.codexInternetAccess);
+  const [codexReasoningEffort, setCodexReasoningEffort] = useState(() => defaults.codexReasoningEffort);
+  const [askPermission, setAskPermission] = useState(() => defaults.askPermission);
 
   // Resume mode state
   const [resumeMode, setResumeMode] = useState(false);
@@ -66,7 +76,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
 
   // Environment state
   const [envs, setEnvs] = useState<CompanionEnv[]>([]);
-  const [selectedEnv, setSelectedEnv] = useState(() => getGlobalNewSessionDefaults().envSlug);
+  const [selectedEnv, setSelectedEnv] = useState(() => defaults.envSlug);
   const [showEnvDropdown, setShowEnvDropdown] = useState(false);
   const [showEnvManager, setShowEnvManager] = useState(false);
 
@@ -79,9 +89,9 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const [gitRepoInfo, setGitRepoInfo] = useState<GitRepoInfo | null>(null);
   const [repoInfoLoading, setRepoInfoLoading] = useState(false);
   const [useWorktree, setUseWorktree] = useState(
-    () => getGlobalNewSessionDefaults().useWorktree,
+    () => defaults.useWorktree,
   );
-  const [sessionRole, setSessionRole] = useState<"worker" | "orchestrator">("worker");
+  const [sessionRole, setSessionRole] = useState<"worker" | "leader">("worker");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
@@ -97,6 +107,33 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
   const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const envDropdownRef = useRef<HTMLDivElement>(null);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Reset all form state when the modal opens (with potentially new group context).
+  // useState initializers only run on first mount, so this effect is needed to
+  // reinitialize when re-opening with different props.
+  useEffect(() => {
+    if (!open) return;
+    const d = groupKey ? getGroupNewSessionDefaults(groupKey) : getGlobalNewSessionDefaults();
+    setBackend(d.backend);
+    setModel(d.model);
+    setMode(d.mode);
+    setCwd(groupCwd || getRecentDirs()[0] || "");
+    setAskPermission(d.askPermission);
+    setSelectedEnv(d.envSlug);
+    setUseWorktree(d.useWorktree);
+    setCodexInternetAccess(d.codexInternetAccess);
+    setCodexReasoningEffort(d.codexReasoningEffort);
+    setSessionRole("worker");
+    setSelectedBranch("");
+    setBranches([]);
+    setIsNewBranch(false);
+    setError("");
+    setSending(false);
+    setResumeMode(false);
+    setPullPrompt(null);
+    setPullError("");
+    setDynamicModels(null);
+  }, [open, groupKey, groupCwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load server home/cwd and available backends on mount
   useEffect(() => {
@@ -290,7 +327,7 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
       codexReasoningEffort: backend === "codex" ? (codexReasoningEffort || undefined) : undefined,
       assistantMode: undefined,
       askPermission,
-      role: sessionRole === "orchestrator" ? "orchestrator" as const : undefined,
+      role: sessionRole === "leader" ? "orchestrator" as const : undefined,
     };
 
     const defaultsGroupKey = (gitRepoInfo?.repoRoot || cwdSnapshot || "").trim();
@@ -903,10 +940,10 @@ export function NewSessionModal({ open, onClose }: { open: boolean; onClose: () 
               {/* Leader role toggle */}
               <button
                 onClick={() => {
-                  setSessionRole(sessionRole === "orchestrator" ? "worker" : "orchestrator");
+                  setSessionRole(sessionRole === "leader" ? "worker" : "leader");
                 }}
                 className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer ${
-                  sessionRole === "orchestrator"
+                  sessionRole === "leader"
                     ? "bg-cc-primary/15 text-cc-primary font-medium"
                     : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
                 }`}

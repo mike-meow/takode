@@ -47,7 +47,7 @@ export default function App() {
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const taskPanelOpen = useStore((s) => s.taskPanelOpen);
   const activeTab = useStore((s) => s.activeTab);
-  const showNewSessionModal = useStore((s) => s.showNewSessionModal);
+  const newSessionModalState = useStore((s) => s.newSessionModalState);
   const serverRestarting = useStore((s) => s.serverRestarting);
   const serverReachable = useStore((s) => s.serverReachable);
   const hash = useHash();
@@ -334,8 +334,10 @@ export default function App() {
 
       {/* New session modal */}
       <NewSessionModal
-        open={showNewSessionModal}
-        onClose={() => useStore.getState().setShowNewSessionModal(false)}
+        open={newSessionModalState !== null}
+        groupKey={newSessionModalState?.groupKey}
+        groupCwd={newSessionModalState?.cwd}
+        onClose={() => useStore.getState().closeNewSessionModal()}
       />
 
       {/* Task panel — overlay on mobile, inline on desktop */}

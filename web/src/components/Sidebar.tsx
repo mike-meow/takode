@@ -21,7 +21,7 @@ import { api, type SessionSearchResult } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
 import { connectSession, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
-import { cancelPendingCreation, createPendingDraftSession } from "../utils/pending-creation.js";
+import { cancelPendingCreation } from "../utils/pending-creation.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { ProjectGroup } from "./ProjectGroup.js";
 import { SessionItem } from "./SessionItem.js";
@@ -34,7 +34,6 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId, type HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
-import { getGroupNewSessionDefaults } from "../utils/new-session-defaults.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -306,7 +305,7 @@ export function Sidebar() {
   }
 
   function handleNewSession() {
-    useStore.getState().setShowNewSessionModal(true);
+    useStore.getState().openNewSessionModal();
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
     }
@@ -316,11 +315,7 @@ export function Sidebar() {
     const normalizedGroupKey = groupKey.trim();
     if (!normalizedGroupKey) return;
 
-    const defaults = getGroupNewSessionDefaults(normalizedGroupKey);
-    createPendingDraftSession({
-      groupKey: normalizedGroupKey,
-      defaults,
-    });
+    useStore.getState().openNewSessionModal({ groupKey: normalizedGroupKey, cwd: normalizedGroupKey });
 
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
@@ -1220,7 +1215,6 @@ function PendingSessionItem({
   const logoSrc = pending.backend === "codex" ? "/logo-codex.svg" : "/logo.png";
   const hasError = pending.status === "error";
   const isCreating = pending.status === "creating";
-  const isDraft = pending.status === "draft";
 
   // Accent color based on backend (matching SessionItem pattern)
   const accentColor = pending.backend === "codex"
@@ -1258,7 +1252,7 @@ function PendingSessionItem({
           <span className="text-xs font-medium text-cc-fg truncate">{folderName}</span>
         </div>
         <span className={`text-[10px] leading-tight truncate block ${hasError ? "text-cc-error" : "text-cc-muted"}`}>
-          {hasError ? "Creation failed" : isCreating ? "Creating session..." : isDraft ? "Review settings" : "Ready"}
+          {hasError ? "Creation failed" : isCreating ? "Creating session..." : "Ready"}
         </span>
       </div>
 
@@ -1266,7 +1260,7 @@ function PendingSessionItem({
       <button
         onClick={(e) => { e.stopPropagation(); onCancel(); }}
         className="opacity-0 group-hover:opacity-100 p-0.5 text-cc-muted hover:text-cc-error transition-all cursor-pointer"
-        title={hasError ? "Dismiss" : isDraft ? "Discard draft" : "Cancel creation"}
+        title={hasError ? "Dismiss" : "Cancel creation"}
       >
         <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5">
           <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

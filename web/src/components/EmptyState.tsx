@@ -25,7 +25,7 @@ export function EmptyState() {
         No active sessions
       </p>
       <button
-        onClick={() => useStore.getState().setShowNewSessionModal(true)}
+        onClick={() => useStore.getState().openNewSessionModal()}
         className="px-4 py-2.5 text-sm font-medium rounded-xl bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors cursor-pointer flex items-center gap-2"
       >
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">

@@ -8,9 +8,6 @@ import type { SessionState, SdkSessionInfo } from "../types.js";
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
-const mockCreatePendingDraftSession = vi.fn();
-const mockGetGroupNewSessionDefaults = vi.fn();
-const mockSaveGroupNewSessionDefaults = vi.fn();
 
 vi.mock("../ws.js", () => ({
   connectSession: (...args: unknown[]) => mockConnectSession(...args),
@@ -20,12 +17,6 @@ vi.mock("../ws.js", () => ({
 
 vi.mock("../utils/pending-creation.js", () => ({
   cancelPendingCreation: vi.fn(),
-  createPendingDraftSession: (...args: unknown[]) => mockCreatePendingDraftSession(...args),
-}));
-
-vi.mock("../utils/new-session-defaults.js", () => ({
-  getGroupNewSessionDefaults: (...args: unknown[]) => mockGetGroupNewSessionDefaults(...args),
-  saveGroupNewSessionDefaults: (...args: unknown[]) => mockSaveGroupNewSessionDefaults(...args),
 }));
 
 const mockApi = {
@@ -95,7 +86,8 @@ interface MockStoreState {
   clearRecentlyRenamed: ReturnType<typeof vi.fn>;
   setSdkSessions: ReturnType<typeof vi.fn>;
   closeTerminal: ReturnType<typeof vi.fn>;
-  setShowNewSessionModal: ReturnType<typeof vi.fn>;
+  openNewSessionModal: ReturnType<typeof vi.fn>;
+  closeNewSessionModal: ReturnType<typeof vi.fn>;
   markSessionViewed: ReturnType<typeof vi.fn>;
   markAllSessionsViewed: ReturnType<typeof vi.fn>;
   markSessionUnread: ReturnType<typeof vi.fn>;
@@ -181,7 +173,8 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     clearRecentlyRenamed: vi.fn(),
     setSdkSessions: vi.fn(),
     closeTerminal: vi.fn(),
-    setShowNewSessionModal: vi.fn(),
+    openNewSessionModal: vi.fn(),
+    closeNewSessionModal: vi.fn(),
     markSessionViewed: vi.fn(),
     markAllSessionsViewed: vi.fn(),
     markSessionUnread: vi.fn(),
@@ -222,16 +215,6 @@ import { Sidebar } from "./Sidebar.js";
 beforeEach(() => {
   vi.clearAllMocks();
   mockState = createMockState();
-  mockGetGroupNewSessionDefaults.mockReturnValue({
-    backend: "claude",
-    model: "claude-sonnet-4-5-20250929",
-    mode: "agent",
-    askPermission: true,
-    envSlug: "",
-    useWorktree: true,
-    codexInternetAccess: false,
-    codexReasoningEffort: "",
-  });
   window.location.hash = "";
   setTouchDevice(false);
 });
@@ -545,11 +528,11 @@ describe("Sidebar", { timeout: 10000 }, () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByText("New Session"));
 
-    // handleNewSession now opens the modal instead of navigating home + calling newSession
-    expect(mockState.setShowNewSessionModal).toHaveBeenCalledWith(true);
+    // handleNewSession opens the modal without group context
+    expect(mockState.openNewSessionModal).toHaveBeenCalledWith();
   });
 
-  it("group header plus button creates a session directly in that group", () => {
+  it("group header plus button opens new session modal with group context", () => {
     const session = makeSession("s1", {
       cwd: "/home/user/projects/myapp",
       repo_root: "/home/user/projects/myapp",
@@ -559,35 +542,14 @@ describe("Sidebar", { timeout: 10000 }, () => {
       sessions: new Map([["s1", session]]),
       sdkSessions: [sdk],
     });
-    mockGetGroupNewSessionDefaults.mockReturnValue({
-      backend: "codex",
-      model: "gpt-5.4",
-      mode: "agent",
-      askPermission: false,
-      envSlug: "prod",
-      useWorktree: false,
-      codexInternetAccess: true,
-      codexReasoningEffort: "high",
-    });
 
     render(<Sidebar />);
     fireEvent.click(screen.getByLabelText("Create session in myapp"));
 
-    expect(mockState.setShowNewSessionModal).not.toHaveBeenCalled();
-    expect(mockGetGroupNewSessionDefaults).toHaveBeenCalledWith("/home/user/projects/myapp");
-    expect(mockSaveGroupNewSessionDefaults).not.toHaveBeenCalled();
-    expect(mockCreatePendingDraftSession).toHaveBeenCalledWith({
+    // Opens the same modal as the global "+ New Session" button, but with group context
+    expect(mockState.openNewSessionModal).toHaveBeenCalledWith({
       groupKey: "/home/user/projects/myapp",
-      defaults: {
-        backend: "codex",
-        model: "gpt-5.4",
-        mode: "agent",
-        askPermission: false,
-        envSlug: "prod",
-        useWorktree: false,
-        codexInternetAccess: true,
-        codexReasoningEffort: "high",
-      },
+      cwd: "/home/user/projects/myapp",
     });
   });
 

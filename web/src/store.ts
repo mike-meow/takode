@@ -12,7 +12,7 @@ export interface PendingSession {
   createOpts: CreateSessionOpts;       // stored for retry
   progress: CreationProgressEvent[];
   error: string | null;
-  status: "draft" | "creating" | "error" | "succeeded";
+  status: "creating" | "error" | "succeeded";
   realSessionId: string | null;        // set on success, before cleanup
   cwd: string | null;                  // for sidebar display (folder name)
   groupKey?: string | null;            // originating sidebar group for per-group defaults
@@ -180,7 +180,8 @@ interface AppState {
   sessionInfoOpenSessionId: string | null;
   reorderMode: boolean;
   taskPanelOpen: boolean;
-  showNewSessionModal: boolean;
+  /** null = closed; {} = global new session; { groupKey, cwd } = group new session */
+  newSessionModalState: { groupKey?: string; cwd?: string } | null;
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
   vscodeSelectionContext: VsCodeSelectionState | null;
@@ -199,7 +200,8 @@ interface AppState {
   setSessionInfoOpenSessionId: (sessionId: string | null) => void;
   setReorderMode: (v: boolean) => void;
   setTaskPanelOpen: (open: boolean) => void;
-  setShowNewSessionModal: (open: boolean) => void;
+  openNewSessionModal: (opts?: { groupKey?: string; cwd?: string }) => void;
+  closeNewSessionModal: () => void;
   setVsCodeSelectionContext: (context: VsCodeSelectionState | null) => void;
   newSession: () => void;
 
@@ -503,7 +505,7 @@ export const useStore = create<AppState>((set) => ({
   sessionInfoOpenSessionId: null,
   reorderMode: false,
   taskPanelOpen: false,
-  showNewSessionModal: false,
+  newSessionModalState: null,
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
   vscodeSelectionContext: null,
@@ -597,7 +599,8 @@ export const useStore = create<AppState>((set) => ({
   setSessionInfoOpenSessionId: (sessionId) => set({ sessionInfoOpenSessionId: sessionId }),
   setReorderMode: (v) => set({ reorderMode: v }),
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
-  setShowNewSessionModal: (open) => set({ showNewSessionModal: open }),
+  openNewSessionModal: (opts) => set({ newSessionModalState: opts ?? {} }),
+  closeNewSessionModal: () => set({ newSessionModalState: null }),
   setVsCodeSelectionContext: (context) => set({ vscodeSelectionContext: context }),
   newSession: () => {
     scopedRemoveItem("cc-current-session");

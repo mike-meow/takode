@@ -9,8 +9,6 @@ import { connectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession } from "./routing.js";
 import { addRecentDir } from "./recent-dirs.js";
 import { useStore, type PendingSession } from "../store.js";
-import type { NewSessionDefaults } from "./new-session-defaults.js";
-import { resolveClaudeCliMode, resolveCodexCliMode } from "./backends.js";
 
 // AbortControllers live outside Zustand (not serializable)
 const abortControllers = new Map<string, AbortController>();
@@ -30,7 +28,6 @@ export function isPendingId(id: string | null): boolean {
 export function startPendingCreation(pendingId: string): void {
   const pending = useStore.getState().pendingSessions.get(pendingId);
   if (!pending) return;
-  if (pending.status === "draft") return;
 
   const controller = new AbortController();
   abortControllers.set(pendingId, controller);
@@ -39,45 +36,6 @@ export function startPendingCreation(pendingId: string): void {
   _runCreation(pendingId, pending, controller.signal).catch(() => {
     // Errors are handled inside _runCreation; this catch prevents unhandled rejection
   });
-}
-
-export function createPendingDraftSession(params: {
-  groupKey: string;
-  defaults: NewSessionDefaults;
-}): string {
-  const groupKey = params.groupKey.trim();
-  const backend = params.defaults.backend;
-  const permissionMode = backend === "codex"
-    ? resolveCodexCliMode(params.defaults.mode, params.defaults.askPermission)
-    : resolveClaudeCliMode(params.defaults.mode, params.defaults.askPermission);
-
-  const pendingId = createPendingId();
-  useStore.getState().addPendingSession({
-    id: pendingId,
-    backend,
-    createOpts: {
-      model: params.defaults.model,
-      permissionMode,
-      cwd: groupKey || undefined,
-      envSlug: params.defaults.envSlug || undefined,
-      useWorktree: params.defaults.useWorktree || undefined,
-      backend,
-      codexInternetAccess: backend === "codex" ? params.defaults.codexInternetAccess : undefined,
-      codexReasoningEffort: backend === "codex" ? (params.defaults.codexReasoningEffort || undefined) : undefined,
-      assistantMode: undefined,
-      askPermission: params.defaults.askPermission,
-    },
-    progress: [],
-    error: null,
-    status: "draft",
-    realSessionId: null,
-    cwd: groupKey || null,
-    groupKey: groupKey || null,
-    createdAt: Date.now(),
-  });
-
-  navigateToSession(pendingId);
-  return pendingId;
 }
 
 export function queuePendingSession(params: {
