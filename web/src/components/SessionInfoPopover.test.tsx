@@ -8,11 +8,12 @@ interface MockStoreState {
     session_id?: string;
     cwd?: string;
     model?: string;
-    backend_type?: "claude" | "codex";
+    backend_type?: "claude" | "codex" | "claude-sdk";
     num_turns?: number;
     total_cost_usd?: number;
     context_used_percent?: number;
     codex_token_details?: { modelContextWindow?: number };
+    claude_token_details?: { modelContextWindow?: number };
     git_branch?: string | null;
     is_worktree?: boolean;
     git_ahead?: number;
@@ -24,9 +25,10 @@ interface MockStoreState {
   sdkSessions: Array<{
     sessionId: string;
     cwd?: string;
-    backendType?: "claude" | "codex";
+    backendType?: "claude" | "codex" | "claude-sdk";
     contextUsedPercent?: number;
     codexTokenDetails?: { modelContextWindow?: number };
+    claudeTokenDetails?: { modelContextWindow?: number };
   }>;
   sessionTaskHistory: Map<string, Array<{ title: string; source?: "quest"; questId?: string }>>;
 }
@@ -197,5 +199,23 @@ describe("SessionInfoPopover", () => {
 
     expect(screen.getByText("73% context")).toBeInTheDocument();
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+  });
+
+  it("shows context stats instead of turns and cost for Claude SDK sessions", () => {
+    resetStore([]);
+    const session = storeState.sessions.get("s1");
+    if (!session) throw new Error("missing session fixture");
+    session.backend_type = "claude-sdk";
+    session.num_turns = 7;
+    session.total_cost_usd = 1.25;
+    session.context_used_percent = 41;
+    session.claude_token_details = { modelContextWindow: 200_000 };
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    expect(screen.getByText("41% context")).toBeInTheDocument();
+    expect(screen.getByText("200 K tokens")).toBeInTheDocument();
+    expect(screen.queryByText("7 turns")).toBeNull();
+    expect(screen.queryByText("$1.25")).toBeNull();
   });
 });

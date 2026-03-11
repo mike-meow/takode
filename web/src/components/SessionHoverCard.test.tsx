@@ -10,6 +10,7 @@ const mockStoreState = {
     sessionId: string;
     contextUsedPercent?: number;
     codexTokenDetails?: { modelContextWindow?: number };
+    claudeTokenDetails?: { modelContextWindow?: number };
   }>,
   sessionNames: new Map<string, string>(),
 };
@@ -123,5 +124,58 @@ describe("SessionHoverCard", () => {
     } finally {
       mockStoreState.sdkSessions = [];
     }
+  });
+
+  it("shows Claude SDK context stats and hides turns and cost", () => {
+    const sessionState = {
+      session_id: "s1",
+      backend_type: "claude-sdk",
+      model: "claude-sonnet-4-5-20250929",
+      cwd: "/repo",
+      tools: [],
+      permissionMode: "default",
+      claude_code_version: "1.0.0",
+      mcp_servers: [],
+      agents: [],
+      slash_commands: [],
+      skills: [],
+      total_cost_usd: 1.25,
+      num_turns: 7,
+      context_used_percent: 41,
+      git_branch: "jiayi",
+      is_worktree: false,
+      is_containerized: false,
+      repo_root: "/repo",
+      git_ahead: 0,
+      git_behind: 0,
+      total_lines_added: 0,
+      total_lines_removed: 0,
+      claude_token_details: {
+        inputTokens: 254,
+        outputTokens: 77708,
+        cachedInputTokens: 22001692,
+        modelContextWindow: 200_000,
+      },
+      is_compacting: false,
+    } as SessionState;
+
+    render(
+      <SessionHoverCard
+        session={makeSession({ backendType: "claude-sdk", model: "claude-sonnet-4-5-20250929" })}
+        sessionName="Explain Claude Session Metrics"
+        sessionPreview={undefined}
+        taskHistory={undefined}
+        sessionState={sessionState}
+        cliSessionId="cli-1"
+        anchorRect={new DOMRect(120, 80, 200, 40)}
+        onMouseEnter={() => {}}
+        onMouseLeave={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("41% context")).toBeInTheDocument();
+    expect(screen.getByText("200 K tokens")).toBeInTheDocument();
+    expect(screen.queryByText("7 turns")).toBeNull();
+    expect(screen.queryByText("$1.25")).toBeNull();
   });
 });
