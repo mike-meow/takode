@@ -674,7 +674,7 @@ async function callEnhancementLLM(
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
-        max_completion_tokens: 1000,
+        max_completion_tokens: 512,
         reasoning_effort: "low",
       }),
       signal: controller.signal,
@@ -689,8 +689,16 @@ async function callEnhancementLLM(
       return { ok: false, error: errorMsg };
     }
 
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number } };
+    };
     const text = json.choices?.[0]?.message?.content?.trim();
+    if (json.usage) {
+      const u = json.usage;
+      const reasoning = u.completion_tokens_details?.reasoning_tokens ?? 0;
+      console.log(`[transcription-enhancer] tokens: prompt=${u.prompt_tokens ?? "?"} completion=${u.completion_tokens ?? "?"} (reasoning=${reasoning})`);
+    }
     if (!text) return { ok: false, error: "Empty response from LLM" };
     return { ok: true, text };
   } catch (err) {

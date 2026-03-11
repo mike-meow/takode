@@ -886,7 +886,20 @@ export const api = {
     if (options?.mode) form.append("mode", options.mode);
     if (options?.sessionId) form.append("sessionId", options.sessionId);
     if (options?.composerText !== undefined) form.append("composerText", options.composerText);
-    const res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form });
+    // Timeout must exceed server-side STT + enhancement budget (STT ~5s + LLM 30s + overhead)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form, signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Transcription timed out — the server took too long to respond.");
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error((err as { error?: string }).error || res.statusText);
