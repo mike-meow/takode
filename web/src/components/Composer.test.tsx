@@ -34,6 +34,7 @@ Object.defineProperty(window, "matchMedia", {
 const mockSendToSession = vi.fn().mockReturnValue(true);
 const mockTranscribe = vi.fn().mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
 const mockGetBackendModels = vi.fn().mockResolvedValue([]);
+const mockRefreshSessionSkills = vi.fn().mockResolvedValue({ ok: true, skills: [] });
 
 // Build a controllable mock store state
 let mockStoreState: Record<string, unknown> = {};
@@ -46,6 +47,7 @@ vi.mock("../api.js", () => ({
   api: {
     gitPull: vi.fn().mockResolvedValue({ success: true, output: "", git_ahead: 0, git_behind: 0 }),
     getBackendModels: (...args: unknown[]) => mockGetBackendModels(...args),
+    refreshSessionSkills: (...args: unknown[]) => mockRefreshSessionSkills(...args),
     transcribe: (...args: unknown[]) => mockTranscribe(...args),
   },
 }));
@@ -263,6 +265,7 @@ beforeEach(() => {
   mockVoiceState.onAudioReady = null;
   mockTranscribe.mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
   mockGetBackendModels.mockResolvedValue([]);
+  mockRefreshSessionSkills.mockResolvedValue({ ok: true, skills: [] });
   mockRequestBottomAlignOnNextUserMessage.mockReset();
   mediaState.touchDevice = false;
   setViewportWidth(1024);
@@ -736,6 +739,7 @@ describe("Composer sending messages", () => {
 
     fireEvent.change(textarea, { target: { value: "/plan" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
     expect(mockSendToSession).toHaveBeenCalledWith("s1", {
       type: "set_permission_mode",
@@ -757,6 +761,7 @@ describe("Composer sending messages", () => {
     const textarea = container.querySelector("textarea")!;
 
     fireEvent.change(textarea, { target: { value: "/suggest" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
     expect(mockSendToSession).toHaveBeenCalledWith("s1", {
@@ -1003,6 +1008,54 @@ describe("Composer slash menu", () => {
 
     // No command items should appear
     expect(screen.queryByText("/help")).toBeNull();
+  });
+
+  it("requests Codex skills when the connected session has none, then renders them after the server updates state", async () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        slash_commands: [],
+        skills: [],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(mockRefreshSessionSkills).toHaveBeenCalledWith("s1");
+    });
+
+    const sessions = mockStoreState.sessions as Map<string, SessionState>;
+    sessions.set("s1", makeSession({
+      backend_type: "codex",
+      slash_commands: [],
+      skills: ["review"],
+    }));
+    notifyMockStore();
+
+    const textarea = container.querySelector("textarea")!;
+    fireEvent.change(textarea, { target: { value: "/rev" } });
+
+    expect(screen.getByText("/review")).toBeTruthy();
+  });
+
+  it("slash menu still opens for Codex local slash commands when server commands are empty", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        slash_commands: [],
+        skills: [],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "/" } });
+
+    expect(screen.getByText("/plan")).toBeTruthy();
+    expect(screen.getByText("/suggest")).toBeTruthy();
+    expect(screen.getByText("/accept-edits")).toBeTruthy();
+    expect(screen.getByText("/auto")).toBeTruthy();
+    expect(screen.getByText("/compact")).toBeTruthy();
   });
 
   it("slash menu shows command types", () => {

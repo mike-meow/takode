@@ -30,6 +30,7 @@ import type {
   TurnStartFailedAwareAdapter,
 } from "./bridge/adapter-interface.js";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
+import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
 // ─── Codex JSON-RPC Types ─────────────────────────────────────────────────────
 
@@ -125,6 +126,49 @@ function unwrapShellWrappedCommand(command: string): string {
 
 function isCompactSlashCommand(text: string): boolean {
   return text.trim().toLowerCase() === "/compact";
+}
+
+function normalizeSlashPath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "/";
+  const normalized = trimmed.replace(/\/+$/, "");
+  return normalized || "/";
+}
+
+function extractCodexSkillNames(result: unknown, sessionCwd?: string): string[] {
+  const root = result && typeof result === "object" ? result as Record<string, unknown> : {};
+  const rawEntries = Array.isArray(root.data)
+    ? root.data
+    : Array.isArray(root.skills)
+      ? root.skills
+      : Array.isArray(result)
+        ? result
+        : [];
+  const entries = rawEntries.filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object");
+  const normalizedCwd = sessionCwd ? normalizeSlashPath(sessionCwd) : "";
+  const matchingEntries = normalizedCwd
+    ? entries.filter((entry) => typeof entry.cwd === "string" && normalizeSlashPath(entry.cwd) === normalizedCwd)
+    : [];
+  const sourceEntries = matchingEntries.length > 0 ? matchingEntries : entries;
+
+  const names = new Set<string>();
+  for (const entry of sourceEntries) {
+    const skills = entry.skills;
+    if (!Array.isArray(skills)) continue;
+    for (const skill of skills) {
+      if (typeof skill === "string") {
+        const trimmed = skill.trim();
+        if (trimmed) names.add(trimmed);
+        continue;
+      }
+      if (!skill || typeof skill !== "object") continue;
+      const record = skill as Record<string, unknown>;
+      if (record.enabled === false) continue;
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      if (name) names.add(name);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 function extractCommandAction(commandActions: unknown): string {
@@ -807,6 +851,21 @@ export class CodexAdapter
     return this._rateLimits;
   }
 
+  async refreshSkills(forceReload = false): Promise<string[]> {
+    const result = await this.transport.call("skills/list", {
+      ...(this.options.cwd ? { cwds: [this.options.cwd] } : {}),
+      ...(forceReload ? { forceReload: true } : {}),
+    });
+    const skills = extractCodexSkillNames(result, this.options.cwd);
+    this.emit({
+      type: "session_update",
+      session: {
+        skills,
+      },
+    });
+    return skills;
+  }
+
   sendBrowserMessage(msg: BrowserOutgoingMessage): boolean {
     // If initialization failed, reject all new messages
     if (this.initFailed) {
@@ -1037,7 +1096,7 @@ export class CodexAdapter
         claude_code_version: "",
         mcp_servers: [],
         agents: [],
-        slash_commands: [],
+        slash_commands: [...CODEX_LOCAL_SLASH_COMMANDS],
         skills: [],
         total_cost_usd: 0,
         num_turns: 0,

@@ -942,6 +942,8 @@ export const api = {
   getUsageLimits: () => get<UsageLimits>("/usage-limits"),
   getSessionUsageLimits: (sessionId: string) =>
     get<UsageLimits>(`/sessions/${encodeURIComponent(sessionId)}/usage-limits`),
+  refreshSessionSkills: (sessionId: string) =>
+    post<{ ok: boolean; skills: string[] }>(`/sessions/${encodeURIComponent(sessionId)}/skills/refresh`, {}),
 
   // Terminal
   spawnTerminal: (cwd: string, cols?: number, rows?: number) =>

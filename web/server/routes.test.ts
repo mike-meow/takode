@@ -201,6 +201,7 @@ function createMockBridge() {
     getLastUserMessage: vi.fn(() => undefined),
     isBackendConnected: vi.fn(() => false),
     getCodexRateLimits: vi.fn(() => null),
+    refreshCodexSkills: vi.fn(async () => ({ ok: true, skills: [] })),
     markContainerized: vi.fn(),
     markWorktree: vi.fn(),
     setInitialCwd: vi.fn(),
@@ -3947,6 +3948,28 @@ describe("GET /api/sessions/:id/usage-limits", () => {
     const json = await res.json();
     expect(json).toEqual({ five_hour: null, seven_day: null, extra_usage: null });
     expect(mockGetUsageLimits).toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/sessions/:id/skills/refresh", () => {
+  it("refreshes Codex skills for a codex session", async () => {
+    bridge.getSession.mockReturnValue({ backendType: "codex" });
+    bridge.refreshCodexSkills.mockResolvedValue({ ok: true, skills: ["review", "fix"] });
+
+    const res = await app.request("/api/sessions/s1/skills/refresh", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, skills: ["review", "fix"] });
+    expect(bridge.refreshCodexSkills).toHaveBeenCalledWith("s1", true);
+  });
+
+  it("rejects skill refresh for non-codex sessions", async () => {
+    bridge.getSession.mockReturnValue({ backendType: "claude" });
+
+    const res = await app.request("/api/sessions/s1/skills/refresh", { method: "POST" });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Skill refresh is only supported for Codex sessions" });
   });
 });
 

@@ -1233,6 +1233,21 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return c.json({ ok: true });
   });
 
+  api.post("/sessions/:id/skills/refresh", async (c) => {
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    if (session.backendType !== "codex") return c.json({ error: "Skill refresh is only supported for Codex sessions" }, 400);
+
+    const result = await wsBridge.refreshCodexSkills(id, true);
+    if (!result.ok) {
+      const status = result.error === "Session not found" ? 404 : 503;
+      return c.json({ error: result.error || "Failed to refresh skills" }, status);
+    }
+    return c.json({ ok: true, skills: result.skills ?? [] });
+  });
+
   api.post("/sessions/:id/revert", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);

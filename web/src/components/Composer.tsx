@@ -19,6 +19,7 @@ import { CatPawAvatar } from "./CatIcons.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { useVoiceInput } from "../hooks/useVoiceInput.js";
 import { api } from "../api.js";
+import { CODEX_LOCAL_SLASH_COMMANDS } from "../../shared/codex-slash-commands.js";
 import {
   buildVsCodeSelectionPrompt,
   formatVsCodeSelectionSummary,
@@ -232,6 +233,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
+  const requestedCodexSkillRefreshSessionRef = useRef<string | null>(null);
   const voiceCaptureModeRef = useRef<"dictation" | "edit">("dictation");
   const voiceEditBaseTextRef = useRef("");
 
@@ -385,18 +387,38 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Build command list from session data
   const allCommands = useMemo<CommandItem[]>(() => {
     const cmds: CommandItem[] = [];
+    const seen = new Set<string>();
+    const pushCommand = (name: string, type: "command" | "skill") => {
+      const normalized = name.trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      cmds.push({ name: normalized, type });
+    };
+    if (isCodex) {
+      for (const cmd of CODEX_LOCAL_SLASH_COMMANDS) {
+        pushCommand(cmd, "command");
+      }
+    }
     if (sessionData?.slash_commands) {
       for (const cmd of sessionData.slash_commands) {
-        cmds.push({ name: cmd, type: "command" });
+        pushCommand(cmd, "command");
       }
     }
     if (sessionData?.skills) {
       for (const skill of sessionData.skills) {
-        cmds.push({ name: skill, type: "skill" });
+        pushCommand(skill, "skill");
       }
     }
     return cmds;
-  }, [sessionData?.slash_commands, sessionData?.skills]);
+  }, [isCodex, sessionData?.slash_commands, sessionData?.skills]);
+
+  useEffect(() => {
+    if (!isCodex || !isConnected) return;
+    if ((sessionData?.skills?.length ?? 0) > 0) return;
+    if (requestedCodexSkillRefreshSessionRef.current === sessionId) return;
+    requestedCodexSkillRefreshSessionRef.current = sessionId;
+    api.refreshSessionSkills(sessionId).catch(() => {});
+  }, [isCodex, isConnected, sessionData?.skills, sessionId]);
 
   // Filter commands based on what the user typed after /
   const filteredCommands = useMemo(() => {

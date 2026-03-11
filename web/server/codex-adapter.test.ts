@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodexAdapter } from "./codex-adapter.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage } from "./session-types.js";
+import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
 /** Minimal event-loop yield so the ReadableStream reader can process chunks.
  *  Replaces the original 20-50ms setTimeout calls — 1ms is sufficient. */
@@ -533,10 +534,70 @@ describe("CodexAdapter", () => {
     const initMsgs = messages.filter((m) => m.type === "session_init");
     expect(initMsgs.length).toBe(1);
 
-    const init = initMsgs[0] as { session: { backend_type: string; model: string; cwd: string } };
+    const init = initMsgs[0] as { session: { backend_type: string; model: string; cwd: string; slash_commands: string[] } };
     expect(init.session.backend_type).toBe("codex");
     expect(init.session.model).toBe("o4-mini");
     expect(init.session.cwd).toBe("/home/user/project");
+    expect(init.session.slash_commands).toEqual([...CODEX_LOCAL_SLASH_COMMANDS]);
+  });
+
+  it("refreshSkills fetches enabled skills for the matching cwd and emits session_update", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", {
+      model: "o4-mini",
+      cwd: "/home/user/project",
+    });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+    // Resolve the init-time rate limit fetch first so request IDs stay deterministic.
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+    const refreshPromise = adapter.refreshSkills(true);
+    await tick();
+
+    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const skillsReq = lines.find((line) => line.method === "skills/list");
+    expect(skillsReq).toBeDefined();
+    expect(skillsReq.params).toEqual({
+      cwds: ["/home/user/project"],
+      forceReload: true,
+    });
+
+    stdout.push(JSON.stringify({
+      id: 4,
+      result: {
+        data: [
+          {
+            cwd: "/other",
+            skills: [{ name: "other-skill", enabled: true }],
+            errors: [],
+          },
+          {
+            cwd: "/home/user/project",
+            skills: [
+              { name: "review", enabled: true },
+              { name: "disabled-skill", enabled: false },
+              { name: "fix", enabled: true },
+            ],
+            errors: [],
+          },
+        ],
+      },
+    }) + "\n");
+
+    await expect(refreshPromise).resolves.toEqual(["fix", "review"]);
+    const update = messages.find((msg) =>
+      msg.type === "session_update"
+      && Array.isArray((msg as { session?: { skills?: string[] } }).session?.skills),
+    ) as { session: { skills: string[] } } | undefined;
+    expect(update?.session.skills).toEqual(["fix", "review"]);
   });
 
   it("sends turn/start when receiving user_message", async () => {

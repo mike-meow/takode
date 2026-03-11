@@ -253,7 +253,8 @@ type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta>
   & TurnSteerFailedAwareAdapter
   & TurnStartFailedAwareAdapter
   & CurrentTurnIdAwareAdapter
-  & RateLimitsAwareAdapter;
+  & RateLimitsAwareAdapter
+  & Partial<{ refreshSkills: (forceReload?: boolean) => Promise<string[]> }>;
 type ClaudeSdkBridgeAdapter = BackendAdapter<ClaudeSdkSessionMeta>;
 
 interface Session {
@@ -2442,6 +2443,18 @@ export class WsBridge {
   getCodexRateLimits(sessionId: string) {
     const session = this.sessions.get(sessionId);
     return session?.codexAdapter?.getRateLimits() ?? null;
+  }
+
+  async refreshCodexSkills(sessionId: string, forceReload = false): Promise<{ ok: boolean; skills?: string[]; error?: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+    if (!session.codexAdapter?.refreshSkills) return { ok: false, error: "Codex adapter unavailable" };
+    try {
+      const skills = await session.codexAdapter.refreshSkills(forceReload);
+      return { ok: true, skills };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   /** Is the correct backend for this session connected and responsive? */
