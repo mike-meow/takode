@@ -19,3 +19,4 @@ e2e_tests/screenshots/
 .claude/session-auth.json
 .codex/session-auth.json
 .companion/session-auth.json
+*.vsix
