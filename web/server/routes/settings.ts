@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveBinary, getEnrichedPath } from "../path-resolver.js";
-import { getSettings, updateSettings, getServerName, setServerName, getServerId, getClaudeUserDefaultModel, type NamerConfig, type TranscriptionConfig, type EditorConfig } from "../settings-manager.js";
+import { getSettings, updateSettings, getServerName, setServerName, getServerId, getClaudeUserDefaultModel, STT_MODELS, type NamerConfig, type TranscriptionConfig, type SttModel, type EditorConfig } from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
 import type { RouteContext } from "./context.js";
 
@@ -83,6 +83,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       enhancementEnabled: typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : current.enhancementEnabled,
       enhancementModel: typeof tc.enhancementModel === "string" ? tc.enhancementModel.trim() : current.enhancementModel,
       customVocabulary: typeof tc.customVocabulary === "string" ? tc.customVocabulary.trim() : (current.customVocabulary || ""),
+      sttModel: typeof tc.sttModel === "string" && (STT_MODELS as readonly string[]).includes(tc.sttModel) ? tc.sttModel as SttModel : current.sttModel,
     };
   }
 
