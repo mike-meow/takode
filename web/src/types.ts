@@ -51,7 +51,7 @@ export interface ChatMessage {
   /** Total wall-clock duration for the completed assistant turn. */
   turnDurationMs?: number;
   /** For system messages: "error" renders prominently, "denied" shows a compact denial chip, "approved" shows a green approval chip, "quest_claimed"/"quest_submitted" show collapsible quest details, default renders as subtle divider */
-  variant?: "error" | "info" | "denied" | "approved" | "quest_claimed" | "quest_submitted";
+  variant?: "error" | "info" | "denied" | "approved" | "quest_claimed" | "quest_submitted" | "task_completed";
   /** Extra structured data for rich rendering (e.g. AskUserQuestion answers, quest claim details) */
   metadata?: {
     answers?: { question: string; answer: string }[];

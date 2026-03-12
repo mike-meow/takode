@@ -548,9 +548,39 @@ export function buildFeedModel(messages: ChatMessage[], leaderMode = false, star
 function concatFeedModels(base: FeedModel, next: FeedModel): FeedModel {
   if (base.entries.length === 0) return next;
   if (next.entries.length === 0) return base;
+
+  // When the frozen/active boundary falls between two assistant messages
+  // with no user message in between (e.g., a task_notification-triggered turn),
+  // the active model's first turn has userEntry === null. Merge it into the
+  // last frozen turn so they appear as one continuous agent turn in the UI,
+  // rather than creating a phantom turn boundary that causes incorrect collapsing.
+  let mergedTurns: Turn[];
+  if (
+    next.turns.length > 0
+    && base.turns.length > 0
+    && next.turns[0].userEntry === null
+  ) {
+    const lastBase = base.turns[base.turns.length - 1];
+    const firstNext = next.turns[0];
+    // Re-derive the merged turn via makeTurn so stats, response entry,
+    // and system/agent separation are all consistent.
+    const merged = makeTurn(
+      lastBase.userEntry,
+      [...lastBase.allEntries, ...firstNext.allEntries],
+      base.turns.length - 1,
+    );
+    mergedTurns = [
+      ...base.turns.slice(0, -1),
+      merged,
+      ...next.turns.slice(1),
+    ];
+  } else {
+    mergedTurns = [...base.turns, ...next.turns];
+  }
+
   return {
     entries: [...base.entries, ...next.entries],
-    turns: [...base.turns, ...next.turns],
+    turns: mergedTurns,
   };
 }
 

@@ -4712,6 +4712,10 @@ export class WsBridge {
 
       if (!historyEntry) return; // shouldn't happen
 
+      // Collect new blocks to merge, avoiding in-place mutation of the content
+      // array. The event buffer holds a reference to the same historyEntry
+      // object, so push() would retroactively corrupt the original event.
+      const newBlocks: typeof msg.message.content = [];
       for (const block of msg.message.content) {
         if (block.type === "tool_use" && block.id) {
           if (acc.contentBlockIds.has(block.id)) continue;
@@ -4721,7 +4725,10 @@ export class WsBridge {
           }
           session.toolProgressOutput.delete(block.id);
         }
-        historyEntry.message.content.push(block);
+        newBlocks.push(block);
+      }
+      if (newBlocks.length > 0) {
+        historyEntry.message.content = [...historyEntry.message.content, ...newBlocks];
       }
 
       // Update stop_reason and usage from the latest message
@@ -4753,7 +4760,11 @@ export class WsBridge {
         ...(historyEntry as BrowserIncomingMessage),
         ...(Object.keys(allToolStartTimes).length > 0 ? { tool_start_times: allToolStartTimes } : {}),
       };
-      this.broadcastToBrowsers(session, rebroadcast);
+      // Re-broadcast the accumulated message to browsers so they see merged
+      // content blocks. Skip the event buffer — the original first-occurrence
+      // broadcast already created the buffer entry, and adding another would
+      // create a duplicate with the same msg_id.
+      this.broadcastToBrowsers(session, rebroadcast, { skipBuffer: true });
       // NOTE: Do NOT inject the leader addressing reminder here.
       // Deferred to handleResultMessage (turn end) to avoid false nudges
       // during intermediate tool-call gaps.
@@ -4929,7 +4940,12 @@ export class WsBridge {
       ) as (BrowserIncomingMessage & { type: "assistant"; turn_duration_ms?: number }) | undefined;
       if (latestAssistant) {
         latestAssistant.turn_duration_ms = turnDurationMs;
-        this.broadcastToBrowsers(session, latestAssistant);
+        // Re-broadcast with turn_duration_ms so the browser can render turn
+        // timing. Skip the event buffer — the original assistant broadcast
+        // already created the buffer entry, and the in-place mutation above
+        // updates it (same object reference). A second buffer entry would be
+        // a duplicate with identical content.
+        this.broadcastToBrowsers(session, latestAssistant, { skipBuffer: true });
       }
     }
 
@@ -8357,10 +8373,11 @@ export class WsBridge {
   private sequenceEvent(
     session: Session,
     msg: BrowserIncomingMessage,
+    options?: { skipBuffer?: boolean },
   ): BrowserIncomingMessage {
     const seq = session.nextEventSeq++;
     const sequenced = { ...msg, seq };
-    if (this.shouldBufferForReplay(msg)) {
+    if (!options?.skipBuffer && this.shouldBufferForReplay(msg)) {
       session.eventBuffer.push({ seq, message: msg });
       if (session.eventBuffer.length > WsBridge.EVENT_BUFFER_LIMIT) {
         session.eventBuffer.splice(0, session.eventBuffer.length - WsBridge.EVENT_BUFFER_LIMIT);
@@ -8370,13 +8387,13 @@ export class WsBridge {
     return sequenced;
   }
 
-  private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage) {
+  private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage, options?: { skipBuffer?: boolean }) {
     // Debug: warn when assistant messages are broadcast to 0 browsers (they may be lost)
     if (session.browserSockets.size === 0 && (msg.type === "assistant" || msg.type === "result")) {
       console.log(`[ws-bridge] ⚠ Broadcasting ${msg.type} to 0 browsers for session ${sessionTag(session.id)} (stored in history: ${msg.type === "assistant" || msg.type === "result"})`);
     }
     const serStart = performance.now();
-    const json = JSON.stringify(this.sequenceEvent(session, msg));
+    const json = JSON.stringify(this.sequenceEvent(session, msg, options));
     const serMs = performance.now() - serStart;
     if (serMs > 50) {
       console.warn(`[ws-bridge] Slow JSON.stringify in broadcastToBrowsers: ${serMs.toFixed(1)}ms, type=${msg.type}, len=${json.length}, session=${sessionTag(session.id)}`);

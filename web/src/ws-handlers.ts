@@ -332,6 +332,16 @@ function normalizeHistoryMessages(
           summary: histMsg.summary,
         });
       }
+      // Replay: add visible system message for background task completion
+      if (histMsg.summary) {
+        chatMessages.push({
+          id: `task-notif-${histMsg.task_id || historyIndex}`,
+          role: "system",
+          content: histMsg.summary,
+          timestamp: Date.now(),
+          variant: "task_completed",
+        });
+      }
     } else if (histMsg.type === "result") {
       const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
       store.setTasks(sessionId, []);
@@ -1117,6 +1127,17 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           status: data.status,
           outputFile: data.output_file,
           summary: data.summary,
+        });
+      }
+      // Add a visible system message so the user can see what background task
+      // completed and why the model may start a new auto-triggered turn.
+      if (data.summary) {
+        store.appendMessage(sessionId, {
+          id: `task-notif-${data.task_id || Date.now()}`,
+          role: "system",
+          content: data.summary,
+          timestamp: Date.now(),
+          variant: "task_completed",
         });
       }
       break;

@@ -589,6 +589,14 @@ const MSG_ERROR_GENERIC: ChatMessage = {
   variant: "error",
 };
 
+const MSG_TASK_COMPLETED: ChatMessage = {
+  id: "task-notif-mock",
+  role: "system",
+  content: "Background command \"Search all shards for github_agent tool examples\" completed (exit code 0)",
+  timestamp: Date.now() - 19000,
+  variant: "task_completed",
+};
+
 const MSG_DENIED_BASH: ChatMessage = {
   id: "denial-bash-1",
   role: "system",
@@ -1496,6 +1504,9 @@ export function Playground() {
             </Card>
             <Card label="Error — generic">
               <MessageBubble message={MSG_ERROR_GENERIC} />
+            </Card>
+            <Card label="Background task completed">
+              <MessageBubble message={MSG_TASK_COMPLETED} />
             </Card>
             <Card label="Denied — Bash command">
               <MessageBubble message={MSG_DENIED_BASH} />

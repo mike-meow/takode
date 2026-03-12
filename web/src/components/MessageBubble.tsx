@@ -133,6 +133,16 @@ export const MessageBubble = memo(function MessageBubble({
         </div>
       );
     }
+    // Background task completion — lightweight chip showing what async work
+    // finished. Helps the user understand why the model auto-started a new turn.
+    if (message.variant === "task_completed") {
+      return (
+        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 leading-snug animate-[fadeSlideIn_0.2s_ease-out]">
+          <span className="text-blue-400/60 shrink-0">◆</span>
+          <span className="truncate">{message.content}</span>
+        </div>
+      );
+    }
     // Expandable compact marker
     if (message.id.startsWith("compact-boundary-")) {
       return <CompactMarker message={message} sessionId={sessionId} />;

@@ -608,9 +608,10 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   private emitBrowserMessage(msg: BrowserIncomingMessage): void {
-    this.options.recorder?.record(
-      this.sessionId, "out", JSON.stringify(msg), "browser", "claude-sdk", this.options.cwd,
-    );
+    // Don't record here — the bridge's broadcastToBrowsers records the
+    // sequenced message after assigning a seq number. Recording in both
+    // places doubles every entry in the recording file (one without seq
+    // from here, one with seq from the bridge).
     this.browserMessageCb?.(msg);
   }
 
