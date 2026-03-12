@@ -93,6 +93,7 @@ import {
 import type {
   BackendAdapter,
   CurrentTurnIdAwareAdapter,
+  PendingOutgoingAwareAdapter,
   RateLimitsAwareAdapter,
   TurnSteerFailedAwareAdapter,
   TurnStartedAwareAdapter,
@@ -3262,6 +3263,16 @@ export class WsBridge {
     session.state.backend_type = "claude-sdk";
     // Disconnect the old adapter if one exists (prevents orphaned processes on relaunch)
     if (session.claudeSdkAdapter && session.claudeSdkAdapter !== adapter) {
+      const pendingAware = session.claudeSdkAdapter as ClaudeSdkBridgeAdapter & Partial<PendingOutgoingAwareAdapter>;
+      if (typeof pendingAware.drainPendingOutgoing === "function") {
+        for (const queuedMsg of pendingAware.drainPendingOutgoing()) {
+          const raw = JSON.stringify(queuedMsg);
+          const alreadyQueued = session.pendingMessages.some((queued) => queued === raw);
+          if (!alreadyQueued) {
+            session.pendingMessages.push(raw);
+          }
+        }
+      }
       session.claudeSdkAdapter.disconnect().catch(() => {});
     }
     // Copy launcher metadata into session state so the UI has it immediately
@@ -6405,7 +6416,12 @@ export class WsBridge {
       if (adapter) {
         const accepted = adapter.sendBrowserMessage(adapterMsg);
         if (!accepted) {
-          queueAdapterMessage();
+          const sdkQueuedInternally =
+            session.claudeSdkAdapter === adapter
+            && !adapter.isConnected();
+          if (!sdkQueuedInternally) {
+            queueAdapterMessage();
+          }
         }
         this.persistSession(session);
       } else {

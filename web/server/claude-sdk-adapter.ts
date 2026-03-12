@@ -20,7 +20,7 @@ import type {
 } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { trafficStats } from "./traffic-stats.js";
-import type { BackendAdapter } from "./bridge/adapter-interface.js";
+import type { BackendAdapter, PendingOutgoingAwareAdapter } from "./bridge/adapter-interface.js";
 
 // ─── SDK internals cache ─────────────────────────────────────────────────────
 // We cache the V4 (ProcessTransport) class reference after the first SDK import
@@ -64,7 +64,7 @@ interface PendingPermission {
 
 // ─── Adapter ────────────────────────────────────────────────────────────────────
 
-export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta> {
+export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, PendingOutgoingAwareAdapter {
   private sessionId: string;
   private options: ClaudeSdkAdapterOptions;
   private sdkSession: any = null; // SDKSession from the Agent SDK
@@ -127,6 +127,10 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta> {
       pending.reject(new Error("Session disconnected"));
     }
     this.pendingPermissions.clear();
+  }
+
+  drainPendingOutgoing(): BrowserOutgoingMessage[] {
+    return this.pendingOutgoing.splice(0);
   }
 
   // ─── Initialization ─────────────────────────────────────────────────────────

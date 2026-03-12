@@ -37,6 +37,10 @@ export interface TurnSteerFailedAwareAdapter {
   onTurnSteerFailed(cb: (pendingInputIds: string[]) => void): void;
 }
 
+export interface PendingOutgoingAwareAdapter {
+  drainPendingOutgoing(): BrowserOutgoingMessage[];
+}
+
 export interface CurrentTurnIdAwareAdapter {
   getCurrentTurnId(): string | null;
 }

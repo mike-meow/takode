@@ -151,6 +151,7 @@ function makeClaudeSdkAdapterMock() {
     onDisconnect: vi.fn((cb: () => void) => { onDisconnectCb = cb; }),
     onInitError: vi.fn((cb: (error: string) => void) => { onInitErrorCb = cb; }),
     sendBrowserMessage: vi.fn(),
+    drainPendingOutgoing: vi.fn((): any[] => []),
     isConnected: vi.fn(() => true),
     disconnect: vi.fn(async () => {}),
     emitBrowserMessage: (msg: any) => onBrowserMessageCb?.(msg),
@@ -11258,6 +11259,52 @@ describe("Claude SDK image transport", () => {
     expect(sentMsg.content).toContain("use the Read tool to view these files");
     // Images should be stripped — the CLI doesn't support image content blocks via stdin
     expect(sentMsg.images).toBeUndefined();
+  });
+});
+
+describe("Claude SDK adapter queue handoff", () => {
+  it("avoids double-buffering pre-init SDK messages and hands them off on reattach", async () => {
+    // Regression: a message could be queued in both the SDK adapter's internal
+    // pendingOutgoing buffer and the bridge's session.pendingMessages buffer.
+    // Reattaching a replacement adapter could then flush the same message twice.
+    const sid = "sdk-queue-reattach";
+    const pendingOutgoing: any[] = [];
+    const adapter1 = makeClaudeSdkAdapterMock();
+    adapter1.isConnected.mockReturnValue(false);
+    adapter1.sendBrowserMessage.mockImplementation((msg: any) => {
+      pendingOutgoing.push(msg);
+      return false;
+    });
+    adapter1.drainPendingOutgoing.mockImplementation(() => pendingOutgoing.splice(0));
+    bridge.attachClaudeSdkAdapter(sid, adapter1 as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "hello from sdk queue",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const session = bridge.getSession(sid)!;
+    expect(pendingOutgoing).toHaveLength(1);
+    expect(session.pendingMessages).toHaveLength(0);
+
+    const delivered: any[] = [];
+    const adapter2 = makeClaudeSdkAdapterMock();
+    adapter2.sendBrowserMessage.mockImplementation((msg: any) => {
+      delivered.push(msg);
+      return true;
+    });
+    bridge.attachClaudeSdkAdapter(sid, adapter2 as any);
+
+    expect(adapter1.drainPendingOutgoing).toHaveBeenCalledTimes(1);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      type: "user_message",
+      content: "hello from sdk queue",
+    });
+    expect(session.pendingMessages).toHaveLength(0);
   });
 });
 
