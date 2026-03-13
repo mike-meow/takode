@@ -11949,8 +11949,8 @@ describe("stuck session watchdog", () => {
     session.lastCliPingAt = threeMinAgo;
     session.stuckNotifiedAt = null;
 
-    // But a sub-agent sent tool_progress 30 seconds ago
-    session.lastSubagentProgressAt = Date.now() - 30_000;
+    // But a tool sent tool_progress 30 seconds ago
+    session.lastToolProgressAt = Date.now() - 30_000;
 
     bridge.startStuckSessionWatchdog();
 

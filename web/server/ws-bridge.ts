@@ -357,10 +357,9 @@ interface Session {
   lastCliMessageAt: number;
   /** Last keep_alive or WebSocket ping from CLI (epoch ms), for disconnect diagnostics */
   lastCliPingAt: number;
-  /** Last tool_progress for an Agent/Task sub-agent (epoch ms). Tracks whether
-   *  async sub-agents are actively running — prevents false "stuck" warnings
-   *  when the main agent is idle waiting for long-running sub-agents. */
-  lastSubagentProgressAt: number;
+  /** Last tool_progress from any tool (epoch ms). Prevents false "stuck"
+   *  warnings when a tool (Bash, Agent, etc.) is legitimately running. */
+  lastToolProgressAt: number;
   /** Optimistic running rollback timer started when a user message is dispatched. */
   optimisticRunningTimer: ReturnType<typeof setTimeout> | null;
   /**
@@ -1160,7 +1159,7 @@ export class WsBridge {
         // message, a keep_alive ping, or sub-agent tool_progress within the
         // threshold. Sub-agent progress prevents false "stuck" warnings when
         // the main agent is idle waiting for long-running async sub-agents.
-        const lastActivity = Math.max(session.lastCliMessageAt, session.lastCliPingAt, session.lastSubagentProgressAt);
+        const lastActivity = Math.max(session.lastCliMessageAt, session.lastCliPingAt, session.lastToolProgressAt);
         const sinceLastActivity = lastActivity > 0 ? now - lastActivity : now - session.generationStartedAt;
 
         if (sinceLastActivity < STUCK_THRESHOLD_MS) {
@@ -1694,7 +1693,7 @@ export class WsBridge {
         cliInitReceived: false,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
-        lastSubagentProgressAt: 0,
+        lastToolProgressAt: 0,
         optimisticRunningTimer: null,
         lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
@@ -2140,7 +2139,7 @@ export class WsBridge {
         cliInitReceived: false,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
-        lastSubagentProgressAt: 0,
+        lastToolProgressAt: 0,
         optimisticRunningTimer: null,
         lastOutboundUserNdjson: null,
         stuckNotifiedAt: null,
@@ -5446,16 +5445,10 @@ export class WsBridge {
           : merged,
       );
     }
-    // Track sub-agent liveness for stuck detection — prevents false "stuck"
-    // warnings when the main agent is idle waiting for long-running sub-agents.
-    // Match both the top-level Agent/Task tool AND any child tool running inside
-    // a sub-agent (identified by having a parent_tool_use_id). Without the
-    // parent_tool_use_id check, child tools (Bash, Read, Grep, etc.) running
-    // inside a background agent don't update this timestamp, causing the stuck
-    // watchdog to fire even though the session is actively working.
-    if (msg.tool_name === "Agent" || msg.tool_name === "Task" || msg.parent_tool_use_id) {
-      session.lastSubagentProgressAt = Date.now();
-    }
+    // Any tool_progress means the CLI is actively executing a tool --
+    // update liveness to prevent false "stuck" warnings for long-running
+    // tools like Bash with high timeouts, background agents, etc.
+    session.lastToolProgressAt = Date.now();
     this.broadcastToBrowsers(session, {
       type: "tool_progress",
       tool_use_id: msg.tool_use_id,
