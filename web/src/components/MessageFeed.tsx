@@ -542,7 +542,9 @@ function collectLiveSubagentEntries(
         const resultPreview = toolResults?.get(entry.taskToolUseId);
         const bgNotif = backgroundAgentNotifs?.get(entry.taskToolUseId);
         const isEffectivelyComplete = resultPreview != null || bgNotif != null;
-        const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running";
+        // Background agents stay "live" even when the main turn ends (session idle).
+        // They only complete via task_notification (bgNotif).
+        const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !entry.isBackground;
         if (!isEffectivelyComplete && !isAbandoned && !seen.has(entry.taskToolUseId)) {
           seen.add(entry.taskToolUseId);
           const childSignature = getEntrySignature(entry.children);
@@ -1531,9 +1533,12 @@ const SubagentContainer = memo(function SubagentContainer({
   // Detect abandoned subagents: session is no longer running but this subagent
   // never received a result. This happens on CLI disconnect, user interrupt,
   // compaction, or SDK sessions that don't emit tool_result for Task tools.
+  // Background agents (run_in_background: true) are NOT abandoned when the main
+  // turn ends — they keep running after the session goes idle and complete via
+  // task_notification. Only mark them abandoned if the session fully disconnects.
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const isEffectivelyComplete = resultPreview != null || bgNotif != null;
-  const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running";
+  const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !group.isBackground;
 
   // Get the last visible entry for a compact preview (fallback when no result)
   const lastEntry = group.children[group.children.length - 1];

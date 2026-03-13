@@ -5442,7 +5442,12 @@ export class WsBridge {
     }
     // Track sub-agent liveness for stuck detection — prevents false "stuck"
     // warnings when the main agent is idle waiting for long-running sub-agents.
-    if (msg.tool_name === "Agent" || msg.tool_name === "Task") {
+    // Match both the top-level Agent/Task tool AND any child tool running inside
+    // a sub-agent (identified by having a parent_tool_use_id). Without the
+    // parent_tool_use_id check, child tools (Bash, Read, Grep, etc.) running
+    // inside a background agent don't update this timestamp, causing the stuck
+    // watchdog to fire even though the session is actively working.
+    if (msg.tool_name === "Agent" || msg.tool_name === "Task" || msg.parent_tool_use_id) {
       session.lastSubagentProgressAt = Date.now();
     }
     this.broadcastToBrowsers(session, {
