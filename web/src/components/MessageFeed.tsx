@@ -541,7 +541,12 @@ function collectLiveSubagentEntries(
       if (entry.kind === "subagent") {
         const resultPreview = toolResults?.get(entry.taskToolUseId);
         const bgNotif = backgroundAgentNotifs?.get(entry.taskToolUseId);
-        const isEffectivelyComplete = resultPreview != null || bgNotif != null;
+        // Background agents: the CLI sends tool_result immediately ("task spawned")
+        // so resultPreview is set right away. They only truly complete when
+        // task_notification arrives (bgNotif). Foreground agents complete on either.
+        const isEffectivelyComplete = entry.isBackground
+          ? bgNotif != null
+          : (resultPreview != null || bgNotif != null);
         // Background agents stay "live" even when the main turn ends (session idle).
         // They only complete via task_notification (bgNotif).
         const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !entry.isBackground;
@@ -1537,7 +1542,12 @@ const SubagentContainer = memo(function SubagentContainer({
   // turn ends — they keep running after the session goes idle and complete via
   // task_notification. Only mark them abandoned if the session fully disconnects.
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
-  const isEffectivelyComplete = resultPreview != null || bgNotif != null;
+  // Background agents: the CLI sends tool_result immediately ("task spawned")
+  // so resultPreview is set right away. They only truly complete when
+  // task_notification arrives (bgNotif). Foreground agents complete on either.
+  const isEffectivelyComplete = group.isBackground
+    ? bgNotif != null
+    : (resultPreview != null || bgNotif != null);
   const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !group.isBackground;
 
   // Get the last visible entry for a compact preview (fallback when no result)
@@ -1608,7 +1618,7 @@ const SubagentContainer = memo(function SubagentContainer({
           </span>
         )}
         <LiveDurationBadge
-          finalDurationSeconds={resultPreview?.duration_seconds}
+          finalDurationSeconds={group.isBackground ? bgNotif ? resultPreview?.duration_seconds : undefined : resultPreview?.duration_seconds}
           progressElapsedSeconds={progressElapsedSeconds}
           startTimestamp={startTimestamp}
           isComplete={isEffectivelyComplete || isAbandoned}
@@ -1616,7 +1626,7 @@ const SubagentContainer = memo(function SubagentContainer({
         <span className="text-[10px] text-cc-muted bg-cc-hover rounded-full px-1.5 py-0.5 tabular-nums shrink-0 ml-auto">
           {childCount > 0
             ? childCount
-            : resultPreview
+            : isEffectivelyComplete
               ? "✓"
               : isAbandoned
                 ? "—"
