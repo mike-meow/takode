@@ -597,11 +597,11 @@ describe("recentlyRenamed", () => {
 
 describe("UI state", () => {
   it("setColorTheme: updates colorTheme, darkMode, and persists to localStorage", () => {
-    useStore.getState().setColorTheme("codex-dark");
+    useStore.getState().setColorTheme("vscode-dark");
 
-    expect(useStore.getState().colorTheme).toBe("codex-dark");
+    expect(useStore.getState().colorTheme).toBe("vscode-dark");
     expect(useStore.getState().darkMode).toBe(true);
-    expect(localStorage.getItem("cc-color-theme")).toBe("codex-dark");
+    expect(localStorage.getItem("cc-color-theme")).toBe("vscode-dark");
     expect(localStorage.getItem("cc-dark-mode")).toBe("true");
 
     useStore.getState().setColorTheme("light");

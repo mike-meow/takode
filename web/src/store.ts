@@ -7,12 +7,12 @@ import { isDesktopShellLayout } from "./utils/layout.js";
 // ─── Color Themes ───────────────────────────────────────────────────────────
 
 /** Available color themes. All non-"light" themes are dark variants. */
-export type ColorTheme = "light" | "dark" | "codex-dark";
+export type ColorTheme = "light" | "dark" | "vscode-dark";
 
 export const COLOR_THEMES: { id: ColorTheme; label: string }[] = [
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
-  { id: "codex-dark", label: "Codex Dark" },
+  { id: "vscode-dark", label: "VS Code" },
 ];
 
 export function isDarkTheme(theme: ColorTheme): boolean {
@@ -442,7 +442,7 @@ function getInitialSessionId(): string | null {
 function getInitialColorTheme(): ColorTheme {
   if (typeof window === "undefined") return "dark";
   const stored = localStorage.getItem("cc-color-theme");
-  if (stored === "light" || stored === "dark" || stored === "codex-dark") return stored;
+  if (stored === "light" || stored === "dark" || stored === "vscode-dark") return stored;
   // Migrate from legacy cc-dark-mode
   const legacyDark = localStorage.getItem("cc-dark-mode");
   if (legacyDark !== null) return legacyDark === "true" ? "dark" : "light";

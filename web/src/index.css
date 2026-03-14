@@ -227,25 +227,25 @@ html, body {
   --color-cc-warning: #f6e05e;
 }
 
-/* Codex dark theme — inspired by the ChatGPT/Codex dark UI */
-.dark.theme-codex-dark {
-  --color-cc-bg: #212121;
-  --color-cc-fg: #ececec;
-  --color-cc-card: #2f2f2f;
-  --color-cc-primary: #10a37f;
-  --color-cc-primary-hover: #1ab98f;
-  --color-cc-user-bubble: #303030;
-  --color-cc-border: rgba(255,255,255,0.10);
-  --color-cc-muted: #b4b4b4;
-  --color-cc-sidebar: #171717;
-  --color-cc-input-bg: #303030;
-  --color-cc-code-bg: #0d0d0d;
-  --color-cc-code-fg: #ececec;
-  --color-cc-hover: rgba(255,255,255,0.05);
-  --color-cc-active: rgba(255,255,255,0.08);
-  --color-cc-success: #10a37f;
-  --color-cc-error: #ef4444;
-  --color-cc-warning: #f59e0b;
+/* VS Code Dark Modern — matches the VS Code default dark theme colors */
+.dark.theme-vscode-dark {
+  --color-cc-bg: #1f1f1f;
+  --color-cc-fg: #cccccc;
+  --color-cc-card: #262626;
+  --color-cc-primary: #0078d4;
+  --color-cc-primary-hover: #026ec1;
+  --color-cc-user-bubble: #2a2d2e;
+  --color-cc-border: #2b2b2b;
+  --color-cc-muted: #9d9d9d;
+  --color-cc-sidebar: #181818;
+  --color-cc-input-bg: #313131;
+  --color-cc-code-bg: #1e1e1e;
+  --color-cc-code-fg: #d4d4d4;
+  --color-cc-hover: rgba(255,255,255,0.04);
+  --color-cc-active: rgba(255,255,255,0.07);
+  --color-cc-success: #2ea043;
+  --color-cc-error: #f85149;
+  --color-cc-warning: #cca700;
 }
 
 /* ─── Syntax highlighting tokens (highlight.js) ───────────────────────────── */
@@ -400,9 +400,9 @@ select {
 .dark .diff-file-header {
   background: rgba(255,255,255,0.04);
 }
-.dark.theme-codex-dark .diff-hunk-header {
+.dark.theme-vscode-dark .diff-hunk-header {
   color: var(--color-cc-primary);
-  background: rgba(16, 163, 127, 0.06);
+  background: rgba(0, 120, 212, 0.06);
 }
 .diff-hunk-header {
   padding: 4px 12px;

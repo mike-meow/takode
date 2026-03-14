@@ -18,12 +18,12 @@ interface TerminalViewProps {
 }
 
 function getTerminalTheme(theme: ColorTheme) {
-  if (theme === "codex-dark") {
+  if (theme === "vscode-dark") {
     return {
-      background: "#0d0d0d",
-      foreground: "#ececec",
-      cursor: "#ececec",
-      selectionBackground: "rgba(255, 255, 255, 0.2)",
+      background: "#1e1e1e",
+      foreground: "#cccccc",
+      cursor: "#aeafad",
+      selectionBackground: "#264f78",
     };
   }
   return {
@@ -137,7 +137,7 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
       className={`flex flex-col rounded-[14px] shadow-2xl overflow-hidden border border-cc-border ${
         embedded ? "h-full" : "w-[90vw] max-w-4xl h-[70vh]"
       }`}
-      style={{ background: colorTheme === "codex-dark" ? "#0d0d0d" : colorTheme === "dark" ? "#141413" : "#1e1e1e" }}
+      style={{ background: colorTheme === "vscode-dark" ? "#1e1e1e" : colorTheme === "dark" ? "#141413" : "#1e1e1e" }}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}

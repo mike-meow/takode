@@ -83,7 +83,7 @@ vi.mock("../store.js", () => {
     COLOR_THEMES: [
       { id: "light", label: "Light" },
       { id: "dark", label: "Dark" },
-      { id: "codex-dark", label: "Codex Dark" },
+      { id: "vscode-dark", label: "VS Code" },
     ],
   };
 });
