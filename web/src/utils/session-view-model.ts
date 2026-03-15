@@ -72,6 +72,8 @@ export function toSessionViewModel(session: SessionState | SdkSessionInfo): Sess
     permissionMode: session.permissionMode,
     repoRoot: session.repoRoot,
     gitBranch: session.gitBranch,
+    gitDefaultBranch: session.gitDefaultBranch,
+    diffBaseBranch: session.diffBaseBranch,
     isWorktree: session.isWorktree,
     gitAhead: session.gitAhead,
     gitBehind: session.gitBehind,

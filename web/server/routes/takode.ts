@@ -48,6 +48,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
             sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
             name: names[s.sessionId] ?? s.name,
             gitBranch: bridge?.git_branch || "",
+            gitDefaultBranch: bridge?.git_default_branch || "",
+            diffBaseBranch: bridge?.diff_base_branch || "",
             gitAhead: bridge?.git_ahead || 0,
             gitBehind: bridge?.git_behind || 0,
             totalLinesAdded: bridge?.total_lines_added || 0,
@@ -134,6 +136,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       gitBranch: bridge?.git_branch || null,
       gitHeadSha: bridge?.git_head_sha || null,
       gitDefaultBranch: bridge?.git_default_branch || null,
+      diffBaseBranch: bridge?.diff_base_branch || null,
       gitAhead: bridge?.git_ahead || 0,
       gitBehind: bridge?.git_behind || 0,
       totalLinesAdded: bridge?.total_lines_added || 0,
@@ -518,6 +521,36 @@ export function createTakodeRoutes(ctx: RouteContext) {
         cliConnected: wsBridge.isBackendConnected(s.sessionId),
       })),
       ...(bridgeDiag || {}),
+    });
+  });
+
+  // ─── Branch management ─────────────────────────────────────────────
+
+  /**
+   * Trigger a git info refresh for the caller's own session.
+   * Agents call this after git checkout / branch / rebase so the server
+   * picks up the new HEAD and recomputes ahead/behind stats.
+   */
+  api.post("/sessions/:id/refresh-branch", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found in bridge" }, 404);
+
+    await wsBridge.refreshGitInfoPublic(id, { broadcastUpdate: true, notifyPoller: true, force: true });
+
+    const state = wsBridge.getSession(id)?.state;
+    return c.json({
+      ok: true,
+      gitBranch: state?.git_branch || null,
+      gitDefaultBranch: state?.git_default_branch || null,
+      diffBaseBranch: state?.diff_base_branch || null,
+      gitAhead: state?.git_ahead || 0,
+      gitBehind: state?.git_behind || 0,
     });
   });
 

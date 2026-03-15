@@ -269,6 +269,19 @@ async function apiDelete(base: string, path: string): Promise<unknown> {
   return res.json();
 }
 
+async function apiPatch(base: string, path: string, body?: unknown): Promise<unknown> {
+  const res = await fetch(`${base}${path}`, {
+    method: "PATCH",
+    headers: takodeAuthHeaders({ "Content-Type": "application/json" }),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 function err(message: string): never {
   console.error(JSON.stringify({ error: message }));
   process.exit(1);
@@ -396,6 +409,7 @@ type TakodeSessionInfo = {
   gitBranch?: string | null;
   gitHeadSha?: string | null;
   gitDefaultBranch?: string | null;
+  diffBaseBranch?: string | null;
   gitAhead?: number;
   gitBehind?: number;
   totalLinesAdded?: number;
@@ -751,6 +765,7 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   }
   if (data.gitHeadSha) console.log(`  HEAD           ${data.gitHeadSha.slice(0, 12)}`);
   if (data.gitDefaultBranch) console.log(`  Default Branch ${formatInlineText(data.gitDefaultBranch)}`);
+  if (data.diffBaseBranch) console.log(`  Diff Base      ${formatInlineText(data.diffBaseBranch)}`);
 
   const added = data.totalLinesAdded || 0;
   const removed = data.totalLinesRemoved || 0;
@@ -2015,6 +2030,59 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   }
 }
 
+// ─── Branch management commands ──────────────────────────────────────────────
+
+async function handleSetBase(base: string, args: string[]): Promise<void> {
+  const sessionRef = args[0];
+  if (!sessionRef) err("Usage: takode set-base <session> <branch> [--json]");
+  const branch = args[1];
+  if (branch === undefined) err("Usage: takode set-base <session> <branch> [--json]");
+
+  const flags = parseFlags(args.slice(2));
+  const jsonMode = flags.json === true;
+
+  const result = (await apiPatch(base, `/sessions/${encodeURIComponent(sessionRef)}/diff-base`, { branch })) as {
+    ok: boolean;
+    diff_base_branch: string;
+  };
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(`Diff base set to: ${result.diff_base_branch || "(default)"}`);
+}
+
+async function handleRefreshBranch(base: string, args: string[]): Promise<void> {
+  const sessionRef = args[0];
+  if (!sessionRef) err("Usage: takode refresh-branch <session> [--json]");
+
+  const flags = parseFlags(args.slice(1));
+  const jsonMode = flags.json === true;
+
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/refresh-branch`)) as {
+    ok: boolean;
+    gitBranch: string | null;
+    gitDefaultBranch: string | null;
+    diffBaseBranch: string | null;
+    gitAhead: number;
+    gitBehind: number;
+  };
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Branch: ${result.gitBranch || "(unknown)"}`);
+  if (result.gitDefaultBranch) console.log(`Default: ${result.gitDefaultBranch}`);
+  if (result.diffBaseBranch) console.log(`Diff Base: ${result.diffBaseBranch}`);
+  const ahead = result.gitAhead ? `${result.gitAhead}↑` : "";
+  const behind = result.gitBehind ? `${result.gitBehind}↓` : "";
+  const delta = [ahead, behind].filter(Boolean).join(" ");
+  if (delta) console.log(`Status: ${delta}`);
+}
+
 // ─── Main dispatch ──────────────────────────────────────────────────────────
 
 function printUsage(): void {
@@ -2035,6 +2103,8 @@ Commands:
   stop     Gracefully stop a herded session (e.g. takode stop 5)
   pending  Show pending questions/plans from a herded session
   answer   Answer a pending question or approve/reject a plan
+  set-base       Set the diff base branch for a session
+  refresh-branch Refresh git branch info for a session after checkout/rebase
 
 Peek modes:
   takode peek 1                    Smart overview (collapsed turns + expanded last turn)
@@ -2063,6 +2133,8 @@ Examples:
   takode read 1 42
   takode send 2 "Please add tests for the edge cases"
   printf 'Line 1\\nLine 2 with $HOME and \`code\`\\n' | takode send 2 --stdin
+  takode set-base 1 origin/main
+  takode refresh-branch 1
 `);
 }
 
@@ -2092,6 +2164,8 @@ try {
     ["stop", { requireOrchestrator: true }],
     ["pending", { requireOrchestrator: true }],
     ["answer", { requireOrchestrator: true }],
+    ["set-base", {}],
+    ["refresh-branch", {}],
   ]);
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
@@ -2140,6 +2214,12 @@ try {
       break;
     case "answer":
       await handleAnswer(base, args);
+      break;
+    case "set-base":
+      await handleSetBase(base, args);
+      break;
+    case "refresh-branch":
+      await handleRefreshBranch(base, args);
       break;
     case "help":
     case "-h":

@@ -1001,6 +1001,23 @@ export class WsBridge {
   }
 
   /**
+   * Public wrapper to trigger a git info refresh + diff recomputation.
+   * Used by Takode CLI routes when an agent signals a branch change.
+   */
+  async refreshGitInfoPublic(
+    sessionId: string,
+    options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean } = {},
+  ): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.diffStatsDirty = true;
+    await this.refreshGitInfo(session, options);
+    await this.computeDiffStatsAsync(session);
+    this.persistSession(session);
+    return true;
+  }
+
+  /**
    * Set cwd on a session at creation time so the slash command cache lookup
    * works before the CLI sends system/init (which only arrives after the first
    * user message). Also pre-fills slash commands from the per-project cache.

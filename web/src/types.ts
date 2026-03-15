@@ -134,6 +134,8 @@ export interface SdkSessionInfo {
   name?: string;
   backendType?: BackendType;
   gitBranch?: string;
+  gitDefaultBranch?: string;
+  diffBaseBranch?: string;
   gitAhead?: number;
   gitBehind?: number;
   totalLinesAdded?: number;

@@ -224,6 +224,7 @@ function createMockBridge() {
     markWorktree: vi.fn(),
     setInitialCwd: vi.fn(),
     setDiffBaseBranch: vi.fn(() => true),
+    refreshGitInfoPublic: vi.fn(async () => true),
     setInitialAskPermission: vi.fn(),
     markResumedFromExternal: vi.fn(),
     broadcastSessionUpdate: vi.fn(),
@@ -924,6 +925,8 @@ describe("GET /api/sessions", () => {
         name: "Fix auth bug",
         sessionNum: null,
         gitBranch: "",
+        gitDefaultBranch: "",
+        diffBaseBranch: "",
         gitAhead: 0,
         gitBehind: 0,
         totalLinesAdded: 0,
@@ -943,6 +946,8 @@ describe("GET /api/sessions", () => {
         cwd: "/b",
         sessionNum: null,
         gitBranch: "",
+        gitDefaultBranch: "",
+        diffBaseBranch: "",
         gitAhead: 0,
         gitBehind: 0,
         totalLinesAdded: 0,
@@ -5545,5 +5550,110 @@ describe("Takode server-authoritative auth", () => {
     });
     expect(res.status).toBe(404);
     expect(bridge.subscribeTakodeEvents).not.toHaveBeenCalled();
+  });
+
+  // ─── Branch management via Takode routes ────────────────────────────
+
+  it("PATCH /api/sessions/:id/diff-base sets the diff base via takode auth", async () => {
+    setupTakodeSessions();
+    bridge.setDiffBaseBranch.mockReturnValue(true);
+
+    const res = await app.request("/api/sessions/worker-1/diff-base", {
+      method: "PATCH",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ branch: "origin/main" }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // Uses the browser sessions route (mounted first), which returns snake_case
+    expect(json).toEqual({ ok: true, diff_base_branch: "origin/main" });
+    expect(bridge.setDiffBaseBranch).toHaveBeenCalledWith("worker-1", "origin/main");
+  });
+
+  it("PATCH /api/sessions/:id/diff-base returns 404 for unknown session", async () => {
+    setupTakodeSessions();
+    bridge.setDiffBaseBranch.mockReturnValue(false);
+
+    const res = await app.request("/api/sessions/nonexistent/diff-base", {
+      method: "PATCH",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ branch: "main" }),
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/sessions/:id/refresh-branch triggers git refresh and returns branch info", async () => {
+    setupTakodeSessions();
+    // Mock the bridge session with git state
+    bridge.getSession.mockReturnValue({
+      state: {
+        git_branch: "feature/auth",
+        git_default_branch: "origin/jiayi",
+        diff_base_branch: "origin/jiayi",
+        git_ahead: 2,
+        git_behind: 0,
+      },
+    });
+    bridge.refreshGitInfoPublic.mockResolvedValue(true);
+
+    const res = await app.request("/api/sessions/worker-1/refresh-branch", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({
+      ok: true,
+      gitBranch: "feature/auth",
+      gitDefaultBranch: "origin/jiayi",
+      diffBaseBranch: "origin/jiayi",
+      gitAhead: 2,
+      gitBehind: 0,
+    });
+    expect(bridge.refreshGitInfoPublic).toHaveBeenCalledWith("worker-1", {
+      broadcastUpdate: true,
+      notifyPoller: true,
+      force: true,
+    });
+  });
+
+  it("POST /api/sessions/:id/refresh-branch returns 404 for unknown session", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue(null);
+
+    const res = await app.request("/api/sessions/nonexistent/refresh-branch", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("takode info endpoint includes diffBaseBranch in response", async () => {
+    const sessions = setupTakodeSessions();
+    bridge.getAllSessions.mockReturnValue([
+      {
+        session_id: "worker-1",
+        git_branch: "feature/x",
+        git_default_branch: "origin/jiayi",
+        diff_base_branch: "origin/main",
+      },
+    ]);
+    bridge.isBackendConnected.mockReturnValue(true);
+    bridge.isSessionBusy.mockReturnValue(false);
+
+    const res = await app.request("/api/sessions/worker-1/info", {
+      method: "GET",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.gitBranch).toBe("feature/x");
+    expect(json.gitDefaultBranch).toBe("origin/jiayi");
+    expect(json.diffBaseBranch).toBe("origin/main");
   });
 });
