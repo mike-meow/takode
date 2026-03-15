@@ -1374,6 +1374,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const worktreeResult = cleanupWorktree(id, true);
     launcher.setArchived(id, true);
     await sessionStore.setArchived(id, true);
+    wsBridge.onSessionArchived(id);
     return c.json({ ok: true, worktree: worktreeResult });
   });
 
@@ -1385,6 +1386,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     launcher.setArchived(id, false);
     await sessionStore.setArchived(id, false);
+    wsBridge.onSessionUnarchived(id);
 
     // For worktree sessions: recreate the worktree if it was deleted during archiving
     let worktreeRecreated = false;

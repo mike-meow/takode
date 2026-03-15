@@ -225,6 +225,8 @@ function createMockBridge() {
     setInitialCwd: vi.fn(),
     setDiffBaseBranch: vi.fn(() => true),
     refreshGitInfoPublic: vi.fn(async () => true),
+    onSessionArchived: vi.fn(),
+    onSessionUnarchived: vi.fn(),
     setInitialAskPermission: vi.fn(),
     markResumedFromExternal: vi.fn(),
     broadcastSessionUpdate: vi.fn(),

@@ -853,6 +853,20 @@ export class WsBridge {
   private sessionNameGetter: ((sessionId: string) => string) | null = null;
   private onGitInfoReady: ((sessionId: string, cwd: string, branch: string) => void) | null = null;
   private leaderGroupIdleStates = new Map<string, LeaderGroupIdleTimerState>();
+
+  // ── Cross-session branch invalidation ──────────────────────────────────
+  // Reverse index: branch name → set of session IDs that reference it
+  // (as git_branch, diff_base_branch, or git_default_branch).
+  // Only active (non-archived) sessions are indexed.
+  private branchToSessions = new Map<string, Set<string>>();
+  // Tracks which branches each session is indexed under, for fast removal.
+  private sessionBranches = new Map<string, Set<string>>();
+  // Per-session throttle for cross-session invalidation (epoch ms).
+  // 30s prevents cascading when an agent pushes multiple commits in rapid
+  // succession -- each push would otherwise trigger O(sessions) refreshes.
+  private lastCrossSessionRefreshAt = new Map<string, number>();
+  private static readonly CROSS_SESSION_THROTTLE_MS = 30_000;
+
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
     "git_branch",
     "git_default_branch",
@@ -984,6 +998,17 @@ export class WsBridge {
     }
   }
 
+  /** Called when a session is archived -- remove from branch index and throttle tracking. */
+  onSessionArchived(sessionId: string): void {
+    this.cleanupBranchState(sessionId);
+  }
+
+  /** Called when a session is unarchived -- re-add it to the branch index. */
+  onSessionUnarchived(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) this.updateBranchIndex(session);
+  }
+
   setDiffBaseBranch(sessionId: string, branch: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
@@ -996,6 +1021,8 @@ export class WsBridge {
     // Chained so git_default_branch is fresh when diff falls back to it (user selected "default").
     session.diffStatsDirty = true;
     this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true });
+    // Update the branch index since diff_base_branch changed
+    this.updateBranchIndex(session);
     this.persistSession(session);
     return true;
   }
@@ -1961,6 +1988,16 @@ export class WsBridge {
     if (options.notifyPoller && session.state.git_branch && session.state.cwd && this.onGitInfoReady) {
       this.onGitInfoReady(session.id, session.state.cwd, session.state.git_branch);
     }
+
+    // Update the branch-to-sessions reverse index whenever branch refs change
+    this.updateBranchIndex(session);
+
+    // Cross-session invalidation: if HEAD moved, other sessions whose
+    // diff_base_branch matches this session's git_branch need refreshing.
+    const currentHeadSha = session.state.git_head_sha || "";
+    if (previousHeadSha && currentHeadSha && currentHeadSha !== previousHeadSha) {
+      this.invalidateSessionsSharingBranch(session);
+    }
   }
 
   /**
@@ -2081,6 +2118,105 @@ export class WsBridge {
     void this.refreshGitInfo(session, options).then(() => {
       this.recomputeDiffIfDirty(session);
     });
+  }
+
+  // ── Cross-session branch invalidation helpers ────────────────────────
+
+  /**
+   * Update the branch-to-sessions reverse index for a session.
+   * Removes stale entries and re-adds current branch references.
+   * Skips archived sessions entirely.
+   */
+  private updateBranchIndex(session: Session): void {
+    const sessionId = session.id;
+    // Skip archived sessions
+    if (this.launcher?.getSession(sessionId)?.archived) {
+      this.removeBranchIndexEntries(sessionId);
+      return;
+    }
+
+    // Remove old entries for this session
+    this.removeBranchIndexEntries(sessionId);
+
+    // Add current branch references
+    const branches = new Set<string>();
+    for (const ref of [session.state.git_branch, session.state.diff_base_branch, session.state.git_default_branch]) {
+      const name = ref?.trim();
+      if (!name) continue;
+      branches.add(name);
+      let set = this.branchToSessions.get(name);
+      if (!set) {
+        set = new Set();
+        this.branchToSessions.set(name, set);
+      }
+      set.add(sessionId);
+    }
+    if (branches.size > 0) {
+      this.sessionBranches.set(sessionId, branches);
+    }
+  }
+
+  /** Remove all branch index entries for a session. */
+  private removeBranchIndexEntries(sessionId: string): void {
+    const oldBranches = this.sessionBranches.get(sessionId);
+    if (oldBranches) {
+      for (const branch of oldBranches) {
+        const set = this.branchToSessions.get(branch);
+        if (set) {
+          set.delete(sessionId);
+          if (set.size === 0) this.branchToSessions.delete(branch);
+        }
+      }
+      this.sessionBranches.delete(sessionId);
+    }
+  }
+
+  /** Fully clean up branch index + throttle state for a removed/archived session. */
+  private cleanupBranchState(sessionId: string): void {
+    this.removeBranchIndexEntries(sessionId);
+    this.lastCrossSessionRefreshAt.delete(sessionId);
+  }
+
+  /**
+   * After a session's HEAD SHA changes, invalidate other active sessions
+   * whose diff_base_branch or git_default_branch matches the changed branch.
+   * This covers: session A pushes to origin/jiayi → session B (base = origin/jiayi)
+   * sees updated ahead/behind counts.
+   */
+  private invalidateSessionsSharingBranch(triggerSession: Session): void {
+    const changedBranch = triggerSession.state.git_branch?.trim();
+    if (!changedBranch) return;
+
+    const affectedSessionIds = this.branchToSessions.get(changedBranch);
+    if (!affectedSessionIds || affectedSessionIds.size === 0) return;
+
+    // Snapshot to avoid iterator invalidation -- async refreshes can mutate the Set
+    const snapshot = Array.from(affectedSessionIds);
+    const now = Date.now();
+    let invalidatedCount = 0;
+    for (const sessionId of snapshot) {
+      if (sessionId === triggerSession.id) continue;
+
+      const session = this.sessions.get(sessionId);
+      if (!session) continue;
+
+      // Skip archived sessions
+      if (this.launcher?.getSession(sessionId)?.archived) continue;
+
+      // Per-session throttle to prevent cascading
+      const lastRefresh = this.lastCrossSessionRefreshAt.get(sessionId) ?? 0;
+      if (now - lastRefresh < WsBridge.CROSS_SESSION_THROTTLE_MS) continue;
+
+      this.lastCrossSessionRefreshAt.set(sessionId, now);
+      session.diffStatsDirty = true;
+      this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true });
+      invalidatedCount++;
+    }
+    if (invalidatedCount > 0) {
+      console.log(
+        `[ws-bridge] Cross-session invalidation: ${triggerSession.id} (branch ${changedBranch}) triggered refresh of ${invalidatedCount} session(s)`,
+      );
+    }
   }
 
   /** Tools that cannot modify the filesystem — any other tool marks diff stats dirty. */
@@ -2822,6 +2958,7 @@ export class WsBridge {
       this.clearAllCodexToolResultWatchdogs(session, "remove_session");
     }
     this.sessions.delete(sessionId);
+    this.cleanupBranchState(sessionId);
     this.store?.remove(sessionId);
     // Fire-and-forget: image cleanup is non-critical
     this.imageStore?.removeSession(sessionId);
@@ -2859,6 +2996,7 @@ export class WsBridge {
     session.browserSockets.clear();
 
     this.sessions.delete(sessionId);
+    this.cleanupBranchState(sessionId);
     this.store?.remove(sessionId);
     // Fire-and-forget: image cleanup is non-critical
     this.imageStore?.removeSession(sessionId);

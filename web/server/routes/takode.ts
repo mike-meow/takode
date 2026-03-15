@@ -554,5 +554,66 @@ export function createTakodeRoutes(ctx: RouteContext) {
     });
   });
 
+  /**
+   * Get branch info for the caller's session.
+   * Returns current branch, base branch, default branch, HEAD SHA, and ahead/behind counts.
+   */
+  api.get("/sessions/:id/branch/status", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const state = session.state;
+    return c.json({
+      ok: true,
+      gitBranch: state.git_branch || null,
+      diffBaseBranch: state.diff_base_branch || null,
+      gitDefaultBranch: state.git_default_branch || null,
+      gitHeadSha: state.git_head_sha || null,
+      gitAhead: state.git_ahead || 0,
+      gitBehind: state.git_behind || 0,
+      totalLinesAdded: state.total_lines_added || 0,
+      totalLinesRemoved: state.total_lines_removed || 0,
+      isWorktree: state.is_worktree || false,
+    });
+  });
+
+  /**
+   * Set the diff base branch for the caller's session.
+   * This is the same operation as changing it in the DiffPanel UI.
+   */
+  api.post("/sessions/:id/branch/set-base", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const body = await c.req.json<{ branch?: string }>().catch(() => ({}) as { branch?: string });
+    const branch = body.branch?.trim();
+    if (!branch) return c.json({ error: "Missing 'branch' parameter" }, 400);
+    if (branch.length > 255) return c.json({ error: "Branch name too long (max 255)" }, 400);
+
+    const success = wsBridge.setDiffBaseBranch(id, branch);
+    if (!success) return c.json({ error: "Failed to set base branch" }, 500);
+
+    const state = wsBridge.getSession(id)?.state;
+    return c.json({
+      ok: true,
+      diffBaseBranch: state?.diff_base_branch || null,
+      gitBranch: state?.git_branch || null,
+      gitAhead: state?.git_ahead || 0,
+      gitBehind: state?.git_behind || 0,
+    });
+  });
+
   return api;
 }

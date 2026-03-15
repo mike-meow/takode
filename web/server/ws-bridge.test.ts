@@ -13433,3 +13433,348 @@ describe("Claude SDK interactive tool permissions", () => {
     expect(session.pendingPermissions.has("perm-exit-plan-2")).toBe(false);
   });
 });
+
+describe("Cross-session branch invalidation", () => {
+  // Tests for the branch-to-sessions reverse index and cross-session
+  // diff stats invalidation when a branch tip moves.
+
+  function setupGitMocks(overrides: Record<string, string> = {}) {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return overrides.branch || "feature-x\n";
+      if (cmd.includes("rev-parse HEAD")) return overrides.headSha || "sha-111\n";
+      if (cmd.includes("--git-dir")) return overrides.gitDir || "/repo/.git/worktrees/wt\n";
+      if (cmd.includes("--git-common-dir")) return overrides.commonDir || "/repo/.git\n";
+      if (cmd.includes("--show-toplevel")) return overrides.toplevel || "/repo\n";
+      if (cmd.includes("--left-right --count")) return overrides.leftRight || "0\t0\n";
+      if (cmd.includes("merge-base")) return overrides.mergeBase || "sha-000\n";
+      if (cmd.includes("diff --numstat")) return overrides.diffNumstat || "";
+      if (cmd.includes("for-each-ref")) return "";
+      if (cmd.includes("symbolic-ref")) return "";
+      if (cmd.includes("branch --list")) return overrides.branchList || "  main\n";
+      if (cmd.includes("@{upstream}")) throw new Error("no upstream");
+      return "";
+    });
+  }
+
+  it("updateBranchIndex tracks session branch references correctly", () => {
+    // Create two sessions referencing the same diff_base_branch
+    setupGitMocks();
+    bridge.markWorktree("s1", "/repo", "/tmp/wt1", "jiayi");
+    bridge.markWorktree("s2", "/repo", "/tmp/wt2", "jiayi");
+
+    const s1 = bridge.getSession("s1")!;
+    const s2 = bridge.getSession("s2")!;
+    s1.state.git_branch = "wt-1";
+    s1.state.diff_base_branch = "jiayi";
+    s2.state.git_branch = "wt-2";
+    s2.state.diff_base_branch = "jiayi";
+
+    // Trigger index update via setDiffBaseBranch (which calls updateBranchIndex)
+    bridge.setDiffBaseBranch("s1", "jiayi");
+    bridge.setDiffBaseBranch("s2", "jiayi");
+
+    // Access the internal index via the bridge's internal state
+    // The index should have "jiayi" pointing to both sessions
+    // We verify this indirectly by checking that closing one session
+    // doesn't break the other's index entry
+    bridge.closeSession("s1");
+    // s2 should still be tracked — verify by setting a new base
+    expect(bridge.setDiffBaseBranch("s2", "origin/main")).toBe(true);
+  });
+
+  it("HEAD SHA change triggers cross-session invalidation", async () => {
+    // Session A: working on branch "jiayi" (worktree base for session B)
+    // Session B: worktree with diff_base_branch = "jiayi"
+    // When session A's HEAD moves, session B should get its diff stats refreshed.
+
+    let headSha = "sha-old";
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("rev-parse HEAD")) return `${headSha}\n`;
+      if (cmd.includes("--git-dir")) return "/repo/.git\n";
+      if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("--left-right --count")) return "2\t1\n";
+      if (cmd.includes("merge-base")) return "sha-old\n";
+      if (cmd.includes("diff --numstat")) return "5\t3\tfile.ts\n";
+      if (cmd.includes("for-each-ref")) return "";
+      if (cmd.includes("symbolic-ref")) return "";
+      if (cmd.includes("branch --list")) return "  main\n";
+      if (cmd.includes("@{upstream}")) throw new Error("no upstream");
+      return "";
+    });
+
+    // Set up session A (on branch "jiayi") with CLI socket
+    bridge.markWorktree("sA", "/repo", "/tmp/wtA", "main");
+    const sA = bridge.getSession("sA")!;
+    (sA as any).backendSocket = { send: vi.fn() };
+    sA.state.git_branch = "jiayi";
+    sA.state.git_head_sha = "sha-old";
+
+    // Set up session B (worktree, base = "jiayi") with CLI socket
+    bridge.markWorktree("sB", "/repo", "/tmp/wtB", "jiayi");
+    const sB = bridge.getSession("sB")!;
+    (sB as any).backendSocket = { send: vi.fn() };
+    sB.state.git_branch = "jiayi-wt-123";
+    sB.state.diff_base_branch = "jiayi";
+    sB.state.git_head_sha = "sha-wt-b";
+
+    // Index both sessions by calling setDiffBaseBranch
+    bridge.setDiffBaseBranch("sA", "main");
+    bridge.setDiffBaseBranch("sB", "jiayi");
+
+    // Wait for initial async work to settle
+    await vi.waitFor(() => {
+      expect(sA.state.diff_base_branch).toBe("main");
+      expect(sB.state.diff_base_branch).toBe("jiayi");
+    });
+
+    const browserB = makeBrowserSocket("sB");
+    bridge.handleBrowserOpen(browserB, "sB");
+    browserB.send.mockClear();
+
+    // Now simulate session A's HEAD moving (e.g., a new commit on "jiayi")
+    headSha = "sha-new";
+    sA.state.git_head_sha = "sha-old"; // Still old before refresh
+
+    // Trigger refreshGitInfoPublic on session A — this will detect HEAD change
+    // and cross-invalidate session B
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+
+    // Wait for cross-session invalidation to propagate to session B
+    await vi.waitFor(() => {
+      // Session B should have been refreshed (diffStatsDirty was set and recompute triggered)
+      const calls = (browserB.send as ReturnType<typeof vi.fn>).mock.calls;
+      const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+      // Should have received a session_update with refreshed git info
+      const gitUpdates = messages.filter(
+        (m: any) => m.type === "session_update" && m.session && ("git_branch" in m.session || "total_lines_added" in m.session),
+      );
+      expect(gitUpdates.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("archived sessions are excluded from cross-session invalidation", async () => {
+    // Set up a launcher mock where session B is archived
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      getSession: vi.fn((id: string) => {
+        if (id === "sB") return { archived: true };
+        return { archived: false };
+      }),
+    } as any);
+
+    setupGitMocks({ headSha: "sha-old" });
+
+    bridge.markWorktree("sA", "/repo", "/tmp/wtA", "main");
+    const sA = bridge.getSession("sA")!;
+    (sA as any).backendSocket = { send: vi.fn() };
+    sA.state.git_branch = "jiayi";
+    sA.state.git_head_sha = "sha-old";
+
+    bridge.markWorktree("sB", "/repo", "/tmp/wtB", "jiayi");
+    const sB = bridge.getSession("sB")!;
+    (sB as any).backendSocket = { send: vi.fn() };
+    sB.state.git_branch = "jiayi-wt-123";
+    sB.state.diff_base_branch = "jiayi";
+    sB.state.git_head_sha = "sha-wt-b";
+
+    // Index sessions — session B should be excluded since it's archived
+    bridge.setDiffBaseBranch("sA", "main");
+    bridge.setDiffBaseBranch("sB", "jiayi");
+
+    const browserB = makeBrowserSocket("sB");
+    bridge.handleBrowserOpen(browserB, "sB");
+
+    // Wait for all async work from setDiffBaseBranch to settle, then clear
+    await new Promise((r) => setTimeout(r, 200));
+    browserB.send.mockClear();
+
+    // Simulate HEAD change on session A
+    setupGitMocks({ headSha: "sha-new" });
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+
+    // Give a moment for any async propagation
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Session B (archived) should NOT have received any cross-session updates
+    const calls = (browserB.send as ReturnType<typeof vi.fn>).mock.calls;
+    const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    // Should have no git info updates from cross-session invalidation
+    const crossSessionUpdates = messages.filter(
+      (m: any) => m.type === "session_update" && m.session?.git_ahead !== undefined,
+    );
+    expect(crossSessionUpdates.length).toBe(0);
+  });
+
+  it("per-session throttle prevents rapid cascading", async () => {
+    setupGitMocks();
+
+    bridge.markWorktree("sA", "/repo", "/tmp/wtA", "main");
+    const sA = bridge.getSession("sA")!;
+    (sA as any).backendSocket = { send: vi.fn() };
+    sA.state.git_branch = "jiayi";
+    sA.state.git_head_sha = "sha-1";
+
+    bridge.markWorktree("sB", "/repo", "/tmp/wtB", "jiayi");
+    const sB = bridge.getSession("sB")!;
+    (sB as any).backendSocket = { send: vi.fn() };
+    sB.state.git_branch = "jiayi-wt-123";
+    sB.state.diff_base_branch = "jiayi";
+
+    // Index sessions
+    bridge.setDiffBaseBranch("sA", "main");
+    bridge.setDiffBaseBranch("sB", "jiayi");
+
+    const browserB = makeBrowserSocket("sB");
+    bridge.handleBrowserOpen(browserB, "sB");
+
+    // First refresh: HEAD changes sha-1 → sha-2
+    let sha = "sha-2";
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("rev-parse HEAD")) return `${sha}\n`;
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("--git-dir")) return "/repo/.git\n";
+      if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base")) return "sha-1\n";
+      if (cmd.includes("diff --numstat")) return "";
+      if (cmd.includes("for-each-ref")) return "";
+      if (cmd.includes("symbolic-ref")) return "";
+      if (cmd.includes("branch --list")) return "  main\n";
+      if (cmd.includes("@{upstream}")) throw new Error("no upstream");
+      return "";
+    });
+
+    sA.state.git_head_sha = "sha-1";
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+
+    // Wait for first cross-invalidation to propagate
+    await vi.waitFor(() => {
+      expect(sA.state.git_head_sha).toBe("sha-2");
+    });
+
+    // Wait for all async propagation from first invalidation to settle
+    await new Promise((r) => setTimeout(r, 200));
+    browserB.send.mockClear();
+
+    // Immediately trigger another HEAD change (sha-2 → sha-3)
+    // This should be throttled for session B (within 30s window)
+    sha = "sha-3";
+    sA.state.git_head_sha = "sha-2"; // reset to trigger change detection
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+
+    // Give async ops time to settle
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Session B should NOT have received updates from the second invalidation
+    // (throttled within the 30s window)
+    const calls = (browserB.send as ReturnType<typeof vi.fn>).mock.calls;
+    const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const gitInfoUpdates = messages.filter(
+      (m: any) => m.type === "session_update" && m.session && "git_branch" in m.session,
+    );
+    expect(gitInfoUpdates.length).toBe(0);
+  });
+
+  it("closeSession removes session from branch index", () => {
+    setupGitMocks();
+    bridge.markWorktree("s1", "/repo", "/tmp/wt1", "jiayi");
+    const s1 = bridge.getSession("s1")!;
+    s1.state.git_branch = "wt-1";
+    s1.state.diff_base_branch = "jiayi";
+    bridge.setDiffBaseBranch("s1", "jiayi");
+
+    // Session should exist
+    expect(bridge.getSession("s1")).toBeDefined();
+
+    // Close session
+    bridge.closeSession("s1");
+
+    // Session should be gone
+    expect(bridge.getSession("s1")).toBeUndefined();
+
+    // Creating a new session with the same branch reference should work fine
+    // (no stale index entries pointing to deleted session)
+    bridge.markWorktree("s2", "/repo", "/tmp/wt2", "jiayi");
+    expect(bridge.setDiffBaseBranch("s2", "jiayi")).toBe(true);
+  });
+
+  it("onSessionArchived removes session from branch index", () => {
+    setupGitMocks();
+    bridge.markWorktree("s1", "/repo", "/tmp/wt1", "jiayi");
+    const s1 = bridge.getSession("s1")!;
+    s1.state.git_branch = "wt-1";
+    s1.state.diff_base_branch = "jiayi";
+    bridge.setDiffBaseBranch("s1", "jiayi");
+
+    // Archive the session
+    bridge.onSessionArchived("s1");
+
+    // Session still exists in the bridge (archived just removes from branch index)
+    expect(bridge.getSession("s1")).toBeDefined();
+
+    // Unarchiving should re-add to the index
+    bridge.onSessionUnarchived("s1");
+    expect(bridge.setDiffBaseBranch("s1", "origin/main")).toBe(true);
+  });
+
+  it("does not invalidate sessions depending on unrelated branches", async () => {
+    // Session A on "feature-x", session B with diff_base_branch = "feature-z" (unrelated)
+    // Changing A's HEAD should NOT trigger a refresh on B.
+
+    let headSha = "sha-old";
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "feature-x\n";
+      if (cmd.includes("rev-parse HEAD")) return `${headSha}\n`;
+      if (cmd.includes("--git-dir")) return "/repo/.git\n";
+      if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base")) return "sha-000\n";
+      if (cmd.includes("diff --numstat")) return "";
+      if (cmd.includes("for-each-ref")) return "";
+      if (cmd.includes("symbolic-ref")) return "";
+      if (cmd.includes("branch --list")) return "  main\n";
+      if (cmd.includes("@{upstream}")) throw new Error("no upstream");
+      return "";
+    });
+
+    bridge.markWorktree("sA", "/repo", "/tmp/wtA", "main");
+    const sA = bridge.getSession("sA")!;
+    (sA as any).backendSocket = { send: vi.fn() };
+    sA.state.git_branch = "feature-x";
+    sA.state.git_head_sha = "sha-old";
+
+    bridge.markWorktree("sB", "/repo", "/tmp/wtB", "feature-z");
+    const sB = bridge.getSession("sB")!;
+    (sB as any).backendSocket = { send: vi.fn() };
+    sB.state.git_branch = "feature-y";
+    sB.state.diff_base_branch = "feature-z"; // unrelated to sA's git_branch
+
+    // Index both sessions via refreshGitInfoPublic (awaited, so async settles here)
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+    await bridge.refreshGitInfoPublic("sB", { broadcastUpdate: true, force: true });
+
+    const browserB = makeBrowserSocket("sB");
+    bridge.handleBrowserOpen(browserB, "sB");
+    browserB.send.mockClear();
+
+    // Trigger HEAD change on session A (branch "feature-x")
+    headSha = "sha-new";
+    sA.state.git_head_sha = "sha-old";
+    await bridge.refreshGitInfoPublic("sA", { broadcastUpdate: true, force: true });
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Session B should NOT have received any cross-session updates
+    // because its diff_base_branch "feature-z" doesn't match sA's git_branch "feature-x"
+    const calls = (browserB.send as ReturnType<typeof vi.fn>).mock.calls;
+    const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const crossSessionUpdates = messages.filter(
+      (m: any) => m.type === "session_update" && m.session?.git_ahead !== undefined,
+    );
+    expect(crossSessionUpdates.length).toBe(0);
+  });
+});

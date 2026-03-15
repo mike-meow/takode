@@ -2083,6 +2083,79 @@ async function handleRefreshBranch(base: string, args: string[]): Promise<void> 
   if (delta) console.log(`Status: ${delta}`);
 }
 
+async function handleBranch(base: string, args: string[]): Promise<void> {
+  const subcommand = args[0] || "status";
+  const subArgs = args.slice(1);
+
+  switch (subcommand) {
+    case "status": {
+      const flags = parseFlags(subArgs);
+      const jsonMode = flags.json === true;
+
+      const result = (await apiGet(base, `/sessions/self/branch/status`)) as {
+        ok: boolean;
+        gitBranch: string | null;
+        diffBaseBranch: string | null;
+        gitDefaultBranch: string | null;
+        gitHeadSha: string | null;
+        gitAhead: number;
+        gitBehind: number;
+        totalLinesAdded: number;
+        totalLinesRemoved: number;
+        isWorktree: boolean;
+      };
+
+      if (jsonMode) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log(`Branch Info:`);
+      console.log(`  Current branch: ${result.gitBranch || "(unknown)"}`);
+      console.log(`  Base branch:    ${result.diffBaseBranch || "(default)"}`);
+      if (result.gitDefaultBranch) console.log(`  Default branch: ${result.gitDefaultBranch}`);
+      if (result.gitHeadSha) console.log(`  HEAD SHA:       ${result.gitHeadSha.slice(0, 8)}`);
+      const ahead = result.gitAhead || 0;
+      const behind = result.gitBehind || 0;
+      console.log(`  Ahead:          ${ahead}`);
+      console.log(`  Behind:         ${behind}`);
+      if (result.totalLinesAdded || result.totalLinesRemoved) {
+        console.log(`  Lines added:    +${result.totalLinesAdded || 0}`);
+        console.log(`  Lines removed:  -${result.totalLinesRemoved || 0}`);
+      }
+      if (result.isWorktree) console.log(`  Worktree:       yes`);
+      break;
+    }
+    case "set-base": {
+      const branch = subArgs[0];
+      if (!branch) err("Usage: takode branch set-base <branch> [--json]");
+      const flags = parseFlags(subArgs.slice(1));
+      const jsonMode = flags.json === true;
+
+      const result = (await apiPost(base, `/sessions/self/branch/set-base`, { branch })) as {
+        ok: boolean;
+        diffBaseBranch: string | null;
+        gitBranch: string | null;
+        gitAhead: number;
+        gitBehind: number;
+      };
+
+      if (jsonMode) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`Base branch set to: ${result.diffBaseBranch || "(default)"}`);
+      const ahead = result.gitAhead ? `${result.gitAhead}↑` : "";
+      const behind = result.gitBehind ? `${result.gitBehind}↓` : "";
+      const delta = [ahead, behind].filter(Boolean).join(" ");
+      if (delta) console.log(`Status: ${delta}`);
+      break;
+    }
+    default:
+      err(`Unknown branch subcommand: ${subcommand}. Use 'status' or 'set-base'.`);
+  }
+}
+
 // ─── Main dispatch ──────────────────────────────────────────────────────────
 
 function printUsage(): void {
@@ -2105,6 +2178,7 @@ Commands:
   answer   Answer a pending question or approve/reject a plan
   set-base       Set the diff base branch for a session
   refresh-branch Refresh git branch info for a session after checkout/rebase
+  branch         Branch info and management for the current session
 
 Peek modes:
   takode peek 1                    Smart overview (collapsed turns + expanded last turn)
@@ -2135,6 +2209,8 @@ Examples:
   printf 'Line 1\\nLine 2 with $HOME and \`code\`\\n' | takode send 2 --stdin
   takode set-base 1 origin/main
   takode refresh-branch 1
+  takode branch status
+  takode branch set-base origin/main
 `);
 }
 
@@ -2166,6 +2242,7 @@ try {
     ["answer", { requireOrchestrator: true }],
     ["set-base", {}],
     ["refresh-branch", {}],
+    ["branch", {}],
   ]);
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
@@ -2220,6 +2297,9 @@ try {
       break;
     case "refresh-branch":
       await handleRefreshBranch(base, args);
+      break;
+    case "branch":
+      await handleBranch(base, args);
       break;
     case "help":
     case "-h":
