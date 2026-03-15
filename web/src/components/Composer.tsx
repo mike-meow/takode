@@ -1597,10 +1597,20 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 <>
                   {(sessionData?.git_branch || sessionData?.model) && <span className="text-cc-muted/40">&middot;</span>}
                   <span
-                    className="inline-flex max-w-[132px] shrink min-w-0 items-center rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
+                    className="inline-flex max-w-[160px] shrink min-w-0 items-center gap-0.5 rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
                     title={buildVsCodeSelectionPrompt(vscodeSelectionPayload)}
                   >
                     <span className="truncate">{formatVsCodeSelectionSummary(vscodeSelectionPayload)}</span>
+                    <button
+                      type="button"
+                      className="ml-0.5 shrink-0 rounded hover:bg-cc-border/60 p-px cursor-pointer"
+                      title="Clear selection"
+                      onClick={(e) => { e.stopPropagation(); useStore.getState().setVsCodeSelectionContext(null); }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" />
+                      </svg>
+                    </button>
                   </span>
                 </>
               )}
