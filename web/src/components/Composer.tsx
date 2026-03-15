@@ -1720,39 +1720,38 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 </svg>
               </button>
 
-              {/* Stop button — always rendered so the voice/send buttons never shift.
-                   Disabled (greyed out) when idle, active when running. */}
-              <button
-                onClick={handleInterrupt}
-                disabled={!isRunning}
-                className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
-                  isRunning
-                    ? "bg-cc-error/10 hover:bg-cc-error/20 text-cc-error cursor-pointer"
-                    : "text-cc-muted/30 cursor-not-allowed"
-                }`}
-                title="Stop generation"
-                tabIndex={isRunning ? 0 : -1}
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 sm:w-3.5 sm:h-3.5">
-                  <rect x="3" y="3" width="10" height="10" rx="1" />
-                </svg>
-              </button>
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors ${
-                  canSend
-                    ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                    : "bg-cc-hover text-cc-muted cursor-not-allowed"
-                } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
-                title="Send message"
-              >
-                {sendPressing ? (
-                  <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />
-                ) : (
-                  <PaperPlaneIcon className="w-5 h-5 sm:w-4 sm:h-4" />
-                )}
-              </button>
+              {/* Unified send/stop button:
+                   - Has text/images → Send (always, even while running)
+                   - Empty + running → Stop
+                   - Empty + idle → Send (disabled) */}
+              {!canSend && isRunning ? (
+                <button
+                  onClick={handleInterrupt}
+                  className="flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors bg-cc-error/10 hover:bg-cc-error/20 text-cc-error cursor-pointer"
+                  title="Stop generation"
+                >
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 sm:w-3.5 sm:h-3.5">
+                    <rect x="3" y="3" width="10" height="10" rx="1" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors ${
+                    canSend
+                      ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                      : "bg-cc-hover text-cc-muted cursor-not-allowed"
+                  } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
+                  title="Send message"
+                >
+                  {sendPressing ? (
+                    <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />
+                  ) : (
+                    <PaperPlaneIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

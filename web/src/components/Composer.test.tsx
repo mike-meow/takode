@@ -926,13 +926,13 @@ describe("Composer VS Code context", () => {
 // ─── Interrupt button ────────────────────────────────────────────────────────
 
 describe("Composer interrupt button", () => {
-  it("interrupt button appears when session is running alongside send button", () => {
+  it("stop button shown when running with empty composer, no send button", () => {
     setupMockStore({ sessionStatus: "running" });
     render(<Composer sessionId="s1" />);
 
+    // Unified button: empty composer + running → stop button
     expect(screen.getByTitle("Stop generation")).toBeTruthy();
-    // Send button is always present (users can send follow-up messages while agent is running)
-    expect(screen.getByTitle("Send message")).toBeTruthy();
+    expect(screen.queryByTitle("Send message")).toBeNull();
   });
 
   it("interrupt button sends interrupt message", () => {
@@ -944,15 +944,13 @@ describe("Composer interrupt button", () => {
     expect(mockSendToSession).toHaveBeenCalledWith("s1", { type: "interrupt" });
   });
 
-  it("send button appears when session is idle", () => {
+  it("send button appears when session is idle, no stop button", () => {
     setupMockStore({ sessionStatus: "idle" });
     render(<Composer sessionId="s1" />);
 
     expect(screen.getByTitle("Send message")).toBeTruthy();
-    // Stop button is always rendered (disabled when idle) so layout doesn't shift
-    const stopBtn = screen.getByTitle("Stop generation") as HTMLButtonElement;
-    expect(stopBtn).toBeTruthy();
-    expect(stopBtn.disabled).toBe(true);
+    // Unified button: stop button only shows when running + empty composer
+    expect(screen.queryByTitle("Stop generation")).toBeNull();
   });
 });
 
