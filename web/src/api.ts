@@ -1025,8 +1025,8 @@ export const api = {
     get<AutoApprovalLogEntry>(`/auto-approval/logs/${id}`),
 
   // CLI session discovery (for resume)
-  listCliSessions: () =>
-    get<{ sessions: CliSession[] }>("/cli-sessions"),
+  listCliSessions: (backend?: "claude" | "codex") =>
+    get<{ sessions: CliSession[] }>(`/cli-sessions${backend ? `?backend=${backend}` : ""}`),
 
   // Questmaster
   listQuests: (filters?: { status?: string; parentId?: string; sessionId?: string }) => {

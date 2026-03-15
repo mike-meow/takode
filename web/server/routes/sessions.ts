@@ -728,6 +728,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
   api.get("/cli-sessions", async (c) => {
     try {
+      const backendFilter = c.req.query("backend") as "claude" | "codex" | undefined;
+
       // Collect active CLI session IDs so we can filter them out
       const activeCliSessionIds = new Set<string>();
       for (const s of launcher.listSessions()) {
@@ -744,6 +746,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const allFiles: CliSessionFile[] = [];
 
       // ── Scan Claude Code sessions (~/.claude/projects/*/*.jsonl) ──
+      if (backendFilter !== "codex") {
       const claudeProjectsDir = join(homedir(), ".claude", "projects");
       try {
         const projectDirs = await readdir(claudeProjectsDir);
@@ -779,8 +782,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
       } catch {
         // ~/.claude/projects may not exist — that's fine
       }
+      }
 
       // ── Scan Codex sessions (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl) ──
+      if (backendFilter !== "claude") {
       const codexSessionsDir = join(homedir(), ".codex", "sessions");
       try {
         // Walk YYYY/MM/DD directory structure
@@ -825,6 +830,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         }
       } catch {
         // ~/.codex/sessions may not exist — that's fine
+      }
       }
 
       // Sort by mtime desc and take top 50
