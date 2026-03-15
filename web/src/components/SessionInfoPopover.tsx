@@ -7,13 +7,7 @@ import { coalesceSessionViewModel } from "../utils/session-view-model.js";
 import { navigateTo } from "../utils/navigation.js";
 import { formatContextWindowLabel } from "../utils/token-format.js";
 
-export function SessionInfoPopover({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose: () => void;
-}) {
+export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const session = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
   const taskHistory = useStore((s) => s.sessionTaskHistory.get(sessionId));
@@ -125,14 +119,8 @@ export function SessionInfoPopover({
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/50">
                 <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
               </svg>
-              <div
-                ref={cwdScrollRef}
-                className="overflow-x-auto scrollbar-hide"
-                title={cwd}
-              >
-                <span className="text-[11px] text-cc-muted font-mono-code whitespace-nowrap">
-                  {shortenHome(cwd)}
-                </span>
+              <div ref={cwdScrollRef} className="overflow-x-auto scrollbar-hide" title={cwd}>
+                <span className="text-[11px] text-cc-muted font-mono-code whitespace-nowrap">{shortenHome(cwd)}</span>
               </div>
             </div>
           )}
@@ -192,7 +180,11 @@ export function SessionInfoPopover({
                     {task.source === "quest" && questId ? (
                       <QuestTaskChip questId={questId} title={task.title} onNavigate={onClose} />
                     ) : (
-                      <span className={`text-left text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}>{task.title}</span>
+                      <span
+                        className={`text-left text-[11px] leading-snug line-clamp-1 ${task.source === "quest" ? "text-amber-400" : "text-cc-fg"}`}
+                      >
+                        {task.title}
+                      </span>
                     )}
                   </div>
                 );
@@ -205,7 +197,11 @@ export function SessionInfoPopover({
         {hasStats && (
           <div className="px-4 py-2 border-t border-cc-border/50">
             <div className="flex items-center gap-2 text-[11px] text-cc-muted">
-              {turns > 0 && <span>{turns} {turns === 1 ? "turn" : "turns"}</span>}
+              {turns > 0 && (
+                <span>
+                  {turns} {turns === 1 ? "turn" : "turns"}
+                </span>
+              )}
               {contextPercent > 0 && (
                 <>
                   {turns > 0 && <span className="text-cc-muted/40">&middot;</span>}

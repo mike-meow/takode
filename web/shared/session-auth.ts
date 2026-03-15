@@ -61,11 +61,7 @@ export function getSessionAuthFilePrefix(cwd: string): string {
   return getSessionAuthFilePrefixes(cwd)[0];
 }
 
-export function getSessionAuthPath(
-  cwd: string,
-  serverId: string,
-  homeDir = homedir(),
-): string {
+export function getSessionAuthPath(cwd: string, serverId: string, homeDir = homedir()): string {
   return join(getSessionAuthDir(homeDir), `${getSessionAuthFilePrefix(cwd)}-${serverId}.json`);
 }
 
@@ -81,9 +77,7 @@ export function parseSessionAuthFileData(raw: unknown): SessionAuthFileData | nu
 
   const parsedPort = typeof data.port === "number" ? data.port : Number(data.port);
   const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : undefined;
-  const serverId = typeof data.serverId === "string" && data.serverId.trim()
-    ? data.serverId
-    : undefined;
+  const serverId = typeof data.serverId === "string" && data.serverId.trim() ? data.serverId : undefined;
 
   return {
     sessionId: data.sessionId,

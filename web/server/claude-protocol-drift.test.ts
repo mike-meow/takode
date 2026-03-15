@@ -46,10 +46,9 @@ describe("Claude ws-bridge method drift vs upstream Agent SDK snapshot", () => {
     const bridge = readFile("server/ws-bridge.ts");
     const sdk = readFile("server/protocol/claude-upstream/sdk.d.ts.txt");
 
-    const upstreamInit = sdk.includes("export declare type SDKSystemMessage = {")
-      && sdk.includes("subtype: 'init';");
-    const upstreamStatus = sdk.includes("export declare type SDKStatusMessage = {")
-      && sdk.includes("subtype: 'status';");
+    const upstreamInit = sdk.includes("export declare type SDKSystemMessage = {") && sdk.includes("subtype: 'init';");
+    const upstreamStatus =
+      sdk.includes("export declare type SDKStatusMessage = {") && sdk.includes("subtype: 'status';");
 
     expect(upstreamInit).toBe(true);
     expect(upstreamStatus).toBe(true);

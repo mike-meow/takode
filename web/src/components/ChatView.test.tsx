@@ -5,7 +5,13 @@ import "@testing-library/jest-dom";
 interface MockStoreState {
   pendingPermissions: Map<string, Map<string, { tool_name?: string; request_id?: string }>>;
   connectionStatus: Map<string, "connecting" | "connected" | "disconnected">;
-  sessions: Map<string, { backend_state?: "initializing" | "resuming" | "connected" | "disconnected" | "broken"; backend_error?: string | null }>;
+  sessions: Map<
+    string,
+    {
+      backend_state?: "initializing" | "resuming" | "connected" | "disconnected" | "broken";
+      backend_error?: string | null;
+    }
+  >;
   cliConnected: Map<string, boolean>;
   cliEverConnected: Map<string, boolean>;
   cliDisconnectReason: Map<string, "idle_limit" | "broken" | null>;
@@ -57,13 +63,7 @@ vi.mock("../api.js", () => ({
 }));
 
 vi.mock("./MessageFeed.js", () => ({
-  MessageFeed: ({
-    sessionId,
-    latestIndicatorMode,
-  }: {
-    sessionId: string;
-    latestIndicatorMode?: string;
-  }) => (
+  MessageFeed: ({ sessionId, latestIndicatorMode }: { sessionId: string; latestIndicatorMode?: string }) => (
     <div data-testid="message-feed" data-latest-indicator-mode={latestIndicatorMode}>
       {sessionId}
     </div>
@@ -149,7 +149,9 @@ describe("ChatView backend banners", () => {
     // Broken Codex sessions should stay visibly broken until the user relaunches,
     // rather than falling back to the generic disconnected banner.
     resetStore({
-      sessions: new Map([["s1", { backend_state: "broken", backend_error: "Codex initialization failed: Transport closed" }]]),
+      sessions: new Map([
+        ["s1", { backend_state: "broken", backend_error: "Codex initialization failed: Transport closed" }],
+      ]),
       cliConnected: new Map([["s1", false]]),
       cliEverConnected: new Map([["s1", true]]),
       cliDisconnectReason: new Map([["s1", "broken"]]),

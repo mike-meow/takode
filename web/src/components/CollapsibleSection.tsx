@@ -76,9 +76,7 @@ export function CollapsibleSection({
 
       {!collapsed && (
         <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-3">
-          {description && (
-            <p className="text-xs text-cc-muted">{description}</p>
-          )}
+          {description && <p className="text-xs text-cc-muted">{description}</p>}
           {children}
         </div>
       )}

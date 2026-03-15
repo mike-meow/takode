@@ -68,7 +68,8 @@ function getRepoSlug(cwd: string): string | null {
     return cached.slug;
   }
   try {
-    const slug = execSync("gh repo view --json nameWithOwner --jq .nameWithOwner", { // sync-ok: cold path, cached after first call
+    const slug = execSync("gh repo view --json nameWithOwner --jq .nameWithOwner", {
+      // sync-ok: cold path, cached after first call
       cwd,
       stdio: "pipe",
       timeout: 10_000,
@@ -90,10 +91,11 @@ async function getRepoSlugAsync(cwd: string): Promise<string | null> {
     return cached.slug;
   }
   try {
-    const proc = Bun.spawn(
-      ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-      { cwd, stdout: "pipe", stderr: "pipe" },
-    );
+    const proc = Bun.spawn(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const timeout = setTimeout(() => proc.kill(), 10_000);
     const exitCode = await proc.exited;
     clearTimeout(timeout);
@@ -231,8 +233,7 @@ export function parseGraphQLResponse(data: unknown): GitHubPRInfo | null {
     const pr = sameRepoPRs[0];
 
     // Normalize checks
-    const rawContexts: GraphQLContextNode[] =
-      pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+    const rawContexts: GraphQLContextNode[] = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
 
     const checks: GitHubCheckStatus[] = rawContexts.map((node) => {
       if (node.__typename === "CheckRun") {
@@ -246,7 +247,8 @@ export function parseGraphQLResponse(data: unknown): GitHubPRInfo | null {
       return {
         name: node.context,
         status: node.state === "PENDING" ? "IN_PROGRESS" : "COMPLETED",
-        conclusion: node.state === "SUCCESS" ? "SUCCESS" : (node.state === "FAILURE" || node.state === "ERROR") ? "FAILURE" : null,
+        conclusion:
+          node.state === "SUCCESS" ? "SUCCESS" : node.state === "FAILURE" || node.state === "ERROR" ? "FAILURE" : null,
       };
     });
 
@@ -257,7 +259,11 @@ export function parseGraphQLResponse(data: unknown): GitHubPRInfo | null {
     for (const check of checks) {
       if (check.conclusion === "SUCCESS" || check.conclusion === "NEUTRAL" || check.conclusion === "SKIPPED") {
         success++;
-      } else if (check.conclusion === "FAILURE" || check.conclusion === "CANCELLED" || check.conclusion === "TIMED_OUT") {
+      } else if (
+        check.conclusion === "FAILURE" ||
+        check.conclusion === "CANCELLED" ||
+        check.conclusion === "TIMED_OUT"
+      ) {
         failure++;
       } else {
         pending++;
@@ -313,9 +319,21 @@ export async function fetchPRInfo(cwd: string, branch: string): Promise<GitHubPR
   if (!owner || !name) return null;
 
   try {
-    const result = execFileSync( // sync-ok: cold path, cached after first call
+    const result = execFileSync(
+      // sync-ok: cold path, cached after first call
       "gh",
-      ["api", "graphql", "-f", `query=${PR_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-f", `branch=${branch}`],
+      [
+        "api",
+        "graphql",
+        "-f",
+        `query=${PR_QUERY}`,
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-f",
+        `branch=${branch}`,
+      ],
       { cwd, stdio: "pipe", timeout: 15_000 },
     )
       .toString()
@@ -354,7 +372,19 @@ export async function fetchPRInfoAsync(cwd: string, branch: string): Promise<Git
 
   try {
     const proc = Bun.spawn(
-      ["gh", "api", "graphql", "-f", `query=${PR_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`, "-f", `branch=${branch}`],
+      [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        `query=${PR_QUERY}`,
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-f",
+        `branch=${branch}`,
+      ],
       { cwd, stdout: "pipe", stderr: "pipe" },
     );
     const timeout = setTimeout(() => proc.kill(), 15_000);

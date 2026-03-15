@@ -44,12 +44,21 @@ describe("useFeedModel", () => {
       { initialProps: { messages: allMessages, frozenCount: 2 } },
     );
 
-    expect(result.current.turns.map((turn) => turn.id)).toEqual(buildFeedModel(allMessages).turns.map((turn) => turn.id));
+    expect(result.current.turns.map((turn) => turn.id)).toEqual(
+      buildFeedModel(allMessages).turns.map((turn) => turn.id),
+    );
 
     rerender({ messages: allMessages, frozenCount: 4 });
 
-    expect(result.current.turns.map((turn) => turn.id)).toEqual(buildFeedModel(allMessages).turns.map((turn) => turn.id));
-    expect(result.current.turns.map((turn) => turn.responseEntry?.kind === "message" ? turn.responseEntry.msg.id : null))
-      .toEqual(buildFeedModel(allMessages).turns.map((turn) => turn.responseEntry?.kind === "message" ? turn.responseEntry.msg.id : null));
+    expect(result.current.turns.map((turn) => turn.id)).toEqual(
+      buildFeedModel(allMessages).turns.map((turn) => turn.id),
+    );
+    expect(
+      result.current.turns.map((turn) => (turn.responseEntry?.kind === "message" ? turn.responseEntry.msg.id : null)),
+    ).toEqual(
+      buildFeedModel(allMessages).turns.map((turn) =>
+        turn.responseEntry?.kind === "message" ? turn.responseEntry.msg.id : null,
+      ),
+    );
   });
 });

@@ -14,16 +14,11 @@ let promptSpy: ReturnType<typeof vi.spyOn>;
 
 vi.mock("../api.js", () => ({
   api: {
-    markQuestVerificationRead: (...args: unknown[]) =>
-      mockMarkQuestVerificationRead(...args),
-    markQuestVerificationInbox: (...args: unknown[]) =>
-      mockMarkQuestVerificationInbox(...args),
-    transitionQuest: (...args: unknown[]) =>
-      mockTransitionQuest(...args),
-    createQuest: (...args: unknown[]) =>
-      mockCreateQuest(...args),
-    markQuestDone: (...args: unknown[]) =>
-      mockMarkQuestDone(...args),
+    markQuestVerificationRead: (...args: unknown[]) => mockMarkQuestVerificationRead(...args),
+    markQuestVerificationInbox: (...args: unknown[]) => mockMarkQuestVerificationInbox(...args),
+    transitionQuest: (...args: unknown[]) => mockTransitionQuest(...args),
+    createQuest: (...args: unknown[]) => mockCreateQuest(...args),
+    markQuestDone: (...args: unknown[]) => mockMarkQuestDone(...args),
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
   },
 }));
@@ -32,8 +27,7 @@ vi.mock("../utils/routing.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/routing.js")>();
   return {
     ...actual,
-    navigateToSession: (...args: unknown[]) =>
-      mockNavigateToSession(...args),
+    navigateToSession: (...args: unknown[]) => mockNavigateToSession(...args),
   };
 });
 
@@ -61,7 +55,15 @@ type MockStoreState = {
   questsLoading: boolean;
   refreshQuests: ReturnType<typeof vi.fn>;
   setQuests: (quests: QuestmasterTask[]) => void;
-  sdkSessions: Array<{ sessionId: string; state: "connected"; cwd: string; createdAt: number; archived: boolean; sessionNum?: number; backendType?: string }>;
+  sdkSessions: Array<{
+    sessionId: string;
+    state: "connected";
+    cwd: string;
+    createdAt: number;
+    archived: boolean;
+    sessionNum?: number;
+    backendType?: string;
+  }>;
   sessionNames: Map<string, string>;
   sessions: Map<string, Record<string, unknown>>;
   cliConnected: Map<string, boolean>;
@@ -199,29 +201,28 @@ beforeEach(() => {
       return { ...quest, status: input.status } as QuestmasterTask;
     },
   );
-  mockMarkQuestDone.mockImplementation(async (
-    questId: string,
-    input?: { verificationItems?: Array<{ text: string; checked: boolean }> },
-  ) => {
-    const quest = mockState.quests.find((q) => q.questId === questId);
-    if (!quest) throw new Error("quest not found");
-    const currentSessionId =
-      "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : undefined;
-    const previousOwners = Array.isArray((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds)
-      ? [...((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds ?? [])]
-      : [];
-    if (currentSessionId && !previousOwners.includes(currentSessionId)) previousOwners.push(currentSessionId);
-    return {
-      ...quest,
-      id: `${quest.questId}-v${quest.version + 1}`,
-      version: quest.version + 1,
-      status: "done",
-      verificationItems: input?.verificationItems ?? ("verificationItems" in quest ? quest.verificationItems : []),
-      completedAt: Date.now(),
-      previousOwnerSessionIds: previousOwners,
-      sessionId: undefined,
-    } as QuestmasterTask;
-  });
+  mockMarkQuestDone.mockImplementation(
+    async (questId: string, input?: { verificationItems?: Array<{ text: string; checked: boolean }> }) => {
+      const quest = mockState.quests.find((q) => q.questId === questId);
+      if (!quest) throw new Error("quest not found");
+      const currentSessionId =
+        "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : undefined;
+      const previousOwners = Array.isArray((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds)
+        ? [...((quest as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds ?? [])]
+        : [];
+      if (currentSessionId && !previousOwners.includes(currentSessionId)) previousOwners.push(currentSessionId);
+      return {
+        ...quest,
+        id: `${quest.questId}-v${quest.version + 1}`,
+        version: quest.version + 1,
+        status: "done",
+        verificationItems: input?.verificationItems ?? ("verificationItems" in quest ? quest.verificationItems : []),
+        completedAt: Date.now(),
+        previousOwnerSessionIds: previousOwners,
+        sessionId: undefined,
+      } as QuestmasterTask;
+    },
+  );
   mockCreateQuest.mockImplementation(
     async (input: { title: string; description?: string; tags?: string[] }) =>
       ({
@@ -295,8 +296,7 @@ describe("QuestmasterPage verification inbox", () => {
     mockState.quests = [newerCreatedButNotUpdated, olderCreatedButRecentlyUpdated];
     renderQuestmaster();
 
-    const order = Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]"))
-      .map((el) => el.dataset.questId);
+    const order = Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]")).map((el) => el.dataset.questId);
     expect(order).toEqual(["q-10", "q-11"]);
   });
 
@@ -421,25 +421,27 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("renders agent feedback with compact session number and opens that session on click", () => {
-    mockState.quests = [{
-      id: "q-8-v4",
-      questId: "q-8",
-      version: 4,
-      title: "Quest with agent feedback",
-      createdAt: Date.now(),
-      status: "done",
-      description: "Done",
-      verificationItems: [{ text: "checked", checked: true }],
-      completedAt: Date.now(),
-      feedback: [
-        {
-          author: "agent",
-          authorSessionId: "session-1",
-          text: "Implemented and verified.",
-          ts: Date.now(),
-        },
-      ],
-    } as QuestmasterTask];
+    mockState.quests = [
+      {
+        id: "q-8-v4",
+        questId: "q-8",
+        version: 4,
+        title: "Quest with agent feedback",
+        createdAt: Date.now(),
+        status: "done",
+        description: "Done",
+        verificationItems: [{ text: "checked", checked: true }],
+        completedAt: Date.now(),
+        feedback: [
+          {
+            author: "agent",
+            authorSessionId: "session-1",
+            text: "Implemented and verified.",
+            ts: Date.now(),
+          },
+        ],
+      } as QuestmasterTask,
+    ];
     window.location.hash = "#/questmaster?quest=q-8";
     renderQuestmaster();
 
@@ -450,29 +452,28 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("keeps feedback session chips compact even with long session titles", () => {
-    mockState.sessionNames = new Map([[
-      "session-1",
-      "Codex web search tool call is not rendered correctly",
-    ]]);
-    mockState.quests = [{
-      id: "q-9-v2",
-      questId: "q-9",
-      version: 2,
-      title: "Quest with long session title",
-      createdAt: Date.now(),
-      status: "done",
-      description: "Done",
-      verificationItems: [{ text: "checked", checked: true }],
-      completedAt: Date.now(),
-      feedback: [
-        {
-          author: "agent",
-          authorSessionId: "session-1",
-          text: "Done.",
-          ts: Date.now(),
-        },
-      ],
-    } as QuestmasterTask];
+    mockState.sessionNames = new Map([["session-1", "Codex web search tool call is not rendered correctly"]]);
+    mockState.quests = [
+      {
+        id: "q-9-v2",
+        questId: "q-9",
+        version: 2,
+        title: "Quest with long session title",
+        createdAt: Date.now(),
+        status: "done",
+        description: "Done",
+        verificationItems: [{ text: "checked", checked: true }],
+        completedAt: Date.now(),
+        feedback: [
+          {
+            author: "agent",
+            authorSessionId: "session-1",
+            text: "Done.",
+            ts: Date.now(),
+          },
+        ],
+      } as QuestmasterTask,
+    ];
 
     window.location.hash = "#/questmaster?quest=q-9";
     renderQuestmaster();
@@ -543,17 +544,19 @@ describe("QuestmasterPage verification inbox", () => {
   it("includes fallback verification items when marking an in-progress quest done", async () => {
     // Regression: done transitions from in_progress have no verification checklist,
     // so the UI must provide a fallback item to satisfy server validation.
-    mockState.quests = [{
-      id: "q-12-v2",
-      questId: "q-12",
-      version: 2,
-      title: "In-progress quest",
-      createdAt: Date.now(),
-      status: "in_progress",
-      description: "Implement the feature",
-      sessionId: "session-1",
-      claimedAt: Date.now(),
-    } as QuestmasterTask];
+    mockState.quests = [
+      {
+        id: "q-12-v2",
+        questId: "q-12",
+        version: 2,
+        title: "In-progress quest",
+        createdAt: Date.now(),
+        status: "in_progress",
+        description: "Implement the feature",
+        sessionId: "session-1",
+        claimedAt: Date.now(),
+      } as QuestmasterTask,
+    ];
     window.location.hash = "#/questmaster?quest=q-12";
     renderQuestmaster();
 
@@ -575,18 +578,20 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("shows previous owner session info for done quests", () => {
-    mockState.quests = [{
-      id: "q-9-v5",
-      questId: "q-9",
-      version: 5,
-      title: "Completed quest",
-      createdAt: Date.now(),
-      status: "done",
-      description: "Done",
-      verificationItems: [{ text: "checked", checked: true }],
-      completedAt: Date.now(),
-      previousOwnerSessionIds: ["session-1"],
-    } as QuestmasterTask];
+    mockState.quests = [
+      {
+        id: "q-9-v5",
+        questId: "q-9",
+        version: 5,
+        title: "Completed quest",
+        createdAt: Date.now(),
+        status: "done",
+        description: "Done",
+        verificationItems: [{ text: "checked", checked: true }],
+        completedAt: Date.now(),
+        previousOwnerSessionIds: ["session-1"],
+      } as QuestmasterTask,
+    ];
     window.location.hash = "#/questmaster?quest=q-9";
     renderQuestmaster();
 
@@ -596,18 +601,20 @@ describe("QuestmasterPage verification inbox", () => {
   it("includes owner session id when transitioning done quest back to verification", async () => {
     // Done quests can lose active sessionId, so transition payload must reuse the
     // most recent owner to satisfy server validation for needs_verification.
-    mockState.quests = [{
-      id: "q-11-v5",
-      questId: "q-11",
-      version: 5,
-      title: "Done quest for rework",
-      createdAt: Date.now(),
-      status: "done",
-      description: "Needs follow-up",
-      verificationItems: [{ text: "checked", checked: true }],
-      completedAt: Date.now(),
-      previousOwnerSessionIds: ["session-1"],
-    } as QuestmasterTask];
+    mockState.quests = [
+      {
+        id: "q-11-v5",
+        questId: "q-11",
+        version: 5,
+        title: "Done quest for rework",
+        createdAt: Date.now(),
+        status: "done",
+        description: "Needs follow-up",
+        verificationItems: [{ text: "checked", checked: true }],
+        completedAt: Date.now(),
+        previousOwnerSessionIds: ["session-1"],
+      } as QuestmasterTask,
+    ];
     window.location.hash = "#/questmaster?quest=q-11";
     renderQuestmaster();
 
@@ -625,18 +632,20 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("navigates when clicking compact codex owner session chip in quest modal", () => {
-    mockState.quests = [{
-      id: "q-10-v3",
-      questId: "q-10",
-      version: 3,
-      title: "Codex linked quest",
-      createdAt: Date.now(),
-      status: "needs_verification",
-      description: "Verify codex navigation",
-      sessionId: "codex-session-1",
-      claimedAt: Date.now(),
-      verificationItems: [{ text: "Verify", checked: false }],
-    } as QuestmasterTask];
+    mockState.quests = [
+      {
+        id: "q-10-v3",
+        questId: "q-10",
+        version: 3,
+        title: "Codex linked quest",
+        createdAt: Date.now(),
+        status: "needs_verification",
+        description: "Verify codex navigation",
+        sessionId: "codex-session-1",
+        claimedAt: Date.now(),
+        verificationItems: [{ text: "Verify", checked: false }],
+      } as QuestmasterTask,
+    ];
     mockState.sdkSessions = [
       {
         sessionId: "codex-session-1",
@@ -659,14 +668,14 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("disables Rework when all human feedback is addressed", () => {
-    mockState.quests = mockState.quests.map((q) => (
+    mockState.quests = mockState.quests.map((q) =>
       q.questId === "q-1"
         ? ({
             ...q,
             feedback: [{ author: "human", text: "done", ts: Date.now(), addressed: true }],
           } as QuestmasterTask)
-        : q
-    ));
+        : q,
+    );
     window.location.hash = "#/questmaster?quest=q-1";
     renderQuestmaster();
 
@@ -675,24 +684,28 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("renders feedback image thumbnails and opens a lightbox from quest feedback entries", () => {
-    mockState.quests = mockState.quests.map((q) => (
+    mockState.quests = mockState.quests.map((q) =>
       q.questId === "q-1"
         ? ({
             ...q,
-            feedback: [{
-              author: "agent",
-              text: "Screenshot attached for validation.",
-              ts: Date.now(),
-              images: [{
-                id: "feedback-img-1",
-                filename: "server-proof.png",
-                mimeType: "image/png",
-                path: "/home/jiayiwei/.companion/questmaster/images/feedback-img-1.png",
-              }],
-            }],
+            feedback: [
+              {
+                author: "agent",
+                text: "Screenshot attached for validation.",
+                ts: Date.now(),
+                images: [
+                  {
+                    id: "feedback-img-1",
+                    filename: "server-proof.png",
+                    mimeType: "image/png",
+                    path: "/home/jiayiwei/.companion/questmaster/images/feedback-img-1.png",
+                  },
+                ],
+              },
+            ],
           } as QuestmasterTask)
-        : q
-    ));
+        : q,
+    );
     window.location.hash = "#/questmaster?quest=q-1";
     renderQuestmaster();
 
@@ -705,19 +718,21 @@ describe("QuestmasterPage verification inbox", () => {
   });
 
   it("closes lightbox first on Escape and keeps quest modal open", async () => {
-    mockState.quests = mockState.quests.map((q) => (
+    mockState.quests = mockState.quests.map((q) =>
       q.questId === "q-1"
         ? ({
             ...q,
-            images: [{
-              id: "img-1",
-              filename: "proof.png",
-              mimeType: "image/png",
-              path: "/tmp/proof.png",
-            }],
+            images: [
+              {
+                id: "img-1",
+                filename: "proof.png",
+                mimeType: "image/png",
+                path: "/tmp/proof.png",
+              },
+            ],
           } as QuestmasterTask)
-        : q
-    ));
+        : q,
+    );
     window.location.hash = "#/questmaster?quest=q-1";
     renderQuestmaster();
 

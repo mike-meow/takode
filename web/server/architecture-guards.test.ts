@@ -24,11 +24,7 @@ function collectSourceFiles(dir: string, result: string[] = []): string[] {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       collectSourceFiles(full, result);
-    } else if (
-      entry.name.endsWith(".ts") &&
-      !entry.name.endsWith(".test.ts") &&
-      !entry.name.endsWith(".d.ts")
-    ) {
+    } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts") && !entry.name.endsWith(".d.ts")) {
       result.push(full);
     }
   }
@@ -57,9 +53,7 @@ const FORBIDDEN_SYNC_CALLS = [
   "execFileSync",
 ];
 
-const FORBIDDEN_PATTERN = new RegExp(
-  `\\b(${FORBIDDEN_SYNC_CALLS.join("|")})\\b`,
-);
+const FORBIDDEN_PATTERN = new RegExp(`\\b(${FORBIDDEN_SYNC_CALLS.join("|")})\\b`);
 
 interface Violation {
   file: string;
@@ -99,11 +93,8 @@ describe("Architecture Guards", () => {
           continue;
         }
         // Catch continuation lines of multi-line imports (bare identifiers, "} from")
-        if (
-          trimmed.startsWith("} from ") ||
-          trimmed.startsWith("require(") ||
-          /^(const|let|var)\s+\{/.test(trimmed)
-        ) continue;
+        if (trimmed.startsWith("} from ") || trimmed.startsWith("require(") || /^(const|let|var)\s+\{/.test(trimmed))
+          continue;
 
         const match = FORBIDDEN_PATTERN.exec(line);
         if (match) {
@@ -118,13 +109,11 @@ describe("Architecture Guards", () => {
     }
 
     if (violations.length > 0) {
-      const report = violations
-        .map((v) => `  ${v.file}:${v.line}: ${v.match}\n    ${v.text}`)
-        .join("\n");
+      const report = violations.map((v) => `  ${v.file}:${v.line}: ${v.match}\n    ${v.text}`).join("\n");
       expect.fail(
         `\nSync file/process I/O detected in server code (blocks event loop on NFS):\n\n${report}\n\n` +
-        `Add '// sync-ok' comment if this is a documented cold-path-only call.\n` +
-        `See CLAUDE.md "Never use synchronous file I/O" section for async patterns.`,
+          `Add '// sync-ok' comment if this is a documented cold-path-only call.\n` +
+          `See CLAUDE.md "Never use synchronous file I/O" section for async patterns.`,
       );
     }
   });

@@ -66,11 +66,7 @@ export function TodoStatusLine({ sessionId }: { sessionId: string }) {
         className="w-full flex items-center gap-2 px-3 sm:px-4 py-1.5 border-t border-cc-border bg-cc-card hover:bg-cc-hover/50 transition-colors cursor-pointer"
       >
         {/* Spinning indicator */}
-        <svg
-          className="w-3.5 h-3.5 text-cc-primary animate-spin shrink-0"
-          viewBox="0 0 16 16"
-          fill="none"
-        >
+        <svg className="w-3.5 h-3.5 text-cc-primary animate-spin shrink-0" viewBox="0 0 16 16" fill="none">
           <circle
             cx="8"
             cy="8"
@@ -89,9 +85,7 @@ export function TodoStatusLine({ sessionId }: { sessionId: string }) {
         </span>
 
         {/* Pending count */}
-        {pendingCount > 0 && (
-          <span className="text-[10px] text-cc-muted shrink-0">+{pendingCount}</span>
-        )}
+        {pendingCount > 0 && <span className="text-[10px] text-cc-muted shrink-0">+{pendingCount}</span>}
 
         {/* Progress fraction */}
         <span className="text-[10px] text-cc-muted shrink-0 tabular-nums">

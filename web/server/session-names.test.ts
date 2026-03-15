@@ -1,21 +1,8 @@
-import {
-  mkdtempSync,
-  rmSync,
-  readFileSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  getName,
-  setName,
-  getAllNames,
-  removeName,
-  _resetForTest,
-  _flushForTest,
-} from "./session-names.js";
+import { getName, setName, getAllNames, removeName, _resetForTest, _flushForTest } from "./session-names.js";
 
 let tempDir: string;
 
@@ -81,10 +68,7 @@ describe("session-names", () => {
 
   it("loads existing data from disk on first access", () => {
     // Write data to file before any module access
-    writeFileSync(
-      join(tempDir, "session-names.json"),
-      JSON.stringify({ existing: "Pre-existing Name" }),
-    );
+    writeFileSync(join(tempDir, "session-names.json"), JSON.stringify({ existing: "Pre-existing Name" }));
     // Reset to re-read from the file
     _resetForTest(join(tempDir, "session-names.json"));
     expect(getName("existing")).toBe("Pre-existing Name");

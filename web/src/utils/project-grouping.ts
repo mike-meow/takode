@@ -139,7 +139,7 @@ export function groupSessionsByProject(
         // Sessions not in custom order (newly created) go to the top
         if (aIdx === undefined && bIdx === undefined) return b.createdAt - a.createdAt;
         if (aIdx === undefined) return -1; // a is new, goes first
-        if (bIdx === undefined) return 1;  // b is new, goes first
+        if (bIdx === undefined) return 1; // b is new, goes first
         return aIdx - bIdx;
       });
     } else {

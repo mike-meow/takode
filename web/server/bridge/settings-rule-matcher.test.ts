@@ -30,9 +30,7 @@ const mockReadFile = vi.mocked(readFile);
 
 /** Set up mock rules as if they came from ~/.claude/settings.json */
 function setupRules(rules: string[]) {
-  mockReadFile.mockResolvedValue(
-    JSON.stringify({ permissions: { allow: rules } }),
-  );
+  mockReadFile.mockResolvedValue(JSON.stringify({ permissions: { allow: rules } }));
 }
 
 afterEach(() => {
@@ -248,45 +246,27 @@ describe("matchesFileGlob", () => {
 
 describe("matchesToolRule", () => {
   it("matches bare tool name (any usage)", () => {
-    expect(
-      matchesToolRule("Read", { file_path: "/any/file" }, { toolName: "Read" }),
-    ).toBe(true);
+    expect(matchesToolRule("Read", { file_path: "/any/file" }, { toolName: "Read" })).toBe(true);
   });
 
   it("rejects different tool name", () => {
-    expect(
-      matchesToolRule("Write", { file_path: "/any" }, { toolName: "Read" }),
-    ).toBe(false);
+    expect(matchesToolRule("Write", { file_path: "/any" }, { toolName: "Read" })).toBe(false);
   });
 
   it("matches Bash rule with command", () => {
-    expect(
-      matchesToolRule(
-        "Bash",
-        { command: "grep -rn foo" },
-        { toolName: "Bash", ruleContent: "grep *" },
-      ),
-    ).toBe(true);
+    expect(matchesToolRule("Bash", { command: "grep -rn foo" }, { toolName: "Bash", ruleContent: "grep *" })).toBe(
+      true,
+    );
   });
 
   it("matches file tool with glob", () => {
-    expect(
-      matchesToolRule(
-        "Edit",
-        { file_path: "src/app.ts" },
-        { toolName: "Edit", ruleContent: "src/*.ts" },
-      ),
-    ).toBe(true);
+    expect(matchesToolRule("Edit", { file_path: "src/app.ts" }, { toolName: "Edit", ruleContent: "src/*.ts" })).toBe(
+      true,
+    );
   });
 
   it("rejects unknown tool with ruleContent (conservative)", () => {
-    expect(
-      matchesToolRule(
-        "CustomTool",
-        { data: "abc" },
-        { toolName: "CustomTool", ruleContent: "abc" },
-      ),
-    ).toBe(false);
+    expect(matchesToolRule("CustomTool", { data: "abc" }, { toolName: "CustomTool", ruleContent: "abc" })).toBe(false);
   });
 });
 

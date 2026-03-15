@@ -181,7 +181,8 @@ const relaunchQueue = new RelaunchQueue(async (sessionId) => {
   if (info.killedByIdleManager) return;
 
   // If cwd doesn't exist, try to recreate worktree (e.g. after migration)
-  if (!existsSync(info.cwd)) { // sync-ok: session launch, not called during message handling
+  if (!existsSync(info.cwd)) {
+    // sync-ok: session launch, not called during message handling
     if (info.isWorktree && info.repoRoot && info.branch) {
       try {
         const wtResult = recreateWorktreeIfMissing(sessionId, info, { launcher, worktreeTracker, wsBridge });
@@ -368,8 +369,9 @@ async function applyNamingResult(
     case "revise": {
       const freshName = sessionNames.getName(sessionId);
       if (freshName !== previousName) {
-        const allowUserOverride = source === "user_message"
-          && shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
+        const allowUserOverride =
+          source === "user_message" &&
+          shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
         if (!allowUserOverride) return; // name changed while we were evaluating
       }
       sessionNames.setName(sessionId, result.title);
@@ -389,8 +391,9 @@ async function applyNamingResult(
     case "new": {
       const freshName = sessionNames.getName(sessionId);
       if (freshName !== previousName) {
-        const allowUserOverride = source === "user_message"
-          && shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
+        const allowUserOverride =
+          source === "user_message" &&
+          shouldAllowUserMessageOverrideOnNameMismatch(freshName, lastAppliedNamerMutation.get(sessionId));
         if (!allowUserOverride) return;
       }
       sessionNames.setName(sessionId, result.title);
@@ -428,7 +431,9 @@ async function evaluateAndApply(
   const relevantHistory = isRandomName ? history : history.slice(startIndex);
   const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
 
-  console.log(`[session-namer] ${triggerLabel} — evaluating session ${sessionId} (current: ${isRandomName ? "(unnamed)" : `"${currentName}"`}, history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`);
+  console.log(
+    `[session-namer] ${triggerLabel} — evaluating session ${sessionId} (current: ${isRandomName ? "(unnamed)" : `"${currentName}"`}, history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`,
+  );
 
   const result = await evaluateSessionName(
     sessionId,
@@ -587,7 +592,23 @@ if (recorder.isGloballyEnabled()) {
 const app = new Hono();
 
 app.use("/api/*", cors());
-app.route("/api", createRoutes(launcher, wsBridge, sessionStore, worktreeTracker, terminalManager, prPoller, recorder, cronScheduler, imageStore, pushoverNotifier, { requestRestart }, perfTracer));
+app.route(
+  "/api",
+  createRoutes(
+    launcher,
+    wsBridge,
+    sessionStore,
+    worktreeTracker,
+    terminalManager,
+    prPoller,
+    recorder,
+    cronScheduler,
+    imageStore,
+    pushoverNotifier,
+    { requestRestart },
+    perfTracer,
+  ),
+);
 
 // In production, serve built frontend using absolute path (works when installed as npm package)
 if (process.env.NODE_ENV === "production") {
@@ -688,7 +709,7 @@ wsBridge.startStuckSessionWatchdog();
 // preventing it from responding to pings. This monitor detects those stalls
 // so we can identify what operations are causing CLI disconnections.
 {
-  const LAG_WARN_MS = 500;    // warn at 500ms
+  const LAG_WARN_MS = 500; // warn at 500ms
   const LAG_ALERT_MS = 5_000; // alert at 5s (CLI timeout is 10s)
   const CHECK_INTERVAL_MS = 2_000;
   let lastTick = performance.now();
@@ -697,7 +718,9 @@ wsBridge.startStuckSessionWatchdog();
     const lag = now - lastTick - CHECK_INTERVAL_MS;
     lastTick = now;
     if (lag > LAG_ALERT_MS) {
-      console.error(`[event-loop] ⚠️  CRITICAL LAG: ${lag.toFixed(0)}ms — Bun event loop was blocked! CLI ping/pong timeout is 10s, this stall may cause CLI disconnections.`);
+      console.error(
+        `[event-loop] ⚠️  CRITICAL LAG: ${lag.toFixed(0)}ms — Bun event loop was blocked! CLI ping/pong timeout is 10s, this stall may cause CLI disconnections.`,
+      );
     } else if (lag > LAG_WARN_MS) {
       console.warn(`[event-loop] Lag detected: ${lag.toFixed(0)}ms`);
     }
@@ -713,7 +736,9 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 if (!process.env.COMPANION_SUPERVISED) {
-  console.warn("[server] WARNING: Not started via 'make dev' or 'make serve' — the Restart Server button will not work.");
+  console.warn(
+    "[server] WARNING: Not started via 'make dev' or 'make serve' — the Restart Server button will not work.",
+  );
   console.warn("[server]          Use 'make dev' (dev) or 'make serve' (prod) for restart support.");
 }
 

@@ -90,9 +90,7 @@ describe("auto-approval-store", () => {
     it("prevents duplicate project paths", async () => {
       await createConfig("/home/user/project", "First", "criteria");
       await _flushForTest();
-      await expect(createConfig("/home/user/project", "Second", "criteria")).rejects.toThrow(
-        "already exists",
-      );
+      await expect(createConfig("/home/user/project", "Second", "criteria")).rejects.toThrow("already exists");
     });
 
     it("requires project path", async () => {

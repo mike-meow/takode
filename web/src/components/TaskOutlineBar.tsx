@@ -23,7 +23,10 @@ export function TaskOutlineBar({ sessionId }: { sessionId: string }) {
     el.addEventListener("scroll", check, { passive: true });
     const ro = new ResizeObserver(check);
     ro.observe(el);
-    return () => { el.removeEventListener("scroll", check); ro.disconnect(); };
+    return () => {
+      el.removeEventListener("scroll", check);
+      ro.disconnect();
+    };
   }, [taskHistory]);
 
   // Auto-scroll the active chip into view within the horizontal scroll container
@@ -51,10 +54,7 @@ export function TaskOutlineBar({ sessionId }: { sessionId: string }) {
         <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-cc-card to-transparent z-10 pointer-events-none" />
       )}
 
-      <div
-        ref={scrollRef}
-        className="flex gap-1.5 px-3 py-1.5 overflow-x-auto scrollbar-hide"
-      >
+      <div ref={scrollRef} className="flex gap-1.5 px-3 py-1.5 overflow-x-auto scrollbar-hide">
         {taskHistory?.map((task, i) => {
           const isScrollActive = task.triggerMessageId === activeTaskTurnId;
           const isQuest = task.source === "quest";
@@ -63,10 +63,8 @@ export function TaskOutlineBar({ sessionId }: { sessionId: string }) {
           // needs_verification/done (or the session moves to a different
           // quest), the pill should appear inactive so the timeline doesn't
           // show stale "active" quests.
-          const isQuestStale = isQuest && (
-            session?.claimedQuestId !== task.questId ||
-            session?.claimedQuestStatus !== "in_progress"
-          );
+          const isQuestStale =
+            isQuest && (session?.claimedQuestId !== task.questId || session?.claimedQuestStatus !== "in_progress");
           const isActive = isScrollActive && !isQuestStale;
           return (
             <button

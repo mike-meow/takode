@@ -171,7 +171,9 @@ describe("PRPoller", () => {
     // Create a fetch that takes time to resolve
     let resolveFirst: (value: GitHubPRInfo) => void;
     mockFetchPRInfoAsync.mockReturnValueOnce(
-      new Promise<GitHubPRInfo>((r) => { resolveFirst = r; }),
+      new Promise<GitHubPRInfo>((r) => {
+        resolveFirst = r;
+      }),
     );
 
     poller.watch("s1", "/repo", "main");

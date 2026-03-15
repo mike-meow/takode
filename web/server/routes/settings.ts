@@ -2,7 +2,19 @@ import { Hono } from "hono";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveBinary, getEnrichedPath } from "../path-resolver.js";
-import { getSettings, updateSettings, getServerName, setServerName, getServerId, getClaudeUserDefaultModel, STT_MODELS, type NamerConfig, type TranscriptionConfig, type SttModel, type EditorConfig } from "../settings-manager.js";
+import {
+  getSettings,
+  updateSettings,
+  getServerName,
+  setServerName,
+  getServerId,
+  getClaudeUserDefaultModel,
+  STT_MODELS,
+  type NamerConfig,
+  type TranscriptionConfig,
+  type SttModel,
+  type EditorConfig,
+} from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
 import type { RouteContext } from "./context.js";
 
@@ -18,17 +30,20 @@ export function createSettingsRoutes(ctx: RouteContext) {
       return c.json({ error: "Restart not supported in this mode" }, 503);
     }
     // Block restart while sessions are actively running to prevent stuck sessions
-    const busySessions = launcher.listSessions().filter(
-      (s) => s.state !== "exited" && wsBridge.isSessionBusy(s.sessionId),
-    );
+    const busySessions = launcher
+      .listSessions()
+      .filter((s) => s.state !== "exited" && wsBridge.isSessionBusy(s.sessionId));
     if (busySessions.length > 0) {
       const names = busySessions.map((s) => {
         const num = launcher.getSessionNum(s.sessionId);
         return s.name || (num != null ? `#${num}` : s.sessionId.slice(0, 8));
       });
-      return c.json({
-        error: `Cannot restart while ${busySessions.length} session(s) are running. Please stop them first: ${names.join(", ")}`,
-      }, 409);
+      return c.json(
+        {
+          error: `Cannot restart while ${busySessions.length} session(s) are running. Please stop them first: ${names.join(", ")}`,
+        },
+        409,
+      );
     }
     options.requestRestart();
     return c.json({ ok: true });
@@ -80,10 +95,15 @@ export function createSettingsRoutes(ctx: RouteContext) {
     return {
       apiKey,
       baseUrl: typeof tc.baseUrl === "string" ? tc.baseUrl.trim() : current.baseUrl,
-      enhancementEnabled: typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : current.enhancementEnabled,
+      enhancementEnabled:
+        typeof tc.enhancementEnabled === "boolean" ? tc.enhancementEnabled : current.enhancementEnabled,
       enhancementModel: typeof tc.enhancementModel === "string" ? tc.enhancementModel.trim() : current.enhancementModel,
-      customVocabulary: typeof tc.customVocabulary === "string" ? tc.customVocabulary.trim() : (current.customVocabulary || ""),
-      sttModel: typeof tc.sttModel === "string" && (STT_MODELS as readonly string[]).includes(tc.sttModel) ? tc.sttModel as SttModel : current.sttModel,
+      customVocabulary:
+        typeof tc.customVocabulary === "string" ? tc.customVocabulary.trim() : current.customVocabulary || "",
+      sttModel:
+        typeof tc.sttModel === "string" && (STT_MODELS as readonly string[]).includes(tc.sttModel)
+          ? (tc.sttModel as SttModel)
+          : current.sttModel,
     };
   }
 
@@ -132,7 +152,12 @@ export function createSettingsRoutes(ctx: RouteContext) {
     if (body.pushoverApiToken !== undefined && typeof body.pushoverApiToken !== "string") {
       return c.json({ error: "pushoverApiToken must be a string" }, 400);
     }
-    if (body.pushoverDelaySeconds !== undefined && (typeof body.pushoverDelaySeconds !== "number" || body.pushoverDelaySeconds < 5 || body.pushoverDelaySeconds > 300)) {
+    if (
+      body.pushoverDelaySeconds !== undefined &&
+      (typeof body.pushoverDelaySeconds !== "number" ||
+        body.pushoverDelaySeconds < 5 ||
+        body.pushoverDelaySeconds > 300)
+    ) {
       return c.json({ error: "pushoverDelaySeconds must be a number between 5 and 300" }, 400);
     }
     if (body.pushoverEnabled !== undefined && typeof body.pushoverEnabled !== "boolean") {
@@ -147,7 +172,10 @@ export function createSettingsRoutes(ctx: RouteContext) {
     if (body.codexBinary !== undefined && typeof body.codexBinary !== "string") {
       return c.json({ error: "codexBinary must be a string" }, 400);
     }
-    if (body.maxKeepAlive !== undefined && (typeof body.maxKeepAlive !== "number" || body.maxKeepAlive < 0 || !Number.isInteger(body.maxKeepAlive))) {
+    if (
+      body.maxKeepAlive !== undefined &&
+      (typeof body.maxKeepAlive !== "number" || body.maxKeepAlive < 0 || !Number.isInteger(body.maxKeepAlive))
+    ) {
       return c.json({ error: "maxKeepAlive must be a non-negative integer" }, 400);
     }
     if (body.autoApprovalEnabled !== undefined && typeof body.autoApprovalEnabled !== "boolean") {
@@ -185,24 +213,33 @@ export function createSettingsRoutes(ctx: RouteContext) {
       }
       const ec = body.editorConfig as Record<string, unknown>;
       if (
-        ec.editor !== undefined
-        && ec.editor !== "vscode"
-        && ec.editor !== "vscode-local"
-        && ec.editor !== "vscode-remote"
-        && ec.editor !== "cursor"
-        && ec.editor !== "none"
+        ec.editor !== undefined &&
+        ec.editor !== "vscode" &&
+        ec.editor !== "vscode-local" &&
+        ec.editor !== "vscode-remote" &&
+        ec.editor !== "cursor" &&
+        ec.editor !== "none"
       ) {
-        return c.json({ error: 'editorConfig.editor must be "vscode-local", "vscode-remote", "cursor", or "none"' }, 400);
+        return c.json(
+          { error: 'editorConfig.editor must be "vscode-local", "vscode-remote", "cursor", or "none"' },
+          400,
+        );
       }
     }
 
     // Check that at least one known field is present
     const knownFields = [
       "serverName",
-      "pushoverUserKey", "pushoverApiToken", "pushoverDelaySeconds", "pushoverEnabled", "pushoverBaseUrl",
-      "claudeBinary", "codexBinary",
+      "pushoverUserKey",
+      "pushoverApiToken",
+      "pushoverDelaySeconds",
+      "pushoverEnabled",
+      "pushoverBaseUrl",
+      "claudeBinary",
+      "codexBinary",
       "maxKeepAlive",
-      "autoApprovalEnabled", "autoApprovalModel",
+      "autoApprovalEnabled",
+      "autoApprovalModel",
       "namerConfig",
       "autoNamerEnabled",
       "transcriptionConfig",
@@ -217,52 +254,21 @@ export function createSettingsRoutes(ctx: RouteContext) {
     }
 
     const settings = updateSettings({
-      pushoverUserKey:
-        typeof body.pushoverUserKey === "string"
-          ? body.pushoverUserKey.trim()
-          : undefined,
-      pushoverApiToken:
-        typeof body.pushoverApiToken === "string"
-          ? body.pushoverApiToken.trim()
-          : undefined,
-      pushoverDelaySeconds:
-        typeof body.pushoverDelaySeconds === "number"
-          ? body.pushoverDelaySeconds
-          : undefined,
-      pushoverEnabled:
-        typeof body.pushoverEnabled === "boolean"
-          ? body.pushoverEnabled
-          : undefined,
-      pushoverBaseUrl:
-        typeof body.pushoverBaseUrl === "string"
-          ? body.pushoverBaseUrl.trim()
-          : undefined,
-      claudeBinary:
-        typeof body.claudeBinary === "string"
-          ? body.claudeBinary.trim()
-          : undefined,
-      codexBinary:
-        typeof body.codexBinary === "string"
-          ? body.codexBinary.trim()
-          : undefined,
-      maxKeepAlive:
-        typeof body.maxKeepAlive === "number"
-          ? body.maxKeepAlive
-          : undefined,
-      autoApprovalEnabled:
-        typeof body.autoApprovalEnabled === "boolean"
-          ? body.autoApprovalEnabled
-          : undefined,
-      autoApprovalModel:
-        typeof body.autoApprovalModel === "string"
-          ? body.autoApprovalModel.trim()
-          : undefined,
+      pushoverUserKey: typeof body.pushoverUserKey === "string" ? body.pushoverUserKey.trim() : undefined,
+      pushoverApiToken: typeof body.pushoverApiToken === "string" ? body.pushoverApiToken.trim() : undefined,
+      pushoverDelaySeconds: typeof body.pushoverDelaySeconds === "number" ? body.pushoverDelaySeconds : undefined,
+      pushoverEnabled: typeof body.pushoverEnabled === "boolean" ? body.pushoverEnabled : undefined,
+      pushoverBaseUrl: typeof body.pushoverBaseUrl === "string" ? body.pushoverBaseUrl.trim() : undefined,
+      claudeBinary: typeof body.claudeBinary === "string" ? body.claudeBinary.trim() : undefined,
+      codexBinary: typeof body.codexBinary === "string" ? body.codexBinary.trim() : undefined,
+      maxKeepAlive: typeof body.maxKeepAlive === "number" ? body.maxKeepAlive : undefined,
+      autoApprovalEnabled: typeof body.autoApprovalEnabled === "boolean" ? body.autoApprovalEnabled : undefined,
+      autoApprovalModel: typeof body.autoApprovalModel === "string" ? body.autoApprovalModel.trim() : undefined,
       namerConfig: body.namerConfig ? parseNamerConfigFromBody(body.namerConfig) : undefined,
-      autoNamerEnabled:
-        typeof body.autoNamerEnabled === "boolean"
-          ? body.autoNamerEnabled
-          : undefined,
-      transcriptionConfig: body.transcriptionConfig ? parseTranscriptionConfigFromBody(body.transcriptionConfig) : undefined,
+      autoNamerEnabled: typeof body.autoNamerEnabled === "boolean" ? body.autoNamerEnabled : undefined,
+      transcriptionConfig: body.transcriptionConfig
+        ? parseTranscriptionConfigFromBody(body.transcriptionConfig)
+        : undefined,
       editorConfig: body.editorConfig ? parseEditorConfigFromBody(body.editorConfig) : undefined,
     });
 
@@ -325,7 +331,6 @@ export function createSettingsRoutes(ctx: RouteContext) {
     }
     return c.json({ error: result.error || "Test notification failed" }, 400);
   });
-
 
   return api;
 }

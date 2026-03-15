@@ -1,9 +1,4 @@
-import {
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  existsSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
@@ -34,7 +29,8 @@ export class WorktreeTracker {
 
   load(): WorktreeMapping[] {
     try {
-      if (existsSync(TRACKER_PATH)) { // sync-ok: session creation, not called during message handling
+      if (existsSync(TRACKER_PATH)) {
+        // sync-ok: session creation, not called during message handling
         const raw = readFileSync(TRACKER_PATH, "utf-8"); // sync-ok: session creation, not called during message handling
         this.mappings = JSON.parse(raw) as WorktreeMapping[];
       }
@@ -77,8 +73,6 @@ export class WorktreeTracker {
   }
 
   isWorktreeInUse(worktreePath: string, excludeSessionId?: string): boolean {
-    return this.mappings.some(
-      (m) => m.worktreePath === worktreePath && m.sessionId !== excludeSessionId,
-    );
+    return this.mappings.some((m) => m.worktreePath === worktreePath && m.sessionId !== excludeSessionId);
   }
 }

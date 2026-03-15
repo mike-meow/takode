@@ -32,7 +32,7 @@ describe("hasContainerClaudeAuth", () => {
   it("returns true when known auth files exist under ~/.claude", () => {
     const claudeDir = join(tempHome, ".claude");
     mkdirSync(claudeDir, { recursive: true });
-    writeFileSync(join(claudeDir, ".credentials.json"), "{\"token\":\"x\"}");
+    writeFileSync(join(claudeDir, ".credentials.json"), '{"token":"x"}');
 
     expect(hasContainerClaudeAuth()).toBe(true);
   });
@@ -41,4 +41,3 @@ describe("hasContainerClaudeAuth", () => {
     expect(hasContainerClaudeAuth()).toBe(false);
   });
 });
-

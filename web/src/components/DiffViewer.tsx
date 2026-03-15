@@ -1,11 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import * as Diff from "diff";
-import {
-  buildHighlightedLines,
-  inferLanguageFromPath,
-  splitSourceToLines,
-} from "../utils/syntax-highlighting.js";
+import { buildHighlightedLines, inferLanguageFromPath, splitSourceToLines } from "../utils/syntax-highlighting.js";
 
 export interface DiffViewerProps {
   /** Original text (for computing diff from old/new) */
@@ -53,9 +49,7 @@ interface ParsedFileDiff {
   hunks: DiffHunk[];
 }
 
-type RenderBlock =
-  | { type: "hunk"; key: string; hunk: DiffHunk }
-  | { type: "gap"; key: string; lines: DiffLine[] };
+type RenderBlock = { type: "hunk"; key: string; hunk: DiffHunk } | { type: "gap"; key: string; lines: DiffLine[] };
 
 interface HighlightedLineMaps {
   oldLines: string[] | null;
@@ -171,15 +165,15 @@ function parseUnifiedDiffToFiles(diffStr: string, fallbackFileName = ""): Parsed
       continue;
     }
     if (
-      line.startsWith("index ")
-      || line.startsWith("new file")
-      || line.startsWith("deleted file")
-      || line.startsWith("old mode")
-      || line.startsWith("new mode")
-      || line.startsWith("rename from")
-      || line.startsWith("rename to")
-      || line.startsWith("similarity index")
-      || line.startsWith("Binary files")
+      line.startsWith("index ") ||
+      line.startsWith("new file") ||
+      line.startsWith("deleted file") ||
+      line.startsWith("old mode") ||
+      line.startsWith("new mode") ||
+      line.startsWith("rename from") ||
+      line.startsWith("rename to") ||
+      line.startsWith("similarity index") ||
+      line.startsWith("Binary files")
     ) {
       continue;
     }
@@ -263,17 +257,21 @@ function parseRawChangeLinesToFiles(diffStr: string, fallbackFileName = ""): Par
   const normalized = normalizeAdjacentChangeBlocks(lines);
   addWordHighlights(normalized);
 
-  return [{
-    fileName: fallbackFileName,
-    hunks: [{
-      header: "",
-      oldStart: 1,
-      oldLines: Math.max(0, oldLine - 1),
-      newStart: 1,
-      newLines: Math.max(0, newLine - 1),
-      lines: normalized,
-    }],
-  }];
+  return [
+    {
+      fileName: fallbackFileName,
+      hunks: [
+        {
+          header: "",
+          oldStart: 1,
+          oldLines: Math.max(0, oldLine - 1),
+          newStart: 1,
+          newLines: Math.max(0, newLine - 1),
+          lines: normalized,
+        },
+      ],
+    },
+  ];
 }
 
 function normalizeAdjacentChangeBlocks(lines: DiffLine[]): DiffLine[] {
@@ -397,10 +395,18 @@ function LineContent({ line, highlightedHtml }: { line: DiffLine; highlightedHtm
       <>
         {line.wordChanges.map((part, i) => {
           if (part.added) {
-            return <span key={i} className="diff-word-add">{part.value}</span>;
+            return (
+              <span key={i} className="diff-word-add">
+                {part.value}
+              </span>
+            );
           }
           if (part.removed) {
-            return <span key={i} className="diff-word-del">{part.value}</span>;
+            return (
+              <span key={i} className="diff-word-del">
+                {part.value}
+              </span>
+            );
           }
           return <span key={i}>{part.value}</span>;
         })}
@@ -428,17 +434,11 @@ function DiffLineRow({
     <div className={`diff-line diff-line-${line.type}`}>
       {showLineNumbers && (
         <>
-          <span className="diff-gutter diff-gutter-old">
-            {line.oldLineNo ?? ""}
-          </span>
-          <span className="diff-gutter diff-gutter-new">
-            {line.newLineNo ?? ""}
-          </span>
+          <span className="diff-gutter diff-gutter-old">{line.oldLineNo ?? ""}</span>
+          <span className="diff-gutter diff-gutter-new">{line.newLineNo ?? ""}</span>
         </>
       )}
-      <span className="diff-marker">
-        {line.type === "add" ? "+" : line.type === "del" ? "-" : " "}
-      </span>
+      <span className="diff-marker">{line.type === "add" ? "+" : line.type === "del" ? "-" : " "}</span>
       <span className="diff-content">
         <LineContent line={line} highlightedHtml={highlightedHtml} />
       </span>
@@ -540,7 +540,13 @@ function FileHeader({
   const { dirLabel, baseLabel } = formatFileHeaderPath(fileName);
   return (
     <div className="diff-file-header" title={fileName}>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="w-3.5 h-3.5 text-cc-primary shrink-0"
+      >
         <path d="M9 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5L9 1z" />
         <polyline points="9 1 9 5 13 5" />
       </svg>
@@ -633,21 +639,14 @@ export function DiffViewer({
   const renderedDiff = (
     <div className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"}`}>
       {isCompact && (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="diff-inline-expand-btn"
-          title="Expand diff"
-        >
+        <button type="button" onClick={() => setExpanded(true)} className="diff-inline-expand-btn" title="Expand diff">
           {expandButtonLabel}
         </button>
       )}
       {data.map((file, fi) => {
         const blocks = buildRenderBlocks(file.hunks, oldSourceLines, newSourceLines);
         const resolvedFileName = file.fileName || fileName || "";
-        const resolvedHeaderActions = renderHeaderActions
-          ? renderHeaderActions(resolvedFileName)
-          : headerActions;
+        const resolvedHeaderActions = renderHeaderActions ? renderHeaderActions(resolvedFileName) : headerActions;
         return (
           <div key={fi} className="diff-file">
             {resolvedFileName && (
@@ -716,7 +715,8 @@ export function DiffViewer({
                           }));
                         }}
                       >
-                        Show {nextChunkCount} more unchanged line{nextChunkCount === 1 ? "" : "s"} ({remainingCount} remaining)
+                        Show {nextChunkCount} more unchanged line{nextChunkCount === 1 ? "" : "s"} ({remainingCount}{" "}
+                        remaining)
                       </button>
                     </div>
                   )}
@@ -732,37 +732,38 @@ export function DiffViewer({
   return (
     <>
       {renderedDiff}
-      {isCompact && expanded && createPortal(
-        <div className="diff-modal-backdrop" onClick={() => setExpanded(false)}>
-          <div className="diff-modal-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="diff-modal-header">
-              <span className="diff-modal-title">{fileName || "Diff Viewer"}</span>
-              <button
-                type="button"
-                onClick={() => setExpanded(false)}
-                className="diff-modal-close"
-                title="Close full-screen diff"
-              >
-                Close
-              </button>
+      {isCompact &&
+        expanded &&
+        createPortal(
+          <div className="diff-modal-backdrop" onClick={() => setExpanded(false)}>
+            <div className="diff-modal-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="diff-modal-header">
+                <span className="diff-modal-title">{fileName || "Diff Viewer"}</span>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  className="diff-modal-close"
+                  title="Close full-screen diff"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="diff-modal-body">
+                <DiffViewer
+                  oldText={oldText}
+                  newText={newText}
+                  unifiedDiff={unifiedDiff}
+                  fileName={fileName}
+                  mode="full"
+                  showLineNumbers
+                  headerActions={headerActions}
+                  renderHeaderActions={renderHeaderActions}
+                />
+              </div>
             </div>
-            <div className="diff-modal-body">
-              <DiffViewer
-                oldText={oldText}
-                newText={newText}
-                unifiedDiff={unifiedDiff}
-                fileName={fileName}
-                mode="full"
-                showLineNumbers
-                headerActions={headerActions}
-                renderHeaderActions={renderHeaderActions}
-              />
-            </div>
-          </div>
-        </div>
-        ,
-        document.body,
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -76,7 +76,12 @@ export interface CLIAssistantMessage {
 
 export interface CLIResultMessage {
   type: "result";
-  subtype: "success" | "error_during_execution" | "error_max_turns" | "error_max_budget_usd" | "error_max_structured_output_retries";
+  subtype:
+    | "success"
+    | "error_during_execution"
+    | "error_max_turns"
+    | "error_max_budget_usd"
+    | "error_max_structured_output_retries";
   is_error: boolean;
   result?: string;
   errors?: string[];
@@ -93,15 +98,18 @@ export interface CLIResultMessage {
   };
   // Observed from recordings: modelUsage totals are cumulative across the session
   // (for cost/accounting), not per-turn usage.
-  modelUsage?: Record<string, {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-    contextWindow: number;
-    maxOutputTokens: number;
-    costUSD: number;
-  }>;
+  modelUsage?: Record<
+    string,
+    {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadInputTokens: number;
+      cacheCreationInputTokens: number;
+      contextWindow: number;
+      maxOutputTokens: number;
+      costUSD: number;
+    }
+  >;
   total_lines_added?: number;
   total_lines_removed?: number;
   uuid: string;
@@ -310,50 +318,58 @@ export interface CodexPendingBatchInput {
 /** Messages the browser sends to the bridge */
 export type BrowserOutgoingMessage =
   | {
-    type: "user_message";
-    content: string;
-    session_id?: string;
-    images?: { media_type: string; data: string }[];
-    vscodeSelection?: VsCodeSelectionMetadata;
-    /**
-     * Codex-internal transport optimization: local file paths forwarded as
-     * `UserInput::LocalImage` entries instead of inline data: URLs.
-     */
-    local_images?: string[];
-    client_msg_id?: string;
-    /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
-    agentSource?: { sessionId: string; sessionLabel?: string };
-  }
+      type: "user_message";
+      content: string;
+      session_id?: string;
+      images?: { media_type: string; data: string }[];
+      vscodeSelection?: VsCodeSelectionMetadata;
+      /**
+       * Codex-internal transport optimization: local file paths forwarded as
+       * `UserInput::LocalImage` entries instead of inline data: URLs.
+       */
+      local_images?: string[];
+      client_msg_id?: string;
+      /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
+      agentSource?: { sessionId: string; sessionLabel?: string };
+    }
   | {
-    type: "codex_start_pending";
-    pendingInputIds: string[];
-    inputs: CodexPendingBatchInput[];
-  }
+      type: "codex_start_pending";
+      pendingInputIds: string[];
+      inputs: CodexPendingBatchInput[];
+    }
   | {
-    type: "codex_steer_pending";
-    pendingInputIds: string[];
-    expectedTurnId: string;
-    inputs: CodexPendingBatchInput[];
-  }
+      type: "codex_steer_pending";
+      pendingInputIds: string[];
+      expectedTurnId: string;
+      inputs: CodexPendingBatchInput[];
+    }
   | {
-    type: "vscode_selection_update";
-    selection: VsCodeSelectionSnapshot | null;
-    updatedAt: number;
-    sourceId: string;
-    sourceType: "browser-panel" | "vscode-window";
-    sourceLabel?: string;
-    client_msg_id?: string;
-  }
-  | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
+      type: "vscode_selection_update";
+      selection: VsCodeSelectionSnapshot | null;
+      updatedAt: number;
+      sourceId: string;
+      sourceType: "browser-panel" | "vscode-window";
+      sourceLabel?: string;
+      client_msg_id?: string;
+    }
+  | {
+      type: "permission_response";
+      request_id: string;
+      behavior: "allow" | "deny";
+      updated_input?: Record<string, unknown>;
+      updated_permissions?: PermissionUpdate[];
+      message?: string;
+      client_msg_id?: string;
+    }
   | { type: "session_subscribe"; last_seq: number; known_frozen_count?: number; known_frozen_hash?: string }
   | {
-    type: "history_sync_mismatch";
-    frozen_count: number;
-    expected_frozen_hash: string;
-    actual_frozen_hash: string;
-    expected_full_hash: string;
-    actual_full_hash: string;
-  }
+      type: "history_sync_mismatch";
+      frozen_count: number;
+      expected_frozen_hash: string;
+      actual_frozen_hash: string;
+      expected_full_hash: string;
+      actual_full_hash: string;
+    }
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string; interruptSource?: "user" | "leader" | "system" }
   | { type: "cancel_pending_codex_input"; id: string; client_msg_id?: string }
@@ -384,19 +400,28 @@ export interface SessionTaskEntry {
 export type BrowserIncomingMessageBase =
   | { type: "session_init"; session: SessionState; nextEventSeq?: number }
   | { type: "session_update"; session: Partial<SessionState> }
-  | { type: "assistant"; message: CLIAssistantMessage["message"]; parent_tool_use_id: string | null; timestamp?: number; uuid?: string; tool_start_times?: Record<string, number>; turn_duration_ms?: number; leader_user_addressed?: boolean }
+  | {
+      type: "assistant";
+      message: CLIAssistantMessage["message"];
+      parent_tool_use_id: string | null;
+      timestamp?: number;
+      uuid?: string;
+      tool_start_times?: Record<string, number>;
+      turn_duration_ms?: number;
+      leader_user_addressed?: boolean;
+    }
   | { type: "stream_event"; event: unknown; parent_tool_use_id: string | null }
   | { type: "result"; data: CLIResultMessage }
   | { type: "permission_request"; request: PermissionRequest }
   | { type: "permission_cancelled"; request_id: string }
   | {
-    type: "tool_progress";
-    tool_use_id: string;
-    tool_name: string;
-    elapsed_time_seconds: number;
-    /** Codex-only: incremental terminal output chunk from commandExecution/outputDelta. */
-    output_delta?: string;
-  }
+      type: "tool_progress";
+      tool_use_id: string;
+      tool_name: string;
+      elapsed_time_seconds: number;
+      /** Codex-only: incremental terminal output chunk from commandExecution/outputDelta. */
+      output_delta?: string;
+    }
   | { type: "tool_use_summary"; summary: string; tool_use_ids: string[] }
   | { type: "status_change"; status: "compacting" | "reverting" | "idle" | "running" | null }
   | { type: "permissions_cleared" }
@@ -405,19 +430,28 @@ export type BrowserIncomingMessageBase =
   | { type: "backend_disconnected"; reason?: "idle_limit" | "broken" }
   | { type: "backend_connected" }
   | { type: "vscode_selection_state"; state: VsCodeSelectionState | null }
-  | { type: "user_message"; content: string; timestamp: number; id?: string; cliUuid?: string; images?: import("./image-store.js").ImageRef[]; agentSource?: { sessionId: string; sessionLabel?: string }; vscodeSelection?: VsCodeSelectionMetadata }
+  | {
+      type: "user_message";
+      content: string;
+      timestamp: number;
+      id?: string;
+      cliUuid?: string;
+      images?: import("./image-store.js").ImageRef[];
+      agentSource?: { sessionId: string; sessionLabel?: string };
+      vscodeSelection?: VsCodeSelectionMetadata;
+    }
   | { type: "codex_pending_inputs"; inputs: PendingCodexInput[] }
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | {
-    type: "history_sync";
-    frozen_base_count: number;
-    frozen_delta: BrowserIncomingMessage[];
-    hot_messages: BrowserIncomingMessage[];
-    frozen_count: number;
-    expected_frozen_hash: string;
-    expected_full_hash: string;
-  }
+      type: "history_sync";
+      frozen_base_count: number;
+      frozen_delta: BrowserIncomingMessage[];
+      hot_messages: BrowserIncomingMessage[];
+      frozen_count: number;
+      expected_frozen_hash: string;
+      expected_full_hash: string;
+    }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "session_order_update"; sessionOrder: Record<string, string[]> }
   | { type: "group_order_update"; groupOrder: string[] }
@@ -426,34 +460,88 @@ export type BrowserIncomingMessageBase =
   | { type: "pr_status_update"; pr: import("./github-pr.js").GitHubPRInfo | null; available: boolean }
   | { type: "mcp_status"; servers: McpServerDetail[] }
   | { type: "compact_boundary"; id?: string; timestamp?: number; trigger?: string; preTokens?: number }
-  | { type: "compact_marker"; timestamp: number; id?: string; cliUuid?: string; summary?: string; trigger?: string; preTokens?: number }
+  | {
+      type: "compact_marker";
+      timestamp: number;
+      id?: string;
+      cliUuid?: string;
+      summary?: string;
+      trigger?: string;
+      preTokens?: number;
+    }
   | { type: "compact_summary"; summary: string }
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
-  | { type: "permission_denied"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number; request_id?: string }
-  | { type: "permission_approved"; id: string; tool_name: string; tool_use_id: string; summary: string; timestamp: number; request_id?: string; answers?: { question: string; answer: string }[] }
-  | { type: "permission_auto_approved"; request_id: string; tool_name: string; tool_use_id: string; reason: string; summary: string; timestamp: number }
-  | { type: "permission_auto_denied"; request_id: string; tool_name: string; tool_use_id: string; reason: string; timestamp: number }
+  | {
+      type: "permission_denied";
+      id: string;
+      tool_name: string;
+      tool_use_id: string;
+      summary: string;
+      timestamp: number;
+      request_id?: string;
+    }
+  | {
+      type: "permission_approved";
+      id: string;
+      tool_name: string;
+      tool_use_id: string;
+      summary: string;
+      timestamp: number;
+      request_id?: string;
+      answers?: { question: string; answer: string }[];
+    }
+  | {
+      type: "permission_auto_approved";
+      request_id: string;
+      tool_name: string;
+      tool_use_id: string;
+      reason: string;
+      summary: string;
+      timestamp: number;
+    }
+  | {
+      type: "permission_auto_denied";
+      request_id: string;
+      tool_name: string;
+      tool_use_id: string;
+      reason: string;
+      timestamp: number;
+    }
   | { type: "permission_needs_attention"; request_id: string; timestamp: number; reason?: string }
-  | { type: "leader_group_idle"; leader_session_id: string; leader_label: string; member_count: number; idle_for_ms: number; timestamp: number }
+  | {
+      type: "leader_group_idle";
+      leader_session_id: string;
+      leader_label: string;
+      member_count: number;
+      idle_for_ms: number;
+      timestamp: number;
+    }
   | { type: "permission_evaluating_status"; request_id: string; evaluating: "queued" | "evaluating"; timestamp: number }
   | {
-    type: "state_snapshot";
-    sessionStatus: string | null;
-    permissionMode: string;
-    backendConnected: boolean;
-    backendState?: SessionState["backend_state"];
-    backendError?: string | null;
-    uiMode: string | null;
-    askPermission: boolean;
-    lastReadAt?: number;
-    attentionReason?: "action" | "error" | "review" | null;
-    generationStartedAt?: number | null;
-  }
+      type: "state_snapshot";
+      sessionStatus: string | null;
+      permissionMode: string;
+      backendConnected: boolean;
+      backendState?: SessionState["backend_state"];
+      backendError?: string | null;
+      uiMode: string | null;
+      askPermission: boolean;
+      lastReadAt?: number;
+      attentionReason?: "action" | "error" | "review" | null;
+      generationStartedAt?: number | null;
+    }
   | { type: "session_stuck" }
   | { type: "session_unstuck" }
   | { type: "quest_list_updated" }
   | { type: "session_quest_claimed"; quest: { id: string; title: string; status?: string } | null }
-  | { type: "task_notification"; task_id: string; tool_use_id: string; status: string; output_file?: string; summary?: string }
+  | {
+      type: "task_notification";
+      task_id: string;
+      tool_use_id: string;
+      status: string;
+      output_file?: string;
+      summary?: string;
+    }
   | { type: "session_deleted"; session_id: string }
   | { type: "session_created"; session_id: string };
 
@@ -608,9 +696,24 @@ export interface McpServerDetail {
 export type PermissionDestination = "userSettings" | "projectSettings" | "localSettings" | "session" | "cliArg";
 
 export type PermissionUpdate =
-  | { type: "addRules"; rules: { toolName: string; ruleContent?: string }[]; behavior: "allow" | "deny" | "ask"; destination: PermissionDestination }
-  | { type: "replaceRules"; rules: { toolName: string; ruleContent?: string }[]; behavior: "allow" | "deny" | "ask"; destination: PermissionDestination }
-  | { type: "removeRules"; rules: { toolName: string; ruleContent?: string }[]; behavior: "allow" | "deny" | "ask"; destination: PermissionDestination }
+  | {
+      type: "addRules";
+      rules: { toolName: string; ruleContent?: string }[];
+      behavior: "allow" | "deny" | "ask";
+      destination: PermissionDestination;
+    }
+  | {
+      type: "replaceRules";
+      rules: { toolName: string; ruleContent?: string }[];
+      behavior: "allow" | "deny" | "ask";
+      destination: PermissionDestination;
+    }
+  | {
+      type: "removeRules";
+      rules: { toolName: string; ruleContent?: string }[];
+      behavior: "allow" | "deny" | "ask";
+      destination: PermissionDestination;
+    }
   | { type: "setMode"; mode: string; destination: PermissionDestination }
   | { type: "addDirectories"; directories: string[]; destination: PermissionDestination }
   | { type: "removeDirectories"; directories: string[]; destination: PermissionDestination };
@@ -781,7 +884,7 @@ export type TakodeEvent = {
     event: E;
     /** Event-specific payload */
     data: TakodeEventDataByType[E];
-  }
+  };
 }[TakodeEventType];
 
 export type TakodeEventFor<E extends TakodeEventType> = Extract<TakodeEvent, { event: E }>;

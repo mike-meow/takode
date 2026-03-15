@@ -56,10 +56,7 @@ export function SessionHoverCard({
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);
   const sessionNames = useStore((st) => st.sessionNames);
-  const sdkSessionMeta = useMemo(
-    () => sdkSessions.find((sdk) => sdk.sessionId === s.id),
-    [sdkSessions, s.id],
-  );
+  const sdkSessionMeta = useMemo(() => sdkSessions.find((sdk) => sdk.sessionId === s.id), [sdkSessions, s.id]);
   const herdedSessions = useMemo(() => {
     if (!s.isOrchestrator) return [];
     return sdkSessions
@@ -87,23 +84,23 @@ export function SessionHoverCard({
   const statusLabel = s.archived
     ? "archived"
     : isRunning
-    ? "running"
-    : isCompacting
-    ? "compacting"
-    : isExited
-    ? "exited"
-    : "idle";
+      ? "running"
+      : isCompacting
+        ? "compacting"
+        : isExited
+          ? "exited"
+          : "idle";
   const statusDotClass = s.archived
     ? "bg-cc-muted/40"
     : s.permCount > 0
-    ? "bg-cc-warning"
-    : isExited
-    ? "bg-cc-muted/40"
-    : isRunning
-    ? "bg-cc-success"
-    : isCompacting
-    ? "bg-cc-warning"
-    : "bg-cc-success/60";
+      ? "bg-cc-warning"
+      : isExited
+        ? "bg-cc-muted/40"
+        : isRunning
+          ? "bg-cc-success"
+          : isCompacting
+            ? "bg-cc-warning"
+            : "bg-cc-success/60";
 
   const shortId = s.id.slice(0, 8);
   const label = sessionName || s.model || shortId;
@@ -119,11 +116,11 @@ export function SessionHoverCard({
   const turns = sessionState?.num_turns ?? sdkSessionMeta?.numTurns ?? 0;
   const contextPercent = sessionState?.context_used_percent ?? sdkSessionMeta?.contextUsedPercent ?? 0;
   const contextWindow =
-    sessionState?.codex_token_details?.modelContextWindow
-    ?? sessionState?.claude_token_details?.modelContextWindow
-    ?? sdkSessionMeta?.codexTokenDetails?.modelContextWindow
-    ?? sdkSessionMeta?.claudeTokenDetails?.modelContextWindow
-    ?? 0;
+    sessionState?.codex_token_details?.modelContextWindow ??
+    sessionState?.claude_token_details?.modelContextWindow ??
+    sdkSessionMeta?.codexTokenDetails?.modelContextWindow ??
+    sdkSessionMeta?.claudeTokenDetails?.modelContextWindow ??
+    0;
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
 
@@ -177,9 +174,7 @@ export function SessionHoverCard({
         <div className="px-4 pt-3 pb-2">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[14px] font-semibold text-cc-fg leading-snug break-words min-w-0">
-                {label}
-              </span>
+              <span className="text-[14px] font-semibold text-cc-fg leading-snug break-words min-w-0">{label}</span>
               {s.sessionNum != null && (
                 <span className="text-[10px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
               )}
@@ -190,7 +185,9 @@ export function SessionHoverCard({
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-[11px] font-medium ${s.backendType === "codex" ? "text-blue-500" : "text-[#D97757]"}`}>
+            <span
+              className={`text-[11px] font-medium ${s.backendType === "codex" ? "text-blue-500" : "text-[#D97757]"}`}
+            >
               {backendLabel}
             </span>
             {model && (
@@ -252,8 +249,12 @@ export function SessionHoverCard({
                 className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
                 title={`Navigate to ${leaderSession.name || leaderSession.sessionId.slice(0, 8)}`}
               >
-                {leaderSession.sessionNum != null && <span className="font-mono text-amber-400/60">#{leaderSession.sessionNum}</span>}
-                <span className="truncate max-w-[200px]">{leaderSession.name || leaderSession.sessionId.slice(0, 8)}</span>
+                {leaderSession.sessionNum != null && (
+                  <span className="font-mono text-amber-400/60">#{leaderSession.sessionNum}</span>
+                )}
+                <span className="truncate max-w-[200px]">
+                  {leaderSession.name || leaderSession.sessionId.slice(0, 8)}
+                </span>
               </button>
             </div>
           </div>
@@ -331,16 +332,16 @@ export function SessionHoverCard({
             )}
             {/* Worktree liveness status for archived worktree sessions */}
             {s.archived && s.isWorktree && s.worktreeExists !== undefined && (
-              <div className={`flex items-center gap-1.5 mt-1 text-[11px] ${
-                s.worktreeExists
-                  ? s.worktreeDirty ? "text-amber-500" : "text-green-500"
-                  : "text-cc-muted"
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  s.worktreeExists
-                    ? s.worktreeDirty ? "bg-amber-500" : "bg-green-500"
-                    : "bg-cc-muted/50"
-                }`} />
+              <div
+                className={`flex items-center gap-1.5 mt-1 text-[11px] ${
+                  s.worktreeExists ? (s.worktreeDirty ? "text-amber-500" : "text-green-500") : "text-cc-muted"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    s.worktreeExists ? (s.worktreeDirty ? "bg-amber-500" : "bg-green-500") : "bg-cc-muted/50"
+                  }`}
+                />
                 {s.worktreeExists
                   ? s.worktreeDirty
                     ? "Worktree preserved (uncommitted changes)"
@@ -355,7 +356,11 @@ export function SessionHoverCard({
         {(turns > 0 || contextPercent > 0 || contextWindow > 0 || s.lastActivityAt) && (
           <div className="px-4 py-2 border-t border-cc-border/50">
             <div className="flex items-center gap-2 text-[11px] text-cc-muted">
-              {turns > 0 && <span>{turns} {turns === 1 ? "turn" : "turns"}</span>}
+              {turns > 0 && (
+                <span>
+                  {turns} {turns === 1 ? "turn" : "turns"}
+                </span>
+              )}
               {contextPercent > 0 && (
                 <>
                   {turns > 0 && <span className="text-cc-muted/40">&middot;</span>}
@@ -370,8 +375,12 @@ export function SessionHoverCard({
               )}
               {s.lastActivityAt && (
                 <>
-                  {(turns > 0 || contextPercent > 0 || contextWindow > 0) && <span className="text-cc-muted/40">&middot;</span>}
-                  <span title={new Date(s.lastActivityAt).toLocaleString()}>active {formatRelativeTime(s.lastActivityAt)}</span>
+                  {(turns > 0 || contextPercent > 0 || contextWindow > 0) && (
+                    <span className="text-cc-muted/40">&middot;</span>
+                  )}
+                  <span title={new Date(s.lastActivityAt).toLocaleString()}>
+                    active {formatRelativeTime(s.lastActivityAt)}
+                  </span>
                 </>
               )}
             </div>
@@ -385,7 +394,9 @@ export function SessionHoverCard({
               <path d="M2 3.5A1.5 1.5 0 013.5 2h9A1.5 1.5 0 0114 3.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9zM5.243 5.15a.5.5 0 00-.736.676l2.35 2.56-2.35 2.56a.5.5 0 00.736.676l2.5-2.722a.5.5 0 000-.676l-2.5-2.074zM8.5 11a.5.5 0 000 1h3a.5.5 0 000-1h-3z" />
             </svg>
             <span className="text-[10px] text-cc-muted/80 shrink-0">session</span>
-            <span className="font-mono text-[10px] truncate" title={s.id}>{s.id}</span>
+            <span className="font-mono text-[10px] truncate" title={s.id}>
+              {s.id}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-cc-muted">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-50">
@@ -401,7 +412,9 @@ export function SessionHoverCard({
               <path d="M3 2a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V3a1 1 0 00-1-1h-1V1h-1v1H5V1H4v1H3zm10 4H3v7h10V6z" />
             </svg>
             <span className="text-[10px] text-cc-muted/80 shrink-0">created</span>
-            <span className="text-[10px] truncate" title={createdAtLabel}>{createdAtLabel}</span>
+            <span className="text-[10px] truncate" title={createdAtLabel}>
+              {createdAtLabel}
+            </span>
           </div>
         </div>
       </div>

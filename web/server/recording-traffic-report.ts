@@ -47,11 +47,7 @@ function safeMessageType(raw: string): string {
   }
 }
 
-function accumulate(
-  index: Map<string, IndexedTotals>,
-  key: string,
-  payloadBytes: number,
-): void {
+function accumulate(index: Map<string, IndexedTotals>, key: string, payloadBytes: number): void {
   const bucket = index.get(key) ?? createTotals();
   bucket.messages += 1;
   bucket.payloadBytes += payloadBytes;

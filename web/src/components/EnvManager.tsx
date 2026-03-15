@@ -56,18 +56,28 @@ export function EnvManager({ onClose, embedded = false }: Props) {
   const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(() => {
-    api.listEnvs().then(setEnvs).catch(() => {}).finally(() => setLoading(false));
+    api
+      .listEnvs()
+      .then(setEnvs)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     refresh();
     // Check Docker availability
-    api.getContainerStatus().then((s) => {
-      setDockerAvailable(s.available);
-      if (s.available) {
-        api.getContainerImages().then(setAvailableImages).catch(() => {});
-      }
-    }).catch(() => setDockerAvailable(false));
+    api
+      .getContainerStatus()
+      .then((s) => {
+        setDockerAvailable(s.available);
+        if (s.available) {
+          api
+            .getContainerImages()
+            .then(setAvailableImages)
+            .catch(() => {});
+        }
+      })
+      .catch(() => setDockerAvailable(false));
   }, [refresh]);
 
   function startEdit(env: CompanionEnv) {
@@ -176,7 +186,10 @@ export function EnvManager({ onClose, embedded = false }: Props) {
           }
           refresh();
           // Refresh images list
-          api.getContainerImages().then(setAvailableImages).catch(() => {});
+          api
+            .getContainerImages()
+            .then(setAvailableImages)
+            .catch(() => {});
         }
       };
       setTimeout(poll, 2000);
@@ -187,16 +200,15 @@ export function EnvManager({ onClose, embedded = false }: Props) {
   }
 
   const errorBanner = error && (
-    <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-      {error}
-    </div>
+    <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">{error}</div>
   );
 
-  const dockerBadge = dockerAvailable === null ? null : dockerAvailable ? (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500">Docker</span>
-  ) : (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">No Docker</span>
-  );
+  const dockerBadge =
+    dockerAvailable === null ? null : dockerAvailable ? (
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500">Docker</span>
+    ) : (
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">No Docker</span>
+    );
 
   function renderTabs(activeTab: Tab, setTab: (t: Tab) => void) {
     return (
@@ -241,7 +253,9 @@ export function EnvManager({ onClose, embedded = false }: Props) {
             {availableImages
               .filter((img) => img !== "the-companion:latest")
               .map((img) => (
-                <option key={img} value={img}>{img}</option>
+                <option key={img} value={img}>
+                  {img}
+                </option>
               ))}
           </select>
         </div>
@@ -289,12 +303,8 @@ export function EnvManager({ onClose, embedded = false }: Props) {
                   Built {new Date(env.lastBuiltAt).toLocaleDateString()}
                 </span>
               )}
-              {env?.buildStatus === "error" && (
-                <span className="text-[10px] text-cc-error">Build failed</span>
-              )}
-              {env?.imageTag && (
-                <span className="text-[10px] text-cc-muted font-mono-code">{env.imageTag}</span>
-              )}
+              {env?.buildStatus === "error" && <span className="text-[10px] text-cc-error">Build failed</span>}
+              {env?.imageTag && <span className="text-[10px] text-cc-muted font-mono-code">{env.imageTag}</span>}
             </div>
 
             {/* Build log */}
@@ -357,20 +367,17 @@ export function EnvManager({ onClose, embedded = false }: Props) {
     );
   }
 
-  function renderInitScriptTab(
-    initScript: string,
-    setInitScript: (v: string) => void,
-  ) {
+  function renderInitScriptTab(initScript: string, setInitScript: (v: string) => void) {
     return (
       <div className="space-y-3">
         <div>
-          <label className="block text-[11px] text-cc-muted mb-1">
-            Init Script
-          </label>
+          <label className="block text-[11px] text-cc-muted mb-1">Init Script</label>
           <textarea
             value={initScript}
             onChange={(e) => setInitScript(e.target.value)}
-            placeholder={"# Runs inside the container before Claude starts\n# Example:\nbun install\npip install -r requirements.txt"}
+            placeholder={
+              "# Runs inside the container before Claude starts\n# Example:\nbun install\npip install -r requirements.txt"
+            }
             rows={10}
             className="w-full px-3 py-2 text-[11px] font-mono-code bg-cc-input-bg border border-cc-border rounded-md text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50 resize-y"
             style={{ minHeight: "120px" }}
@@ -378,8 +385,8 @@ export function EnvManager({ onClose, embedded = false }: Props) {
         </div>
         <p className="text-[10px] text-cc-muted">
           This shell script runs as root inside the container via{" "}
-          <code className="bg-cc-hover px-1 rounded">sh -lc</code> before the session starts.
-          Use it to install project-specific dependencies. Timeout: 120s.
+          <code className="bg-cc-hover px-1 rounded">sh -lc</code> before the session starts. Use it to install
+          project-specific dependencies. Timeout: 120s.
         </p>
       </div>
     );
@@ -410,10 +417,7 @@ export function EnvManager({ onClose, embedded = false }: Props) {
               {Object.keys(env.variables).length} var{Object.keys(env.variables).length !== 1 ? "s" : ""}
             </span>
             {editingSlug === env.slug ? (
-              <button
-                onClick={cancelEdit}
-                className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
-              >
+              <button onClick={cancelEdit} className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer">
                 Cancel
               </button>
             ) : (
@@ -638,10 +642,7 @@ function VarEditor({ rows, onChange }: { rows: VarRow[]; onChange: (rows: VarRow
           </button>
         </div>
       ))}
-      <button
-        onClick={addRow}
-        className="text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-      >
+      <button onClick={addRow} className="text-[10px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
         + Add variable
       </button>
     </div>

@@ -77,9 +77,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("respects custom delay from settings", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverDelaySeconds: 10 }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverDelaySeconds: 10 }),
+      }),
+    );
     notifier.scheduleNotification("sess-1", "completed");
 
     await vi.advanceTimersByTimeAsync(9_999);
@@ -105,9 +107,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("omits activity line when unavailable", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSessionActivity: () => undefined,
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSessionActivity: () => undefined,
+      }),
+    );
     notifier.scheduleNotification("sess-1", "completed");
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -119,9 +123,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("falls back to truncated session ID when no name", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSessionName: () => undefined,
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSessionName: () => undefined,
+      }),
+    );
     notifier.scheduleNotification("abcdef12-3456-7890", "completed");
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -152,9 +158,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("uses custom base URL for deep links", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getBaseUrl: () => "https://companion.example.com",
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getBaseUrl: () => "https://companion.example.com",
+      }),
+    );
     notifier.scheduleNotification("sess-1", "completed");
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -163,9 +171,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("strips trailing slashes from base URL", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getBaseUrl: () => "https://example.com///",
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getBaseUrl: () => "https://example.com///",
+      }),
+    );
     notifier.scheduleNotification("sess-1", "completed");
 
     await vi.advanceTimersByTimeAsync(30_000);
@@ -193,9 +203,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("extends batch timer but caps at original delay", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverDelaySeconds: 10 }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverDelaySeconds: 10 }),
+      }),
+    );
 
     notifier.scheduleNotification("sess-1", "permission", "Bash", "req-1");
 
@@ -266,9 +278,11 @@ describe("PushoverNotifier", () => {
   // ── Rate limiting ───────────────────────────────────────────────────
 
   it("enforces per-session cooldown", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
+      }),
+    );
 
     // First notification
     notifier.scheduleNotification("sess-1", "completed");
@@ -282,9 +296,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("allows notifications for different sessions concurrently", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
+      }),
+    );
 
     notifier.scheduleNotification("sess-1", "completed");
     await vi.advanceTimersByTimeAsync(1_000);
@@ -300,9 +316,11 @@ describe("PushoverNotifier", () => {
   // ── Unconfigured / disabled ─────────────────────────────────────────
 
   it("no-ops when pushover is not configured", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverUserKey: "", pushoverApiToken: "" }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverUserKey: "", pushoverApiToken: "" }),
+      }),
+    );
 
     notifier.scheduleNotification("sess-1", "permission", "Bash", "req-1");
     await vi.advanceTimersByTimeAsync(60_000);
@@ -310,9 +328,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("no-ops when pushover is disabled", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverEnabled: false }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverEnabled: false }),
+      }),
+    );
 
     notifier.scheduleNotification("sess-1", "permission", "Bash", "req-1");
     await vi.advanceTimersByTimeAsync(60_000);
@@ -335,9 +355,11 @@ describe("PushoverNotifier", () => {
   });
 
   it("sendTest returns error when credentials are missing", async () => {
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverUserKey: "" }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverUserKey: "" }),
+      }),
+    );
     const result = await notifier.sendTest();
     expect(result.ok).toBe(false);
     expect(result.error).toContain("not configured");
@@ -347,11 +369,14 @@ describe("PushoverNotifier", () => {
   // ── API error handling ──────────────────────────────────────────────
 
   it("handles Pushover API errors gracefully", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: false,
-      status: 400,
-      text: () => Promise.resolve('{"errors":["invalid token"]}'),
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('{"errors":["invalid token"]}'),
+      }),
+    );
 
     notifier = new PushoverNotifier(makeOpts());
     notifier.scheduleNotification("sess-1", "completed");
@@ -377,9 +402,11 @@ describe("PushoverNotifier", () => {
   it("uses correct priorities for each event type", async () => {
     const priorities: Record<string, string> = {};
 
-    notifier = new PushoverNotifier(makeOpts({
-      getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
-    }));
+    notifier = new PushoverNotifier(
+      makeOpts({
+        getSettings: () => makeSettings({ pushoverDelaySeconds: 1 }),
+      }),
+    );
 
     // Permission
     notifier.scheduleNotification("s1", "permission", "Bash", "r1");

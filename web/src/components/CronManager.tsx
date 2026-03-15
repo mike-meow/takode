@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { api, type CronJobInfo } from "../api.js";
-import { CODEX_REASONING_EFFORTS, getModelsForBackend, getDefaultModel, toModelOptions, type ModelOption } from "../utils/backends.js";
+import {
+  CODEX_REASONING_EFFORTS,
+  getModelsForBackend,
+  getDefaultModel,
+  toModelOptions,
+  type ModelOption,
+} from "../utils/backends.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { FolderPicker } from "./FolderPicker.js";
 
@@ -65,7 +71,14 @@ function humanizeSchedule(schedule: string, recurring: boolean): string {
   }
 
   // Specific hour patterns
-  if (dayOfMonth === "*" && month === "*" && minute !== "*" && hour !== "*" && !hour.includes("/") && !hour.includes(",")) {
+  if (
+    dayOfMonth === "*" &&
+    month === "*" &&
+    minute !== "*" &&
+    hour !== "*" &&
+    !hour.includes("/") &&
+    !hour.includes(",")
+  ) {
     const h = parseInt(hour, 10);
     const m = parseInt(minute, 10);
     if (!isNaN(h) && !isNaN(m)) {
@@ -136,7 +149,11 @@ export function CronManager({ onClose, embedded = false }: Props) {
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(() => {
-    api.listCronJobs().then(setJobs).catch(() => {}).finally(() => setLoading(false));
+    api
+      .listCronJobs()
+      .then(setJobs)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -169,9 +186,8 @@ export function CronManager({ onClose, embedded = false }: Props) {
         backendType: createForm.backendType,
         model: createForm.model.trim() || undefined,
         cwd: createForm.cwd.trim() || undefined,
-        codexReasoningEffort: createForm.backendType === "codex"
-          ? (createForm.codexReasoningEffort.trim() || undefined)
-          : undefined,
+        codexReasoningEffort:
+          createForm.backendType === "codex" ? createForm.codexReasoningEffort.trim() || undefined : undefined,
       } as Partial<CronJobInfo>);
       setCreateForm(makeEmptyForm());
       setCreateCollapsed(true);
@@ -226,9 +242,8 @@ export function CronManager({ onClose, embedded = false }: Props) {
         backendType: editForm.backendType,
         model: editForm.model.trim() || undefined,
         cwd: editForm.cwd.trim() || undefined,
-        codexReasoningEffort: editForm.backendType === "codex"
-          ? (editForm.codexReasoningEffort.trim() || undefined)
-          : undefined,
+        codexReasoningEffort:
+          editForm.backendType === "codex" ? editForm.codexReasoningEffort.trim() || undefined : undefined,
       } as Partial<CronJobInfo>);
       setEditingId(null);
       setError("");
@@ -278,17 +293,13 @@ export function CronManager({ onClose, embedded = false }: Props) {
   // ─── Renderers ───────────────────────────────────────────────────────
 
   const errorBanner = error && (
-    <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-      {error}
-    </div>
+    <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">{error}</div>
   );
 
   const jobsList = loading ? (
     <div className="text-sm text-cc-muted text-center py-6">Loading scheduled tasks...</div>
   ) : jobs.length === 0 ? (
-    <div className="text-sm text-cc-muted text-center py-6">
-      No scheduled tasks yet. Create one below.
-    </div>
+    <div className="text-sm text-cc-muted text-center py-6">No scheduled tasks yet. Create one below.</div>
   ) : (
     <div className="space-y-3">
       {jobs.map((job) => (
@@ -300,9 +311,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
             {/* Backend pill */}
             <span
               className={`text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 ${
-                job.backendType === "codex"
-                  ? "text-blue-500 bg-blue-500/10"
-                  : "text-[#5BA8A0] bg-[#5BA8A0]/10"
+                job.backendType === "codex" ? "text-blue-500 bg-blue-500/10" : "text-[#5BA8A0] bg-[#5BA8A0]/10"
               }`}
             >
               {job.backendType === "codex" ? "Codex" : "Claude"}
@@ -332,10 +341,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
 
             {/* Action buttons */}
             {editingId === job.id ? (
-              <button
-                onClick={cancelEdit}
-                className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
-              >
+              <button onClick={cancelEdit} className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer">
                 Cancel
               </button>
             ) : (
@@ -402,11 +408,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
                 <span>{humanizeSchedule(job.schedule, job.recurring)}</span>
 
                 {/* Next run */}
-                {job.nextRunAt != null && job.enabled && (
-                  <span>
-                    Next: {timeUntil(job.nextRunAt)}
-                  </span>
-                )}
+                {job.nextRunAt != null && job.enabled && <span>Next: {timeUntil(job.nextRunAt)}</span>}
 
                 {/* Last run */}
                 {job.lastRunAt != null && (
@@ -426,7 +428,9 @@ export function CronManager({ onClose, embedded = false }: Props) {
 
                 {/* Total runs */}
                 {job.totalRuns > 0 && (
-                  <span>{job.totalRuns} run{job.totalRuns !== 1 ? "s" : ""}</span>
+                  <span>
+                    {job.totalRuns} run{job.totalRuns !== 1 ? "s" : ""}
+                  </span>
                 )}
 
                 {/* Working directory */}
@@ -463,9 +467,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
       {!createCollapsed && (
         <div className="px-3 py-3 space-y-2.5">
           <JobForm form={createForm} onChange={setCreateForm} />
-          <div className="text-[10px] text-cc-muted">
-            Scheduled tasks run with full autonomy (bypassPermissions)
-          </div>
+          <div className="text-[10px] text-cc-muted">Scheduled tasks run with full autonomy (bypassPermissions)</div>
           <button
             onClick={handleCreate}
             disabled={!createForm.name.trim() || !createForm.prompt.trim() || creating}
@@ -490,9 +492,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
         <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
           <div className="mb-6">
             <h1 className="text-xl font-semibold text-cc-fg">Scheduled Tasks</h1>
-            <p className="mt-1 text-sm text-cc-muted">
-              Run autonomous Claude Code or Codex sessions on a schedule.
-            </p>
+            <p className="mt-1 text-sm text-cc-muted">Run autonomous Claude Code or Codex sessions on a schedule.</p>
           </div>
           {errorBanner}
           <div className="mt-4 space-y-4">
@@ -517,9 +517,7 @@ export function CronManager({ onClose, embedded = false }: Props) {
       <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-cc-border">
         <div>
           <h2 className="text-sm font-semibold text-cc-fg">Scheduled Tasks</h2>
-          <p className="text-xs text-cc-muted mt-0.5">
-            Run autonomous Claude Code or Codex sessions on a schedule
-          </p>
+          <p className="text-xs text-cc-muted mt-0.5">Run autonomous Claude Code or Codex sessions on a schedule</p>
         </div>
         {onClose && (
           <button
@@ -550,18 +548,11 @@ export function CronManager({ onClose, embedded = false }: Props) {
 
 // ─── Shared Job Form ─────────────────────────────────────────────────────────
 
-function JobForm({
-  form,
-  onChange,
-}: {
-  form: JobFormData;
-  onChange: (form: JobFormData) => void;
-}) {
+function JobForm({ form, onChange }: { form: JobFormData; onChange: (form: JobFormData) => void }) {
   const persistCodexReasoningEffort = (effort: string) => {
     scopedSetItem("cc-codex-reasoning-effort", effort);
   };
-  const update = (partial: Partial<JobFormData>) =>
-    onChange({ ...form, ...partial });
+  const update = (partial: Partial<JobFormData>) => onChange({ ...form, ...partial });
 
   // ─── Dynamic model fetching (same pattern as HomePage) ──────────
   const [dynamicModels, setDynamicModels] = useState<ModelOption[] | null>(null);
@@ -577,17 +568,20 @@ function JobForm({
   // Fetch dynamic models when backend changes (LiteLLM proxy discovery)
   useEffect(() => {
     setDynamicModels(null);
-    api.getBackendModels(form.backendType).then((fetched) => {
-      if (fetched.length > 0) {
-        const options = toModelOptions(fetched);
-        setDynamicModels(options);
-        if (!options.some((m) => m.value === form.model)) {
-          update({ model: options[0].value });
+    api
+      .getBackendModels(form.backendType)
+      .then((fetched) => {
+        if (fetched.length > 0) {
+          const options = toModelOptions(fetched);
+          setDynamicModels(options);
+          if (!options.some((m) => m.value === form.model)) {
+            update({ model: options[0].value });
+          }
         }
-      }
-    }).catch(() => {
-      // Fall back to hardcoded models silently
-    });
+      })
+      .catch(() => {
+        // Fall back to hardcoded models silently
+      });
   }, [form.backendType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set default model if empty
@@ -613,9 +607,7 @@ function JobForm({
   }, [showModelDropdown, showReasoningDropdown]);
 
   // Folder display label
-  const dirLabel = form.cwd
-    ? form.cwd.split("/").pop() || form.cwd
-    : "Select folder";
+  const dirLabel = form.cwd ? form.cwd.split("/").pop() || form.cwd : "Select folder";
 
   return (
     <div className="space-y-2.5">
@@ -644,9 +636,7 @@ function JobForm({
           <button
             onClick={() => update({ recurring: true })}
             className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-              form.recurring
-                ? "bg-cc-primary text-white"
-                : "bg-cc-hover text-cc-muted hover:text-cc-fg"
+              form.recurring ? "bg-cc-primary text-white" : "bg-cc-hover text-cc-muted hover:text-cc-fg"
             }`}
           >
             Recurring
@@ -654,9 +644,7 @@ function JobForm({
           <button
             onClick={() => update({ recurring: false })}
             className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
-              !form.recurring
-                ? "bg-cc-primary text-white"
-                : "bg-cc-hover text-cc-muted hover:text-cc-fg"
+              !form.recurring ? "bg-cc-primary text-white" : "bg-cc-hover text-cc-muted hover:text-cc-fg"
             }`}
           >
             One-time
@@ -689,9 +677,7 @@ function JobForm({
               placeholder="Cron expression (e.g. 0 8 * * *)"
               className="w-full px-3 py-2 text-sm font-mono-code bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
             />
-            <div className="text-[10px] text-cc-muted">
-              {humanizeSchedule(form.schedule, true)}
-            </div>
+            <div className="text-[10px] text-cc-muted">{humanizeSchedule(form.schedule, true)}</div>
           </div>
         ) : (
           <input
@@ -767,7 +753,8 @@ function JobForm({
             >
               <span>
                 reasoning:
-                {CODEX_REASONING_EFFORTS.find((x) => x.value === form.codexReasoningEffort)?.label.toLowerCase() || "default"}
+                {CODEX_REASONING_EFFORTS.find((x) => x.value === form.codexReasoningEffort)?.label.toLowerCase() ||
+                  "default"}
               </span>
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-50">
                 <path d="M4 6l4 4 4-4" />

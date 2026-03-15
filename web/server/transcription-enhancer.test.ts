@@ -100,9 +100,7 @@ describe("extractAssistantText", () => {
   });
 
   it("returns empty for tool-only messages", () => {
-    const result = extractAssistantText([
-      { type: "tool_use", id: "t1", name: "Read", input: {} },
-    ]);
+    const result = extractAssistantText([{ type: "tool_use", id: "t1", name: "Read", input: {} }]);
     expect(result).toBe("");
   });
 });
@@ -148,10 +146,7 @@ describe("buildTranscriptionContext", () => {
   });
 
   it("builds context from a single turn", () => {
-    const history = [
-      userMsg("Fix the auth bug"),
-      assistantMsg("I found the issue in auth.ts"),
-    ];
+    const history = [userMsg("Fix the auth bug"), assistantMsg("I found the issue in auth.ts")];
     const ctx = buildTranscriptionContext(history);
     expect(ctx).toContain("[user]");
     expect(ctx).toContain("Fix the auth bug");
@@ -244,10 +239,7 @@ describe("buildTranscriptionContext", () => {
   });
 
   it("uses proper indentation format", () => {
-    const history = [
-      userMsg("Fix bug"),
-      assistantMsg("Fixed it"),
-    ];
+    const history = [userMsg("Fix bug"), assistantMsg("Fixed it")];
     const ctx = buildTranscriptionContext(history);
     // Check indentation structure — first "User:" may lose leading spaces after trim(),
     // but the content lines and "Assistant:" still have proper indentation
@@ -425,35 +417,22 @@ describe("enhanceTranscript", () => {
   });
 
   it("skips enhancement with null history", async () => {
-    const result = await enhanceTranscript(
-      "fix the auth token refresh bug",
-      null,
-      defaultConfig,
-      "key",
-    );
+    const result = await enhanceTranscript("fix the auth token refresh bug", null, defaultConfig, "key");
     expect(result.enhanced).toBe(false);
   });
 
   it("skips enhancement with empty history and no extra context", async () => {
-    const result = await enhanceTranscript(
-      "fix the auth token refresh bug",
-      [],
-      defaultConfig,
-      "key",
-    );
+    const result = await enhanceTranscript("fix the auth token refresh bug", [], defaultConfig, "key");
     expect(result.enhanced).toBe(false);
   });
 
   it("does not skip when extra context is provided even with empty history", async () => {
     // This will attempt the LLM call (which will fail in tests since there's no real API),
     // but the important thing is it doesn't return the "no context" skip
-    const result = await enhanceTranscript(
-      "fix the auth token refresh bug",
-      [],
-      defaultConfig,
-      "key",
-      { taskTitles: ["Fix auth middleware"], sessionName: "Debug session" },
-    );
+    const result = await enhanceTranscript("fix the auth token refresh bug", [], defaultConfig, "key", {
+      taskTitles: ["Fix auth middleware"],
+      sessionName: "Debug session",
+    });
     // Should NOT have skipReason "no context" — it should attempt the call
     expect(result._debug?.skipReason).not.toBe("no context");
   });
@@ -490,7 +469,7 @@ describe("buildSttPrompt", () => {
     const prompt = buildSttPrompt({
       taskHistory: [
         makeTask("Fix auth bug"),
-        makeTask("Fix auth bug"),  // duplicate
+        makeTask("Fix auth bug"), // duplicate
         makeTask("Add tests"),
       ],
     });
@@ -526,10 +505,7 @@ describe("buildSttPrompt", () => {
       mode: "edit",
       composerText: "Please rewrite this update into short bullets.",
       sessionName: "Voice edit session",
-      messageHistory: [
-        userMsg("Please clean up this update"),
-        assistantMsg("Share the draft and I'll tighten it."),
-      ],
+      messageHistory: [userMsg("Please clean up this update"), assistantMsg("Share the draft and I'll tighten it.")],
     });
     expect(prompt).toContain("<DRAFT>\nPlease rewrite this update into short bullets.\n</DRAFT>");
     expect(prompt).toContain("</VOCABULARY_REFERENCE>\n\n<DRAFT>");
@@ -595,7 +571,11 @@ describe("buildSttPrompt", () => {
       messageHistory: [
         userMsg("Fix the bug"),
         assistantMsg("I fixed the bug in auth.ts"),
-        { type: "assistant", message: { content: [{ type: "text", text: "subagent work" }] }, parent_tool_use_id: "parent-1" } as unknown as BrowserIncomingMessage,
+        {
+          type: "assistant",
+          message: { content: [{ type: "text", text: "subagent work" }] },
+          parent_tool_use_id: "parent-1",
+        } as unknown as BrowserIncomingMessage,
         userMsg("Add tests"),
       ],
     });

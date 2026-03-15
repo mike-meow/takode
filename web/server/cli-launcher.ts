@@ -1,18 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
-import {
-  mkdir,
-  access,
-  copyFile,
-  cp,
-  readFile,
-  realpath,
-  writeFile,
-  unlink,
-  symlink,
-  lstat,
-} from "node:fs/promises";
+import { mkdir, access, copyFile, cp, readFile, realpath, writeFile, unlink, symlink, lstat } from "node:fs/promises";
 
 const execPromise = promisify(execCb);
 import { join, resolve } from "node:path";
@@ -25,17 +14,19 @@ import type { RecorderManager } from "./recorder.js";
 import { CodexAdapter } from "./codex-adapter.js";
 import { resolveBinary, getEnrichedPath, captureUserShellEnv, captureUserShellPath } from "./path-resolver.js";
 import { containerManager } from "./container-manager.js";
-import {
-  getLegacyCodexHome,
-  resolveCompanionCodexSessionHome,
-} from "./codex-home.js";
+import { getLegacyCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
 import { TAKODE_LINK_SYNTAX_INSTRUCTIONS } from "./link-syntax.js";
 import { sessionTag } from "./session-tag.js";
 import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
 
 /** Check if a file exists (async equivalent of existsSync). */
 async function fileExists(path: string): Promise<boolean> {
-  try { await access(path); return true; } catch { return false; }
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -84,9 +75,8 @@ function sanitizeSpawnArgsForLog(args: string[]): string {
 }
 
 function mapCodexApprovalPolicy(permissionMode?: string, askPermission?: boolean): "never" | "untrusted" {
-  const effectiveAskPermission = typeof askPermission === "boolean"
-    ? askPermission
-    : permissionMode !== "bypassPermissions";
+  const effectiveAskPermission =
+    typeof askPermission === "boolean" ? askPermission : permissionMode !== "bypassPermissions";
   if (!effectiveAskPermission) return "never";
   return permissionMode === "bypassPermissions" ? "never" : "untrusted";
 }
@@ -118,17 +108,13 @@ function extractQuotedStrings(input: string): string[] {
   const re = /"((?:[^"\\]|\\.)*)"/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(input)) !== null) {
-    out.push(m[1].replace(/\\"/g, "\""));
+    out.push(m[1].replace(/\\"/g, '"'));
   }
   return out;
 }
 
 function renderIncludeOnlyArray(vars: string[]): string[] {
-  return [
-    "include_only = [",
-    ...vars.map((v) => `    "${v}",`),
-    "]",
-  ];
+  return ["include_only = [", ...vars.map((v) => `    "${v}",`), "]"];
 }
 
 function escapeRegExp(input: string): string {
@@ -155,9 +141,7 @@ function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: str
   const lines = configToml.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 
-  const sectionStart = lines.findIndex((line) =>
-    line.trim().toLowerCase() === SHELL_ENV_POLICY_HEADER.toLowerCase(),
-  );
+  const sectionStart = lines.findIndex((line) => line.trim().toLowerCase() === SHELL_ENV_POLICY_HEADER.toLowerCase());
 
   if (sectionStart === -1) {
     const out = [...lines];
@@ -205,19 +189,12 @@ function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: str
   return out.join("\n") + (endsWithNewline ? "\n" : "");
 }
 
-function upsertBooleanSettingInSection(
-  configToml: string,
-  sectionHeader: string,
-  key: string,
-  value: boolean,
-): string {
+function upsertBooleanSettingInSection(configToml: string, sectionHeader: string, key: string, value: boolean): string {
   const endsWithNewline = configToml.endsWith("\n");
   const lines = configToml.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
 
-  const sectionStart = lines.findIndex((line) =>
-    line.trim().toLowerCase() === sectionHeader.toLowerCase(),
-  );
+  const sectionStart = lines.findIndex((line) => line.trim().toLowerCase() === sectionHeader.toLowerCase());
   const renderedLine = `${key} = ${value ? "true" : "false"}`;
 
   if (sectionStart === -1) {
@@ -237,7 +214,9 @@ function upsertBooleanSettingInSection(
   }
 
   const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
-  const keyIndex = lines.findIndex((line, index) => index > sectionStart && index < sectionEnd && keyPattern.test(line));
+  const keyIndex = lines.findIndex(
+    (line, index) => index > sectionStart && index < sectionEnd && keyPattern.test(line),
+  );
 
   const out = [...lines];
   if (keyIndex === -1) {
@@ -386,9 +365,7 @@ function buildCompanionInstructions(opts?: {
 
   if (opts?.worktree) {
     const { branch, repoRoot, parentBranch } = opts.worktree;
-    const branchLabel = parentBranch
-      ? `\`${branch}\` (created from \`${parentBranch}\`)`
-      : `\`${branch}\``;
+    const branchLabel = parentBranch ? `\`${branch}\` (created from \`${parentBranch}\`)` : `\`${branch}\``;
     const syncBaseBranch = parentBranch || branch;
 
     parts.push(`# Worktree Session — Branch Guardrails
@@ -466,11 +443,15 @@ function getClaudeOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
     orchestratorRole: "agent",
     tasksSubject: "agent",
     forwardedSessionLine: "- **`[Agent #N name HH:MM]`** — a message sent by another agent session (via `takode send`)",
-    userMessageLine: "- **user_message** includes: sender source tag — `[User]` (human), `[Agent #N name]` (another agent), or `[Herd]` (herd event echo)",
+    userMessageLine:
+      "- **user_message** includes: sender source tag — `[User]` (human), `[Agent #N name]` (another agent), or `[Herd]` (herd event echo)",
     interruptedSubject: "agent",
-    coordinationLine: "Delegate larger work to a herded worker session via `takode send`, or spin up a sub-agent for smaller tasks.",
-    delegationLine: "- **Always use async sub-agents.** When spinning up sub-agents via the Task tool, always use `run_in_background: true`. Synchronous sub-agents block your turn and prevent you from receiving and reacting to herd events or user messages until they complete.",
-    verificationLine: "- If the work is complex or tricky, use async sub-agents (Task tool) for deeper verification when appropriate.",
+    coordinationLine:
+      "Delegate larger work to a herded worker session via `takode send`, or spin up a sub-agent for smaller tasks.",
+    delegationLine:
+      "- **Always use async sub-agents.** When spinning up sub-agents via the Task tool, always use `run_in_background: true`. Synchronous sub-agents block your turn and prevent you from receiving and reacting to herd events or user messages until they complete.",
+    verificationLine:
+      "- If the work is complex or tricky, use async sub-agents (Task tool) for deeper verification when appropriate.",
   };
 }
 
@@ -479,18 +460,18 @@ function getCodexOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
     orchestratorRole: "leader session",
     tasksSubject: "session",
     forwardedSessionLine: "- A forwarded message from another session may also appear with its own source tag",
-    userMessageLine: "- **user_message** includes the sender source tag so you can distinguish human messages, forwarded session messages, and herd event echoes",
+    userMessageLine:
+      "- **user_message** includes the sender source tag so you can distinguish human messages, forwarded session messages, and herd event echoes",
     interruptedSubject: "worker session",
-    coordinationLine: "Delegate larger work to a herded worker session via `takode send`. If you need deeper investigation or a second pass, hand it to another worker session.",
-    delegationLine: "- **Delegate all major work.** Keep your own work to triage, coordination, and short spot checks. Send implementation, deeper investigation, and verification to worker sessions.",
+    coordinationLine:
+      "Delegate larger work to a herded worker session via `takode send`. If you need deeper investigation or a second pass, hand it to another worker session.",
+    delegationLine:
+      "- **Delegate all major work.** Keep your own work to triage, coordination, and short spot checks. Send implementation, deeper investigation, and verification to worker sessions.",
     verificationLine: "- If the work is complex or tricky, delegate independent verification to another idle worker.",
   };
 }
 
-function renderOrchestratorGuardrails(
-  port: number,
-  copy: OrchestratorGuardrailCopy,
-): string {
+function renderOrchestratorGuardrails(port: number, copy: OrchestratorGuardrailCopy): string {
   return `# Takode — Cross-Session Orchestration
 
 You are an **orchestrator ${copy.orchestratorRole}**. You coordinate multiple worker sessions, monitor their progress, and decide when to intervene, send follow-up instructions, or notify the human.
@@ -857,7 +838,9 @@ export class CliLauncher {
   private store: SessionStore | null = null;
   private recorder: RecorderManager | null = null;
   private onCodexAdapter: ((sessionId: string, adapter: CodexAdapter) => void) | null = null;
-  private onClaudeSdkAdapter: ((sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void) | null = null;
+  private onClaudeSdkAdapter:
+    | ((sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void)
+    | null = null;
   private onBeforeRelaunch: ((sessionId: string, backendType: BackendType) => void) | null = null;
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
   private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
@@ -890,7 +873,9 @@ export class CliLauncher {
   }
 
   /** Register a callback for when a ClaudeSdkAdapter is created (WsBridge needs to attach it). */
-  onClaudeSdkAdapterCreated(cb: (sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void): void {
+  onClaudeSdkAdapterCreated(
+    cb: (sessionId: string, adapter: import("./claude-sdk-adapter.js").ClaudeSdkAdapter) => void,
+  ): void {
     this.onClaudeSdkAdapter = cb;
   }
 
@@ -944,21 +929,21 @@ export class CliLauncher {
 
     const exitedGracefully = proc
       ? await Promise.race([
-        proc.exited.then(() => true).catch(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
-      ])
+          proc.exited.then(() => true).catch(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
+        ])
       : await waitForProcessExit(pid, 2000);
     if (exitedGracefully) return;
 
     console.warn(
-      `[cli-launcher] Process ${pid} for session ${sessionTag(sessionId)} did not exit after SIGTERM`
-      + `${reason ? ` (${reason})` : ""}; escalating to SIGKILL`,
+      `[cli-launcher] Process ${pid} for session ${sessionTag(sessionId)} did not exit after SIGTERM` +
+        `${reason ? ` (${reason})` : ""}; escalating to SIGKILL`,
     );
     if (!proc) {
       const cmdline = await readProcessCmdline(pid);
       console.warn(
-        `[cli-launcher] Refusing SIGKILL for untracked persisted pid ${pid} on session ${sessionTag(sessionId)}`
-        + `${cmdline ? ` (still running: ${cmdline})` : ""}`,
+        `[cli-launcher] Refusing SIGKILL for untracked persisted pid ${pid} on session ${sessionTag(sessionId)}` +
+          `${cmdline ? ` (still running: ${cmdline})` : ""}`,
       );
       return;
     }
@@ -1115,7 +1100,7 @@ export class CliLauncher {
 
     // Phase 2: Assign new numbers to sessions that don't have one yet (legacy/pre-migration)
     const sorted = allSessions
-      .filter(s => s.sessionNum === undefined || s.sessionNum === null)
+      .filter((s) => s.sessionNum === undefined || s.sessionNum === null)
       .sort((a, b) => a.createdAt - b.createdAt);
     for (const info of sorted) {
       info.sessionNum = this.assignSessionNum(info.sessionId);
@@ -1124,7 +1109,9 @@ export class CliLauncher {
       // Persist the newly assigned numbers so they're stable on next restart
       this.persistState();
     }
-    console.log(`[cli-launcher] Session numbers: ${allSessions.length} total, ${sorted.length} newly assigned, next=#${this.nextSessionNum}`);
+    console.log(
+      `[cli-launcher] Session numbers: ${allSessions.length} total, ${sorted.length} newly assigned, next=#${this.nextSessionNum}`,
+    );
 
     return recovered;
   }
@@ -1305,7 +1292,9 @@ export class CliLauncher {
       const containerState = containerManager.isContainerAlive(info.containerId);
 
       if (containerState === "missing") {
-        console.error(`[cli-launcher] Container ${containerLabel} no longer exists for session ${sessionTag(sessionId)}`);
+        console.error(
+          `[cli-launcher] Container ${containerLabel} no longer exists for session ${sessionTag(sessionId)}`,
+        );
         info.state = "exited";
         info.exitCode = 1;
         this.persistState();
@@ -1318,7 +1307,9 @@ export class CliLauncher {
       if (containerState === "stopped") {
         try {
           containerManager.startContainer(info.containerId);
-          console.log(`[cli-launcher] Restarted stopped container ${containerLabel} for session ${sessionTag(sessionId)}`);
+          console.log(
+            `[cli-launcher] Restarted stopped container ${containerLabel} for session ${sessionTag(sessionId)}`,
+          );
         } catch (e) {
           info.state = "exited";
           info.exitCode = 1;
@@ -1331,14 +1322,15 @@ export class CliLauncher {
       }
 
       // Validate the configured CLI binary exists inside the container.
-      const configuredBinary = (info.backendType === "codex"
-        ? binSettings.codexBinary
-        : binSettings.claudeBinary).trim();
-      const binary = (configuredBinary || (info.backendType === "codex" ? "codex" : "claude"))
-        .split(/\s+/)[0];
+      const configuredBinary = (
+        info.backendType === "codex" ? binSettings.codexBinary : binSettings.claudeBinary
+      ).trim();
+      const binary = (configuredBinary || (info.backendType === "codex" ? "codex" : "claude")).split(/\s+/)[0];
 
       if (!containerManager.hasBinaryInContainer(info.containerId, binary)) {
-        console.error(`[cli-launcher] "${binary}" not found in container ${containerLabel} for session ${sessionTag(sessionId)}`);
+        console.error(
+          `[cli-launcher] "${binary}" not found in container ${containerLabel} for session ${sessionTag(sessionId)}`,
+        );
         info.state = "exited";
         info.exitCode = 127;
         this.persistState();
@@ -1352,12 +1344,20 @@ export class CliLauncher {
     info.state = "starting";
     info.killedByIdleManager = false;
 
-    console.log(`[cli-launcher] Relaunching session ${sessionTag(sessionId)} (cliSessionId: ${info.cliSessionId || "none"}, state: ${info.state}, backendType: ${info.backendType || "claude"})`);
-    this.recorder?.recordServerEvent(sessionId, "cli_relaunch", {
-      cliSessionId: info.cliSessionId || null,
-      hasResume: !!info.cliSessionId,
-      backendType: info.backendType || "claude",
-    }, info.backendType || "claude", info.cwd);
+    console.log(
+      `[cli-launcher] Relaunching session ${sessionTag(sessionId)} (cliSessionId: ${info.cliSessionId || "none"}, state: ${info.state}, backendType: ${info.backendType || "claude"})`,
+    );
+    this.recorder?.recordServerEvent(
+      sessionId,
+      "cli_relaunch",
+      {
+        cliSessionId: info.cliSessionId || null,
+        hasResume: !!info.cliSessionId,
+        backendType: info.backendType || "claude",
+      },
+      info.backendType || "claude",
+      info.cwd,
+    );
 
     let runtimeEnv = this.sessionEnvs.get(sessionId);
     const sessionAuthToken = this.ensureSessionAuthToken(info);
@@ -1473,7 +1473,11 @@ export class CliLauncher {
     return Array.from(this.sessions.values()).filter((s) => s.state === "starting");
   }
 
-  private spawnCLI(sessionId: string, info: SdkSessionInfo, options: LaunchOptions & { resumeSessionId?: string }): void {
+  private spawnCLI(
+    sessionId: string,
+    info: SdkSessionInfo,
+    options: LaunchOptions & { resumeSessionId?: string },
+  ): void {
     const isContainerized = !!options.containerId;
 
     // For containerized sessions, the CLI binary lives inside the container.
@@ -1494,8 +1498,8 @@ export class CliLauncher {
 
     // Allow overriding the host alias used by containerized Claude sessions.
     // Useful when host.docker.internal is unavailable in a given Docker setup.
-    const containerSdkHost = (process.env.COMPANION_CONTAINER_SDK_HOST || "host.docker.internal").trim()
-      || "host.docker.internal";
+    const containerSdkHost =
+      (process.env.COMPANION_CONTAINER_SDK_HOST || "host.docker.internal").trim() || "host.docker.internal";
 
     // When running inside a container, the SDK URL should target the host alias
     // so the CLI can connect back to the Hono server running on the host.
@@ -1508,23 +1512,26 @@ export class CliLauncher {
     // explicitly forced.
     let effectivePermissionMode = options.permissionMode;
     if (
-      isContainerized
-      && options.permissionMode === "bypassPermissions"
-      && process.env.COMPANION_FORCE_BYPASS_IN_CONTAINER !== "1"
+      isContainerized &&
+      options.permissionMode === "bypassPermissions" &&
+      process.env.COMPANION_FORCE_BYPASS_IN_CONTAINER !== "1"
     ) {
       console.warn(
         `[cli-launcher] Session ${sessionId}: downgrading container permission mode ` +
-        `from bypassPermissions to acceptEdits (set COMPANION_FORCE_BYPASS_IN_CONTAINER=1 to force bypass).`,
+          `from bypassPermissions to acceptEdits (set COMPANION_FORCE_BYPASS_IN_CONTAINER=1 to force bypass).`,
       );
       effectivePermissionMode = "acceptEdits";
       info.permissionMode = "acceptEdits";
     }
 
     const args: string[] = [
-      "--sdk-url", sdkUrl,
+      "--sdk-url",
+      sdkUrl,
       "--print",
-      "--output-format", "stream-json",
-      "--input-format", "stream-json",
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
       "--verbose",
     ];
 
@@ -1557,13 +1564,15 @@ export class CliLauncher {
     // worktree branch guardrails, orchestrator guardrails, sync workflow).
     // This replaces the old approach of writing files into the user's repo.
     const companionInstructions = buildCompanionInstructions({
-      ...(info.isWorktree && info.branch ? {
-        worktree: {
-          branch: info.actualBranch || info.branch,
-          repoRoot: info.repoRoot || "",
-          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
-        },
-      } : {}),
+      ...(info.isWorktree && info.branch
+        ? {
+            worktree: {
+              branch: info.actualBranch || info.branch,
+              repoRoot: info.repoRoot || "",
+              parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+            },
+          }
+        : {}),
       extraInstructions: options.extraInstructions,
     });
     if (companionInstructions) {
@@ -1591,7 +1600,7 @@ export class CliLauncher {
 
       dockerArgs.push(options.containerId!);
       // Use a login shell so ~/.bashrc is sourced and nvm/bun/deno/etc are on PATH
-      const innerCmd = [binary, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+      const innerCmd = [binary, ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
       dockerArgs.push("bash", "-lc", innerCmd);
 
       spawnCmd = dockerArgs;
@@ -1612,7 +1621,7 @@ export class CliLauncher {
 
     console.log(
       `[cli-launcher] Spawning session ${sessionTag(sessionId)}${isContainerized ? " (container)" : ""}: ` +
-      sanitizeSpawnArgsForLog(spawnCmd),
+        sanitizeSpawnArgsForLog(spawnCmd),
     );
 
     let proc: ReturnType<typeof Bun.spawn>;
@@ -1643,9 +1652,17 @@ export class CliLauncher {
     proc.exited.then((exitCode) => {
       const uptime = Date.now() - spawnedAt;
       console.log(`[cli-launcher] Session ${sessionTag(sessionId)} exited (code=${exitCode}, uptime=${uptime}ms)`);
-      this.recorder?.recordServerEvent(sessionId, "cli_exit", {
-        exitCode, uptime, hadResume: !!options.resumeSessionId,
-      }, info.backendType || "claude", info.cwd);
+      this.recorder?.recordServerEvent(
+        sessionId,
+        "cli_exit",
+        {
+          exitCode,
+          uptime,
+          hadResume: !!options.resumeSessionId,
+        },
+        info.backendType || "claude",
+        info.cwd,
+      );
 
       // Guard against stale exits: if a new process was already spawned
       // (e.g. relaunch timeout), this exit belongs to the old process.
@@ -1677,7 +1694,9 @@ export class CliLauncher {
       this.processes.delete(sessionId);
       this.persistState();
       for (const handler of this.exitHandlers) {
-        try { handler(sessionId, exitCode); } catch {}
+        try {
+          handler(sessionId, exitCode);
+        } catch {}
       }
     });
 
@@ -1694,20 +1713,18 @@ export class CliLauncher {
    * No WebSocket — the SDK manages the process and communicates via stdin/stdout.
    * Eliminates 5-minute disconnect cycles and all associated reliability issues.
    */
-  private async spawnClaudeSdk(
-    sessionId: string,
-    info: SdkSessionInfo,
-    options: LaunchOptions,
-  ): Promise<void> {
+  private async spawnClaudeSdk(sessionId: string, info: SdkSessionInfo, options: LaunchOptions): Promise<void> {
     const { ClaudeSdkAdapter } = await import("./claude-sdk-adapter.js");
     const sdkInstructions = buildCompanionInstructions({
-      ...(info.isWorktree && info.branch ? {
-        worktree: {
-          branch: info.actualBranch || info.branch,
-          repoRoot: info.repoRoot || "",
-          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
-        },
-      } : {}),
+      ...(info.isWorktree && info.branch
+        ? {
+            worktree: {
+              branch: info.actualBranch || info.branch,
+              repoRoot: info.repoRoot || "",
+              parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+            },
+          }
+        : {}),
       extraInstructions: options.extraInstructions,
     });
     const adapter = new ClaudeSdkAdapter(sessionId, {
@@ -1733,7 +1750,12 @@ export class CliLauncher {
 
   /** Check if a path exists (async). */
   private async pathExists(p: string): Promise<boolean> {
-    try { await access(p); return true; } catch { return false; }
+    try {
+      await access(p);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -1755,7 +1777,7 @@ export class CliLauncher {
       try {
         const src = join(legacyHome, name);
         const dest = join(codexHome, name);
-        if (!(await this.pathExists(dest)) && await this.pathExists(src)) {
+        if (!(await this.pathExists(dest)) && (await this.pathExists(src))) {
           await copyFile(src, dest);
         }
       } catch (e) {
@@ -1768,7 +1790,7 @@ export class CliLauncher {
       try {
         const src = join(legacyHome, name);
         const dest = join(codexHome, name);
-        if (!(await this.pathExists(dest)) && await this.pathExists(src)) {
+        if (!(await this.pathExists(dest)) && (await this.pathExists(src))) {
           await cp(src, dest, { recursive: true });
         }
       } catch (e) {
@@ -1789,12 +1811,7 @@ export class CliLauncher {
     } catch {
       // No existing config is fine; we'll create one.
     }
-    let next = upsertBooleanSettingInSection(
-      current,
-      CODEX_FEATURES_HEADER,
-      CODEX_MULTI_AGENT_FEATURE,
-      true,
-    );
+    let next = upsertBooleanSettingInSection(current, CODEX_FEATURES_HEADER, CODEX_MULTI_AGENT_FEATURE, true);
     next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...envVars]);
     if (next !== current) {
       await writeFile(configPath, next, "utf-8");
@@ -1828,10 +1845,7 @@ export class CliLauncher {
     if (options.codexReasoningEffort) {
       args.push("-c", `model_reasoning_effort=${options.codexReasoningEffort}`);
     }
-    const codexHome = resolveCompanionCodexSessionHome(
-      sessionId,
-      options.codexHome,
-    );
+    const codexHome = resolveCompanionCodexSessionHome(sessionId, options.codexHome);
     const shellEnvVars = Object.keys(options.env || {}).filter(
       (name) => name.startsWith("COMPANION_") || name.startsWith("TAKODE_"),
     );
@@ -1857,7 +1871,7 @@ export class CliLauncher {
       dockerArgs.push("-e", "CODEX_HOME=/root/.codex");
       dockerArgs.push(options.containerId!);
       // Use a login shell so ~/.bashrc is sourced and nvm/bun/deno/etc are on PATH
-      const innerCmd = [binary, ...args].map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+      const innerCmd = [binary, ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
       dockerArgs.push("bash", "-lc", innerCmd);
 
       spawnCmd = dockerArgs;
@@ -1906,11 +1920,7 @@ export class CliLauncher {
       // environment. For Claude sessions this isn't needed because the
       // configured claudeBinary typically points to claude.sh which sources
       // the env vars itself.
-      const shellEnv = captureUserShellEnv([
-        "LITELLM_API_KEY",
-        "LITELLM_PROXY_URL",
-        "LITELLM_BASE_URL",
-      ]);
+      const shellEnv = captureUserShellEnv(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"]);
 
       spawnEnv = {
         ...process.env,
@@ -1925,7 +1935,7 @@ export class CliLauncher {
 
     console.log(
       `[cli-launcher] Spawning Codex session ${sessionTag(sessionId)}${isContainerized ? " (container)" : ""}: ` +
-      sanitizeSpawnArgsForLog(spawnCmd),
+        sanitizeSpawnArgsForLog(spawnCmd),
     );
 
     let proc: ReturnType<typeof Bun.spawn>;
@@ -1958,13 +1968,15 @@ export class CliLauncher {
     // Create the CodexAdapter which handles JSON-RPC and message translation
     // Pass the raw permission mode — the adapter maps it to Codex's approval policy
     const codexInstructions = buildCompanionInstructions({
-      ...(info.isWorktree && info.branch ? {
-        worktree: {
-          branch: info.actualBranch || info.branch,
-          repoRoot: info.repoRoot || "",
-          parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
-        },
-      } : {}),
+      ...(info.isWorktree && info.branch
+        ? {
+            worktree: {
+              branch: info.actualBranch || info.branch,
+              repoRoot: info.repoRoot || "",
+              parentBranch: info.actualBranch && info.actualBranch !== info.branch ? info.branch : undefined,
+            },
+          }
+        : {}),
       extraInstructions: options.extraInstructions,
     });
     const adapter = new CodexAdapter(proc, sessionId, {
@@ -1993,10 +2005,12 @@ export class CliLauncher {
       if (this.processes.get(sessionId) === proc) {
         this.processes.delete(sessionId);
       }
-      void this.terminateKnownProcess(sessionId, proc.pid, proc, "codex_init_error")
-        .catch((err) => {
-          console.error(`[cli-launcher] Failed to terminate broken Codex process for session ${sessionTag(sessionId)}:`, err);
-        });
+      void this.terminateKnownProcess(sessionId, proc.pid, proc, "codex_init_error").catch((err) => {
+        console.error(
+          `[cli-launcher] Failed to terminate broken Codex process for session ${sessionTag(sessionId)}:`,
+          err,
+        );
+      });
       this.persistState();
     });
 
@@ -2031,7 +2045,9 @@ export class CliLauncher {
       this.processes.delete(sessionId);
       this.persistState();
       for (const handler of this.exitHandlers) {
-        try { handler(sessionId, exitCode); } catch {}
+        try {
+          handler(sessionId, exitCode);
+        } catch {}
       }
     });
 
@@ -2069,7 +2085,9 @@ export class CliLauncher {
     if (backendType === "claude" || backendType === "claude-sdk") {
       try {
         await this.symlinkProjectSettings(worktreePath, repoRoot);
-        console.log(`[cli-launcher] Worktree setup complete for branch ${branch} (settings symlinked, guardrails via system prompt)`);
+        console.log(
+          `[cli-launcher] Worktree setup complete for branch ${branch} (settings symlinked, guardrails via system prompt)`,
+        );
       } catch (e) {
         console.warn(`[cli-launcher] Failed to symlink project settings for worktree:`, e);
       }
@@ -2119,7 +2137,7 @@ export class CliLauncher {
         if (existing.includes(pattern)) return; // already present
       }
 
-      const existingContent = await fileExists(excludePath) ? await readFile(excludePath, "utf-8") : "";
+      const existingContent = (await fileExists(excludePath)) ? await readFile(excludePath, "utf-8") : "";
       await writeFile(excludePath, existingContent + `\n${pattern}\n`, "utf-8");
       console.log(`[cli-launcher] Added "${pattern}" to worktree git exclude`);
     } catch (e) {
@@ -2212,15 +2230,17 @@ export class CliLauncher {
       try {
         const repoRaw = await readFile(repoFile, "utf-8");
         repoData = JSON.parse(repoRaw) as Record<string, unknown>;
-      } catch { /* empty or corrupt — start fresh */ }
+      } catch {
+        /* empty or corrupt — start fresh */
+      }
 
       // Merge permissions.allow and permissions.deny arrays
       const wtPerms = (wtData.permissions ?? {}) as Record<string, unknown>;
       const repoPerms = (repoData.permissions ?? {}) as Record<string, unknown>;
 
       for (const key of ["allow", "deny"] as const) {
-        const wtRules = Array.isArray(wtPerms[key]) ? wtPerms[key] as string[] : [];
-        const repoRules = Array.isArray(repoPerms[key]) ? repoPerms[key] as string[] : [];
+        const wtRules = Array.isArray(wtPerms[key]) ? (wtPerms[key] as string[]) : [];
+        const repoRules = Array.isArray(repoPerms[key]) ? (repoPerms[key] as string[]) : [];
         const merged = [...new Set([...repoRules, ...wtRules])];
         if (merged.length > 0) {
           repoPerms[key] = merged;
@@ -2309,7 +2329,9 @@ export class CliLauncher {
    *
    * Returns { ok, sessionId, cliSessionId, previousBackend } on success.
    */
-  async upgradeToSdk(sessionId: string): Promise<{ ok: boolean; error?: string; sessionId?: string; cliSessionId?: string; previousBackend?: string }> {
+  async upgradeToSdk(
+    sessionId: string,
+  ): Promise<{ ok: boolean; error?: string; sessionId?: string; cliSessionId?: string; previousBackend?: string }> {
     const info = this.sessions.get(sessionId);
     if (!info) return { ok: false, error: "Session not found" };
     if (info.backendType === "claude-sdk") return { ok: false, error: "Session is already using SDK transport" };
@@ -2318,7 +2340,9 @@ export class CliLauncher {
 
     const previousBackend = info.backendType || "claude";
     const cliSessionId = info.cliSessionId;
-    console.log(`[cli-launcher] Upgrading session ${sessionTag(sessionId)} from ${previousBackend} to claude-sdk (cliSessionId: ${cliSessionId})`);
+    console.log(
+      `[cli-launcher] Upgrading session ${sessionTag(sessionId)} from ${previousBackend} to claude-sdk (cliSessionId: ${cliSessionId})`,
+    );
 
     // Kill the WebSocket CLI process if running
     const proc = this.processes.get(sessionId);
@@ -2426,16 +2450,25 @@ export class CliLauncher {
    * one leader — if already herded by someone else, it's reported as a conflict.
    * Re-herding by the same orchestrator is idempotent.
    */
-  herdSessions(orchId: string, workerIds: string[]): { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders: string[] } {
+  herdSessions(
+    orchId: string,
+    workerIds: string[],
+  ): { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders: string[] } {
     const herded: string[] = [];
     const notFound: string[] = [];
     const conflicts: Array<{ id: string; herder: string }> = [];
     const leaders: string[] = [];
     for (const wid of workerIds) {
       const worker = this.sessions.get(wid);
-      if (!worker) { notFound.push(wid); continue; }
+      if (!worker) {
+        notFound.push(wid);
+        continue;
+      }
       // Leaders/orchestrators cannot be herded — they are not workers
-      if (worker.isOrchestrator) { leaders.push(wid); continue; }
+      if (worker.isOrchestrator) {
+        leaders.push(wid);
+        continue;
+      }
       if (worker.herdedBy && worker.herdedBy !== orchId) {
         conflicts.push({ id: wid, herder: worker.herdedBy });
         continue;

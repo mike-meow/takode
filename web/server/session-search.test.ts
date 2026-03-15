@@ -14,9 +14,7 @@ describe("searchSessionDocuments", () => {
         sessionId: "s-message",
         archived: false,
         createdAt: 200,
-        messageHistory: [
-          { type: "user_message", content: "Please refactor auth middleware flow", timestamp: 2000 },
-        ],
+        messageHistory: [{ type: "user_message", content: "Please refactor auth middleware flow", timestamp: 2000 }],
       },
     ];
 
@@ -60,17 +58,13 @@ describe("searchSessionDocuments", () => {
         sessionId: "archived",
         archived: true,
         createdAt: 1,
-        messageHistory: [
-          { type: "user_message", content: "needle in archive", timestamp: 1 },
-        ],
+        messageHistory: [{ type: "user_message", content: "needle in archive", timestamp: 1 }],
       },
       {
         sessionId: "active",
         archived: false,
         createdAt: 2,
-        messageHistory: [
-          { type: "user_message", content: "needle in active", timestamp: 2 },
-        ],
+        messageHistory: [{ type: "user_message", content: "needle in active", timestamp: 2 }],
       },
     ];
 

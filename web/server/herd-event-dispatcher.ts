@@ -26,7 +26,11 @@ import type { TakodeEvent, TakodeEventType } from "./session-types.js";
 
 export interface WsBridgeHandle {
   subscribeTakodeEvents(sessions: Set<string>, cb: (e: TakodeEvent) => void, since?: number): () => void;
-  injectUserMessage(sessionId: string, content: string, agentSource?: { sessionId: string; sessionLabel?: string }): "sent" | "queued" | "no_session";
+  injectUserMessage(
+    sessionId: string,
+    content: string,
+    agentSource?: { sessionId: string; sessionLabel?: string },
+  ): "sent" | "queued" | "no_session";
   isSessionIdle(sessionId: string): boolean;
   /** Wake a session that was stopped by idle-manager. Clears the killedByIdleManager
    *  flag and triggers a CLI relaunch so the session can process queued events.
@@ -48,8 +52,12 @@ export interface LauncherHandle {
  *  Instead, user message count + IDs are included in the turn_end event
  *  so the leader can peek at specific messages via [msg-id] if needed. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
-  "turn_end", "permission_request", "permission_resolved",
-  "session_error", "session_archived", "session_deleted",
+  "turn_end",
+  "permission_request",
+  "permission_resolved",
+  "session_error",
+  "session_archived",
+  "session_deleted",
 ]);
 
 const DEBOUNCE_MS = 500;
@@ -107,7 +115,7 @@ export class HerdEventDispatcher {
   /** Subscribe to events from all herded workers of an orchestrator. Idempotent. */
   setupForOrchestrator(orchId: string): void {
     const workers = this.launcher.getHerdedSessions(orchId);
-    const workerIds = new Set(workers.map(w => w.sessionId));
+    const workerIds = new Set(workers.map((w) => w.sessionId));
     if (workerIds.size === 0) {
       this.teardownForOrchestrator(orchId);
       return;
@@ -120,10 +128,7 @@ export class HerdEventDispatcher {
       // Unsubscribe old, keep accumulated events
       existing.unsubscribe?.();
       existing.workerIds = workerIds;
-      existing.unsubscribe = this.wsBridge.subscribeTakodeEvents(
-        workerIds,
-        (evt) => this.onWorkerEvent(orchId, evt),
-      );
+      existing.unsubscribe = this.wsBridge.subscribeTakodeEvents(workerIds, (evt) => this.onWorkerEvent(orchId, evt));
     } else {
       const inbox: HerdInbox = {
         entries: [],
@@ -135,10 +140,7 @@ export class HerdEventDispatcher {
         workerIds,
         deliveryHistory: [],
       };
-      inbox.unsubscribe = this.wsBridge.subscribeTakodeEvents(
-        workerIds,
-        (evt) => this.onWorkerEvent(orchId, evt),
-      );
+      inbox.unsubscribe = this.wsBridge.subscribeTakodeEvents(workerIds, (evt) => this.onWorkerEvent(orchId, evt));
       this.inboxes.set(orchId, inbox);
     }
   }
@@ -200,7 +202,9 @@ export class HerdEventDispatcher {
       // Events stay pending in the inbox; they'll be flushed once the CLI
       // reconnects and goes idle (via onOrchestratorTurnEnd or the normal
       // isSessionIdle check in scheduleDelivery).
-      console.log(`[herd-dispatcher] Woke idle-killed leader ${orchId} to deliver ${this.pendingCount(inbox)} pending herd event(s)`);
+      console.log(
+        `[herd-dispatcher] Woke idle-killed leader ${orchId} to deliver ${this.pendingCount(inbox)} pending herd event(s)`,
+      );
     }
     // If generating, events accumulate — delivered on next onOrchestratorTurnEnd
   }
@@ -272,7 +276,7 @@ export class HerdEventDispatcher {
     const pending = this.getPendingEntries(inbox);
     if (pending.length === 0) return 0;
 
-    const events = pending.map(e => e.event);
+    const events = pending.map((e) => e.event);
     const content = formatHerdEventBatch(events);
     this.wsBridge.injectUserMessage(orchId, content, HERD_AGENT_SOURCE);
 
@@ -335,7 +339,7 @@ export class HerdEventDispatcher {
     }
 
     // Format and inject
-    const events = pending.map(e => e.event);
+    const events = pending.map((e) => e.event);
     const content = formatHerdEventBatch(events);
     this.wsBridge.injectUserMessage(orchId, content, HERD_AGENT_SOURCE);
 
@@ -360,10 +364,11 @@ export class HerdEventDispatcher {
   /** Get entries that haven't been confirmed consumed yet. */
   private getPendingEntries(inbox: HerdInbox): InboxEntry[] {
     // Pending = everything after confirmedUpTo that isn't already in-flight
-    const startSeq = inbox.inFlightUpTo !== null
-      ? inbox.inFlightUpTo + 1  // Already have in-flight batch, only get newer
-      : inbox.confirmedUpTo;     // Nothing in-flight, get from last confirmed
-    return inbox.entries.filter(e => e.seq >= startSeq);
+    const startSeq =
+      inbox.inFlightUpTo !== null
+        ? inbox.inFlightUpTo + 1 // Already have in-flight batch, only get newer
+        : inbox.confirmedUpTo; // Nothing in-flight, get from last confirmed
+    return inbox.entries.filter((e) => e.seq >= startSeq);
   }
 
   /** Count of events waiting to be delivered. */
@@ -394,19 +399,25 @@ export class HerdEventDispatcher {
     const inbox = this.inboxes.get(orchId);
     if (!inbox) {
       return {
-        hasInbox: false, pendingEventCount: 0, pendingEventTypes: [],
-        inFlightCount: 0, confirmedUpTo: 0,
-        workerCount: 0, debounceActive: false, eventHistory: [],
+        hasInbox: false,
+        pendingEventCount: 0,
+        pendingEventTypes: [],
+        inFlightCount: 0,
+        confirmedUpTo: 0,
+        workerCount: 0,
+        debounceActive: false,
+        eventHistory: [],
       };
     }
     const pending = this.getPendingEntries(inbox);
-    const inFlight = inbox.inFlightUpTo !== null
-      ? inbox.entries.filter(e => e.seq >= inbox.confirmedUpTo && e.seq <= inbox.inFlightUpTo!).length
-      : 0;
+    const inFlight =
+      inbox.inFlightUpTo !== null
+        ? inbox.entries.filter((e) => e.seq >= inbox.confirmedUpTo && e.seq <= inbox.inFlightUpTo!).length
+        : 0;
     return {
       hasInbox: true,
       pendingEventCount: pending.length,
-      pendingEventTypes: pending.map(e => e.event.event),
+      pendingEventTypes: pending.map((e) => e.event.event),
       inFlightCount: inFlight,
       confirmedUpTo: inbox.confirmedUpTo,
       workerCount: inbox.workerIds.size,
@@ -426,7 +437,7 @@ export class HerdEventDispatcher {
 /** Format a batch of events into a compact, scannable summary. */
 export function formatHerdEventBatch(events: TakodeEvent[], nowTs: number = Date.now()): string {
   // Count unique sessions
-  const sessionIds = new Set(events.map(e => e.sessionId));
+  const sessionIds = new Set(events.map((e) => e.sessionId));
   const header = `${events.length} event${events.length === 1 ? "" : "s"} from ${sessionIds.size} session${sessionIds.size === 1 ? "" : "s"}`;
 
   const lines = events.map((event) => formatSingleEvent(event, nowTs));
@@ -441,14 +452,15 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
     case "turn_end": {
       const duration = formatDuration(evt.data.duration_ms);
       const tools = formatToolCounts(evt.data.tools);
-      const resultPreview = typeof evt.data.resultPreview === "string"
-        ? ` | "${truncate(evt.data.resultPreview, 60)}"`
-        : "";
+      const resultPreview =
+        typeof evt.data.resultPreview === "string" ? ` | "${truncate(evt.data.resultPreview, 60)}"` : "";
       const compacted = evt.data.compacted ? " (compacted)" : "";
       const interruptSource = evt.data.interrupt_source ?? null;
       const success = evt.data.interrupted
         ? `interrupted${interruptSource ? ` (by ${interruptSource})` : ""}`
-        : evt.data.is_error ? "✗" : "✓";
+        : evt.data.is_error
+          ? "✗"
+          : "✓";
       // Message ID range for quick peek navigation
       const range = evt.data.msgRange;
       const rangeStr = range ? ` | [${range.from}]-[${range.to}]` : "";
@@ -461,9 +473,10 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number): string {
       return `${label} | turn_end | ${success} ${duration}${compacted}${tools}${rangeStr}${userMsgStr}${questStr}${resultPreview}${ageSuffix}`;
     }
     case "compaction_started": {
-      const pct = typeof evt.data.context_used_percent === "number"
-        ? ` | context ${Math.round(evt.data.context_used_percent)}% full`
-        : "";
+      const pct =
+        typeof evt.data.context_used_percent === "number"
+          ? ` | context ${Math.round(evt.data.context_used_percent)}% full`
+          : "";
       return `${label} | compaction_started${pct}${ageSuffix}`;
     }
     case "permission_request": {

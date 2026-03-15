@@ -1,7 +1,19 @@
 import { Hono } from "hono";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
-import { transcribeWithGemini, transcribeWithOpenai, getAvailableBackends, getTranscriptionStatus, resolveAudioUploadFormat, resolveOpenAIKey } from "../transcription.js";
-import { enhanceTranscript, buildSttPrompt, addTranscriptionLogEntry, applyVoiceEdit } from "../transcription-enhancer.js";
+import {
+  transcribeWithGemini,
+  transcribeWithOpenai,
+  getAvailableBackends,
+  getTranscriptionStatus,
+  resolveAudioUploadFormat,
+  resolveOpenAIKey,
+} from "../transcription.js";
+import {
+  enhanceTranscript,
+  buildSttPrompt,
+  addTranscriptionLogEntry,
+  applyVoiceEdit,
+} from "../transcription-enhancer.js";
 import * as sessionNames from "../session-names.js";
 import { getSettings } from "../settings-manager.js";
 import type { RouteContext } from "./context.js";
@@ -46,7 +58,10 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
     if (!backend) {
       return c.json(
-        { error: "No transcription backend available. Configure an OpenAI API key in Settings → Voice Transcription, or set OPENAI_API_KEY / GOOGLE_API_KEY in your environment." },
+        {
+          error:
+            "No transcription backend available. Configure an OpenAI API key in Settings → Voice Transcription, or set OPENAI_API_KEY / GOOGLE_API_KEY in your environment.",
+        },
         400,
       );
     }
@@ -57,7 +72,10 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
     if (mode === "edit" && !resolveOpenAIKey()) {
       return c.json(
-        { error: "Voice edit requires an OpenAI-compatible enhancement model API key in Settings → Voice Transcription, or OPENAI_API_KEY in your environment." },
+        {
+          error:
+            "Voice edit requires an OpenAI-compatible enhancement model API key in Settings → Voice Transcription, or OPENAI_API_KEY in your environment.",
+        },
         400,
       );
     }
@@ -93,7 +111,10 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         if (backend === "gemini") {
           const apiKey = process.env.GOOGLE_API_KEY;
           if (!apiKey) {
-            await stream.writeSSE({ event: "error", data: JSON.stringify({ error: "GOOGLE_API_KEY not set in environment" }) });
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({ error: "GOOGLE_API_KEY not set in environment" }),
+            });
             return;
           }
           rawText = await transcribeWithGemini(buf, uploadFormat.mimeType, apiKey);
@@ -101,7 +122,13 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         } else if (backend === "openai") {
           const apiKey = resolveOpenAIKey();
           if (!apiKey) {
-            await stream.writeSSE({ event: "error", data: JSON.stringify({ error: "No OpenAI API key configured. Set it in Settings → Voice Transcription, or set OPENAI_API_KEY in your environment." }) });
+            await stream.writeSSE({
+              event: "error",
+              data: JSON.stringify({
+                error:
+                  "No OpenAI API key configured. Set it in Settings → Voice Transcription, or set OPENAI_API_KEY in your environment.",
+              }),
+            });
             return;
           }
           const configuredSttModel = getSettings().transcriptionConfig.sttModel || "gpt-4o-mini-transcribe";
@@ -123,8 +150,12 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
         const settings = getSettings();
         const enhancementKey = resolveOpenAIKey();
-        const willEnhanceDictation = !!(sessionId && usedBackend === "openai" &&
-          settings.transcriptionConfig.enhancementEnabled && enhancementKey);
+        const willEnhanceDictation = !!(
+          sessionId &&
+          usedBackend === "openai" &&
+          settings.transcriptionConfig.enhancementEnabled &&
+          enhancementKey
+        );
         const willRunVoiceEdit = mode === "edit";
         await stream.writeSSE({
           event: "stt_complete",
@@ -132,7 +163,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             rawText,
             backend: usedBackend,
             willEnhance: willEnhanceDictation,
-            nextPhase: willRunVoiceEdit ? "editing" : (willEnhanceDictation ? "enhancing" : null),
+            nextPhase: willRunVoiceEdit ? "editing" : willEnhanceDictation ? "enhancing" : null,
             mode,
           }),
         });
@@ -141,13 +172,20 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           const history = sessionId ? wsBridge.getMessageHistory(sessionId) : null;
           const taskHistory = sessionId ? wsBridge.getSessionTaskHistory(sessionId) : [];
           const enhOtherNames = sessionId ? getRecentSessionNames(sessionId, 20) : [];
-          const result = await applyVoiceEdit(rawText, composerText!, history, settings.transcriptionConfig, enhancementKey!, {
-            mode,
-            composerText,
-            taskTitles: taskHistory.map((t) => t.title),
-            sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
-            activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
-          });
+          const result = await applyVoiceEdit(
+            rawText,
+            composerText!,
+            history,
+            settings.transcriptionConfig,
+            enhancementKey!,
+            {
+              mode,
+              composerText,
+              taskTitles: taskHistory.map((t) => t.title),
+              sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
+              activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+            },
+          );
 
           addTranscriptionLogEntry({
             sessionId: sessionId ?? null,
@@ -205,19 +243,27 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             sttPrompt,
             rawTranscript: rawText,
             audioSizeBytes: buf.length,
-            enhancement: result._debug ? {
-              model: result._debug.model,
-              systemPrompt: result._debug.systemPrompt,
-              userMessage: result._debug.userMessage,
-              enhancedText: result._debug.enhancedText,
-              durationMs: result._debug.durationMs,
-              skipReason: result._debug.skipReason,
-            } : null,
+            enhancement: result._debug
+              ? {
+                  model: result._debug.model,
+                  systemPrompt: result._debug.systemPrompt,
+                  userMessage: result._debug.userMessage,
+                  enhancedText: result._debug.enhancedText,
+                  durationMs: result._debug.durationMs,
+                  skipReason: result._debug.skipReason,
+                }
+              : null,
           });
 
           await stream.writeSSE({
             event: "result",
-            data: JSON.stringify({ mode, text: result.text, rawText: result.rawText, backend: usedBackend, enhanced: result.enhanced }),
+            data: JSON.stringify({
+              mode,
+              text: result.text,
+              rawText: result.rawText,
+              backend: usedBackend,
+              enhanced: result.enhanced,
+            }),
           });
           return;
         }
@@ -245,7 +291,6 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
       }
     });
   });
-
 
   return api;
 }

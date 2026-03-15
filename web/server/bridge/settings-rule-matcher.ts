@@ -26,14 +26,40 @@ export interface ParsedToolRule {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const DANGEROUS_FIRST_TOKENS = new Set([
-  "bash", "sh", "zsh", "fish", "csh", "tcsh", "ksh", "dash",
-  "python", "python3", "node", "ruby", "perl", "php", "lua",
-  "eval", "exec", "source", "ssh",
+  "bash",
+  "sh",
+  "zsh",
+  "fish",
+  "csh",
+  "tcsh",
+  "ksh",
+  "dash",
+  "python",
+  "python3",
+  "node",
+  "ruby",
+  "perl",
+  "php",
+  "lua",
+  "eval",
+  "exec",
+  "source",
+  "ssh",
 ]);
 
 const WRITE_COMMANDS = new Set([
-  "rm", "mv", "cp", "chmod", "chown", "touch", "mkdir", "rmdir",
-  "tee", "dd", "truncate", "install",
+  "rm",
+  "mv",
+  "cp",
+  "chmod",
+  "chown",
+  "touch",
+  "mkdir",
+  "rmdir",
+  "tee",
+  "dd",
+  "truncate",
+  "install",
 ]);
 
 const FILE_TOOLS = new Set(["Read", "Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -198,11 +224,7 @@ export function matchesFileGlob(filePath: string, pattern: string): boolean {
 // ─── Tool Rule Matching ─────────────────────────────────────────────────────
 
 /** Check if a tool use matches a parsed permission rule. */
-export function matchesToolRule(
-  toolName: string,
-  input: Record<string, unknown>,
-  rule: ParsedToolRule,
-): boolean {
+export function matchesToolRule(toolName: string, input: Record<string, unknown>, rule: ParsedToolRule): boolean {
   if (rule.toolName !== toolName) return false;
   if (rule.ruleContent === undefined) return true;
 
@@ -259,9 +281,7 @@ async function loadRulesFromFile(filePath: string): Promise<ParsedToolRule[]> {
   try {
     const raw = await readFile(filePath, "utf-8");
     const data = JSON.parse(raw);
-    const allowRules: unknown[] = Array.isArray(data?.permissions?.allow)
-      ? data.permissions.allow
-      : [];
+    const allowRules: unknown[] = Array.isArray(data?.permissions?.allow) ? data.permissions.allow : [];
     return allowRules
       .filter((r): r is string => typeof r === "string")
       .map(parseToolRule)

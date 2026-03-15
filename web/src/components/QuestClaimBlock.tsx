@@ -19,7 +19,13 @@ interface QuestClaimData {
  * Follows the same visual pattern as ToolBlock — a bordered card with a clickable
  * header that toggles expanded content.
  */
-export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestClaimData; variant?: "claimed" | "submitted" }) {
+export function QuestClaimBlock({
+  quest,
+  variant = "claimed",
+}: {
+  quest: QuestClaimData;
+  variant?: "claimed" | "submitted";
+}) {
   const [open, setOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -48,19 +54,16 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-cc-hover ${statusInfo.text}`}>
           {statusInfo.label}
         </span>
-        {quest.tags && quest.tags.length > 0 && quest.tags.map((tag) => (
-          <span
-            key={tag}
-            className="text-[10px] px-1.5 py-0.5 rounded-full bg-cc-hover text-cc-muted"
-          >
-            {tag}
-          </span>
-        ))}
+        {quest.tags &&
+          quest.tags.length > 0 &&
+          quest.tags.map((tag) => (
+            <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-cc-hover text-cc-muted">
+              {tag}
+            </span>
+          ))}
       </div>
 
-      {quest.description && (
-        <p className="text-sm text-cc-fg whitespace-pre-wrap">{quest.description}</p>
-      )}
+      {quest.description && <p className="text-sm text-cc-fg whitespace-pre-wrap">{quest.description}</p>}
 
       {quest.verificationItems && quest.verificationItems.length > 0 && (
         <div>
@@ -71,7 +74,11 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
                 <span className="shrink-0 mt-0.5">
                   {item.checked ? (
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-success">
-                      <path fillRule="evenodd" d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" clipRule="evenodd" />
+                      <path
+                        fillRule="evenodd"
+                        d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   ) : (
                     <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-muted">
@@ -140,9 +147,7 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
       {/* Expanded content */}
       {open && (
         <div className="px-3 pb-3 pt-0 border-t border-cc-border space-y-2.5">
-          <div className="mt-2 space-y-2.5">
-            {questDetailsContent}
-          </div>
+          <div className="mt-2 space-y-2.5">{questDetailsContent}</div>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -214,9 +219,7 @@ export function QuestClaimBlock({ quest, variant = "claimed" }: { quest: QuestCl
       )}
 
       {/* Lightbox for full-size image viewing */}
-      {lightboxSrc && (
-        <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
-      )}
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   );
 }

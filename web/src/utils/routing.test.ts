@@ -100,9 +100,7 @@ describe("sessionHash", () => {
   });
 
   it("builds hash for a UUID session ID", () => {
-    expect(sessionHash("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBe(
-      "#/session/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    );
+    expect(sessionHash("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBe("#/session/a1b2c3d4-e5f6-7890-abcd-ef1234567890");
   });
 });
 
@@ -223,9 +221,7 @@ describe("navigateToMostRecentSession", () => {
 
   it("falls back to home when all sessions are archived", () => {
     useStore.setState({
-      sdkSessions: [
-        { sessionId: "a", createdAt: 1000, archived: true } as any,
-      ],
+      sdkSessions: [{ sessionId: "a", createdAt: 1000, archived: true } as any],
     });
 
     const result = navigateToMostRecentSession();

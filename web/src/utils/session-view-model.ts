@@ -57,7 +57,8 @@ export function toSessionViewModel(session: SessionState | SdkSessionInfo): Sess
       numTurns: session.num_turns,
       totalCostUsd: session.total_cost_usd,
       contextUsedPercent: session.context_used_percent,
-      modelContextWindow: session.codex_token_details?.modelContextWindow ?? session.claude_token_details?.modelContextWindow,
+      modelContextWindow:
+        session.codex_token_details?.modelContextWindow ?? session.claude_token_details?.modelContextWindow,
       claimedQuestStatus: session.claimedQuestStatus,
       askPermission: session.askPermission,
     };
@@ -105,7 +106,10 @@ export function coalesceSessionViewModel(
 
   const merged: Partial<SessionViewModel> = { ...(fallbackVm || {}) };
   if (primaryVm) {
-    for (const [key, value] of Object.entries(primaryVm) as [keyof SessionViewModel, SessionViewModel[keyof SessionViewModel]][]) {
+    for (const [key, value] of Object.entries(primaryVm) as [
+      keyof SessionViewModel,
+      SessionViewModel[keyof SessionViewModel],
+    ][]) {
       if (value !== undefined) {
         (merged as Record<string, unknown>)[key] = value;
       }

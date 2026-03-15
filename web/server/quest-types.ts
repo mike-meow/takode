@@ -127,12 +127,7 @@ export type QuestDone = Omit<QuestNeedsVerification, "status" | "sessionId" | "c
 
 // ─── Union type ──────────────────────────────────────────────────────────────
 
-export type QuestmasterTask =
-  | QuestIdea
-  | QuestRefined
-  | QuestInProgress
-  | QuestNeedsVerification
-  | QuestDone;
+export type QuestmasterTask = QuestIdea | QuestRefined | QuestInProgress | QuestNeedsVerification | QuestDone;
 
 // ─── Input types (for APIs) ──────────────────────────────────────────────────
 

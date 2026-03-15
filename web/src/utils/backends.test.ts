@@ -34,40 +34,30 @@ describe("toModelOptions", () => {
   });
 
   it("assigns codex icon to codex-containing slugs", () => {
-    const options = toModelOptions([
-      { value: "gpt-5.4-codex", label: "GPT-5.4 Codex", description: "" },
-    ]);
+    const options = toModelOptions([{ value: "gpt-5.4-codex", label: "GPT-5.4 Codex", description: "" }]);
     expect(options[0].icon).toBe("\u2733"); // ✳
   });
 
   it("assigns max icon to max-containing slugs", () => {
-    const options = toModelOptions([
-      { value: "gpt-5.4-codex-max", label: "GPT-5.4 Max", description: "" },
-    ]);
+    const options = toModelOptions([{ value: "gpt-5.4-codex-max", label: "GPT-5.4 Max", description: "" }]);
     // "codex" appears before "max" in the slug, so codex icon wins
     expect(options[0].icon).toBe("\u2733");
   });
 
   it("assigns mini icon to mini-only slugs", () => {
-    const options = toModelOptions([
-      { value: "gpt-5.4-mini", label: "GPT-5.4 Mini", description: "" },
-    ]);
+    const options = toModelOptions([{ value: "gpt-5.4-mini", label: "GPT-5.4 Mini", description: "" }]);
     expect(options[0].icon).toBe("\u26A1"); // ⚡
   });
 
   it("uses fallback icon for generic model slugs", () => {
-    const options = toModelOptions([
-      { value: "gpt-5.4", label: "GPT-5.4", description: "" },
-    ]);
+    const options = toModelOptions([{ value: "gpt-5.4", label: "GPT-5.4", description: "" }]);
     // Should use one of the fallback icons
     expect(options[0].icon).toBeTruthy();
     expect(options[0].icon.length).toBeGreaterThan(0);
   });
 
   it("uses value as label when label is empty", () => {
-    const options = toModelOptions([
-      { value: "some-model", label: "", description: "" },
-    ]);
+    const options = toModelOptions([{ value: "some-model", label: "", description: "" }]);
     expect(options[0].label).toBe("some-model");
   });
 

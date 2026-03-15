@@ -51,15 +51,12 @@ export function createQuestRoutes(ctx: RouteContext) {
     input: import("../quest-types.js").QuestTransitionInput,
   ): Promise<import("../quest-types.js").QuestmasterTask | null> => {
     const current = await questStore.getQuest(questId);
-    const currentSessionId = current && "sessionId" in current && typeof current.sessionId === "string"
-      ? current.sessionId
-      : null;
+    const currentSessionId =
+      current && "sessionId" in current && typeof current.sessionId === "string" ? current.sessionId : null;
     const quest = await questStore.transitionQuest(questId, input);
     if (!quest) return null;
 
-    const nextSessionId = "sessionId" in quest && typeof quest.sessionId === "string"
-      ? quest.sessionId
-      : null;
+    const nextSessionId = "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : null;
     if (currentSessionId && currentSessionId !== nextSessionId) {
       wsBridge.setSessionClaimedQuest(currentSessionId, null);
     }
@@ -82,7 +79,8 @@ export function createQuestRoutes(ctx: RouteContext) {
     let quests = await questStore.listQuests();
     if (statusFilter?.length) quests = quests.filter((q) => statusFilter.includes(q.status));
     if (parentId) quests = quests.filter((q) => q.parentId === parentId);
-    if (sessionId) quests = quests.filter((q) => "sessionId" in q && (q as { sessionId: string }).sessionId === sessionId);
+    if (sessionId)
+      quests = quests.filter((q) => "sessionId" in q && (q as { sessionId: string }).sessionId === sessionId);
     return c.json(quests);
   });
 
@@ -206,7 +204,10 @@ export function createQuestRoutes(ctx: RouteContext) {
       if (session) {
         for (let i = session.messageHistory.length - 1; i >= 0; i--) {
           const m = session.messageHistory[i];
-          if (m.type === "user_message" && m.id) { triggerMsgId = m.id; break; }
+          if (m.type === "user_message" && m.id) {
+            triggerMsgId = m.id;
+            break;
+          }
         }
       }
       wsBridge.addTaskEntry(sessionId, {
@@ -244,14 +245,14 @@ export function createQuestRoutes(ctx: RouteContext) {
 
   api.post("/quests/:questId/done", async (c) => {
     try {
-      const body = await c.req.json().catch(() => ({})) as { notes?: string; cancelled?: boolean };
+      const body = (await c.req.json().catch(() => ({}))) as { notes?: string; cancelled?: boolean };
       const quest = await transitionQuestAndSync(c.req.param("questId"), {
         status: "done",
         ...(body.notes ? { notes: body.notes } : {}),
         ...(body.cancelled ? { cancelled: true } : {}),
       });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
-      c.header("X-Companion-Deprecated", "Use /api/quests/:questId/transition with {status:\"done\"}");
+      c.header("X-Companion-Deprecated", 'Use /api/quests/:questId/transition with {status:"done"}');
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -260,7 +261,7 @@ export function createQuestRoutes(ctx: RouteContext) {
 
   api.post("/quests/:questId/cancel", async (c) => {
     try {
-      const body = await c.req.json().catch(() => ({})) as { notes?: string };
+      const body = (await c.req.json().catch(() => ({}))) as { notes?: string };
       const current = await questStore.getQuest(c.req.param("questId"));
       const quest = await questStore.cancelQuest(c.req.param("questId"), body.notes);
       if (!quest) return c.json({ error: "Quest not found" }, 404);
@@ -335,8 +336,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       return c.json(
         {
           error:
-            `Unknown sessionId: ${authorSessionId}. ` +
-            "Agent feedback must include a valid Companion session ID.",
+            `Unknown sessionId: ${authorSessionId}. ` + "Agent feedback must include a valid Companion session ID.",
         },
         400,
       );
@@ -345,7 +345,9 @@ export function createQuestRoutes(ctx: RouteContext) {
       const current = await questStore.getQuest(c.req.param("questId"));
       if (!current) return c.json({ error: "Quest not found" }, 404);
       const existing: import("../quest-types.js").QuestFeedbackEntry[] =
-        "feedback" in current ? (current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+        "feedback" in current
+          ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
+          : [];
       const entry: import("../quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
       if (authorSessionId) entry.authorSessionId = authorSessionId;
       if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
@@ -367,11 +369,18 @@ export function createQuestRoutes(ctx: RouteContext) {
       const current = await questStore.getQuest(c.req.param("questId"));
       if (!current) return c.json({ error: "Quest not found" }, 404);
       const existing: import("../quest-types.js").QuestFeedbackEntry[] =
-        "feedback" in current ? (current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+        "feedback" in current
+          ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
+          : [];
       if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
       const updated = [...existing];
-      if (typeof body.text === "string" && body.text.trim()) updated[index] = { ...updated[index], text: body.text.trim() };
-      if (body.images !== undefined) updated[index] = { ...updated[index], images: Array.isArray(body.images) && body.images.length > 0 ? body.images : undefined };
+      if (typeof body.text === "string" && body.text.trim())
+        updated[index] = { ...updated[index], text: body.text.trim() };
+      if (body.images !== undefined)
+        updated[index] = {
+          ...updated[index],
+          images: Array.isArray(body.images) && body.images.length > 0 ? body.images : undefined,
+        };
       const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: updated });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       broadcastQuestUpdate(wsBridge);
@@ -389,7 +398,9 @@ export function createQuestRoutes(ctx: RouteContext) {
       const current = await questStore.getQuest(c.req.param("questId"));
       if (!current) return c.json({ error: "Quest not found" }, 404);
       const existing: import("../quest-types.js").QuestFeedbackEntry[] =
-        "feedback" in current ? (current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [] : [];
+        "feedback" in current
+          ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
+          : [];
       if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
       const updated = [...existing];
       updated[index] = { ...updated[index], addressed: !updated[index].addressed };
@@ -430,7 +441,6 @@ export function createQuestRoutes(ctx: RouteContext) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }
   });
-
 
   return api;
 }

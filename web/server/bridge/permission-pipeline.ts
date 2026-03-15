@@ -47,32 +47,42 @@ export interface HandlePermissionRequestOptions {
 
 export type PermissionPipelineResult =
   | {
-    kind: "mode_auto_approved";
-    request: PermissionRequest;
-  }
+      kind: "mode_auto_approved";
+      request: PermissionRequest;
+    }
   | {
-    kind: "settings_rule_approved";
-    request: PermissionRequest;
-    matchedRule: string;
-  }
+      kind: "settings_rule_approved";
+      request: PermissionRequest;
+      matchedRule: string;
+    }
   | {
-    kind: "queued_for_llm_auto_approval";
-    request: PermissionRequest;
-    autoApprovalConfig: AutoApprovalConfig;
-  }
+      kind: "queued_for_llm_auto_approval";
+      request: PermissionRequest;
+      autoApprovalConfig: AutoApprovalConfig;
+    }
   | {
-    kind: "pending_human";
-    request: PermissionRequest;
-  };
+      kind: "pending_human";
+      request: PermissionRequest;
+    };
 
 /** Tools that require user interaction and can never be auto-approved. */
 export const NEVER_AUTO_APPROVE: ReadonlySet<string> = new Set(["AskUserQuestion", "ExitPlanMode"]);
 
 /** Tools auto-approved in acceptEdits mode. */
 export const ACCEPT_EDITS_AUTO_APPROVE: ReadonlySet<string> = new Set([
-  "Edit", "Write", "Read", "MultiEdit", "NotebookEdit",
-  "Glob", "Grep", "WebFetch", "WebSearch",
-  "TodoWrite", "Task", "Agent", "Skill",
+  "Edit",
+  "Write",
+  "Read",
+  "MultiEdit",
+  "NotebookEdit",
+  "Glob",
+  "Grep",
+  "WebFetch",
+  "WebSearch",
+  "TodoWrite",
+  "Task",
+  "Agent",
+  "Skill",
 ]);
 
 export function isSensitiveConfigPath(filePath: string): boolean {
@@ -85,9 +95,11 @@ export function isSensitiveConfigPath(filePath: string): boolean {
     if (/\/\.claude\/(commands|agents|skills|hooks)\//.test(filePath)) return true;
   }
   const home = homedir();
-  if (filePath.startsWith(`${home}/.companion/settings.json`)
-    || filePath.startsWith(`${home}/.companion/envs/`)
-    || filePath.startsWith(`${home}/.companion/auto-approval/`)) {
+  if (
+    filePath.startsWith(`${home}/.companion/settings.json`) ||
+    filePath.startsWith(`${home}/.companion/envs/`) ||
+    filePath.startsWith(`${home}/.companion/auto-approval/`)
+  ) {
     return true;
   }
   if (filePath.startsWith(`${home}/.companion/`) && /settings(-\d+)?\.json$/.test(filePath)) {
@@ -100,9 +112,17 @@ export function isSensitiveConfigPath(filePath: string): boolean {
 export function isSensitiveBashCommand(command: string): boolean {
   if (!command) return false;
   const sensitive = [
-    "CLAUDE.md", ".claude/settings", ".claude/hooks/", ".claude/commands/",
-    ".claude/agents/", ".claude/skills/", ".mcp.json", ".claude.json",
-    ".companion/settings", ".companion/auto-approval/", ".companion/envs/",
+    "CLAUDE.md",
+    ".claude/settings",
+    ".claude/hooks/",
+    ".claude/commands/",
+    ".claude/agents/",
+    ".claude/skills/",
+    ".mcp.json",
+    ".claude.json",
+    ".companion/settings",
+    ".companion/auto-approval/",
+    ".companion/envs/",
   ];
   return sensitive.some((p) => command.includes(p));
 }
@@ -112,14 +132,16 @@ function shouldModeAutoApprove(
   toolName: string,
   input: Record<string, unknown>,
 ): boolean {
-  const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
+  const isFileEdit =
+    toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
   const filePath = isFileEdit ? String(input.file_path ?? "") : "";
-  return !NEVER_AUTO_APPROVE.has(toolName) && (
-    permissionMode === "bypassPermissions" ||
-    (permissionMode === "acceptEdits"
-      && toolName !== "Bash"
-      && ACCEPT_EDITS_AUTO_APPROVE.has(toolName)
-      && !(isFileEdit && isSensitiveConfigPath(filePath)))
+  return (
+    !NEVER_AUTO_APPROVE.has(toolName) &&
+    (permissionMode === "bypassPermissions" ||
+      (permissionMode === "acceptEdits" &&
+        toolName !== "Bash" &&
+        ACCEPT_EDITS_AUTO_APPROVE.has(toolName) &&
+        !(isFileEdit && isSensitiveConfigPath(filePath))))
   );
 }
 
@@ -128,15 +150,16 @@ function isLlmAutoApprovalEligible<S extends PermissionPipelineSession>(
   toolName: string,
   input: Record<string, unknown>,
 ): boolean {
-  const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
+  const isFileEdit =
+    toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
   const filePath = isFileEdit ? String(input.file_path ?? "") : "";
   const bashCommand = toolName === "Bash" ? String(input.command ?? "") : "";
 
   return (
-    isClaudeFamily(session.backendType)
-    && !NEVER_AUTO_APPROVE.has(toolName)
-    && !(isFileEdit && isSensitiveConfigPath(filePath))
-    && !(toolName === "Bash" && isSensitiveBashCommand(bashCommand))
+    isClaudeFamily(session.backendType) &&
+    !NEVER_AUTO_APPROVE.has(toolName) &&
+    !(isFileEdit && isSensitiveConfigPath(filePath)) &&
+    !(toolName === "Bash" && isSensitiveBashCommand(bashCommand))
   );
 }
 
@@ -191,17 +214,15 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
     return { kind: "pending_human", request: perm };
   };
 
-  if (
-    modeAutoApproveEnabled
-    && shouldModeAutoApprove(session.state.permissionMode, toolName, input)
-  ) {
+  if (modeAutoApproveEnabled && shouldModeAutoApprove(session.state.permissionMode, toolName, input)) {
     return { kind: "mode_auto_approved", request: perm };
   }
 
   // Helper: set deferralReason when sensitive file/command blocks auto-approval
   const setSensitiveDeferralReason = (): void => {
     if (NEVER_AUTO_APPROVE.has(toolName)) return; // UI handles AskUserQuestion/ExitPlanMode specially
-    const isFileEdit = toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
+    const isFileEdit =
+      toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit" || toolName === "NotebookEdit";
     const filePath = isFileEdit ? String(input.file_path ?? "") : "";
     const bashCommand = toolName === "Bash" ? String(input.command ?? "") : "";
     if (isFileEdit && isSensitiveConfigPath(filePath)) {
@@ -216,14 +237,19 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
   // stdio. For Codex sessions, there is no CLI-side rule engine at all.
   // WebSocket sessions already have CLI-side checking so they skip this tier.
   // Also skip tools that can never be auto-approved (they'd just return null anyway).
-  const settingsRuleEnabled = options.enableSettingsRuleApprove !== false
-    && (_backend === "claude-sdk" || _backend === "codex")
-    && !NEVER_AUTO_APPROVE.has(toolName);
+  const settingsRuleEnabled =
+    options.enableSettingsRuleApprove !== false &&
+    (_backend === "claude-sdk" || _backend === "codex") &&
+    !NEVER_AUTO_APPROVE.has(toolName);
   // DEBUG — remove after confirming settings rule matcher is being called
-  console.log(`[permission-pipeline] Tier 2 check: backend=${_backend}, settingsRuleEnabled=${settingsRuleEnabled}, tool=${toolName}, session=${session.id.slice(0, 8)}`);
+  console.log(
+    `[permission-pipeline] Tier 2 check: backend=${_backend}, settingsRuleEnabled=${settingsRuleEnabled}, tool=${toolName}, session=${session.id.slice(0, 8)}`,
+  );
   if (settingsRuleEnabled) {
     return shouldSettingsRuleApprove(toolName, input, session.state.cwd).then((matchedRule) => {
-      console.log(`[permission-pipeline] Settings rule result: ${matchedRule ?? "NO MATCH"} for ${toolName}(${toolName === "Bash" ? String(input.command ?? "").slice(0, 80) : String(input.file_path ?? "").slice(0, 80)})`);
+      console.log(
+        `[permission-pipeline] Settings rule result: ${matchedRule ?? "NO MATCH"} for ${toolName}(${toolName === "Bash" ? String(input.command ?? "").slice(0, 80) : String(input.file_path ?? "").slice(0, 80)})`,
+      );
       if (matchedRule) {
         return { kind: "settings_rule_approved" as const, request: perm, matchedRule };
       }

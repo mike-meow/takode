@@ -61,9 +61,7 @@ describe("captureUserShellPath", () => {
     );
 
     const result = captureUserShellPath();
-    expect(result).toBe(
-      "/usr/bin:/home/testuser/.nvm/versions/node/v20/bin:/home/testuser/.cargo/bin",
-    );
+    expect(result).toBe("/usr/bin:/home/testuser/.nvm/versions/node/v20/bin:/home/testuser/.cargo/bin");
   });
 
   it("handles noisy shell output (MOTD, warnings) before and after PATH", () => {
@@ -80,9 +78,7 @@ describe("captureUserShellPath", () => {
       throw new Error("shell failed");
     });
     // buildFallbackPath needs existsSync to return true for some dirs
-    mockExistsSync.mockImplementation((p: string) =>
-      p === "/usr/bin" || p === "/bin",
-    );
+    mockExistsSync.mockImplementation((p: string) => p === "/usr/bin" || p === "/bin");
 
     const result = captureUserShellPath();
     expect(result).toContain("/usr/bin");
@@ -100,30 +96,20 @@ describe("captureUserShellPath", () => {
 
   it("uses $SHELL env var for the shell command", () => {
     process.env.SHELL = "/bin/zsh";
-    mockExecSync.mockReturnValueOnce(
-      "___PATH_START___/usr/bin___PATH_END___\n",
-    );
+    mockExecSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
 
     captureUserShellPath();
 
-    expect(mockExecSync).toHaveBeenCalledWith(
-      expect.stringContaining("/bin/zsh"),
-      expect.any(Object),
-    );
+    expect(mockExecSync).toHaveBeenCalledWith(expect.stringContaining("/bin/zsh"), expect.any(Object));
   });
 
   it("defaults to /bin/bash when $SHELL is not set", () => {
     delete process.env.SHELL;
-    mockExecSync.mockReturnValueOnce(
-      "___PATH_START___/usr/bin___PATH_END___\n",
-    );
+    mockExecSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
 
     captureUserShellPath();
 
-    expect(mockExecSync).toHaveBeenCalledWith(
-      expect.stringContaining("/bin/bash"),
-      expect.any(Object),
-    );
+    expect(mockExecSync).toHaveBeenCalledWith(expect.stringContaining("/bin/bash"), expect.any(Object));
   });
 });
 
@@ -131,9 +117,7 @@ describe("captureUserShellPath", () => {
 
 describe("buildFallbackPath", () => {
   it("includes standard system paths when they exist", () => {
-    mockExistsSync.mockImplementation((p: string) =>
-      ["/usr/local/bin", "/usr/bin", "/bin"].includes(p as string),
-    );
+    mockExistsSync.mockImplementation((p: string) => ["/usr/local/bin", "/usr/bin", "/bin"].includes(p as string));
 
     const result = buildFallbackPath();
     expect(result).toContain("/usr/local/bin");
@@ -142,27 +126,21 @@ describe("buildFallbackPath", () => {
   });
 
   it("includes ~/.local/bin for claude CLI", () => {
-    mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.local/bin" || p === "/usr/bin",
-    );
+    mockExistsSync.mockImplementation((p: string) => p === "/home/testuser/.local/bin" || p === "/usr/bin");
 
     const result = buildFallbackPath();
     expect(result).toContain("/home/testuser/.local/bin");
   });
 
   it("includes ~/.bun/bin", () => {
-    mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.bun/bin" || p === "/usr/bin",
-    );
+    mockExistsSync.mockImplementation((p: string) => p === "/home/testuser/.bun/bin" || p === "/usr/bin");
 
     const result = buildFallbackPath();
     expect(result).toContain("/home/testuser/.bun/bin");
   });
 
   it("includes ~/.cargo/bin for Rust tools", () => {
-    mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.cargo/bin" || p === "/usr/bin",
-    );
+    mockExistsSync.mockImplementation((p: string) => p === "/home/testuser/.cargo/bin" || p === "/usr/bin");
 
     const result = buildFallbackPath();
     expect(result).toContain("/home/testuser/.cargo/bin");
@@ -188,8 +166,7 @@ describe("buildFallbackPath", () => {
     process.env.NVM_DIR = "/custom/nvm";
     mockExistsSync.mockImplementation((p: string) => {
       if (p === "/custom/nvm/versions/node") return true;
-      if (p.includes("/custom/nvm/versions/node/v") && p.endsWith("/bin"))
-        return true;
+      if (p.includes("/custom/nvm/versions/node/v") && p.endsWith("/bin")) return true;
       return false;
     });
     mockReaddirSync.mockReturnValue(["v20.0.0"] as any);
@@ -279,9 +256,7 @@ describe("getEnrichedPath", () => {
 
     const result = getEnrichedPath();
     const dirs = result.split(":");
-    expect(dirs.indexOf("/opt/homebrew/bin")).toBeLessThan(
-      dirs.indexOf("/bin"),
-    );
+    expect(dirs.indexOf("/opt/homebrew/bin")).toBeLessThan(dirs.indexOf("/bin"));
   });
 
   it("always prefixes built-in shim directories", () => {

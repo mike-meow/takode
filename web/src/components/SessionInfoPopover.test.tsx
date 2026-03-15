@@ -4,24 +4,27 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 interface MockStoreState {
-  sessions: Map<string, {
-    session_id?: string;
-    cwd?: string;
-    model?: string;
-    backend_type?: "claude" | "codex" | "claude-sdk";
-    num_turns?: number;
-    total_cost_usd?: number;
-    context_used_percent?: number;
-    codex_token_details?: { modelContextWindow?: number };
-    claude_token_details?: { modelContextWindow?: number };
-    git_branch?: string | null;
-    is_worktree?: boolean;
-    git_ahead?: number;
-    git_behind?: number;
-    total_lines_added?: number;
-    total_lines_removed?: number;
-    repo_root?: string;
-  }>;
+  sessions: Map<
+    string,
+    {
+      session_id?: string;
+      cwd?: string;
+      model?: string;
+      backend_type?: "claude" | "codex" | "claude-sdk";
+      num_turns?: number;
+      total_cost_usd?: number;
+      context_used_percent?: number;
+      codex_token_details?: { modelContextWindow?: number };
+      claude_token_details?: { modelContextWindow?: number };
+      git_branch?: string | null;
+      is_worktree?: boolean;
+      git_ahead?: number;
+      git_behind?: number;
+      total_lines_added?: number;
+      total_lines_removed?: number;
+      repo_root?: string;
+    }
+  >;
   sdkSessions: Array<{
     sessionId: string;
     cwd?: string;
@@ -38,22 +41,25 @@ let storeState: MockStoreState;
 function resetStore(taskHistory: Array<{ title: string; source?: "quest"; questId?: string }>) {
   storeState = {
     sessions: new Map([
-      ["s1", {
-        session_id: "s1",
-        cwd: "/repo",
-        model: "gpt-5.3-codex",
-        backend_type: "codex",
-        num_turns: 2,
-        total_cost_usd: 0,
-        context_used_percent: 0,
-        git_branch: "jiayi",
-        is_worktree: true,
-        git_ahead: 0,
-        git_behind: 0,
-        total_lines_added: 0,
-        total_lines_removed: 0,
-        repo_root: "/repo",
-      }],
+      [
+        "s1",
+        {
+          session_id: "s1",
+          cwd: "/repo",
+          model: "gpt-5.3-codex",
+          backend_type: "codex",
+          num_turns: 2,
+          total_cost_usd: 0,
+          context_used_percent: 0,
+          git_branch: "jiayi",
+          is_worktree: true,
+          git_ahead: 0,
+          git_behind: 0,
+          total_lines_added: 0,
+          total_lines_removed: 0,
+          repo_root: "/repo",
+        },
+      ],
     ]),
     sdkSessions: [{ sessionId: "s1", cwd: "/repo", backendType: "codex" }],
     sessionTaskHistory: new Map([["s1", taskHistory]]),
@@ -110,9 +116,7 @@ describe("SessionInfoPopover", () => {
   it("keeps task history compact and auto-scrolls to newest task", async () => {
     const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(420);
     try {
-      resetStore(
-        Array.from({ length: 20 }, (_, i) => ({ title: `Task ${i + 1}` })),
-      );
+      resetStore(Array.from({ length: 20 }, (_, i) => ({ title: `Task ${i + 1}` })));
       render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
 
       const scroller = screen.getByTestId("task-history-scroll");
@@ -187,13 +191,15 @@ describe("SessionInfoPopover", () => {
   it("falls back to sdk session metadata for context stats after restore", () => {
     resetStore([]);
     storeState.sessions = new Map();
-    storeState.sdkSessions = [{
-      sessionId: "s1",
-      cwd: "/repo",
-      backendType: "codex",
-      contextUsedPercent: 73,
-      codexTokenDetails: { modelContextWindow: 258_400 },
-    }];
+    storeState.sdkSessions = [
+      {
+        sessionId: "s1",
+        cwd: "/repo",
+        backendType: "codex",
+        contextUsedPercent: 73,
+        codexTokenDetails: { modelContextWindow: 258_400 },
+      },
+    ];
 
     render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
 

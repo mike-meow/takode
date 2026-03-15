@@ -10,9 +10,7 @@ import {
 
 describe("codex-home", () => {
   it("DEFAULT_COMPANION_CODEX_HOME points to ~/.companion/codex-home", () => {
-    expect(DEFAULT_COMPANION_CODEX_HOME).toBe(
-      join(homedir(), ".companion", "codex-home"),
-    );
+    expect(DEFAULT_COMPANION_CODEX_HOME).toBe(join(homedir(), ".companion", "codex-home"));
   });
 
   it("getLegacyCodexHome returns ~/.codex", () => {
@@ -46,16 +44,12 @@ describe("codex-home", () => {
 
   it("resolveCompanionCodexSessionHome appends sessionId to base", () => {
     const sessionId = "abc-123";
-    expect(resolveCompanionCodexSessionHome(sessionId)).toBe(
-      join(DEFAULT_COMPANION_CODEX_HOME, sessionId),
-    );
+    expect(resolveCompanionCodexSessionHome(sessionId)).toBe(join(DEFAULT_COMPANION_CODEX_HOME, sessionId));
   });
 
   it("resolveCompanionCodexSessionHome uses explicit path", () => {
     const custom = "/tmp/my-codex-home";
     const sessionId = "xyz-789";
-    expect(resolveCompanionCodexSessionHome(sessionId, custom)).toBe(
-      join(custom, sessionId),
-    );
+    expect(resolveCompanionCodexSessionHome(sessionId, custom)).toBe(join(custom, sessionId));
   });
 });

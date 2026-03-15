@@ -67,10 +67,7 @@ export const HighlightedText = memo(function HighlightedText({
  * The returned regex uses a capture group so `String.split(regex)` places
  * matched text at odd indices.
  */
-export function buildHighlightPattern(
-  query: string,
-  mode: "strict" | "fuzzy",
-): RegExp | null {
+export function buildHighlightPattern(query: string, mode: "strict" | "fuzzy"): RegExp | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
 
@@ -79,10 +76,7 @@ export function buildHighlightPattern(
   }
 
   // Fuzzy: highlight each word independently
-  const words = trimmed
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(escapeRegExp);
+  const words = trimmed.split(/\s+/).filter(Boolean).map(escapeRegExp);
   if (words.length === 0) return null;
   return new RegExp(`(${words.join("|")})`, "ig");
 }

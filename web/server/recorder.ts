@@ -64,12 +64,7 @@ export class SessionRecorder {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing = false;
 
-  constructor(
-    sessionId: string,
-    backendType: BackendType,
-    cwd: string,
-    outputDir: string,
-  ) {
+  constructor(sessionId: string, backendType: BackendType, cwd: string, outputDir: string) {
     const ts = new Date().toISOString().replace(/:/g, "-");
     const suffix = randomBytes(3).toString("hex");
     const filename = `${sessionId}_${backendType}_${ts}_${suffix}.jsonl`;
@@ -183,12 +178,8 @@ export class RecorderManager {
   }) {
     this.globalEnabled = options?.globalEnabled ?? RecorderManager.resolveEnabled();
     this.recordingsDir =
-      options?.recordingsDir ??
-      process.env.COMPANION_RECORDINGS_DIR ??
-      join(tmpdir(), "companion-recordings");
-    this.maxLines =
-      options?.maxLines ??
-      (Number(process.env.COMPANION_RECORDINGS_MAX_LINES) || DEFAULT_MAX_LINES);
+      options?.recordingsDir ?? process.env.COMPANION_RECORDINGS_DIR ?? join(tmpdir(), "companion-recordings");
+    this.maxLines = options?.maxLines ?? (Number(process.env.COMPANION_RECORDINGS_MAX_LINES) || DEFAULT_MAX_LINES);
 
     if (this.globalEnabled) {
       // Run cleanup at startup (async, non-blocking) and periodically

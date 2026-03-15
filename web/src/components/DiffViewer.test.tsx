@@ -6,11 +6,7 @@ import { DiffViewer } from "./DiffViewer.js";
 describe("DiffViewer", () => {
   it("renders a diff from old/new text", () => {
     const { container } = render(
-      <DiffViewer
-        oldText={"const x = 1;\nconst y = 2;"}
-        newText={"const x = 42;\nconst y = 2;"}
-        fileName="test.ts"
-      />,
+      <DiffViewer oldText={"const x = 1;\nconst y = 2;"} newText={"const x = 42;\nconst y = 2;"} fileName="test.ts" />,
     );
     expect(container.querySelector(".diff-viewer")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
@@ -45,9 +41,7 @@ index 1234567..abcdefg 100644
 +const b = 42;
  const c = 3;`;
 
-    const { container } = render(
-      <DiffViewer unifiedDiff={codexHunkOnlyDiff} fileName="src/utils.ts" />,
-    );
+    const { container } = render(<DiffViewer unifiedDiff={codexHunkOnlyDiff} fileName="src/utils.ts" />);
     expect(container.querySelector(".diff-viewer")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -55,13 +49,7 @@ index 1234567..abcdefg 100644
   });
 
   it("renders compact mode without line numbers", () => {
-    const { container } = render(
-      <DiffViewer
-        oldText="hello"
-        newText="world"
-        mode="compact"
-      />,
-    );
+    const { container } = render(<DiffViewer oldText="hello" newText="world" mode="compact" />);
     expect(container.querySelector(".diff-compact")).toBeTruthy();
     expect(container.querySelector(".diff-gutter")).toBeNull();
     expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
@@ -107,23 +95,14 @@ diff --git a/src/b.ts b/src/b.ts
   });
 
   it("renders full mode with line numbers when explicitly enabled", () => {
-    const { container } = render(
-      <DiffViewer
-        oldText="hello"
-        newText="world"
-        mode="full"
-        showLineNumbers
-      />,
-    );
+    const { container } = render(<DiffViewer oldText="hello" newText="world" mode="full" showLineNumbers />);
     expect(container.querySelector(".diff-full")).toBeTruthy();
     expect(container.querySelector(".diff-gutter")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
   it("opens and closes full-screen modal from compact mode", () => {
-    const { container } = render(
-      <DiffViewer oldText="a" newText="b" mode="compact" fileName="src/file.ts" />,
-    );
+    const { container } = render(<DiffViewer oldText="a" newText="b" mode="compact" fileName="src/file.ts" />);
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     expect(container.ownerDocument.querySelector(".diff-modal-backdrop")).toBeTruthy();
     expect(container.ownerDocument.querySelector(".diff-modal-panel")).toBeTruthy();
@@ -133,10 +112,7 @@ diff --git a/src/b.ts b/src/b.ts
 
   it("shows new file diff (old is empty)", () => {
     const { container } = render(
-      <DiffViewer
-        newText={"export const config = {\n  port: 3000,\n};"}
-        fileName="config.ts"
-      />,
+      <DiffViewer newText={"export const config = {\n  port: 3000,\n};"} fileName="config.ts" />,
     );
     const addLines = container.querySelectorAll(".diff-line-add");
     expect(addLines.length).toBeGreaterThan(0);
@@ -145,20 +121,12 @@ diff --git a/src/b.ts b/src/b.ts
   });
 
   it("shows 'No changes' when old and new are identical", () => {
-    render(
-      <DiffViewer oldText="same" newText="same" />,
-    );
+    render(<DiffViewer oldText="same" newText="same" />);
     expect(screen.getByText("No changes")).toBeTruthy();
   });
 
   it("ignores line-ending-only changes for old/new text diffs", () => {
-    render(
-      <DiffViewer
-        oldText={"line one\r\nline two\r\n"}
-        newText={"line one\nline two"}
-        fileName="draft.md"
-      />,
-    );
+    render(<DiffViewer oldText={"line one\r\nline two\r\n"} newText={"line one\nline two"} fileName="draft.md" />);
 
     expect(screen.getByText("No changes")).toBeTruthy();
     expect(screen.queryByText("No newline at end of file")).toBeNull();
@@ -166,11 +134,7 @@ diff --git a/src/b.ts b/src/b.ts
 
   it("still shows substantive text edits when line endings also differ", () => {
     const { container } = render(
-      <DiffViewer
-        oldText={"line one\r\nline two\r\n"}
-        newText={"line one\nline changed\n"}
-        fileName="draft.md"
-      />,
+      <DiffViewer oldText={"line one\r\nline two\r\n"} newText={"line one\nline changed\n"} fileName="draft.md" />,
     );
 
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
@@ -221,26 +185,15 @@ diff --git a/src/b.ts b/src/b.ts
   });
 
   it("renders file path with directory in muted style", () => {
-    render(
-      <DiffViewer
-        oldText="a"
-        newText="b"
-        fileName="src/components/Button.tsx"
-      />,
-    );
+    render(<DiffViewer oldText="a" newText="b" fileName="src/components/Button.tsx" />);
     expect(screen.getByText("src/components/")).toBeTruthy();
     expect(screen.getByText("Button.tsx")).toBeTruthy();
   });
 
   it("truncates long file paths in headers and keeps the full path as a tooltip", () => {
-    const longPath = "/home/jiayiwei/.companion/worktrees/companion/jiayi-wt-7712/vscode/takode-panel-prototype/package.json";
-    render(
-      <DiffViewer
-        oldText="a"
-        newText="b"
-        fileName={longPath}
-      />,
-    );
+    const longPath =
+      "/home/jiayiwei/.companion/worktrees/companion/jiayi-wt-7712/vscode/takode-panel-prototype/package.json";
+    render(<DiffViewer oldText="a" newText="b" fileName={longPath} />);
 
     expect(screen.getByText(".../vscode/takode-panel-prototype/")).toBeTruthy();
     expect(screen.getByText("package.json")).toBeTruthy();
@@ -306,7 +259,7 @@ diff --git a/b.ts b/b.ts
     const { container } = render(
       <DiffViewer
         oldText=""
-        newText={"def format_label(name: str) -> str:\n    return f\"label:{name}\""}
+        newText={'def format_label(name: str) -> str:\n    return f"label:{name}"'}
         fileName="scripts/python-diff-test.py"
         fileStatsLabel="+11 -0"
         mode="full"

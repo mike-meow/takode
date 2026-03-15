@@ -91,10 +91,13 @@ const API_SUPPORTED_IMAGE_FORMATS = new Set(["image/jpeg", "image/png", "image/g
 const VOICE_BAR_THRESHOLDS = [0.03, 0.08, 0.15, 0.24, 0.36] as const;
 
 /** Convert unsupported image formats to JPEG via Canvas (browser-native). */
-async function ensureSupportedFormat(base64: string, mediaType: string): Promise<{ base64: string; mediaType: string }> {
+async function ensureSupportedFormat(
+  base64: string,
+  mediaType: string,
+): Promise<{ base64: string; mediaType: string }> {
   if (API_SUPPORTED_IMAGE_FORMATS.has(mediaType)) return { base64, mediaType };
   try {
-    const blob = await fetch(`data:${mediaType};base64,${base64}`).then(r => r.blob());
+    const blob = await fetch(`data:${mediaType};base64,${base64}`).then((r) => r.blob());
     const img = await createImageBitmap(blob);
     const canvas = new OffscreenCanvas(img.width, img.height);
     const ctx = canvas.getContext("2d")!;
@@ -162,8 +165,8 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
         !hasTurns
           ? "text-cc-muted/40 cursor-default"
           : allCollapsed
-          ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
-          : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+            ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
+            : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
       }`}
       title={allCollapsed ? "Expand last turn" : "Collapse all turns"}
     >
@@ -188,20 +191,26 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
   const text = draft?.text ?? "";
   const images = draft?.images ?? [];
-  const setText = useCallback((t: string | ((prev: string) => string)) => {
-    const store = useStore.getState();
-    const current = store.composerDrafts.get(sessionId);
-    const prevText = current?.text ?? "";
-    const newText = typeof t === "function" ? t(prevText) : t;
-    store.setComposerDraft(sessionId, { text: newText, images: current?.images ?? [] });
-  }, [sessionId]);
-  const setImages = useCallback((updater: ImageAttachment[] | ((prev: ImageAttachment[]) => ImageAttachment[])) => {
-    const store = useStore.getState();
-    const current = store.composerDrafts.get(sessionId);
-    const prevImages = current?.images ?? [];
-    const newImages = typeof updater === "function" ? updater(prevImages) : updater;
-    store.setComposerDraft(sessionId, { text: current?.text ?? "", images: newImages });
-  }, [sessionId]);
+  const setText = useCallback(
+    (t: string | ((prev: string) => string)) => {
+      const store = useStore.getState();
+      const current = store.composerDrafts.get(sessionId);
+      const prevText = current?.text ?? "";
+      const newText = typeof t === "function" ? t(prevText) : t;
+      store.setComposerDraft(sessionId, { text: newText, images: current?.images ?? [] });
+    },
+    [sessionId],
+  );
+  const setImages = useCallback(
+    (updater: ImageAttachment[] | ((prev: ImageAttachment[]) => ImageAttachment[])) => {
+      const store = useStore.getState();
+      const current = store.composerDrafts.get(sessionId);
+      const prevImages = current?.images ?? [];
+      const newImages = typeof updater === "function" ? updater(prevImages) : updater;
+      store.setComposerDraft(sessionId, { text: current?.text ?? "", images: newImages });
+    },
+    [sessionId],
+  );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
@@ -220,7 +229,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [mentionResults, setMentionResults] = useState<Array<{ relativePath: string; absolutePath: string; fileName: string }>>([]);
+  const [mentionResults, setMentionResults] = useState<
+    Array<{ relativePath: string; absolutePath: string; fileName: string }>
+  >([]);
   const [mentionLoading, setMentionLoading] = useState(false);
   // Tracks the cursor position of the `@` that triggered the menu
   const mentionAnchorRef = useRef<number>(-1);
@@ -241,18 +252,30 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Voice input — records audio via MediaRecorder, transcribes server-side
   const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
-    isRecording, isSupported: voiceSupported, unsupportedReason: voiceUnsupportedReason, unsupportedMessage: voiceUnsupportedMessage, isTranscribing,
+    isRecording,
+    isSupported: voiceSupported,
+    unsupportedReason: voiceUnsupportedReason,
+    unsupportedMessage: voiceUnsupportedMessage,
+    isTranscribing,
     transcriptionPhase,
-    error: voiceError, volumeLevel, setIsTranscribing, setTranscriptionPhase,
+    error: voiceError,
+    volumeLevel,
+    setIsTranscribing,
+    setTranscriptionPhase,
     setError: setVoiceError,
-    toggleRecording, cancelRecording,
+    toggleRecording,
+    cancelRecording,
   } = useVoiceInput({
     onAudioReady: async (blob) => {
       setIsTranscribing(true);
       setTranscriptionPhase("transcribing");
       try {
         if (voiceCaptureModeRef.current === "edit") {
-          const { text: editedText, instructionText, rawText } = await api.transcribe(blob, {
+          const {
+            text: editedText,
+            instructionText,
+            rawText,
+          } = await api.transcribe(blob, {
             mode: "edit",
             sessionId,
             composerText: voiceEditBaseTextRef.current,
@@ -305,11 +328,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
     toggleRecording();
   }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
 
-  const toggleVoiceUnsupportedInfo = useCallback((expandComposerOnReveal = false) => {
-    if (!voiceUnsupportedMessage) return;
-    if (expandComposerOnReveal) setComposerExpanded(true);
-    setVoiceUnsupportedInfoOpen((open) => !open);
-  }, [voiceUnsupportedMessage]);
+  const toggleVoiceUnsupportedInfo = useCallback(
+    (expandComposerOnReveal = false) => {
+      if (!voiceUnsupportedMessage) return;
+      if (expandComposerOnReveal) setComposerExpanded(true);
+      setVoiceUnsupportedInfoOpen((open) => !open);
+    },
+    [voiceUnsupportedMessage],
+  );
 
   // Narrow layout detection uses zoom-adjusted viewport width so VS Code side
   // panels do not switch to mobile layout too early when the app is zoomed out.
@@ -363,8 +389,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Prefer the server-provided UI mode when available. permissionMode can be
   // stale during backend transitions (e.g., SDK init/status replay) while uiMode
   // is the authoritative virtual mode for the composer toggle.
-  const uiMode = sessionData?.uiMode
-    ?? (isCodex ? deriveCodexUiMode(currentMode) : deriveUiMode(currentMode));
+  const uiMode = sessionData?.uiMode ?? (isCodex ? deriveCodexUiMode(currentMode) : deriveUiMode(currentMode));
   const isPlan = uiMode === "plan";
   const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
@@ -384,13 +409,18 @@ export function Composer({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!isCodex) return;
     let cancelled = false;
-    api.getBackendModels("codex").then((models) => {
-      if (cancelled || models.length === 0) return;
-      setDynamicCodexModels(toModelOptions(models));
-    }).catch(() => {
-      // Fall back to static model list silently.
-    });
-    return () => { cancelled = true; };
+    api
+      .getBackendModels("codex")
+      .then((models) => {
+        if (cancelled || models.length === 0) return;
+        setDynamicCodexModels(toModelOptions(models));
+      })
+      .catch(() => {
+        // Fall back to static model list silently.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isCodex]);
 
   useEffect(() => {
@@ -415,9 +445,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         };
         // Use dynamic models if available, otherwise fall back to static list
         // (filtered to remove the empty-value "Default" placeholder).
-        const baseOptions = options.length > 0
-          ? options
-          : getModelsForBackend("claude").filter((m) => m.value !== "");
+        const baseOptions = options.length > 0 ? options : getModelsForBackend("claude").filter((m) => m.value !== "");
         setDynamicClaudeModels([defaultOption, ...baseOptions]);
       } else if (options.length > 0) {
         setDynamicClaudeModels(options);
@@ -425,7 +453,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
       // If neither dynamic models nor default model are available,
       // dynamicClaudeModels stays null and the static fallback is used.
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isCodex]);
 
   // Build command list from session data
@@ -515,77 +545,80 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   // Detect `@` at cursor position and extract query for file search.
   // Called from handleInput — scans backward from cursor to find `@`.
-  const detectMentionQuery = useCallback((inputText: string, cursorPos: number) => {
-    // Scan backward from cursor to find an unescaped `@` that starts a mention
-    let atPos = -1;
-    for (let i = cursorPos - 1; i >= 0; i--) {
-      const ch = inputText[i];
-      // Stop at whitespace, newline — the `@` must be at word boundary or start
-      if (ch === " " || ch === "\n" || ch === "\t") break;
-      if (ch === "@") {
-        // Must be at start of text or preceded by whitespace
-        if (i === 0 || /\s/.test(inputText[i - 1])) {
-          atPos = i;
+  const detectMentionQuery = useCallback(
+    (inputText: string, cursorPos: number) => {
+      // Scan backward from cursor to find an unescaped `@` that starts a mention
+      let atPos = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        const ch = inputText[i];
+        // Stop at whitespace, newline — the `@` must be at word boundary or start
+        if (ch === " " || ch === "\n" || ch === "\t") break;
+        if (ch === "@") {
+          // Must be at start of text or preceded by whitespace
+          if (i === 0 || /\s/.test(inputText[i - 1])) {
+            atPos = i;
+          }
+          break;
         }
-        break;
       }
-    }
 
-    if (atPos === -1) {
-      if (mentionMenuOpen) {
-        setMentionMenuOpen(false);
+      if (atPos === -1) {
+        if (mentionMenuOpen) {
+          setMentionMenuOpen(false);
+          setMentionResults([]);
+        }
+        return;
+      }
+
+      const query = inputText.slice(atPos + 1, cursorPos);
+      mentionAnchorRef.current = atPos;
+      setMentionQuery(query);
+
+      // Show menu immediately (with hint), but only search after 3+ chars
+      if (!mentionMenuOpen) {
+        setMentionMenuOpen(true);
+        setMentionIndex(0);
+      }
+
+      if (query.length < 3) {
+        // Cancel any in-flight search
+        mentionAbortRef.current?.abort();
+        if (mentionDebounceRef.current) clearTimeout(mentionDebounceRef.current);
         setMentionResults([]);
-      }
-      return;
-    }
-
-    const query = inputText.slice(atPos + 1, cursorPos);
-    mentionAnchorRef.current = atPos;
-    setMentionQuery(query);
-
-    // Show menu immediately (with hint), but only search after 3+ chars
-    if (!mentionMenuOpen) {
-      setMentionMenuOpen(true);
-      setMentionIndex(0);
-    }
-
-    if (query.length < 3) {
-      // Cancel any in-flight search
-      mentionAbortRef.current?.abort();
-      if (mentionDebounceRef.current) clearTimeout(mentionDebounceRef.current);
-      setMentionResults([]);
-      setMentionLoading(false);
-      return;
-    }
-
-    // Debounced search — 150ms
-    if (mentionDebounceRef.current) clearTimeout(mentionDebounceRef.current);
-    mentionAbortRef.current?.abort();
-
-    setMentionLoading(true);
-    mentionDebounceRef.current = setTimeout(async () => {
-      if (!mentionSearchRoot) {
         setMentionLoading(false);
         return;
       }
-      const controller = new AbortController();
-      mentionAbortRef.current = controller;
-      try {
-        const { results } = await api.searchFiles(mentionSearchRoot, query, controller.signal);
-        if (!controller.signal.aborted) {
-          setMentionResults(results);
-          setMentionIndex(0);
+
+      // Debounced search — 150ms
+      if (mentionDebounceRef.current) clearTimeout(mentionDebounceRef.current);
+      mentionAbortRef.current?.abort();
+
+      setMentionLoading(true);
+      mentionDebounceRef.current = setTimeout(async () => {
+        if (!mentionSearchRoot) {
           setMentionLoading(false);
+          return;
         }
-      } catch (e: unknown) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        if (!controller.signal.aborted) {
-          setMentionResults([]);
-          setMentionLoading(false);
+        const controller = new AbortController();
+        mentionAbortRef.current = controller;
+        try {
+          const { results } = await api.searchFiles(mentionSearchRoot, query, controller.signal);
+          if (!controller.signal.aborted) {
+            setMentionResults(results);
+            setMentionIndex(0);
+            setMentionLoading(false);
+          }
+        } catch (e: unknown) {
+          if (e instanceof DOMException && e.name === "AbortError") return;
+          if (!controller.signal.aborted) {
+            setMentionResults([]);
+            setMentionLoading(false);
+          }
         }
-      }
-    }, 150);
-  }, [mentionMenuOpen, mentionSearchRoot]);
+      }, 150);
+    },
+    [mentionMenuOpen, mentionSearchRoot],
+  );
 
   // Close mention menu on outside click
   useEffect(() => {
@@ -624,25 +657,28 @@ export function Composer({ sessionId }: { sessionId: string }) {
     };
   }, []);
 
-  const selectMention = useCallback((result: { relativePath: string }) => {
-    const anchor = mentionAnchorRef.current;
-    if (anchor === -1) return;
-    const cursorPos = textareaRef.current?.selectionStart ?? text.length;
-    // Replace @query with @relativePath
-    const before = text.slice(0, anchor);
-    const after = text.slice(cursorPos);
-    const inserted = `@${result.relativePath} `;
-    setText(before + inserted + after);
-    setMentionMenuOpen(false);
-    setMentionResults([]);
-    mentionAnchorRef.current = -1;
-    // Restore cursor position after the inserted path
-    requestAnimationFrame(() => {
-      const newPos = anchor + inserted.length;
-      textareaRef.current?.setSelectionRange(newPos, newPos);
-      textareaRef.current?.focus();
-    });
-  }, [text, setText]);
+  const selectMention = useCallback(
+    (result: { relativePath: string }) => {
+      const anchor = mentionAnchorRef.current;
+      if (anchor === -1) return;
+      const cursorPos = textareaRef.current?.selectionStart ?? text.length;
+      // Replace @query with @relativePath
+      const before = text.slice(0, anchor);
+      const after = text.slice(cursorPos);
+      const inserted = `@${result.relativePath} `;
+      setText(before + inserted + after);
+      setMentionMenuOpen(false);
+      setMentionResults([]);
+      mentionAnchorRef.current = -1;
+      // Restore cursor position after the inserted path
+      requestAnimationFrame(() => {
+        const newPos = anchor + inserted.length;
+        textareaRef.current?.setSelectionRange(newPos, newPos);
+        textareaRef.current?.focus();
+      });
+    },
+    [text, setText],
+  );
 
   // Close mode dropdown on outside click
   useEffect(() => {
@@ -699,7 +735,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // No separate user_message is sent — the answer IS the user's message.
     if (pendingAskUserPerm) {
       const questions = Array.isArray(pendingAskUserPerm.input?.questions)
-        ? pendingAskUserPerm.input.questions as Record<string, unknown>[]
+        ? (pendingAskUserPerm.input.questions as Record<string, unknown>[])
         : [];
       const answers: Record<string, string> = {};
       for (let i = 0; i < Math.max(1, questions.length); i++) {
@@ -801,7 +837,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key !== "Shift") return;
-      if (otherKeyPressed) { otherKeyPressed = false; lastShiftUp = 0; return; }
+      if (otherKeyPressed) {
+        otherKeyPressed = false;
+        lastShiftUp = 0;
+        return;
+      }
       const now = Date.now();
 
       if (isRecording) {
@@ -950,7 +990,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
     if (files.length === 0) return;
     e.preventDefault();
     const pasteTs = Date.now();
-    await appendImages(files, (_file, index) => `pasted-${pasteTs}-${index}.${files[index].type.split("/")[1] || "jpeg"}`);
+    await appendImages(
+      files,
+      (_file, index) => `pasted-${pasteTs}-${index}.${files[index].type.split("/")[1] || "jpeg"}`,
+    );
   }
 
   function resetImageDragState() {
@@ -1066,7 +1109,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed) return;
     const handler = (e: MouseEvent | TouchEvent) => {
-      if (!text.trim() && images.length === 0 && composerRootRef.current && !composerRootRef.current.contains(e.target as Node)) {
+      if (
+        !text.trim() &&
+        images.length === 0 &&
+        composerRootRef.current &&
+        !composerRootRef.current.contains(e.target as Node)
+      ) {
         setComposerExpanded(false);
       }
     };
@@ -1087,13 +1135,17 @@ export function Composer({ sessionId }: { sessionId: string }) {
     () => images.map((img) => ({ src: `data:${img.mediaType};base64,${img.base64}`, name: img.name })),
     [images],
   );
-  const voiceUnsupportedTooltip = voiceUnsupportedReason === "insecure-context"
-    ? "Voice needs HTTPS"
-    : "Voice unavailable";
+  const voiceUnsupportedTooltip =
+    voiceUnsupportedReason === "insecure-context" ? "Voice needs HTTPS" : "Voice unavailable";
   const voiceIdleTitle = text.trim().length > 0 ? "Voice edit" : "Voice input";
-  const voiceButtonTitle = (!voiceSupported ? voiceUnsupportedTooltip : voiceError)
-    || (isTranscribing
-      ? (transcriptionPhase === "editing" ? "Editing..." : transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing...")
+  const voiceButtonTitle =
+    (!voiceSupported ? voiceUnsupportedTooltip : voiceError) ||
+    (isTranscribing
+      ? transcriptionPhase === "editing"
+        ? "Editing..."
+        : transcriptionPhase === "enhancing"
+          ? "Enhancing..."
+          : "Transcribing..."
       : isRecording
         ? "Stop recording"
         : voiceEditProposal
@@ -1109,7 +1161,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }, [voiceSupported, isRecording, isTranscribing]);
 
   return (
-    <div ref={composerRootRef} className={`shrink-0 border-t border-cc-border bg-cc-card ${isCollapsed ? "" : "px-2 sm:px-4 py-2 sm:py-3"}`}>
+    <div
+      ref={composerRootRef}
+      className={`shrink-0 border-t border-cc-border bg-cc-card ${isCollapsed ? "" : "px-2 sm:px-4 py-2 sm:py-3"}`}
+    >
       {/* Collapsed bar — shown on mobile when idle */}
       {isCollapsed && (
         <div className="px-2 py-2">
@@ -1126,8 +1181,22 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   </svg>
                 ) : (
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                    <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                    <path
+                      d="M2.5 4l4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                    <path
+                      d="M8.5 4l4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
                   </svg>
                 )}
                 {isPlan ? "Plan" : "Agent"}
@@ -1147,11 +1216,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
               aria-label="Voice input"
               aria-disabled={!voiceSupported || compactVoiceButtonDisabled}
               className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${
-                (!voiceSupported || compactVoiceButtonDisabled)
+                !voiceSupported || compactVoiceButtonDisabled
                   ? "text-cc-muted opacity-30 cursor-not-allowed"
                   : isRecording
-                  ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
-                  : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                    ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
               }`}
               title={voiceButtonTitle}
             >
@@ -1177,12 +1246,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
       )}
       {/* Full composer — always rendered so textarea stays in DOM for mobile keyboard focus */}
       <div className={isCollapsed ? "h-0 overflow-hidden" : ""}>
-      <div className="max-w-3xl mx-auto">
-        {/* Image thumbnails — data URLs are memoized to avoid reconstructing
+        <div className="max-w-3xl mx-auto">
+          {/* Image thumbnails — data URLs are memoized to avoid reconstructing
              multi-MB base64 strings on every render (expensive on iOS Safari) */}
-        {imageSrcs.length > 0 && (
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            {imageSrcs.map(({ src, name }, i) => (
+          {imageSrcs.length > 0 && (
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              {imageSrcs.map(({ src, name }, i) => (
                 <div key={i} className="relative group">
                   <img
                     src={src}
@@ -1191,343 +1260,331 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     onClick={() => setLightboxSrc(src)}
                   />
                   <button
-                    onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeImage(i);
+                    }}
                     className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-cc-error text-white flex items-center justify-center text-[10px] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
                   >
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
-                      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
+                      <path
+                        d="M4 4l8 8M12 4l-8 8"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
                     </svg>
                   </button>
                 </div>
               ))}
-          </div>
-        )}
-        {lightboxSrc && (
-          <Lightbox
-            src={lightboxSrc}
-            alt="attachment"
-            onClose={() => setLightboxSrc(null)}
+            </div>
+          )}
+          {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            multiple
+            onChange={handleFileSelect}
+            className="hidden"
           />
-        )}
 
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-
-        {/* Unified input card */}
-        <div
-          data-testid="composer-input-card"
-          onDragEnter={handleComposerDragEnter}
-          onDragOver={handleComposerDragOver}
-          onDragLeave={handleComposerDragLeave}
-          onDrop={handleComposerDrop}
-          className={`relative bg-cc-input-bg border rounded-[14px] overflow-visible transition-colors ${
-            isImageDragOver
-              ? "border-cc-primary bg-cc-primary/5 shadow-[0_0_0_3px_rgba(255,122,26,0.12)]"
-              : isPlan
-              ? "border-cc-primary/40"
-              : "border-cc-border focus-within:border-cc-primary/30"
-          }`}
-        >
-          {isImageDragOver && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[14px] border border-dashed border-cc-primary/50 bg-cc-primary/10">
-              <div className="rounded-full border border-cc-primary/25 bg-cc-card/95 px-3 py-1 text-[11px] font-medium text-cc-primary shadow-sm">
-                Drop images to attach
+          {/* Unified input card */}
+          <div
+            data-testid="composer-input-card"
+            onDragEnter={handleComposerDragEnter}
+            onDragOver={handleComposerDragOver}
+            onDragLeave={handleComposerDragLeave}
+            onDrop={handleComposerDrop}
+            className={`relative bg-cc-input-bg border rounded-[14px] overflow-visible transition-colors ${
+              isImageDragOver
+                ? "border-cc-primary bg-cc-primary/5 shadow-[0_0_0_3px_rgba(255,122,26,0.12)]"
+                : isPlan
+                  ? "border-cc-primary/40"
+                  : "border-cc-border focus-within:border-cc-primary/30"
+            }`}
+          >
+            {isImageDragOver && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[14px] border border-dashed border-cc-primary/50 bg-cc-primary/10">
+                <div className="rounded-full border border-cc-primary/25 bg-cc-card/95 px-3 py-1 text-[11px] font-medium text-cc-primary shadow-sm">
+                  Drop images to attach
+                </div>
               </div>
-            </div>
-          )}
-          {/* Slash command menu */}
-          {slashMenuOpen && filteredCommands.length > 0 && (
-            <div
-              ref={menuRef}
-              className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
-            >
-              {filteredCommands.map((cmd, i) => (
-                <button
-                  key={`${cmd.type}-${cmd.name}`}
-                  data-cmd-index={i}
-                  onClick={() => selectCommand(cmd)}
-                  className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
-                    i === slashMenuIndex
-                      ? "bg-cc-hover"
-                      : "hover:bg-cc-hover/50"
-                  }`}
-                >
-                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
-                    {cmd.type === "skill" ? (
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M8 1l1.796 3.64L14 5.255l-3 2.924.708 4.126L8 10.5l-3.708 1.805L5 8.18 2 5.255l4.204-.615L8 1z" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                        <path d="M5 12L10 4" strokeLinecap="round" />
-                      </svg>
-                    )}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[13px] font-medium text-cc-fg">/{cmd.name}</span>
-                    <span className="ml-2 text-[11px] text-cc-muted">{cmd.type}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* @ mention file search menu */}
-          {mentionMenuOpen && !slashMenuOpen && (
-            <div
-              ref={mentionMenuRef}
-              className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
-            >
-              {mentionQuery.length < 3 ? (
-                <div className="px-3 py-2.5 text-[12px] text-cc-muted flex items-center gap-2">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 shrink-0 opacity-50">
-                    <circle cx="6.5" cy="6.5" r="4.5" />
-                    <path d="M10 10l4 4" strokeLinecap="round" />
-                  </svg>
-                  Type at least 3 characters to search files...
-                </div>
-              ) : mentionLoading && mentionResults.length === 0 ? (
-                <div className="px-3 py-2.5 text-[12px] text-cc-muted flex items-center gap-2">
-                  <span className="w-3 h-3 border-2 border-cc-muted/30 border-t-cc-muted rounded-full animate-spin shrink-0" />
-                  Searching...
-                </div>
-              ) : mentionResults.length === 0 ? (
-                <div className="px-3 py-2.5 text-[12px] text-cc-muted">
-                  No files found for "{mentionQuery}"
-                </div>
-              ) : (
-                mentionResults.map((result, i) => (
+            )}
+            {/* Slash command menu */}
+            {slashMenuOpen && filteredCommands.length > 0 && (
+              <div
+                ref={menuRef}
+                className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
+              >
+                {filteredCommands.map((cmd, i) => (
                   <button
-                    key={result.relativePath}
-                    data-mention-index={i}
-                    onClick={() => selectMention(result)}
-                    className={`w-full px-3 py-1.5 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
-                      i === mentionIndex
-                        ? "bg-cc-hover"
-                        : "hover:bg-cc-hover/50"
+                    key={`${cmd.type}-${cmd.name}`}
+                    data-cmd-index={i}
+                    onClick={() => selectCommand(cmd)}
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                      i === slashMenuIndex ? "bg-cc-hover" : "hover:bg-cc-hover/50"
                     }`}
                   >
                     <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-60">
-                        <path d="M3 1.5A1.5 1.5 0 014.5 0h4.586a1.5 1.5 0 011.06.44l2.415 2.414A1.5 1.5 0 0113 3.914V14.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 14.5v-13z" />
-                      </svg>
+                      {cmd.type === "skill" ? (
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                          <path d="M8 1l1.796 3.64L14 5.255l-3 2.924.708 4.126L8 10.5l-3.708 1.805L5 8.18 2 5.255l4.204-.615L8 1z" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-3.5 h-3.5"
+                        >
+                          <path d="M5 12L10 4" strokeLinecap="round" />
+                        </svg>
+                      )}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <span className="text-[13px] font-medium text-cc-fg">{result.fileName}</span>
-                      <span className="ml-2 text-[11px] text-cc-muted truncate">{result.relativePath}</span>
+                      <span className="text-[13px] font-medium text-cc-fg">/{cmd.name}</span>
+                      <span className="ml-2 text-[11px] text-cc-muted">{cmd.type}</span>
                     </div>
                   </button>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Voice recording / transcribing indicator */}
-          {isRecording && (
-            <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-              <span className="shrink-0">Recording</span>
-              {/* Volume bars */}
-              <div className="flex items-center gap-[2px] h-3">
-                {VOICE_BAR_THRESHOLDS.map((threshold, i) => (
-                  <div
-                    key={i}
-                    className="w-[3px] rounded-full transition-all duration-75"
-                    style={{
-                      height: volumeLevel > threshold ? `${Math.min(12, 4 + (volumeLevel - threshold) * 20)}px` : "3px",
-                      backgroundColor: volumeLevel > threshold ? "rgb(239 68 68)" : "rgb(239 68 68 / 0.3)",
-                    }}
-                  />
                 ))}
               </div>
-            </div>
-          )}
-          {isTranscribing && !isRecording && (
-            <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
-              <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
-              <span>{transcriptionPhase === "editing" ? "Editing..." : transcriptionPhase === "enhancing" ? "Enhancing..." : "Transcribing..."}</span>
-            </div>
-          )}
-          {voiceUnsupportedInfoOpen && voiceUnsupportedMessage && !isRecording && !isTranscribing && (
-            <div className="px-4 pt-2">
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-start gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning"
-              >
-                <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
-                <span className="flex-1">{voiceUnsupportedMessage}</span>
-                <button
-                  type="button"
-                  onClick={() => setVoiceUnsupportedInfoOpen(false)}
-                  className="shrink-0 text-cc-warning/70 hover:text-cc-warning transition-colors"
-                  aria-label="Dismiss voice input message"
-                  title="Dismiss"
-                >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
-                    <path d="M4 4l8 8M12 4l-8 8" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-          {voiceError && !isRecording && !isTranscribing && (
-            <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
-          )}
-          {voiceEditProposal && !isRecording && !isTranscribing && (
-            <div className="px-4 pt-2">
-              <div className="rounded-xl border border-cc-primary/20 bg-cc-primary/5 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">Voice edit preview</div>
-                    <div className="mt-1 text-[12px] text-cc-muted">
-                      Apply instruction: <span className="text-cc-fg">{voiceEditProposal.instructionText || "(no instruction text returned)"}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={undoVoiceEdit}
-                      className="rounded-lg border border-cc-border px-3 py-1.5 text-[12px] font-medium text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                    >
-                      Undo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={acceptVoiceEdit}
-                      className="rounded-lg bg-cc-primary px-3 py-1.5 text-[12px] font-medium text-white hover:bg-cc-primary-hover transition-colors cursor-pointer"
-                    >
-                      Accept
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <DiffViewer oldText={voiceEditProposal.originalText} newText={voiceEditProposal.editedText} mode="compact" />
-                </div>
-              </div>
-            </div>
-          )}
+            )}
 
-          <div className="relative">
-            <textarea
-              ref={textareaRef}
-              value={text}
-              onChange={handleInput}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              enterKeyHint={isTouchDevice() ? "enter" : undefined}
-              placeholder={
-                pendingAskUserPerm
-                  ? "Type your answer..."
-                  : pendingPlanPerm
-                    ? "Type to reject plan and send new instructions..."
-                    : "Type a message... (/ for commands, @ for files)"
-              }
-              rows={1}
-              className={`w-full px-4 pt-3 pb-1 text-base sm:text-sm bg-transparent resize-none focus:outline-none font-sans-ui placeholder:text-cc-muted disabled:opacity-50 overflow-y-auto ${
-                isRecording && preRecordingTextRef.current.after ? "text-transparent caret-transparent" : "text-cc-fg"
-              }`}
-              style={{ minHeight: "36px", maxHeight: "200px" }}
-            />
-            {/* Inline cursor overlay — renders text with a pulsing red bar at the insertion point */}
-            {isRecording && preRecordingTextRef.current.after && (
-              <div className="absolute inset-0 px-4 pt-3 pb-1 text-base sm:text-sm font-sans-ui text-cc-fg pointer-events-none overflow-y-auto whitespace-pre-wrap break-words">
-                <span>{preRecordingTextRef.current.before}</span>
-                <span
-                  className="inline-block w-[2px] rounded-full animate-pulse mx-px"
-                  style={{ height: "1.15em", backgroundColor: "rgb(239 68 68 / 0.8)", verticalAlign: "text-bottom" }}
-                />
-                <span>{preRecordingTextRef.current.after}</span>
+            {/* @ mention file search menu */}
+            {mentionMenuOpen && !slashMenuOpen && (
+              <div
+                ref={mentionMenuRef}
+                className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
+              >
+                {mentionQuery.length < 3 ? (
+                  <div className="px-3 py-2.5 text-[12px] text-cc-muted flex items-center gap-2">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="w-3.5 h-3.5 shrink-0 opacity-50"
+                    >
+                      <circle cx="6.5" cy="6.5" r="4.5" />
+                      <path d="M10 10l4 4" strokeLinecap="round" />
+                    </svg>
+                    Type at least 3 characters to search files...
+                  </div>
+                ) : mentionLoading && mentionResults.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[12px] text-cc-muted flex items-center gap-2">
+                    <span className="w-3 h-3 border-2 border-cc-muted/30 border-t-cc-muted rounded-full animate-spin shrink-0" />
+                    Searching...
+                  </div>
+                ) : mentionResults.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[12px] text-cc-muted">No files found for "{mentionQuery}"</div>
+                ) : (
+                  mentionResults.map((result, i) => (
+                    <button
+                      key={result.relativePath}
+                      data-mention-index={i}
+                      onClick={() => selectMention(result)}
+                      className={`w-full px-3 py-1.5 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                        i === mentionIndex ? "bg-cc-hover" : "hover:bg-cc-hover/50"
+                      }`}
+                    >
+                      <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 opacity-60">
+                          <path d="M3 1.5A1.5 1.5 0 014.5 0h4.586a1.5 1.5 0 011.06.44l2.415 2.414A1.5 1.5 0 0113 3.914V14.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 14.5v-13z" />
+                        </svg>
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[13px] font-medium text-cc-fg">{result.fileName}</span>
+                        <span className="ml-2 text-[11px] text-cc-muted truncate">{result.relativePath}</span>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             )}
-          </div>
 
-          {/* Git branch + model + lines info */}
-          {(sessionData?.git_branch || sessionData?.model || vscodeSelectionPayload) && (
-            <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted">
-              {sessionData?.git_branch && (
-                <span className="flex items-center gap-1 truncate min-w-0">
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-60">
-                    <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
-                  </svg>
-                  <span className="truncate max-w-[100px] sm:max-w-[160px]">{sessionData.git_branch}</span>
-                  {sessionData.is_containerized && (
-                    <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1 rounded">container</span>
-                  )}
+            {/* Voice recording / transcribing indicator */}
+            {isRecording && (
+              <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                <span className="shrink-0">Recording</span>
+                {/* Volume bars */}
+                <div className="flex items-center gap-[2px] h-3">
+                  {VOICE_BAR_THRESHOLDS.map((threshold, i) => (
+                    <div
+                      key={i}
+                      className="w-[3px] rounded-full transition-all duration-75"
+                      style={{
+                        height:
+                          volumeLevel > threshold ? `${Math.min(12, 4 + (volumeLevel - threshold) * 20)}px` : "3px",
+                        backgroundColor: volumeLevel > threshold ? "rgb(239 68 68)" : "rgb(239 68 68 / 0.3)",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {isTranscribing && !isRecording && (
+              <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
+                <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
+                <span>
+                  {transcriptionPhase === "editing"
+                    ? "Editing..."
+                    : transcriptionPhase === "enhancing"
+                      ? "Enhancing..."
+                      : "Transcribing..."}
                 </span>
-              )}
-              {((sessionData?.git_ahead || 0) > 0 || (sessionData?.git_behind || 0) > 0) && (
-                <span className="flex items-center gap-0.5 text-[10px]">
-                  {(sessionData?.git_ahead || 0) > 0 && <span className="text-green-500">{sessionData?.git_ahead}&#8593;</span>}
-                  {(sessionData?.git_behind || 0) > 0 && (
-                    <span className="text-cc-warning">{sessionData?.git_behind}&#8595;</span>
-                  )}
-                </span>
-              )}
-              {(diffLinesAdded > 0 || diffLinesRemoved > 0) && (
-                <span className="flex items-center gap-1 shrink-0">
-                  <span className="text-green-500">+{diffLinesAdded}</span>
-                  <span className="text-red-400">-{diffLinesRemoved}</span>
-                </span>
-              )}
-              {sessionData?.model && (
-                <>
-                  {sessionData?.git_branch && <span className="text-cc-muted/40">&middot;</span>}
-                  {!isCodex ? (
-                    <div className="relative" ref={modelDropdownRef}>
-                      <button
-                        onClick={() => setShowModelDropdown(!showModelDropdown)}
-                        disabled={!isConnected}
-                        className={`flex items-center gap-0.5 font-mono-code truncate transition-colors select-none ${
-                          !isConnected
-                            ? "opacity-30 cursor-not-allowed"
-                            : "hover:text-cc-fg cursor-pointer"
-                        }`}
-                        title={`Model: ${sessionData.model} (click to change)`}
-                      >
-                        <span className="truncate">{formatModel(sessionData.model)}</span>
-                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
-                          <path d="M4 6l4 4 4-4" />
-                        </svg>
-                      </button>
-                      {showModelDropdown && (
-                        <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
-                          {claudeModelOptions.map((m) => (
-                            <button
-                              key={m.value}
-                              onClick={() => {
-                                sendToSession(sessionId, { type: "set_model", model: m.value });
-                                setShowModelDropdown(false);
-                              }}
-                              className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                                m.value === sessionData.model ? "text-cc-primary font-medium" : "text-cc-fg"
-                              }`}
-                            >
-                              <span className="mr-1.5">{m.icon}</span>{m.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+              </div>
+            )}
+            {voiceUnsupportedInfoOpen && voiceUnsupportedMessage && !isRecording && !isTranscribing && (
+              <div className="px-4 pt-2">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning"
+                >
+                  <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                  <span className="flex-1">{voiceUnsupportedMessage}</span>
+                  <button
+                    type="button"
+                    onClick={() => setVoiceUnsupportedInfoOpen(false)}
+                    className="shrink-0 text-cc-warning/70 hover:text-cc-warning transition-colors"
+                    aria-label="Dismiss voice input message"
+                    title="Dismiss"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                      <path d="M4 4l8 8M12 4l-8 8" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+            {voiceError && !isRecording && !isTranscribing && (
+              <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
+            )}
+            {voiceEditProposal && !isRecording && !isTranscribing && (
+              <div className="px-4 pt-2">
+                <div className="rounded-xl border border-cc-primary/20 bg-cc-primary/5 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">
+                        Voice edit preview
+                      </div>
+                      <div className="mt-1 text-[12px] text-cc-muted">
+                        Apply instruction:{" "}
+                        <span className="text-cc-fg">
+                          {voiceEditProposal.instructionText || "(no instruction text returned)"}
+                        </span>
+                      </div>
                     </div>
-                  ) : (
-                    <>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={undoVoiceEdit}
+                        className="rounded-lg border border-cc-border px-3 py-1.5 text-[12px] font-medium text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                      >
+                        Undo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={acceptVoiceEdit}
+                        className="rounded-lg bg-cc-primary px-3 py-1.5 text-[12px] font-medium text-white hover:bg-cc-primary-hover transition-colors cursor-pointer"
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <DiffViewer
+                      oldText={voiceEditProposal.originalText}
+                      newText={voiceEditProposal.editedText}
+                      mode="compact"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                enterKeyHint={isTouchDevice() ? "enter" : undefined}
+                placeholder={
+                  pendingAskUserPerm
+                    ? "Type your answer..."
+                    : pendingPlanPerm
+                      ? "Type to reject plan and send new instructions..."
+                      : "Type a message... (/ for commands, @ for files)"
+                }
+                rows={1}
+                className={`w-full px-4 pt-3 pb-1 text-base sm:text-sm bg-transparent resize-none focus:outline-none font-sans-ui placeholder:text-cc-muted disabled:opacity-50 overflow-y-auto ${
+                  isRecording && preRecordingTextRef.current.after ? "text-transparent caret-transparent" : "text-cc-fg"
+                }`}
+                style={{ minHeight: "36px", maxHeight: "200px" }}
+              />
+              {/* Inline cursor overlay — renders text with a pulsing red bar at the insertion point */}
+              {isRecording && preRecordingTextRef.current.after && (
+                <div className="absolute inset-0 px-4 pt-3 pb-1 text-base sm:text-sm font-sans-ui text-cc-fg pointer-events-none overflow-y-auto whitespace-pre-wrap break-words">
+                  <span>{preRecordingTextRef.current.before}</span>
+                  <span
+                    className="inline-block w-[2px] rounded-full animate-pulse mx-px"
+                    style={{ height: "1.15em", backgroundColor: "rgb(239 68 68 / 0.8)", verticalAlign: "text-bottom" }}
+                  />
+                  <span>{preRecordingTextRef.current.after}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Git branch + model + lines info */}
+            {(sessionData?.git_branch || sessionData?.model || vscodeSelectionPayload) && (
+              <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted">
+                {sessionData?.git_branch && (
+                  <span className="flex items-center gap-1 truncate min-w-0">
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-60">
+                      <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
+                    </svg>
+                    <span className="truncate max-w-[100px] sm:max-w-[160px]">{sessionData.git_branch}</span>
+                    {sessionData.is_containerized && (
+                      <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1 rounded">container</span>
+                    )}
+                  </span>
+                )}
+                {((sessionData?.git_ahead || 0) > 0 || (sessionData?.git_behind || 0) > 0) && (
+                  <span className="flex items-center gap-0.5 text-[10px]">
+                    {(sessionData?.git_ahead || 0) > 0 && (
+                      <span className="text-green-500">{sessionData?.git_ahead}&#8593;</span>
+                    )}
+                    {(sessionData?.git_behind || 0) > 0 && (
+                      <span className="text-cc-warning">{sessionData?.git_behind}&#8595;</span>
+                    )}
+                  </span>
+                )}
+                {(diffLinesAdded > 0 || diffLinesRemoved > 0) && (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <span className="text-green-500">+{diffLinesAdded}</span>
+                    <span className="text-red-400">-{diffLinesRemoved}</span>
+                  </span>
+                )}
+                {sessionData?.model && (
+                  <>
+                    {sessionData?.git_branch && <span className="text-cc-muted/40">&middot;</span>}
+                    {!isCodex ? (
                       <div className="relative" ref={modelDropdownRef}>
                         <button
                           onClick={() => setShowModelDropdown(!showModelDropdown)}
                           disabled={!isConnected}
                           className={`flex items-center gap-0.5 font-mono-code truncate transition-colors select-none ${
-                            !isConnected
-                              ? "opacity-30 cursor-not-allowed"
-                              : "hover:text-cc-fg cursor-pointer"
+                            !isConnected ? "opacity-30 cursor-not-allowed" : "hover:text-cc-fg cursor-pointer"
                           }`}
-                          title={`Model: ${sessionData.model} (relaunch required)`}
+                          title={`Model: ${sessionData.model} (click to change)`}
                         >
                           <span className="truncate">{formatModel(sessionData.model)}</span>
                           <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
@@ -1536,7 +1593,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                         </button>
                         {showModelDropdown && (
                           <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
-                            {codexModelOptions.map((m) => (
+                            {claudeModelOptions.map((m) => (
                               <button
                                 key={m.value}
                                 onClick={() => {
@@ -1547,238 +1604,333 @@ export function Composer({ sessionId }: { sessionId: string }) {
                                   m.value === sessionData.model ? "text-cc-primary font-medium" : "text-cc-fg"
                                 }`}
                               >
-                                <span className="mr-1.5">{m.icon}</span>{m.label}
+                                <span className="mr-1.5">{m.icon}</span>
+                                {m.label}
                               </button>
                             ))}
                           </div>
                         )}
                       </div>
-                      <span className="text-cc-muted/40">&middot;</span>
-                      <div className="relative" ref={codexReasoningDropdownRef}>
-                        <button
-                          onClick={() => setShowCodexReasoningDropdown(!showCodexReasoningDropdown)}
-                          disabled={!isConnected}
-                          className={`flex items-center gap-1 truncate transition-colors select-none ${
-                            !isConnected
-                              ? "opacity-30 cursor-not-allowed"
-                              : "hover:text-cc-fg cursor-pointer"
-                          }`}
-                          title="Reasoning effort (relaunch required)"
-                        >
-                          <span>{CODEX_REASONING_EFFORTS.find((x) => x.value === codexReasoningEffort)?.label.toLowerCase() || "default"}</span>
-                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
-                            <path d="M4 6l4 4 4-4" />
-                          </svg>
-                        </button>
-                        {showCodexReasoningDropdown && (
-                          <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
-                            {CODEX_REASONING_EFFORTS.map((effort) => (
-                              <button
-                                key={effort.value || "default"}
-                                onClick={() => {
-                                  sendToSession(sessionId, { type: "set_codex_reasoning_effort", effort: effort.value });
-                                  setShowCodexReasoningDropdown(false);
-                                }}
-                                className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                                  effort.value === codexReasoningEffort ? "text-cc-primary font-medium" : "text-cc-fg"
-                                }`}
-                              >
-                                {effort.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-              {vscodeSelectionPayload && (
-                <>
-                  {(sessionData?.git_branch || sessionData?.model) && <span className="text-cc-muted/40">&middot;</span>}
-                  <span
-                    className="inline-flex max-w-[160px] shrink min-w-0 items-center gap-0.5 rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
-                    title={buildVsCodeSelectionPrompt(vscodeSelectionPayload)}
-                  >
-                    <span className="truncate">{formatVsCodeSelectionSummary(vscodeSelectionPayload)}</span>
-                    <button
-                      type="button"
-                      className="ml-0.5 shrink-0 rounded hover:bg-cc-border/60 p-px cursor-pointer"
-                      title="Clear selection"
-                      onClick={(e) => { e.stopPropagation(); useStore.getState().setVsCodeSelectionContext(null); }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                        <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" />
-                      </svg>
-                    </button>
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-2.5 pb-2.5">
-            {/* Left: mode indicator */}
-            <div className="flex items-center gap-1">
-              {/* Plan / Agent single toggle */}
-              <button
-                onClick={cycleMode}
-                disabled={!isConnected}
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors select-none ${
-                  !isConnected
-                    ? "opacity-30 cursor-not-allowed text-cc-muted"
-                    : isPlan
-                    ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                }`}
-                title={isPlan
-                  ? "Plan mode: agent creates a plan before executing (Shift+Tab to toggle)"
-                  : "Agent mode: executes tools directly (Shift+Tab to toggle)"}
-              >
-                {isPlan ? (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                    <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  </svg>
+                    ) : (
+                      <>
+                        <div className="relative" ref={modelDropdownRef}>
+                          <button
+                            onClick={() => setShowModelDropdown(!showModelDropdown)}
+                            disabled={!isConnected}
+                            className={`flex items-center gap-0.5 font-mono-code truncate transition-colors select-none ${
+                              !isConnected ? "opacity-30 cursor-not-allowed" : "hover:text-cc-fg cursor-pointer"
+                            }`}
+                            title={`Model: ${sessionData.model} (relaunch required)`}
+                          >
+                            <span className="truncate">{formatModel(sessionData.model)}</span>
+                            <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                              <path d="M4 6l4 4 4-4" />
+                            </svg>
+                          </button>
+                          {showModelDropdown && (
+                            <div className="absolute left-0 bottom-full mb-1 w-52 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden max-h-64 overflow-y-auto">
+                              {codexModelOptions.map((m) => (
+                                <button
+                                  key={m.value}
+                                  onClick={() => {
+                                    sendToSession(sessionId, { type: "set_model", model: m.value });
+                                    setShowModelDropdown(false);
+                                  }}
+                                  className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
+                                    m.value === sessionData.model ? "text-cc-primary font-medium" : "text-cc-fg"
+                                  }`}
+                                >
+                                  <span className="mr-1.5">{m.icon}</span>
+                                  {m.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-cc-muted/40">&middot;</span>
+                        <div className="relative" ref={codexReasoningDropdownRef}>
+                          <button
+                            onClick={() => setShowCodexReasoningDropdown(!showCodexReasoningDropdown)}
+                            disabled={!isConnected}
+                            className={`flex items-center gap-1 truncate transition-colors select-none ${
+                              !isConnected ? "opacity-30 cursor-not-allowed" : "hover:text-cc-fg cursor-pointer"
+                            }`}
+                            title="Reasoning effort (relaunch required)"
+                          >
+                            <span>
+                              {CODEX_REASONING_EFFORTS.find(
+                                (x) => x.value === codexReasoningEffort,
+                              )?.label.toLowerCase() || "default"}
+                            </span>
+                            <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                              <path d="M4 6l4 4 4-4" />
+                            </svg>
+                          </button>
+                          {showCodexReasoningDropdown && (
+                            <div className="absolute left-0 bottom-full mb-1 w-40 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 py-1 overflow-hidden">
+                              {CODEX_REASONING_EFFORTS.map((effort) => (
+                                <button
+                                  key={effort.value || "default"}
+                                  onClick={() => {
+                                    sendToSession(sessionId, {
+                                      type: "set_codex_reasoning_effort",
+                                      effort: effort.value,
+                                    });
+                                    setShowCodexReasoningDropdown(false);
+                                  }}
+                                  className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
+                                    effort.value === codexReasoningEffort ? "text-cc-primary font-medium" : "text-cc-fg"
+                                  }`}
+                                >
+                                  {effort.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
-                <span>{isPlan ? "Plan" : "Agent"}</span>
-              </button>
-
-              {/* Ask Permission toggle (shield icon) + confirmation popover */}
-              <div className="relative" ref={askConfirmRef}>
-                <button
-                  onClick={toggleAskPermission}
-                  disabled={!isConnected}
-                  className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
-                    !isConnected
-                      ? "opacity-30 cursor-not-allowed text-cc-muted"
-                      : "cursor-pointer hover:bg-cc-hover"
-                  }`}
-                  title={askPermission
-                    ? "Permissions: asking before tool use (click to change)"
-                    : "Permissions: auto-approving tool use (click to change)"}
-                >
-                  {askPermission ? (
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
-                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-4 h-4 text-cc-muted">
-                      <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                    </svg>
-                  )}
-                </button>
-                {showAskConfirm && (
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 p-3">
-                    <p className="text-xs text-cc-fg mb-1 font-medium">
-                      {askPermission ? "Disable permission prompts?" : "Enable permission prompts?"}
-                    </p>
-                    <p className="text-[11px] text-cc-muted mb-3 leading-relaxed">
-                      This will restart the CLI session. Any in-progress operation will be interrupted. Your conversation will be preserved.
-                    </p>
-                    <div className="flex items-center justify-end gap-2">
+                {vscodeSelectionPayload && (
+                  <>
+                    {(sessionData?.git_branch || sessionData?.model) && (
+                      <span className="text-cc-muted/40">&middot;</span>
+                    )}
+                    <span
+                      className="inline-flex max-w-[160px] shrink min-w-0 items-center gap-0.5 rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
+                      title={buildVsCodeSelectionPrompt(vscodeSelectionPayload)}
+                    >
+                      <span className="truncate">{formatVsCodeSelectionSummary(vscodeSelectionPayload)}</span>
                       <button
-                        onClick={() => setShowAskConfirm(false)}
-                        className="px-2.5 py-1 text-[11px] rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                        type="button"
+                        className="ml-0.5 shrink-0 rounded hover:bg-cc-border/60 p-px cursor-pointer"
+                        title="Clear selection"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          useStore.getState().setVsCodeSelectionContext(null);
+                        }}
                       >
-                        Cancel
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        >
+                          <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" />
+                        </svg>
                       </button>
-                      <button
-                        onClick={confirmAskPermissionChange}
-                        className="px-2.5 py-1 text-[11px] rounded-md bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 transition-colors cursor-pointer font-medium"
-                      >
-                        Restart
-                      </button>
-                    </div>
-                  </div>
+                    </span>
+                  </>
                 )}
               </div>
-            </div>
+            )}
 
-            {/* Center: collapse toggle */}
-            <CollapseAllButton sessionId={sessionId} />
+            {/* Bottom toolbar */}
+            <div className="flex items-center justify-between px-2.5 pb-2.5">
+              {/* Left: mode indicator */}
+              <div className="flex items-center gap-1">
+                {/* Plan / Agent single toggle */}
+                <button
+                  onClick={cycleMode}
+                  disabled={!isConnected}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors select-none ${
+                    !isConnected
+                      ? "opacity-30 cursor-not-allowed text-cc-muted"
+                      : isPlan
+                        ? "bg-cc-primary/15 text-cc-primary cursor-pointer"
+                        : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                  }`}
+                  title={
+                    isPlan
+                      ? "Plan mode: agent creates a plan before executing (Shift+Tab to toggle)"
+                      : "Agent mode: executes tools directly (Shift+Tab to toggle)"
+                  }
+                >
+                  {isPlan ? (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M2 3.5h12v1H2zm0 4h8v1H2zm0 4h10v1H2z" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                      <path
+                        d="M2.5 4l4 4-4 4"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
+                      <path
+                        d="M8.5 4l4 4-4 4"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
+                    </svg>
+                  )}
+                  <span>{isPlan ? "Plan" : "Agent"}</span>
+                </button>
 
-            {/* Right: image + send/stop */}
-            <div className="flex items-center gap-3 sm:gap-1">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!isConnected}
-                className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
-                  isConnected
-                    ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                    : "text-cc-muted opacity-30 cursor-not-allowed"
-                }`}
-                title="Upload image"
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 sm:w-4 sm:h-4">
-                  <rect x="2" y="2" width="12" height="12" rx="2" />
-                  <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
-                  <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+                {/* Ask Permission toggle (shield icon) + confirmation popover */}
+                <div className="relative" ref={askConfirmRef}>
+                  <button
+                    onClick={toggleAskPermission}
+                    disabled={!isConnected}
+                    className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors select-none ${
+                      !isConnected ? "opacity-30 cursor-not-allowed text-cc-muted" : "cursor-pointer hover:bg-cc-hover"
+                    }`}
+                    title={
+                      askPermission
+                        ? "Permissions: asking before tool use (click to change)"
+                        : "Permissions: auto-approving tool use (click to change)"
+                    }
+                  >
+                    {askPermission ? (
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-primary">
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                        <path
+                          d="M6.5 8.5L7.5 9.5L10 7"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        className="w-4 h-4 text-cc-muted"
+                      >
+                        <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
+                      </svg>
+                    )}
+                  </button>
+                  {showAskConfirm && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-10 p-3">
+                      <p className="text-xs text-cc-fg mb-1 font-medium">
+                        {askPermission ? "Disable permission prompts?" : "Enable permission prompts?"}
+                      </p>
+                      <p className="text-[11px] text-cc-muted mb-3 leading-relaxed">
+                        This will restart the CLI session. Any in-progress operation will be interrupted. Your
+                        conversation will be preserved.
+                      </p>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setShowAskConfirm(false)}
+                          className="px-2.5 py-1 text-[11px] rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={confirmAskPermissionChange}
+                          className="px-2.5 py-1 text-[11px] rounded-md bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25 transition-colors cursor-pointer font-medium"
+                        >
+                          Restart
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-              <button
-                onClick={!voiceSupported ? () => toggleVoiceUnsupportedInfo(false) : handleMicClick}
-                disabled={voiceButtonDisabled}
-                aria-label="Voice input"
-                aria-disabled={!voiceSupported || voiceButtonDisabled}
-                className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
-                  (!voiceSupported || voiceButtonDisabled)
-                    ? "text-cc-muted opacity-30 cursor-not-allowed"
-                    : isRecording
-                    ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
-                }`}
-                title={voiceButtonTitle}
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className={`w-5 h-5 sm:w-4 sm:h-4 ${isRecording ? "animate-pulse" : ""}`}>
-                  <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
-                  <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
-                </svg>
-              </button>
+              {/* Center: collapse toggle */}
+              <CollapseAllButton sessionId={sessionId} />
 
-              {/* Unified send/stop button:
+              {/* Right: image + send/stop */}
+              <div className="flex items-center gap-3 sm:gap-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!isConnected}
+                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
+                    isConnected
+                      ? "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                      : "text-cc-muted opacity-30 cursor-not-allowed"
+                  }`}
+                  title="Upload image"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="w-5 h-5 sm:w-4 sm:h-4"
+                  >
+                    <rect x="2" y="2" width="12" height="12" rx="2" />
+                    <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                    <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+
+                <button
+                  onClick={!voiceSupported ? () => toggleVoiceUnsupportedInfo(false) : handleMicClick}
+                  disabled={voiceButtonDisabled}
+                  aria-label="Voice input"
+                  aria-disabled={!voiceSupported || voiceButtonDisabled}
+                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-lg transition-colors ${
+                    !voiceSupported || voiceButtonDisabled
+                      ? "text-cc-muted opacity-30 cursor-not-allowed"
+                      : isRecording
+                        ? "text-red-500 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                        : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover cursor-pointer"
+                  }`}
+                  title={voiceButtonTitle}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className={`w-5 h-5 sm:w-4 sm:h-4 ${isRecording ? "animate-pulse" : ""}`}
+                  >
+                    <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                    <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                  </svg>
+                </button>
+
+                {/* Unified send/stop button:
                    - Has text/images → Send (always, even while running)
                    - Empty + running → Stop
                    - Empty + idle → Send (disabled) */}
-              {!canSend && isRunning ? (
-                <button
-                  onClick={handleInterrupt}
-                  className="flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors bg-cc-error/10 hover:bg-cc-error/20 text-cc-error cursor-pointer"
-                  title="Stop generation"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 sm:w-3.5 sm:h-3.5">
-                    <rect x="3" y="3" width="10" height="10" rx="1" />
-                  </svg>
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors ${
-                    canSend
-                      ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                      : "bg-cc-hover text-cc-muted cursor-not-allowed"
-                  } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
-                  title="Send message"
-                >
-                  {sendPressing ? (
-                    <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />
-                  ) : (
-                    <PaperPlaneIcon className="w-5 h-5 sm:w-4 sm:h-4" />
-                  )}
-                </button>
-              )}
+                {!canSend && isRunning ? (
+                  <button
+                    onClick={handleInterrupt}
+                    className="flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors bg-cc-error/10 hover:bg-cc-error/20 text-cc-error cursor-pointer"
+                    title="Stop generation"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 sm:w-3.5 sm:h-3.5">
+                      <rect x="3" y="3" width="10" height="10" rx="1" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    className={`flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8 rounded-full transition-colors ${
+                      canSend
+                        ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                        : "bg-cc-hover text-cc-muted cursor-not-allowed"
+                    } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
+                    title="Send message"
+                  >
+                    {sendPressing ? (
+                      <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />
+                    ) : (
+                      <PaperPlaneIcon className="w-5 h-5 sm:w-4 sm:h-4" />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );

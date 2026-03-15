@@ -22,55 +22,62 @@ export function createTakodeRoutes(ctx: RouteContext) {
     return bridgeMode || null;
   };
 
-  const buildEnrichedSessions = async (
-    filterFn?: (s: ReturnType<typeof launcher.listSessions>[number]) => boolean,
-  ) => {
+  const buildEnrichedSessions = async (filterFn?: (s: ReturnType<typeof launcher.listSessions>[number]) => boolean) => {
     const sessions = launcher.listSessions();
     const names = sessionNames.getAllNames();
     const bridgeStates = wsBridge.getAllSessions();
     const bridgeMap = new Map(bridgeStates.map((state) => [state.session_id, state]));
     const pool = filterFn ? sessions.filter(filterFn) : sessions;
-    return Promise.all(pool.map(async (s) => {
-      try {
-        const { sessionAuthToken: _token, ...safeSession } = s;
-        const bridgeSession = wsBridge.getSession(s.sessionId);
-        if (bridgeSession?.state?.is_worktree && !safeSession.archived) {
-          await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
-            broadcastUpdate: true,
-            notifyPoller: true,
-          });
+    return Promise.all(
+      pool.map(async (s) => {
+        try {
+          const { sessionAuthToken: _token, ...safeSession } = s;
+          const bridgeSession = wsBridge.getSession(s.sessionId);
+          if (bridgeSession?.state?.is_worktree && !safeSession.archived) {
+            await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
+              broadcastUpdate: true,
+              notifyPoller: true,
+            });
+          }
+          const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
+          const cliConnected = wsBridge.isBackendConnected(s.sessionId);
+          const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : safeSession.state;
+          return {
+            ...safeSession,
+            state: effectiveState,
+            sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
+            name: names[s.sessionId] ?? s.name,
+            gitBranch: bridge?.git_branch || "",
+            gitAhead: bridge?.git_ahead || 0,
+            gitBehind: bridge?.git_behind || 0,
+            totalLinesAdded: bridge?.total_lines_added || 0,
+            totalLinesRemoved: bridge?.total_lines_removed || 0,
+            lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
+            cliConnected,
+            taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
+            keywords: wsBridge.getSessionKeywords(s.sessionId),
+            claimedQuestId: bridge?.claimedQuestId ?? null,
+            claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
+            ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
+            ...(s.isWorktree && s.archived
+              ? await (async () => {
+                  let exists = false;
+                  try {
+                    await accessAsync(s.cwd);
+                    exists = true;
+                  } catch {
+                    /* not found */
+                  }
+                  return { worktreeExists: exists };
+                })()
+              : {}),
+          };
+        } catch (e) {
+          console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
+          return { ...s, name: names[s.sessionId] ?? s.name };
         }
-        const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
-        const cliConnected = wsBridge.isBackendConnected(s.sessionId);
-        const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : safeSession.state;
-        return {
-          ...safeSession,
-          state: effectiveState,
-          sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
-          name: names[s.sessionId] ?? s.name,
-          gitBranch: bridge?.git_branch || "",
-          gitAhead: bridge?.git_ahead || 0,
-          gitBehind: bridge?.git_behind || 0,
-          totalLinesAdded: bridge?.total_lines_added || 0,
-          totalLinesRemoved: bridge?.total_lines_removed || 0,
-          lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
-          cliConnected,
-          taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
-          keywords: wsBridge.getSessionKeywords(s.sessionId),
-          claimedQuestId: bridge?.claimedQuestId ?? null,
-          claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
-          ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
-          ...(s.isWorktree && s.archived ? await (async () => {
-            let exists = false;
-            try { await accessAsync(s.cwd); exists = true; } catch { /* not found */ }
-            return { worktreeExists: exists };
-          })() : {}),
-        };
-      } catch (e) {
-        console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
-        return { ...s, name: names[s.sessionId] ?? s.name };
-      }
-    }));
+      }),
+    );
   };
 
   api.get("/takode/me", (c) => {
@@ -112,7 +119,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
         notifyPoller: true,
       });
     }
-    const bridge = wsBridge.getSession(sessionId)?.state ?? bridgeStates.find((state) => state.session_id === sessionId);
+    const bridge =
+      wsBridge.getSession(sessionId)?.state ?? bridgeStates.find((state) => state.session_id === sessionId);
     const names = sessionNames.getAllNames();
     const { sessionAuthToken: _token, ...safeSession } = session;
 
@@ -199,7 +207,10 @@ export function createTakodeRoutes(ctx: RouteContext) {
       const turns = parseInt(c.req.query("turns") ?? "1", 10);
       const since = parseInt(c.req.query("since") ?? "0", 10);
       const full = c.req.query("full") === "true";
-      return c.json({ ...base, ...{ mode: "detail" as const, turns: buildPeekResponse(history, { turns, since, full }, sessionId) } });
+      return c.json({
+        ...base,
+        ...{ mode: "detail" as const, turns: buildPeekResponse(history, { turns, since, full }, sessionId) },
+      });
     }
 
     // Default mode: smart overview (collapsed recent turns + expanded last turn)
@@ -221,16 +232,18 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const history = wsBridge.getMessageHistory(sessionId);
     if (!history) return c.json({ error: "Session not found in bridge" }, 404);
 
-    const result = buildReadResponse(history, idx, {
-      offset,
-      limit,
-      getToolResult: (toolUseId) => wsBridge.getToolResult(sessionId, toolUseId),
-    }, sessionId);
+    const result = buildReadResponse(
+      history,
+      idx,
+      {
+        offset,
+        limit,
+        getToolResult: (toolUseId) => wsBridge.getToolResult(sessionId, toolUseId),
+      },
+      sessionId,
+    );
     if (!result) {
-      return c.json(
-        { error: `Message index ${idx} out of range (0-${history.length - 1})` },
-        404,
-      );
+      return c.json({ error: `Message index ${idx} out of range (0-${history.length - 1})` }, 404);
     }
 
     return c.json(result);
@@ -307,7 +320,11 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const notFound: string[] = [];
     for (const ref of body.workerIds) {
       const wid = resolveId(String(ref));
-      if (wid) { resolved.push(wid); } else { notFound.push(String(ref)); }
+      if (wid) {
+        resolved.push(wid);
+      } else {
+        notFound.push(String(ref));
+      }
     }
     const result = launcher.herdSessions(orchId, resolved);
     return c.json({
@@ -343,17 +360,19 @@ export function createTakodeRoutes(ctx: RouteContext) {
       return c.json({ error: "Authenticated caller does not match orchestrator id" }, 403);
     }
     const herded = launcher.getHerdedSessions(orchId);
-    return c.json(herded.map(s => ({
-      sessionId: s.sessionId,
-      sessionNum: s.sessionNum,
-      name: sessionNames.getName(s.sessionId),
-      state: s.state,
-      cwd: s.cwd,
-      backendType: s.backendType,
-      cliConnected: wsBridge.isBackendConnected(s.sessionId),
-      isOrchestrator: s.isOrchestrator,
-      herdedBy: s.herdedBy,
-    })));
+    return c.json(
+      herded.map((s) => ({
+        sessionId: s.sessionId,
+        sessionNum: s.sessionNum,
+        name: sessionNames.getName(s.sessionId),
+        state: s.state,
+        cwd: s.cwd,
+        backendType: s.backendType,
+        cliConnected: wsBridge.isBackendConnected(s.sessionId),
+        isOrchestrator: s.isOrchestrator,
+        herdedBy: s.herdedBy,
+      })),
+    );
   });
 
   // ─── Leader answer (resolve AskUserQuestion / ExitPlanMode) ─────────
@@ -383,7 +402,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
         tool_name: perm.tool_name,
         timestamp: perm.timestamp,
         ...(perm.tool_name === "AskUserQuestion" ? { questions: perm.input.questions } : {}),
-        ...(perm.tool_name === "ExitPlanMode" ? { plan: perm.input.plan, allowedPrompts: perm.input.allowedPrompts } : {}),
+        ...(perm.tool_name === "ExitPlanMode"
+          ? { plan: perm.input.plan, allowedPrompts: perm.input.allowedPrompts }
+          : {}),
       });
     }
     return c.json({ pending });
@@ -401,9 +422,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const body = await c.req.json().catch(() => ({}));
     const response = typeof body.response === "string" ? body.response : "";
     if (
-      typeof body.callerSessionId === "string"
-      && body.callerSessionId.trim()
-      && body.callerSessionId.trim() !== auth.callerId
+      typeof body.callerSessionId === "string" &&
+      body.callerSessionId.trim() &&
+      body.callerSessionId.trim() !== auth.callerId
     ) {
       return c.json({ error: "callerSessionId does not match authenticated caller" }, 403);
     }
@@ -489,7 +510,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       sessionNum: info.sessionNum,
       isOrchestrator: info.isOrchestrator || false,
       herdedBy: info.herdedBy,
-      herdedWorkers: herded.map(s => ({
+      herdedWorkers: herded.map((s) => ({
         sessionId: s.sessionId,
         sessionNum: s.sessionNum,
         name: sessionNames.getName(s.sessionId),
@@ -499,7 +520,6 @@ export function createTakodeRoutes(ctx: RouteContext) {
       ...(bridgeDiag || {}),
     });
   });
-
 
   return api;
 }

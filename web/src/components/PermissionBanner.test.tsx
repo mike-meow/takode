@@ -48,9 +48,7 @@ beforeEach(() => {
 
 describe("PermissionBanner label rendering", () => {
   it("renders 'Permission Request' label for standard tools", () => {
-    render(
-      <PermissionBanner permission={makePermission()} sessionId="s1" />,
-    );
+    render(<PermissionBanner permission={makePermission()} sessionId="s1" />);
     expect(screen.getByText("Permission Request")).toBeTruthy();
   });
 
@@ -122,18 +120,20 @@ describe("EditDisplay", () => {
           tool_name: "Edit",
           input: {
             file_path: "/src/main.ts",
-            changes: [{
-              path: "/src/main.ts",
-              kind: "modify",
-              unified_diff: [
-                "diff --git a/src/main.ts b/src/main.ts",
-                "--- a/src/main.ts",
-                "+++ b/src/main.ts",
-                "@@ -1 +1 @@",
-                "-const a = 1;",
-                "+const a = 3;",
-              ].join("\n"),
-            }],
+            changes: [
+              {
+                path: "/src/main.ts",
+                kind: "modify",
+                unified_diff: [
+                  "diff --git a/src/main.ts b/src/main.ts",
+                  "--- a/src/main.ts",
+                  "+++ b/src/main.ts",
+                  "@@ -1 +1 @@",
+                  "-const a = 1;",
+                  "+const a = 3;",
+                ].join("\n"),
+              },
+            ],
           },
         })}
         sessionId="s1"
@@ -194,14 +194,13 @@ describe("WriteDisplay", () => {
           tool_name: "Write",
           input: {
             file_path: "/src/output.ts",
-            changes: [{
-              path: "/src/output.ts",
-              kind: "create",
-              diff: [
-                "+export default 42;",
-                "+export const created = true;",
-              ].join("\n"),
-            }],
+            changes: [
+              {
+                path: "/src/output.ts",
+                kind: "create",
+                diff: ["+export default 42;", "+export const created = true;"].join("\n"),
+              },
+            ],
           },
         })}
         sessionId="s1"
@@ -448,11 +447,14 @@ describe("AskUserQuestionDisplay", () => {
     // Clicking an option with a single question auto-submits
     fireEvent.click(screen.getByText("Red"));
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "permission_response",
-      request_id: "req-ask-1",
-      behavior: "allow",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-ask-1",
+        behavior: "allow",
+      }),
+    );
     // The updated_input spreads permission.input and adds { answers: { "0": "Red" } }
     const call = mockSendToSession.mock.calls[0][1];
     expect(call.updated_input.answers).toEqual({ "0": "Red" });
@@ -682,10 +684,13 @@ describe("PlanReviewOverlay", () => {
     fireEvent.click(screen.getByText("Deny"));
 
     // Should send deny permission_response AND interrupt
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "permission_response",
-      behavior: "deny",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "permission_response",
+        behavior: "deny",
+      }),
+    );
     expect(mockSendToSession).toHaveBeenCalledWith("s1", { type: "interrupt" });
   });
 
@@ -838,12 +843,14 @@ describe("Custom Permission Rule Editor", () => {
       request_id: "req-custom-1",
       behavior: "allow",
       updated_input: undefined,
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "Bash", ruleContent: "npm test" }],
-        behavior: "allow",
-        destination: "session",
-      }],
+      updated_permissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "npm test" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ],
     });
 
     // removePermission is NOT called locally — the server broadcasts
@@ -870,12 +877,14 @@ describe("Custom Permission Rule Editor", () => {
       request_id: "req-custom-2",
       behavior: "allow",
       updated_input: undefined,
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "Bash", ruleContent: "npm run build" }],
-        behavior: "allow",
-        destination: "projectSettings",
-      }],
+      updated_permissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "npm run build" }],
+          behavior: "allow",
+          destination: "projectSettings",
+        },
+      ],
     });
     vi.useRealTimers();
   });
@@ -898,12 +907,14 @@ describe("Custom Permission Rule Editor", () => {
       request_id: "req-custom-3",
       behavior: "allow",
       updated_input: undefined,
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "Read", ruleContent: "/etc/hosts" }],
-        behavior: "allow",
-        destination: "userSettings",
-      }],
+      updated_permissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Read", ruleContent: "/etc/hosts" }],
+          behavior: "allow",
+          destination: "userSettings",
+        },
+      ],
     });
     vi.useRealTimers();
   });
@@ -926,12 +937,14 @@ describe("Custom Permission Rule Editor", () => {
       request_id: "req-custom-4",
       behavior: "allow",
       updated_input: undefined,
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "SomeCustomTool" }],
-        behavior: "allow",
-        destination: "session",
-      }],
+      updated_permissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "SomeCustomTool" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ],
     });
     vi.useRealTimers();
   });
@@ -956,12 +969,14 @@ describe("Custom Permission Rule Editor", () => {
       request_id: "req-custom-5",
       behavior: "allow",
       updated_input: undefined,
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "Bash", ruleContent: "npm run *" }],
-        behavior: "allow",
-        destination: "session",
-      }],
+      updated_permissions: [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "npm run *" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ],
     });
     vi.useRealTimers();
   });
@@ -979,16 +994,21 @@ describe("Custom Permission Rule Editor", () => {
     const input = screen.getByDisplayValue("echo hello");
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "permission_response",
-      behavior: "allow",
-      updated_permissions: [{
-        type: "addRules",
-        rules: [{ toolName: "Bash", ruleContent: "echo hello" }],
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "permission_response",
         behavior: "allow",
-        destination: "session",
-      }],
-    }));
+        updated_permissions: [
+          {
+            type: "addRules",
+            rules: [{ toolName: "Bash", ruleContent: "echo hello" }],
+            behavior: "allow",
+            destination: "session",
+          },
+        ],
+      }),
+    );
     vi.useRealTimers();
   });
 });

@@ -128,12 +128,13 @@ export class CronScheduler {
         env: envVars,
         backendType: job.backendType,
         codexInternetAccess: job.backendType === "codex" ? (job.codexInternetAccess ?? true) : undefined,
-        codexReasoningEffort: job.backendType === "codex"
-          ? (job.codexReasoningEffort?.trim() || undefined)
-          : undefined,
-        codexSandbox: job.backendType === "codex"
-          ? (job.permissionMode === "bypassPermissions" ? "danger-full-access" : "workspace-write")
-          : undefined,
+        codexReasoningEffort: job.backendType === "codex" ? job.codexReasoningEffort?.trim() || undefined : undefined,
+        codexSandbox:
+          job.backendType === "codex"
+            ? job.permissionMode === "bypassPermissions"
+              ? "danger-full-access"
+              : "workspace-write"
+            : undefined,
       });
 
       execution.sessionId = sessionInfo.sessionId;
@@ -166,7 +167,6 @@ export class CronScheduler {
 
       execution.success = true;
       this.addExecution(jobId, execution);
-
     } catch (err) {
       console.error(`[cron-scheduler] Job "${job.name}" failed:`, err);
       execution.error = err instanceof Error ? err.message : String(err);

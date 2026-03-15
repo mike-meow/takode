@@ -24,7 +24,9 @@ function userMsg(content: string, ts = Date.now()): BrowserIncomingMessage {
 }
 
 function assistantMsg(
-  contentBlocks: Array<{ type: "text"; text: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }>,
+  contentBlocks: Array<
+    { type: "text"; text: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  >,
   parentToolUseId: string | null = null,
 ): BrowserIncomingMessage {
   return {
@@ -157,24 +159,26 @@ describe("parseResponse", () => {
     it("parses NO_CHANGE even when model adds explanation on subsequent lines", () => {
       // Model sometimes outputs "NO_CHANGE" then explains its reasoning — parser
       // should extract the first line only
-      expect(parseResponse(
-        "NO_CHANGE\n\nThe current title accurately describes what's happening.",
-        false,
-      )).toEqual({ action: "no_change", keywords: [] });
+      expect(parseResponse("NO_CHANGE\n\nThe current title accurately describes what's happening.", false)).toEqual({
+        action: "no_change",
+        keywords: [],
+      });
     });
 
     it("parses REVISE with trailing explanation lines", () => {
-      expect(parseResponse(
-        "REVISE: Fix token refresh\n\nThe task narrowed to just the refresh flow.",
-        false,
-      )).toEqual({ action: "revise", title: "Fix token refresh", keywords: [] });
+      expect(parseResponse("REVISE: Fix token refresh\n\nThe task narrowed to just the refresh flow.", false)).toEqual({
+        action: "revise",
+        title: "Fix token refresh",
+        keywords: [],
+      });
     });
 
     it("parses first-turn title even with trailing explanation", () => {
-      expect(parseResponse(
-        "Debug auth pipeline\n\nThis session focuses on authentication.",
-        true,
-      )).toEqual({ action: "name", title: "Debug auth pipeline", keywords: [] });
+      expect(parseResponse("Debug auth pipeline\n\nThis session focuses on authentication.", true)).toEqual({
+        action: "name",
+        title: "Debug auth pipeline",
+        keywords: [],
+      });
     });
 
     it("rejects unstructured multi-line output without a valid marker", () => {
@@ -195,21 +199,15 @@ describe("formatToolCall", () => {
   const home = process.env.HOME || process.env.USERPROFILE || "";
 
   it("formats Read with file path and shortens home dir", () => {
-    expect(formatToolCall("Read", { file_path: `${home}/project/src/auth.ts` })).toBe(
-      "[Read: ~/project/src/auth.ts]",
-    );
+    expect(formatToolCall("Read", { file_path: `${home}/project/src/auth.ts` })).toBe("[Read: ~/project/src/auth.ts]");
   });
 
   it("formats Edit with file path and shortens home dir", () => {
-    expect(formatToolCall("Edit", { file_path: `${home}/src/main.ts` })).toBe(
-      "[Edit: ~/src/main.ts]",
-    );
+    expect(formatToolCall("Edit", { file_path: `${home}/src/main.ts` })).toBe("[Edit: ~/src/main.ts]");
   });
 
   it("formats Write with file path (no home shortening for /tmp)", () => {
-    expect(formatToolCall("Write", { file_path: "/tmp/test.txt" })).toBe(
-      "[Write: /tmp/test.txt]",
-    );
+    expect(formatToolCall("Write", { file_path: "/tmp/test.txt" })).toBe("[Write: /tmp/test.txt]");
   });
 
   it("formats Bash with truncated command", () => {
@@ -229,9 +227,7 @@ describe("formatToolCall", () => {
   });
 
   it("formats Glob with pattern", () => {
-    expect(formatToolCall("Glob", { pattern: "**/*.test.ts" })).toBe(
-      "[Glob: **/*.test.ts]",
-    );
+    expect(formatToolCall("Glob", { pattern: "**/*.test.ts" })).toBe("[Glob: **/*.test.ts]");
   });
 
   it("formats Task with agent type and description", () => {
@@ -250,15 +246,19 @@ describe("formatToolCall", () => {
 
   it("formats ExitPlanMode with plan title from markdown header", () => {
     // ExitPlanMode input contains a markdown plan; extract the first heading as title
-    expect(formatToolCall("ExitPlanMode", {
-      plan: "# Revert Virtuoso, Fix Re-render Root Causes\n\n## Context\n\nLong conversations caused lag...",
-    })).toBe('[ExitPlanMode: "Revert Virtuoso, Fix Re-render Root Causes"]');
+    expect(
+      formatToolCall("ExitPlanMode", {
+        plan: "# Revert Virtuoso, Fix Re-render Root Causes\n\n## Context\n\nLong conversations caused lag...",
+      }),
+    ).toBe('[ExitPlanMode: "Revert Virtuoso, Fix Re-render Root Causes"]');
   });
 
   it("formats ExitPlanMode with plain text first line when no # prefix", () => {
-    expect(formatToolCall("ExitPlanMode", {
-      plan: "Fix the authentication flow\n\nDetails...",
-    })).toBe('[ExitPlanMode: "Fix the authentication flow"]');
+    expect(
+      formatToolCall("ExitPlanMode", {
+        plan: "Fix the authentication flow\n\nDetails...",
+      }),
+    ).toBe('[ExitPlanMode: "Fix the authentication flow"]');
   });
 
   it("formats ExitPlanMode with no plan content", () => {
@@ -266,9 +266,7 @@ describe("formatToolCall", () => {
   });
 
   it("formats unknown tool with first string input", () => {
-    expect(formatToolCall("CustomTool", { query: "search this" })).toBe(
-      "[CustomTool: query=search this]",
-    );
+    expect(formatToolCall("CustomTool", { query: "search this" })).toBe("[CustomTool: query=search this]");
   });
 
   it("formats unknown tool with no string inputs as bare name", () => {
@@ -332,13 +330,9 @@ describe("buildConversationBlock", () => {
   it("groups tool calls between user messages into separate turns", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Fix the auth bug"),
-      assistantMsg([
-        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo test" } },
-      ]),
+      assistantMsg([{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo test" } }]),
       userMsg("Now add dark mode"),
-      assistantMsg([
-        { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "echo done" } },
-      ]),
+      assistantMsg([{ type: "tool_use", id: "tu-2", name: "Bash", input: { command: "echo done" } }]),
     ];
     const block = buildConversationBlock(history);
     expect(block).toContain("    | Fix the auth bug");
@@ -363,9 +357,7 @@ describe("buildConversationBlock", () => {
     const history: BrowserIncomingMessage[] = [];
     for (let i = 0; i < 10; i++) {
       history.push(userMsg(`Message ${i}`));
-      history.push(
-        assistantMsg([{ type: "tool_use", id: `tu-${i}`, name: "Bash", input: { command: `echo ${i}` } }]),
-      );
+      history.push(assistantMsg([{ type: "tool_use", id: `tu-${i}`, name: "Bash", input: { command: `echo ${i}` } }]));
     }
     const block = buildConversationBlock(history);
     expect(block).not.toContain("Message 0");
@@ -377,9 +369,7 @@ describe("buildConversationBlock", () => {
   it("uses indentation prefix on content lines and headers without prefix", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Hello"),
-      assistantMsg([
-        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo hello" } },
-      ]),
+      assistantMsg([{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo hello" } }]),
     ];
     const block = buildConversationBlock(history);
     const contentLines = block.split("\n").filter((l) => l.trim() !== "");
@@ -400,9 +390,7 @@ describe("buildConversationBlock", () => {
   it("indents every line of multi-line response text with the | prefix", () => {
     const history: BrowserIncomingMessage[] = [
       userMsg("Help me"),
-      assistantMsg([
-        { type: "text", text: "First line of response.\nSecond line of response." },
-      ]),
+      assistantMsg([{ type: "text", text: "First line of response.\nSecond line of response." }]),
     ];
     const block = buildConversationBlock(history);
     expect(block).toContain("    | First line of response.");
@@ -415,7 +403,10 @@ describe("buildConversationBlock", () => {
       content: "Fix this CSS",
       timestamp: Date.now(),
       id: "u-img",
-      images: [{ imageId: "img1", media_type: "image/png" }, { imageId: "img2", media_type: "image/png" }],
+      images: [
+        { imageId: "img1", media_type: "image/png" },
+        { imageId: "img2", media_type: "image/png" },
+      ],
     };
     const block = buildConversationBlock([msgWithImages]);
     expect(block).toContain("Fix this CSS [2 images attached]");
@@ -489,7 +480,12 @@ describe("buildConversationBlock", () => {
       userMsg("Research the codebase"),
       assistantMsg([
         { type: "text", text: "I'll spawn sub-agents to explore." },
-        { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find auth code" } },
+        {
+          type: "tool_use",
+          id: "tu-1",
+          name: "Task",
+          input: { subagent_type: "Explore", description: "Find auth code" },
+        },
         { type: "tool_use", id: "tu-2", name: "Task", input: { subagent_type: "Explore", description: "Find routes" } },
         { type: "tool_use", id: "tu-3", name: "Bash", input: { command: "echo test" } },
       ]),
@@ -509,10 +505,13 @@ describe("buildConversationBlock", () => {
         { type: "tool_use", id: "tu-1", name: "Task", input: { subagent_type: "Explore", description: "Find code" } },
       ]),
       // Sub-agent response — should be filtered
-      assistantMsg([
-        { type: "text", text: "Sub-agent found the code in auth.ts." },
-        { type: "tool_use", id: "tu-sub", name: "Bash", input: { command: "grep -r auth" } },
-      ], "tu-1"),
+      assistantMsg(
+        [
+          { type: "text", text: "Sub-agent found the code in auth.ts." },
+          { type: "tool_use", id: "tu-sub", name: "Bash", input: { command: "grep -r auth" } },
+        ],
+        "tu-1",
+      ),
     ];
     const block = buildConversationBlock(history);
     expect(block).toContain("I'll spawn sub-agents.");
@@ -718,7 +717,16 @@ describe("buildUpdatePrompt", () => {
   });
 
   it("omits NEW section for agent-triggered evaluations", () => {
-    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue")], undefined, false, undefined, null, false, false);
+    const prompt = buildUpdatePrompt(
+      "Fix Auth Bug",
+      [userMsg("Continue")],
+      undefined,
+      false,
+      undefined,
+      null,
+      false,
+      false,
+    );
     expect(prompt).toContain("### NO_CHANGE");
     expect(prompt).toContain("### REVISE:");
     expect(prompt).not.toContain("### NEW:");
@@ -788,9 +796,7 @@ describe("buildUpdatePrompt", () => {
   });
 
   it("omits task history section when only one task exists", () => {
-    const tasks = [
-      { title: "Fix auth bug", action: "name" as const, timestamp: 1000, triggerMessageId: "m1" },
-    ];
+    const tasks = [{ title: "Fix auth bug", action: "name" as const, timestamp: 1000, triggerMessageId: "m1" }];
     const prompt = buildUpdatePrompt("Fix auth bug", [userMsg("Continue")], undefined, false, tasks);
     expect(prompt).not.toContain("Previous tasks");
   });
@@ -878,15 +884,15 @@ describe("parseResponse with keywords", () => {
 
 describe("filterUpdateResultByMode", () => {
   it("keeps NEW when allowNewTask is true", () => {
-    expect(
-      filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, true),
-    ).toEqual({ action: "new", title: "Add dark mode", keywords: [] });
+    expect(filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, true)).toEqual({
+      action: "new",
+      title: "Add dark mode",
+      keywords: [],
+    });
   });
 
   it("drops NEW when allowNewTask is false", () => {
-    expect(
-      filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, false),
-    ).toBeNull();
+    expect(filterUpdateResultByMode({ action: "new", title: "Add dark mode", keywords: [] }, false)).toBeNull();
   });
 
   it("keeps NO_CHANGE and REVISE when allowNewTask is false", () => {
@@ -964,12 +970,10 @@ describe("parseResponse with backtick-wrapped output", () => {
 
 describe("quest context in buildFirstTurnPrompt", () => {
   it("includes quest context when claimedQuest is provided", () => {
-    const prompt = buildFirstTurnPrompt(
-      [userMsg("/quest claim q-20")],
-      undefined,
-      true,
-      { id: "q-20", title: "Fix auto-namer not triggering on agent stop" },
-    );
+    const prompt = buildFirstTurnPrompt([userMsg("/quest claim q-20")], undefined, true, {
+      id: "q-20",
+      title: "Fix auto-namer not triggering on agent stop",
+    });
     expect(prompt).toContain("Active quest: q-20");
     expect(prompt).toContain("Fix auto-namer not triggering on agent stop");
     expect(prompt).toContain("Use it as context for the title");
@@ -988,27 +992,16 @@ describe("quest context in buildFirstTurnPrompt", () => {
 
 describe("quest context in buildUpdatePrompt", () => {
   it("includes quest context when claimedQuest is provided", () => {
-    const prompt = buildUpdatePrompt(
-      "Fix Auth Bug",
-      [userMsg("Continue fixing")],
-      undefined,
-      false,
-      undefined,
-      { id: "q-5", title: "Add dark mode toggle" },
-    );
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")], undefined, false, undefined, {
+      id: "q-5",
+      title: "Add dark mode toggle",
+    });
     expect(prompt).toContain("Active quest: q-5");
     expect(prompt).toContain("Add dark mode toggle");
   });
 
   it("omits quest context when claimedQuest is null", () => {
-    const prompt = buildUpdatePrompt(
-      "Fix Auth Bug",
-      [userMsg("Continue fixing")],
-      undefined,
-      false,
-      undefined,
-      null,
-    );
+    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")], undefined, false, undefined, null);
     expect(prompt).not.toContain("Active quest");
   });
 
@@ -1063,13 +1056,29 @@ describe("buildUpdatePrompt with isUnnamed", () => {
   });
 
   it("uses normal prompt when isUnnamed is false", () => {
-    const prompt = buildUpdatePrompt("Fix Auth Bug", [userMsg("Continue fixing")], undefined, false, undefined, null, false);
+    const prompt = buildUpdatePrompt(
+      "Fix Auth Bug",
+      [userMsg("Continue fixing")],
+      undefined,
+      false,
+      undefined,
+      null,
+      false,
+    );
     expect(prompt).toContain('The current session task is: "Fix Auth Bug"');
     expect(prompt).toContain("NO_CHANGE");
   });
 
   it("instructs model to always generate (best-effort) for unnamed sessions", () => {
-    const prompt = buildUpdatePrompt("Deep Reef", [userMsg("/quest claim q-20")], undefined, false, undefined, null, true);
+    const prompt = buildUpdatePrompt(
+      "Deep Reef",
+      [userMsg("/quest claim q-20")],
+      undefined,
+      false,
+      undefined,
+      null,
+      true,
+    );
     expect(prompt).toContain("ALWAYS generate a title");
     expect(prompt).toContain("Never refuse");
   });

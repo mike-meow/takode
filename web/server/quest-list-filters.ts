@@ -17,14 +17,9 @@ function parseCsv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-export function applyQuestListFilters(
-  quests: QuestmasterTask[],
-  filters: QuestListFilterOptions,
-): QuestmasterTask[] {
+export function applyQuestListFilters(quests: QuestmasterTask[], filters: QuestListFilterOptions): QuestmasterTask[] {
   const statuses = new Set(parseCsv(filters.status));
-  const tagTokens = new Set(
-    [...parseCsv(filters.tags), ...parseCsv(filters.tag)].map((tag) => tag.toLowerCase()),
-  );
+  const tagTokens = new Set([...parseCsv(filters.tags), ...parseCsv(filters.tag)].map((tag) => tag.toLowerCase()));
   const verificationScopes = new Set(parseCsv(filters.verification).map((scope) => scope.toLowerCase()));
   const sessionId = filters.session?.trim() || "";
   const textQuery = filters.text?.trim().toLowerCase() || "";
@@ -34,22 +29,19 @@ export function applyQuestListFilters(
 
     if (verificationScopes.size > 0) {
       const isVerification = quest.status === "needs_verification";
-      const inInbox =
-        isVerification && !!(quest as { verificationInboxUnread?: boolean }).verificationInboxUnread;
+      const inInbox = isVerification && !!(quest as { verificationInboxUnread?: boolean }).verificationInboxUnread;
       const wantsAnyVerification =
-        verificationScopes.has("all")
-        || verificationScopes.has("verification")
-        || verificationScopes.has("needs_verification");
+        verificationScopes.has("all") ||
+        verificationScopes.has("verification") ||
+        verificationScopes.has("needs_verification");
       const wantsInbox =
-        verificationScopes.has("inbox")
-        || verificationScopes.has("unread")
-        || verificationScopes.has("new");
+        verificationScopes.has("inbox") || verificationScopes.has("unread") || verificationScopes.has("new");
       const wantsReviewed =
-        verificationScopes.has("reviewed")
-        || verificationScopes.has("non-inbox")
-        || verificationScopes.has("non_inbox")
-        || verificationScopes.has("read")
-        || verificationScopes.has("acknowledged");
+        verificationScopes.has("reviewed") ||
+        verificationScopes.has("non-inbox") ||
+        verificationScopes.has("non_inbox") ||
+        verificationScopes.has("read") ||
+        verificationScopes.has("acknowledged");
 
       let matchesVerificationScope = false;
       if (wantsAnyVerification && isVerification) matchesVerificationScope = true;
@@ -76,7 +68,8 @@ export function applyQuestListFilters(
     }
 
     if (textQuery) {
-      const haystack = `${quest.questId}\n${quest.title}\n${"description" in quest ? quest.description || "" : ""}`.toLowerCase();
+      const haystack =
+        `${quest.questId}\n${quest.title}\n${"description" in quest ? quest.description || "" : ""}`.toLowerCase();
       if (!haystack.includes(textQuery)) return false;
     }
 

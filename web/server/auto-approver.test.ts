@@ -1,14 +1,16 @@
 import { describe, it, expect } from "vitest";
-import {
-  _testHelpers,
-  getApprovalLogIndex,
-  getApprovalLogEntry,
-  type AutoApprovalResult,
-} from "./auto-approver.js";
+import { _testHelpers, getApprovalLogIndex, getApprovalLogEntry, type AutoApprovalResult } from "./auto-approver.js";
 
 const {
-  buildPrompt, formatToolCall, parseResponse, stripCodeFences, parseYaml,
-  parseFreeForm, SYSTEM_PROMPT, SKIP_IN_RECENT_CONTEXT, Semaphore,
+  buildPrompt,
+  formatToolCall,
+  parseResponse,
+  stripCodeFences,
+  parseYaml,
+  parseFreeForm,
+  SYSTEM_PROMPT,
+  SKIP_IN_RECENT_CONTEXT,
+  Semaphore,
 } = _testHelpers;
 
 describe("auto-approver", () => {
@@ -238,7 +240,10 @@ APPROVE`;
     });
 
     it("omits null and undefined values from arguments", () => {
-      const result = formatToolCall("Bash", { command: "ls -la", description: null, timeout: undefined } as Record<string, unknown>);
+      const result = formatToolCall("Bash", { command: "ls -la", description: null, timeout: undefined } as Record<
+        string,
+        unknown
+      >);
       expect(result).toContain('"command": "ls -la"');
       expect(result).not.toContain("description");
       expect(result).not.toContain("timeout");
@@ -299,14 +304,9 @@ APPROVE`;
     });
 
     it("shows cwd once even with recent tool calls", () => {
-      const prompt = buildPrompt(
-        "Bash",
-        { command: "npm test" },
-        undefined,
-        "Allow tests",
-        "/home/user/project",
-        [{ toolName: "Bash", input: { command: "git log" } }],
-      );
+      const prompt = buildPrompt("Bash", { command: "npm test" }, undefined, "Allow tests", "/home/user/project", [
+        { toolName: "Bash", input: { command: "git log" } },
+      ]);
 
       // Count occurrences of the cwd path — should appear exactly once (in the section)
       const matches = prompt.match(/\/home\/user\/project/g) || [];
@@ -344,13 +344,7 @@ APPROVE`;
     });
 
     it("includes 3-step evaluation instructions with YAML format in step 3", () => {
-      const prompt = buildPrompt(
-        "Bash",
-        { command: "npm test" },
-        undefined,
-        "Allow tests",
-        "/home/user/project",
-      );
+      const prompt = buildPrompt("Bash", { command: "npm test" }, undefined, "Allow tests", "/home/user/project");
 
       expect(prompt).toContain("Step 1:");
       expect(prompt).toContain("Step 2:");
@@ -361,14 +355,9 @@ APPROVE`;
     });
 
     it("formats recent tool calls and permission request consistently", () => {
-      const prompt = buildPrompt(
-        "Bash",
-        { command: "npm test" },
-        undefined,
-        "Allow tests",
-        "/home/user/project",
-        [{ toolName: "Grep", input: { pattern: "TODO", path: "/src" } }],
-      );
+      const prompt = buildPrompt("Bash", { command: "npm test" }, undefined, "Allow tests", "/home/user/project", [
+        { toolName: "Grep", input: { pattern: "TODO", path: "/src" } },
+      ]);
 
       const recentIdx = prompt.indexOf("## Recent Tool Calls");
       const requestIdx = prompt.indexOf("## Permission Request Being Evaluated");
@@ -514,7 +503,9 @@ APPROVE`;
       await sem.acquire(); // takes the only permit
 
       let secondAcquired = false;
-      const p = sem.acquire().then(() => { secondAcquired = true; });
+      const p = sem.acquire().then(() => {
+        secondAcquired = true;
+      });
 
       // Second acquire should be queued, not resolved yet
       expect(sem.queueLength).toBe(1);
@@ -540,9 +531,12 @@ APPROVE`;
       expect(sem.queueLength).toBe(3);
 
       // Release 3 times — each should wake the next waiter in order
-      sem.release(); await p1;
-      sem.release(); await p2;
-      sem.release(); await p3;
+      sem.release();
+      await p1;
+      sem.release();
+      await p2;
+      sem.release();
+      await p3;
 
       expect(order).toEqual([1, 2, 3]);
     });
@@ -556,13 +550,16 @@ APPROVE`;
       const promises = [sem.acquire(), sem.acquire(), sem.acquire()];
       expect(sem.queueLength).toBe(3);
 
-      sem.release(); await promises[0];
+      sem.release();
+      await promises[0];
       expect(sem.queueLength).toBe(2);
 
-      sem.release(); await promises[1];
+      sem.release();
+      await promises[1];
       expect(sem.queueLength).toBe(1);
 
-      sem.release(); await promises[2];
+      sem.release();
+      await promises[2];
       expect(sem.queueLength).toBe(0);
 
       // Clean up

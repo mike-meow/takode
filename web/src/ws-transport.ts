@@ -116,12 +116,14 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     const lastSeq = hasLocalMessages ? getLastSeq(sessionId) : 0;
     const knownFrozenCount = hasLocalMessages ? callbacks.getKnownFrozenCount(sessionId) : 0;
     const knownFrozenHash = hasLocalMessages ? callbacks.getKnownFrozenHash(sessionId) : undefined;
-    ws.send(JSON.stringify({
-      type: "session_subscribe",
-      last_seq: lastSeq,
-      known_frozen_count: Math.max(0, Math.floor(knownFrozenCount)),
-      ...(knownFrozenHash ? { known_frozen_hash: knownFrozenHash } : {}),
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: lastSeq,
+        known_frozen_count: Math.max(0, Math.floor(knownFrozenCount)),
+        ...(knownFrozenHash ? { known_frozen_hash: knownFrozenHash } : {}),
+      }),
+    );
     return true;
   }
 

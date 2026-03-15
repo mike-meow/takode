@@ -45,18 +45,20 @@ describe("MarkdownContent quest links", () => {
   it("shows QuestHoverCard content when hovering a quest link", async () => {
     useStore.setState((state) => ({
       ...state,
-      quests: [{
-        id: "q-42-v1",
-        questId: "q-42",
-        version: 1,
-        title: "Fix auth race condition",
-        createdAt: 1,
-        status: "in_progress",
-        description: "Ensure claim state updates atomically.",
-        sessionId: "session-abc",
-        claimedAt: 1,
-        tags: ["ui", "bugfix"],
-      }],
+      quests: [
+        {
+          id: "q-42-v1",
+          questId: "q-42",
+          version: 1,
+          title: "Fix auth race condition",
+          createdAt: 1,
+          status: "in_progress",
+          description: "Ensure claim state updates atomically.",
+          sessionId: "session-abc",
+          claimedAt: 1,
+          tags: ["ui", "bugfix"],
+        },
+      ],
     }));
 
     render(<MarkdownContent text="[q-42](quest:q-42)" />);
@@ -79,13 +81,15 @@ describe("MarkdownContent quest links", () => {
   it("routes session: schema links to the referenced session hash", () => {
     useStore.setState((state) => ({
       ...state,
-      sdkSessions: [{
-        sessionId: "session-abc",
-        state: "connected",
-        cwd: "/repo",
-        createdAt: 1,
-        sessionNum: 123,
-      }],
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
     }));
 
     render(<MarkdownContent text="[#123](session:123)" />);
@@ -99,13 +103,15 @@ describe("MarkdownContent quest links", () => {
   it("shows SessionHoverCard content when hovering a session link", async () => {
     useStore.setState((state) => ({
       ...state,
-      sdkSessions: [{
-        sessionId: "session-abc",
-        state: "connected",
-        cwd: "/repo",
-        createdAt: 1,
-        sessionNum: 123,
-      }],
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
       sessionNames: new Map([["session-abc", "Auth Worker"]]),
     }));
 
@@ -123,11 +129,7 @@ describe("MarkdownContent quest links", () => {
     fireEvent.click(screen.getByRole("link", { name: "app.ts" }));
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
-        "vscode://file//tmp/project/app.ts:42:1",
-        "_blank",
-        "noopener,noreferrer",
-      );
+      expect(openSpy).toHaveBeenCalledWith("vscode://file//tmp/project/app.ts:42:1", "_blank", "noopener,noreferrer");
     });
     openSpy.mockRestore();
   });
@@ -156,14 +158,16 @@ describe("MarkdownContent quest links", () => {
     useStore.setState((state) => ({
       ...state,
       currentSessionId: "s1",
-      sessions: new Map([[
-        "s1",
-        {
-          session_id: "s1",
-          cwd: "/repo",
-          repo_root: "/repo",
-        } as never,
-      ]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            session_id: "s1",
+            cwd: "/repo",
+            repo_root: "/repo",
+          } as never,
+        ],
+      ]),
     }));
 
     render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162)" />);
@@ -186,15 +190,17 @@ describe("MarkdownContent quest links", () => {
     useStore.setState((state) => ({
       ...state,
       currentSessionId: "s1",
-      sessions: new Map([[
-        "s1",
-        {
-          session_id: "s1",
-          cwd: "/worktrees/repo-branch",
-          repo_root: "/repo",
-          is_worktree: true,
-        } as never,
-      ]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            session_id: "s1",
+            cwd: "/worktrees/repo-branch",
+            repo_root: "/repo",
+            is_worktree: true,
+          } as never,
+        ],
+      ]),
     }));
 
     render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162)" />);
@@ -267,14 +273,16 @@ describe("MarkdownContent quest links", () => {
     useStore.setState((state) => ({
       ...state,
       currentSessionId: "s1",
-      sessions: new Map([[
-        "s1",
-        {
-          session_id: "s1",
-          cwd: "/repo",
-          repo_root: "/repo",
-        } as never,
-      ]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            session_id: "s1",
+            cwd: "/repo",
+            repo_root: "/repo",
+          } as never,
+        ],
+      ]),
     }));
 
     render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162:4)" />);
@@ -297,15 +305,17 @@ describe("MarkdownContent quest links", () => {
     useStore.setState((state) => ({
       ...state,
       currentSessionId: "s1",
-      sessions: new Map([[
-        "s1",
-        {
-          session_id: "s1",
-          cwd: "/worktrees/repo-branch",
-          repo_root: "/repo",
-          is_worktree: true,
-        } as never,
-      ]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            session_id: "s1",
+            cwd: "/worktrees/repo-branch",
+            repo_root: "/repo",
+            is_worktree: true,
+          } as never,
+        ],
+      ]),
     }));
 
     render(<MarkdownContent text="[TopBar.tsx](file:web/src/components/TopBar.tsx:162:4)" />);

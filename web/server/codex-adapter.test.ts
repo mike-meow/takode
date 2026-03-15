@@ -114,22 +114,28 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate streaming: item/started -> item/agentMessage/delta -> item/completed
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "agentMessage", id: "item_1" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "agentMessage", id: "item_1" } },
+      }) + "\n",
+    );
 
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/agentMessage/delta",
-      params: { itemId: "item_1", delta: "Hello " },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { itemId: "item_1", delta: "Hello " },
+      }) + "\n",
+    );
 
-    stdout.push(JSON.stringify({
-      method: "item/agentMessage/delta",
-      params: { itemId: "item_1", delta: "world!" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { itemId: "item_1", delta: "world!" },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -160,22 +166,28 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "agentMessage", id: "item_1" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "agentMessage", id: "item_1" } },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/agentMessage/delta",
-      params: { itemId: "item_1", delta: "Hello world" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { itemId: "item_1", delta: "Hello world" },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "agentMessage", id: "item_1" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { type: "agentMessage", id: "item_1" } },
+      }) + "\n",
+    );
     await tick();
 
     const assistantMsgs = messages.filter((m) => m.type === "assistant");
@@ -202,18 +214,20 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate an approval request (this is a JSON-RPC *request* from server with an id)
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/requestApproval",
-      id: 100,
-      params: {
-        itemId: "item_cmd_1",
-        threadId: "thr_123",
-        turnId: "turn_1",
-        command: ["rm", "-rf", "/tmp/test"],
-        cwd: "/home/user",
-        parsedCmd: "rm -rf /tmp/test",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/requestApproval",
+        id: 100,
+        params: {
+          itemId: "item_cmd_1",
+          threadId: "thr_123",
+          turnId: "turn_1",
+          command: ["rm", "-rf", "/tmp/test"],
+          cwd: "/home/user",
+          parsedCmd: "rm -rf /tmp/test",
+        },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -237,12 +251,14 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: {
-        turn: { id: "turn_1", status: "completed", items: [], error: null },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: { id: "turn_1", status: "completed", items: [], error: null },
+        },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -262,63 +278,80 @@ describe("CodexAdapter", () => {
     await tick();
     await initializeAdapter(stdout);
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        threadId: "thr_123",
-        item: {
-          type: "collabAgentToolCall",
-          id: "agent_call_1",
-          tool: "spawnAgent",
-          prompt: "Inspect the feed renderer",
-          senderThreadId: "thr_123",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thr_123",
+          item: {
+            type: "collabAgentToolCall",
+            id: "agent_call_1",
+            tool: "spawnAgent",
+            prompt: "Inspect the feed renderer",
+            senderThreadId: "thr_123",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        threadId: "thr_123",
-        item: {
-          type: "collabAgentToolCall",
-          id: "agent_call_1",
-          tool: "spawnAgent",
-          prompt: "Inspect the feed renderer",
-          senderThreadId: "thr_123",
-          receiverThreadIds: ["thr_child_1"],
-          agentsStates: [{ nickname: "Banach", role: "explorer" }],
-          status: "completed",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thr_123",
+          item: {
+            type: "collabAgentToolCall",
+            id: "agent_call_1",
+            tool: "spawnAgent",
+            prompt: "Inspect the feed renderer",
+            senderThreadId: "thr_123",
+            receiverThreadIds: ["thr_child_1"],
+            agentsStates: [{ nickname: "Banach", role: "explorer" }],
+            status: "completed",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        threadId: "thr_child_1",
-        item: {
-          type: "commandExecution",
-          id: "cmd_child_1",
-          command: ["rg", "subagent", "web/src"],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thr_child_1",
+          item: {
+            type: "commandExecution",
+            id: "cmd_child_1",
+            command: ["rg", "subagent", "web/src"],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const agentToolUse = messages.find((msg) => {
       if (msg.type !== "assistant") return false;
-      const content = (msg as { message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
-      return content.some((block) => block.type === "tool_use" && block.id === "agent_call_1" && block.name === "Agent");
+      const content = (
+        msg as {
+          message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> };
+        }
+      ).message.content;
+      return content.some(
+        (block) => block.type === "tool_use" && block.id === "agent_call_1" && block.name === "Agent",
+      );
     }) as
-      | { parent_tool_use_id?: string | null; message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> } }
+      | {
+          parent_tool_use_id?: string | null;
+          message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> };
+        }
       | undefined;
     expect(agentToolUse).toBeDefined();
     expect(agentToolUse!.parent_tool_use_id ?? null).toBeNull();
-    const agentBlock = agentToolUse!.message.content.find((block) => block.type === "tool_use" && block.id === "agent_call_1") as {
+    const agentBlock = agentToolUse!.message.content.find(
+      (block) => block.type === "tool_use" && block.id === "agent_call_1",
+    ) as {
       input?: Record<string, unknown>;
     };
     expect(agentBlock.input?.description).toBe("Banach");
@@ -326,7 +359,8 @@ describe("CodexAdapter", () => {
 
     const childToolUse = messages.find((msg) => {
       if (msg.type !== "assistant") return false;
-      const content = (msg as { message: { content: Array<{ type: string; id?: string; name?: string }> } }).message.content;
+      const content = (msg as { message: { content: Array<{ type: string; id?: string; name?: string }> } }).message
+        .content;
       return content.some((block) => block.type === "tool_use" && block.id === "cmd_child_1" && block.name === "Bash");
     }) as { parent_tool_use_id?: string | null } | undefined;
     expect(childToolUse).toBeDefined();
@@ -341,53 +375,64 @@ describe("CodexAdapter", () => {
     await tick();
     await initializeAdapter(stdout);
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        threadId: "thr_123",
-        item: {
-          type: "collabAgentToolCall",
-          id: "agent_call_2",
-          tool: "spawnAgent",
-          prompt: "Summarize the adapter",
-          senderThreadId: "thr_123",
-          receiverThreadIds: ["thr_child_2"],
-          agentsStates: [{ nickname: "Peirce", role: "explorer" }],
-          status: "completed",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thr_123",
+          item: {
+            type: "collabAgentToolCall",
+            id: "agent_call_2",
+            tool: "spawnAgent",
+            prompt: "Summarize the adapter",
+            senderThreadId: "thr_123",
+            receiverThreadIds: ["thr_child_2"],
+            agentsStates: [{ nickname: "Peirce", role: "explorer" }],
+            status: "completed",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        threadId: "thr_child_2",
-        item: { type: "agentMessage", id: "agent_msg_1" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thr_child_2",
+          item: { type: "agentMessage", id: "agent_msg_1" },
+        },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/agentMessage/delta",
-      params: {
-        threadId: "thr_child_2",
-        itemId: "agent_msg_1",
-        delta: "Subagent reporting in",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thr_child_2",
+          itemId: "agent_msg_1",
+          delta: "Subagent reporting in",
+        },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        threadId: "thr_child_2",
-        item: { type: "agentMessage", id: "agent_msg_1", text: "Subagent reporting in" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thr_child_2",
+          item: { type: "agentMessage", id: "agent_msg_1", text: "Subagent reporting in" },
+        },
+      }) + "\n",
+    );
     await tick();
 
-    const childAssistant = messages.find((msg) => msg.type === "assistant" && (msg as { message: { id: string } }).message.id === "codex-agent-agent_msg_1") as
+    const childAssistant = messages.find(
+      (msg) =>
+        msg.type === "assistant" && (msg as { message: { id: string } }).message.id === "codex-agent-agent_msg_1",
+    ) as
       | { parent_tool_use_id?: string | null; message: { content: Array<{ type: string; text?: string }> } }
       | undefined;
     expect(childAssistant).toBeDefined();
@@ -403,58 +448,65 @@ describe("CodexAdapter", () => {
     await tick();
     await initializeAdapter(stdout);
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        threadId: "thr_123",
-        item: {
-          type: "collabAgentToolCall",
-          id: "agent_call_3",
-          tool: "spawnAgent",
-          prompt: "Verify completion",
-          senderThreadId: "thr_123",
-          receiverThreadIds: ["thr_child_3"],
-          agentsStates: [{ nickname: "Noether", role: "explorer" }],
-          status: "completed",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thr_123",
+          item: {
+            type: "collabAgentToolCall",
+            id: "agent_call_3",
+            tool: "spawnAgent",
+            prompt: "Verify completion",
+            senderThreadId: "thr_123",
+            receiverThreadIds: ["thr_child_3"],
+            agentsStates: [{ nickname: "Noether", role: "explorer" }],
+            status: "completed",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "codex/event/task_complete",
-      params: {
-        conversationId: "thr_child_3",
-        msg: {
-          conversation_id: "thr_child_3",
-          last_agent_message: "Done reading the relevant files.",
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/task_complete",
+        params: {
+          conversationId: "thr_child_3",
+          msg: {
+            conversation_id: "thr_child_3",
+            last_agent_message: "Done reading the relevant files.",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolResult = messages.find((msg) => {
       if (msg.type !== "assistant") return false;
-      const content = (msg as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      const content = (msg as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } })
+        .message.content;
       return content.some((block) => block.type === "tool_result" && block.tool_use_id === "agent_call_3");
-    }) as
-      | { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }
-      | undefined;
+    }) as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } } | undefined;
     expect(toolResult).toBeDefined();
-    const resultBlock = toolResult!.message.content.find((block) => block.type === "tool_result" && block.tool_use_id === "agent_call_3") as {
+    const resultBlock = toolResult!.message.content.find(
+      (block) => block.type === "tool_result" && block.tool_use_id === "agent_call_3",
+    ) as {
       content?: string;
     };
     expect(resultBlock.content).toContain("Done reading the relevant files.");
 
     const resultCountBeforeChildTurn = messages.filter((msg) => msg.type === "result").length;
 
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: {
-        threadId: "thr_child_3",
-        turn: { id: "turn_child_3", status: "completed", items: [], error: null },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          threadId: "thr_child_3",
+          turn: { id: "turn_child_3", status: "completed", items: [], error: null },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const resultCountAfterChildTurn = messages.filter((msg) => msg.type === "result").length;
@@ -473,18 +525,20 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_1",
-          command: ["ls", "-la"],
-          cwd: "/tmp",
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_1",
+            command: ["ls", "-la"],
+            cwd: "/tmp",
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
@@ -505,7 +559,8 @@ describe("CodexAdapter", () => {
     });
 
     expect(toolUseMsg).toBeDefined();
-    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } }).message.content;
+    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } })
+      .message.content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { command: string } }).input.command).toBe("ls -la");
 
@@ -534,7 +589,9 @@ describe("CodexAdapter", () => {
     const initMsgs = messages.filter((m) => m.type === "session_init");
     expect(initMsgs.length).toBe(1);
 
-    const init = initMsgs[0] as { session: { backend_type: string; model: string; cwd: string; slash_commands: string[] } };
+    const init = initMsgs[0] as {
+      session: { backend_type: string; model: string; cwd: string; slash_commands: string[] };
+    };
     expect(init.session.backend_type).toBe("codex");
     expect(init.session.model).toBe("o4-mini");
     expect(init.session.cwd).toBe("/home/user/project");
@@ -562,7 +619,11 @@ describe("CodexAdapter", () => {
     const refreshPromise = adapter.refreshSkills(true);
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const skillsReq = lines.find((line) => line.method === "skills/list");
     expect(skillsReq).toBeDefined();
     expect(skillsReq.params).toEqual({
@@ -570,32 +631,34 @@ describe("CodexAdapter", () => {
       forceReload: true,
     });
 
-    stdout.push(JSON.stringify({
-      id: 4,
-      result: {
-        data: [
-          {
-            cwd: "/other",
-            skills: [{ name: "other-skill", enabled: true }],
-            errors: [],
-          },
-          {
-            cwd: "/home/user/project",
-            skills: [
-              { name: "review", enabled: true },
-              { name: "disabled-skill", enabled: false },
-              { name: "fix", enabled: true },
-            ],
-            errors: [],
-          },
-        ],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 4,
+        result: {
+          data: [
+            {
+              cwd: "/other",
+              skills: [{ name: "other-skill", enabled: true }],
+              errors: [],
+            },
+            {
+              cwd: "/home/user/project",
+              skills: [
+                { name: "review", enabled: true },
+                { name: "disabled-skill", enabled: false },
+                { name: "fix", enabled: true },
+              ],
+              errors: [],
+            },
+          ],
+        },
+      }) + "\n",
+    );
 
     await expect(refreshPromise).resolves.toEqual(["fix", "review"]);
-    const update = messages.find((msg) =>
-      msg.type === "session_update"
-      && Array.isArray((msg as { session?: { skills?: string[] } }).session?.skills),
+    const update = messages.find(
+      (msg) =>
+        msg.type === "session_update" && Array.isArray((msg as { session?: { skills?: string[] } }).session?.skills),
     ) as { session: { skills: string[] } } | undefined;
     expect(update?.session.skills).toEqual(["fix", "review"]);
   });
@@ -645,7 +708,11 @@ describe("CodexAdapter", () => {
 
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const compactStart = lines.find((line) => line.method === "thread/compact/start");
     expect(compactStart).toBeDefined();
     expect(compactStart.params.threadId).toBe("thr_123");
@@ -671,7 +738,11 @@ describe("CodexAdapter", () => {
 
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
     expect(turnStart).toBeDefined();
     expect(lines.find((line) => line.method === "thread/compact/start")).toBeUndefined();
@@ -693,7 +764,11 @@ describe("CodexAdapter", () => {
     adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
     expect(turnStart).toBeDefined();
     expect(turnStart.params.collaborationMode.mode).toBe("plan");
@@ -715,7 +790,11 @@ describe("CodexAdapter", () => {
     adapter.sendBrowserMessage({ type: "user_message", content: "switch mode test" });
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
     expect(turnStart).toBeDefined();
     expect(turnStart.params.collaborationMode.mode).toBe("default");
@@ -737,7 +816,11 @@ describe("CodexAdapter", () => {
     adapter.sendBrowserMessage({ type: "user_message", content: "legacy mode mapping" });
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const turnStart = lines.find((line) => line.method === "turn/start");
     expect(turnStart).toBeDefined();
     expect(turnStart.params.collaborationMode.mode).toBe("default");
@@ -760,15 +843,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // id=4 is turn/start here (initialize=1, thread/start=2, rateLimits/read=3)
-    stdout.push(JSON.stringify({
-      id: 4,
-      error: { code: -32602, message: "invalid params: unknown field `collaborationMode`" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 4,
+        error: { code: -32602, message: "invalid params: unknown field `collaborationMode`" },
+      }) + "\n",
+    );
     await tick();
     stdout.push(JSON.stringify({ id: 5, result: { turn: { id: "turn_1" } } }) + "\n");
     await tick();
 
-    const lines = stdin.chunks.join("").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
     const turnStarts = lines.filter((line) => line.method === "turn/start");
     expect(turnStarts).toHaveLength(2);
     expect(turnStarts[0].params.collaborationMode.mode).toBe("plan");
@@ -845,15 +934,17 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate approval request
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/requestApproval",
-      id: 100,
-      params: {
-        itemId: "item_cmd_1",
-        command: ["npm", "test"],
-        parsedCmd: "npm test",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/requestApproval",
+        id: 100,
+        params: {
+          itemId: "item_cmd_1",
+          command: ["npm", "test"],
+          parsedCmd: "npm test",
+        },
+      }) + "\n",
+    );
     await tick();
 
     // Get the generated request_id
@@ -889,11 +980,13 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/requestApproval",
-      id: 200,
-      params: { itemId: "item_cmd_2", command: ["rm", "-rf", "/"], parsedCmd: "rm -rf /" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/requestApproval",
+        id: 200,
+        params: { itemId: "item_cmd_2", command: ["rm", "-rf", "/"], parsedCmd: "rm -rf /" },
+      }) + "\n",
+    );
     await tick();
 
     const permRequest = messages.find((m) => m.type === "permission_request") as { request: { request_id: string } };
@@ -925,12 +1018,14 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "commandExecution", id: "cmd_timer", command: ["echo", "hi"], status: "inProgress" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "commandExecution", id: "cmd_timer", command: ["echo", "hi"], status: "inProgress" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const toolUseMsg = messages.find((m) => {
@@ -960,18 +1055,32 @@ describe("CodexAdapter", () => {
 
     // fileChange with "create" kind → Write tool
     // item/started without diff is deferred; item/completed provides the diff.
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "fileChange", id: "fc_1", changes: [{ path: "/tmp/new-file.ts", kind: "create" }], status: "inProgress" },
-      },
-    }) + "\n");
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: { type: "fileChange", id: "fc_1", changes: [{ path: "/tmp/new-file.ts", kind: "create", diff: "+new content" }], status: "completed" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_1",
+            changes: [{ path: "/tmp/new-file.ts", kind: "create" }],
+            status: "inProgress",
+          },
+        },
+      }) + "\n",
+    );
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_1",
+            changes: [{ path: "/tmp/new-file.ts", kind: "create", diff: "+new content" }],
+            status: "completed",
+          },
+        },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -983,25 +1092,41 @@ describe("CodexAdapter", () => {
     expect(writeMsg).toBeDefined();
 
     // fileChange with "modify" kind → Edit tool
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "fileChange", id: "fc_2", changes: [{ path: "/tmp/existing.ts", kind: "modify" }], status: "inProgress" },
-      },
-    }) + "\n");
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: { type: "fileChange", id: "fc_2", changes: [{ path: "/tmp/existing.ts", kind: "modify", diff: "@@ -1 +1 @@\n-old\n+new" }], status: "completed" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_2",
+            changes: [{ path: "/tmp/existing.ts", kind: "modify" }],
+            status: "inProgress",
+          },
+        },
+      }) + "\n",
+    );
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_2",
+            changes: [{ path: "/tmp/existing.ts", kind: "modify", diff: "@@ -1 +1 @@\n-old\n+new" }],
+            status: "completed",
+          },
+        },
+      }) + "\n",
+    );
 
     await tick();
 
-    const editMsg = messages.filter((m) => m.type === "assistant").find((m) => {
-      const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
-      return content.some((b) => b.type === "tool_use" && b.name === "Edit");
-    });
+    const editMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_use" && b.name === "Edit");
+      });
     expect(editMsg).toBeDefined();
   });
 
@@ -1017,21 +1142,25 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_patch",
-          changes: [{
-            path: "/tmp/existing.ts",
-            kind: "modify",
-            diff: "diff --git a/existing.ts b/existing.ts\n--- a/existing.ts\n+++ b/existing.ts\n@@ -1 +1 @@\n-old\n+new",
-          }],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_patch",
+            changes: [
+              {
+                path: "/tmp/existing.ts",
+                kind: "modify",
+                diff: "diff --git a/existing.ts b/existing.ts\n--- a/existing.ts\n+++ b/existing.ts\n@@ -1 +1 @@\n-old\n+new",
+              },
+            ],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
@@ -1042,9 +1171,11 @@ describe("CodexAdapter", () => {
     });
     expect(assistant).toBeDefined();
 
-    const toolUse = (assistant as {
-      message: { content: Array<{ type: string; name?: string; input?: { changes?: Array<{ diff?: string }> } }> };
-    }).message.content.find((b) => b.type === "tool_use" && b.name === "Edit");
+    const toolUse = (
+      assistant as {
+        message: { content: Array<{ type: string; name?: string; input?: { changes?: Array<{ diff?: string }> } }> };
+      }
+    ).message.content.find((b) => b.type === "tool_use" && b.name === "Edit");
 
     expect(toolUse?.input?.changes?.[0]?.diff).toContain("@@ -1 +1 @@");
   });
@@ -1060,46 +1191,60 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "codex/event/patch_apply_begin",
-      params: {
-        msg: {
-          type: "patch_apply_begin",
-          call_id: "fc_patch_begin",
-          changes: {
-            "/tmp/from-patch.ts": {
-              type: "update",
-              unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/patch_apply_begin",
+        params: {
+          msg: {
+            type: "patch_apply_begin",
+            call_id: "fc_patch_begin",
+            changes: {
+              "/tmp/from-patch.ts": {
+                type: "update",
+                unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+              },
             },
           },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_patch_begin",
-          changes: [],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_patch_begin",
+            changes: [],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
     const assistant = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; id?: string; name?: string }> } }).message.content;
+      const content = (m as { message: { content: Array<{ type: string; id?: string; name?: string }> } }).message
+        .content;
       return content.some((b) => b.type === "tool_use" && b.id === "fc_patch_begin" && b.name === "Edit");
     });
     expect(assistant).toBeDefined();
 
-    const toolUse = (assistant as {
-      message: { content: Array<{ type: string; id?: string; name?: string; input?: { file_path?: string; changes?: Array<{ diff?: string }> } }> };
-    }).message.content.find((b) => b.type === "tool_use" && b.id === "fc_patch_begin");
+    const toolUse = (
+      assistant as {
+        message: {
+          content: Array<{
+            type: string;
+            id?: string;
+            name?: string;
+            input?: { file_path?: string; changes?: Array<{ diff?: string }> };
+          }>;
+        };
+      }
+    ).message.content.find((b) => b.type === "tool_use" && b.id === "fc_patch_begin");
     expect(toolUse?.input?.file_path).toBe("/tmp/from-patch.ts");
     expect(toolUse?.input?.changes?.[0]?.diff).toContain("@@ -1 +1 @@");
   });
@@ -1115,17 +1260,19 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_late_diff",
-          changes: [],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_late_diff",
+            changes: [],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const earlyToolUse = messages.find((m) => {
@@ -1135,27 +1282,44 @@ describe("CodexAdapter", () => {
     });
     expect(earlyToolUse).toBeUndefined();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_late_diff",
-          changes: [{
-            path: "/tmp/later.ts",
-            kind: "modify",
-            diff: "@@ -1 +1 @@\n-old\n+new\n",
-          }],
-          status: "completed",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_late_diff",
+            changes: [
+              {
+                path: "/tmp/later.ts",
+                kind: "modify",
+                diff: "@@ -1 +1 @@\n-old\n+new\n",
+              },
+            ],
+            status: "completed",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolUseAfterComplete = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; id?: string; name?: string; input?: { changes?: Array<{ diff?: string }> } }> } }).message.content;
-      return content.some((b) => b.type === "tool_use" && b.id === "fc_late_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff);
+      const content = (
+        m as {
+          message: {
+            content: Array<{
+              type: string;
+              id?: string;
+              name?: string;
+              input?: { changes?: Array<{ diff?: string }> };
+            }>;
+          };
+        }
+      ).message.content;
+      return content.some(
+        (b) => b.type === "tool_use" && b.id === "fc_late_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff,
+      );
     });
     expect(toolUseAfterComplete).toBeDefined();
   });
@@ -1174,17 +1338,19 @@ describe("CodexAdapter", () => {
     await tick();
 
     // item/started with path and kind, but NO diff
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_no_diff",
-          changes: [{ path: "/tmp/nodiff.ts", kind: "modify" }],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_no_diff",
+            changes: [{ path: "/tmp/nodiff.ts", kind: "modify" }],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // tool_use should NOT have been emitted yet (no diff data)
@@ -1196,28 +1362,45 @@ describe("CodexAdapter", () => {
     expect(earlyToolUse).toBeUndefined();
 
     // item/completed with actual diff
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "fileChange",
-          id: "fc_no_diff",
-          changes: [{
-            path: "/tmp/nodiff.ts",
-            kind: "modify",
-            diff: "@@ -1 +1 @@\n-before\n+after\n",
-          }],
-          status: "completed",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_no_diff",
+            changes: [
+              {
+                path: "/tmp/nodiff.ts",
+                kind: "modify",
+                diff: "@@ -1 +1 @@\n-before\n+after\n",
+              },
+            ],
+            status: "completed",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // Now tool_use should exist with the diff from completed
     const toolUse = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; id?: string; name?: string; input?: { changes?: Array<{ diff?: string }> } }> } }).message.content;
-      return content.some((b) => b.type === "tool_use" && b.id === "fc_no_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff);
+      const content = (
+        m as {
+          message: {
+            content: Array<{
+              type: string;
+              id?: string;
+              name?: string;
+              input?: { changes?: Array<{ diff?: string }> };
+            }>;
+          };
+        }
+      ).message.content;
+      return content.some(
+        (b) => b.type === "tool_use" && b.id === "fc_no_diff" && b.name === "Edit" && !!b.input?.changes?.[0]?.diff,
+      );
     });
     expect(toolUse).toBeDefined();
   });
@@ -1266,12 +1449,14 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: {
-        turn: { id: "turn_1", status: "failed", error: { message: "Rate limit exceeded" } },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: { id: "turn_1", status: "failed", error: { message: "Rate limit exceeded" } },
+        },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -1298,12 +1483,14 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: {
-        turn: { id: "turn_1", status: "interrupted", items: [], error: null },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: { id: "turn_1", status: "interrupted", items: [], error: null },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const results = messages.filter((m) => m.type === "result");
@@ -1340,22 +1527,27 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "webSearch", id: "ws_1", query: "typescript generics guide" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "webSearch", id: "ws_1", query: "typescript generics guide" },
+        },
+      }) + "\n",
+    );
 
     await tick();
 
-    const toolMsg = messages.filter((m) => m.type === "assistant").find((m) => {
-      const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
-      return content.some((b) => b.type === "tool_use" && b.name === "WebSearch");
-    });
+    const toolMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_use" && b.name === "WebSearch");
+      });
     expect(toolMsg).toBeDefined();
 
-    const content = (toolMsg as { message: { content: Array<{ type: string; input?: { query: string } }> } }).message.content;
+    const content = (toolMsg as { message: { content: Array<{ type: string; input?: { query: string } }> } }).message
+      .content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { query: string } }).input.query).toBe("typescript generics guide");
   });
@@ -1372,26 +1564,31 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "webSearch",
-          id: "ws_action_query",
-          action: { type: "search", query: "codex cli skills documentation" },
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "webSearch",
+            id: "ws_action_query",
+            action: { type: "search", query: "codex cli skills documentation" },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
-    const toolMsg = messages.filter((m) => m.type === "assistant").find((m) => {
-      const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
-      return content.some((b) => b.type === "tool_use" && b.name === "WebSearch");
-    });
+    const toolMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; name?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_use" && b.name === "WebSearch");
+      });
     expect(toolMsg).toBeDefined();
 
-    const content = (toolMsg as { message: { content: Array<{ type: string; input?: { query: string } }> } }).message.content;
+    const content = (toolMsg as { message: { content: Array<{ type: string; input?: { query: string } }> } }).message
+      .content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { query: string } }).input.query).toBe("codex cli skills documentation");
   });
@@ -1427,24 +1624,28 @@ describe("CodexAdapter", () => {
     await tick();
 
     // item/started for webSearch
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "webSearch", id: "ws_1", query: "typescript guide" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "webSearch", id: "ws_1", query: "typescript guide" } },
+      }) + "\n",
+    );
     await tick();
 
     // item/completed for webSearch
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "webSearch",
-          id: "ws_1",
-          query: "typescript guide",
-          action: { type: "navigate", url: "https://example.com/guide" },
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "webSearch",
+            id: "ws_1",
+            query: "typescript guide",
+            action: { type: "navigate", url: "https://example.com/guide" },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolResults = messages.filter((m) => {
@@ -1473,35 +1674,39 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "webSearch",
-          id: "ws_2",
-          query: "Codex CLI skills documentation",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "webSearch",
+            id: "ws_2",
+            query: "Codex CLI skills documentation",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "webSearch",
-          id: "ws_2",
-          query: "Codex CLI skills documentation",
-          results: [
-            {
-              title: "OpenAI Codex CLI docs",
-              url: "https://platform.openai.com/docs/codex",
-              snippet: "Official setup and skills documentation.",
-            },
-          ],
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "webSearch",
+            id: "ws_2",
+            query: "Codex CLI skills documentation",
+            results: [
+              {
+                title: "OpenAI Codex CLI docs",
+                url: "https://platform.openai.com/docs/codex",
+                snippet: "Official setup and skills documentation.",
+              },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolResults = messages.filter((m) => {
@@ -1537,27 +1742,31 @@ describe("CodexAdapter", () => {
     await tick();
 
     // item/started
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "webSearch", id: "ws_echo", query: "Codex CLI skills documentation" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "webSearch", id: "ws_echo", query: "Codex CLI skills documentation" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     // item/completed — only has query, no real result fields. The adapter's
     // extractWebSearchResultText falls through to "Web search completed" or
     // returns the query itself.
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "webSearch",
-          id: "ws_echo",
-          query: "Codex CLI skills documentation",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "webSearch",
+            id: "ws_echo",
+            query: "Codex CLI skills documentation",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // No tool_result should be emitted — the only result would be the query
@@ -1581,17 +1790,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // item/started for reasoning (opens thinking block)
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
+      }) + "\n",
+    );
     await tick();
 
     // item/completed for reasoning (should close thinking block)
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { type: "reasoning", id: "r_1", summary: "Thinking about the problem..." } },
+      }) + "\n",
+    );
     await tick();
 
     const blockStops = messages.filter(
@@ -1615,27 +1828,32 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "reasoning", id: "r_obj" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "reasoning", id: "r_obj" } },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "reasoning",
-          id: "r_obj",
-          summary: { text: "Structured reasoning summary" },
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "reasoning",
+            id: "r_obj",
+            summary: { text: "Structured reasoning summary" },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    const thinkingMsgs = messages.filter((m) =>
-      m.type === "assistant"
-      && (m as { message: { content: Array<{ type: string }> } }).message.content.some((b) => b.type === "thinking"),
+    const thinkingMsgs = messages.filter(
+      (m) =>
+        m.type === "assistant" &&
+        (m as { message: { content: Array<{ type: string }> } }).message.content.some((b) => b.type === "thinking"),
     );
     expect(thinkingMsgs.length).toBeGreaterThanOrEqual(1);
     expect(onDisconnect).not.toHaveBeenCalled();
@@ -1664,33 +1882,42 @@ describe("CodexAdapter", () => {
     // First reasoning summary arrives after a measurable gap from turn/start.
     // Real delay needed here — this test validates wall-clock thinking_time_ms measurement.
     await new Promise((r) => setTimeout(r, 80));
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
+      }) + "\n",
+    );
     await tick();
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { type: "reasoning", id: "r_t1", summary: "First summary" } },
+      }) + "\n",
+    );
     await tick();
 
     // Second reasoning summary arrives shortly after the first one completed.
     await new Promise((r) => setTimeout(r, 20));
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
+      }) + "\n",
+    );
     await tick();
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { type: "reasoning", id: "r_t2", summary: "Second summary" } },
+      }) + "\n",
+    );
     await tick();
 
-    const reasoningAssistants = messages.filter((m) =>
-      m.type === "assistant"
-      && (m as { message: { content: Array<{ type: string }> } }).message.content.some((b) => b.type === "thinking"),
+    const reasoningAssistants = messages.filter(
+      (m) =>
+        m.type === "assistant" &&
+        (m as { message: { content: Array<{ type: string }> } }).message.content.some((b) => b.type === "thinking"),
     ) as Array<{ message: { content: Array<{ type: string; thinking_time_ms?: number }> } }>;
 
     expect(reasoningAssistants.length).toBeGreaterThanOrEqual(2);
@@ -1711,31 +1938,39 @@ describe("CodexAdapter", () => {
 
     await initializeAdapter(stdout);
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "reasoning", id: "r_live", summary: "Inspecting " } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "reasoning", id: "r_live", summary: "Inspecting " } },
+      }) + "\n",
+    );
     await tick();
-    stdout.push(JSON.stringify({
-      method: "item/reasoning/summaryTextDelta",
-      params: { itemId: "r_live", delta: "session state" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/reasoning/summaryTextDelta",
+        params: { itemId: "r_live", delta: "session state" },
+      }) + "\n",
+    );
     await tick();
 
-    expect(messages).toContainEqual(expect.objectContaining({
-      type: "stream_event",
-      event: expect.objectContaining({
-        type: "content_block_start",
-        content_block: expect.objectContaining({ type: "thinking", thinking: "Inspecting " }),
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "stream_event",
+        event: expect.objectContaining({
+          type: "content_block_start",
+          content_block: expect.objectContaining({ type: "thinking", thinking: "Inspecting " }),
+        }),
       }),
-    }));
-    expect(messages).toContainEqual(expect.objectContaining({
-      type: "stream_event",
-      event: expect.objectContaining({
-        type: "content_block_delta",
-        delta: expect.objectContaining({ type: "thinking_delta", thinking: "session state" }),
+    );
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "stream_event",
+        event: expect.objectContaining({
+          type: "content_block_delta",
+          delta: expect.objectContaining({ type: "thinking_delta", thinking: "session state" }),
+        }),
       }),
-    }));
+    );
   });
 
   // ── Codex CLI enum values must be kebab-case (v0.99+) ─────────────────
@@ -1765,7 +2000,11 @@ describe("CodexAdapter", () => {
     { approvalMode: "acceptEdits", askPermission: undefined, expected: "untrusted" },
     { approvalMode: "default", askPermission: undefined, expected: "untrusted" },
     { approvalMode: undefined, askPermission: undefined, expected: "untrusted" },
-  ])("maps approvalMode=$approvalMode askPermission=$askPermission to kebab-case approvalPolicy=$expected", async ({ approvalMode, askPermission, expected }) => {
+  ])("maps approvalMode=$approvalMode askPermission=$askPermission to kebab-case approvalPolicy=$expected", async ({
+    approvalMode,
+    askPermission,
+    expected,
+  }) => {
     const mock = createMockProcess();
 
     new CodexAdapter(mock.proc as never, "test-session", {
@@ -1838,10 +2077,12 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Send an error response to the initialize request
-    stdout.push(JSON.stringify({
-      id: 1,
-      error: { code: -1, message: "server not ready" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 1,
+        error: { code: -1, message: "server not ready" },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -1863,10 +2104,12 @@ describe("CodexAdapter", () => {
     expect(queued).toBe(true);
 
     // Fail init
-    stdout.push(JSON.stringify({
-      id: 1,
-      error: { code: -1, message: "no rollout found" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 1,
+        error: { code: -1, message: "no rollout found" },
+      }) + "\n",
+    );
 
     await tick();
 
@@ -1921,24 +2164,26 @@ describe("CodexAdapter", () => {
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
     await tick();
 
-    mock.stdout.push(JSON.stringify({
-      id: 2,
-      result: {
-        thread: {
-          id: "thr_existing_789",
-          turns: [
-            {
-              id: "turn_in_progress",
-              status: "inProgress",
-              items: [
-                { type: "userMessage", content: [{ type: "text", text: "run command" }] },
-                { type: "commandExecution", id: "cmd_live", status: "in_progress", command: ["sleep", "60"] },
-              ],
-            },
-          ],
+    mock.stdout.push(
+      JSON.stringify({
+        id: 2,
+        result: {
+          thread: {
+            id: "thr_existing_789",
+            turns: [
+              {
+                id: "turn_in_progress",
+                status: "inProgress",
+                items: [
+                  { type: "userMessage", content: [{ type: "text", text: "run command" }] },
+                  { type: "commandExecution", id: "cmd_live", status: "in_progress", command: ["sleep", "60"] },
+                ],
+              },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     expect(adapter.getCurrentTurnId()).toBe("turn_in_progress");
@@ -1962,25 +2207,27 @@ describe("CodexAdapter", () => {
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
     await tick();
 
-    mock.stdout.push(JSON.stringify({
-      id: 2,
-      result: {
-        thread: {
-          id: "thr_idle_thread",
-          status: { type: "idle" },
-          turns: [
-            {
-              id: "turn_stale_inprogress",
-              status: "inProgress",
-              items: [
-                { type: "userMessage", content: [{ type: "text", text: "do something" }] },
-                { type: "commandExecution", id: "cmd_dead", status: "in_progress", command: ["make"] },
-              ],
-            },
-          ],
+    mock.stdout.push(
+      JSON.stringify({
+        id: 2,
+        result: {
+          thread: {
+            id: "thr_idle_thread",
+            status: { type: "idle" },
+            turns: [
+              {
+                id: "turn_stale_inprogress",
+                status: "inProgress",
+                items: [
+                  { type: "userMessage", content: [{ type: "text", text: "do something" }] },
+                  { type: "commandExecution", id: "cmd_dead", status: "in_progress", command: ["make"] },
+                ],
+              },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // Thread is idle → turn is stale → currentTurnId must be null
@@ -2005,34 +2252,36 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Resume returns an active thread with an inProgress turn
-    mock.stdout.push(JSON.stringify({
-      id: 2,
-      result: {
-        thread: {
-          id: "thr_status_change",
-          status: { type: "active" },
-          turns: [
-            {
-              id: "turn_active",
-              status: "inProgress",
-              items: [
-                { type: "userMessage", content: [{ type: "text", text: "hello" }] },
-              ],
-            },
-          ],
+    mock.stdout.push(
+      JSON.stringify({
+        id: 2,
+        result: {
+          thread: {
+            id: "thr_status_change",
+            status: { type: "active" },
+            turns: [
+              {
+                id: "turn_active",
+                status: "inProgress",
+                items: [{ type: "userMessage", content: [{ type: "text", text: "hello" }] }],
+              },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     expect(adapter.getCurrentTurnId()).toBe("turn_active");
 
     // Thread transitions to idle — turn is done, clear currentTurnId
-    mock.stdout.push(JSON.stringify({
-      jsonrpc: "2.0",
-      method: "thread/status/changed",
-      params: { threadId: "thr_status_change", status: { type: "idle" } },
-    }) + "\n");
+    mock.stdout.push(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "thread/status/changed",
+        params: { threadId: "thr_status_change", status: { type: "idle" } },
+      }) + "\n",
+    );
     await tick();
 
     expect(adapter.getCurrentTurnId()).toBeNull();
@@ -2058,10 +2307,12 @@ describe("CodexAdapter", () => {
     await tick();
 
     // thread/resume error from stale thread/rollout
-    mock.stdout.push(JSON.stringify({
-      id: 2,
-      error: { code: -1, message: "no rollout found for thread id thr_stale_123" },
-    }) + "\n");
+    mock.stdout.push(
+      JSON.stringify({
+        id: 2,
+        error: { code: -1, message: "no rollout found for thread id thr_stale_123" },
+      }) + "\n",
+    );
     await tick();
 
     // fallback thread/start success
@@ -2094,10 +2345,12 @@ describe("CodexAdapter", () => {
     mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
     await tick();
 
-    mock.stdout.push(JSON.stringify({
-      id: 2,
-      error: { code: -1, message: "failed to load rollout rollout_abc: empty session file" },
-    }) + "\n");
+    mock.stdout.push(
+      JSON.stringify({
+        id: 2,
+        error: { code: -1, message: "failed to load rollout rollout_abc: empty session file" },
+      }) + "\n",
+    );
     await tick();
 
     mock.stdout.push(JSON.stringify({ id: 3, result: { thread: { id: "thr_new_456" } } }) + "\n");
@@ -2127,19 +2380,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Skip item/started — go directly to item/completed for a commandExecution
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_1",
-          command: ["ls", "-la"],
-          status: "completed",
-          exitCode: 0,
-          stdout: "file1.txt\nfile2.txt",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_1",
+            command: ["ls", "-la"],
+            status: "completed",
+            exitCode: 0,
+            stdout: "file1.txt\nfile2.txt",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
@@ -2173,28 +2428,32 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Send item/started first
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "commandExecution", id: "cmd_2", command: ["echo", "hi"], status: "inProgress" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "commandExecution", id: "cmd_2", command: ["echo", "hi"], status: "inProgress" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     // Then item/completed
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_2",
-          command: ["echo", "hi"],
-          status: "completed",
-          exitCode: 0,
-          stdout: "hi",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_2",
+            command: ["echo", "hi"],
+            status: "completed",
+            exitCode: 0,
+            stdout: "hi",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // Count tool_use messages for cmd_2 — should be exactly 1 (from item/started only)
@@ -2223,17 +2482,19 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Codex sends command as a single string, not an array
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_str_1",
-          command: "/bin/zsh -lc 'cat README.md'",
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_str_1",
+            command: "/bin/zsh -lc 'cat README.md'",
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolUseMsg = messages.find((m) => {
@@ -2243,7 +2504,8 @@ describe("CodexAdapter", () => {
     });
     expect(toolUseMsg).toBeDefined();
 
-    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } }).message.content;
+    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } })
+      .message.content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     // Shell wrapper should be unwrapped for display parity with Claude.
     expect((toolBlock as { input: { command: string } }).input.command).toBe("cat README.md");
@@ -2261,19 +2523,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Skip item/started — go directly to item/completed with string command
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_str_2",
-          command: "/bin/zsh -lc 'ls -la'",
-          status: "completed",
-          exitCode: 0,
-          stdout: "total 42\ndrwxr-xr-x  5 user  staff  160 Jan  1 00:00 .",
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_str_2",
+            command: "/bin/zsh -lc 'ls -la'",
+            status: "completed",
+            exitCode: 0,
+            stdout: "total 42\ndrwxr-xr-x  5 user  staff  160 Jan  1 00:00 .",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // Should have both a backfilled tool_use and a tool_result
@@ -2284,7 +2548,8 @@ describe("CodexAdapter", () => {
     });
     expect(toolUseMsg).toBeDefined();
 
-    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } }).message.content;
+    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } })
+      .message.content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { command: string } }).input.command).toBe("ls -la");
 
@@ -2308,17 +2573,19 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Codex sends command as string in approval requests too
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/requestApproval",
-      id: 300,
-      params: {
-        itemId: "item_cmd_str",
-        threadId: "thr_123",
-        turnId: "turn_1",
-        command: "/bin/zsh -lc 'rm -rf /tmp/test'",
-        cwd: "/home/user",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/requestApproval",
+        id: 300,
+        params: {
+          itemId: "item_cmd_str",
+          threadId: "thr_123",
+          turnId: "turn_1",
+          command: "/bin/zsh -lc 'rm -rf /tmp/test'",
+          cwd: "/home/user",
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
@@ -2341,18 +2608,20 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_actions_1",
-          command: "/bin/bash -lc 'cat README.md'",
-          commandActions: [{ type: "read", command: "cat README.md" }],
-          status: "inProgress",
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_actions_1",
+            command: "/bin/bash -lc 'cat README.md'",
+            commandActions: [{ type: "read", command: "cat README.md" }],
+            status: "inProgress",
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolUseMsg = messages.find((m) => {
@@ -2362,7 +2631,8 @@ describe("CodexAdapter", () => {
     });
     expect(toolUseMsg).toBeDefined();
 
-    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } }).message.content;
+    const content = (toolUseMsg as { message: { content: Array<{ type: string; input?: { command: string } }> } })
+      .message.content;
     const toolBlock = content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { command: string } }).input.command).toBe("cat README.md");
   });
@@ -2409,34 +2679,58 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Test commandExecution
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "commandExecution", id: "cmd_x", command: ["echo", "hi"], status: "inProgress" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "commandExecution", id: "cmd_x", command: ["echo", "hi"], status: "inProgress" } },
+      }) + "\n",
+    );
     await tick();
 
     // Test webSearch
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "webSearch", id: "ws_x", query: "test" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "webSearch", id: "ws_x", query: "test" } },
+      }) + "\n",
+    );
     await tick();
 
     // Test fileChange (deferred until completed provides diff)
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "fileChange", id: "fc_x", changes: [{ path: "/tmp/f.ts", kind: "modify" }], status: "inProgress" } },
-    }) + "\n");
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "fileChange", id: "fc_x", changes: [{ path: "/tmp/f.ts", kind: "modify", diff: "@@ -1 +1 @@\n-a\n+b" }], status: "completed" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_x",
+            changes: [{ path: "/tmp/f.ts", kind: "modify" }],
+            status: "inProgress",
+          },
+        },
+      }) + "\n",
+    );
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "fileChange",
+            id: "fc_x",
+            changes: [{ path: "/tmp/f.ts", kind: "modify", diff: "@@ -1 +1 @@\n-a\n+b" }],
+            status: "completed",
+          },
+        },
+      }) + "\n",
+    );
     await tick();
 
     // All three should have content_block_start stream events
     const blockStarts = messages.filter(
-      (m) => m.type === "stream_event" && (m as { event: { type: string } }).event?.type === "content_block_start"
-            && (m as { event: { content_block?: { type: string } } }).event?.content_block?.type === "tool_use",
+      (m) =>
+        m.type === "stream_event" &&
+        (m as { event: { type: string } }).event?.type === "content_block_start" &&
+        (m as { event: { content_block?: { type: string } } }).event?.content_block?.type === "tool_use",
     );
     expect(blockStarts.length).toBe(3);
   });
@@ -2453,17 +2747,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Start agent message
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: { item: { type: "agentMessage", id: "am_1" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { type: "agentMessage", id: "am_1" } },
+      }) + "\n",
+    );
     await tick();
 
     // Complete it
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: { item: { type: "agentMessage", id: "am_1", text: "Hello" } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { type: "agentMessage", id: "am_1", text: "Hello" } },
+      }) + "\n",
+    );
     await tick();
 
     // Find the message_delta stream event
@@ -2490,19 +2788,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate MCP tool call approval request
-    stdout.push(JSON.stringify({
-      method: "item/mcpToolCall/requestApproval",
-      id: 400,
-      params: {
-        itemId: "mcp_item_1",
-        threadId: "thr_123",
-        turnId: "turn_1",
-        server: "my-mcp-server",
-        tool: "search_files",
-        arguments: { query: "TODO", path: "/src" },
-        reason: "MCP tool wants to search files",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/mcpToolCall/requestApproval",
+        id: 400,
+        params: {
+          itemId: "mcp_item_1",
+          threadId: "thr_123",
+          turnId: "turn_1",
+          server: "my-mcp-server",
+          tool: "search_files",
+          arguments: { query: "TODO", path: "/src" },
+          reason: "MCP tool wants to search files",
+        },
+      }) + "\n",
+    );
     await tick();
 
     // Should emit a permission_request to the browser (NOT auto-accept)
@@ -2529,16 +2829,18 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/mcpToolCall/requestApproval",
-      id: 401,
-      params: {
-        itemId: "mcp_item_2",
-        server: "db-server",
-        tool: "run_query",
-        arguments: { sql: "SELECT * FROM users" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/mcpToolCall/requestApproval",
+        id: 401,
+        params: {
+          itemId: "mcp_item_2",
+          server: "db-server",
+          tool: "run_query",
+          arguments: { sql: "SELECT * FROM users" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permRequest = messages.find((m) => m.type === "permission_request") as {
@@ -2574,19 +2876,21 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate file change approval with changes array
-    stdout.push(JSON.stringify({
-      method: "item/fileChange/requestApproval",
-      id: 500,
-      params: {
-        itemId: "fc_approval_1",
-        threadId: "thr_123",
-        turnId: "turn_1",
-        changes: [
-          { path: "/src/index.ts", kind: "modify" },
-          { path: "/src/utils.ts", kind: "create" },
-        ],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/fileChange/requestApproval",
+        id: 500,
+        params: {
+          itemId: "fc_approval_1",
+          threadId: "thr_123",
+          turnId: "turn_1",
+          changes: [
+            { path: "/src/index.ts", kind: "modify" },
+            { path: "/src/utils.ts", kind: "create" },
+          ],
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
@@ -2621,14 +2925,16 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate file change approval without changes array
-    stdout.push(JSON.stringify({
-      method: "item/fileChange/requestApproval",
-      id: 501,
-      params: {
-        itemId: "fc_approval_2",
-        reason: "Updating configuration",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/fileChange/requestApproval",
+        id: 501,
+        params: {
+          itemId: "fc_approval_2",
+          reason: "Updating configuration",
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
@@ -2671,20 +2977,24 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Simulate item/tool/call request from Codex
-    stdout.push(JSON.stringify({
-      method: "item/tool/call",
-      id: 600,
-      params: {
-        callId: "call_abc123",
-        tool: "my_custom_tool",
-        arguments: { query: "test input" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/tool/call",
+        id: 600,
+        params: {
+          callId: "call_abc123",
+          tool: "my_custom_tool",
+          arguments: { query: "test input" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permRequests = messages.filter((m) => m.type === "permission_request");
     expect(permRequests.length).toBe(1);
-    const perm = permRequests[0] as { request: { request_id: string; tool_name: string; tool_use_id: string; input: Record<string, unknown> } };
+    const perm = permRequests[0] as {
+      request: { request_id: string; tool_name: string; tool_use_id: string; input: Record<string, unknown> };
+    };
 
     expect(perm.request.request_id).toContain("codex-dynamic-");
     expect(perm.request.tool_name).toBe("dynamic:my_custom_tool");
@@ -2704,15 +3014,17 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/tool/call",
-      id: 601,
-      params: {
-        callId: "call_def456",
-        tool: "code_interpreter",
-        arguments: { code: "print('hello')" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/tool/call",
+        id: 601,
+        params: {
+          callId: "call_def456",
+          tool: "code_interpreter",
+          arguments: { code: "print('hello')" },
+        },
+      }) + "\n",
+    );
     await tick();
 
     const perm = messages.find((m) => m.type === "permission_request") as {
@@ -2755,15 +3067,17 @@ describe("CodexAdapter", () => {
       stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
       await vi.advanceTimersByTimeAsync(50);
 
-      stdout.push(JSON.stringify({
-        method: "item/tool/call",
-        id: 602,
-        params: {
-          callId: "call_timeout_1",
-          tool: "slow_tool",
-          arguments: { input: "x" },
-        },
-      }) + "\n");
+      stdout.push(
+        JSON.stringify({
+          method: "item/tool/call",
+          id: 602,
+          params: {
+            callId: "call_timeout_1",
+            tool: "slow_tool",
+            arguments: { input: "x" },
+          },
+        }) + "\n",
+      );
       await vi.advanceTimersByTimeAsync(50);
 
       await vi.advanceTimersByTimeAsync(120_000);
@@ -2804,18 +3118,20 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Command completed with no stdout/stderr and exit code 0
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_silent",
-          command: "mkdir -p /tmp/newdir",
-          status: "completed",
-          exitCode: 0,
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_silent",
+            command: "mkdir -p /tmp/newdir",
+            status: "completed",
+            exitCode: 0,
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     // Should still emit tool_use so the command is visible
@@ -2846,29 +3162,34 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_agg",
-          command: "git status --short",
-          status: "completed",
-          aggregatedOutput: " M src/index.ts\n",
-          exitCode: 0,
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_agg",
+            command: "git status --short",
+            status: "completed",
+            aggregatedOutput: " M src/index.ts\n",
+            exitCode: 0,
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolResultMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } })
+        .message.content;
       return content.some((b) => b.type === "tool_result" && b.tool_use_id === "cmd_agg");
     }) as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } } | undefined;
 
     expect(toolResultMsg).toBeDefined();
-    const resultBlock = toolResultMsg!.message.content.find((b) => b.type === "tool_result" && b.tool_use_id === "cmd_agg");
+    const resultBlock = toolResultMsg!.message.content.find(
+      (b) => b.type === "tool_result" && b.tool_use_id === "cmd_agg",
+    );
     expect(resultBlock?.content).toContain("src/index.ts");
   });
 
@@ -2883,46 +3204,60 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "commandExecution", id: "cmd_fail", command: "sed -n '1,260p' missing.ts", status: "inProgress" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_fail",
+            command: "sed -n '1,260p' missing.ts",
+            status: "inProgress",
+          },
+        },
+      }) + "\n",
+    );
     await tick();
 
     // Simulate codex sending streamed terminal output but no final stdout/stderr fields.
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/outputDelta",
-      params: {
-        itemId: "cmd_fail",
-        delta: "sed: can't read missing.ts: No such file or directory\n",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/outputDelta",
+        params: {
+          itemId: "cmd_fail",
+          delta: "sed: can't read missing.ts: No such file or directory\n",
+        },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/completed",
-      params: {
-        item: {
-          type: "commandExecution",
-          id: "cmd_fail",
-          command: "sed -n '1,260p' missing.ts",
-          status: "failed",
-          exitCode: 2,
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "commandExecution",
+            id: "cmd_fail",
+            command: "sed -n '1,260p' missing.ts",
+            status: "failed",
+            exitCode: 2,
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const toolResultMsg = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } }).message.content;
+      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } })
+        .message.content;
       return content.some((b) => b.type === "tool_result" && b.tool_use_id === "cmd_fail");
     }) as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } } | undefined;
 
     expect(toolResultMsg).toBeDefined();
-    const resultBlock = toolResultMsg!.message.content.find((b) => b.type === "tool_result" && b.tool_use_id === "cmd_fail");
+    const resultBlock = toolResultMsg!.message.content.find(
+      (b) => b.type === "tool_result" && b.tool_use_id === "cmd_fail",
+    );
     expect(resultBlock?.content).toContain("No such file or directory");
     expect(resultBlock?.content).toContain("Exit code: 2");
   });
@@ -2938,21 +3273,25 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/started",
-      params: {
-        item: { type: "commandExecution", id: "cmd_live", command: "long-running.sh", status: "inProgress" },
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "commandExecution", id: "cmd_live", command: "long-running.sh", status: "inProgress" },
+        },
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/commandExecution/outputDelta",
-      params: {
-        itemId: "cmd_live",
-        delta: "step 1/3 complete\n",
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/outputDelta",
+        params: {
+          itemId: "cmd_live",
+          delta: "step 1/3 complete\n",
+        },
+      }) + "\n",
+    );
     await tick();
 
     const progressMsg = messages.find(
@@ -2974,23 +3313,27 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/plan/updated",
-      params: {
-        turnId: "turn_plan_1",
-        plan: {
-          steps: [
-            { content: "Fix failing test", status: "in_progress", activeForm: "Fixing failing test" },
-            { content: "Run test suite", status: "completed" },
-          ],
+    stdout.push(
+      JSON.stringify({
+        method: "turn/plan/updated",
+        params: {
+          turnId: "turn_plan_1",
+          plan: {
+            steps: [
+              { content: "Fix failing test", status: "in_progress", activeForm: "Fixing failing test" },
+              { content: "Run test suite", status: "completed" },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const todoToolUse = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
+      const content = (
+        m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }
+      ).message.content;
       return content.some((b) => b.type === "tool_use" && b.name === "TodoWrite");
     }) as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } } | undefined;
 
@@ -3049,34 +3392,40 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/plan/updated",
-      params: {
-        turnId: "turn_plan_clear",
-        plan: {
-          steps: [
-            { content: "Inspect worktree", status: "in_progress" },
-            { content: "Run tests", status: "pending" },
-          ],
+    stdout.push(
+      JSON.stringify({
+        method: "turn/plan/updated",
+        params: {
+          turnId: "turn_plan_clear",
+          plan: {
+            steps: [
+              { content: "Inspect worktree", status: "in_progress" },
+              { content: "Run tests", status: "pending" },
+            ],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "turn/plan/updated",
-      params: {
-        turnId: "turn_plan_clear",
-        plan: {
-          steps: [],
+    stdout.push(
+      JSON.stringify({
+        method: "turn/plan/updated",
+        params: {
+          turnId: "turn_plan_clear",
+          plan: {
+            steps: [],
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const todoToolUses = messages.filter((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }).message.content;
+      const content = (
+        m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }
+      ).message.content;
       return content.some((b) => b.type === "tool_use" && b.name === "TodoWrite");
     }) as Array<{ message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }>;
 
@@ -3097,15 +3446,17 @@ describe("CodexAdapter", () => {
     await tick();
 
     // id:3 = account/rateLimits/read response
-    stdout.push(JSON.stringify({
-      id: 3,
-      result: {
-        rateLimits: {
-          primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1730947200 },
-          secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 1731552000 },
+    stdout.push(
+      JSON.stringify({
+        id: 3,
+        result: {
+          rateLimits: {
+            primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1730947200 },
+            secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 1731552000 },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3125,15 +3476,17 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Send account/rateLimits/updated notification (no id = notification)
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: 1730947200 },
-          secondary: null,
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: 1730947200 },
+            secondary: null,
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3151,15 +3504,17 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          primary: { usedPercent: 0.42, windowDurationMins: 300, resetsAt: 1730947200 },
-          secondary: { usedPercent: 0.09, windowDurationMins: 10080, resetsAt: 1731552000 },
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: { usedPercent: 0.42, windowDurationMins: 300, resetsAt: 1730947200 },
+            secondary: { usedPercent: 0.09, windowDurationMins: 10080, resetsAt: 1731552000 },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3179,15 +3534,17 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: 1730947200 },
-          secondary: { usedPercent: 1, windowDurationMins: 10080, resetsAt: 1731552000 },
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: 1730947200 },
+            secondary: { usedPercent: 1, windowDurationMins: 10080, resetsAt: 1731552000 },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3205,15 +3562,17 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: "1730947200" },
-          secondary: { usedPercent: 34, windowDurationMins: 10080, resetsAt: "2026-02-26T12:00:00.000Z" },
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: "1730947200" },
+            secondary: { usedPercent: 34, windowDurationMins: 10080, resetsAt: "2026-02-26T12:00:00.000Z" },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3235,28 +3594,30 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      id: 3,
-      result: {
-        rateLimits: {
-          limitId: "codex_bengalfox",
-          primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1731999999 },
-          secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1732999999 },
-        },
-        rateLimitsByLimitId: {
-          codex: {
-            limitId: "codex",
-            primary: { usedPercent: 3, windowDurationMins: 300, resetsAt: 1730947200 },
-            secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1731552000 },
-          },
-          codex_bengalfox: {
+    stdout.push(
+      JSON.stringify({
+        id: 3,
+        result: {
+          rateLimits: {
             limitId: "codex_bengalfox",
             primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1731999999 },
             secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1732999999 },
           },
+          rateLimitsByLimitId: {
+            codex: {
+              limitId: "codex",
+              primary: { usedPercent: 3, windowDurationMins: 300, resetsAt: 1730947200 },
+              secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1731552000 },
+            },
+            codex_bengalfox: {
+              limitId: "codex_bengalfox",
+              primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1731999999 },
+              secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1732999999 },
+            },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3274,28 +3635,32 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          limitId: "codex",
-          primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: 1730947200 },
-          secondary: { usedPercent: 4, windowDurationMins: 10080, resetsAt: 1731552000 },
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            limitId: "codex",
+            primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: 1730947200 },
+            secondary: { usedPercent: 4, windowDurationMins: 10080, resetsAt: 1731552000 },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "account/rateLimits/updated",
-      params: {
-        rateLimits: {
-          limitId: "codex_bengalfox",
-          primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1731999999 },
-          secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1732999999 },
+    stdout.push(
+      JSON.stringify({
+        method: "account/rateLimits/updated",
+        params: {
+          rateLimits: {
+            limitId: "codex_bengalfox",
+            primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1731999999 },
+            secondary: { usedPercent: 0, windowDurationMins: 10080, resetsAt: 1732999999 },
+          },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const rl = adapter.getRateLimits();
@@ -3317,35 +3682,40 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "item/tool/requestUserInput",
-      id: 700,
-      params: {
-        threadId: "thr_123",
-        turnId: "turn_1",
-        itemId: "item_1",
-        questions: [
-          {
-            id: "q1",
-            header: "Approach",
-            question: "Which approach should I use?",
-            isOther: true,
-            isSecret: false,
-            options: [
-              { label: "Option A", description: "First approach" },
-              { label: "Option B", description: "Second approach" },
-            ],
-          },
-        ],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/tool/requestUserInput",
+        id: 700,
+        params: {
+          threadId: "thr_123",
+          turnId: "turn_1",
+          itemId: "item_1",
+          questions: [
+            {
+              id: "q1",
+              header: "Approach",
+              question: "Which approach should I use?",
+              isOther: true,
+              isSecret: false,
+              options: [
+                { label: "Option A", description: "First approach" },
+                { label: "Option B", description: "Second approach" },
+              ],
+            },
+          ],
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
     expect(permReqs.length).toBe(1);
 
     const perm = permReqs[0] as unknown as {
-      request: { tool_name: string; input: { questions: Array<{ header: string; question: string; options: unknown[] }> } };
+      request: {
+        tool_name: string;
+        input: { questions: Array<{ header: string; question: string; options: unknown[] }> };
+      };
     };
     expect(perm.request.tool_name).toBe("AskUserQuestion");
     expect(perm.request.input.questions.length).toBe(1);
@@ -3365,19 +3735,35 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Send requestUserInput
-    stdout.push(JSON.stringify({
-      method: "item/tool/requestUserInput",
-      id: 701,
-      params: {
-        threadId: "thr_123",
-        turnId: "turn_1",
-        itemId: "item_1",
-        questions: [
-          { id: "q_alpha", header: "Q1", question: "Pick one", isOther: false, isSecret: false, options: [{ label: "Yes", description: "" }] },
-          { id: "q_beta", header: "Q2", question: "Pick another", isOther: false, isSecret: false, options: [{ label: "No", description: "" }] },
-        ],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "item/tool/requestUserInput",
+        id: 701,
+        params: {
+          threadId: "thr_123",
+          turnId: "turn_1",
+          itemId: "item_1",
+          questions: [
+            {
+              id: "q_alpha",
+              header: "Q1",
+              question: "Pick one",
+              isOther: false,
+              isSecret: false,
+              options: [{ label: "Yes", description: "" }],
+            },
+            {
+              id: "q_beta",
+              header: "Q2",
+              question: "Pick another",
+              isOther: false,
+              isSecret: false,
+              options: [{ label: "No", description: "" }],
+            },
+          ],
+        },
+      }) + "\n",
+    );
     await tick();
 
     // Get the request_id from the emitted permission_request
@@ -3419,23 +3805,25 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "applyPatchApproval",
-      id: 800,
-      params: {
-        conversationId: "thr_123",
-        callId: "call_patch_1",
-        fileChanges: {
-          "src/index.ts": {
-            kind: "modify",
-            unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+    stdout.push(
+      JSON.stringify({
+        method: "applyPatchApproval",
+        id: 800,
+        params: {
+          conversationId: "thr_123",
+          callId: "call_patch_1",
+          fileChanges: {
+            "src/index.ts": {
+              kind: "modify",
+              unified_diff: "@@ -1 +1 @@\n-old\n+new\n",
+            },
+            "src/utils.ts": { kind: "create" },
           },
-          "src/utils.ts": { kind: "create" },
+          reason: "Refactoring imports",
+          grantRoot: null,
         },
-        reason: "Refactoring imports",
-        grantRoot: null,
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
@@ -3471,17 +3859,19 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "applyPatchApproval",
-      id: 801,
-      params: {
-        conversationId: "thr_123",
-        callId: "call_patch_2",
-        fileChanges: { "file.ts": {} },
-        reason: null,
-        grantRoot: null,
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "applyPatchApproval",
+        id: 801,
+        params: {
+          conversationId: "thr_123",
+          callId: "call_patch_2",
+          fileChanges: { "file.ts": {} },
+          reason: null,
+          grantRoot: null,
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permReq = messages.find((m) => m.type === "permission_request") as unknown as {
@@ -3517,18 +3907,20 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "execCommandApproval",
-      id: 900,
-      params: {
-        conversationId: "thr_123",
-        callId: "call_exec_1",
-        command: ["npm", "install"],
-        cwd: "/workspace",
-        reason: "Installing dependencies",
-        parsedCmd: [],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "execCommandApproval",
+        id: 900,
+        params: {
+          conversationId: "thr_123",
+          callId: "call_exec_1",
+          command: ["npm", "install"],
+          cwd: "/workspace",
+          reason: "Installing dependencies",
+          parsedCmd: [],
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permReqs = messages.filter((m) => m.type === "permission_request");
@@ -3554,18 +3946,20 @@ describe("CodexAdapter", () => {
     stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
     await tick();
 
-    stdout.push(JSON.stringify({
-      method: "execCommandApproval",
-      id: 901,
-      params: {
-        conversationId: "thr_123",
-        callId: "call_exec_2",
-        command: ["rm", "-rf", "/"],
-        cwd: "/",
-        reason: null,
-        parsedCmd: [],
-      },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "execCommandApproval",
+        id: 901,
+        params: {
+          conversationId: "thr_123",
+          callId: "call_exec_2",
+          command: ["rm", "-rf", "/"],
+          cwd: "/",
+          reason: null,
+          parsedCmd: [],
+        },
+      }) + "\n",
+    );
     await tick();
 
     const permReq = messages.find((m) => m.type === "permission_request") as unknown as {
@@ -3606,40 +4000,44 @@ describe("CodexAdapter", () => {
     await tick();
 
     // id:4 = mcpServerStatus/list (id:3 is account/rateLimits/read)
-    stdout.push(JSON.stringify({
-      id: 4,
-      result: {
-        data: [
-          {
-            name: "alpha",
-            authStatus: "oAuth",
-            tools: {
-              read_file: { name: "read_file", annotations: { readOnly: true } },
+    stdout.push(
+      JSON.stringify({
+        id: 4,
+        result: {
+          data: [
+            {
+              name: "alpha",
+              authStatus: "oAuth",
+              tools: {
+                read_file: { name: "read_file", annotations: { readOnly: true } },
+              },
             },
-          },
-          {
-            name: "beta",
-            authStatus: "notLoggedIn",
-            tools: {},
-          },
-        ],
-        nextCursor: null,
-      },
-    }) + "\n");
+            {
+              name: "beta",
+              authStatus: "notLoggedIn",
+              tools: {},
+            },
+          ],
+          nextCursor: null,
+        },
+      }) + "\n",
+    );
     await tick();
 
     // id:5 = config/read
-    stdout.push(JSON.stringify({
-      id: 5,
-      result: {
-        config: {
-          mcp_servers: {
-            alpha: { url: "http://localhost:8080/mcp", enabled: true },
-            beta: { command: "npx", args: ["-y", "@test/server"], enabled: true },
+    stdout.push(
+      JSON.stringify({
+        id: 5,
+        result: {
+          config: {
+            mcp_servers: {
+              alpha: { url: "http://localhost:8080/mcp", enabled: true },
+              beta: { command: "npx", args: ["-y", "@test/server"], enabled: true },
+            },
           },
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
     await tick();
 
     const mcpStatus = messages.find((m) => m.type === "mcp_status") as
@@ -3689,20 +4087,24 @@ describe("CodexAdapter", () => {
     const listLine = afterReload.split("\n").find((l) => l.includes('"method":"mcpServerStatus/list"'));
     expect(listLine).toBeDefined();
     const listReq = JSON.parse(listLine!);
-    stdout.push(JSON.stringify({
-      id: listReq.id,
-      result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: listReq.id,
+        result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null },
+      }) + "\n",
+    );
     await tick();
 
     const afterList = stdin.chunks.join("");
     const readLine = afterList.split("\n").find((l) => l.includes('"method":"config/read"'));
     expect(readLine).toBeDefined();
     const readReq = JSON.parse(readLine!);
-    stdout.push(JSON.stringify({
-      id: readReq.id,
-      result: { config: { mcp_servers: { alpha: { url: "http://localhost:8080/mcp", enabled: false } } } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: readReq.id,
+        result: { config: { mcp_servers: { alpha: { url: "http://localhost:8080/mcp", enabled: false } } } },
+      }) + "\n",
+    );
     await tick();
 
     const allWrittenAfter = stdin.chunks.join("");
@@ -3756,7 +4158,9 @@ describe("CodexAdapter", () => {
     await tick();
     stdout.push(JSON.stringify({ id: 6, result: { data: [], nextCursor: null } }) + "\n");
     await tick();
-    stdout.push(JSON.stringify({ id: 7, result: { config: { mcp_servers: { memory: writeReq.params.edits[0].value } } } }) + "\n");
+    stdout.push(
+      JSON.stringify({ id: 7, result: { config: { mcp_servers: { memory: writeReq.params.edits[0].value } } } }) + "\n",
+    );
     await tick();
   });
 
@@ -3776,7 +4180,12 @@ describe("CodexAdapter", () => {
     // First write ok, then reload fails with invalid transport
     stdout.push(JSON.stringify({ id: 4, result: { status: "updated" } }) + "\n");
     await tick();
-    stdout.push(JSON.stringify({ id: 5, error: { code: -32603, message: "Invalid configuration: invalid transport in `mcp_servers.context7`" } }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 5,
+        error: { code: -32603, message: "Invalid configuration: invalid transport in `mcp_servers.context7`" },
+      }) + "\n",
+    );
     await tick();
 
     const written = stdin.chunks.join("");
@@ -3808,9 +4217,19 @@ describe("CodexAdapter", () => {
     // id:4 = reload, id:5 = mcpServerStatus/list, id:6 = config/read
     stdout.push(JSON.stringify({ id: 4, result: {} }) + "\n");
     await tick();
-    stdout.push(JSON.stringify({ id: 5, result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null } }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 5,
+        result: { data: [{ name: "alpha", tools: {}, authStatus: "oAuth" }], nextCursor: null },
+      }) + "\n",
+    );
     await tick();
-    stdout.push(JSON.stringify({ id: 6, result: { config: { mcp_servers: { alpha: { enabled: true, url: "http://localhost:8080/mcp" } } } } }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 6,
+        result: { config: { mcp_servers: { alpha: { enabled: true, url: "http://localhost:8080/mcp" } } } },
+      }) + "\n",
+    );
     await tick();
   });
 
@@ -3829,30 +4248,32 @@ describe("CodexAdapter", () => {
     await tick();
 
     // Send a tokenUsage/updated with large cumulative totals but small last-turn
-    stdout.push(JSON.stringify({
-      method: "thread/tokenUsage/updated",
-      params: {
-        threadId: "thr_123",
-        turnId: "turn_1",
-        tokenUsage: {
-          total: {
-            totalTokens: 1_200_000,
-            inputTokens: 1_150_000,
-            cachedInputTokens: 930_000,
-            outputTokens: 50_000,
-            reasoningOutputTokens: 2_000,
+    stdout.push(
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "thr_123",
+          turnId: "turn_1",
+          tokenUsage: {
+            total: {
+              totalTokens: 1_200_000,
+              inputTokens: 1_150_000,
+              cachedInputTokens: 930_000,
+              outputTokens: 50_000,
+              reasoningOutputTokens: 2_000,
+            },
+            last: {
+              totalTokens: 90_000,
+              inputTokens: 85_000,
+              cachedInputTokens: 80_000,
+              outputTokens: 5_000,
+              reasoningOutputTokens: 200,
+            },
+            modelContextWindow: 258_400,
           },
-          last: {
-            totalTokens: 90_000,
-            inputTokens: 85_000,
-            cachedInputTokens: 80_000,
-            outputTokens: 5_000,
-            reasoningOutputTokens: 200,
-          },
-          modelContextWindow: 258_400,
         },
-      },
-    }) + "\n");
+      }) + "\n",
+    );
 
     await tick();
 
@@ -3920,9 +4341,7 @@ describe("onTurnStartFailed callback", () => {
     await tick();
 
     expect(failedCb).toHaveBeenCalledOnce();
-    expect(failedCb).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "test message" }),
-    );
+    expect(failedCb).toHaveBeenCalledWith(expect.objectContaining({ type: "user_message", content: "test message" }));
   });
 
   it("does not emit a turn/start error when transport closes and message is re-queued", async () => {
@@ -3939,8 +4358,7 @@ describe("onTurnStartFailed callback", () => {
     await tick();
 
     expect(failedCb).toHaveBeenCalledOnce();
-    const startErrors = emitted.filter((m) =>
-      m.type === "error" && m.message.includes("Failed to start turn"));
+    const startErrors = emitted.filter((m) => m.type === "error" && m.message.includes("Failed to start turn"));
     expect(startErrors).toHaveLength(0);
   });
 
@@ -3955,8 +4373,7 @@ describe("onTurnStartFailed callback", () => {
     stdout.close();
     await tick();
 
-    const startErrors = emitted.filter((m) =>
-      m.type === "error" && m.message.includes("Failed to start turn"));
+    const startErrors = emitted.filter((m) => m.type === "error" && m.message.includes("Failed to start turn"));
     expect(startErrors.length).toBeGreaterThan(0);
   });
 
@@ -4029,10 +4446,12 @@ describe("onTurnStarted callback", () => {
 
     // First turn/start fails because older Codex builds reject collaborationMode.
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
-    stdout.push(JSON.stringify({
-      id: 4,
-      error: { code: -32602, message: "Unknown field: collaborationMode" },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        id: 4,
+        error: { code: -32602, message: "Unknown field: collaborationMode" },
+      }) + "\n",
+    );
     await tick();
 
     // Retry without collaborationMode succeeds.
@@ -4098,10 +4517,12 @@ describe("interrupt before new turn/start", () => {
     await tick();
 
     // Simulate turn completing after interrupt
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: { turn: { id: "turn_active", status: "interrupted", items: [], error: null } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: { turn: { id: "turn_active", status: "interrupted", items: [], error: null } },
+      }) + "\n",
+    );
     await tick();
 
     // Respond to the new turn/start (id=6)
@@ -4199,8 +4620,8 @@ describe("interrupt before new turn/start", () => {
     const earlyWrites = stdin.chunks.join("");
     const earlyTurnStarts = (earlyWrites.match(/\"method\":\"turn\/start\"/g) || []).length;
     expect(earlyTurnStarts).toBe(1);
-    expect(earlyWrites).toContain("\"text\":\"first rapid\"");
-    expect(earlyWrites).not.toContain("\"text\":\"second rapid\"");
+    expect(earlyWrites).toContain('"text":"first rapid"');
+    expect(earlyWrites).not.toContain('"text":"second rapid"');
 
     // Complete rateLimits/read + first turn/start so the queued second message can continue.
     stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
@@ -4208,21 +4629,23 @@ describe("interrupt before new turn/start", () => {
     await tick();
 
     const midWrites = stdin.chunks.join("");
-    expect(midWrites).toContain("\"method\":\"turn/interrupt\"");
-    expect(midWrites).toContain("\"turnId\":\"turn_first\"");
+    expect(midWrites).toContain('"method":"turn/interrupt"');
+    expect(midWrites).toContain('"turnId":"turn_first"');
 
     // Resolve interrupt, then complete the first turn to allow second turn/start.
     stdout.push(JSON.stringify({ id: 5, result: {} }) + "\n");
     await tick();
-    stdout.push(JSON.stringify({
-      method: "turn/completed",
-      params: { turn: { id: "turn_first", status: "interrupted", items: [], error: null } },
-    }) + "\n");
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: { turn: { id: "turn_first", status: "interrupted", items: [], error: null } },
+      }) + "\n",
+    );
     await tick();
 
     const finalWrites = stdin.chunks.join("");
     const finalTurnStarts = (finalWrites.match(/\"method\":\"turn\/start\"/g) || []).length;
     expect(finalTurnStarts).toBe(2);
-    expect(finalWrites).toContain("\"text\":\"second rapid\"");
+    expect(finalWrites).toContain('"text":"second rapid"');
   });
 });

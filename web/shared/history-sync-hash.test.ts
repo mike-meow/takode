@@ -86,15 +86,24 @@ describe("history-sync-hash", () => {
   });
 
   it("falls back to semantic hashing when only a synthesized id exists", () => {
-    const base: ChatMessage[] = [{ id: "hist-error-3", role: "system", content: "Error: boom", timestamp: 1000, variant: "error" }];
-    const changed: ChatMessage[] = [{ id: "hist-error-3", role: "system", content: "Error: different", timestamp: 1000, variant: "error" }];
+    const base: ChatMessage[] = [
+      { id: "hist-error-3", role: "system", content: "Error: boom", timestamp: 1000, variant: "error" },
+    ];
+    const changed: ChatMessage[] = [
+      { id: "hist-error-3", role: "system", content: "Error: different", timestamp: 1000, variant: "error" },
+    ];
 
     expect(computeChatMessagesSyncHash(base)).not.toBe(computeChatMessagesSyncHash(changed));
   });
 
   it("matches compact markers across history and normalized chat messages", () => {
     const history: BrowserIncomingMessage[] = [
-      { type: "compact_marker", id: "compact-boundary-1", timestamp: 123, summary: "Conversation compacted to summary" },
+      {
+        type: "compact_marker",
+        id: "compact-boundary-1",
+        timestamp: 123,
+        summary: "Conversation compacted to summary",
+      },
     ];
 
     const chatMessages: ChatMessage[] = [
@@ -144,9 +153,7 @@ describe("history-sync-hash", () => {
   });
 
   it("matches legacy user history rows without ids once normalized deterministically", () => {
-    const history: BrowserIncomingMessage[] = [
-      { type: "user_message", content: "legacy user row", timestamp: 1234 },
-    ];
+    const history: BrowserIncomingMessage[] = [{ type: "user_message", content: "legacy user row", timestamp: 1234 }];
 
     const chatMessages: ChatMessage[] = [
       {

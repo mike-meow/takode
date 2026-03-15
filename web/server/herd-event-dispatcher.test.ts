@@ -6,7 +6,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { HerdEventDispatcher, formatHerdEventBatch, type WsBridgeHandle, type LauncherHandle } from "./herd-event-dispatcher.js";
+import {
+  HerdEventDispatcher,
+  formatHerdEventBatch,
+  type WsBridgeHandle,
+  type LauncherHandle,
+} from "./herd-event-dispatcher.js";
 import type { TakodeEvent, TakodeEventType } from "./session-types.js";
 
 // ─── Mock helpers ───────────────────────────────────────────────────────────────
@@ -26,7 +31,11 @@ function makeEvent(overrides: Partial<TakodeEvent> = {}): TakodeEvent {
 
 function createMockBridge(): WsBridgeHandle & {
   _triggerEvent: (evt: TakodeEvent) => void;
-  _lastInjected: { sessionId: string; content: string; agentSource?: { sessionId: string; sessionLabel?: string } } | null;
+  _lastInjected: {
+    sessionId: string;
+    content: string;
+    agentSource?: { sessionId: string; sessionLabel?: string };
+  } | null;
 } {
   let callback: ((evt: TakodeEvent) => void) | null = null;
 
@@ -41,7 +50,9 @@ function createMockBridge(): WsBridgeHandle & {
     }),
     isSessionIdle: vi.fn(() => false),
     wakeIdleKilledSession: vi.fn(() => false),
-    _triggerEvent: (evt: TakodeEvent) => { callback?.(evt); },
+    _triggerEvent: (evt: TakodeEvent) => {
+      callback?.(evt);
+    },
     _lastInjected: null,
   };
   // Note: bridge is referenced before assignment — we need to use a variable
@@ -94,7 +105,15 @@ describe("HerdEventDispatcher", () => {
 
     // Worker events arrive
     triggerEvent(makeEvent({ event: "turn_end", data: { duration_ms: 5000 } }));
-    triggerEvent(makeEvent({ event: "permission_request", sessionId: "worker-2", sessionNum: 6, sessionName: "api-tests", data: { tool_name: "Bash" } }));
+    triggerEvent(
+      makeEvent({
+        event: "permission_request",
+        sessionId: "worker-2",
+        sessionNum: 6,
+        sessionName: "api-tests",
+        data: { tool_name: "Bash" },
+      }),
+    );
 
     // Nothing injected yet
     expect(bridge.injectUserMessage).not.toHaveBeenCalled();
@@ -191,15 +210,19 @@ describe("HerdEventDispatcher", () => {
 
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
 
-    triggerEvent(makeEvent({
-      event: "compaction_started",
-      data: { context_used_percent: 92 },
-    }));
-    triggerEvent(makeEvent({
-      id: 2,
-      event: "compaction_finished",
-      data: { context_used_percent: 61 },
-    }));
+    triggerEvent(
+      makeEvent({
+        event: "compaction_started",
+        data: { context_used_percent: 92 },
+      }),
+    );
+    triggerEvent(
+      makeEvent({
+        id: 2,
+        event: "compaction_finished",
+        data: { context_used_percent: 61 },
+      }),
+    );
     vi.advanceTimersByTime(600);
 
     expect(bridge.injectUserMessage).not.toHaveBeenCalled();
@@ -216,10 +239,12 @@ describe("HerdEventDispatcher", () => {
 
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
 
-    triggerEvent(makeEvent({
-      event: "user_message",
-      data: { content: "please check latest logs" },
-    }));
+    triggerEvent(
+      makeEvent({
+        event: "user_message",
+        data: { content: "please check latest logs" },
+      }),
+    );
     vi.advanceTimersByTime(600);
 
     expect(bridge.injectUserMessage).not.toHaveBeenCalled();
@@ -572,10 +597,12 @@ describe("HerdEventDispatcher", () => {
 
 describe("formatHerdEventBatch", () => {
   it("formats turn_end events with duration and tools", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: { duration_ms: 12300, tools: { Edit: 3, Bash: 2 }, resultPreview: "Added JWT validation" },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: { duration_ms: 12300, tools: { Edit: 3, Bash: 2 }, resultPreview: "Added JWT validation" },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("1 event from 1 session");
     expect(result).toContain("#5");
@@ -586,20 +613,24 @@ describe("formatHerdEventBatch", () => {
   });
 
   it("formats permission_request events", () => {
-    const events = [makeEvent({
-      event: "permission_request",
-      data: { tool_name: "Bash", summary: "rm -rf node_modules" },
-    })];
+    const events = [
+      makeEvent({
+        event: "permission_request",
+        data: { tool_name: "Bash", summary: "rm -rf node_modules" },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("permission_request");
     expect(result).toContain("Bash: rm -rf node_modules");
   });
 
   it("formats session_error events", () => {
-    const events = [makeEvent({
-      event: "session_error",
-      data: { error: "Test suite failed: 3 assertions" },
-    })];
+    const events = [
+      makeEvent({
+        event: "session_error",
+        data: { error: "Test suite failed: 3 assertions" },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("session_error");
     expect(result).toContain("Test suite failed");
@@ -616,48 +647,58 @@ describe("formatHerdEventBatch", () => {
   });
 
   it("formats interrupted turn_end events with interrupted status marker", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: { duration_ms: 1600, interrupted: true },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: { duration_ms: 1600, interrupted: true },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("interrupted 1.6s");
   });
 
   it("formats interrupted turn_end events with interrupt source attribution", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: { duration_ms: 1600, interrupted: true, interrupt_source: "leader" },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: { duration_ms: 1600, interrupted: true, interrupt_source: "leader" },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("interrupted (by leader) 1.6s");
   });
 
   it("formats turn_end with compacted annotation when context was compacted", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: { duration_ms: 30000, compacted: true },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: { duration_ms: 30000, compacted: true },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     // Should show "(compacted)" after the duration so the leader knows the agent was busy compacting
     expect(result).toContain("30.0s (compacted)");
   });
 
   it("formats compaction_started event with context percentage", () => {
-    const events = [makeEvent({
-      event: "compaction_started",
-      data: { context_used_percent: 89 },
-    })];
+    const events = [
+      makeEvent({
+        event: "compaction_started",
+        data: { context_used_percent: 89 },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("compaction_started");
     expect(result).toContain("context 89% full");
   });
 
   it("formats compaction_started event without context percentage", () => {
-    const events = [makeEvent({
-      event: "compaction_started",
-      data: {},
-    })];
+    const events = [
+      makeEvent({
+        event: "compaction_started",
+        data: {},
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("compaction_started");
     expect(result).not.toContain("context");
@@ -665,25 +706,29 @@ describe("formatHerdEventBatch", () => {
 
   it("appends relative age for recent events", () => {
     const now = 1_700_000_000_000;
-    const events = [makeEvent({
-      event: "user_message",
-      ts: now - 45_000,
-      data: { content: "ping" },
-    })];
+    const events = [
+      makeEvent({
+        event: "user_message",
+        ts: now - 45_000,
+        data: { content: "ping" },
+      }),
+    ];
     const result = formatHerdEventBatch(events, now);
     expect(result).toContain("| 45s ago");
   });
 
   it("formats turn_end with user message count and IDs", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: {
-        duration_ms: 15 * 60 * 1000,
-        tools: { Edit: 3 },
-        msgRange: { from: 169, to: 281 },
-        userMsgs: { count: 3, ids: [172, 195, 240] },
-      },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: {
+          duration_ms: 15 * 60 * 1000,
+          tools: { Edit: 3 },
+          msgRange: { from: 169, to: 281 },
+          userMsgs: { count: 3, ids: [172, 195, 240] },
+        },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("15m 0s");
     expect(result).toContain("Edit(3)");
@@ -692,34 +737,40 @@ describe("formatHerdEventBatch", () => {
   });
 
   it("formats turn_end with single user message (no plural)", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: {
-        duration_ms: 5000,
-        userMsgs: { count: 1, ids: [42] },
-      },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: {
+          duration_ms: 5000,
+          userMsgs: { count: 1, ids: [42] },
+        },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("1 user msg [42]");
     expect(result).not.toContain("user msgs");
   });
 
   it("formats turn_end without user messages when none received", () => {
-    const events = [makeEvent({
-      event: "turn_end",
-      data: { duration_ms: 5000 },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        data: { duration_ms: 5000 },
+      }),
+    ];
     const result = formatHerdEventBatch(events);
     expect(result).not.toContain("user msg");
   });
 
   it("appends relative age for stale queued events", () => {
     const now = 1_700_000_000_000;
-    const events = [makeEvent({
-      event: "turn_end",
-      ts: now - 2 * 60_000,
-      data: { duration_ms: 1230 },
-    })];
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        ts: now - 2 * 60_000,
+        data: { duration_ms: 1230 },
+      }),
+    ];
     const result = formatHerdEventBatch(events, now);
     expect(result).toContain("| 2m ago");
   });

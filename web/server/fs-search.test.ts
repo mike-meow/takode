@@ -28,10 +28,7 @@ const execPromise = promisify(execCb);
  * Minimal reproduction of the search endpoint logic, extracted for testability.
  * Matches the implementation in routes/filesystem.ts.
  */
-async function searchFiles(
-  root: string,
-  query: string,
-): Promise<Array<{ relativePath: string; fileName: string }>> {
+async function searchFiles(root: string, query: string): Promise<Array<{ relativePath: string; fileName: string }>> {
   if (!query || query.length < 1) return [];
   const rgPath = await getRipgrepPath();
   const { stdout } = await execPromise(

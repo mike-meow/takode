@@ -9,10 +9,10 @@ import { join } from "node:path";
  */
 export function hasContainerClaudeAuth(envVars?: Record<string, string>): boolean {
   if (
-    !!envVars?.ANTHROPIC_API_KEY
-    || !!envVars?.ANTHROPIC_AUTH_TOKEN
-    || !!envVars?.CLAUDE_CODE_AUTH_TOKEN
-    || !!envVars?.CLAUDE_CODE_OAUTH_TOKEN
+    !!envVars?.ANTHROPIC_API_KEY ||
+    !!envVars?.ANTHROPIC_AUTH_TOKEN ||
+    !!envVars?.CLAUDE_CODE_AUTH_TOKEN ||
+    !!envVars?.CLAUDE_CODE_OAUTH_TOKEN
   ) {
     return true;
   }
@@ -27,4 +27,3 @@ export function hasContainerClaudeAuth(envVars?: Record<string, string>): boolea
 
   return candidates.some((p) => existsSync(p)); // sync-ok: container auth check at session creation
 }
-

@@ -59,8 +59,8 @@ export interface TakodePeekTurn {
 
 export interface TurnStats {
   tools: number;
-  messages: number;   // assistant messages count
-  subagents: number;  // Task tool calls count
+  messages: number; // assistant messages count
+  subagents: number; // Task tool calls count
 }
 
 export interface TakodePeekTurnSummary {
@@ -89,10 +89,12 @@ export interface PeekDefaultResponse {
   /** Number of earlier turns not shown */
   omittedTurnCount: number;
   /** The last turn, expanded with messages */
-  expandedTurn: (TakodePeekTurn & {
-    stats: TurnStats;
-    omittedMessageCount: number;
-  }) | null;
+  expandedTurn:
+    | (TakodePeekTurn & {
+        stats: TurnStats;
+        omittedMessageCount: number;
+      })
+    | null;
 }
 
 export interface PeekRangeResponse {
@@ -129,10 +131,17 @@ export interface TakodeReadResponse {
 
 /** MIME type to file extension mapping (must match image-store.ts). */
 const MIME_TO_EXT: Record<string, string> = {
-  "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpg",
-  "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg",
-  "image/bmp": "bmp", "image/tiff": "tiff", "image/avif": "avif",
-  "image/heic": "heic", "image/heif": "heif",
+  "image/png": "png",
+  "image/jpeg": "jpeg",
+  "image/jpg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/svg+xml": "svg",
+  "image/bmp": "bmp",
+  "image/tiff": "tiff",
+  "image/avif": "avif",
+  "image/heic": "heic",
+  "image/heif": "heif",
 };
 
 /** Derive original image file paths from ImageRefs stored in message history.
@@ -164,12 +173,18 @@ export function buildToolSummary(name: string, input: Record<string, unknown>): 
   const path = (input.file_path as string) || "";
   const basename = path.split("/").pop() || path;
   switch (name) {
-    case "Bash": return truncate(String(input.command || ""), 60);
-    case "Edit": return basename;
-    case "Read": return basename;
-    case "Write": return `${basename} (new)`;
-    case "Glob": return truncate(String(input.pattern || ""), 40);
-    case "Grep": return truncate(String(input.pattern || ""), 40);
+    case "Bash":
+      return truncate(String(input.command || ""), 60);
+    case "Edit":
+      return basename;
+    case "Read":
+      return basename;
+    case "Write":
+      return `${basename} (new)`;
+    case "Glob":
+      return truncate(String(input.pattern || ""), 40);
+    case "Grep":
+      return truncate(String(input.pattern || ""), 40);
     default: {
       for (const v of Object.values(input)) {
         if (typeof v === "string") return truncate(v, 40);
@@ -213,7 +228,10 @@ function extractSubagentPreviewText(
   maxLen: number,
 ): string {
   const lines = blocks
-    .filter((block): block is Extract<ContentBlock, { type: "tool_use" }> => block.type === "tool_use" && isSubagentToolName(block.name))
+    .filter(
+      (block): block is Extract<ContentBlock, { type: "tool_use" }> =>
+        block.type === "tool_use" && isSubagentToolName(block.name),
+    )
     .map((block) => {
       const raw = toolResultPreviews.get(block.id)?.content?.trim() || "";
       if (!raw) return "";
@@ -258,7 +276,8 @@ function extractSubagentReadText(
   getToolResult?: (toolUseId: string) => { content: string; is_error: boolean } | null,
 ): string {
   const subagentBlocks = blocks.filter(
-    (block): block is Extract<ContentBlock, { type: "tool_use" }> => block.type === "tool_use" && isSubagentToolName(block.name),
+    (block): block is Extract<ContentBlock, { type: "tool_use" }> =>
+      block.type === "tool_use" && isSubagentToolName(block.name),
   );
   if (subagentBlocks.length === 0) return "";
 
@@ -314,8 +333,7 @@ function deriveTurnResultPreview(
   const assistantPreview = [...peekMessages]
     .reverse()
     .find((msg) => msg.type === "assistant" && msg.content.trim())
-    ?.content
-    .trim();
+    ?.content.trim();
   if (assistantPreview) return truncate(assistantPreview, contentLimit);
   if (resultMessage?.type === "result") {
     return truncate((resultMessage.data as CLIResultMessage).result || "", contentLimit);
@@ -334,7 +352,9 @@ function extractTextFromBlocks(blocks: ContentBlock[]): string {
 }
 
 /** Extract tool_use blocks from content blocks. */
-function extractToolUseBlocks(blocks: ContentBlock[]): { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }[] {
+function extractToolUseBlocks(
+  blocks: ContentBlock[],
+): { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }[] {
   return blocks.filter(
     (b): b is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => b.type === "tool_use",
   );
@@ -346,10 +366,15 @@ function stringifyToolUse(block: { name: string; input: Record<string, unknown> 
 }
 
 /** Stringify a tool_result block for full-text read output. */
-function stringifyToolResult(block: { tool_use_id: string; content: string | ContentBlock[]; is_error?: boolean }): string {
-  const content = typeof block.content === "string"
-    ? block.content
-    : block.content.map((b) => ("text" in b ? b.text : JSON.stringify(b))).join("\n");
+function stringifyToolResult(block: {
+  tool_use_id: string;
+  content: string | ContentBlock[];
+  is_error?: boolean;
+}): string {
+  const content =
+    typeof block.content === "string"
+      ? block.content
+      : block.content.map((b) => ("text" in b ? b.text : JSON.stringify(b))).join("\n");
   const prefix = block.is_error ? "[Tool Error]" : "[Tool Result]";
   return `${prefix} ${content}`;
 }
@@ -431,12 +456,21 @@ function extractTimestamp(msg: BrowserIncomingMessage): number {
 // ─── Type Guard Helpers ───────────────────────────────────────────────────────
 
 /** Message types that carry meaningful content for the peek/read API. */
-type PeekableType = "user_message" | "assistant" | "result" | "compact_marker"
-  | "permission_approved" | "permission_denied";
+type PeekableType =
+  | "user_message"
+  | "assistant"
+  | "result"
+  | "compact_marker"
+  | "permission_approved"
+  | "permission_denied";
 
 const PEEKABLE_TYPES = new Set<string>([
-  "user_message", "assistant", "result", "compact_marker",
-  "permission_approved", "permission_denied",
+  "user_message",
+  "assistant",
+  "result",
+  "compact_marker",
+  "permission_approved",
+  "permission_denied",
 ]);
 
 function isPeekable(msg: BrowserIncomingMessage): boolean {
@@ -499,12 +533,10 @@ function findTurnBoundaries(messages: BrowserIncomingMessage[]): TurnBoundary[] 
 }
 
 /** Count tools, assistant messages, and Task subagents within a turn range. */
-function computeTurnStats(
-  messages: BrowserIncomingMessage[],
-  startIdx: number,
-  endIdx: number,
-): TurnStats {
-  let tools = 0, msgs = 0, subagents = 0;
+function computeTurnStats(messages: BrowserIncomingMessage[], startIdx: number, endIdx: number): TurnStats {
+  let tools = 0,
+    msgs = 0,
+    subagents = 0;
   const endBound = endIdx >= 0 ? endIdx : messages.length - 1;
   for (let i = startIdx; i <= endBound; i++) {
     const msg = messages[i];
@@ -563,11 +595,7 @@ function buildTurnMessages(
   for (let i = turn.startIdx; i <= endBound; i++) {
     const msg = messageHistory[i];
     if (!isPeekable(msg)) continue;
-    if (
-      msg.type === "assistant"
-      && msg.parent_tool_use_id
-      && subagentToolUseIds.has(msg.parent_tool_use_id)
-    ) {
+    if (msg.type === "assistant" && msg.parent_tool_use_id && subagentToolUseIds.has(msg.parent_tool_use_id)) {
       continue;
     }
 
@@ -659,12 +687,13 @@ export function buildPeekResponse(
   const allTurns = findTurnBoundaries(messageHistory);
 
   // Filter by `since`: keep only turns whose start message is >= since
-  let filteredTurns = since > 0
-    ? allTurns.filter((t) => {
-        const startMsg = messageHistory[t.startIdx];
-        return extractTimestamp(startMsg) >= since;
-      })
-    : allTurns;
+  let filteredTurns =
+    since > 0
+      ? allTurns.filter((t) => {
+          const startMsg = messageHistory[t.startIdx];
+          return extractTimestamp(startMsg) >= since;
+        })
+      : allTurns;
 
   // Take the last N turns
   filteredTurns = filteredTurns.slice(-turnCount);
@@ -674,13 +703,9 @@ export function buildPeekResponse(
     const endMsg = turn.endIdx >= 0 ? messageHistory[turn.endIdx] : null;
 
     const startedAt = extractTimestamp(startMsg);
-    const durationMs = endMsg?.type === "result"
-      ? (endMsg.data as CLIResultMessage).duration_ms ?? null
-      : null;
+    const durationMs = endMsg?.type === "result" ? ((endMsg.data as CLIResultMessage).duration_ms ?? null) : null;
     // Estimate endedAt: use duration offset from start, or find last assistant timestamp
-    const endedAt = endMsg
-      ? (durationMs && startedAt ? startedAt + durationMs : null)
-      : null;
+    const endedAt = endMsg ? (durationMs && startedAt ? startedAt + durationMs : null) : null;
 
     const peekMessages = buildTurnMessages(messageHistory, turn, contentLimit, {
       full,
@@ -718,7 +743,14 @@ export function buildPeekDefault(
   const totalMessages = messageHistory.length;
 
   if (totalTurns === 0) {
-    return { mode: "default", totalTurns: 0, totalMessages, collapsedTurns: [], omittedTurnCount: 0, expandedTurn: null };
+    return {
+      mode: "default",
+      totalTurns: 0,
+      totalMessages,
+      collapsedTurns: [],
+      omittedTurnCount: 0,
+      expandedTurn: null,
+    };
   }
 
   // Last turn = expanded
@@ -732,13 +764,11 @@ export function buildPeekDefault(
   const omittedTurnCount = priorTurns.length - collapsedSlice.length;
 
   // Build collapsed summaries
-  const collapsedTurns: TakodePeekTurnSummary[] = collapsedSlice.map(turn => {
+  const collapsedTurns: TakodePeekTurnSummary[] = collapsedSlice.map((turn) => {
     const startMsg = messageHistory[turn.startIdx];
     const endMsg = turn.endIdx >= 0 ? messageHistory[turn.endIdx] : null;
     const startedAt = extractTimestamp(startMsg);
-    const durationMs = endMsg?.type === "result"
-      ? ((endMsg.data as CLIResultMessage).duration_ms ?? null)
-      : null;
+    const durationMs = endMsg?.type === "result" ? ((endMsg.data as CLIResultMessage).duration_ms ?? null) : null;
     const endedAt = durationMs && startedAt ? startedAt + durationMs : null;
     const stats = computeTurnStats(messageHistory, turn.startIdx, turn.endIdx);
 
@@ -754,9 +784,7 @@ export function buildPeekDefault(
     const resultPreview = deriveTurnResultPreview(peekMessages, endMsg, contentLimit);
 
     // User preview
-    const userPreview = startMsg.type === "user_message"
-      ? truncate(startMsg.content || "", 80)
-      : "";
+    const userPreview = startMsg.type === "user_message" ? truncate(startMsg.content || "", 80) : "";
 
     return {
       turnNum: allTurns.indexOf(turn),
@@ -777,9 +805,7 @@ export function buildPeekDefault(
   const startMsg = messageHistory[lastTurn.startIdx];
   const endMsg = lastTurn.endIdx >= 0 ? messageHistory[lastTurn.endIdx] : null;
   const startedAt = extractTimestamp(startMsg);
-  const durationMs = endMsg?.type === "result"
-    ? ((endMsg.data as CLIResultMessage).duration_ms ?? null)
-    : null;
+  const durationMs = endMsg?.type === "result" ? ((endMsg.data as CLIResultMessage).duration_ms ?? null) : null;
   const endedAt = durationMs && startedAt ? startedAt + durationMs : null;
 
   const expandedMessages = buildTurnMessages(messageHistory, lastTurn, contentLimit, {
@@ -840,11 +866,7 @@ export function buildPeekRange(
 
   const isVisibleRangeMessage = (msg: BrowserIncomingMessage): boolean => {
     if (!isPeekable(msg)) return false;
-    if (
-      msg.type === "assistant"
-      && msg.parent_tool_use_id
-      && subagentToolUseIds.has(msg.parent_tool_use_id)
-    ) {
+    if (msg.type === "assistant" && msg.parent_tool_use_id && subagentToolUseIds.has(msg.parent_tool_use_id)) {
       return false;
     }
     return true;
@@ -859,7 +881,7 @@ export function buildPeekRange(
 
   const selectedIndexes: number[] = [];
   let rangeFrom = resolvedFrom ?? 0;
-  let rangeTo = resolvedUntil ?? (totalMessages - 1);
+  let rangeTo = resolvedUntil ?? totalMessages - 1;
 
   if (resolvedFrom !== undefined && resolvedUntil !== undefined) {
     rangeFrom = Math.min(resolvedFrom, resolvedUntil);
@@ -951,11 +973,11 @@ export function buildPeekRange(
 
   // Find overlapping turn boundaries
   const turnBoundaries = allTurns
-    .filter(t => {
+    .filter((t) => {
       const tEnd = t.endIdx >= 0 ? t.endIdx : totalMessages - 1;
       return t.startIdx <= rangeTo && tEnd >= rangeFrom;
     })
-    .map(t => ({
+    .map((t) => ({
       turnNum: allTurns.indexOf(t),
       startIdx: t.startIdx,
       endIdx: t.endIdx,
@@ -998,9 +1020,10 @@ export function buildReadResponse(
   const msg = messageHistory[idx];
   const { toolResultPreviews } = buildSubagentIndexes(messageHistory);
 
-  const fullText = msg.type === "assistant" && msg.message?.content
-    ? extractAssistantReadText(msg.message.content, toolResultPreviews, getToolResult)
-    : extractFullText(msg, sessionId);
+  const fullText =
+    msg.type === "assistant" && msg.message?.content
+      ? extractAssistantReadText(msg.message.content, toolResultPreviews, getToolResult)
+      : extractFullText(msg, sessionId);
   const lines = fullText.split("\n");
   const paginatedLines = lines.slice(offset, offset + limit);
   let ts = extractTimestamp(msg);
@@ -1008,7 +1031,10 @@ export function buildReadResponse(
   if (ts === 0 && idx > 0) {
     for (let i = idx - 1; i >= 0; i--) {
       const prevTs = extractTimestamp(messageHistory[i]);
-      if (prevTs > 0) { ts = prevTs; break; }
+      if (prevTs > 0) {
+        ts = prevTs;
+        break;
+      }
     }
   }
 

@@ -8,15 +8,23 @@ import {
   usageBarColor,
 } from "../utils/usage-bars.js";
 
-function UsageRow({ label, pct, resetStr, timePct }: { label: string; pct: number; resetStr: string; timePct: number | null }) {
+function UsageRow({
+  label,
+  pct,
+  resetStr,
+  timePct,
+}: {
+  label: string;
+  pct: number;
+  resetStr: string;
+  timePct: number | null;
+}) {
   return (
     <div
       className="flex items-center gap-1.5"
       title={`${label} Limit: ${pct}%${resetStr ? ` (resets in ${resetStr})` : ""}${timePct !== null ? ` · ${Math.round(timePct)}% of cycle elapsed` : ""}`}
     >
-      <span className="text-[9px] text-cc-muted uppercase tracking-wider font-medium w-4 text-right">
-        {label}
-      </span>
+      <span className="text-[9px] text-cc-muted uppercase tracking-wider font-medium w-4 text-right">{label}</span>
       <div className="flex-1 h-1 rounded-full bg-cc-hover overflow-hidden relative">
         <div
           className={`h-full rounded-full transition-all duration-500 ${usageBarColor(pct)}`}
@@ -87,7 +95,9 @@ export function SidebarUsageBar() {
           className="w-3 h-3 rounded-[3px] object-contain opacity-90"
           draggable={false}
         />
-        <span className={`text-[9px] uppercase tracking-wider font-medium ${backendType === "codex" ? "text-blue-400/90" : "text-[#D97757]"}`}>
+        <span
+          className={`text-[9px] uppercase tracking-wider font-medium ${backendType === "codex" ? "text-blue-400/90" : "text-[#D97757]"}`}
+        >
           {backendLabel}
         </span>
       </div>

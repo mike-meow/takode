@@ -33,9 +33,7 @@ describe("SessionCreationProgress", () => {
   });
 
   it("shows checkmark SVG for done steps", () => {
-    const steps: CreationProgressEvent[] = [
-      { step: "resolving_env", label: "Resolved", status: "done" },
-    ];
+    const steps: CreationProgressEvent[] = [{ step: "resolving_env", label: "Resolved", status: "done" }];
     const { container } = render(<SessionCreationProgress steps={steps} />);
     // Done steps have a green checkmark SVG with the cc-success class
     const svg = container.querySelector(".text-cc-success");
@@ -43,9 +41,7 @@ describe("SessionCreationProgress", () => {
   });
 
   it("shows X SVG for error steps", () => {
-    const steps: CreationProgressEvent[] = [
-      { step: "building_image", label: "Build failed", status: "error" },
-    ];
+    const steps: CreationProgressEvent[] = [{ step: "building_image", label: "Build failed", status: "error" }];
     const { container } = render(<SessionCreationProgress steps={steps} />);
     // Error steps have a red X SVG with the cc-error class
     const svg = container.querySelector(".text-cc-error");
@@ -53,22 +49,13 @@ describe("SessionCreationProgress", () => {
   });
 
   it("displays error message box when error prop is set", () => {
-    const steps: CreationProgressEvent[] = [
-      { step: "pulling_image", label: "Pull failed", status: "error" },
-    ];
-    render(
-      <SessionCreationProgress
-        steps={steps}
-        error="Connection timed out after 30s"
-      />,
-    );
+    const steps: CreationProgressEvent[] = [{ step: "pulling_image", label: "Pull failed", status: "error" }];
+    render(<SessionCreationProgress steps={steps} error="Connection timed out after 30s" />);
     expect(screen.getByText("Connection timed out after 30s")).toBeDefined();
   });
 
   it("does not show error box when error prop is absent", () => {
-    const steps: CreationProgressEvent[] = [
-      { step: "resolving_env", label: "Done", status: "done" },
-    ];
+    const steps: CreationProgressEvent[] = [{ step: "resolving_env", label: "Done", status: "done" }];
     const { container } = render(<SessionCreationProgress steps={steps} />);
     // Error box has a specific bg class; should not be present
     const errorBox = container.querySelector(".bg-cc-error\\/5");
@@ -96,9 +83,7 @@ describe("SessionCreationProgress", () => {
       { step: "creating_container", label: "Step 3", status: "in_progress" },
     ];
     const { container } = render(<SessionCreationProgress steps={steps} />);
-    const labels = Array.from(container.querySelectorAll("span.text-sm")).map(
-      (el) => el.textContent,
-    );
+    const labels = Array.from(container.querySelectorAll("span.text-sm")).map((el) => el.textContent);
     expect(labels).toEqual(["Step 1", "Step 2", "Step 3"]);
   });
 });

@@ -34,12 +34,7 @@ function dedupeSessionAuthCandidates(candidates: SessionAuthFileData[]): Session
   const seen = new Set<string>();
   const deduped: SessionAuthFileData[] = [];
   for (const candidate of candidates) {
-    const key = [
-      candidate.serverId || "",
-      candidate.sessionId,
-      candidate.authToken,
-      candidate.port ?? "",
-    ].join("\0");
+    const key = [candidate.serverId || "", candidate.sessionId, candidate.authToken, candidate.port ?? ""].join("\0");
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(candidate);
@@ -71,7 +66,9 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
     const serverMatches = uniqueCandidates.filter((candidate) => candidate.serverId === envServerId);
     if (serverMatches.length === 1) return serverMatches[0];
     if (serverMatches.length > 1) {
-      err(`Multiple Companion auth contexts matched server ${envServerId} for ${process.cwd()}. Refusing to guess which server to use.`);
+      err(
+        `Multiple Companion auth contexts matched server ${envServerId} for ${process.cwd()}. Refusing to guess which server to use.`,
+      );
     }
   }
 
@@ -80,7 +77,9 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
     const sessionMatches = uniqueCandidates.filter((candidate) => candidate.sessionId === envSessionId);
     if (sessionMatches.length === 1) return sessionMatches[0];
     if (sessionMatches.length > 1) {
-      err(`Multiple Companion auth contexts matched session ${envSessionId} for ${process.cwd()}. Refusing to guess which server to use.`);
+      err(
+        `Multiple Companion auth contexts matched session ${envSessionId} for ${process.cwd()}. Refusing to guess which server to use.`,
+      );
     }
   }
 
@@ -91,7 +90,9 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
     const portMatches = uniqueCandidates.filter((candidate) => candidate.port === envPreferredPort);
     if (portMatches.length === 1) return portMatches[0];
     if (portMatches.length > 1) {
-      err(`Multiple Companion auth contexts matched port ${envPreferredPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+      err(
+        `Multiple Companion auth contexts matched port ${envPreferredPort} for ${process.cwd()}. Refusing to guess which server to use.`,
+      );
     }
   }
 
@@ -99,10 +100,14 @@ function getScopedSessionAuthFileData(argv: string[]): SessionAuthFileData | nul
   if (explicitPort && uniqueCandidates.length > 1) {
     const portMatches = uniqueCandidates.filter((candidate) => candidate.port === explicitPort);
     if (portMatches.length === 0) {
-      err(`No Companion auth context matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+      err(
+        `No Companion auth context matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`,
+      );
     }
     if (portMatches.length === 1) return portMatches[0];
-    err(`Multiple Companion auth contexts matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`);
+    err(
+      `Multiple Companion auth contexts matched port ${explicitPort} for ${process.cwd()}. Refusing to guess which server to use.`,
+    );
   }
 
   if (uniqueCandidates.length === 1) return uniqueCandidates[0];
@@ -301,11 +306,7 @@ function parseFlags(argv: string[]): Record<string, string | boolean> {
   return flags;
 }
 
-function assertKnownFlags(
-  flags: Record<string, string | boolean>,
-  allowed: ReadonlySet<string>,
-  usage: string,
-): void {
+function assertKnownFlags(flags: Record<string, string | boolean>, allowed: ReadonlySet<string>, usage: string): void {
   const unknown = Object.keys(flags).filter((key) => !allowed.has(key));
   if (unknown.length === 0) return;
   err(`Unknown option(s): ${unknown.map((key) => `--${key}`).join(", ")}\n${usage}`);
@@ -332,11 +333,7 @@ function resolveBooleanToggleFlag(
   return undefined;
 }
 
-function resolveStringFlag(
-  flags: Record<string, string | boolean>,
-  key: string,
-  label: string,
-): string | undefined {
+function resolveStringFlag(flags: Record<string, string | boolean>, key: string, label: string): string | undefined {
   const value = flags[key];
   if (value === undefined) return undefined;
   if (typeof value !== "string") err(`--${key} requires a value for ${label}.`);
@@ -345,11 +342,7 @@ function resolveStringFlag(
   return trimmed;
 }
 
-function parseIntegerFlag(
-  flags: Record<string, string | boolean>,
-  key: string,
-  label: string,
-): number | undefined {
+function parseIntegerFlag(flags: Record<string, string | boolean>, key: string, label: string): number | undefined {
   const value = resolveStringFlag(flags, key, label);
   if (value === undefined) return undefined;
   const parsed = Number(value);
@@ -489,7 +482,7 @@ async function handleList(base: string, args: string[]): Promise<void> {
   const showActive = flags.active === true;
   const jsonMode = flags.json === true;
 
-  const sessions = await apiGet(base, "/takode/sessions") as Array<{
+  const sessions = (await apiGet(base, "/takode/sessions")) as Array<{
     sessionId: string;
     sessionNum?: number;
     name?: string;
@@ -522,7 +515,7 @@ async function handleList(base: string, args: string[]): Promise<void> {
   //   --active     — all unarchived sessions (discovery/triage view)
   //   --all        — everything including archived
   const mySessionId = getCredentials()?.sessionId;
-  const mySelf = mySessionId ? sessions.find(s => s.sessionId === mySessionId) : null;
+  const mySelf = mySessionId ? sessions.find((s) => s.sessionId === mySessionId) : null;
   const isOrchestrator = mySelf?.isOrchestrator === true;
 
   let filtered: typeof sessions;
@@ -530,16 +523,17 @@ async function handleList(base: string, args: string[]): Promise<void> {
   if (showAll) {
     filtered = sessions;
   } else if (showActive) {
-    filtered = sessions.filter(s => !s.archived);
+    filtered = sessions.filter((s) => !s.archived);
     filterHint = " (use --all to include archived)";
   } else if (isOrchestrator && mySessionId) {
     // Default for orchestrators: show only herded sessions (the flock)
-    filtered = sessions.filter(s => !s.archived && s.herdedBy === mySessionId);
-    filterHint = filtered.length === 0
-      ? " (no herded sessions — run `takode list --active` to discover, then `takode herd <ids>`)"
-      : " (herded only — use --active to see all)";
+    filtered = sessions.filter((s) => !s.archived && s.herdedBy === mySessionId);
+    filterHint =
+      filtered.length === 0
+        ? " (no herded sessions — run `takode list --active` to discover, then `takode herd <ids>`)"
+        : " (herded only — use --active to see all)";
   } else {
-    filtered = sessions.filter(s => !s.archived);
+    filtered = sessions.filter((s) => !s.archived);
     filterHint = " (use --all to include archived)";
   }
 
@@ -577,7 +571,7 @@ async function handleList(base: string, args: string[]): Promise<void> {
   let total = 0;
   for (const [projectKey, projectSessions] of sortedGroups) {
     const label = formatInlineText(projectKey.split("/").pop() || projectKey);
-    const running = projectSessions.filter(s => s.cliConnected && s.state === "running").length;
+    const running = projectSessions.filter((s) => s.cliConnected && s.state === "running").length;
     const countLabel = running > 0 ? `  (${running} running)` : "";
     console.log(`▸ ${label}  ${projectSessions.length}${countLabel}`);
 
@@ -607,7 +601,9 @@ async function handleList(base: string, args: string[]): Promise<void> {
   }
 
   console.log(`${total} session(s)${filterHint}`);
-  console.log(`Status: ● running  ○ idle  ✗ disconnected  ⊘ archived  ⚠ needs attention  📋 quest  ↑↓ commits ahead/behind`);
+  console.log(
+    `Status: ● running  ○ idle  ✗ disconnected  ⊘ archived  ⚠ needs attention  📋 quest  ↑↓ commits ahead/behind`,
+  );
 }
 
 function printSessionLine(s: {
@@ -639,11 +635,8 @@ function printSessionLine(s: {
   const role = s.isOrchestrator ? " [leader]" : "";
   const herd = s.herdedBy ? " [herd]" : "";
   // Backend type tag: only show for codex (sdk is implied by session details)
-  const backend = s.backendType === "codex" ? " [codex]"
-    : "";
-  const status = s.cliConnected
-    ? (s.state === "running" ? "●" : "○")
-    : (s.archived ? "⊘" : "✗");
+  const backend = s.backendType === "codex" ? " [codex]" : "";
+  const status = s.cliConnected ? (s.state === "running" ? "●" : "○") : s.archived ? "⊘" : "✗";
   const attention = s.attentionReason ? ` ⚠ ${formatInlineText(s.attentionReason)}` : "";
 
   // Quest indicator: "📋 q-42 in_progress"
@@ -656,12 +649,12 @@ function printSessionLine(s: {
   // Commits ahead/behind: "3↑5↓" (only show non-zero)
   const ahead = s.gitAhead ? `${s.gitAhead}↑` : "";
   const behind = s.gitBehind ? `${s.gitBehind}↓` : "";
-  const gitDelta = (ahead || behind) ? ` ${ahead}${behind}` : "";
+  const gitDelta = ahead || behind ? ` ${ahead}${behind}` : "";
 
   // Uncommitted diff stats: "+114 -10" (only show non-zero)
   const added = s.totalLinesAdded ? `+${s.totalLinesAdded}` : "";
   const removed = s.totalLinesRemoved ? `-${s.totalLinesRemoved}` : "";
-  const diffStats = (added || removed) ? ` ${[added, removed].filter(Boolean).join(" ")}` : "";
+  const diffStats = added || removed ? ` ${[added, removed].filter(Boolean).join(" ")}` : "";
 
   const wt = s.isWorktree ? " wt" : "";
   // Show cwd as the last directory component (folder name) for brevity
@@ -695,12 +688,14 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   // ── Header ──
   const num = data.sessionNum != null ? `#${data.sessionNum}` : "";
   const name = formatInlineText(data.name || "(unnamed)");
-  const statusIcon = data.cliConnected
-    ? (data.state === "running" ? "●" : "○")
-    : (data.archived ? "⊘" : "✗");
+  const statusIcon = data.cliConnected ? (data.state === "running" ? "●" : "○") : data.archived ? "⊘" : "✗";
   const statusLabel = data.cliConnected
-    ? (data.isGenerating ? "running (generating)" : data.state)
-    : (data.archived ? "archived" : "disconnected");
+    ? data.isGenerating
+      ? "running (generating)"
+      : data.state
+    : data.archived
+      ? "archived"
+      : "disconnected";
   console.log(`${num} ${name}  ${statusIcon} ${statusLabel}`);
   console.log("─".repeat(60));
 
@@ -800,7 +795,9 @@ function printSessionInfo(data: TakodeSessionInfo): void {
   // ── MCP Servers ──
   if (data.mcpServers && data.mcpServers.length > 0) {
     console.log("");
-    console.log(`  MCP Servers    ${data.mcpServers.map(s => `${formatInlineText(s.name)} (${formatInlineText(s.status)})`).join(", ")}`);
+    console.log(
+      `  MCP Servers    ${data.mcpServers.map((s) => `${formatInlineText(s.name)} (${formatInlineText(s.status)})`).join(", ")}`,
+    );
   }
 
   // ── Tools ──
@@ -839,7 +836,7 @@ async function handleTasks(base: string, args: string[]): Promise<void> {
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
 
-  const data = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`) as {
+  const data = (await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`)) as {
     sessionId: string;
     sessionNum: number;
     sessionName: string;
@@ -1014,7 +1011,9 @@ function printExpandedMessages(messages: PeekMessage[]): void {
             const tool = msg.tools[ti];
             const isLastTool = ti === msg.tools.length - 1 && !text;
             const connector = isLastTool && isLast ? "└─" : "├─";
-            console.log(`  ${pipe}       ${connector} ${formatInlineText(tool.name).padEnd(6)} ${truncate(tool.summary, 80)}`);
+            console.log(
+              `  ${pipe}       ${connector} ${formatInlineText(tool.name).padEnd(6)} ${truncate(tool.summary, 80)}`,
+            );
           }
         }
         break;
@@ -1036,10 +1035,17 @@ function printExpandedMessages(messages: PeekMessage[]): void {
   }
 }
 
-function printPeekHeader(d: { sessionNum: number; sessionName: string; status: string; quest?: { id: string; title: string; status: string } | null }): void {
+function printPeekHeader(d: {
+  sessionNum: number;
+  sessionName: string;
+  status: string;
+  quest?: { id: string; title: string; status: string } | null;
+}): void {
   console.log(`Session #${d.sessionNum} "${formatInlineText(d.sessionName)}" -- ${formatInlineText(d.status)}`);
   if (d.quest) {
-    console.log(`Quest: ${formatInlineText(d.quest.id)} "${formatInlineText(d.quest.title)}" [${formatInlineText(d.quest.status)}]`);
+    console.log(
+      `Quest: ${formatInlineText(d.quest.id)} "${formatInlineText(d.quest.title)}" [${formatInlineText(d.quest.status)}]`,
+    );
   }
 }
 
@@ -1097,17 +1103,19 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
 
     // Check if last message is a result to show success icon
     const lastMsg = et.messages.length > 0 ? et.messages[et.messages.length - 1] : null;
-    const successIcon = lastMsg?.type === "result"
-      ? (lastMsg.success ? " · ✓" : " · ✗")
-      : "";
+    const successIcon = lastMsg?.type === "result" ? (lastMsg.success ? " · ✓" : " · ✗") : "";
 
     console.log("");
-    console.log(`Turn ${et.turnNum} (last, ${msgCount} messages) · ${formatTimeShort(et.startedAt)}-${et.endedAt ? formatTimeShort(et.endedAt) : "running"}${durationPart}${statStr}${successIcon}`);
+    console.log(
+      `Turn ${et.turnNum} (last, ${msgCount} messages) · ${formatTimeShort(et.startedAt)}-${et.endedAt ? formatTimeShort(et.endedAt) : "running"}${durationPart}${statStr}${successIcon}`,
+    );
 
     // Omitted messages hint
     if (et.omittedMessageCount > 0) {
       const firstIdx = et.messages.length > 0 ? et.messages[0].idx - et.omittedMessageCount : 0;
-      console.log(`  ... ${et.omittedMessageCount} earlier messages omitted (takode peek ${safeSessionRef} --from ${firstIdx} to see all)`);
+      console.log(
+        `  ... ${et.omittedMessageCount} earlier messages omitted (takode peek ${safeSessionRef} --from ${firstIdx} to see all)`,
+      );
     }
 
     printExpandedMessages(et.messages);
@@ -1115,7 +1123,9 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
   }
 
   // Hint
-  console.log(`Hint: takode peek ${safeSessionRef} for the latest activity | takode peek ${safeSessionRef} --until <msg-id> --count 30 or --from <msg-id> to browse history | takode read ${safeSessionRef} <msg-id> for full message`);
+  console.log(
+    `Hint: takode peek ${safeSessionRef} for the latest activity | takode peek ${safeSessionRef} --until <msg-id> --count 30 or --from <msg-id> to browse history | takode read ${safeSessionRef} <msg-id> for full message`,
+  );
 }
 
 function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number): void {
@@ -1138,7 +1148,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
     }
 
     // Turn boundary
-    const boundary = d.turnBoundaries.find(b => msg.idx >= b.startIdx && msg.idx <= b.endIdx);
+    const boundary = d.turnBoundaries.find((b) => msg.idx >= b.startIdx && msg.idx <= b.endIdx);
     if (boundary && boundary.turnNum !== activeTurnNum) {
       console.log(`--- Turn ${boundary.turnNum} ---`);
       activeTurnNum = boundary.turnNum;
@@ -1155,7 +1165,11 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
       case "assistant": {
         const text = msg.content.trim();
         const toolStr = msg.toolCounts
-          ? "  (" + Object.entries(msg.toolCounts).map(([n, c]) => c > 1 ? `${n}×${c}` : n).join(", ") + ")"
+          ? "  (" +
+            Object.entries(msg.toolCounts)
+              .map(([n, c]) => (c > 1 ? `${n}×${c}` : n))
+              .join(", ") +
+            ")"
           : "";
         if (text) {
           console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 90)}${toolStr}`);
@@ -1222,7 +1236,8 @@ function printPeekDetail(d: PeekDetailResponse): void {
 
 async function handlePeek(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
-  if (!sessionRef) err("Usage: takode peek <session> [--from N] [--until N] [--count N] [--task N] [--detail] [--turns N] [--json]");
+  if (!sessionRef)
+    err("Usage: takode peek <session> [--from N] [--until N] [--count N] [--task N] [--detail] [--turns N] [--json]");
   const safeSessionRef = formatInlineText(sessionRef);
 
   const flags = parseFlags(args.slice(1));
@@ -1238,10 +1253,10 @@ async function handlePeek(base: string, args: string[]): Promise<void> {
 
   // Resolve --task N to a message range via the tasks endpoint
   if (taskNum !== undefined) {
-    const tasksData = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`) as {
+    const tasksData = (await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/tasks`)) as {
       tasks: Array<{ taskNum: number; startIdx: number; endIdx: number }>;
     };
-    const task = tasksData.tasks.find(t => t.taskNum === taskNum);
+    const task = tasksData.tasks.find((t) => t.taskNum === taskNum);
     if (!task) err(`Task #${taskNum} not found. Use "takode tasks ${safeSessionRef}" to see available tasks.`);
 
     const params = new URLSearchParams({ from: String(task.startIdx), count: String(count) });
@@ -1271,7 +1286,6 @@ async function handlePeek(base: string, args: string[]): Promise<void> {
       return;
     }
     printPeekRange(data as PeekRangeResponse, sessionRef, count);
-
   } else if (detail) {
     // Detail mode (legacy behavior)
     const turns = Number(flags.turns) || 1;
@@ -1284,7 +1298,6 @@ async function handlePeek(base: string, args: string[]): Promise<void> {
       return;
     }
     printPeekDetail(data as PeekDetailResponse);
-
   } else {
     // Default mode (smart overview)
     path = `/sessions/${encodeURIComponent(sessionRef)}/messages`;
@@ -1313,7 +1326,10 @@ async function handleRead(base: string, args: string[]): Promise<void> {
   if (limit !== 200) params.set("limit", String(limit));
   const qs = params.toString() ? `?${params}` : "";
 
-  const data = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/messages/${encodeURIComponent(msgIdx)}${qs}`);
+  const data = await apiGet(
+    base,
+    `/sessions/${encodeURIComponent(sessionRef)}/messages/${encodeURIComponent(msgIdx)}${qs}`,
+  );
 
   if (jsonMode) {
     console.log(JSON.stringify(data, null, 2));
@@ -1331,7 +1347,10 @@ async function handleRead(base: string, args: string[]): Promise<void> {
   };
 
   const time = formatTime(d.ts);
-  const lineInfo = d.totalLines > d.limit ? ` (lines ${d.offset + 1}-${d.offset + d.limit} of ${d.totalLines})` : ` (${d.totalLines} lines)`;
+  const lineInfo =
+    d.totalLines > d.limit
+      ? ` (lines ${d.offset + 1}-${d.offset + d.limit} of ${d.totalLines})`
+      : ` (${d.totalLines} lines)`;
   console.log(`[msg ${d.idx}] ${formatInlineText(d.type)} -- ${time}${lineInfo}`);
   console.log("\u2500".repeat(60));
 
@@ -1344,13 +1363,16 @@ async function handleRead(base: string, args: string[]): Promise<void> {
 
   if (d.offset + lines.length < d.totalLines) {
     console.log("");
-    console.log(`... ${d.totalLines - d.offset - lines.length} more lines. Use --offset ${d.offset + d.limit} to continue.`);
+    console.log(
+      `... ${d.totalLines - d.offset - lines.length} more lines. Use --offset ${d.offset + d.limit} to continue.`,
+    );
   }
 }
 
 async function handleSend(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
-  const usage = "Usage: takode send <session> <message> [--correction] [--json]\n       takode send <session> --stdin [--correction] [--json]";
+  const usage =
+    "Usage: takode send <session> <message> [--correction] [--json]\n       takode send <session> --stdin [--correction] [--json]";
   const flags = parseFlags(args.slice(1));
   assertKnownFlags(flags, new Set(["json", "correction", "stdin"]), usage);
 
@@ -1358,18 +1380,14 @@ async function handleSend(base: string, args: string[]): Promise<void> {
   const isCorrection = flags.correction === true;
   const useStdin = flags.stdin === true;
 
-  const messageParts = args.slice(1).filter(
-    (arg) => arg !== "--json" && arg !== "--correction" && arg !== "--stdin",
-  );
+  const messageParts = args.slice(1).filter((arg) => arg !== "--json" && arg !== "--correction" && arg !== "--stdin");
 
   if (!sessionRef) err(usage);
   if (useStdin && messageParts.length > 0) {
     err("Cannot combine --stdin with a positional message.");
   }
 
-  const cleanContent = useStdin
-    ? await readStdinText()
-    : messageParts.join(" ");
+  const cleanContent = useStdin ? await readStdinText() : messageParts.join(" ");
 
   if (!cleanContent.trim()) err(usage);
 
@@ -1378,8 +1396,11 @@ async function handleSend(base: string, args: string[]): Promise<void> {
   if (callerSessionId) {
     try {
       // Resolve target to a full UUID
-      const targetSession = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}`) as {
-        sessionId: string; sessionNum?: number; name?: string; isGenerating?: boolean;
+      const targetSession = (await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}`)) as {
+        sessionId: string;
+        sessionNum?: number;
+        name?: string;
+        isGenerating?: boolean;
       };
       const targetId = targetSession.sessionId;
 
@@ -1390,14 +1411,16 @@ async function handleSend(base: string, args: string[]): Promise<void> {
           : `#${targetSession.sessionNum ?? sessionRef}`;
         err(
           `Session ${label} is currently working. ` +
-          `Queue this task and send it after the session finishes. ` +
-          `Use "takode send ${sessionRef} <message> --correction" if this is a steering message for the current task.`,
+            `Queue this task and send it after the session finishes. ` +
+            `Use "takode send ${sessionRef} <message> --correction" if this is a steering message for the current task.`,
         );
       }
 
       // Check herd membership
-      const herdList = await apiGet(base, `/sessions/${encodeURIComponent(callerSessionId)}/herd`) as Array<{ sessionId: string }>;
-      if (!herdList.some(s => s.sessionId === targetId)) {
+      const herdList = (await apiGet(base, `/sessions/${encodeURIComponent(callerSessionId)}/herd`)) as Array<{
+        sessionId: string;
+      }>;
+      if (!herdList.some((s) => s.sessionId === targetId)) {
         err(`Cannot send to session ${sessionRef} — not in your herd. Run \`takode herd ${sessionRef}\` first.`);
       }
     } catch (e) {
@@ -1413,10 +1436,12 @@ async function handleSend(base: string, args: string[]): Promise<void> {
   if (callerSessionId) {
     let sessionLabel: string | undefined;
     try {
-      const sessions = await apiGet(base, "/takode/sessions") as Array<{
-        sessionId: string; sessionNum?: number; name?: string;
+      const sessions = (await apiGet(base, "/takode/sessions")) as Array<{
+        sessionId: string;
+        sessionNum?: number;
+        name?: string;
       }>;
-      const own = sessions.find(s => s.sessionId === callerSessionId);
+      const own = sessions.find((s) => s.sessionId === callerSessionId);
       if (own) {
         sessionLabel = own.name
           ? `#${own.sessionNum ?? "?"} ${own.name}`
@@ -1440,7 +1465,9 @@ async function handleSend(base: string, args: string[]): Promise<void> {
 
   const delivery = (result as { delivery?: string }).delivery;
   if (delivery === "queued") {
-    console.log(`[${formatTime(Date.now())}] \u2713 Message queued for session ${formatInlineText(sessionRef)} (session restarting)`);
+    console.log(
+      `[${formatTime(Date.now())}] \u2713 Message queued for session ${formatInlineText(sessionRef)} (session restarting)`,
+    );
   } else {
     console.log(`[${formatTime(Date.now())}] \u2713 Message sent to session ${formatInlineText(sessionRef)}`);
   }
@@ -1524,14 +1551,11 @@ function buildSpawnDetailParts(session: TakodeSessionInfo): string[] {
 function printSpawnedSession(session: TakodeSessionInfo): void {
   const num = session.sessionNum != null ? `#${session.sessionNum}` : session.sessionId.slice(0, 8);
   const name = formatInlineText(session.name || "(unnamed)");
-  const backend = session.backendType === "codex" ? " [codex]"
-    : "";
+  const backend = session.backendType === "codex" ? " [codex]" : "";
   const wt = session.isWorktree ? " wt" : "";
   const branch = formatInlineText(session.actualBranch || session.branch || "");
   const branchLabel = branch ? `  ${branch}` : "";
-  const cwdLabel = session.cwd
-    ? formatInlineText(session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd)
-    : "";
+  const cwdLabel = session.cwd ? formatInlineText(session.cwd.replace(/\/$/, "").split("/").pop() || session.cwd) : "";
   console.log(`[${formatTime(Date.now())}] \u2713 Spawned ${num} "${name}"${backend}${wt}`);
   console.log(`        ${cwdLabel}${branchLabel}  ${formatInlineText(session.sessionId)}`);
   const detailParts = buildSpawnDetailParts(session);
@@ -1581,7 +1605,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   const leaderSessionId = getCallerSessionId();
 
   // Inherit permission behavior from the leader: bypass -> askPermission=false.
-  const leader = await apiGet(base, `/sessions/${encodeURIComponent(leaderSessionId)}`) as {
+  const leader = (await apiGet(base, `/sessions/${encodeURIComponent(leaderSessionId)}`)) as {
     sessionId: string;
     permissionMode?: string;
   };
@@ -1616,7 +1640,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       }
     }
 
-    const created = await apiPost(base, "/sessions/create", createPayload) as { sessionId: string };
+    const created = (await apiPost(base, "/sessions/create", createPayload)) as { sessionId: string };
 
     if (message) {
       await apiPost(base, `/sessions/${encodeURIComponent(created.sessionId)}/message`, {
@@ -1629,18 +1653,24 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   }
 
   if (jsonMode) {
-    console.log(JSON.stringify({
-      count: spawned.length,
-      backend: backendRaw,
-      cwd,
-      useWorktree,
-      leaderSessionId,
-      leaderPermissionMode: leader.permissionMode || null,
-      inheritedAskPermission: askOverride === undefined && inheritBypass ? false : null,
-      defaultModel: backendRaw === "codex" && !model ? getDefaultModelForBackend("codex") : null,
-      message: message || null,
-      sessions: spawned,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          count: spawned.length,
+          backend: backendRaw,
+          cwd,
+          useWorktree,
+          leaderSessionId,
+          leaderPermissionMode: leader.permissionMode || null,
+          inheritedAskPermission: askOverride === undefined && inheritBypass ? false : null,
+          defaultModel: backendRaw === "codex" && !model ? getDefaultModelForBackend("codex") : null,
+          message: message || null,
+          sessions: spawned,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -1652,15 +1682,15 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
 // ─── Stop handler ───────────────────────────────────────────────────────────
 
 async function handleStop(base: string, args: string[]): Promise<void> {
-  const sessionRef = args.filter(a => !a.startsWith("--"))[0];
+  const sessionRef = args.filter((a) => !a.startsWith("--"))[0];
   const jsonMode = args.includes("--json");
   if (!sessionRef) err("Usage: takode stop <session>");
 
   const mySessionId = getCallerSessionId();
 
-  const result = await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/stop`, {
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/stop`, {
     callerSessionId: mySessionId,
-  }) as { ok: boolean; sessionId?: string; error?: string };
+  })) as { ok: boolean; sessionId?: string; error?: string };
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
@@ -1675,14 +1705,19 @@ async function handleStop(base: string, args: string[]): Promise<void> {
 async function handleHerd(base: string, args: string[]): Promise<void> {
   const jsonMode = args.includes("--json");
   // Parse comma/space-separated session refs (filtering out flags)
-  const refs = args.filter(a => !a.startsWith("--")).join(",").split(",").map(s => s.trim()).filter(Boolean);
+  const refs = args
+    .filter((a) => !a.startsWith("--"))
+    .join(",")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (refs.length === 0) err("Usage: takode herd <session1,session2,...>");
 
   const mySessionId = getCallerSessionId();
 
-  const result = await apiPost(base, `/sessions/${encodeURIComponent(mySessionId)}/herd`, {
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(mySessionId)}/herd`, {
     workerIds: refs,
-  }) as { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders?: string[] };
+  })) as { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders?: string[] };
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
@@ -1693,11 +1728,15 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
     console.log(`[${formatTime(Date.now())}] \u2713 Herded ${result.herded.length} session(s)`);
   }
   if (result.notFound.length > 0) {
-    console.log(`[${formatTime(Date.now())}] \u2717 Not found: ${result.notFound.map((ref) => formatInlineText(ref)).join(", ")}`);
+    console.log(
+      `[${formatTime(Date.now())}] \u2717 Not found: ${result.notFound.map((ref) => formatInlineText(ref)).join(", ")}`,
+    );
   }
   if (result.conflicts?.length > 0) {
     for (const c of result.conflicts) {
-      console.log(`[${formatTime(Date.now())}] \u2717 Conflict: ${formatInlineText(c.id)} already herded by ${formatInlineText(c.herder)}`);
+      console.log(
+        `[${formatTime(Date.now())}] \u2717 Conflict: ${formatInlineText(c.id)} already herded by ${formatInlineText(c.herder)}`,
+      );
     }
   }
   if (result.leaders?.length) {
@@ -1708,13 +1747,16 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
 }
 
 async function handleUnherd(base: string, args: string[]): Promise<void> {
-  const sessionRef = args.filter(a => !a.startsWith("--"))[0];
+  const sessionRef = args.filter((a) => !a.startsWith("--"))[0];
   const jsonMode = args.includes("--json");
   if (!sessionRef) err("Usage: takode unherd <session>");
 
   const mySessionId = getCallerSessionId();
 
-  const result = await apiDelete(base, `/sessions/${encodeURIComponent(mySessionId)}/herd/${encodeURIComponent(sessionRef)}`) as { ok: boolean; removed: boolean };
+  const result = (await apiDelete(
+    base,
+    `/sessions/${encodeURIComponent(mySessionId)}/herd/${encodeURIComponent(sessionRef)}`,
+  )) as { ok: boolean; removed: boolean };
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
@@ -1731,17 +1773,21 @@ async function handleUnherd(base: string, args: string[]): Promise<void> {
 // ─── Pending/Answer handlers ────────────────────────────────────────────────
 
 async function handlePending(base: string, args: string[]): Promise<void> {
-  const sessionRef = args.filter(a => !a.startsWith("--"))[0];
+  const sessionRef = args.filter((a) => !a.startsWith("--"))[0];
   const jsonMode = args.includes("--json");
   if (!sessionRef) err("Usage: takode pending <session>");
   const safeSessionRef = formatInlineText(sessionRef);
 
-  const result = await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/pending`) as {
+  const result = (await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/pending`)) as {
     pending: Array<{
       request_id: string;
       tool_name: string;
       timestamp: number;
-      questions?: Array<{ header?: string; question: string; options?: Array<{ label: string; description?: string }> }>;
+      questions?: Array<{
+        header?: string;
+        question: string;
+        options?: Array<{ label: string; description?: string }>;
+      }>;
       plan?: string;
       allowedPrompts?: Array<{ tool: string; prompt: string }>;
     }>;
@@ -1764,7 +1810,9 @@ async function handlePending(base: string, args: string[]): Promise<void> {
         if (q.options) {
           for (let i = 0; i < q.options.length; i++) {
             const opt = q.options[i];
-            console.log(`  ${i + 1}. ${formatInlineText(opt.label)}${opt.description ? ` — ${formatInlineText(opt.description)}` : ""}`);
+            console.log(
+              `  ${i + 1}. ${formatInlineText(opt.label)}${opt.description ? ` — ${formatInlineText(opt.description)}` : ""}`,
+            );
           }
         }
         console.log(`\nAnswer: takode answer ${safeSessionRef} <option-number-or-text>`);
@@ -1781,18 +1829,21 @@ async function handlePending(base: string, args: string[]): Promise<void> {
 }
 
 async function handleAnswer(base: string, args: string[]): Promise<void> {
-  const sessionRef = args.filter(a => !a.startsWith("--"))[0];
-  const response = args.filter(a => !a.startsWith("--")).slice(1).join(" ");
+  const sessionRef = args.filter((a) => !a.startsWith("--"))[0];
+  const response = args
+    .filter((a) => !a.startsWith("--"))
+    .slice(1)
+    .join(" ");
   const jsonMode = args.includes("--json");
 
   if (!sessionRef || !response) err("Usage: takode answer <session> <response>");
 
   const mySessionId = getCallerSessionId();
 
-  const result = await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/answer`, {
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/answer`, {
     response,
     callerSessionId: mySessionId,
-  }) as { ok: boolean; tool_name: string; answer?: string; action?: string; feedback?: string; error?: string };
+  })) as { ok: boolean; tool_name: string; answer?: string; action?: string; feedback?: string; error?: string };
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
@@ -1813,14 +1864,17 @@ async function handleAnswer(base: string, args: string[]): Promise<void> {
 // ─── Search handler ──────────────────────────────────────────────────────────
 
 async function handleSearch(base: string, args: string[]): Promise<void> {
-  const query = args.filter(a => !a.startsWith("--")).join(" ").trim();
+  const query = args
+    .filter((a) => !a.startsWith("--"))
+    .join(" ")
+    .trim();
   if (!query) err("Usage: takode search <query> [--all] [--json]");
 
   const flags = parseFlags(args);
   const showAll = flags.all === true;
   const jsonMode = flags.json === true;
 
-  const sessions = await apiGet(base, "/takode/sessions") as Array<{
+  const sessions = (await apiGet(base, "/takode/sessions")) as Array<{
     sessionId: string;
     sessionNum?: number;
     name?: string;
@@ -1845,7 +1899,7 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   if (!showAll) {
     params.set("includeArchived", "false");
   }
-  const searchResp = await apiGet(base, `/sessions/search?${params.toString()}`) as {
+  const searchResp = (await apiGet(base, `/sessions/search?${params.toString()}`)) as {
     query: string;
     tookMs: number;
     totalMatches: number;
@@ -1886,11 +1940,12 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   const mappedResults: SearchResultRow[] = searchResp.results.map((match) => {
     const session = sessionsById.get(match.sessionId);
     const fallbackName = session?.name || "(unnamed)";
-    const snippet = match.messageMatch?.snippet?.trim()
-      || snippetFromContext(match.matchContext)
-      || (match.matchedField === "name" ? fallbackName : "");
+    const snippet =
+      match.messageMatch?.snippet?.trim() ||
+      snippetFromContext(match.matchContext) ||
+      (match.matchedField === "name" ? fallbackName : "");
     const matchReason = match.matchContext || `${fieldLabel(match.matchedField)} match`;
-    const messageId = match.matchedField === "user_message" ? (match.messageMatch?.id || null) : null;
+    const messageId = match.matchedField === "user_message" ? match.messageMatch?.id || null : null;
     return {
       session,
       match,
@@ -1908,15 +1963,21 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
   });
 
   if (jsonMode) {
-    console.log(JSON.stringify(results.map((r) => ({
-      ...r.session,
-      matchedField: r.match.matchedField,
-      matchReason: r.matchReason,
-      matchContext: r.match.matchContext,
-      snippet: r.snippet,
-      messageId: r.messageId,
-      matchedAt: r.match.matchedAt,
-    })), null, 2));
+    console.log(
+      JSON.stringify(
+        results.map((r) => ({
+          ...r.session,
+          matchedField: r.match.matchedField,
+          matchReason: r.matchReason,
+          matchContext: r.match.matchContext,
+          snippet: r.snippet,
+          messageId: r.messageId,
+          matchedAt: r.match.matchedAt,
+        })),
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -1932,14 +1993,14 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
     const s = row.session;
     const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
     const name = formatInlineText(s.name || "(unnamed)");
-    const status = s.cliConnected
-      ? (s.state === "running" ? "●" : "○")
-      : (s.archived ? "⊘" : "✗");
+    const status = s.cliConnected ? (s.state === "running" ? "●" : "○") : s.archived ? "⊘" : "✗";
     const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
     const sessionRef = s.sessionNum != null ? String(s.sessionNum) : s.sessionId;
 
     console.log(`  ${num.padEnd(5)} ${status} ${name}`);
-    console.log(`        field: ${formatInlineText(row.matchedFieldLabel)}  reason: ${formatInlineText(row.matchReason)}`);
+    console.log(
+      `        field: ${formatInlineText(row.matchedFieldLabel)}  reason: ${formatInlineText(row.matchReason)}`,
+    );
     if (row.snippet) {
       console.log(`        snippet: ${truncate(row.snippet, 120)}`);
     }
@@ -2005,11 +2066,8 @@ Examples:
 `);
 }
 
-async function ensureTakodeAccess(
-  base: string,
-  options?: { requireOrchestrator?: boolean },
-): Promise<void> {
-  const me = await apiGet(base, "/takode/me") as { isOrchestrator?: boolean };
+async function ensureTakodeAccess(base: string, options?: { requireOrchestrator?: boolean }): Promise<void> {
+  const me = (await apiGet(base, "/takode/me")) as { isOrchestrator?: boolean };
   if (options?.requireOrchestrator && me.isOrchestrator !== true) {
     err("takode commands require an orchestrator session.");
   }

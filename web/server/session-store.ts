@@ -287,8 +287,12 @@ export class SessionStore {
     if (frozenCount === 0) {
       // No completed turns survive — delete the JSONL file entirely
       const p = unlink(logPath)
-        .catch(() => { /* File may not exist */ })
-        .finally(() => { this.inflightWrites.delete(p); });
+        .catch(() => {
+          /* File may not exist */
+        })
+        .finally(() => {
+          this.inflightWrites.delete(p);
+        });
       this.inflightWrites.add(p);
     } else {
       // Rewrite with only the surviving frozen messages
@@ -296,7 +300,9 @@ export class SessionStore {
         .catch((err) => {
           console.error(`[session-store] Failed to rewrite frozen log for ${sessionId}:`, err);
         })
-        .finally(() => { this.inflightWrites.delete(p); });
+        .finally(() => {
+          this.inflightWrites.delete(p);
+        });
       this.inflightWrites.add(p);
     }
   }
@@ -376,7 +382,7 @@ export class SessionStore {
       session.messageHistory = cleanedHistory.messages;
       console.warn(
         `[session-store] Trimmed ${cleanedHistory.removedCount} duplicate replay-generated tool_result_preview messages ` +
-        `from hot tail while saving session ${session.id.slice(0, 8)}`,
+          `from hot tail while saving session ${session.id.slice(0, 8)}`,
       );
     }
 
@@ -385,8 +391,8 @@ export class SessionStore {
 
     // How many messages are in completed turns?
     const cutoff = this.computeFreezeCutoff(messages);
-    let prevFrozenMsgs = this.frozenCounts.get(session.id) ?? (session._frozenCount ?? 0);
-    let prevFrozenToolResults = this.frozenToolResultCounts.get(session.id) ?? (session._frozenToolResultCount ?? 0);
+    let prevFrozenMsgs = this.frozenCounts.get(session.id) ?? session._frozenCount ?? 0;
+    let prevFrozenToolResults = this.frozenToolResultCounts.get(session.id) ?? session._frozenToolResultCount ?? 0;
 
     // Revert detection: if messageHistory was truncated below the frozen count
     // (e.g., session revert), rewrite the JSONL frozen log with only the
@@ -396,7 +402,7 @@ export class SessionStore {
     if (prevFrozenMsgs > messages.length) {
       console.log(
         `[session-store] Session ${session.id.slice(0, 8)} reverted: messageHistory (${messages.length}) < frozenCount (${prevFrozenMsgs}). ` +
-        `Rewriting frozen log to match truncated history.`,
+          `Rewriting frozen log to match truncated history.`,
       );
       this.rewriteFrozenLog(session.id, messages, allToolResults);
       prevFrozenMsgs = messages.length;
@@ -428,7 +434,13 @@ export class SessionStore {
       this.writeHotJson(session, messages.slice(cutoff), [], cutoff, toolResultsToFreeze);
     } else {
       // No new freeze — write the hot JSON with the current tail
-      this.writeHotJson(session, messages.slice(prevFrozenMsgs), allToolResults.slice(prevFrozenToolResults), prevFrozenMsgs, prevFrozenToolResults);
+      this.writeHotJson(
+        session,
+        messages.slice(prevFrozenMsgs),
+        allToolResults.slice(prevFrozenToolResults),
+        prevFrozenMsgs,
+        prevFrozenToolResults,
+      );
     }
   }
 
@@ -512,15 +524,12 @@ export class SessionStore {
     if (actualFrozenMsgs < expectedFrozenMsgs) {
       console.warn(
         `[session-store] Frozen log for ${sessionId} has ${actualFrozenMsgs} messages but expected ${expectedFrozenMsgs}. ` +
-        `${expectedFrozenMsgs - actualFrozenMsgs} messages may have been lost due to JSONL corruption.`,
+          `${expectedFrozenMsgs - actualFrozenMsgs} messages may have been lost due to JSONL corruption.`,
       );
     }
 
     // Merge tool results: frozen first, then hot
-    const mergedToolResults: PersistedSession["toolResults"] = [
-      ...frozen.toolResults,
-      ...hotTailToolResults,
-    ];
+    const mergedToolResults: PersistedSession["toolResults"] = [...frozen.toolResults, ...hotTailToolResults];
 
     const mergedHistory = [...frozen.messages, ...hotTail];
     const cleanedHistory = this.trimDuplicateReplayPreviewTail(mergedHistory);
@@ -529,7 +538,7 @@ export class SessionStore {
     if (cleanedHistory.removedCount > 0) {
       console.warn(
         `[session-store] Repaired ${cleanedHistory.removedCount} duplicate replay-generated tool_result_preview messages ` +
-        `from persisted hot tail for session ${sessionId.slice(0, 8)}`,
+          `from persisted hot tail for session ${sessionId.slice(0, 8)}`,
       );
       this.writeHotJson(
         {
@@ -560,9 +569,7 @@ export class SessionStore {
   async loadAll(): Promise<PersistedSession[]> {
     const sessions: PersistedSession[] = [];
     try {
-      const files = (await readdir(this.dir)).filter(
-        (f) => f.endsWith(".json") && f !== "launcher.json",
-      );
+      const files = (await readdir(this.dir)).filter((f) => f.endsWith(".json") && f !== "launcher.json");
       for (const file of files) {
         const sessionId = file.replace(/\.json$/, "");
         try {
@@ -613,21 +620,33 @@ export class SessionStore {
     this.frozenToolResultCounts.delete(sessionId);
 
     const p1 = unlink(this.filePath(sessionId))
-      .catch(() => { /* File may not exist */ })
-      .finally(() => { this.inflightWrites.delete(p1); });
+      .catch(() => {
+        /* File may not exist */
+      })
+      .finally(() => {
+        this.inflightWrites.delete(p1);
+      });
     this.inflightWrites.add(p1);
 
     const p2 = unlink(this.frozenLogPath(sessionId))
-      .catch(() => { /* File may not exist */ })
-      .finally(() => { this.inflightWrites.delete(p2); });
+      .catch(() => {
+        /* File may not exist */
+      })
+      .finally(() => {
+        this.inflightWrites.delete(p2);
+      });
     this.inflightWrites.add(p2);
   }
 
   /** Persist launcher state (separate file). */
   saveLauncher(data: unknown): void {
     const p = writeFile(join(this.dir, "launcher.json"), JSON.stringify(data, null, 2), "utf-8")
-      .catch((err) => { console.error("[session-store] Failed to save launcher state:", err); })
-      .finally(() => { this.inflightWrites.delete(p); });
+      .catch((err) => {
+        console.error("[session-store] Failed to save launcher state:", err);
+      })
+      .finally(() => {
+        this.inflightWrites.delete(p);
+      });
     this.inflightWrites.add(p);
   }
 

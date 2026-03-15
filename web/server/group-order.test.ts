@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  _flushForTest,
-  _resetForTest,
-  getAllOrder,
-  setAllOrder,
-} from "./group-order.js";
+import { _flushForTest, _resetForTest, getAllOrder, setAllOrder } from "./group-order.js";
 
 let tempDir: string;
 let filePath: string;

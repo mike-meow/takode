@@ -348,9 +348,7 @@ describe("MessageBubble - assistant messages", () => {
       role: "assistant",
       content: "",
       leaderUserAddressed: true,
-      contentBlocks: [
-        { type: "text", text: "Worker #3 finished tests. @to(user)" },
-      ],
+      contentBlocks: [{ type: "text", text: "Worker #3 finished tests. @to(user)" }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -415,9 +413,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "text", text: "Here is the answer" },
-      ],
+      contentBlocks: [{ type: "text", text: "Here is the answer" }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -429,9 +425,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "pwd" } },
-      ],
+      contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "pwd" } }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -448,7 +442,12 @@ describe("MessageBubble - assistant messages", () => {
       role: "assistant",
       content: "",
       contentBlocks: [
-        { type: "tool_use", id: "tu-task-1", name: "Task", input: { description: "Explore auth", subagent_type: "Explore" } },
+        {
+          type: "tool_use",
+          id: "tu-task-1",
+          name: "Task",
+          input: { description: "Explore auth", subagent_type: "Explore" },
+        },
       ],
     });
     render(<MessageBubble message={msg} />);
@@ -462,9 +461,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "thinking", thinking: thinkingText },
-      ],
+      contentBlocks: [{ type: "thinking", thinking: thinkingText }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -477,9 +474,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "thinking", thinking: thinkingText },
-      ],
+      contentBlocks: [{ type: "thinking", thinking: thinkingText }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -523,7 +518,8 @@ describe("MessageBubble - assistant messages", () => {
   });
 
   it("truncates long codex thinking summary with expandable ellipsis", () => {
-    const thinkingText = "This is a much longer codex reasoning summary that should be truncated in preview mode until the user expands it via the ellipsis control at the end.";
+    const thinkingText =
+      "This is a much longer codex reasoning summary that should be truncated in preview mode until the user expands it via the ellipsis control at the end.";
     const prevSessions = useStore.getState().sessions;
     const nextSessions = new Map(prevSessions);
     nextSessions.set("codex-session", { backend_type: "codex" } as any);
@@ -619,9 +615,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_result", tool_use_id: "tu-1", content: "Command output: success" },
-      ],
+      contentBlocks: [{ type: "tool_result", tool_use_id: "tu-1", content: "Command output: success" }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -633,9 +627,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_result", tool_use_id: "tu-2", content: jsonContent as unknown as string },
-      ],
+      contentBlocks: [{ type: "tool_result", tool_use_id: "tu-2", content: jsonContent as unknown as string }],
     });
     render(<MessageBubble message={msg} />);
 
@@ -648,9 +640,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_result", tool_use_id: "tu-3", content: "Error: file not found", is_error: true },
-      ],
+      contentBlocks: [{ type: "tool_result", tool_use_id: "tu-3", content: "Error: file not found", is_error: true }],
     });
     const { container } = render(<MessageBubble message={msg} />);
 
@@ -664,9 +654,7 @@ describe("MessageBubble - assistant messages", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_result", tool_use_id: "tu-4", content: "Success output" },
-      ],
+      contentBlocks: [{ type: "tool_result", tool_use_id: "tu-4", content: "Success output" }],
     });
     const { container } = render(<MessageBubble message={msg} />);
 
@@ -739,9 +727,7 @@ describe("MessageBubble - content block grouping", () => {
     const msg = makeMessage({
       role: "assistant",
       content: "",
-      contentBlocks: [
-        { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo hi" } },
-      ],
+      contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "echo hi" } }],
     });
     render(<MessageBubble message={msg} />);
 

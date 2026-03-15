@@ -39,13 +39,15 @@ describe("TodoStatusLine", () => {
     // Validates that the strip is backend-agnostic and appears whenever
     // extracted session tasks contain active work.
     resetStore({
-      sessionTasks: new Map([[
-        "s1",
+      sessionTasks: new Map([
         [
-          { id: "t1", status: "in_progress", subject: "Implement task sync" },
-          { id: "t2", status: "pending", subject: "Add test coverage" },
+          "s1",
+          [
+            { id: "t1", status: "in_progress", subject: "Implement task sync" },
+            { id: "t2", status: "pending", subject: "Add test coverage" },
+          ],
         ],
-      ]]),
+      ]),
     });
 
     render(<TodoStatusLine sessionId="s1" />);

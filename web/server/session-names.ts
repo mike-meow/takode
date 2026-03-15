@@ -21,7 +21,8 @@ let _pendingWrite: Promise<void> = Promise.resolve();
 function ensureLoaded(): void {
   if (loaded) return;
   try {
-    if (existsSync(filePath)) { // sync-ok: cold path, cached after first load
+    if (existsSync(filePath)) {
+      // sync-ok: cold path, cached after first load
       const raw = readFileSync(filePath, "utf-8"); // sync-ok: cold path, cached after first load
       names = JSON.parse(raw) as Record<string, string>;
     }
@@ -36,9 +37,7 @@ function persist(): void {
   const path = filePath;
   mkdirSync(dirname(path), { recursive: true }); // sync-ok: cold path, ensure dir exists
   // Chain writes so each waits for the previous to finish.
-  _pendingWrite = _pendingWrite.then(() =>
-    writeFile(path, data, "utf-8").catch(() => {}),
-  );
+  _pendingWrite = _pendingWrite.then(() => writeFile(path, data, "utf-8").catch(() => {}));
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────

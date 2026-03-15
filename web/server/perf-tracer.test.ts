@@ -74,7 +74,7 @@ describe("PerfTracer", () => {
 
     const events = tracer.getLagEvents();
     expect(events).toHaveLength(2);
-    expect(events[0].lagMs).toBe(80);  // newest first
+    expect(events[0].lagMs).toBe(80); // newest first
     expect(events[1].lagMs).toBe(120);
   });
 
@@ -148,7 +148,9 @@ describe("PerfTracer", () => {
 
     // Block the event loop for 80ms — at least 2 interval ticks will be delayed
     const start = performance.now();
-    while (performance.now() - start < 80) { /* busy wait */ }
+    while (performance.now() - start < 80) {
+      /* busy wait */
+    }
 
     // Wait for the next tick(s) to measure the gap from the block
     await new Promise((r) => setTimeout(r, 120));

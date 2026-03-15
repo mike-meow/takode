@@ -145,37 +145,43 @@ describe("connectSession", () => {
     // Simulate a WebSocket reconnect (not a page refresh): store already has
     // messages, so we use the cached last_seq from localStorage
     localStorage.setItem("companion:last-seq:s1", "12");
-    useStore.getState().setMessages("s1", [
-      {
-        id: "msg-existing",
-        role: "user",
-        content: "existing message",
-        timestamp: 1000,
-      },
-      {
-        id: "msg-hot",
-        role: "assistant",
-        content: "hot reply",
-        timestamp: 2000,
-      },
-    ], { frozenCount: 1 });
-    wsModule.connectSession("s1");
-
-    lastWs.onopen?.(new Event("open"));
-
-    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 12,
-      known_frozen_count: 1,
-      known_frozen_hash: computeChatMessagesSyncHash([
+    useStore.getState().setMessages(
+      "s1",
+      [
         {
           id: "msg-existing",
           role: "user",
           content: "existing message",
           timestamp: 1000,
         },
-      ]),
-    }));
+        {
+          id: "msg-hot",
+          role: "assistant",
+          content: "hot reply",
+          timestamp: 2000,
+        },
+      ],
+      { frozenCount: 1 },
+    );
+    wsModule.connectSession("s1");
+
+    lastWs.onopen?.(new Event("open"));
+
+    expect(lastWs.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 12,
+        known_frozen_count: 1,
+        known_frozen_hash: computeChatMessagesSyncHash([
+          {
+            id: "msg-existing",
+            role: "user",
+            content: "existing message",
+            timestamp: 1000,
+          },
+        ]),
+      }),
+    );
   });
 
   // Regression test: after a full page refresh, the Zustand store is empty but
@@ -460,9 +466,7 @@ describe("handleMessage: event_replay", () => {
 
     expect(useStore.getState().streaming.get("s1")).toBe("Hello");
     expect(localStorage.getItem("companion:last-seq:s1")).toBe("1");
-    expect(lastWs.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session_ack", last_seq: 1 }),
-    );
+    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({ type: "session_ack", last_seq: 1 }));
   });
 
   it("acks only once using the latest replayed seq", () => {
@@ -494,9 +498,7 @@ describe("handleMessage: event_replay", () => {
 
     expect(useStore.getState().streaming.get("s1")).toBe("AB");
     expect(lastWs.send).toHaveBeenCalledTimes(1);
-    expect(lastWs.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "session_ack", last_seq: 2 }),
-    );
+    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({ type: "session_ack", last_seq: 2 }));
   });
 });
 
@@ -1027,7 +1029,13 @@ describe("handleMessage: result", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
     useStore.getState().setTasks("s1", [
-      { id: "1", subject: "Inspect worktree", description: "", status: "in_progress", activeForm: "Inspecting worktree" },
+      {
+        id: "1",
+        subject: "Inspect worktree",
+        description: "",
+        status: "in_progress",
+        activeForm: "Inspecting worktree",
+      },
       { id: "2", subject: "Run tests", description: "", status: "pending" },
     ]);
     useStore.getState().setSessionTaskPreview("s1", "Inspecting worktree");
@@ -1056,9 +1064,11 @@ describe("handleMessage: result", () => {
   it("suppresses completion notifications for leader sessions without @to(user) assistant messages", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
-    useStore.getState().setSdkSessions([
-      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
-    ]);
+    useStore
+      .getState()
+      .setSdkSessions([
+        { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
+      ]);
     fireMessage({
       type: "assistant",
       message: {
@@ -1098,9 +1108,11 @@ describe("handleMessage: result", () => {
   it("plays completion notifications for leader sessions when latest assistant is @to(user) addressed", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
-    useStore.getState().setSdkSessions([
-      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
-    ]);
+    useStore
+      .getState()
+      .setSdkSessions([
+        { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), isOrchestrator: true },
+      ]);
     fireMessage({
       type: "assistant",
       leader_user_addressed: true,
@@ -1141,9 +1153,11 @@ describe("handleMessage: result", () => {
   it("suppresses completion notifications for herded worker sessions", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
-    useStore.getState().setSdkSessions([
-      { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), herdedBy: "orch-1" },
-    ]);
+    useStore
+      .getState()
+      .setSdkSessions([
+        { sessionId: "s1", state: "connected", cwd: "/home/user", createdAt: Date.now(), herdedBy: "orch-1" },
+      ]);
     fireMessage({
       type: "assistant",
       message: {
@@ -1469,9 +1483,9 @@ describe("handleMessage: message_history", () => {
   it("clears stale todo state on history replay once a result is encountered", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
-    useStore.getState().setTasks("s1", [
-      { id: "stale-1", subject: "Old task", description: "", status: "in_progress" },
-    ]);
+    useStore
+      .getState()
+      .setTasks("s1", [{ id: "stale-1", subject: "Old task", description: "", status: "in_progress" }]);
     useStore.getState().setSessionTaskPreview("s1", "Old task");
 
     fireMessage({
@@ -1664,9 +1678,7 @@ describe("handleMessage: message_history", () => {
     // First history load
     fireMessage({
       type: "message_history",
-      messages: [
-        { type: "user_message", id: "user-1", content: "old message", timestamp: 1000 },
-      ],
+      messages: [{ type: "user_message", id: "user-1", content: "old message", timestamp: 1000 }],
     });
     expect(useStore.getState().messages.get("s1")).toHaveLength(1);
     expect(useStore.getState().messages.get("s1")![0].content).toBe("old message");
@@ -1674,9 +1686,7 @@ describe("handleMessage: message_history", () => {
     // Second history load with different messages — should REPLACE, not merge
     fireMessage({
       type: "message_history",
-      messages: [
-        { type: "user_message", id: "user-2", content: "new message", timestamp: 2000 },
-      ],
+      messages: [{ type: "user_message", id: "user-2", content: "new message", timestamp: 2000 }],
     });
     const msgs = useStore.getState().messages.get("s1")!;
     expect(msgs).toHaveLength(1);
@@ -1755,10 +1765,14 @@ describe("handleMessage: history_sync", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
-    useStore.getState().setMessages("s1", [
-      { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
-      { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
-    ], { frozenCount: 1 });
+    useStore.getState().setMessages(
+      "s1",
+      [
+        { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
+        { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
+      ],
+      { frozenCount: 1 },
+    );
 
     fireMessage({
       type: "history_sync",
@@ -1795,9 +1809,7 @@ describe("handleMessage: history_sync", () => {
           },
         },
       ],
-      hot_messages: [
-        { type: "user_message", id: "hot-2", content: "new hot user", timestamp: 4000 },
-      ],
+      hot_messages: [{ type: "user_message", id: "hot-2", content: "new hot user", timestamp: 4000 }],
       frozen_count: 2,
       expected_frozen_hash: computeChatMessagesSyncHash([
         { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
@@ -1820,10 +1832,14 @@ describe("handleMessage: history_sync", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
-    useStore.getState().setMessages("s1", [
-      { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
-      { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
-    ], { frozenCount: 1 });
+    useStore.getState().setMessages(
+      "s1",
+      [
+        { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
+        { id: "hot-1", role: "assistant", content: "stale hot", timestamp: 2000 },
+      ],
+      { frozenCount: 1 },
+    );
 
     fireMessage({
       type: "history_sync",
@@ -1848,9 +1864,9 @@ describe("handleMessage: history_sync", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
-    useStore.getState().setMessages("s1", [
-      { id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 },
-    ], { frozenCount: 1 });
+    useStore.getState().setMessages("s1", [{ id: "frozen-1", role: "user", content: "old frozen", timestamp: 1000 }], {
+      frozenCount: 1,
+    });
     lastWs.send.mockClear();
 
     fireMessage({
@@ -2127,19 +2143,19 @@ describe("handleMessage: session_order_update", () => {
       },
     });
 
-    expect(useStore.getState().sessionOrder).toEqual(new Map([
-      ["/repo-a", ["s2", "s1"]],
-      ["/repo-b", ["s3"]],
-    ]));
+    expect(useStore.getState().sessionOrder).toEqual(
+      new Map([
+        ["/repo-a", ["s2", "s1"]],
+        ["/repo-b", ["s3"]],
+      ]),
+    );
   });
 
   it("overwrites stale local order when a new snapshot arrives", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
-    useStore.getState().setSessionOrderMap(new Map([
-      ["/repo-a", ["stale-1", "stale-2"]],
-    ]));
+    useStore.getState().setSessionOrderMap(new Map([["/repo-a", ["stale-1", "stale-2"]]]));
 
     fireMessage({
       type: "session_order_update",
@@ -2148,9 +2164,7 @@ describe("handleMessage: session_order_update", () => {
       },
     });
 
-    expect(useStore.getState().sessionOrder).toEqual(new Map([
-      ["/repo-a", ["s1", "s2"]],
-    ]));
+    expect(useStore.getState().sessionOrder).toEqual(new Map([["/repo-a", ["s1", "s2"]]]));
   });
 });
 
@@ -2615,9 +2629,7 @@ describe("handleMessage: assistant clears only completed tool progress", () => {
         type: "message",
         role: "assistant",
         model: "claude-opus-4-20250514",
-        content: [
-          { type: "tool_result", tool_use_id: "tu-a", content: "3 matches" },
-        ] as ContentBlock[],
+        content: [{ type: "tool_result", tool_use_id: "tu-a", content: "3 matches" }] as ContentBlock[],
         stop_reason: null,
         usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },

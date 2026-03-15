@@ -72,9 +72,7 @@ export function SearchBar({
       <button
         onClick={() => setMode(sessionId, mode === "strict" ? "fuzzy" : "strict")}
         className={`flex items-center justify-center w-7 h-7 rounded-lg text-xs font-mono-code transition-colors cursor-pointer ${
-          mode === "strict"
-            ? "bg-cc-hover text-cc-fg"
-            : "bg-cc-primary/15 text-cc-primary"
+          mode === "strict" ? "bg-cc-hover text-cc-fg" : "bg-cc-primary/15 text-cc-primary"
         }`}
         title={mode === "strict" ? "Strict match (click for fuzzy)" : "Fuzzy match (click for strict)"}
       >
@@ -83,9 +81,7 @@ export function SearchBar({
 
       {/* Match counter */}
       {counterText && (
-        <span className="text-[11px] text-cc-muted whitespace-nowrap tabular-nums shrink-0">
-          {counterText}
-        </span>
+        <span className="text-[11px] text-cc-muted whitespace-nowrap tabular-nums shrink-0">{counterText}</span>
       )}
 
       {/* Previous match */}
@@ -96,7 +92,11 @@ export function SearchBar({
         title="Previous match (Shift+Enter)"
       >
         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <path fillRule="evenodd" d="M8 3.293l-5.354 5.353a.5.5 0 00.708.708L8 4.707l4.646 4.647a.5.5 0 00.708-.708L8 3.293z" clipRule="evenodd" />
+          <path
+            fillRule="evenodd"
+            d="M8 3.293l-5.354 5.353a.5.5 0 00.708.708L8 4.707l4.646 4.647a.5.5 0 00.708-.708L8 3.293z"
+            clipRule="evenodd"
+          />
         </svg>
       </button>
 
@@ -108,7 +108,11 @@ export function SearchBar({
         title="Next match (Enter)"
       >
         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <path fillRule="evenodd" d="M8 12.707l5.354-5.353a.5.5 0 00-.708-.708L8 11.293 3.354 6.646a.5.5 0 00-.708.708L8 12.707z" clipRule="evenodd" />
+          <path
+            fillRule="evenodd"
+            d="M8 12.707l5.354-5.353a.5.5 0 00-.708-.708L8 11.293 3.354 6.646a.5.5 0 00-.708.708L8 12.707z"
+            clipRule="evenodd"
+          />
         </svg>
       </button>
 
@@ -119,7 +123,11 @@ export function SearchBar({
         title="Close search (Escape)"
       >
         <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <path fillRule="evenodd" d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z" clipRule="evenodd" />
+          <path
+            fillRule="evenodd"
+            d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"
+            clipRule="evenodd"
+          />
         </svg>
       </button>
     </div>

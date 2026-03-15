@@ -119,10 +119,11 @@ function formatMinuteBoundaryLabel(timestamp: number, previousTimestamp: number 
   if (Number.isNaN(current.getTime())) return null;
 
   const prev = previousTimestamp === null ? null : new Date(previousTimestamp);
-  const includesDate = !prev
-    || current.getFullYear() !== prev.getFullYear()
-    || current.getMonth() !== prev.getMonth()
-    || current.getDate() !== prev.getDate();
+  const includesDate =
+    !prev ||
+    current.getFullYear() !== prev.getFullYear() ||
+    current.getMonth() !== prev.getMonth() ||
+    current.getDate() !== prev.getDate();
 
   if (includesDate) {
     return current.toLocaleString([], {
@@ -192,7 +193,8 @@ export function ElapsedTimer({
     }
     const start = streamingStartedAt || Date.now();
     const calcElapsed = () => {
-      const pauseOffset = streamingPausedDuration + (streamingPauseStartedAt ? Date.now() - streamingPauseStartedAt : 0);
+      const pauseOffset =
+        streamingPausedDuration + (streamingPauseStartedAt ? Date.now() - streamingPauseStartedAt : 0);
       return Math.max(0, Date.now() - start - pauseOffset);
     };
     setElapsed(calcElapsed());
@@ -225,8 +227,12 @@ export function ElapsedTimer({
     api.relaunchSession(sessionId).catch(() => {});
   };
 
-  const label = isStuck ? 'Session may be stuck' : streamingPauseStartedAt ? 'Napping...' : 'Purring...';
-  const dotColor = isStuck ? 'text-amber-400' : streamingPauseStartedAt ? 'text-amber-400' : 'text-cc-primary animate-pulse';
+  const label = isStuck ? "Session may be stuck" : streamingPauseStartedAt ? "Napping..." : "Purring...";
+  const dotColor = isStuck
+    ? "text-amber-400"
+    : streamingPauseStartedAt
+      ? "text-amber-400"
+      : "text-cc-primary animate-pulse";
 
   if (variant === "floating") {
     return (
@@ -239,7 +245,9 @@ export function ElapsedTimer({
         <span className="relative truncate text-cc-fg/90">{label}</span>
         <span className="relative text-cc-muted/75">{formatElapsed(elapsed)}</span>
         {(streamingOutputTokens ?? 0) > 0 && (
-          <span className="relative hidden sm:inline truncate text-cc-muted/70">↓ {formatTokens(streamingOutputTokens!)}</span>
+          <span className="relative hidden sm:inline truncate text-cc-muted/70">
+            ↓ {formatTokens(streamingOutputTokens!)}
+          </span>
         )}
         {isStuck && (
           <button
@@ -254,7 +262,10 @@ export function ElapsedTimer({
   }
 
   return (
-    <div ref={rootRef} className="shrink-0 flex items-center gap-1.5 border-t border-cc-border bg-cc-card px-3 sm:px-4 py-1.5 text-[11px] text-cc-muted font-mono-code">
+    <div
+      ref={rootRef}
+      className="shrink-0 flex items-center gap-1.5 border-t border-cc-border bg-cc-card px-3 sm:px-4 py-1.5 text-[11px] text-cc-muted font-mono-code"
+    >
       <YarnBallDot className={dotColor} />
       <span>{label}</span>
       <span className="text-cc-muted/60">(</span>
@@ -267,10 +278,7 @@ export function ElapsedTimer({
       )}
       <span className="text-cc-muted/60">)</span>
       {isStuck && (
-        <button
-          onClick={handleRelaunch}
-          className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer"
-        >
+        <button onClick={handleRelaunch} className="ml-1 text-amber-400 hover:text-amber-300 underline cursor-pointer">
           Relaunch
         </button>
       )}
@@ -299,22 +307,12 @@ function FeedStatusPill({
 }) {
   return (
     <div className="pointer-events-none absolute bottom-2 left-2 z-10 sm:bottom-3 sm:left-3">
-      <ElapsedTimer
-        sessionId={sessionId}
-        variant="floating"
-        onVisibleHeightChange={onVisibleHeightChange}
-      />
+      <ElapsedTimer sessionId={sessionId} variant="floating" onVisibleHeightChange={onVisibleHeightChange} />
     </div>
   );
 }
 
-function PendingCodexInputList({
-  sessionId,
-  inputs,
-}: {
-  sessionId: string;
-  inputs: PendingCodexInput[];
-}) {
+function PendingCodexInputList({ sessionId, inputs }: { sessionId: string; inputs: PendingCodexInput[] }) {
   if (inputs.length === 0) return null;
 
   return (
@@ -455,7 +453,7 @@ function getLiveActivityStartedAt(
   fallbackTimestamp?: number,
 ): number {
   if (startTimestamp != null) return startTimestamp;
-  if (progressElapsedSeconds != null) return now - (progressElapsedSeconds * 1000);
+  if (progressElapsedSeconds != null) return now - progressElapsedSeconds * 1000;
   if (fallbackTimestamp != null) return fallbackTimestamp;
   return now;
 }
@@ -471,31 +469,38 @@ function getCodexTerminalRevealAt(entry: CodexTerminalEntry, now: number): numbe
 }
 
 function getLiveSubagentRevealAt(entry: LiveSubagentEntry, now: number): number {
-  return getLiveActivityRevealAt(
-    getLiveActivityStartedAt(now, entry.startTimestamp, entry.progressElapsedSeconds),
-  );
+  return getLiveActivityRevealAt(getLiveActivityStartedAt(now, entry.startTimestamp, entry.progressElapsedSeconds));
 }
 
 function collectLiveSubagentEntries(
   turns: Turn[],
   sessionStatus: "idle" | "running" | "compacting" | "reverting" | null,
-  toolResults?: Map<string, {
-    content: string;
-    is_error: boolean;
-    is_truncated: boolean;
-    duration_seconds?: number;
-  }>,
-  toolProgress?: Map<string, {
-    toolName: string;
-    elapsedSeconds: number;
-    output?: string;
-  }>,
+  toolResults?: Map<
+    string,
+    {
+      content: string;
+      is_error: boolean;
+      is_truncated: boolean;
+      duration_seconds?: number;
+    }
+  >,
+  toolProgress?: Map<
+    string,
+    {
+      toolName: string;
+      elapsedSeconds: number;
+      output?: string;
+    }
+  >,
   toolStartTimestamps?: Map<string, number>,
-  backgroundAgentNotifs?: Map<string, {
-    status: string;
-    outputFile?: string;
-    summary?: string;
-  }>,
+  backgroundAgentNotifs?: Map<
+    string,
+    {
+      status: string;
+      outputFile?: string;
+      summary?: string;
+    }
+  >,
   parentStreamingByToolUseId?: Map<string, string>,
 ): LiveSubagentEntry[] {
   const entries: LiveSubagentEntry[] = [];
@@ -544,9 +549,7 @@ function collectLiveSubagentEntries(
         // Background agents: the CLI sends tool_result immediately ("task spawned")
         // so resultPreview is set right away. They only truly complete when
         // task_notification arrives (bgNotif). Foreground agents complete on either.
-        const isEffectivelyComplete = entry.isBackground
-          ? bgNotif != null
-          : (resultPreview != null || bgNotif != null);
+        const isEffectivelyComplete = entry.isBackground ? bgNotif != null : resultPreview != null || bgNotif != null;
         // Background agents stay "live" even when the main turn ends (session idle).
         // They only complete via task_notification (bgNotif).
         const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !entry.isBackground;
@@ -600,17 +603,23 @@ function getTerminalChipLabel(input: Record<string, unknown>): string {
 
 function collectCodexTerminalEntries(
   messages: ChatMessage[],
-  toolResults?: Map<string, {
-    content: string;
-    is_error: boolean;
-    is_truncated: boolean;
-    duration_seconds?: number;
-  }>,
-  toolProgress?: Map<string, {
-    toolName: string;
-    elapsedSeconds: number;
-    output?: string;
-  }>,
+  toolResults?: Map<
+    string,
+    {
+      content: string;
+      is_error: boolean;
+      is_truncated: boolean;
+      duration_seconds?: number;
+    }
+  >,
+  toolProgress?: Map<
+    string,
+    {
+      toolName: string;
+      elapsedSeconds: number;
+      output?: string;
+    }
+  >,
   toolStartTimestamps?: Map<string, number>,
 ): CodexTerminalEntry[] {
   const entries = new Map<string, CodexTerminalEntry>();
@@ -807,16 +816,19 @@ function CodexTerminalInspector({
   terminal: CodexTerminalEntry;
   onClose: () => void;
 }) {
-  const statusLabel = terminal.result
-    ? (terminal.result.is_error ? "error" : "complete")
-    : "running";
+  const statusLabel = terminal.result ? (terminal.result.is_error ? "error" : "complete") : "running";
   const statusClass = terminal.result
-    ? (terminal.result.is_error ? "bg-cc-error/10 text-cc-error" : "bg-cc-success/10 text-cc-success")
+    ? terminal.result.is_error
+      ? "bg-cc-error/10 text-cc-error"
+      : "bg-cc-success/10 text-cc-success"
     : "bg-cc-primary/10 text-cc-primary";
 
   return (
     <div className="pointer-events-none absolute inset-x-3 bottom-4 z-20 flex justify-start sm:inset-x-auto sm:left-4">
-      <div data-testid="codex-terminal-inspector" className="pointer-events-auto w-full max-w-[min(32rem,100%)] rounded-2xl border border-cc-border bg-cc-bg/98 shadow-2xl backdrop-blur-sm">
+      <div
+        data-testid="codex-terminal-inspector"
+        className="pointer-events-auto w-full max-w-[min(32rem,100%)] rounded-2xl border border-cc-border bg-cc-bg/98 shadow-2xl backdrop-blur-sm"
+      >
         <div className="flex items-center gap-2 border-b border-cc-border px-4 py-3">
           <ToolIcon type="terminal" />
           <div className="min-w-0 flex-1">
@@ -871,15 +883,9 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
   // Single item — render using ToolBlock which includes result section
   if (count === 1) {
     const item = group.items[0];
-    const showLiveCodexTerminalStub =
-      isCodexSession
-      && item.name === "Bash"
-      && activeCodexTerminalIds.has(item.id);
+    const showLiveCodexTerminalStub = isCodexSession && item.name === "Bash" && activeCodexTerminalIds.has(item.id);
     return (
-      <div
-        className="animate-[fadeSlideIn_0.2s_ease-out]"
-        data-feed-block-id={getToolGroupFeedBlockId(group)}
-      >
+      <div className="animate-[fadeSlideIn_0.2s_ease-out]" data-feed-block-id={getToolGroupFeedBlockId(group)}>
         <div className="flex items-start gap-3">
           <PawTrailAvatar />
           <div className="flex-1 min-w-0">
@@ -901,10 +907,7 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
 
   // Multi-item group
   return (
-    <div
-      className="animate-[fadeSlideIn_0.2s_ease-out]"
-      data-feed-block-id={getToolGroupFeedBlockId(group)}
-    >
+    <div className="animate-[fadeSlideIn_0.2s_ease-out]" data-feed-block-id={getToolGroupFeedBlockId(group)}>
       <div className="flex items-start gap-3">
         <PawTrailAvatar />
         <div className="flex-1 min-w-0">
@@ -913,7 +916,11 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
               onClick={() => setOpen(!open)}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+              <svg
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+              >
                 <path d="M6 4l4 4-4 4" />
               </svg>
               <ToolIcon type={iconType} />
@@ -925,7 +932,7 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
 
             {open && (
               <div className="border-t border-cc-border px-3 py-2 flex flex-col gap-1.5">
-                {group.items.map((item, i) => (
+                {group.items.map((item, i) =>
                   isCodexSession && item.name === "Bash" && activeCodexTerminalIds.has(item.id) ? (
                     <LiveCodexTerminalStub
                       key={item.id || i}
@@ -943,8 +950,8 @@ const ToolMessageGroup = memo(function ToolMessageGroup({
                       sessionId={sessionId}
                       hideLabel={group.toolName === "Bash"}
                     />
-                  )
-                ))}
+                  ),
+                )}
               </div>
             )}
           </div>
@@ -980,9 +987,16 @@ function getTurnBoundaryTimestamp(turn: Turn): number | null {
 
 function getNormalTurnDurationMs(turn: Turn): number | null {
   const boundary = turn.userEntry;
-  if (!boundary || boundary.kind !== "message" || boundary.msg.role !== "user" || boundary.msg.agentSource?.sessionId === "herd-events") return null;
+  if (
+    !boundary ||
+    boundary.kind !== "message" ||
+    boundary.msg.role !== "user" ||
+    boundary.msg.agentSource?.sessionId === "herd-events"
+  )
+    return null;
   const userTimestamp = boundary.msg.timestamp;
-  if (!turn.responseEntry || turn.responseEntry.kind !== "message" || turn.responseEntry.msg.role !== "assistant") return null;
+  if (!turn.responseEntry || turn.responseEntry.kind !== "message" || turn.responseEntry.msg.role !== "assistant")
+    return null;
   const responseTimestamp = turn.responseEntry.msg.timestamp;
   if (responseTimestamp < userTimestamp) return null;
   return responseTimestamp - userTimestamp;
@@ -1107,24 +1121,32 @@ function TurnSummaryStats({
   return (
     <>
       {hasMessages && (
-        <span>{stats.messageCount} message{stats.messageCount !== 1 ? "s" : ""}</span>
+        <span>
+          {stats.messageCount} message{stats.messageCount !== 1 ? "s" : ""}
+        </span>
       )}
       {hasTools && (
         <>
           {hasMessages && <span className={separatorClass}>·</span>}
-          <span>{stats.toolCount} tool{stats.toolCount !== 1 ? "s" : ""}</span>
+          <span>
+            {stats.toolCount} tool{stats.toolCount !== 1 ? "s" : ""}
+          </span>
         </>
       )}
       {hasAgents && (
         <>
           {(hasMessages || hasTools) && <span className={separatorClass}>·</span>}
-          <span>{stats.subagentCount} agent{stats.subagentCount !== 1 ? "s" : ""}</span>
+          <span>
+            {stats.subagentCount} agent{stats.subagentCount !== 1 ? "s" : ""}
+          </span>
         </>
       )}
       {hasHerdEvents && (
         <>
           {(hasMessages || hasTools || hasAgents) && <span className={separatorClass}>·</span>}
-          <span>{stats.herdEventCount} herd event{stats.herdEventCount !== 1 ? "s" : ""}</span>
+          <span>
+            {stats.herdEventCount} herd event{stats.herdEventCount !== 1 ? "s" : ""}
+          </span>
         </>
       )}
       {hasDuration && (
@@ -1156,7 +1178,13 @@ function ApprovalBatchGroup({ messages }: { messages: ChatMessage[] }) {
         onClick={() => setExpanded((v) => !v)}
         className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs text-green-400/80 font-mono-code max-w-[85%] text-left cursor-pointer hover:bg-green-500/15 transition-colors"
       >
-        <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg
+          className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
           <circle cx="8" cy="8" r="6.5" />
           <path d="M5.5 8.5l2 2 3.5-4" />
         </svg>
@@ -1164,14 +1192,22 @@ function ApprovalBatchGroup({ messages }: { messages: ChatMessage[] }) {
           {expanded ? (
             <div className="space-y-0.5">
               {messages.map((msg) => (
-                <div key={msg.id} className="line-clamp-1">{msg.content}</div>
+                <div key={msg.id} className="line-clamp-1">
+                  {msg.content}
+                </div>
               ))}
             </div>
           ) : (
-            <span>{count} tool{count !== 1 ? "s" : ""} auto-approved</span>
+            <span>
+              {count} tool{count !== 1 ? "s" : ""} auto-approved
+            </span>
           )}
         </div>
-        <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-green-400/40 shrink-0 mt-0.5 transition-transform ${expanded ? "rotate-90" : ""}`}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className={`w-3 h-3 text-green-400/40 shrink-0 mt-0.5 transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
           <path d="M6 4l4 4-4 4" />
         </svg>
       </button>
@@ -1260,7 +1296,7 @@ const FeedEntries = memo(function FeedEntries({
           >
             {markerLabel && <MinuteBoundaryTimestamp timestamp={entry.msg.timestamp} label={markerLabel} />}
             <MessageBubble message={entry.msg} sessionId={sessionId} showTimestamp={showTimestamp} />
-          </div>
+          </div>,
         );
       } else {
         result.push(
@@ -1356,12 +1392,7 @@ const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
     <>
       {/* Per-turn collapse bar (only for turns with collapsible activity) */}
       {turn.agentEntries.length > 0 && (
-        <TurnCollapseBar
-          ref={headerRef}
-          stats={turn.stats}
-          durationMs={durationMs}
-          onClick={onCollapse}
-        />
+        <TurnCollapseBar ref={headerRef} stats={turn.stats} durationMs={durationMs} onClick={onCollapse} />
       )}
       {/* Render all entries interleaved in original chronological order */}
       <FeedEntries
@@ -1373,13 +1404,10 @@ const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
         onOpenCodexTerminal={onOpenCodexTerminal}
       />
       {/* Bottom collapse bar — appears when top bar scrolls out of view */}
-      {turn.agentEntries.length > 0 && (
-        <TurnCollapseFooter headerRef={headerRef} onCollapse={onCollapse} />
-      )}
+      {turn.agentEntries.length > 0 && <TurnCollapseFooter headerRef={headerRef} onCollapse={onCollapse} />}
     </>
   );
 });
-
 
 /** Extract readable text from a Task tool_result string.
  *  The CLI sends the result as JSON.stringify'd content blocks:
@@ -1465,7 +1493,11 @@ function SubagentSectionHeader({
       onClick={onToggle}
       className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
     >
-      <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+      <svg
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+      >
         <path d="M6 4l4 4-4 4" />
       </svg>
       <span className="text-[11px] font-medium text-cc-muted">{label}</span>
@@ -1502,28 +1534,22 @@ const SubagentContainer = memo(function SubagentContainer({
 
   // Read the subagent's final result from the toolResults store
   const resultPreview = useStore((s) => s.toolResults.get(sessionId)?.get(group.taskToolUseId));
-  const rawStreamingText = useStore((s) =>
-    s.streamingByParentToolUseId.get(sessionId)?.get(group.taskToolUseId) || ""
+  const rawStreamingText = useStore((s) => s.streamingByParentToolUseId.get(sessionId)?.get(group.taskToolUseId) || "");
+  const rawThinkingText = useStore(
+    (s) => s.streamingThinkingByParentToolUseId.get(sessionId)?.get(group.taskToolUseId) || "",
   );
-  const rawThinkingText = useStore((s) =>
-    s.streamingThinkingByParentToolUseId.get(sessionId)?.get(group.taskToolUseId) || ""
+  const progressElapsedSeconds = useStore(
+    (s) => s.toolProgress.get(sessionId)?.get(group.taskToolUseId)?.elapsedSeconds,
   );
-  const progressElapsedSeconds = useStore((s) =>
-    s.toolProgress.get(sessionId)?.get(group.taskToolUseId)?.elapsedSeconds
-  );
-  const startTimestamp = useStore((s) =>
-    s.toolStartTimestamps.get(sessionId)?.get(group.taskToolUseId)
-  );
+  const startTimestamp = useStore((s) => s.toolStartTimestamps.get(sessionId)?.get(group.taskToolUseId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
   const streamingText = useMemo(
-    () => isCodexSession ? getCommittedCodexStreamingText(rawStreamingText) : rawStreamingText,
+    () => (isCodexSession ? getCommittedCodexStreamingText(rawStreamingText) : rawStreamingText),
     [isCodexSession, rawStreamingText],
   );
 
   // Read background agent notification
-  const bgNotif = useStore((s) =>
-    s.backgroundAgentNotifs.get(sessionId)?.get(group.taskToolUseId)
-  );
+  const bgNotif = useStore((s) => s.backgroundAgentNotifs.get(sessionId)?.get(group.taskToolUseId));
 
   // Detect abandoned subagents: session is no longer running but this subagent
   // never received a result. This happens on CLI disconnect, user interrupt,
@@ -1535,9 +1561,7 @@ const SubagentContainer = memo(function SubagentContainer({
   // Background agents: the CLI sends tool_result immediately ("task spawned")
   // so resultPreview is set right away. They only truly complete when
   // task_notification arrives (bgNotif). Foreground agents complete on either.
-  const isEffectivelyComplete = group.isBackground
-    ? bgNotif != null
-    : (resultPreview != null || bgNotif != null);
+  const isEffectivelyComplete = group.isBackground ? bgNotif != null : resultPreview != null || bgNotif != null;
   const isAbandoned = !isEffectivelyComplete && sessionStatus !== "running" && !group.isBackground;
 
   // Get the last visible entry for a compact preview (fallback when no result)
@@ -1551,7 +1575,7 @@ const SubagentContainer = memo(function SubagentContainer({
       const text = lastEntry.msg.content?.trim();
       if (text) return text.length > 60 ? text.slice(0, 60) + "..." : text;
       const toolBlock = lastEntry.msg.contentBlocks?.find(
-        (b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use"
+        (b): b is Extract<ContentBlock, { type: "tool_use" }> => b.type === "tool_use",
       );
       if (toolBlock) return getToolLabel(toolBlock.name);
     }
@@ -1592,23 +1616,29 @@ const SubagentContainer = memo(function SubagentContainer({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
       >
-        <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+        >
           <path d="M6 4l4 4-4 4" />
         </svg>
         <ToolIcon type="agent" />
         <span className="text-xs font-medium text-cc-fg truncate">{label}</span>
         {agentType && (
-          <span className="text-[10px] text-cc-muted bg-cc-hover rounded-full px-1.5 py-0.5 shrink-0">
-            {agentType}
-          </span>
+          <span className="text-[10px] text-cc-muted bg-cc-hover rounded-full px-1.5 py-0.5 shrink-0">{agentType}</span>
         )}
         {!open && collapsedPreview && (
-          <span className="text-[11px] text-cc-muted truncate ml-1 font-mono-code">
-            {collapsedPreview}
-          </span>
+          <span className="text-[11px] text-cc-muted truncate ml-1 font-mono-code">{collapsedPreview}</span>
         )}
         <LiveDurationBadge
-          finalDurationSeconds={group.isBackground ? bgNotif ? resultPreview?.duration_seconds : undefined : resultPreview?.duration_seconds}
+          finalDurationSeconds={
+            group.isBackground
+              ? bgNotif
+                ? resultPreview?.duration_seconds
+                : undefined
+              : resultPreview?.duration_seconds
+          }
           progressElapsedSeconds={progressElapsedSeconds}
           startTimestamp={startTimestamp}
           isComplete={isEffectivelyComplete || isAbandoned}
@@ -1646,7 +1676,11 @@ const SubagentContainer = memo(function SubagentContainer({
           {/* Child activities */}
           {(childCount > 0 || rawStreamingText || rawThinkingText) && (
             <div className="border-b border-cc-border/50">
-              <SubagentSectionHeader label="Activities" open={activitiesOpen} onToggle={() => setActivitiesOpen(!activitiesOpen)} />
+              <SubagentSectionHeader
+                label="Activities"
+                open={activitiesOpen}
+                onToggle={() => setActivitiesOpen(!activitiesOpen)}
+              />
               {activitiesOpen && (
                 <div className="px-3 pb-2 space-y-3">
                   {childCount > 0 && (
@@ -1692,7 +1726,9 @@ const SubagentContainer = memo(function SubagentContainer({
                 {bgNotif.outputFile && !bgOutput && (
                   <button
                     onClick={async () => {
-                      const resp = await fetch(`/api/sessions/${sessionId}/agent-output?path=${encodeURIComponent(bgNotif.outputFile!)}`);
+                      const resp = await fetch(
+                        `/api/sessions/${sessionId}/agent-output?path=${encodeURIComponent(bgNotif.outputFile!)}`,
+                      );
                       if (resp.ok) setBgOutput(await resp.text());
                     }}
                     className="text-[11px] text-cc-accent hover:underline mt-1 cursor-pointer"
@@ -1719,9 +1755,7 @@ const SubagentContainer = memo(function SubagentContainer({
 
           {/* Abandoned subagent — session ended without this subagent completing */}
           {childCount === 0 && isAbandoned && (
-            <div className="px-3 py-2 text-[11px] text-cc-muted">
-              Agent interrupted
-            </div>
+            <div className="px-3 py-2 text-[11px] text-cc-muted">Agent interrupted</div>
           )}
 
           {/* Result */}
@@ -1753,15 +1787,18 @@ const SubagentContainer = memo(function SubagentContainer({
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
       <div className="flex items-start gap-3">
         <PawTrailAvatar />
-        <div className="flex-1 min-w-0">
-          {card}
-        </div>
+        <div className="flex-1 min-w-0">{card}</div>
       </div>
     </div>
   );
 });
 
-function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
+function SubagentResult({
+  preview,
+  parsedText,
+  sessionId,
+  toolUseId,
+}: {
   preview: { content: string; is_truncated: boolean };
   parsedText: string | null;
   sessionId: string;
@@ -1775,16 +1812,15 @@ function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
   useEffect(() => {
     if (preview.is_truncated && !fullContent && !loading) {
       setLoading(true);
-      api.getToolResult(sessionId, toolUseId)
+      api
+        .getToolResult(sessionId, toolUseId)
         .then((result) => setFullContent(result.content))
         .catch(() => setFullContent("[Failed to load full result]"))
         .finally(() => setLoading(false));
     }
   }, [preview.is_truncated, fullContent, loading, sessionId, toolUseId]);
 
-  const displayText = fullContent
-    ? parseSubagentResultText(fullContent)
-    : (parsedText ?? preview.content);
+  const displayText = fullContent ? parseSubagentResultText(fullContent) : (parsedText ?? preview.content);
 
   return (
     <div className="px-3 pb-2">
@@ -1804,7 +1840,6 @@ function SubagentResult({ preview, parsedText, sessionId, toolUseId }: {
   );
 }
 
-
 // ─── Self-subscribing footer (isolates rapid store updates from the feed) ────
 
 const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }) {
@@ -1814,7 +1849,7 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
   const streamingText = useMemo(
-    () => isCodexSession ? getCommittedCodexStreamingText(rawStreamingText || "") : (rawStreamingText || ""),
+    () => (isCodexSession ? getCommittedCodexStreamingText(rawStreamingText || "") : rawStreamingText || ""),
     [isCodexSession, rawStreamingText],
   );
 
@@ -1832,31 +1867,32 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
       )}
 
       {/* Tool progress indicator — skip Task tools since SubagentContainers show their own progress */}
-      {toolProgress && toolProgress.size > 0 && !rawStreamingText && !isCodexSession && (() => {
-        const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => !isSubagentToolName(p.toolName));
-        if (nonTaskProgress.length === 0) return null;
-        return (
-          <div
-            className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9"
-            data-feed-block-id={getFooterFeedBlockId("tool-progress")}
-          >
-            <YarnBallDot className="text-cc-primary animate-pulse" />
-            {nonTaskProgress.map((p, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <span className="text-cc-muted/40">·</span>}
-                <span>{getToolLabel(p.toolName)}</span>
-                <span className="text-cc-muted/60">{p.elapsedSeconds}s</span>
-              </span>
-            ))}
-          </div>
-        );
-      })()}
+      {toolProgress &&
+        toolProgress.size > 0 &&
+        !rawStreamingText &&
+        !isCodexSession &&
+        (() => {
+          const nonTaskProgress = Array.from(toolProgress.values()).filter((p) => !isSubagentToolName(p.toolName));
+          if (nonTaskProgress.length === 0) return null;
+          return (
+            <div
+              className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9"
+              data-feed-block-id={getFooterFeedBlockId("tool-progress")}
+            >
+              <YarnBallDot className="text-cc-primary animate-pulse" />
+              {nonTaskProgress.map((p, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  {i > 0 && <span className="text-cc-muted/40">·</span>}
+                  <span>{getToolLabel(p.toolName)}</span>
+                  <span className="text-cc-muted/60">{p.elapsedSeconds}s</span>
+                </span>
+              ))}
+            </div>
+          );
+        })()}
 
       {isCodexSession && !rawStreamingText && rawThinkingText && (
-        <div
-          className="animate-[fadeSlideIn_0.2s_ease-out]"
-          data-feed-block-id={getFooterFeedBlockId("thinking")}
-        >
+        <div className="animate-[fadeSlideIn_0.2s_ease-out]" data-feed-block-id={getFooterFeedBlockId("thinking")}>
           <div className="flex items-start gap-3">
             <PawTrailAvatar isStreaming />
             <div className="flex-1 min-w-0">
@@ -1891,7 +1927,6 @@ const FeedFooter = memo(function FeedFooter({ sessionId }: { sessionId: string }
           </div>
         </div>
       )}
-
     </>
   );
 });
@@ -2021,7 +2056,10 @@ const TurnEntries = memo(function TurnEntries({
                                 <div className="px-3 py-2.5">
                                   <HidePawContext.Provider value={true}>
                                     <FeedEntries
-                                      entries={[...turn.promotedEntries, ...(turn.responseEntry ? [turn.responseEntry] : [])]}
+                                      entries={[
+                                        ...turn.promotedEntries,
+                                        ...(turn.responseEntry ? [turn.responseEntry] : []),
+                                      ]}
                                       sessionId={sessionId}
                                       minuteBoundaryLabels={minuteBoundaryLabels}
                                       isCodexSession={isCodexSession}
@@ -2046,7 +2084,6 @@ const TurnEntries = memo(function TurnEntries({
     </>
   );
 });
-
 
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
@@ -2076,7 +2113,9 @@ export function MessageFeed({
   const backgroundAgentNotifs = useStore((s) => s.backgroundAgentNotifs.get(sessionId));
   const currentSessionStatus = useStore((s) => s.sessionStatus.get(sessionId) ?? null);
   const parentStreamingByToolUseId = useStore((s) => s.streamingByParentToolUseId.get(sessionId));
-  const isLeaderSession = useStore((s) => s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true));
+  const isLeaderSession = useStore((s) =>
+    s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true),
+  );
   const shouldBottomAlignNextUserMessage = useStore((s) => s.bottomAlignNextUserMessage.has(sessionId));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2115,9 +2154,7 @@ export function MessageFeed({
   } | null>(null);
 
   const codexTerminalEntries = useMemo(
-    () => isCodexSession
-      ? collectCodexTerminalEntries(messages, toolResults, toolProgress, toolStartTimestamps)
-      : [],
+    () => (isCodexSession ? collectCodexTerminalEntries(messages, toolResults, toolProgress, toolStartTimestamps) : []),
     [isCodexSession, messages, toolProgress, toolResults, toolStartTimestamps],
   );
   const { turns } = useFeedModel(messages, {
@@ -2126,16 +2163,25 @@ export function MessageFeed({
     frozenRevision,
   });
   const activeLiveSubagentEntries = useMemo(
-    () => collectLiveSubagentEntries(
-      turns,
-      currentSessionStatus,
-      toolResults,
-      toolProgress,
-      toolStartTimestamps,
+    () =>
+      collectLiveSubagentEntries(
+        turns,
+        currentSessionStatus,
+        toolResults,
+        toolProgress,
+        toolStartTimestamps,
+        backgroundAgentNotifs,
+        parentStreamingByToolUseId,
+      ),
+    [
       backgroundAgentNotifs,
+      currentSessionStatus,
       parentStreamingByToolUseId,
-    ),
-    [backgroundAgentNotifs, currentSessionStatus, parentStreamingByToolUseId, toolProgress, toolResults, toolStartTimestamps, turns],
+      toolProgress,
+      toolResults,
+      toolStartTimestamps,
+      turns,
+    ],
   );
   const activeCodexTerminalEntries = useMemo(
     () => codexTerminalEntries.filter((entry) => entry.result == null),
@@ -2143,9 +2189,10 @@ export function MessageFeed({
   );
   const visibleLiveSubagentEntries = useMemo(() => {
     const now = Date.now();
-    return activeLiveSubagentEntries.filter((entry) =>
-      getLiveSubagentRevealAt(entry, now) <= now
-      && dismissedSubagentChips.get(entry.taskToolUseId) !== entry.freshnessToken
+    return activeLiveSubagentEntries.filter(
+      (entry) =>
+        getLiveSubagentRevealAt(entry, now) <= now &&
+        dismissedSubagentChips.get(entry.taskToolUseId) !== entry.freshnessToken,
     );
   }, [activeLiveSubagentEntries, dismissedSubagentChips, liveActivityRailVersion]);
   const visibleCodexTerminalRailEntries = useMemo(() => {
@@ -2178,8 +2225,7 @@ export function MessageFeed({
     const pendingRevealTimes = [
       ...activeCodexTerminalEntries.map((entry) => getCodexTerminalRevealAt(entry, now)),
       ...activeLiveSubagentEntries.map((entry) => getLiveSubagentRevealAt(entry, now)),
-    ]
-      .filter((revealAt) => revealAt > now);
+    ].filter((revealAt) => revealAt > now);
     if (pendingRevealTimes.length === 0) return;
     const nextRevealAt = Math.min(...pendingRevealTimes);
     const timeout = setTimeout(() => {
@@ -2240,23 +2286,29 @@ export function MessageFeed({
     programmaticScrollTargetRef.current = top;
   }, []);
 
-  const setContainerScrollTop = useCallback((top: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    markProgrammaticScroll(top);
-    container.scrollTop = top;
-    lastScrollTopRef.current = top;
-  }, [markProgrammaticScroll]);
-
-  const scrollContainerTo = useCallback((top: number, behavior: ScrollBehavior) => {
-    const container = containerRef.current;
-    if (!container) return;
-    markProgrammaticScroll(top);
-    container.scrollTo({ top, behavior });
-    if (behavior !== "smooth") {
+  const setContainerScrollTop = useCallback(
+    (top: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      markProgrammaticScroll(top);
+      container.scrollTop = top;
       lastScrollTopRef.current = top;
-    }
-  }, [markProgrammaticScroll]);
+    },
+    [markProgrammaticScroll],
+  );
+
+  const scrollContainerTo = useCallback(
+    (top: number, behavior: ScrollBehavior) => {
+      const container = containerRef.current;
+      if (!container) return;
+      markProgrammaticScroll(top);
+      container.scrollTo({ top, behavior });
+      if (behavior !== "smooth") {
+        lastScrollTopRef.current = top;
+      }
+    },
+    [markProgrammaticScroll],
+  );
 
   const getFeedBlockBottom = useCallback((container: HTMLDivElement, element: HTMLElement) => {
     const offsetBottom = element.offsetTop + element.offsetHeight;
@@ -2291,27 +2343,32 @@ export function MessageFeed({
     return Math.max(0, Math.min(fallbackBottom, Math.round(maxBottom)));
   }, [feedEndScrollSlack, getFeedBlockBottom]);
 
-  const getLowestFeedBlockBottom = useCallback((blockIds: Iterable<string>, fallbackToLatestBlock = false) => {
-    const container = containerRef.current;
-    const contentRoot = contentRootRef.current;
-    if (!container || !contentRoot) return null;
+  const getLowestFeedBlockBottom = useCallback(
+    (blockIds: Iterable<string>, fallbackToLatestBlock = false) => {
+      const container = containerRef.current;
+      const contentRoot = contentRootRef.current;
+      if (!container || !contentRoot) return null;
 
-    let maxBottom: number | null = null;
-    for (const blockId of blockIds) {
-      const element = contentRoot.querySelector<HTMLElement>(`[data-feed-block-id="${escapeSelectorValue(blockId)}"]`);
-      if (!element) continue;
-      const bottom = getFeedBlockBottom(container, element);
-      maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
-    }
+      let maxBottom: number | null = null;
+      for (const blockId of blockIds) {
+        const element = contentRoot.querySelector<HTMLElement>(
+          `[data-feed-block-id="${escapeSelectorValue(blockId)}"]`,
+        );
+        if (!element) continue;
+        const bottom = getFeedBlockBottom(container, element);
+        maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+      }
 
-    if (maxBottom != null || !fallbackToLatestBlock) {
-      return maxBottom;
-    }
+      if (maxBottom != null || !fallbackToLatestBlock) {
+        return maxBottom;
+      }
 
-    const blocks = contentRoot.querySelectorAll<HTMLElement>("[data-feed-block-id]");
-    const lastBlock = blocks[blocks.length - 1];
-    return lastBlock ? getFeedBlockBottom(container, lastBlock) : null;
-  }, [getFeedBlockBottom]);
+      const blocks = contentRoot.querySelectorAll<HTMLElement>("[data-feed-block-id]");
+      const lastBlock = blocks[blocks.length - 1];
+      return lastBlock ? getFeedBlockBottom(container, lastBlock) : null;
+    },
+    [getFeedBlockBottom],
+  );
 
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
@@ -2348,10 +2405,7 @@ export function MessageFeed({
     () => sections.slice(visibleSectionStartIndex, visibleSectionEndIndex),
     [sections, visibleSectionEndIndex, visibleSectionStartIndex],
   );
-  const visibleTurns = useMemo(
-    () => visibleSections.flatMap((section) => section.turns),
-    [visibleSections],
-  );
+  const visibleTurns = useMemo(() => visibleSections.flatMap((section) => section.turns), [visibleSections]);
   const { turnStates, toggleTurn } = useCollapsePolicy({
     sessionId,
     turns: visibleTurns,
@@ -2373,10 +2427,8 @@ export function MessageFeed({
   const hasNewerSections = sectionWindowStart !== null && nextSectionStartIndex !== null;
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
-  const collapsibleTurnIds = useMemo(() =>
-    visibleTurns
-      .filter((t) => t.agentEntries.length > 0)
-      .map((t) => t.id),
+  const collapsibleTurnIds = useMemo(
+    () => visibleTurns.filter((t) => t.agentEntries.length > 0).map((t) => t.id),
     [visibleTurns],
   );
 
@@ -2395,110 +2447,131 @@ export function MessageFeed({
     });
   }, [latestVisibleSectionStartIndex, sections]);
 
-  const getSectionWindowStartForTurnId = useCallback((turnId: string): number | null => {
-    const targetSectionIndex = sections.findIndex((section) => section.turns.some((turn) => turn.id === turnId));
-    if (targetSectionIndex < 0) return null;
-    const nextStartIndex = findSectionWindowStartIndexForTarget(
-      sections,
-      targetSectionIndex,
-      DEFAULT_VISIBLE_SECTION_COUNT,
-    );
-    return nextStartIndex === latestVisibleSectionStartIndex ? null : nextStartIndex;
-  }, [latestVisibleSectionStartIndex, sections]);
+  const getSectionWindowStartForTurnId = useCallback(
+    (turnId: string): number | null => {
+      const targetSectionIndex = sections.findIndex((section) => section.turns.some((turn) => turn.id === turnId));
+      if (targetSectionIndex < 0) return null;
+      const nextStartIndex = findSectionWindowStartIndexForTarget(
+        sections,
+        targetSectionIndex,
+        DEFAULT_VISIBLE_SECTION_COUNT,
+      );
+      return nextStartIndex === latestVisibleSectionStartIndex ? null : nextStartIndex;
+    },
+    [latestVisibleSectionStartIndex, sections],
+  );
 
   // ─── Scroll management ─────────────────────────────────────────────────
 
-  const restoreTurnAnchor = useCallback((anchorTurnId: string, anchorOffsetTop = 0) => {
-    const container = containerRef.current;
-    if (!container) return false;
-    const target = container.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(anchorTurnId)}"]`);
-    if (!target) return false;
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchorOffsetTop;
-    markProgrammaticScroll(nextTop);
-    container.scrollTop = nextTop;
-    lastScrollTopRef.current = container.scrollTop;
-    return true;
-  }, [markProgrammaticScroll]);
-
-  const restoreFeedAnchor = useCallback((anchor: FeedViewportAnchor) => {
-    const container = containerRef.current;
-    if (!container) return false;
-
-    const restoreSelector = (selector: string) => {
-      const target = container.querySelector<HTMLElement>(selector);
+  const restoreTurnAnchor = useCallback(
+    (anchorTurnId: string, anchorOffsetTop = 0) => {
+      const container = containerRef.current;
+      if (!container) return false;
+      const target = container.querySelector<HTMLElement>(`[data-turn-id="${escapeSelectorValue(anchorTurnId)}"]`);
       if (!target) return false;
       const containerRect = container.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
-      const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchor.offsetTop;
+      const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchorOffsetTop;
       markProgrammaticScroll(nextTop);
       container.scrollTop = nextTop;
       lastScrollTopRef.current = container.scrollTop;
       return true;
-    };
+    },
+    [markProgrammaticScroll],
+  );
 
-    if (anchor.messageId && restoreSelector(`[data-message-id="${escapeSelectorValue(anchor.messageId)}"]`)) {
-      return true;
-    }
+  const restoreFeedAnchor = useCallback(
+    (anchor: FeedViewportAnchor) => {
+      const container = containerRef.current;
+      if (!container) return false;
 
-    if (anchor.turnId && restoreSelector(`[data-turn-id="${escapeSelectorValue(anchor.turnId)}"]`)) {
-      return true;
-    }
+      const restoreSelector = (selector: string) => {
+        const target = container.querySelector<HTMLElement>(selector);
+        if (!target) return false;
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const nextTop = container.scrollTop + targetRect.top - containerRect.top - anchor.offsetTop;
+        markProgrammaticScroll(nextTop);
+        container.scrollTop = nextTop;
+        lastScrollTopRef.current = container.scrollTop;
+        return true;
+      };
 
-    return false;
-  }, [markProgrammaticScroll]);
-
-  const snapshotViewportAnchor = useCallback((container: HTMLDivElement) => {
-    lastViewportAnchorRef.current = {
-      signature: collapseLayoutSignature,
-      wasAutoFollowing: autoFollowEnabledRef.current,
-      anchor: findVisibleFeedAnchor(container),
-    };
-  }, [collapseLayoutSignature, findVisibleFeedAnchor]);
-
-  const moveSectionWindow = useCallback((nextStartIndex: number | null) => {
-    const el = containerRef.current;
-    const anchor = el ? findVisibleTurnAnchor(el) : null;
-    setSectionWindowStart(nextStartIndex);
-    requestAnimationFrame(() => {
-      if (anchor?.turnId) {
-        restoreTurnAnchor(anchor.turnId, anchor.offsetTop ?? 0);
+      if (anchor.messageId && restoreSelector(`[data-message-id="${escapeSelectorValue(anchor.messageId)}"]`)) {
+        return true;
       }
-    });
-  }, [findVisibleTurnAnchor, restoreTurnAnchor]);
 
-  const ensureSectionForTurnVisible = useCallback((turnId: string): boolean => {
-    const nextStartIndex = getSectionWindowStartForTurnId(turnId);
-    if (nextStartIndex === sectionWindowStart) return false;
-    if (nextStartIndex == null && visibleSectionStartIndex === latestVisibleSectionStartIndex) return false;
-    moveSectionWindow(nextStartIndex);
-    return true;
-  }, [
-    getSectionWindowStartForTurnId,
-    moveSectionWindow,
-    sectionWindowStart,
-    latestVisibleSectionStartIndex,
-    visibleSectionStartIndex,
-  ]);
+      if (anchor.turnId && restoreSelector(`[data-turn-id="${escapeSelectorValue(anchor.turnId)}"]`)) {
+        return true;
+      }
 
-  const scrollToFeedBlock = useCallback((blockId: string, turnId: string) => {
-    const sectionChanged = ensureSectionForTurnVisible(turnId);
-    const scheduleScroll = () => {
+      return false;
+    },
+    [markProgrammaticScroll],
+  );
+
+  const snapshotViewportAnchor = useCallback(
+    (container: HTMLDivElement) => {
+      lastViewportAnchorRef.current = {
+        signature: collapseLayoutSignature,
+        wasAutoFollowing: autoFollowEnabledRef.current,
+        anchor: findVisibleFeedAnchor(container),
+      };
+    },
+    [collapseLayoutSignature, findVisibleFeedAnchor],
+  );
+
+  const moveSectionWindow = useCallback(
+    (nextStartIndex: number | null) => {
+      const el = containerRef.current;
+      const anchor = el ? findVisibleTurnAnchor(el) : null;
+      setSectionWindowStart(nextStartIndex);
       requestAnimationFrame(() => {
-        const contentRoot = contentRootRef.current;
-        const target = contentRoot?.querySelector<HTMLElement>(
-          `[data-feed-block-id="${escapeSelectorValue(blockId)}"]`,
-        );
-        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (anchor?.turnId) {
+          restoreTurnAnchor(anchor.turnId, anchor.offsetTop ?? 0);
+        }
       });
-    };
-    if (sectionChanged) {
-      requestAnimationFrame(scheduleScroll);
-      return;
-    }
-    scheduleScroll();
-  }, [ensureSectionForTurnVisible]);
+    },
+    [findVisibleTurnAnchor, restoreTurnAnchor],
+  );
+
+  const ensureSectionForTurnVisible = useCallback(
+    (turnId: string): boolean => {
+      const nextStartIndex = getSectionWindowStartForTurnId(turnId);
+      if (nextStartIndex === sectionWindowStart) return false;
+      if (nextStartIndex == null && visibleSectionStartIndex === latestVisibleSectionStartIndex) return false;
+      moveSectionWindow(nextStartIndex);
+      return true;
+    },
+    [
+      getSectionWindowStartForTurnId,
+      moveSectionWindow,
+      sectionWindowStart,
+      latestVisibleSectionStartIndex,
+      visibleSectionStartIndex,
+    ],
+  );
+
+  const scrollToFeedBlock = useCallback(
+    (blockId: string, turnId: string) => {
+      const sectionChanged = ensureSectionForTurnVisible(turnId);
+      const scheduleScroll = () => {
+        requestAnimationFrame(() => {
+          const contentRoot = contentRootRef.current;
+          const target = contentRoot?.querySelector<HTMLElement>(
+            `[data-feed-block-id="${escapeSelectorValue(blockId)}"]`,
+          );
+          target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      };
+      if (sectionChanged) {
+        requestAnimationFrame(scheduleScroll);
+        return;
+      }
+      scheduleScroll();
+    },
+    [ensureSectionForTurnVisible],
+  );
 
   const handleLoadOlderSection = useCallback(() => {
     if (previousSectionStartIndex == null) return;
@@ -2513,46 +2586,52 @@ export function MessageFeed({
     moveSectionWindow(nextSectionStartIndex === latestVisibleSectionStartIndex ? null : nextSectionStartIndex);
   }, [latestVisibleSectionStartIndex, moveSectionWindow, nextSectionStartIndex]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    const performScroll = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      autoFollowEnabledRef.current = true;
-      const realContentBottom = getRealContentBottom() ?? container.scrollHeight;
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(realContentBottom - container.clientHeight)));
-      scrollContainerTo(targetTop, behavior);
-      isNearBottom.current = true;
-      lastSeenContentBottomRef.current = realContentBottom;
-      lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
-      setShowScrollButton(false);
-      setShowLatestPill(false);
-    };
-    if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) {
-      performScroll();
-      return;
-    }
-    setSectionWindowStart(null);
-    requestAnimationFrame(performScroll);
-  }, [getRealContentBottom, scrollContainerTo, sectionWindowStart, totalSections]);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const performScroll = () => {
+        const container = containerRef.current;
+        if (!container) return;
+        autoFollowEnabledRef.current = true;
+        const realContentBottom = getRealContentBottom() ?? container.scrollHeight;
+        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(realContentBottom - container.clientHeight)));
+        scrollContainerTo(targetTop, behavior);
+        isNearBottom.current = true;
+        lastSeenContentBottomRef.current = realContentBottom;
+        lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
+        setShowScrollButton(false);
+        setShowLatestPill(false);
+      };
+      if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) {
+        performScroll();
+        return;
+      }
+      setSectionWindowStart(null);
+      requestAnimationFrame(performScroll);
+    },
+    [getRealContentBottom, scrollContainerTo, sectionWindowStart, totalSections],
+  );
 
   const handleScrollToBottomClick = useCallback(() => {
     scrollToBottom();
   }, [scrollToBottom]);
 
-  const resetVisibleSectionsToLatest = useCallback((behavior: ScrollBehavior = "auto") => {
-    if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) return;
-    autoFollowEnabledRef.current = true;
-    setSectionWindowStart(null);
-    requestAnimationFrame(() => {
-      const container = containerRef.current;
-      if (!container) return;
-      const realContentBottom = getRealContentBottom() ?? container.scrollHeight;
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(realContentBottom - container.clientHeight)));
-      scrollContainerTo(targetTop, behavior);
-    });
-  }, [getRealContentBottom, scrollContainerTo, sectionWindowStart, totalSections]);
+  const resetVisibleSectionsToLatest = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      if (sectionWindowStart == null || totalSections <= DEFAULT_VISIBLE_SECTION_COUNT) return;
+      autoFollowEnabledRef.current = true;
+      setSectionWindowStart(null);
+      requestAnimationFrame(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const realContentBottom = getRealContentBottom() ?? container.scrollHeight;
+        const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(realContentBottom - container.clientHeight)));
+        scrollContainerTo(targetTop, behavior);
+      });
+    },
+    [getRealContentBottom, scrollContainerTo, sectionWindowStart, totalSections],
+  );
 
   const flushAutoFollow = useCallback(() => {
     const container = containerRef.current;
@@ -2585,11 +2664,11 @@ export function MessageFeed({
     if (lowestBottom == null) return;
     const bottomAlignMessageId = bottomAlignMessageIdRef.current;
     const bottomAlignTarget = bottomAlignMessageId
-      ? contentRootRef.current?.querySelector<HTMLElement>(`[data-message-id="${escapeSelectorValue(bottomAlignMessageId)}"]`)
+      ? contentRootRef.current?.querySelector<HTMLElement>(
+          `[data-message-id="${escapeSelectorValue(bottomAlignMessageId)}"]`,
+        )
       : null;
-    const targetBottom = bottomAlignTarget
-      ? getFeedBlockBottom(container, bottomAlignTarget)
-      : lowestBottom;
+    const targetBottom = bottomAlignTarget ? getFeedBlockBottom(container, bottomAlignTarget) : lowestBottom;
 
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
     const targetTop = Math.max(0, Math.min(maxScrollTop, Math.ceil(targetBottom - container.clientHeight)));
@@ -2619,61 +2698,67 @@ export function MessageFeed({
     totalSections,
   ]);
 
-  const scheduleAutoFollowFlush = useCallback((useFallback = false) => {
-    if (useFallback) {
-      pendingAutoFollowFallbackRef.current = true;
-    }
-    if (autoFollowRafRef.current != null) return;
-    autoFollowRafRef.current = requestAnimationFrame(() => {
-      autoFollowRafRef.current = null;
-      flushAutoFollow();
-    });
-  }, [flushAutoFollow]);
+  const scheduleAutoFollowFlush = useCallback(
+    (useFallback = false) => {
+      if (useFallback) {
+        pendingAutoFollowFallbackRef.current = true;
+      }
+      if (autoFollowRafRef.current != null) return;
+      autoFollowRafRef.current = requestAnimationFrame(() => {
+        autoFollowRafRef.current = null;
+        flushAutoFollow();
+      });
+    },
+    [flushAutoFollow],
+  );
 
-  const updateLatestPillForContentBottom = useCallback((realContentBottom: number | null) => {
-    if (!didTrackContentRef.current) {
-      didTrackContentRef.current = true;
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    if (autoFollowEnabledRef.current) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    if (hasNewerSections) {
-      setShowLatestPill(true);
-      return;
-    }
-    if (suppressLatestPillOnRestoreRef.current) {
-      suppressLatestPillOnRestoreRef.current = false;
-      lastSeenContentBottomRef.current = realContentBottom;
-      lastObservedContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    if (realContentBottom == null) {
-      setShowLatestPill(false);
-      return;
-    }
-    const container = containerRef.current;
-    const hasContentBelowViewport = container
-      ? realContentBottom > container.scrollTop + container.clientHeight + 8
-      : false;
-    if (!hasContentBelowViewport) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    const baseline = lastSeenContentBottomRef.current;
-    if (baseline == null) {
-      lastSeenContentBottomRef.current = realContentBottom;
-      setShowLatestPill(false);
-      return;
-    }
-    setShowLatestPill(realContentBottom > baseline + 8);
-  }, [hasNewerSections]);
+  const updateLatestPillForContentBottom = useCallback(
+    (realContentBottom: number | null) => {
+      if (!didTrackContentRef.current) {
+        didTrackContentRef.current = true;
+        lastSeenContentBottomRef.current = realContentBottom;
+        setShowLatestPill(false);
+        return;
+      }
+      if (autoFollowEnabledRef.current) {
+        lastSeenContentBottomRef.current = realContentBottom;
+        setShowLatestPill(false);
+        return;
+      }
+      if (hasNewerSections) {
+        setShowLatestPill(true);
+        return;
+      }
+      if (suppressLatestPillOnRestoreRef.current) {
+        suppressLatestPillOnRestoreRef.current = false;
+        lastSeenContentBottomRef.current = realContentBottom;
+        lastObservedContentBottomRef.current = realContentBottom;
+        setShowLatestPill(false);
+        return;
+      }
+      if (realContentBottom == null) {
+        setShowLatestPill(false);
+        return;
+      }
+      const container = containerRef.current;
+      const hasContentBelowViewport = container
+        ? realContentBottom > container.scrollTop + container.clientHeight + 8
+        : false;
+      if (!hasContentBelowViewport) {
+        lastSeenContentBottomRef.current = realContentBottom;
+        setShowLatestPill(false);
+        return;
+      }
+      const baseline = lastSeenContentBottomRef.current;
+      if (baseline == null) {
+        lastSeenContentBottomRef.current = realContentBottom;
+        setShowLatestPill(false);
+        return;
+      }
+      setShowLatestPill(realContentBottom > baseline + 8);
+    },
+    [hasNewerSections],
+  );
 
   function handleScroll() {
     const el = containerRef.current;
@@ -2681,8 +2766,9 @@ export function MessageFeed({
     const currentScrollTop = el.scrollTop;
     const realContentBottom = getRealContentBottom() ?? el.scrollHeight;
     const nearBottom = realContentBottom - currentScrollTop - el.clientHeight < 120;
-    const isProgrammaticScroll = programmaticScrollTargetRef.current != null
-      && Math.abs(currentScrollTop - programmaticScrollTargetRef.current) <= 2;
+    const isProgrammaticScroll =
+      programmaticScrollTargetRef.current != null &&
+      Math.abs(currentScrollTop - programmaticScrollTargetRef.current) <= 2;
     if (isProgrammaticScroll) {
       programmaticScrollTargetRef.current = null;
     }
@@ -2722,9 +2808,7 @@ export function MessageFeed({
     if (showConversationLoading) return;
     const pos = useStore.getState().feedScrollPosition.get(sessionId);
     if (messages.length === 0 && pos?.anchorTurnId) return;
-    const desiredSectionWindowStart = pos?.anchorTurnId
-      ? getSectionWindowStartForTurnId(pos.anchorTurnId)
-      : null;
+    const desiredSectionWindowStart = pos?.anchorTurnId ? getSectionWindowStartForTurnId(pos.anchorTurnId) : null;
     if (desiredSectionWindowStart !== sectionWindowStart) {
       setSectionWindowStart(desiredSectionWindowStart);
       return;
@@ -2776,7 +2860,14 @@ export function MessageFeed({
   useEffect(() => {
     if (showConversationLoading) return;
     updateLatestPillForContentBottom(getRealContentBottom());
-  }, [getRealContentBottom, messages.length, showConversationLoading, streamingText, toolProgress, updateLatestPillForContentBottom]);
+  }, [
+    getRealContentBottom,
+    messages.length,
+    showConversationLoading,
+    streamingText,
+    toolProgress,
+    updateLatestPillForContentBottom,
+  ]);
 
   useEffect(() => {
     onLatestIndicatorVisibleChange?.(showLatestPill);
@@ -2794,7 +2885,9 @@ export function MessageFeed({
     const alignLatestUserMessage = () => {
       const container = containerRef.current;
       if (!container) return;
-      const target = container.querySelector<HTMLElement>(`[data-message-id="${escapeSelectorValue(latestMessage.id)}"]`);
+      const target = container.querySelector<HTMLElement>(
+        `[data-message-id="${escapeSelectorValue(latestMessage.id)}"]`,
+      );
       if (!target) return;
       const messageBottom = getFeedBlockBottom(container, target);
       const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
@@ -2841,19 +2934,22 @@ export function MessageFeed({
 
     lastObservedContentBottomRef.current = getRealContentBottom();
 
-    const mutationObserver = typeof MutationObserver === "undefined"
-      ? null
-      : new MutationObserver((mutations) => {
-          let sawMutation = false;
-          for (const mutation of mutations) {
-            sawMutation = true;
-            collectFeedBlockIdsFromNode(mutation.target, pendingChangedFeedBlockIdsRef.current);
-            mutation.addedNodes.forEach((node) => collectFeedBlockIdsFromNode(node, pendingChangedFeedBlockIdsRef.current));
-          }
-          if (sawMutation) {
-            scheduleAutoFollowFlush();
-          }
-        });
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver((mutations) => {
+            let sawMutation = false;
+            for (const mutation of mutations) {
+              sawMutation = true;
+              collectFeedBlockIdsFromNode(mutation.target, pendingChangedFeedBlockIdsRef.current);
+              mutation.addedNodes.forEach((node) =>
+                collectFeedBlockIdsFromNode(node, pendingChangedFeedBlockIdsRef.current),
+              );
+            }
+            if (sawMutation) {
+              scheduleAutoFollowFlush();
+            }
+          });
 
     mutationObserver?.observe(contentRoot, {
       childList: true,
@@ -2861,17 +2957,18 @@ export function MessageFeed({
       characterData: true,
     });
 
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => {
-          const realContentBottom = getRealContentBottom();
-          if (realContentBottom == null || realContentBottom === lastObservedContentBottomRef.current) return;
-          lastObservedContentBottomRef.current = realContentBottom;
-          if (!autoFollowEnabledRef.current) {
-            updateLatestPillForContentBottom(realContentBottom);
-          }
-          scheduleAutoFollowFlush(true);
-        });
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            const realContentBottom = getRealContentBottom();
+            if (realContentBottom == null || realContentBottom === lastObservedContentBottomRef.current) return;
+            lastObservedContentBottomRef.current = realContentBottom;
+            if (!autoFollowEnabledRef.current) {
+              updateLatestPillForContentBottom(realContentBottom);
+            }
+            scheduleAutoFollowFlush(true);
+          });
 
     resizeObserver?.observe(contentRoot);
 
@@ -2954,9 +3051,10 @@ export function MessageFeed({
     autoFollowEnabledRef.current = false;
 
     // Find which turn contains this message
-    const targetTurn = turns.find((t) =>
-      t.allEntries.some((e) => e.kind === "message" && e.msg.id === scrollToMessageId) ||
-      (t.userEntry?.kind === "message" && t.userEntry.msg.id === scrollToMessageId)
+    const targetTurn = turns.find(
+      (t) =>
+        t.allEntries.some((e) => e.kind === "message" && e.msg.id === scrollToMessageId) ||
+        (t.userEntry?.kind === "message" && t.userEntry.msg.id === scrollToMessageId),
     );
     if (!targetTurn) return;
 
@@ -3057,11 +3155,7 @@ export function MessageFeed({
 
     let rafId = 0;
     const recalc = () => {
-      const activeTurnId = findActiveTaskTurnIdForScroll(
-        taskTurnOffsetsRef.current,
-        el.scrollTop,
-        firstTaskTurnId,
-      );
+      const activeTurnId = findActiveTaskTurnIdForScroll(taskTurnOffsetsRef.current, el.scrollTop, firstTaskTurnId);
       setActiveTaskTurnId(sessionId, activeTurnId);
     };
 
@@ -3086,9 +3180,7 @@ export function MessageFeed({
         <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
         <div className="text-center">
           <p className="text-sm text-cc-fg font-medium mb-1">Loading conversation...</p>
-          <p className="text-xs text-cc-muted leading-relaxed">
-            Restoring recent history for this session.
-          </p>
+          <p className="text-xs text-cc-muted leading-relaxed">Restoring recent history for this session.</p>
         </div>
       </div>
     );
@@ -3100,9 +3192,7 @@ export function MessageFeed({
         <SleepingCat className="w-20 h-14" />
         <div className="text-center">
           <p className="text-sm text-cc-fg font-medium mb-1">Start a conversation</p>
-          <p className="text-xs text-cc-muted leading-relaxed">
-            Send a message to begin working with The Companion.
-          </p>
+          <p className="text-xs text-cc-muted leading-relaxed">Send a message to begin working with The Companion.</p>
         </div>
       </div>
     );
@@ -3118,54 +3208,54 @@ export function MessageFeed({
           style={{ overscrollBehavior: "contain" }}
         >
           <PawScrollProvider scrollRef={containerRef}>
-          <PawCounterContext.Provider value={pawCounter}>
-          <div ref={contentRootRef} className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
-            {hasOlderSections && (
-              <div className="flex justify-center pb-2">
-                <button
-                  type="button"
-                  onClick={handleLoadOlderSection}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
-                >
-                  <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
-                  Load older section
-                </button>
+            <PawCounterContext.Provider value={pawCounter}>
+              <div ref={contentRootRef} className="max-w-3xl mx-auto space-y-3 sm:space-y-5">
+                {hasOlderSections && (
+                  <div className="flex justify-center pb-2">
+                    <button
+                      type="button"
+                      onClick={handleLoadOlderSection}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
+                    >
+                      <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
+                      Load older section
+                    </button>
+                  </div>
+                )}
+                <TurnEntries
+                  sections={visibleSections}
+                  sessionId={sessionId}
+                  leaderMode={isLeaderSession}
+                  isCodexSession={isCodexSession}
+                  activeCodexTerminalIds={activeCodexTerminalIds}
+                  onOpenCodexTerminal={setSelectedCodexTerminalId}
+                  turnStates={turnStates}
+                  toggleTurn={toggleTurn}
+                />
+                {hasNewerSections && (
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={handleLoadNewerSection}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
+                    >
+                      <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
+                      Load newer section
+                    </button>
+                  </div>
+                )}
+                {isCodexSession && pendingCodexInputs.length > 0 && (
+                  <PendingCodexInputList sessionId={sessionId} inputs={pendingCodexInputs} />
+                )}
+                <FeedFooter sessionId={sessionId} />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none"
+                  data-feed-end-slack="true"
+                  style={{ height: `${feedEndScrollSlack}px` }}
+                />
               </div>
-            )}
-            <TurnEntries
-              sections={visibleSections}
-              sessionId={sessionId}
-              leaderMode={isLeaderSession}
-              isCodexSession={isCodexSession}
-              activeCodexTerminalIds={activeCodexTerminalIds}
-              onOpenCodexTerminal={setSelectedCodexTerminalId}
-              turnStates={turnStates}
-              toggleTurn={toggleTurn}
-            />
-            {hasNewerSections && (
-              <div className="flex justify-center pt-1">
-                <button
-                  type="button"
-                  onClick={handleLoadNewerSection}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-cc-border bg-cc-card px-3 py-1.5 text-xs text-cc-muted transition-colors hover:bg-cc-hover cursor-pointer"
-                >
-                  <YarnBallSpinner className="h-3 w-3 text-cc-muted" />
-                  Load newer section
-                </button>
-              </div>
-            )}
-            {isCodexSession && pendingCodexInputs.length > 0 && (
-              <PendingCodexInputList sessionId={sessionId} inputs={pendingCodexInputs} />
-            )}
-            <FeedFooter sessionId={sessionId} />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none"
-              data-feed-end-slack="true"
-              style={{ height: `${feedEndScrollSlack}px` }}
-            />
-          </div>
-          </PawCounterContext.Provider>
+            </PawCounterContext.Provider>
           </PawScrollProvider>
         </div>
 
@@ -3215,11 +3305,11 @@ export function MessageFeed({
 
         {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: top/bottom only, auto-hide */}
         {showScrollButton && (
-          <div className={`absolute bottom-3 right-3 z-10 flex flex-col transition-opacity duration-300 ${
-            isTouch
-              ? `gap-1.5 ${isScrolling ? "opacity-60" : "opacity-0 pointer-events-none"}`
-              : "gap-4"
-          }`}>
+          <div
+            className={`absolute bottom-3 right-3 z-10 flex flex-col transition-opacity duration-300 ${
+              isTouch ? `gap-1.5 ${isScrolling ? "opacity-60" : "opacity-0 pointer-events-none"}` : "gap-4"
+            }`}
+          >
             {/* Go to top */}
             <button
               onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}

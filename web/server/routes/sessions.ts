@@ -66,9 +66,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     // Delete companion-managed branch if it differs from the user-selected branch
     const branchToDelete =
-      mapping.actualBranch && mapping.actualBranch !== mapping.branch
-        ? mapping.actualBranch
-        : undefined;
+      mapping.actualBranch && mapping.actualBranch !== mapping.branch ? mapping.actualBranch : undefined;
     const result = gitUtils.removeWorktree(mapping.repoRoot, mapping.worktreePath, {
       force: dirty,
       branchToDelete,
@@ -127,18 +125,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return null;
   };
 
-  const throwPreparationError = (
-    message: string,
-    status: SessionPreparationStatus,
-    step?: CreationStepId,
-  ): never => {
+  const throwPreparationError = (message: string, status: SessionPreparationStatus, step?: CreationStepId): never => {
     throw new SessionPreparationError(message, status, step);
   };
 
-  const markOrchestratorSession = (
-    sessionId: string,
-    backend: SessionBackend,
-  ) => {
+  const markOrchestratorSession = (sessionId: string, backend: SessionBackend) => {
     // Fire-and-forget: wait for CLI to connect, then send identity message
     (async () => {
       const maxWait = 30_000;
@@ -225,12 +216,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     backend: SessionBackend,
     emitProgress?: EmitCreationProgress,
   ): Promise<SessionConfig> => {
-    const emit = async (
-      step: CreationStepId,
-      label: string,
-      status: CreationProgressStatus,
-      detail?: string,
-    ) => {
+    const emit = async (step: CreationStepId, label: string, status: CreationProgressStatus, detail?: string) => {
       if (!emitProgress) return;
       await emitProgress(step, label, status, detail);
     };
@@ -307,7 +293,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     if (cwd) {
       cwd = resolve(expandTilde(cwd));
-      if (!existsSync(cwd)) { // sync-ok: route handler, not called during message handling
+      if (!existsSync(cwd)) {
+        // sync-ok: route handler, not called during message handling
         throwPreparationError(`Directory does not exist: ${cwd}`, 400, "resolving_env");
       }
     }
@@ -377,9 +364,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
             gitUtils.checkoutBranch(repoInfo.repoRoot, body.branch);
             await emit("checkout_branch", `On branch ${body.branch}`, "done");
           } catch (err) {
-            console.warn(
-              `[routes] git checkout warning (non-fatal, repo may have uncommitted changes): ${err}`,
-            );
+            console.warn(`[routes] git checkout warning (non-fatal, repo may have uncommitted changes): ${err}`);
             await emit("checkout_branch", "Checkout skipped (uncommitted changes)", "done");
           }
         }
@@ -394,8 +379,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
 
     let effectiveImage = companionEnv
-      ? (body.envSlug ? await envManager.getEffectiveImage(body.envSlug) : null)
-      : (body.container?.image || null);
+      ? body.envSlug
+        ? await envManager.getEffectiveImage(body.envSlug)
+        : null
+      : body.container?.image || null;
 
     let containerInfo: ContainerInfo | undefined;
     let containerId: string | undefined;
@@ -405,14 +392,14 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (effectiveImage && backend === "claude" && !hasContainerClaudeAuth(envVars)) {
       throwPreparationError(
         "Containerized Claude requires auth available inside the container. " +
-        "Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_AUTH_TOKEN) in the selected environment.",
+          "Set ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_AUTH_TOKEN) in the selected environment.",
         400,
       );
     }
     if (effectiveImage && backend === "codex" && !hasContainerCodexAuth(envVars)) {
       throwPreparationError(
         "Containerized Codex requires auth available inside the container. " +
-        "Set OPENAI_API_KEY in the selected environment, or ensure ~/.codex/auth.json exists on the host.",
+          "Set OPENAI_API_KEY in the selected environment, or ensure ~/.codex/auth.json exists on the host.",
         400,
       );
     }
@@ -423,17 +410,13 @@ export function createSessionsRoutes(ctx: RouteContext) {
         const isDefaultImage = effectiveImage === "the-companion:latest" || effectiveImage === "companion-dev:latest";
         if (isDefaultImage) {
           if (effectiveImage === "the-companion:latest" && containerManager.imageExists("companion-dev:latest")) {
-            console.warn(
-              "[routes] the-companion:latest not found, falling back to companion-dev:latest (deprecated)",
-            );
+            console.warn("[routes] the-companion:latest not found, falling back to companion-dev:latest (deprecated)");
             effectiveImage = "companion-dev:latest";
           } else {
             const registryImage = ContainerManager.getRegistryImage(effectiveImage);
             let pulled = false;
             if (registryImage) {
-              console.log(
-                `[routes] ${effectiveImage} missing locally, trying docker pull ${registryImage}...`,
-              );
+              console.log(`[routes] ${effectiveImage} missing locally, trying docker pull ${registryImage}...`);
               await emit("pulling_image", "Pulling Docker image...", "in_progress");
               pulled = await containerManager.pullImage(registryImage, effectiveImage);
               if (pulled) {
@@ -443,11 +426,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
               }
             }
             if (!pulled) {
-              const dockerfileName = effectiveImage === "the-companion:latest"
-                ? "Dockerfile.the-companion"
-                : "Dockerfile.companion-dev";
+              const dockerfileName =
+                effectiveImage === "the-companion:latest" ? "Dockerfile.the-companion" : "Dockerfile.companion-dev";
               const dockerfilePath = join(WEB_DIR, "docker", dockerfileName);
-              if (!existsSync(dockerfilePath)) { // sync-ok: route handler, not called during message handling
+              if (!existsSync(dockerfilePath)) {
+                // sync-ok: route handler, not called during message handling
                 throwPreparationError(
                   `Docker image ${effectiveImage} is missing, pull failed, and Dockerfile not found at ${dockerfilePath}`,
                   503,
@@ -480,10 +463,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const tempId = crypto.randomUUID().slice(0, 8);
       const cConfig: ContainerConfig = {
         image: effectiveImage,
-        ports: companionEnv?.ports
-          ?? (Array.isArray(body.container?.ports)
-            ? body.container.ports.map(Number).filter((n: number) => n > 0)
-            : []),
+        ports:
+          companionEnv?.ports ??
+          (Array.isArray(body.container?.ports) ? body.container.ports.map(Number).filter((n: number) => n > 0) : []),
         volumes: companionEnv?.volumes ?? body.container?.volumes,
         env: envVars,
       };
@@ -494,7 +476,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         const reason = err instanceof Error ? err.message : String(err);
         throwPreparationError(
           `Docker is required to run this environment image (${effectiveImage}) ` +
-          `but container startup failed: ${reason}`,
+            `but container startup failed: ${reason}`,
           503,
           "creating_container",
         );
@@ -521,11 +503,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       } catch (err) {
         containerManager.removeContainer(tempId);
         const reason = err instanceof Error ? err.message : String(err);
-        throwPreparationError(
-          `Failed to copy workspace to container: ${reason}`,
-          503,
-          "copying_workspace",
-        );
+        throwPreparationError(`Failed to copy workspace to container: ${reason}`, 503, "copying_workspace");
       }
 
       if (companionEnv?.initScript?.trim()) {
@@ -545,9 +523,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
               `[routes] Init script failed for env "${companionEnv.name}" (exit ${result.exitCode}):\n${result.output}`,
             );
             containerManager.removeContainer(tempId);
-            const truncated = result.output.length > 2000
-              ? result.output.slice(0, 500) + "\n...[truncated]...\n" + result.output.slice(-1500)
-              : result.output;
+            const truncated =
+              result.output.length > 2000
+                ? result.output.slice(0, 500) + "\n...[truncated]...\n" + result.output.slice(-1500)
+                : result.output;
             throwPreparationError(
               `Init script failed (exit ${result.exitCode}):\n${truncated}`,
               503,
@@ -573,12 +552,14 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // read the user's ~/.claude/settings.json model and pass it explicitly. Without
     // this, the CLI subprocess uses project-level settings that may override the
     // user's intended default model.
-    const model = requestedModel
-      || (backend === "codex" ? getDefaultModelForBackend("codex") : undefined)
-      || ((backend === "claude" || backend === "claude-sdk") ? (await getClaudeUserDefaultModel()) || undefined : undefined);
-    const codexReasoningEffort = backend === "codex" && typeof body.codexReasoningEffort === "string"
-      ? (body.codexReasoningEffort.trim() || undefined)
-      : undefined;
+    const model =
+      requestedModel ||
+      (backend === "codex" ? getDefaultModelForBackend("codex") : undefined) ||
+      (backend === "claude" || backend === "claude-sdk" ? (await getClaudeUserDefaultModel()) || undefined : undefined);
+    const codexReasoningEffort =
+      backend === "codex" && typeof body.codexReasoningEffort === "string"
+        ? body.codexReasoningEffort.trim() || undefined
+        : undefined;
     // Orchestrator guardrails are injected via system prompt, not file writes
     const orchestratorGuardrails = isOrchestrator
       ? launcher.getOrchestratorGuardrails(launcher.getPort(), backend)
@@ -594,9 +575,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
       codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
       codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
-      codexSandbox: backend === "codex" && body.codexInternetAccess === true
-        ? "danger-full-access"
-        : "workspace-write",
+      codexSandbox: backend === "codex" && body.codexInternetAccess === true ? "danger-full-access" : "workspace-write",
       codexReasoningEffort,
       allowedTools: body.allowedTools,
       env: envVars,
@@ -673,10 +652,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
           return;
         }
 
-        const sessionConfig = await prepareSession(
-          body,
-          backend,
-          (step, label, status, detail) => emitProgress(stream, step, label, status, detail),
+        const sessionConfig = await prepareSession(body, backend, (step, label, status, detail) =>
+          emitProgress(stream, step, label, status, detail),
         );
 
         await emitProgress(
@@ -747,90 +724,102 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
       // ── Scan Claude Code sessions (~/.claude/projects/*/*.jsonl) ──
       if (backendFilter !== "codex") {
-      const claudeProjectsDir = join(homedir(), ".claude", "projects");
-      try {
-        const projectDirs = await readdir(claudeProjectsDir);
-        for (const projectDir of projectDirs) {
-          const projectPath = join(claudeProjectsDir, projectDir);
-          let entries: string[];
-          try {
-            entries = await readdir(projectPath);
-          } catch {
-            continue;
-          }
-          for (const entry of entries) {
-            if (!entry.endsWith(".jsonl")) continue;
-            const sessionId = entry.slice(0, -6); // strip .jsonl
-            if (sessionId.startsWith("agent-")) continue;
-            if (activeCliSessionIds.has(sessionId)) continue;
-
-            const filePath = join(projectPath, entry);
+        const claudeProjectsDir = join(homedir(), ".claude", "projects");
+        try {
+          const projectDirs = await readdir(claudeProjectsDir);
+          for (const projectDir of projectDirs) {
+            const projectPath = join(claudeProjectsDir, projectDir);
+            let entries: string[];
             try {
-              const st = await stat(filePath);
-              allFiles.push({
-                id: sessionId,
-                path: filePath,
-                lastModified: st.mtimeMs,
-                sizeBytes: st.size,
-                backend: "claude",
-              });
+              entries = await readdir(projectPath);
             } catch {
               continue;
             }
+            for (const entry of entries) {
+              if (!entry.endsWith(".jsonl")) continue;
+              const sessionId = entry.slice(0, -6); // strip .jsonl
+              if (sessionId.startsWith("agent-")) continue;
+              if (activeCliSessionIds.has(sessionId)) continue;
+
+              const filePath = join(projectPath, entry);
+              try {
+                const st = await stat(filePath);
+                allFiles.push({
+                  id: sessionId,
+                  path: filePath,
+                  lastModified: st.mtimeMs,
+                  sizeBytes: st.size,
+                  backend: "claude",
+                });
+              } catch {
+                continue;
+              }
+            }
           }
+        } catch {
+          // ~/.claude/projects may not exist — that's fine
         }
-      } catch {
-        // ~/.claude/projects may not exist — that's fine
-      }
       }
 
       // ── Scan Codex sessions (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl) ──
       if (backendFilter !== "claude") {
-      const codexSessionsDir = join(homedir(), ".codex", "sessions");
-      try {
-        // Walk YYYY/MM/DD directory structure
-        const years = await readdir(codexSessionsDir);
-        for (const year of years) {
-          const yearPath = join(codexSessionsDir, year);
-          let months: string[];
-          try { months = await readdir(yearPath); } catch { continue; }
-          for (const month of months) {
-            const monthPath = join(yearPath, month);
-            let days: string[];
-            try { days = await readdir(monthPath); } catch { continue; }
-            for (const day of days) {
-              const dayPath = join(monthPath, day);
-              let entries: string[];
-              try { entries = await readdir(dayPath); } catch { continue; }
-              for (const entry of entries) {
-                if (!entry.endsWith(".jsonl")) continue;
-                // Filename: rollout-{timestamp}-{threadId}.jsonl
-                // Extract threadId: everything after the last occurrence of the timestamp pattern
-                const match = entry.match(/^rollout-\d{4}-\d{2}-\d{2}T[\d-]+-(.+)\.jsonl$/);
-                if (!match) continue;
-                const threadId = match[1];
-                if (activeCliSessionIds.has(threadId)) continue;
-
-                const filePath = join(dayPath, entry);
+        const codexSessionsDir = join(homedir(), ".codex", "sessions");
+        try {
+          // Walk YYYY/MM/DD directory structure
+          const years = await readdir(codexSessionsDir);
+          for (const year of years) {
+            const yearPath = join(codexSessionsDir, year);
+            let months: string[];
+            try {
+              months = await readdir(yearPath);
+            } catch {
+              continue;
+            }
+            for (const month of months) {
+              const monthPath = join(yearPath, month);
+              let days: string[];
+              try {
+                days = await readdir(monthPath);
+              } catch {
+                continue;
+              }
+              for (const day of days) {
+                const dayPath = join(monthPath, day);
+                let entries: string[];
                 try {
-                  const st = await stat(filePath);
-                  allFiles.push({
-                    id: threadId,
-                    path: filePath,
-                    lastModified: st.mtimeMs,
-                    sizeBytes: st.size,
-                    backend: "codex",
-                  });
+                  entries = await readdir(dayPath);
                 } catch {
                   continue;
+                }
+                for (const entry of entries) {
+                  if (!entry.endsWith(".jsonl")) continue;
+                  // Filename: rollout-{timestamp}-{threadId}.jsonl
+                  // Extract threadId: everything after the last occurrence of the timestamp pattern
+                  const match = entry.match(/^rollout-\d{4}-\d{2}-\d{2}T[\d-]+-(.+)\.jsonl$/);
+                  if (!match) continue;
+                  const threadId = match[1];
+                  if (activeCliSessionIds.has(threadId)) continue;
+
+                  const filePath = join(dayPath, entry);
+                  try {
+                    const st = await stat(filePath);
+                    allFiles.push({
+                      id: threadId,
+                      path: filePath,
+                      lastModified: st.mtimeMs,
+                      sizeBytes: st.size,
+                      backend: "codex",
+                    });
+                  } catch {
+                    continue;
+                  }
                 }
               }
             }
           }
+        } catch {
+          // ~/.codex/sessions may not exist — that's fine
         }
-      } catch {
-        // ~/.codex/sessions may not exist — that's fine
-      }
       }
 
       // Sort by mtime desc and take top 50
@@ -892,69 +881,76 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
   });
 
-  const buildEnrichedSessions = async (
-    filterFn?: (s: ReturnType<CliLauncher["listSessions"]>[number]) => boolean,
-  ) => {
+  const buildEnrichedSessions = async (filterFn?: (s: ReturnType<CliLauncher["listSessions"]>[number]) => boolean) => {
     const sessions = launcher.listSessions();
     const names = sessionNames.getAllNames();
     const bridgeStates = wsBridge.getAllSessions();
     const bridgeMap = new Map(bridgeStates.map((state) => [state.session_id, state]));
     const pool = filterFn ? sessions.filter(filterFn) : sessions;
-    return Promise.all(pool.map(async (s) => {
-      try {
-        const { sessionAuthToken: _token, ...safeSession } = s;
-        const bridgeSession = wsBridge.getSession(s.sessionId);
-        if (bridgeSession?.state?.is_worktree && !safeSession.archived) {
-          await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
-            broadcastUpdate: true,
-            notifyPoller: true,
-          });
+    return Promise.all(
+      pool.map(async (s) => {
+        try {
+          const { sessionAuthToken: _token, ...safeSession } = s;
+          const bridgeSession = wsBridge.getSession(s.sessionId);
+          if (bridgeSession?.state?.is_worktree && !safeSession.archived) {
+            await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
+              broadcastUpdate: true,
+              notifyPoller: true,
+            });
+          }
+          const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
+          const cliConnected = wsBridge.isBackendConnected(s.sessionId);
+          const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : safeSession.state;
+          let gitAhead = bridge?.git_ahead || 0;
+          let gitBehind = bridge?.git_behind || 0;
+          // Worktree sessions are force-refreshed above so external git resets
+          // clear stale +/- stats; non-worktree sessions still use cached bridge
+          // values to avoid expensive git calls on every sidebar poll.
+          return {
+            ...safeSession,
+            // Bridge model (from system.init) is more accurate than launcher model
+            // (creation-time value, often empty for "default").
+            model: bridge?.model || safeSession.model,
+            state: effectiveState,
+            sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
+            name: names[s.sessionId] ?? s.name,
+            gitBranch: bridge?.git_branch || "",
+            gitAhead,
+            gitBehind,
+            totalLinesAdded: bridge?.total_lines_added || 0,
+            totalLinesRemoved: bridge?.total_lines_removed || 0,
+            numTurns: bridge?.num_turns || 0,
+            contextUsedPercent: bridge?.context_used_percent || 0,
+            ...(bridge?.codex_token_details ? { codexTokenDetails: bridge.codex_token_details } : {}),
+            ...(bridge?.claude_token_details ? { claudeTokenDetails: bridge.claude_token_details } : {}),
+            lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
+            cliConnected,
+            taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
+            keywords: wsBridge.getSessionKeywords(s.sessionId),
+            claimedQuestId: bridge?.claimedQuestId ?? null,
+            claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
+            ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
+            // Worktree liveness status for archived worktree sessions
+            // Only check existence (one async access() call), skip expensive git status
+            ...(s.isWorktree && s.archived
+              ? await (async () => {
+                  let exists = false;
+                  try {
+                    await accessAsync(s.cwd);
+                    exists = true;
+                  } catch {
+                    /* not found */
+                  }
+                  return { worktreeExists: exists };
+                })()
+              : {}),
+          };
+        } catch (e) {
+          console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
+          return { ...s, name: names[s.sessionId] ?? s.name };
         }
-        const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
-        const cliConnected = wsBridge.isBackendConnected(s.sessionId);
-        const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : safeSession.state;
-        let gitAhead = bridge?.git_ahead || 0;
-        let gitBehind = bridge?.git_behind || 0;
-        // Worktree sessions are force-refreshed above so external git resets
-        // clear stale +/- stats; non-worktree sessions still use cached bridge
-        // values to avoid expensive git calls on every sidebar poll.
-        return {
-          ...safeSession,
-          // Bridge model (from system.init) is more accurate than launcher model
-          // (creation-time value, often empty for "default").
-          model: bridge?.model || safeSession.model,
-          state: effectiveState,
-          sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
-          name: names[s.sessionId] ?? s.name,
-          gitBranch: bridge?.git_branch || "",
-          gitAhead,
-          gitBehind,
-          totalLinesAdded: bridge?.total_lines_added || 0,
-          totalLinesRemoved: bridge?.total_lines_removed || 0,
-          numTurns: bridge?.num_turns || 0,
-          contextUsedPercent: bridge?.context_used_percent || 0,
-          ...(bridge?.codex_token_details ? { codexTokenDetails: bridge.codex_token_details } : {}),
-          ...(bridge?.claude_token_details ? { claudeTokenDetails: bridge.claude_token_details } : {}),
-          lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
-          cliConnected,
-          taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
-          keywords: wsBridge.getSessionKeywords(s.sessionId),
-          claimedQuestId: bridge?.claimedQuestId ?? null,
-          claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
-          ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
-          // Worktree liveness status for archived worktree sessions
-          // Only check existence (one async access() call), skip expensive git status
-          ...(s.isWorktree && s.archived ? await (async () => {
-            let exists = false;
-            try { await accessAsync(s.cwd); exists = true; } catch { /* not found */ }
-            return { worktreeExists: exists };
-          })() : {}),
-        };
-      } catch (e) {
-        console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
-        return { ...s, name: names[s.sessionId] ?? s.name };
-      }
-    }));
+      }),
+    );
   };
 
   const backfillSessionProjectMeta = async (
@@ -990,14 +986,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 200)) : 50;
 
     const msgLimitParam = Number.parseInt(c.req.query("messageLimitPerSession") || "400", 10);
-    const messageLimitPerSession = Number.isFinite(msgLimitParam)
-      ? Math.max(50, Math.min(msgLimitParam, 2000))
-      : 400;
+    const messageLimitPerSession = Number.isFinite(msgLimitParam) ? Math.max(50, Math.min(msgLimitParam, 2000)) : 400;
 
     const includeArchivedRaw = c.req.query("includeArchived");
-    const includeArchived = includeArchivedRaw === undefined
-      ? true
-      : !["0", "false", "no"].includes(includeArchivedRaw.toLowerCase());
+    const includeArchived =
+      includeArchivedRaw === undefined ? true : !["0", "false", "no"].includes(includeArchivedRaw.toLowerCase());
 
     const startedAt = Date.now();
     const sessions = launcher.listSessions();
@@ -1138,8 +1131,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
     const killed = await launcher.kill(id);
-    if (!killed)
-      return c.json({ error: "Session not found or already exited" }, 404);
+    if (!killed) return c.json({ error: "Session not found or already exited" }, 404);
 
     // Clean up container if any
     containerManager.removeContainer(id);
@@ -1156,9 +1148,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     if (
-      typeof body.callerSessionId === "string"
-      && body.callerSessionId.trim()
-      && body.callerSessionId.trim() !== auth.callerId
+      typeof body.callerSessionId === "string" &&
+      body.callerSessionId.trim() &&
+      body.callerSessionId.trim() !== auth.callerId
     ) {
       return c.json({ error: "callerSessionId does not match authenticated caller" }, 403);
     }
@@ -1240,7 +1232,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const result = await launcher.relaunch(id);
     if (!result.ok) {
-      const status = (result.error && (result.error.includes("not found") || result.error.includes("Session not found"))) ? 404 : 503;
+      const status =
+        result.error && (result.error.includes("not found") || result.error.includes("Session not found")) ? 404 : 503;
       return c.json({ error: result.error || "Relaunch failed" }, status);
     }
     return c.json({ ok: true });
@@ -1253,7 +1246,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const result = await launcher.upgradeToSdk(id);
     if (!result.ok) {
-      const status = (result.error && result.error.includes("not found")) ? 404 : 400;
+      const status = result.error && result.error.includes("not found") ? 404 : 400;
       return c.json({ error: result.error }, status);
     }
 
@@ -1280,12 +1273,14 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // so we kill and relaunch with --resume. On a fresh connection, /compact
     // as the first user message will fit in the context and trigger compaction.
     const session = wsBridge.getOrCreateSession(id);
-    session.pendingMessages.push(JSON.stringify({
-      type: "user",
-      message: { role: "user", content: "/compact" },
-      parent_tool_use_id: null,
-      session_id: info.cliSessionId,
-    }));
+    session.pendingMessages.push(
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "/compact" },
+        parent_tool_use_id: null,
+        session_id: info.cliSessionId,
+      }),
+    );
 
     // Notify browsers compaction is starting
     wsBridge.broadcastToSession(id, { type: "status_change", status: "compacting" });
@@ -1302,7 +1297,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (!id) return c.json({ error: "Session not found" }, 404);
     const session = wsBridge.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
-    if (session.backendType !== "codex") return c.json({ error: "Skill refresh is only supported for Codex sessions" }, 400);
+    if (session.backendType !== "codex")
+      return c.json({ error: "Skill refresh is only supported for Codex sessions" }, 400);
 
     const result = await wsBridge.refreshCodexSkills(id, true);
     if (!result.ok) {
@@ -1456,7 +1452,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // For worktree sessions: recreate the worktree if it was deleted during archiving
     let worktreeRecreated = false;
     if (info.isWorktree && info.repoRoot && info.branch) {
-      if (!existsSync(info.cwd)) { // sync-ok: route handler, not called during message handling
+      if (!existsSync(info.cwd)) {
+        // sync-ok: route handler, not called during message handling
         try {
           const result = recreateWorktreeIfMissing(id, info, { launcher, worktreeTracker, wsBridge });
           if (result.error) {
@@ -1465,10 +1462,13 @@ export function createSessionsRoutes(ctx: RouteContext) {
           worktreeRecreated = result.recreated;
         } catch (e) {
           console.error(`[routes] Failed to recreate worktree for session ${id}:`, e);
-          return c.json({
-            ok: false,
-            error: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
-          }, 500);
+          return c.json(
+            {
+              ok: false,
+              error: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
+            },
+            500,
+          );
         }
       } else {
         // Worktree still exists — re-register tracker and bridge state
@@ -1514,7 +1514,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     // Resolve each task's triggerMessageId to an array index and compute ranges
     const tasks = taskHistory
-      .filter(t => t.action !== "revise") // revise entries update in-place, skip them
+      .filter((t) => t.action !== "revise") // revise entries update in-place, skip them
       .map((task, i, arr) => {
         const startIdx = idToIdx.get(task.triggerMessageId) ?? 0;
 
@@ -1591,7 +1591,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const { sessionId, imageId } = c.req.param();
     // Try thumbnail first, fall back to original
     const thumbPath = await imageStore.getThumbnailPath(sessionId, imageId);
-    const path = thumbPath || await imageStore.getOriginalPath(sessionId, imageId);
+    const path = thumbPath || (await imageStore.getOriginalPath(sessionId, imageId));
     if (!path) return c.json({ error: "Image not found" }, 404);
     return new Response(Bun.file(path), {
       headers: {
@@ -1614,7 +1614,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       },
     });
   });
-
 
   return api;
 }

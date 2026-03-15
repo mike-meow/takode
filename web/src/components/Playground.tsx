@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { PermissionBanner, PlanReviewOverlay, PlanCollapsedChip, PermissionsCollapsedChip, EvaluatingCollapsedChip } from "./PermissionBanner.js";
+import {
+  PermissionBanner,
+  PlanReviewOverlay,
+  PlanCollapsedChip,
+  PermissionsCollapsedChip,
+  EvaluatingCollapsedChip,
+} from "./PermissionBanner.js";
 import { CodexThinkingInline, MessageBubble } from "./MessageBubble.js";
 import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "./ToolBlock.js";
@@ -150,7 +156,9 @@ const PLAYGROUND_HERD_GROUP_THEMES = (() => {
   return sessionThemes;
 })();
 
-function mockPermission(overrides: Partial<PermissionRequest> & { tool_name: string; input: Record<string, unknown> }): PermissionRequest {
+function mockPermission(
+  overrides: Partial<PermissionRequest> & { tool_name: string; input: Record<string, unknown> },
+): PermissionRequest {
   return {
     request_id: `perm-${Math.random().toString(36).slice(2, 8)}`,
     tool_use_id: `tu-${Math.random().toString(36).slice(2, 8)}`,
@@ -166,9 +174,8 @@ function makePlaygroundSectionedMessages(sectionCount: number, turnsPerSection =
   for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
     for (let turnIndex = 0; turnIndex < turnsPerSection; turnIndex++) {
       const turnNumber = sectionIndex * turnsPerSection + turnIndex + 1;
-      const label = turnIndex === 0
-        ? `Section ${sectionIndex + 1} marker`
-        : `Section ${sectionIndex + 1} turn ${turnIndex + 1}`;
+      const label =
+        turnIndex === 0 ? `Section ${sectionIndex + 1} marker` : `Section ${sectionIndex + 1} turn ${turnIndex + 1}`;
       messages.push({
         id: `playground-section-u${turnNumber}`,
         role: "user",
@@ -181,9 +188,7 @@ function makePlaygroundSectionedMessages(sectionCount: number, turnsPerSection =
   return messages;
 }
 
-function makePlaygroundMessage(
-  overrides: Partial<ChatMessage> & { role: ChatMessage["role"] },
-): ChatMessage {
+function makePlaygroundMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
     id: `playground-msg-${Math.random().toString(36).slice(2, 8)}`,
     content: "",
@@ -218,8 +223,9 @@ const PERM_EDIT = mockPermission({
   tool_name: "Edit",
   input: {
     file_path: "/Users/stan/Dev/project/src/utils/format.ts",
-    old_string: 'export function formatDate(d: Date) {\n  return d.toISOString();\n}',
-    new_string: 'export function formatDate(d: Date, locale = "en-US") {\n  return d.toLocaleDateString(locale, {\n    year: "numeric",\n    month: "short",\n    day: "numeric",\n  });\n}',
+    old_string: "export function formatDate(d: Date) {\n  return d.toISOString();\n}",
+    new_string:
+      'export function formatDate(d: Date, locale = "en-US") {\n  return d.toLocaleDateString(locale, {\n    year: "numeric",\n    month: "short",\n    day: "numeric",\n  });\n}',
   },
   permission_suggestions: [
     {
@@ -256,7 +262,8 @@ const PERM_WRITE = mockPermission({
   tool_name: "Write",
   input: {
     file_path: "/Users/stan/Dev/project/src/config.ts",
-    content: 'export const config = {\n  apiUrl: "https://api.example.com",\n  timeout: 5000,\n  retries: 3,\n  debug: process.env.NODE_ENV !== "production",\n};\n',
+    content:
+      'export const config = {\n  apiUrl: "https://api.example.com",\n  timeout: 5000,\n  retries: 3,\n  debug: process.env.NODE_ENV !== "production",\n};\n',
   },
 });
 
@@ -330,7 +337,11 @@ const PERM_EVALUATING_BASH = mockPermission({
 
 const PERM_EVALUATING_BASH_LONG = mockPermission({
   tool_name: "Bash",
-  input: { command: "cd /home/user/projects/my-app && npm run build --production && docker build -t my-app:latest . && docker push registry.example.com/my-app:latest", description: "Build and push Docker image" },
+  input: {
+    command:
+      "cd /home/user/projects/my-app && npm run build --production && docker build -t my-app:latest . && docker push registry.example.com/my-app:latest",
+    description: "Build and push Docker image",
+  },
   evaluating: "evaluating",
 });
 
@@ -488,7 +499,8 @@ const MSG_ASSISTANT_TOOLS: ChatMessage = {
     {
       type: "tool_result",
       tool_use_id: "tu-2",
-      content: 'export function authMiddleware(req, res, next) {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: "Unauthorized" });\n  }\n  next();\n}',
+      content:
+        'export function authMiddleware(req, res, next) {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: "Unauthorized" });\n  }\n  next();\n}',
     },
     { type: "text", text: "Now I understand the current structure. Let me create the JWT utility." },
   ],
@@ -502,7 +514,8 @@ const MSG_ASSISTANT_THINKING: ChatMessage = {
   contentBlocks: [
     {
       type: "thinking",
-      thinking: "Let me think about the best approach here. The user wants to migrate from session cookies to JWT. I need to:\n1. Create a JWT sign/verify utility\n2. Update the middleware to read Authorization header\n3. Change the login endpoint to return a token\n4. Update all tests\n\nI should use jsonwebtoken package for signing and jose for verification in edge environments. But since this is a Node.js server, jsonwebtoken is fine.\n\nThe token should contain: userId, role, iat, exp. Expiry should be configurable. I'll also add a refresh token mechanism.",
+      thinking:
+        "Let me think about the best approach here. The user wants to migrate from session cookies to JWT. I need to:\n1. Create a JWT sign/verify utility\n2. Update the middleware to read Authorization header\n3. Change the login endpoint to return a token\n4. Update all tests\n\nI should use jsonwebtoken package for signing and jose for verification in edge environments. But since this is a Node.js server, jsonwebtoken is fine.\n\nThe token should contain: userId, role, iat, exp. Expiry should be configurable. I'll also add a refresh token mechanism.",
     },
     { type: "text", text: "I've analyzed the codebase and have a clear plan. Let me start implementing." },
   ],
@@ -516,7 +529,8 @@ const MSG_ASSISTANT_THINKING_CODEX: ChatMessage = {
   contentBlocks: [
     {
       type: "thinking",
-      thinking: "Need to fix Codex diff metrics not updating in chat header by routing Codex result events through the unified ws-bridge result handler and adding a regression test for total_lines updates.",
+      thinking:
+        "Need to fix Codex diff metrics not updating in chat header by routing Codex result events through the unified ws-bridge result handler and adding a regression test for total_lines updates.",
     },
   ],
   timestamp: Date.now() - 39000,
@@ -593,7 +607,7 @@ const MSG_ERROR_GENERIC: ChatMessage = {
 const MSG_TASK_COMPLETED: ChatMessage = {
   id: "task-notif-mock",
   role: "system",
-  content: "Background command \"Search all shards for github_agent tool examples\" completed (exit code 0)",
+  content: 'Background command "Search all shards for github_agent tool examples" completed (exit code 0)',
   timestamp: Date.now() - 19000,
   variant: "task_completed",
 };
@@ -633,7 +647,8 @@ const MSG_APPROVED_AUTO_SHORT: ChatMessage = {
 const MSG_APPROVED_AUTO_LONG: ChatMessage = {
   id: "approval-auto-long",
   role: "system",
-  content: "Auto-approved Bash: Step 1: The criteria explicitly mention \"any local or remote git operations applied to ~/companion or its git work tree copies\" except for destructive remote operations. Step 2: This request is a git push operation to origin/jiayi branch in the companion work tree with GIT_TRACE debugging enabled. A push to a feature branch is a non-destructive remote git operation. Step 3: This is a standard push operation on a feature branch in the companion repo work tree, which falls within the auto-approval criteria for non-destructive git operations.",
+  content:
+    'Auto-approved Bash: Step 1: The criteria explicitly mention "any local or remote git operations applied to ~/companion or its git work tree copies" except for destructive remote operations. Step 2: This request is a git push operation to origin/jiayi branch in the companion work tree with GIT_TRACE debugging enabled. A push to a feature branch is a non-destructive remote git operation. Step 3: This is a standard push operation on a feature branch in the companion repo work tree, which falls within the auto-approval criteria for non-destructive git operations.',
   timestamp: Date.now() - 15700,
   variant: "approved",
 };
@@ -661,7 +676,8 @@ const MSG_APPROVED_ASK_LONG: ChatMessage = {
   metadata: {
     answers: [
       {
-        question: "For the server-authoritative model: should the server broadcast user messages to all connected browsers, or should each browser optimistically insert its own message and only receive echoes from other browsers? The broadcast method ensures consistency but adds a round-trip delay, while the optimistic method preserves instant local feedback. Given localhost latency is imperceptible, which do you prefer?",
+        question:
+          "For the server-authoritative model: should the server broadcast user messages to all connected browsers, or should each browser optimistically insert its own message and only receive echoes from other browsers? The broadcast method ensures consistency but adds a round-trip delay, while the optimistic method preserves instant local feedback. Given localhost latency is imperceptible, which do you prefer?",
         answer: "All browsers (Recommended)",
       },
     ],
@@ -679,7 +695,8 @@ const MSG_QUEST_CLAIMED: ChatMessage = {
     quest: {
       questId: "q-7",
       title: "Add dark mode toggle to settings",
-      description: "Add a toggle switch in the settings page that lets users switch between light and dark mode. The preference should persist in localStorage and apply immediately without a page reload.",
+      description:
+        "Add a toggle switch in the settings page that lets users switch between light and dark mode. The preference should persist in localStorage and apply immediately without a page reload.",
       status: "in_progress",
       tags: ["ui", "settings", "theme"],
       verificationItems: [
@@ -722,7 +739,8 @@ const MSG_TOOL_ERROR: ChatMessage = {
     {
       type: "tool_result",
       tool_use_id: "tu-3",
-      content: "FAIL src/auth/__tests__/middleware.test.ts\n  ● Auth Middleware › should reject expired tokens\n    Expected: 401\n    Received: 500\n\n    TypeError: Cannot read property 'verify' of undefined",
+      content:
+        "FAIL src/auth/__tests__/middleware.test.ts\n  ● Auth Middleware › should reject expired tokens\n    Expected: 401\n    Received: 500\n\n    TypeError: Cannot read property 'verify' of undefined",
       is_error: true,
     },
     { type: "text", text: "There's a test failure. Let me fix the issue." },
@@ -733,8 +751,20 @@ const MSG_TOOL_ERROR: ChatMessage = {
 // Tasks
 const MOCK_TASKS: TaskItem[] = [
   { id: "1", subject: "Create JWT utility module", description: "", status: "completed" },
-  { id: "2", subject: "Update auth middleware", description: "", status: "completed", activeForm: "Updating auth middleware" },
-  { id: "3", subject: "Migrate login endpoint", description: "", status: "in_progress", activeForm: "Refactoring login to return JWT" },
+  {
+    id: "2",
+    subject: "Update auth middleware",
+    description: "",
+    status: "completed",
+    activeForm: "Updating auth middleware",
+  },
+  {
+    id: "3",
+    subject: "Migrate login endpoint",
+    description: "",
+    status: "in_progress",
+    activeForm: "Refactoring login to return JWT",
+  },
   { id: "4", subject: "Add refresh token support", description: "", status: "pending" },
   { id: "5", subject: "Update all auth tests", description: "", status: "pending", blockedBy: ["3"] },
   { id: "6", subject: "Run full test suite and fix failures", description: "", status: "pending", blockedBy: ["5"] },
@@ -846,11 +876,7 @@ const MOCK_MCP_SERVERS: McpServerDetail[] = [
     status: "connected",
     config: { type: "stdio", command: "npx", args: ["-y", "@anthropic/mcp-github"] },
     scope: "user",
-    tools: [
-      { name: "create_issue" },
-      { name: "list_prs", annotations: { readOnly: true } },
-      { name: "create_pr" },
-    ],
+    tools: [{ name: "create_issue" }, { name: "list_prs", annotations: { readOnly: true } }, { name: "create_pr" }],
   },
   {
     name: "postgres",
@@ -879,9 +905,7 @@ const MOCK_MCP_SERVERS: McpServerDetail[] = [
 // ─── Playground Component ───────────────────────────────────────────────────
 
 export function Playground() {
-  const [colorTheme, setColorTheme] = useState<ColorTheme>(
-    () => (useStore.getState().colorTheme)
-  );
+  const [colorTheme, setColorTheme] = useState<ColorTheme>(() => useStore.getState().colorTheme);
   const darkMode = isDarkTheme(colorTheme);
 
   useEffect(() => {
@@ -954,12 +978,7 @@ export function Playground() {
     store.setConnectionStatus(sessionId, "connected");
     store.setCliConnected(sessionId, true);
     store.setSessionStatus(sessionId, "running");
-    store.setMessages(sessionId, [
-      MSG_USER,
-      MSG_ASSISTANT,
-      MSG_ASSISTANT_TOOLS,
-      MSG_TOOL_ERROR,
-    ]);
+    store.setMessages(sessionId, [MSG_USER, MSG_ASSISTANT, MSG_ASSISTANT_TOOLS, MSG_TOOL_ERROR]);
     store.setStreaming(sessionId, "I'm updating tests and then I'll run the full suite.");
     store.setStreamingStats(sessionId, { startedAt: Date.now() - 12000, outputTokens: 1200 });
     store.addPermission(sessionId, PERM_BASH);
@@ -1137,7 +1156,8 @@ export function Playground() {
     });
     store.setToolResult(sessionId, "tu-2", {
       tool_use_id: "tu-2",
-      content: 'export function authMiddleware(req, res, next) {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: "Unauthorized" });\n  }\n  next();\n}',
+      content:
+        'export function authMiddleware(req, res, next) {\n  if (!req.session.userId) {\n    return res.status(401).json({ error: "Unauthorized" });\n  }\n  next();\n}',
       is_error: false,
       total_size: 156,
       is_truncated: false,
@@ -1154,9 +1174,19 @@ export function Playground() {
 
     // Mock tool results with durations for standalone ToolBlock demos
     const toolDurations: Record<string, number> = {
-      "tb-1": 3.2, "tb-2": 0.1, "tb-3": 0.4, "tb-4": 0.2, "tb-5": 0.8,
-      "tb-6": 1.5, "tb-7": 2.1, "tb-8": 4.7, "tb-10": 0.0, "tb-11": 0.3,
-      "tb-12": 0.1, "tb-14": 0.0, "tb-15": 0.0,
+      "tb-1": 3.2,
+      "tb-2": 0.1,
+      "tb-3": 0.4,
+      "tb-4": 0.2,
+      "tb-5": 0.8,
+      "tb-6": 1.5,
+      "tb-7": 2.1,
+      "tb-8": 4.7,
+      "tb-10": 0.0,
+      "tb-11": 0.3,
+      "tb-12": 0.1,
+      "tb-14": 0.0,
+      "tb-15": 0.0,
     };
     for (const [id, dur] of Object.entries(toolDurations)) {
       store.setToolResult(sessionId, id, {
@@ -1259,20 +1289,34 @@ export function Playground() {
           const prevLoading = prevHistoryLoading.get(demoId);
           const prevPendingCodex = prevPendingCodexInputs.get(demoId);
 
-          if (prevSession) sessions.set(demoId, prevSession); else sessions.delete(demoId);
-          if (prevMessageList) messages.set(demoId, prevMessageList); else messages.delete(demoId);
-          if (prevPermissionMap) pendingPermissions.set(demoId, prevPermissionMap); else pendingPermissions.delete(demoId);
-          if (prevConnection) connectionStatus.set(demoId, prevConnection); else connectionStatus.delete(demoId);
-          if (typeof prevCliConnected === "boolean") cliConnected.set(demoId, prevCliConnected); else cliConnected.delete(demoId);
-          if (typeof prevCliSeen === "boolean") cliEverConnected.set(demoId, prevCliSeen); else cliEverConnected.delete(demoId);
-          if (prevDisconnectReason !== undefined) cliDisconnectReason.set(demoId, prevDisconnectReason); else cliDisconnectReason.delete(demoId);
-          if (prevSessionState) sessionStatus.set(demoId, prevSessionState); else sessionStatus.delete(demoId);
-          if (typeof prevStream === "string") streaming.set(demoId, prevStream); else streaming.delete(demoId);
-          if (typeof prevStreamStarted === "number") streamingStartedAt.set(demoId, prevStreamStarted); else streamingStartedAt.delete(demoId);
-          if (typeof prevStreamTokens === "number") streamingOutputTokens.set(demoId, prevStreamTokens); else streamingOutputTokens.delete(demoId);
-          if (prevFeedScrollPosition) feedScrollPosition.set(demoId, prevFeedScrollPosition); else feedScrollPosition.delete(demoId);
-          if (prevLoading) historyLoading.set(demoId, true); else historyLoading.delete(demoId);
-          if (prevPendingCodex) pendingCodexInputs.set(demoId, prevPendingCodex); else pendingCodexInputs.delete(demoId);
+          if (prevSession) sessions.set(demoId, prevSession);
+          else sessions.delete(demoId);
+          if (prevMessageList) messages.set(demoId, prevMessageList);
+          else messages.delete(demoId);
+          if (prevPermissionMap) pendingPermissions.set(demoId, prevPermissionMap);
+          else pendingPermissions.delete(demoId);
+          if (prevConnection) connectionStatus.set(demoId, prevConnection);
+          else connectionStatus.delete(demoId);
+          if (typeof prevCliConnected === "boolean") cliConnected.set(demoId, prevCliConnected);
+          else cliConnected.delete(demoId);
+          if (typeof prevCliSeen === "boolean") cliEverConnected.set(demoId, prevCliSeen);
+          else cliEverConnected.delete(demoId);
+          if (prevDisconnectReason !== undefined) cliDisconnectReason.set(demoId, prevDisconnectReason);
+          else cliDisconnectReason.delete(demoId);
+          if (prevSessionState) sessionStatus.set(demoId, prevSessionState);
+          else sessionStatus.delete(demoId);
+          if (typeof prevStream === "string") streaming.set(demoId, prevStream);
+          else streaming.delete(demoId);
+          if (typeof prevStreamStarted === "number") streamingStartedAt.set(demoId, prevStreamStarted);
+          else streamingStartedAt.delete(demoId);
+          if (typeof prevStreamTokens === "number") streamingOutputTokens.set(demoId, prevStreamTokens);
+          else streamingOutputTokens.delete(demoId);
+          if (prevFeedScrollPosition) feedScrollPosition.set(demoId, prevFeedScrollPosition);
+          else feedScrollPosition.delete(demoId);
+          if (prevLoading) historyLoading.set(demoId, true);
+          else historyLoading.delete(demoId);
+          if (prevPendingCodex) pendingCodexInputs.set(demoId, prevPendingCodex);
+          else pendingCodexInputs.delete(demoId);
         }
 
         return {
@@ -1339,7 +1383,10 @@ export function Playground() {
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-12">
         {/* ─── Permission Banners ──────────────────────────────── */}
-        <Section title="Permission Banners" description="Tool approval requests. Click 'Customize' to open the custom permission rule editor.">
+        <Section
+          title="Permission Banners"
+          description="Tool approval requests. Click 'Customize' to open the custom permission rule editor."
+        >
           <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card divide-y divide-cc-border">
             <PermissionBanner permission={PERM_BASH} sessionId={MOCK_SESSION_ID} />
             <PermissionBanner permission={PERM_BASH_NO_SUGGESTIONS} sessionId={MOCK_SESSION_ID} />
@@ -1355,31 +1402,43 @@ export function Playground() {
         </Section>
 
         {/* ─── Collapsed Permissions Chip ──────────────────────── */}
-        <Section title="Collapsed Permissions Chip" description="Compact chip shown when pending approvals are minimized. Click to expand.">
+        <Section
+          title="Collapsed Permissions Chip"
+          description="Compact chip shown when pending approvals are minimized. Click to expand."
+        >
           <Card label="Multiple tools pending">
-            <PermissionsCollapsedChip
-              permissions={[PERM_BASH, PERM_EDIT, PERM_WRITE]}
-              onExpand={() => {}}
-            />
+            <PermissionsCollapsedChip permissions={[PERM_BASH, PERM_EDIT, PERM_WRITE]} onExpand={() => {}} />
           </Card>
           <Card label="Single tool pending">
-            <PermissionsCollapsedChip
-              permissions={[PERM_BASH]}
-              onExpand={() => {}}
-            />
+            <PermissionsCollapsedChip permissions={[PERM_BASH]} onExpand={() => {}} />
           </Card>
         </Section>
 
         {/* ─── Auto-Approval Evaluating State ─────────────────── */}
-        <Section title="Auto-Approval Evaluating" description="Collapsed permission banners shown while the LLM auto-approver is evaluating. Click to expand for manual override.">
+        <Section
+          title="Auto-Approval Evaluating"
+          description="Collapsed permission banners shown while the LLM auto-approver is evaluating. Click to expand for manual override."
+        >
           <Card label="Bash — evaluating (short cmd)">
-            <EvaluatingCollapsedChip permission={PERM_EVALUATING_BASH} sessionId={MOCK_SESSION_ID} onExpand={() => {}} />
+            <EvaluatingCollapsedChip
+              permission={PERM_EVALUATING_BASH}
+              sessionId={MOCK_SESSION_ID}
+              onExpand={() => {}}
+            />
           </Card>
           <Card label="Bash — evaluating (long cmd)">
-            <EvaluatingCollapsedChip permission={PERM_EVALUATING_BASH_LONG} sessionId={MOCK_SESSION_ID} onExpand={() => {}} />
+            <EvaluatingCollapsedChip
+              permission={PERM_EVALUATING_BASH_LONG}
+              sessionId={MOCK_SESSION_ID}
+              onExpand={() => {}}
+            />
           </Card>
           <Card label="Edit — evaluating">
-            <EvaluatingCollapsedChip permission={PERM_EVALUATING_EDIT} sessionId={MOCK_SESSION_ID} onExpand={() => {}} />
+            <EvaluatingCollapsedChip
+              permission={PERM_EVALUATING_EDIT}
+              sessionId={MOCK_SESSION_ID}
+              onExpand={() => {}}
+            />
           </Card>
           <Card label="PermissionBanner with evaluating (starts collapsed, click expand)">
             <PermissionBanner permission={PERM_EVALUATING_BASH} sessionId={MOCK_SESSION_ID} />
@@ -1390,43 +1449,67 @@ export function Playground() {
         </Section>
 
         {/* ─── Real Chat Stack ──────────────────────────────── */}
-        <Section title="Real Chat Stack" description="Integrated ChatView using real MessageFeed + PermissionBanner + Composer components">
-          <div data-testid="playground-real-chat-stack" className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]">
+        <Section
+          title="Real Chat Stack"
+          description="Integrated ChatView using real MessageFeed + PermissionBanner + Composer components"
+        >
+          <div
+            data-testid="playground-real-chat-stack"
+            className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]"
+          >
             <ChatView sessionId={MOCK_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="Floating Feed Status" description="Running sessions show a compact lower-left status pill inside the feed so generation state does not steal layout height from the chat.">
+        <Section
+          title="Floating Feed Status"
+          description="Running sessions show a compact lower-left status pill inside the feed so generation state does not steal layout height from the chat."
+        >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[360px]">
             <MessageFeed sessionId={MOCK_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="MessageFeed Section Windowing" description="Fixed 50-turn sections with older-history browsing mounted in a bounded window. This mock opens on an older section so the newer-section control is visible.">
+        <Section
+          title="MessageFeed Section Windowing"
+          description="Fixed 50-turn sections with older-history browsing mounted in a bounded window. This mock opens on an older section so the newer-section control is visible."
+        >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]">
             <MessageFeed sessionId={PLAYGROUND_SECTIONED_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="Conversation Loading State" description="When a cold session is selected before its authoritative history arrives, the feed shows an explicit loading conversation state instead of an empty chat.">
+        <Section
+          title="Conversation Loading State"
+          description="When a cold session is selected before its authoritative history arrives, the feed shows an explicit loading conversation state instead of an empty chat."
+        >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
             <MessageFeed sessionId={PLAYGROUND_LOADING_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="Codex Terminal Chips" description="Live Codex Bash commands sit in a reserved bottom band so they do not cover chat text. Completed live shells keep a small badge plus the captured transcript in the inline Bash card when the final tool result is empty.">
+        <Section
+          title="Codex Terminal Chips"
+          description="Live Codex Bash commands sit in a reserved bottom band so they do not cover chat text. Completed live shells keep a small badge plus the captured transcript in the inline Bash card when the final tool result is empty."
+        >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[420px]">
             <MessageFeed sessionId={PLAYGROUND_CODEX_TERMINAL_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="Codex Pending Inputs" description="Accepted but not yet delivered Codex follow-up messages render as lightweight pending chips instead of committed chat history.">
+        <Section
+          title="Codex Pending Inputs"
+          description="Accepted but not yet delivered Codex follow-up messages render as lightweight pending chips instead of committed chat history."
+        >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[320px]">
             <MessageFeed sessionId={PLAYGROUND_CODEX_PENDING_SESSION_ID} />
           </div>
         </Section>
 
-        <Section title="ChatView Recovery States" description="Startup, resume, and broken-session banners shown by ChatView before the main message feed is usable.">
+        <Section
+          title="ChatView Recovery States"
+          description="Startup, resume, and broken-session banners shown by ChatView before the main message feed is usable."
+        >
           <div className="space-y-4">
             <Card label="Fresh session starting">
               <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
@@ -1447,21 +1530,30 @@ export function Playground() {
         </Section>
 
         {/* ─── ExitPlanMode — Full-window overlay ──────────────── */}
-        <Section title="PlanReviewOverlay" description="Full-window plan display with sticky Accept/Deny buttons at the bottom. When expanded, this replaces the message feed.">
+        <Section
+          title="PlanReviewOverlay"
+          description="Full-window plan display with sticky Accept/Deny buttons at the bottom. When expanded, this replaces the message feed."
+        >
           <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[480px] flex flex-col">
             <PlanReviewOverlay permission={PERM_EXIT_PLAN} sessionId={MOCK_SESSION_ID} onCollapse={() => {}} />
           </div>
         </Section>
 
         {/* ─── ExitPlanMode — Collapsed chip ──────────────────── */}
-        <Section title="PlanCollapsedChip" description="Collapsed plan bar with inline Accept/Deny buttons. Shown when the plan overlay is minimized.">
+        <Section
+          title="PlanCollapsedChip"
+          description="Collapsed plan bar with inline Accept/Deny buttons. Shown when the plan overlay is minimized."
+        >
           <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card px-2 sm:px-4 py-2">
             <PlanCollapsedChip permission={PERM_EXIT_PLAN} sessionId={MOCK_SESSION_ID} onExpand={() => {}} />
           </div>
         </Section>
 
         {/* ─── AskUserQuestion ──────────────────────────────── */}
-        <Section title="AskUserQuestion" description="Interactive questions with selectable options. Click the minimize (—) button to collapse into a compact chip, then click the chip to expand again.">
+        <Section
+          title="AskUserQuestion"
+          description="Interactive questions with selectable options. Click the minimize (—) button to collapse into a compact chip, then click the chip to expand again."
+        >
           <div className="space-y-4">
             <Card label="Single question">
               <PermissionBanner permission={PERM_ASK_SINGLE} sessionId={MOCK_SESSION_ID} />
@@ -1557,16 +1649,31 @@ export function Playground() {
         </Section>
 
         {/* ─── Copy Features ──────────────────────────────── */}
-        <Section title="Copy Features" description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus assistant message copy menu (Markdown/Rich Text/Plain Text)">
+        <Section
+          title="Copy Features"
+          description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus assistant message copy menu (Markdown/Rich Text/Plain Text)"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Code block in markdown — hover to reveal copy button">
-              <MarkdownContent text={"Here is some code:\n\n```typescript\nconst greeting = \"Hello, world!\";\nconsole.log(greeting);\n```\n\nAnd a block without a language tag:\n\n```\nnpm install\nnpm run build\n```\n\nQuest link example: [q-42](quest:q-42)\nSession link example: [#5](session:5)\nRelative file link example: [TopBar.tsx:162](file:web/src/components/TopBar.tsx:162)"} />
+              <MarkdownContent
+                text={
+                  'Here is some code:\n\n```typescript\nconst greeting = "Hello, world!";\nconsole.log(greeting);\n```\n\nAnd a block without a language tag:\n\n```\nnpm install\nnpm run build\n```\n\nQuest link example: [q-42](quest:q-42)\nSession link example: [#5](session:5)\nRelative file link example: [TopBar.tsx:162](file:web/src/components/TopBar.tsx:162)'
+                }
+              />
             </Card>
             <Card label="Terminal tool — hover command block to copy (without $ prefix)">
-              <ToolBlock name="Bash" input={{ command: "git status && npm run lint", description: "Check git status and lint" }} toolUseId="copy-tb-1" />
+              <ToolBlock
+                name="Bash"
+                input={{ command: "git status && npm run lint", description: "Check git status and lint" }}
+                toolUseId="copy-tb-1"
+              />
             </Card>
             <Card label="Grep tool — hover pattern to copy">
-              <ToolBlock name="Grep" input={{ pattern: "useEffect\\(.*\\[\\]", path: "src/", glob: "*.tsx" }} toolUseId="copy-tb-2" />
+              <ToolBlock
+                name="Grep"
+                input={{ pattern: "useEffect\\(.*\\[\\]", path: "src/", glob: "*.tsx" }}
+                toolUseId="copy-tb-2"
+              />
             </Card>
             <Card label="Assistant message — hover for copy menu">
               <MessageBubble message={MSG_ASSISTANT} />
@@ -1575,7 +1682,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Image Lightbox ──────────────────────────────── */}
-        <Section title="Image Lightbox" description="Click any image thumbnail to open a full-size lightbox overlay (Escape or click backdrop to close)">
+        <Section
+          title="Image Lightbox"
+          description="Click any image thumbnail to open a full-size lightbox overlay (Escape or click backdrop to close)"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="User message with clickable image">
               <MessageBubble message={MSG_USER_IMAGE} sessionId="playground" />
@@ -1587,13 +1697,54 @@ export function Playground() {
         </Section>
 
         {/* ─── Tool Blocks (standalone) ──────────────────────── */}
-        <Section title="Tool Blocks" description="Expandable tool call visualization with duration badges. Edit and Write diffs start collapsed and only render after expansion.">
+        <Section
+          title="Tool Blocks"
+          description="Expandable tool call visualization with duration badges. Edit and Write diffs start collapsed and only render after expansion."
+        >
           <div className="space-y-2 max-w-3xl">
-            <ToolBlock name="Bash" input={{ command: "git status && npm run lint", description: "Check git status and lint" }} toolUseId="tb-1" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Bash" input={{ command: "python scripts/mix_dataset.py --chunks 512", description: "Run long data mixing command (live output demo)" }} toolUseId="tb-live" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Read" input={{ file_path: "/Users/stan/Dev/project/src/index.ts", offset: 10, limit: 50 }} toolUseId="tb-2" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Edit" input={{ file_path: "src/utils.ts", old_string: "const x = 1;", new_string: "const x = 2;", replace_all: true }} toolUseId="tb-3" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Edit" input={{ file_path: "src/utils.ts", changes: [{ path: "src/utils.ts", kind: "modify", unified_diff: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }] }} toolUseId="tb-3b" sessionId={MOCK_SESSION_ID} />
+            <ToolBlock
+              name="Bash"
+              input={{ command: "git status && npm run lint", description: "Check git status and lint" }}
+              toolUseId="tb-1"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Bash"
+              input={{
+                command: "python scripts/mix_dataset.py --chunks 512",
+                description: "Run long data mixing command (live output demo)",
+              }}
+              toolUseId="tb-live"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Read"
+              input={{ file_path: "/Users/stan/Dev/project/src/index.ts", offset: 10, limit: 50 }}
+              toolUseId="tb-2"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Edit"
+              input={{
+                file_path: "src/utils.ts",
+                old_string: "const x = 1;",
+                new_string: "const x = 2;",
+                replace_all: true,
+              }}
+              toolUseId="tb-3"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Edit"
+              input={{
+                file_path: "src/utils.ts",
+                changes: [
+                  { path: "src/utils.ts", kind: "modify", unified_diff: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" },
+                ],
+              }}
+              toolUseId="tb-3b"
+              sessionId={MOCK_SESSION_ID}
+            />
             <ToolBlock
               name="Edit"
               input={{
@@ -1618,8 +1769,8 @@ export function Playground() {
                       "--- a/src/ssh-health.ts",
                       "+++ b/src/ssh-health.ts",
                       "@@ -12,3 +12,3 @@",
-                      "-output=$(ssh \"$alias\")",
-                      "+output=$(ssh -o ClearAllForwardings=yes \"$alias\")",
+                      '-output=$(ssh "$alias")',
+                      '+output=$(ssh -o ClearAllForwardings=yes "$alias")',
                     ].join("\n"),
                   },
                 ],
@@ -1627,24 +1778,130 @@ export function Playground() {
               toolUseId="tb-3c"
               sessionId={MOCK_SESSION_ID}
             />
-            <ToolBlock name="Write" input={{ file_path: "src/new-file.ts", content: 'export const hello = "world";\n' }} toolUseId="tb-4" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Glob" input={{ pattern: "**/*.tsx", path: "/Users/stan/Dev/project/src" }} toolUseId="tb-5" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Grep" input={{ pattern: "useEffect", path: "src/", glob: "*.tsx", output_mode: "content", context: 3, head_limit: 20 }} toolUseId="tb-6" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="WebSearch" input={{ query: "React 19 new features", allowed_domains: ["react.dev", "github.com"] }} toolUseId="tb-7" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="web_search" input={{ search_query: [{ q: "Codex CLI skills documentation", domains: ["openai.com", "github.com"] }] }} toolUseId="tb-7b" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="WebFetch" input={{ url: "https://react.dev/blog/2024/12/05/react-19", prompt: "Summarize the key changes in React 19" }} toolUseId="tb-8" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="Task" input={{ description: "Search for auth patterns", subagent_type: "Explore", prompt: "Find all files related to authentication and authorization in the codebase. Look for middleware, guards, and token handling." }} toolUseId="tb-9" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="TodoWrite" input={{ todos: [
-              { content: "Create JWT utility module", status: "completed", activeForm: "Creating JWT module" },
-              { content: "Update auth middleware", status: "in_progress", activeForm: "Updating middleware" },
-              { content: "Migrate login endpoint", status: "pending", activeForm: "Migrating login" },
-              { content: "Run full test suite", status: "pending", activeForm: "Running tests" },
-            ]}} toolUseId="tb-10" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="NotebookEdit" input={{ notebook_path: "/Users/stan/Dev/project/analysis.ipynb", cell_type: "code", edit_mode: "replace", cell_number: 3, new_source: "import pandas as pd\ndf = pd.read_csv('data.csv')\ndf.describe()" }} toolUseId="tb-11" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="SendMessage" input={{ type: "message", recipient: "researcher", content: "Please investigate the auth module structure and report back.", summary: "Requesting auth module investigation" }} toolUseId="tb-12" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="ExitPlanMode" input={{ plan: "## Implementation Plan\n\n1. Add authentication middleware to Express routes\n2. Create JWT token generation and validation utilities\n3. Update database schema with user credentials table\n4. Write integration tests for the auth flow\n\n### Key Decisions\n- Use **bcrypt** for password hashing\n- JWT tokens expire after 24 hours", allowedPrompts: [{ tool: "Bash", prompt: "run tests" }, { tool: "Bash", prompt: "install dependencies" }] }} toolUseId="tb-13" sessionId={MOCK_SESSION_ID} />
+            <ToolBlock
+              name="Write"
+              input={{ file_path: "src/new-file.ts", content: 'export const hello = "world";\n' }}
+              toolUseId="tb-4"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Glob"
+              input={{ pattern: "**/*.tsx", path: "/Users/stan/Dev/project/src" }}
+              toolUseId="tb-5"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Grep"
+              input={{
+                pattern: "useEffect",
+                path: "src/",
+                glob: "*.tsx",
+                output_mode: "content",
+                context: 3,
+                head_limit: 20,
+              }}
+              toolUseId="tb-6"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="WebSearch"
+              input={{ query: "React 19 new features", allowed_domains: ["react.dev", "github.com"] }}
+              toolUseId="tb-7"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="web_search"
+              input={{ search_query: [{ q: "Codex CLI skills documentation", domains: ["openai.com", "github.com"] }] }}
+              toolUseId="tb-7b"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="WebFetch"
+              input={{
+                url: "https://react.dev/blog/2024/12/05/react-19",
+                prompt: "Summarize the key changes in React 19",
+              }}
+              toolUseId="tb-8"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="Task"
+              input={{
+                description: "Search for auth patterns",
+                subagent_type: "Explore",
+                prompt:
+                  "Find all files related to authentication and authorization in the codebase. Look for middleware, guards, and token handling.",
+              }}
+              toolUseId="tb-9"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="TodoWrite"
+              input={{
+                todos: [
+                  { content: "Create JWT utility module", status: "completed", activeForm: "Creating JWT module" },
+                  { content: "Update auth middleware", status: "in_progress", activeForm: "Updating middleware" },
+                  { content: "Migrate login endpoint", status: "pending", activeForm: "Migrating login" },
+                  { content: "Run full test suite", status: "pending", activeForm: "Running tests" },
+                ],
+              }}
+              toolUseId="tb-10"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="NotebookEdit"
+              input={{
+                notebook_path: "/Users/stan/Dev/project/analysis.ipynb",
+                cell_type: "code",
+                edit_mode: "replace",
+                cell_number: 3,
+                new_source: "import pandas as pd\ndf = pd.read_csv('data.csv')\ndf.describe()",
+              }}
+              toolUseId="tb-11"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="SendMessage"
+              input={{
+                type: "message",
+                recipient: "researcher",
+                content: "Please investigate the auth module structure and report back.",
+                summary: "Requesting auth module investigation",
+              }}
+              toolUseId="tb-12"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
+              name="ExitPlanMode"
+              input={{
+                plan: "## Implementation Plan\n\n1. Add authentication middleware to Express routes\n2. Create JWT token generation and validation utilities\n3. Update database schema with user credentials table\n4. Write integration tests for the auth flow\n\n### Key Decisions\n- Use **bcrypt** for password hashing\n- JWT tokens expire after 24 hours",
+                allowedPrompts: [
+                  { tool: "Bash", prompt: "run tests" },
+                  { tool: "Bash", prompt: "install dependencies" },
+                ],
+              }}
+              toolUseId="tb-13"
+              sessionId={MOCK_SESSION_ID}
+            />
             <ToolBlock name="EnterPlanMode" input={{}} toolUseId="tb-14" sessionId={MOCK_SESSION_ID} />
-            <ToolBlock name="AskUserQuestion" input={{ questions: [{ header: "Auth method", question: "Which authentication method should we use for the API?", options: [{ label: "JWT (Recommended)", description: "Stateless tokens, good for distributed systems" }, { label: "Session cookies", description: "Traditional server-side sessions" }], multiSelect: false }] }} toolUseId="tb-15" sessionId={MOCK_SESSION_ID} />
+            <ToolBlock
+              name="AskUserQuestion"
+              input={{
+                questions: [
+                  {
+                    header: "Auth method",
+                    question: "Which authentication method should we use for the API?",
+                    options: [
+                      { label: "JWT (Recommended)", description: "Stateless tokens, good for distributed systems" },
+                      { label: "Session cookies", description: "Traditional server-side sessions" },
+                    ],
+                    multiSelect: false,
+                  },
+                ],
+              }}
+              toolUseId="tb-15"
+              sessionId={MOCK_SESSION_ID}
+            />
           </div>
         </Section>
 
@@ -1675,12 +1932,14 @@ export function Playground() {
         <Section title="Tool Use Summary" description="System message summarizing batch tool execution">
           <div className="space-y-4 max-w-3xl">
             <Card label="Summary as system message">
-              <MessageBubble message={{
-                id: "summary-1",
-                role: "system",
-                content: "Read 4 files, searched 12 matches across 3 directories",
-                timestamp: Date.now(),
-              }} />
+              <MessageBubble
+                message={{
+                  id: "summary-1",
+                  role: "system",
+                  content: "Read 4 files, searched 12 matches across 3 directories",
+                  timestamp: Date.now(),
+                }}
+              />
             </Card>
           </div>
         </Section>
@@ -1700,7 +1959,10 @@ export function Playground() {
                   <span className="text-[11px] text-cc-muted tabular-nums">62%</span>
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden">
-                  <div className="h-full rounded-full bg-cc-warning transition-all duration-500" style={{ width: "62%" }} />
+                  <div
+                    className="h-full rounded-full bg-cc-warning transition-all duration-500"
+                    style={{ width: "62%" }}
+                  />
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -1723,7 +1985,10 @@ export function Playground() {
         </Section>
 
         {/* ─── GitHub PR Status ──────────────────────────────── */}
-        <Section title="GitHub PR Status" description="PR health shown in the TaskPanel — checks, reviews, unresolved comments">
+        <Section
+          title="GitHub PR Status"
+          description="PR health shown in the TaskPanel — checks, reviews, unresolved comments"
+        >
           <div className="space-y-4">
             <Card label="Open PR — failing checks + changes requested">
               <div className="w-[280px] border border-cc-border rounded-xl overflow-hidden bg-cc-card">
@@ -1762,7 +2027,13 @@ export function Playground() {
                     MCP Servers
                   </span>
                   <span className="text-[11px] text-cc-muted">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="w-3.5 h-3.5"
+                    >
                       <path d="M2.5 8a5.5 5.5 0 019.78-3.5M13.5 8a5.5 5.5 0 01-9.78 3.5" strokeLinecap="round" />
                       <path d="M12.5 2v3h-3M3.5 14v-3h3" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
@@ -1780,7 +2051,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Codex Session Details ──────────────────────── */}
-        <Section title="Codex Session Details" description="Rate limits and token details for Codex (OpenAI) sessions — streamed via session_update">
+        <Section
+          title="Codex Session Details"
+          description="Rate limits and token details for Codex (OpenAI) sessions — streamed via session_update"
+        >
           <div className="space-y-4">
             <Card label="Rate limits with token breakdown">
               <CodexPlaygroundDemo />
@@ -1812,7 +2086,16 @@ export function Playground() {
             <Card label="Compacting">
               <div className="flex items-center gap-2 px-3 py-2 bg-cc-card border border-cc-border rounded-lg">
                 <svg className="w-3.5 h-3.5 text-cc-muted animate-spin" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="6"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeDasharray="28"
+                    strokeDashoffset="8"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 <span className="text-xs text-cc-muted font-medium">Compacting context...</span>
               </div>
@@ -1820,31 +2103,75 @@ export function Playground() {
             <Card label="Session Status Dots (sidebar attention states)">
               <div className="flex items-center gap-6 px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={true} sdkState="connected" status="idle" />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={true}
+                    sdkState="connected"
+                    status="idle"
+                  />
                   <span className="text-xs text-cc-muted">Idle</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={true} sdkState="connected" status="running" />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={true}
+                    sdkState="connected"
+                    status="running"
+                  />
                   <span className="text-xs text-cc-muted">Running</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={2} isConnected={true} sdkState="connected" status="running" />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={2}
+                    isConnected={true}
+                    sdkState="connected"
+                    status="running"
+                  />
                   <span className="text-xs text-cc-muted">Permission</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={true} sdkState="connected" status="idle" hasUnread />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={true}
+                    sdkState="connected"
+                    status="idle"
+                    hasUnread
+                  />
                   <span className="text-xs text-blue-500 font-semibold">Needs Review</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={false} sdkState="exited" status={null} />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={false}
+                    sdkState="exited"
+                    status={null}
+                  />
                   <span className="text-xs text-cc-muted">Disconnected</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={false} sdkState="exited" status={null} idleKilled />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={false}
+                    sdkState="exited"
+                    status={null}
+                    idleKilled
+                  />
                   <span className="text-xs text-cc-muted">Idle Killed</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <SessionStatusDot archived={false} permCount={0} isConnected={true} sdkState="connected" status="compacting" />
+                  <SessionStatusDot
+                    archived={false}
+                    permCount={0}
+                    isConnected={true}
+                    sdkState="connected"
+                    status="compacting"
+                  />
                   <span className="text-xs text-cc-muted">Compacting</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1856,7 +2183,10 @@ export function Playground() {
           </div>
         </Section>
 
-        <Section title="Session List Herd Groups" description="Leader and worker pills share a herd-group color so different leader groups are easier to scan in the sidebar.">
+        <Section
+          title="Session List Herd Groups"
+          description="Leader and worker pills share a herd-group color so different leader groups are easier to scan in the sidebar."
+        >
           <div className="max-w-md">
             <Card label="Session list pills">
               <div className="space-y-1 rounded-xl bg-cc-sidebar p-2">
@@ -1907,21 +2237,43 @@ export function Playground() {
                       <span className="shrink-0 inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-amber-300/90">
                         VS Code
                       </span>
-                      <span className="truncate">Selection: web/src/Composer.tsx:438:7-444:31  click send</span>
+                      <span className="truncate">Selection: web/src/Composer.tsx:438:7-444:31 click send</span>
                     </div>
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium bg-cc-primary/15 text-cc-primary">Attach on</span>
+                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium bg-cc-primary/15 text-cc-primary">
+                      Attach on
+                    </span>
                   </div>
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1953,21 +2305,43 @@ export function Playground() {
                       <span className="shrink-0 inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-amber-300/90">
                         VS Code
                       </span>
-                      <span className="truncate">Cursor: web/src/App.tsx:58:11  navigateToMostRecentSession()</span>
+                      <span className="truncate">Cursor: web/src/App.tsx:58:11 navigateToMostRecentSession()</span>
                     </div>
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium bg-cc-hover text-cc-muted">Attach off</span>
+                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium bg-cc-hover text-cc-muted">
+                      Attach off
+                    </span>
                   </div>
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2002,14 +2376,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-primary bg-cc-primary/10">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2040,20 +2434,43 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white animate-[send-morph_500ms_ease-out]" style={{ animationPlayState: "paused", animationDelay: "-150ms" }}>
+                      <div
+                        className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white animate-[send-morph_500ms_ease-out]"
+                        style={{ animationPlayState: "paused", animationDelay: "-150ms" }}
+                      >
                         <CatPawAvatar className="w-4 h-4" />
                       </div>
                     </div>
@@ -2083,7 +2500,13 @@ export function Playground() {
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2131,14 +2554,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-3 sm:gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2163,7 +2606,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Composer — Voice Recording ──────────────────────────────── */}
-        <Section title="Composer — Voice Recording" description="Microphone button records audio, server transcribes via Gemini or OpenAI Whisper">
+        <Section
+          title="Composer — Voice Recording"
+          description="Microphone button records audio, server transcribes via Gemini or OpenAI Whisper"
+        >
           <div className="max-w-3xl">
             <Card label="Mobile — voice unavailable (idle)">
               <div className="border-t border-cc-border bg-cc-card px-4 py-3">
@@ -2178,14 +2624,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-3 sm:gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2232,14 +2698,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-3 sm:gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2286,14 +2772,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2336,14 +2842,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2386,8 +2912,22 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
@@ -2423,9 +2963,14 @@ export function Playground() {
                     <div className="rounded-xl border border-cc-primary/20 bg-cc-primary/5 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">Voice edit preview</div>
+                          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-cc-primary">
+                            Voice edit preview
+                          </div>
                           <div className="mt-1 text-xs leading-relaxed text-cc-muted">
-                            Apply instruction: <span className="text-cc-fg">Make this calmer, split it into two sentences, and mention the rollback note at the end.</span>
+                            Apply instruction:{" "}
+                            <span className="text-cc-fg">
+                              Make this calmer, split it into two sentences, and mention the rollback note at the end.
+                            </span>
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
@@ -2440,7 +2985,9 @@ export function Playground() {
                       <div className="mt-3 overflow-hidden rounded-lg border border-cc-border bg-cc-bg/80">
                         <DiffViewer
                           oldText="Ship the reconnect fix tonight and add a short rollback note for on-call."
-                          newText={"Ship the reconnect fix tonight.\nAdd a short rollback note for on-call so the handoff stays calm and explicit."}
+                          newText={
+                            "Ship the reconnect fix tonight.\nAdd a short rollback note for on-call so the handoff stays calm and explicit."
+                          }
                           mode="compact"
                         />
                       </div>
@@ -2449,8 +2996,22 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
@@ -2486,14 +3047,34 @@ export function Playground() {
                   <div className="flex items-center justify-between px-2.5 pb-2.5">
                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                        <path d="M2.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        <path d="M8.5 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       <span>code</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-4 h-4"
+                        >
                           <rect x="2" y="2" width="12" height="12" rx="2" />
                           <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
@@ -2520,7 +3101,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Streaming Indicator ──────────────────────────────── */}
-        <Section title="Streaming Indicator" description="Live typing animation shown while the assistant is generating">
+        <Section
+          title="Streaming Indicator"
+          description="Live typing animation shown while the assistant is generating"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Codex streaming (complete lines only)">
               <div className="flex items-start gap-3">
@@ -2528,7 +3112,9 @@ export function Playground() {
                   <CatPawLeft className="w-3 h-3 text-cc-primary animate-[paw-walk_0.8s_ease-in-out_infinite]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <MarkdownContent text={"I'll start by creating the JWT utility module with sign and verify helpers.\n"} />
+                  <MarkdownContent
+                    text={"I'll start by creating the JWT utility module with sign and verify helpers.\n"}
+                  />
                   <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle -translate-y-[2px] animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
                 </div>
               </div>
@@ -2540,7 +3126,8 @@ export function Playground() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <pre className="font-serif-assistant text-[15px] text-cc-fg whitespace-pre-wrap break-words leading-relaxed">
-                    I'll start by creating the JWT utility module with sign and verify helpers. Let me first check what dependencies are already installed...
+                    I'll start by creating the JWT utility module with sign and verify helpers. Let me first check what
+                    dependencies are already installed...
                     <span className="inline-block w-0.5 h-4 bg-cc-primary ml-0.5 align-middle animate-[pulse-dot_0.8s_ease-in-out_infinite]" />
                   </pre>
                 </div>
@@ -2571,14 +3158,21 @@ export function Playground() {
         </Section>
 
         {/* ─── Tool Message Groups ──────────────────────────────── */}
-        <Section title="Tool Message Groups" description="Consecutive same-tool calls collapsed into a single expandable row">
+        <Section
+          title="Tool Message Groups"
+          description="Consecutive same-tool calls collapsed into a single expandable row"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Multi-item group (2 Terminal commands)">
               <PlaygroundToolGroup
                 toolName="Bash"
                 items={[
                   { id: "bash-group-1", name: "Bash", input: { command: "test -f /home/jiayiwei/.config/app.json" } },
-                  { id: "bash-group-2", name: "Bash", input: { command: "sed -n '1,80p' /home/jiayiwei/.config/app.json" } },
+                  {
+                    id: "bash-group-2",
+                    name: "Bash",
+                    input: { command: "sed -n '1,80p' /home/jiayiwei/.config/app.json" },
+                  },
                 ]}
               />
             </Card>
@@ -2586,13 +3180,19 @@ export function Playground() {
               <PlaygroundToolGroup toolName="Read" items={MOCK_TOOL_GROUP_ITEMS} />
             </Card>
             <Card label="Single-item group">
-              <PlaygroundToolGroup toolName="Glob" items={[{ id: "sg-1", name: "Glob", input: { pattern: "src/auth/**/*.ts" } }]} />
+              <PlaygroundToolGroup
+                toolName="Glob"
+                items={[{ id: "sg-1", name: "Glob", input: { pattern: "src/auth/**/*.ts" } }]}
+              />
             </Card>
           </div>
         </Section>
 
         {/* ─── Subagent Groups ──────────────────────────────── */}
-        <Section title="Subagent Groups" description="Unified card for Task tool subagents — prompt, activities, and result in one collapsible container">
+        <Section
+          title="Subagent Groups"
+          description="Unified card for Task tool subagents — prompt, activities, and result in one collapsible container"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Subagent with prompt, tool calls, and result">
               <PlaygroundSubagentGroup
@@ -2601,7 +3201,9 @@ export function Playground() {
                 prompt="Find all files related to authentication and authorization in the codebase. Look for middleware, guards, and token handling."
                 items={MOCK_SUBAGENT_TOOL_ITEMS}
                 durationSeconds={8.6}
-                resultText={"Found **3 authentication-related files**:\n\n- `src/auth/middleware.ts` — JWT validation middleware\n- `src/auth/session.ts` — Session management with Redis\n- `src/routes/login.ts` — Login endpoint with rate limiting\n\nThe codebase uses a standard JWT + refresh token pattern."}
+                resultText={
+                  "Found **3 authentication-related files**:\n\n- `src/auth/middleware.ts` — JWT validation middleware\n- `src/auth/session.ts` — Session management with Redis\n- `src/routes/login.ts` — Login endpoint with rate limiting\n\nThe codebase uses a standard JWT + refresh token pattern."
+                }
               />
             </Card>
             <Card label="Subagent still running (has children, no result)">
@@ -2635,7 +3237,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Collapsed Activity Bars ──────────────────────────────── */}
-        <Section title="Collapsed Activity Bars" description="Turn summary bars for collapsed agent activity — shows message, tool, agent, and herd event counts">
+        <Section
+          title="Collapsed Activity Bars"
+          description="Turn summary bars for collapsed agent activity — shows message, tool, agent, and herd event counts"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Collapsed bar with herd events">
               <div className="rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
@@ -2673,19 +3278,26 @@ export function Playground() {
         </Section>
 
         {/* ─── Diff Viewer ──────────────────────────────── */}
-        <Section title="Diff Viewer" description="Unified diff rendering with word-level highlighting — used in ToolBlock, PermissionBanner, and DiffPanel">
+        <Section
+          title="Diff Viewer"
+          description="Unified diff rendering with word-level highlighting — used in ToolBlock, PermissionBanner, and DiffPanel"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Edit diff (compact mode)">
               <DiffViewer
-                oldText={'export function formatDate(d: Date) {\n  return d.toISOString();\n}'}
-                newText={'export function formatDate(d: Date, locale = "en-US") {\n  return d.toLocaleDateString(locale, {\n    year: "numeric",\n    month: "short",\n    day: "numeric",\n  });\n}'}
+                oldText={"export function formatDate(d: Date) {\n  return d.toISOString();\n}"}
+                newText={
+                  'export function formatDate(d: Date, locale = "en-US") {\n  return d.toLocaleDateString(locale, {\n    year: "numeric",\n    month: "short",\n    day: "numeric",\n  });\n}'
+                }
                 fileName="src/utils/format.ts"
                 mode="compact"
               />
             </Card>
             <Card label="New file diff (compact mode)">
               <DiffViewer
-                newText={'export const config = {\n  apiUrl: "https://api.example.com",\n  timeout: 5000,\n  retries: 3,\n  debug: process.env.NODE_ENV !== "production",\n};\n'}
+                newText={
+                  'export const config = {\n  apiUrl: "https://api.example.com",\n  timeout: 5000,\n  retries: 3,\n  debug: process.env.NODE_ENV !== "production",\n};\n'
+                }
                 fileName="src/config.ts"
                 mode="compact"
               />
@@ -2724,85 +3336,105 @@ export function Playground() {
           </div>
         </Section>
         {/* ─── Session Creation Progress ─────────────────────── */}
-        <Section title="Session Creation Progress" description="Step-by-step progress indicator shown during session creation (SSE streaming)">
+        <Section
+          title="Session Creation Progress"
+          description="Step-by-step progress indicator shown during session creation (SSE streaming)"
+        >
           <div className="space-y-4 max-w-md">
             <Card label="In progress (container session)">
               <SessionCreationProgress
-                steps={[
-                  { step: "resolving_env", label: "Resolving environment...", status: "done" },
-                  { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
-                  { step: "creating_container", label: "Starting container...", status: "in_progress" },
-                  { step: "launching_cli", label: "Launching Claude Code...", status: "in_progress" },
-                ] satisfies CreationProgressEvent[]}
+                steps={
+                  [
+                    { step: "resolving_env", label: "Resolving environment...", status: "done" },
+                    { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
+                    { step: "creating_container", label: "Starting container...", status: "in_progress" },
+                    { step: "launching_cli", label: "Launching Claude Code...", status: "in_progress" },
+                  ] satisfies CreationProgressEvent[]
+                }
               />
             </Card>
             <Card label="Completed (worktree session)">
               <SessionCreationProgress
-                steps={[
-                  { step: "resolving_env", label: "Resolving environment...", status: "done" },
-                  { step: "fetching_git", label: "Fetching from remote...", status: "done" },
-                  { step: "checkout_branch", label: "Checking out feat/auth...", status: "done" },
-                  { step: "creating_worktree", label: "Creating worktree...", status: "done" },
-                  { step: "launching_cli", label: "Launching Claude Code...", status: "done" },
-                ] satisfies CreationProgressEvent[]}
+                steps={
+                  [
+                    { step: "resolving_env", label: "Resolving environment...", status: "done" },
+                    { step: "fetching_git", label: "Fetching from remote...", status: "done" },
+                    { step: "checkout_branch", label: "Checking out feat/auth...", status: "done" },
+                    { step: "creating_worktree", label: "Creating worktree...", status: "done" },
+                    { step: "launching_cli", label: "Launching Claude Code...", status: "done" },
+                  ] satisfies CreationProgressEvent[]
+                }
               />
             </Card>
             <Card label="Error during image pull">
               <SessionCreationProgress
-                steps={[
-                  { step: "resolving_env", label: "Resolving environment...", status: "done" },
-                  { step: "pulling_image", label: "Pulling Docker image...", status: "error" },
-                ] satisfies CreationProgressEvent[]}
+                steps={
+                  [
+                    { step: "resolving_env", label: "Resolving environment...", status: "done" },
+                    { step: "pulling_image", label: "Pulling Docker image...", status: "error" },
+                  ] satisfies CreationProgressEvent[]
+                }
                 error="Failed to pull docker.io/stangirard/the-companion:latest — connection timed out after 30s"
               />
             </Card>
             <Card label="Error during init script">
               <SessionCreationProgress
-                steps={[
-                  { step: "resolving_env", label: "Resolving environment...", status: "done" },
-                  { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
-                  { step: "creating_container", label: "Starting container...", status: "done" },
-                  { step: "running_init_script", label: "Running init script...", status: "error" },
-                ] satisfies CreationProgressEvent[]}
+                steps={
+                  [
+                    { step: "resolving_env", label: "Resolving environment...", status: "done" },
+                    { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
+                    { step: "creating_container", label: "Starting container...", status: "done" },
+                    { step: "running_init_script", label: "Running init script...", status: "error" },
+                  ] satisfies CreationProgressEvent[]
+                }
                 error={"npm ERR! code ENOENT\nnpm ERR! syscall open\nnpm ERR! path /app/package.json"}
               />
             </Card>
           </div>
         </Section>
         {/* ─── Session Creation View (StepList) ──────────────────────────── */}
-        <Section title="Session Creation View" description="Inline creation progress shown when a pending session is selected (replaces old full-screen overlay)">
+        <Section
+          title="Session Creation View"
+          description="Inline creation progress shown when a pending session is selected (replaces old full-screen overlay)"
+        >
           <div className="space-y-4">
             <Card label="In progress (container session)">
               <div className="py-4">
                 <StepList
-                  steps={[
-                    { step: "resolving_env", label: "Environment resolved", status: "done" },
-                    { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
-                    { step: "creating_container", label: "Starting container...", status: "in_progress" },
-                    { step: "launching_cli", label: "Launching Claude Code...", status: "in_progress" },
-                  ] satisfies CreationProgressEvent[]}
+                  steps={
+                    [
+                      { step: "resolving_env", label: "Environment resolved", status: "done" },
+                      { step: "pulling_image", label: "Pulling Docker image...", status: "done" },
+                      { step: "creating_container", label: "Starting container...", status: "in_progress" },
+                      { step: "launching_cli", label: "Launching Claude Code...", status: "in_progress" },
+                    ] satisfies CreationProgressEvent[]
+                  }
                 />
               </div>
             </Card>
             <Card label="All steps done">
               <div className="py-4">
                 <StepList
-                  steps={[
-                    { step: "resolving_env", label: "Environment resolved", status: "done" },
-                    { step: "fetching_git", label: "Fetch complete", status: "done" },
-                    { step: "creating_worktree", label: "Worktree created", status: "done" },
-                    { step: "launching_cli", label: "CLI launched", status: "done" },
-                  ] satisfies CreationProgressEvent[]}
+                  steps={
+                    [
+                      { step: "resolving_env", label: "Environment resolved", status: "done" },
+                      { step: "fetching_git", label: "Fetch complete", status: "done" },
+                      { step: "creating_worktree", label: "Worktree created", status: "done" },
+                      { step: "launching_cli", label: "CLI launched", status: "done" },
+                    ] satisfies CreationProgressEvent[]
+                  }
                 />
               </div>
             </Card>
             <Card label="Error state">
               <div className="py-4">
                 <StepList
-                  steps={[
-                    { step: "resolving_env", label: "Environment resolved", status: "done" },
-                    { step: "pulling_image", label: "Pulling Docker image...", status: "error" },
-                  ] satisfies CreationProgressEvent[]}
+                  steps={
+                    [
+                      { step: "resolving_env", label: "Environment resolved", status: "done" },
+                      { step: "pulling_image", label: "Pulling Docker image...", status: "error" },
+                    ] satisfies CreationProgressEvent[]
+                  }
                 />
                 <div className="mt-3 w-full max-w-xs px-4">
                   <div className="px-3 py-2.5 rounded-lg bg-cc-error/5 border border-cc-error/20">
@@ -2816,10 +3448,12 @@ export function Playground() {
             <Card label="Codex backend">
               <div className="py-4">
                 <StepList
-                  steps={[
-                    { step: "resolving_env", label: "Environment resolved", status: "done" },
-                    { step: "launching_cli", label: "Launching Codex...", status: "in_progress" },
-                  ] satisfies CreationProgressEvent[]}
+                  steps={
+                    [
+                      { step: "resolving_env", label: "Environment resolved", status: "done" },
+                      { step: "launching_cli", label: "Launching Codex...", status: "in_progress" },
+                    ] satisfies CreationProgressEvent[]
+                  }
                 />
               </div>
             </Card>
@@ -2862,11 +3496,17 @@ export function Playground() {
             <Card label="Yarn Ball Status Dot (sidebar sessions)">
               <div className="flex items-center gap-6 px-4 py-3">
                 <div className="flex items-center gap-1.5">
-                  <YarnBallDot className="text-cc-success" style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }} />
+                  <YarnBallDot
+                    className="text-cc-success"
+                    style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }}
+                  />
                   <span className="text-xs text-cc-muted">Running</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <YarnBallDot className="text-cc-warning" style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }} />
+                  <YarnBallDot
+                    className="text-cc-warning"
+                    style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }}
+                  />
                   <span className="text-xs text-cc-muted">Permission</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -2902,11 +3542,17 @@ export function Playground() {
             <Card label="Yarn Ball Rolling (back-and-forth)">
               <div className="flex items-center gap-6 px-4 py-3">
                 <div className="flex items-center gap-1.5">
-                  <YarnBallDot className="text-cc-success yarn-ball-roll" style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }} />
+                  <YarnBallDot
+                    className="text-cc-success yarn-ball-roll"
+                    style={{ filter: "drop-shadow(0 0 4px rgba(34, 197, 94, 0.6))" }}
+                  />
                   <span className="text-xs text-cc-muted">Running</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <YarnBallDot className="text-cc-warning yarn-ball-roll" style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }} />
+                  <YarnBallDot
+                    className="text-cc-warning yarn-ball-roll"
+                    style={{ filter: "drop-shadow(0 0 4px rgba(245, 158, 11, 0.6))" }}
+                  />
                   <span className="text-xs text-cc-muted">Compacting</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -2932,7 +3578,9 @@ export function Playground() {
             <Card label="Paw Approval (button morph)">
               <div className="flex items-center gap-6 px-4 py-3">
                 <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 text-white cursor-pointer">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path d="M3 8.5l3.5 3.5 6.5-7" /></svg>
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                    <path d="M3 8.5l3.5 3.5 6.5-7" />
+                  </svg>
                   Allow
                 </button>
                 <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 text-white animate-[paw-approve_400ms_ease-out_forwards]">
@@ -2945,7 +3593,10 @@ export function Playground() {
           </div>
         </Section>
 
-        <Section title="Session Search" description="In-session search highlights matching text in messages. SearchBar drives the interaction; HighlightedText renders per-message match highlights.">
+        <Section
+          title="Session Search"
+          description="In-session search highlights matching text in messages. SearchBar drives the interaction; HighlightedText renders per-message match highlights."
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="HighlightedText — Current match (strict)">
               <div className="p-2 rounded-lg bg-cc-bg text-sm text-cc-fg">
@@ -2956,7 +3607,9 @@ export function Playground() {
                   isCurrent={true}
                 />
               </div>
-              <p className="text-[10px] text-cc-muted mt-2">Strict mode, isCurrent=true — bright amber highlights on exact substring matches</p>
+              <p className="text-[10px] text-cc-muted mt-2">
+                Strict mode, isCurrent=true — bright amber highlights on exact substring matches
+              </p>
             </Card>
             <Card label="HighlightedText — Other match (strict)">
               <div className="p-2 rounded-lg bg-cc-bg text-sm text-cc-fg">
@@ -2967,25 +3620,36 @@ export function Playground() {
                   isCurrent={false}
                 />
               </div>
-              <p className="text-[10px] text-cc-muted mt-2">Strict mode, isCurrent=false — subtle amber highlights for non-active matches</p>
+              <p className="text-[10px] text-cc-muted mt-2">
+                Strict mode, isCurrent=false — subtle amber highlights for non-active matches
+              </p>
             </Card>
             <Card label="HighlightedText — Fuzzy mode">
               <div className="p-2 rounded-lg bg-cc-bg text-sm text-cc-fg">
-                <HighlightedText
-                  text="The quick brown fox jumps"
-                  query="quick fox"
-                  mode="fuzzy"
-                  isCurrent={true}
-                />
+                <HighlightedText text="The quick brown fox jumps" query="quick fox" mode="fuzzy" isCurrent={true} />
               </div>
-              <p className="text-[10px] text-cc-muted mt-2">Fuzzy mode — each query word highlighted independently ("quick" and "fox")</p>
+              <p className="text-[10px] text-cc-muted mt-2">
+                Fuzzy mode — each query word highlighted independently ("quick" and "fox")
+              </p>
             </Card>
             <Card label="SearchBar states (description)">
               <div className="space-y-2 text-xs text-cc-muted px-1">
-                <p><span className="font-medium text-cc-fg">Idle:</span> Hidden — activated via ⌘F / Ctrl+F keyboard shortcut</p>
-                <p><span className="font-medium text-cc-fg">Open (no matches):</span> Input field with "0 of 0" counter, up/down navigation arrows disabled</p>
-                <p><span className="font-medium text-cc-fg">Open (with matches):</span> "3 of 12" counter with active navigation arrows, close button (Escape)</p>
-                <p><span className="font-medium text-cc-fg">Mode toggle:</span> Strict (exact substring) ↔ Fuzzy (per-word) via button in the search bar</p>
+                <p>
+                  <span className="font-medium text-cc-fg">Idle:</span> Hidden — activated via ⌘F / Ctrl+F keyboard
+                  shortcut
+                </p>
+                <p>
+                  <span className="font-medium text-cc-fg">Open (no matches):</span> Input field with "0 of 0" counter,
+                  up/down navigation arrows disabled
+                </p>
+                <p>
+                  <span className="font-medium text-cc-fg">Open (with matches):</span> "3 of 12" counter with active
+                  navigation arrows, close button (Escape)
+                </p>
+                <p>
+                  <span className="font-medium text-cc-fg">Mode toggle:</span> Strict (exact substring) ↔ Fuzzy
+                  (per-word) via button in the search bar
+                </p>
               </div>
             </Card>
           </div>
@@ -3022,7 +3686,11 @@ function Card({ label, children }: { label: string; children: React.ReactNode })
 
 // ─── Inline Tool Group (mirrors MessageFeed's ToolMessageGroup) ─────────────
 
-interface ToolItem { id: string; name: string; input: Record<string, unknown> }
+interface ToolItem {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
 
 function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: ToolItem[] }) {
   const [open, setOpen] = useState(false);
@@ -3043,7 +3711,11 @@ function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: Too
               onClick={() => setOpen(!open)}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+              <svg
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+              >
                 <path d="M6 4l4 4-4 4" />
               </svg>
               <ToolIcon type={iconType} />
@@ -3076,7 +3748,11 @@ function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: Too
             onClick={() => setOpen(!open)}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+            >
               <path d="M6 4l4 4-4 4" />
             </svg>
             <ToolIcon type={iconType} />
@@ -3090,7 +3766,10 @@ function PlaygroundToolGroup({ toolName, items }: { toolName: string; items: Too
               {items.map((item, i) => {
                 const preview = getPreview(item.name, item.input);
                 return (
-                  <div key={item.id || i} className="flex items-center gap-2 py-1 text-xs text-cc-muted font-mono-code truncate">
+                  <div
+                    key={item.id || i}
+                    className="flex items-center gap-2 py-1 text-xs text-cc-muted font-mono-code truncate"
+                  >
                     <span className="w-1 h-1 rounded-full bg-cc-muted/40 shrink-0" />
                     <span className="truncate">{preview || JSON.stringify(item.input).slice(0, 80)}</span>
                   </div>
@@ -3156,7 +3835,11 @@ function PlaygroundSubagentGroup({
             onClick={() => setOpen(!open)}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-cc-hover transition-colors cursor-pointer"
           >
-            <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}>
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className={`w-3 h-3 text-cc-muted transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+            >
               <path d="M6 4l4 4-4 4" />
             </svg>
             <ToolIcon type="agent" />
@@ -3172,7 +3855,9 @@ function PlaygroundSubagentGroup({
               </span>
             )}
             {displayDurationSeconds != null && (
-              <span className={`text-[10px] tabular-nums shrink-0 ${durationSeconds != null ? "text-cc-muted" : "text-cc-primary"}`}>
+              <span
+                className={`text-[10px] tabular-nums shrink-0 ${durationSeconds != null ? "text-cc-muted" : "text-cc-primary"}`}
+              >
                 {formatDuration(displayDurationSeconds)}
               </span>
             )}
@@ -3191,7 +3876,11 @@ function PlaygroundSubagentGroup({
                     onClick={() => setPromptOpen(!promptOpen)}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
                   >
-                    <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${promptOpen ? "rotate-90" : ""}`}>
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${promptOpen ? "rotate-90" : ""}`}
+                    >
                       <path d="M6 4l4 4-4 4" />
                     </svg>
                     <span className="text-[11px] font-medium text-cc-muted">Prompt</span>
@@ -3213,7 +3902,11 @@ function PlaygroundSubagentGroup({
                     onClick={() => setActivitiesOpen(!activitiesOpen)}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
                   >
-                    <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${activitiesOpen ? "rotate-90" : ""}`}>
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${activitiesOpen ? "rotate-90" : ""}`}
+                    >
                       <path d="M6 4l4 4-4 4" />
                     </svg>
                     <span className="text-[11px] font-medium text-cc-muted">Activities</span>
@@ -3236,9 +3929,7 @@ function PlaygroundSubagentGroup({
 
               {/* Interrupted subagent — session ended without completion */}
               {items.length === 0 && interrupted && (
-                <div className="px-3 py-2 text-[11px] text-cc-muted">
-                  Agent interrupted
-                </div>
+                <div className="px-3 py-2 text-[11px] text-cc-muted">Agent interrupted</div>
               )}
 
               {/* Result */}
@@ -3248,7 +3939,11 @@ function PlaygroundSubagentGroup({
                     onClick={() => setResultOpen(!resultOpen)}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-cc-hover/50 transition-colors cursor-pointer"
                   >
-                    <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${resultOpen ? "rotate-90" : ""}`}>
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className={`w-2.5 h-2.5 text-cc-muted transition-transform shrink-0 ${resultOpen ? "rotate-90" : ""}`}
+                    >
                       <path d="M6 4l4 4-4 4" />
                     </svg>
                     <span className="text-[11px] font-medium text-cc-muted">Result</span>
@@ -3342,7 +4037,10 @@ function PlaygroundClaudeMdButton() {
   const [cwd, setCwd] = useState("/tmp");
 
   useEffect(() => {
-    api.getHome().then((res) => setCwd(res.cwd)).catch(() => {});
+    api
+      .getHome()
+      .then((res) => setCwd(res.cwd))
+      .catch(() => {});
   }, []);
 
   return (
@@ -3356,14 +4054,8 @@ function PlaygroundClaudeMdButton() {
         </svg>
         <span className="text-xs font-medium text-cc-fg">Edit CLAUDE.md</span>
       </button>
-      <span className="text-[11px] text-cc-muted">
-        Click to open the editor modal (uses server working directory)
-      </span>
-      <ClaudeMdEditor
-        cwd={cwd}
-        open={open}
-        onClose={() => setOpen(false)}
-      />
+      <span className="text-[11px] text-cc-muted">Click to open the editor modal (uses server working directory)</span>
+      <ClaudeMdEditor cwd={cwd} open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }
@@ -3402,7 +4094,8 @@ function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {
               <div className="flex items-start gap-1">
                 <span className="text-cc-muted/60 shrink-0">Cmd:</span>
                 <span className="font-mono text-[10px] break-all">
-                  {server.config.command}{server.config.args?.length ? ` ${server.config.args.join(" ")}` : ""}
+                  {server.config.command}
+                  {server.config.args?.length ? ` ${server.config.args.join(" ")}` : ""}
                 </span>
               </div>
             )}
@@ -3465,13 +4158,7 @@ function PlaygroundLightboxDemo() {
         onClick={() => setOpen(true)}
         data-testid="playground-lightbox-trigger"
       />
-      {open && (
-        <Lightbox
-          src={demoSrc}
-          alt="Lightbox demo"
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {open && <Lightbox src={demoSrc} alt="Lightbox demo" onClose={() => setOpen(false)} />}
     </div>
   );
 }
@@ -3488,11 +4175,24 @@ function TaskRow({ task }: { task: TaskItem }) {
         <span className="shrink-0 flex items-center justify-center w-4 h-4 mt-px">
           {isInProgress ? (
             <svg className="w-4 h-4 text-cc-primary animate-spin" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
+              <circle
+                cx="8"
+                cy="8"
+                r="6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeDasharray="28"
+                strokeDashoffset="8"
+                strokeLinecap="round"
+              />
             </svg>
           ) : isCompleted ? (
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-success">
-              <path fillRule="evenodd" d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z"
+                clipRule="evenodd"
+              />
             </svg>
           ) : (
             <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4 text-cc-muted">
@@ -3500,7 +4200,9 @@ function TaskRow({ task }: { task: TaskItem }) {
             </svg>
           )}
         </span>
-        <span className={`text-[13px] leading-snug flex-1 ${isCompleted ? "text-cc-muted line-through" : "text-cc-fg"}`}>
+        <span
+          className={`text-[13px] leading-snug flex-1 ${isCompleted ? "text-cc-muted line-through" : "text-cc-fg"}`}
+        >
           {task.subject}
         </span>
       </div>

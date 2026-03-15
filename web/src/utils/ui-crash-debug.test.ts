@@ -20,7 +20,7 @@ describe("ui-crash-debug", () => {
     const trace = getUiTraceSnapshot();
     expect(trace).toHaveLength(1);
     expect(trace[0]?.event).toBe("event.enabled");
-    expect(trace[0]?.details).toContain("\"value\":2");
+    expect(trace[0]?.details).toContain('"value":2');
   });
 
   it("keeps a bounded ring buffer", () => {
@@ -42,4 +42,3 @@ describe("ui-crash-debug", () => {
     expect(trace.some((t) => t.event === "window.error" && t.details.includes("boom"))).toBe(true);
   });
 });
-

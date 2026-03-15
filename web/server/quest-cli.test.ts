@@ -24,7 +24,7 @@ function readJson(req: IncomingMessage): Promise<JsonObject> {
       body += String(chunk);
     });
     req.on("end", () => {
-      resolve(body ? JSON.parse(body) as JsonObject : {});
+      resolve(body ? (JSON.parse(body) as JsonObject) : {});
     });
   });
 }
@@ -47,8 +47,12 @@ async function runQuest(
 
   let stdout = "";
   let stderr = "";
-  child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
-  child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+  child.stdout?.on("data", (chunk) => {
+    stdout += String(chunk);
+  });
+  child.stderr?.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
 
   const [code] = await once(child, "close");
   return { status: code as number | null, stdout, stderr };
@@ -69,12 +73,14 @@ describe("quest CLI auth fallback", () => {
       if (req.method === "POST" && req.url === "/api/quests/q-1/claim") {
         seenBodies.push(await readJson(req));
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          questId: "q-1",
-          title: "Quest",
-          status: "in_progress",
-          sessionId: "session-file",
-        }));
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "in_progress",
+            sessionId: "session-file",
+          }),
+        );
         return;
       }
       res.writeHead(404, { "content-type": "application/json" });
@@ -127,12 +133,14 @@ describe("quest CLI auth fallback", () => {
       if (req.method === "POST" && req.url === "/api/quests/q-1/feedback") {
         seenBodies.push(await readJson(req));
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          questId: "q-1",
-          title: "Quest",
-          status: "needs_verification",
-          feedback: [{ author: "agent", text: "Addressed" }],
-        }));
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "needs_verification",
+            feedback: [{ author: "agent", text: "Addressed" }],
+          }),
+        );
         return;
       }
       res.writeHead(404, { "content-type": "application/json" });
@@ -194,12 +202,14 @@ describe("quest CLI create image attachments", () => {
         req.on("end", () => {
           uploadCount += 1;
           res.writeHead(201, { "content-type": "application/json" });
-          res.end(JSON.stringify({
-            id: `img-${uploadCount}`,
-            filename: `img-${uploadCount}.png`,
-            mimeType: "image/png",
-            path: `/tmp/img-${uploadCount}.png`,
-          }));
+          res.end(
+            JSON.stringify({
+              id: `img-${uploadCount}`,
+              filename: `img-${uploadCount}.png`,
+              mimeType: "image/png",
+              path: `/tmp/img-${uploadCount}.png`,
+            }),
+          );
         });
         return;
       }
@@ -217,15 +227,7 @@ describe("quest CLI create image attachments", () => {
 
     try {
       const result = await runQuest(
-        [
-          "create",
-          "Quest with images",
-          "--image",
-          imgA,
-          "--images",
-          `${imgB}, ${imgC}`,
-          "--json",
-        ],
+        ["create", "Quest with images", "--image", imgA, "--images", `${imgB}, ${imgC}`, "--json"],
         {
           ...process.env,
           COMPANION_PORT: String(port),
@@ -289,13 +291,15 @@ describe("quest CLI verification inbox commands", () => {
       seenPaths.push(req.url || "");
       if (req.method === "POST" && req.url === "/api/quests/q-1/verification/read") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          questId: "q-1",
-          title: "Quest",
-          status: "needs_verification",
-          verificationInboxUnread: false,
-          verificationItems: [{ text: "check", checked: false }],
-        }));
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "needs_verification",
+            verificationInboxUnread: false,
+            verificationItems: [{ text: "check", checked: false }],
+          }),
+        );
         return;
       }
       res.writeHead(404, { "content-type": "application/json" });
@@ -351,13 +355,15 @@ describe("quest CLI verification inbox commands", () => {
       seenPaths.push(req.url || "");
       if (req.method === "POST" && req.url === "/api/quests/q-1/verification/inbox") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          questId: "q-1",
-          title: "Quest",
-          status: "needs_verification",
-          verificationInboxUnread: true,
-          verificationItems: [{ text: "check", checked: false }],
-        }));
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "needs_verification",
+            verificationInboxUnread: true,
+            verificationItems: [{ text: "check", checked: false }],
+          }),
+        );
         return;
       }
       res.writeHead(404, { "content-type": "application/json" });

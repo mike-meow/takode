@@ -7,7 +7,13 @@ import "@testing-library/jest-dom";
 const mockApi = {
   getFileDiff: vi.fn().mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" }),
   listBranches: vi.fn().mockResolvedValue([]),
-  getRepoInfo: vi.fn().mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false }),
+  getRepoInfo: vi.fn().mockResolvedValue({
+    repoRoot: "/repo",
+    repoName: "repo",
+    currentBranch: "main",
+    defaultBranch: "main",
+    isWorktree: false,
+  }),
   setDiffBase: vi.fn().mockResolvedValue({ ok: true }),
   getRecentCommits: vi.fn().mockResolvedValue({ commits: [] }),
   getDiffFiles: vi.fn().mockResolvedValue({ files: [], repoRoot: "/repo", base: "main" }),
@@ -27,14 +33,17 @@ vi.mock("../api.js", () => ({
 // ─── Store mock ─────────────────────────────────────────────────────────────
 
 interface MockStoreState {
-  sessions: Map<string, {
-    cwd?: string;
-    repo_root?: string;
-    git_default_branch?: string;
-    diff_base_branch?: string;
-    total_lines_added?: number;
-    total_lines_removed?: number;
-  }>;
+  sessions: Map<
+    string,
+    {
+      cwd?: string;
+      repo_root?: string;
+      git_default_branch?: string;
+      diff_base_branch?: string;
+      total_lines_added?: number;
+      total_lines_removed?: number;
+    }
+  >;
   sdkSessions: { sessionId: string; cwd?: string; totalLinesAdded?: number; totalLinesRemoved?: number }[];
   diffPanelSelectedFile: Map<string, string>;
   changedFiles: Map<string, Set<string>>;
@@ -71,7 +80,13 @@ beforeEach(() => {
   // Reset to default empty diff (clearAllMocks doesn't reset implementations)
   mockApi.getFileDiff.mockResolvedValue({ path: "/repo/file.ts", diff: "", baseBranch: "main" });
   mockApi.listBranches.mockResolvedValue([]);
-  mockApi.getRepoInfo.mockResolvedValue({ repoRoot: "/repo", repoName: "repo", currentBranch: "main", defaultBranch: "main", isWorktree: false });
+  mockApi.getRepoInfo.mockResolvedValue({
+    repoRoot: "/repo",
+    repoName: "repo",
+    currentBranch: "main",
+    defaultBranch: "main",
+    isWorktree: false,
+  });
   mockApi.getRecentCommits.mockResolvedValue({ commits: [] });
   localStorage.clear();
   resetStore();
@@ -108,9 +123,7 @@ describe("DiffPanel", () => {
   it("hides changed files outside the session cwd", () => {
     // Files outside the session cwd (e.g. plan files) should not appear in the diff panel.
     resetStore({
-      changedFiles: new Map([
-        ["s1", new Set(["/repo/src/app.ts", "/Users/stan/.claude/plans/plan.md"])],
-      ]),
+      changedFiles: new Map([["s1", new Set(["/repo/src/app.ts", "/Users/stan/.claude/plans/plan.md"])]]),
     });
 
     const { container } = render(<DiffPanel sessionId="s1" />);
@@ -143,11 +156,7 @@ describe("DiffPanel", () => {
 
     await waitFor(() => {
       // getFileDiff is called with the resolved base branch (from git_default_branch)
-      expect(mockApi.getFileDiff).toHaveBeenCalledWith(
-        "/repo/src/app.ts",
-        "main",
-        { includeContents: true },
-      );
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "main", { includeContents: true });
     });
 
     // DiffViewer should render the diff content (may appear in top bar + DiffViewer header)
@@ -243,7 +252,9 @@ describe("DiffPanel", () => {
     });
 
     resetStore({
-      sessions: new Map([["s1", { cwd: "/repo", git_default_branch: "main", total_lines_added: 0, total_lines_removed: 0 }]]),
+      sessions: new Map([
+        ["s1", { cwd: "/repo", git_default_branch: "main", total_lines_added: 0, total_lines_removed: 0 }],
+      ]),
       changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
       diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
     });
@@ -287,11 +298,7 @@ describe("DiffPanel", () => {
     render(<DiffPanel sessionId="s1" />);
 
     await waitFor(() => {
-      expect(mockApi.getFileDiff).toHaveBeenCalledWith(
-        "/repo/src/app.ts",
-        "develop",
-        { includeContents: true },
-      );
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "develop", { includeContents: true });
     });
   });
 
@@ -306,7 +313,9 @@ describe("DiffPanel", () => {
     });
 
     resetStore({
-      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "origin/jiayi", git_default_branch: "origin/jiayi" }]]),
+      sessions: new Map([
+        ["s1", { cwd: "/repo", diff_base_branch: "origin/jiayi", git_default_branch: "origin/jiayi" }],
+      ]),
       changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
       diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
     });
@@ -314,11 +323,7 @@ describe("DiffPanel", () => {
     render(<DiffPanel sessionId="s1" />);
 
     await waitFor(() => {
-      expect(mockApi.getFileDiff).toHaveBeenCalledWith(
-        "/repo/src/app.ts",
-        "origin/jiayi",
-        { includeContents: true },
-      );
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "origin/jiayi", { includeContents: true });
     });
 
     const [branchSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
@@ -349,9 +354,7 @@ describe("DiffPanel", () => {
     // (e.g. CLAUDE.md) should still be visible in the diff panel.
     resetStore({
       sessions: new Map([["s1", { cwd: "/repo/packages/app", repo_root: "/repo" }]]),
-      changedFiles: new Map([
-        ["s1", new Set(["/repo/CLAUDE.md", "/repo/packages/app/src/index.ts"])],
-      ]),
+      changedFiles: new Map([["s1", new Set(["/repo/CLAUDE.md", "/repo/packages/app/src/index.ts"])]]),
     });
 
     const { container } = render(<DiffPanel sessionId="s1" />);
@@ -364,9 +367,7 @@ describe("DiffPanel", () => {
   it("restores previous branch selection when commit selector is cleared", async () => {
     mockApi.listBranches.mockResolvedValue([{ name: "develop" }, { name: "main" }]);
     mockApi.getRecentCommits.mockResolvedValue({
-      commits: [
-        { sha: "abcdef1234567890", shortSha: "abcdef1", message: "Recent commit", timestamp: Date.now() },
-      ],
+      commits: [{ sha: "abcdef1234567890", shortSha: "abcdef1", message: "Recent commit", timestamp: Date.now() }],
     });
     mockApi.getFileDiff.mockResolvedValue({
       path: "/repo/src/app.ts",
@@ -404,9 +405,7 @@ describe("DiffPanel", () => {
   it("clearing commit falls back to default branch when no explicit branch is selected", async () => {
     mockApi.listBranches.mockResolvedValue([{ name: "main" }]);
     mockApi.getRecentCommits.mockResolvedValue({
-      commits: [
-        { sha: "abcdef1234567890", shortSha: "abcdef1", message: "Recent commit", timestamp: Date.now() },
-      ],
+      commits: [{ sha: "abcdef1234567890", shortSha: "abcdef1", message: "Recent commit", timestamp: Date.now() }],
     });
     mockApi.getFileDiff.mockResolvedValue({
       path: "/repo/src/app.ts",

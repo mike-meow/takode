@@ -74,7 +74,12 @@ function safeKind(kind: unknown): string {
 function toSafeText(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map((v) => toSafeText(v)).filter(Boolean).join(" ").trim();
+  if (Array.isArray(value))
+    return value
+      .map((v) => toSafeText(v))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
   if (value && typeof value === "object") {
     const rec = value as Record<string, unknown>;
     const preferred = rec.text ?? rec.summary ?? rec.content;
@@ -93,14 +98,14 @@ function stripOuterShellQuotes(text: string): string {
   if (trimmed.length < 2) return trimmed;
   const first = trimmed[0];
   const last = trimmed[trimmed.length - 1];
-  if ((first !== "'" && first !== "\"") || first !== last) return trimmed;
+  if ((first !== "'" && first !== '"') || first !== last) return trimmed;
 
   const inner = trimmed.slice(1, -1);
   if (first === "'") {
     // POSIX single-quote escaping pattern: 'foo'\''bar'
     return inner.replace(/'\\''/g, "'");
   }
-  return inner.replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+  return inner.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 
 function unwrapShellWrappedCommand(command: string): string {
@@ -108,9 +113,7 @@ function unwrapShellWrappedCommand(command: string): string {
   if (!trimmed) return "";
 
   // Common Codex shell wrapper: /bin/bash -lc "<actual command>"
-  const posix = trimmed.match(
-    /^(?:\/(?:usr\/)?bin\/env\s+)?(?:\/(?:usr\/)?bin\/)?(?:bash|zsh|sh)\s+-l?c\s+([\s\S]+)$/,
-  );
+  const posix = trimmed.match(/^(?:\/(?:usr\/)?bin\/env\s+)?(?:\/(?:usr\/)?bin\/)?(?:bash|zsh|sh)\s+-l?c\s+([\s\S]+)$/);
   if (posix) {
     return stripOuterShellQuotes(posix[1]);
   }
@@ -136,7 +139,7 @@ function normalizeSlashPath(value: string): string {
 }
 
 function extractCodexSkillNames(result: unknown, sessionCwd?: string): string[] {
-  const root = result && typeof result === "object" ? result as Record<string, unknown> : {};
+  const root = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
   const rawEntries = Array.isArray(root.data)
     ? root.data
     : Array.isArray(root.skills)
@@ -186,7 +189,7 @@ function extractCommandAction(commandActions: unknown): string {
 function formatCommandForDisplay(command: string | string[] | undefined, commandActions?: unknown): string {
   const actionCommand = extractCommandAction(commandActions);
   if (actionCommand) return unwrapShellWrappedCommand(actionCommand);
-  const raw = Array.isArray(command) ? command.join(" ") : (command || "");
+  const raw = Array.isArray(command) ? command.join(" ") : command || "";
   return unwrapShellWrappedCommand(raw);
 }
 
@@ -205,12 +208,7 @@ type ToolFileChange = {
 };
 
 function extractChangeDiff(change: Record<string, unknown>): string {
-  const direct = firstNonEmptyString(change, [
-    "diff",
-    "unified_diff",
-    "unifiedDiff",
-    "patch",
-  ]);
+  const direct = firstNonEmptyString(change, ["diff", "unified_diff", "unifiedDiff", "patch"]);
   if (direct) return direct;
 
   const kind = change.kind;
@@ -242,7 +240,7 @@ function mapFileChangesForTool(changes: Array<Record<string, unknown>>): ToolFil
 
 function mapFileChangesObjectForTool(fileChanges: Record<string, unknown>): ToolFileChange[] {
   return Object.entries(fileChanges).map(([path, raw]) => {
-    const rec = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const rec = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
     const kind = safeKind(rec.kind ?? rec.type);
     const diff = extractChangeDiff(rec);
     return {
@@ -363,9 +361,7 @@ function extractWebSearchResultText(item: CodexWebSearchItem): string {
   const resultLists = [item.results, item.searchResults];
   for (const list of resultLists) {
     if (!Array.isArray(list)) continue;
-    const lines = list
-      .map((entry) => formatWebSearchResultEntry(entry))
-      .filter((line) => line.length > 0);
+    const lines = list.map((entry) => formatWebSearchResultEntry(entry)).filter((line) => line.length > 0);
     if (lines.length > 0) return lines.join("\n\n");
   }
 
@@ -463,9 +459,7 @@ class JsonRpcTransport {
         async write(chunk) {
           let offset = 0;
           while (offset < chunk.length) {
-            const written = bunStdin.write(
-              offset === 0 ? chunk : chunk.subarray(offset),
-            );
+            const written = bunStdin.write(offset === 0 ? chunk : chunk.subarray(offset));
             if (written <= 0) {
               // Pipe buffer full — yield to the event loop and retry
               await new Promise<void>((r) => setTimeout(r, 1));
@@ -644,7 +638,8 @@ export class CodexAdapter
     TurnStartedAwareAdapter,
     TurnStartFailedAwareAdapter,
     CurrentTurnIdAwareAdapter,
-    RateLimitsAwareAdapter {
+    RateLimitsAwareAdapter
+{
   private transport: JsonRpcTransport;
   private proc: Subprocess;
   private sessionId: string;
@@ -711,13 +706,16 @@ export class CodexAdapter
   // Track request types that need different response formats
   private pendingUserInputQuestionIds = new Map<string, string[]>(); // request_id -> ordered Codex question IDs
   private pendingReviewDecisions = new Set<string>(); // request_ids that need ReviewDecision format
-  private pendingDynamicToolCalls = new Map<string, {
-    jsonRpcId: number;
-    callId: string;
-    toolName: string;
-    parentToolUseId: string | null;
-    timeout: ReturnType<typeof setTimeout>;
-  }>(); // request_id -> pending dynamic tool call metadata
+  private pendingDynamicToolCalls = new Map<
+    string,
+    {
+      jsonRpcId: number;
+      callId: string;
+      toolName: string;
+      parentToolUseId: string | null;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >(); // request_id -> pending dynamic tool call metadata
 
   // Codex account rate limits (fetched after init, updated via notification)
   private _rateLimits: {
@@ -727,19 +725,15 @@ export class CodexAdapter
   // Codex can publish multiple limit buckets (for example, "codex" and model-specific IDs).
   // Keep the latest values per limitId and prefer the canonical "codex" bucket for UI parity
   // with the official usage page.
-  private rateLimitsByLimitId = new Map<string, {
-    primary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
-    secondary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
-  }>();
+  private rateLimitsByLimitId = new Map<
+    string,
+    {
+      primary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
+      secondary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
+    }
+  >();
   private static readonly DYNAMIC_TOOL_CALL_TIMEOUT_MS = 120_000;
-  private static readonly VALID_REASONING_EFFORTS = new Set([
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-  ]);
+  private static readonly VALID_REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
   constructor(proc: Subprocess, sessionId: string, options: CodexAdapterOptions = {}) {
     this.proc = proc;
@@ -810,10 +804,12 @@ export class CodexAdapter
       const pendingIds = [...this.transport.getPendingIds()];
       console.log(
         `[codex-adapter] Transport closed for session ${sessionId} (process may still be running)` +
-        `${pendingIds.length ? `, pendingRpcIds=[${pendingIds.join(",")}]` : ""}`,
+          `${pendingIds.length ? `, pendingRpcIds=[${pendingIds.join(",")}]` : ""}`,
       );
       if (this.recentRawMessages.length > 0) {
-        console.log(`[codex-adapter] Last ${this.recentRawMessages.length} raw messages before close for ${sessionId}:`);
+        console.log(
+          `[codex-adapter] Last ${this.recentRawMessages.length} raw messages before close for ${sessionId}:`,
+        );
         for (const msg of this.recentRawMessages) {
           console.log(`  ${msg}`);
         }
@@ -831,7 +827,9 @@ export class CodexAdapter
     // Monitor process exit
     proc.exited.then((exitCode) => {
       if (!this.connected) return; // already handled by transport.onClose
-      console.log(`[codex-adapter] Process exited for session ${sessionId} (code=${exitCode}, connected was true — transport.onClose did not fire first)`);
+      console.log(
+        `[codex-adapter] Process exited for session ${sessionId} (code=${exitCode}, connected was true — transport.onClose did not fire first)`,
+      );
       this.connected = false;
       for (const resolve of this.turnEndResolvers.splice(0)) resolve();
       for (const pending of this.pendingDynamicToolCalls.values()) {
@@ -875,14 +873,14 @@ export class CodexAdapter
     // Queue messages if not yet initialized (init is async)
     if (!this.initialized || !this.threadId) {
       if (
-        msg.type === "user_message"
-        || msg.type === "codex_start_pending"
-        || msg.type === "codex_steer_pending"
-        || msg.type === "permission_response"
-        || msg.type === "mcp_get_status"
-        || msg.type === "mcp_toggle"
-        || msg.type === "mcp_reconnect"
-        || msg.type === "mcp_set_servers"
+        msg.type === "user_message" ||
+        msg.type === "codex_start_pending" ||
+        msg.type === "codex_steer_pending" ||
+        msg.type === "permission_response" ||
+        msg.type === "mcp_get_status" ||
+        msg.type === "mcp_toggle" ||
+        msg.type === "mcp_reconnect" ||
+        msg.type === "mcp_set_servers"
       ) {
         this.pendingOutgoing.push(msg);
         return true; // accepted, will be sent after init
@@ -934,15 +932,10 @@ export class CodexAdapter
     }
   }
 
-  private enqueueOutgoingDispatch(
-    label: string,
-    run: () => Promise<void>,
-  ): void {
-    this.outgoingDispatchChain = this.outgoingDispatchChain
-      .then(run)
-      .catch((err) => {
-        console.warn(`[codex-adapter] Outgoing dispatch failed (${label}) for session ${this.sessionId}:`, err);
-      });
+  private enqueueOutgoingDispatch(label: string, run: () => Promise<void>): void {
+    this.outgoingDispatchChain = this.outgoingDispatchChain.then(run).catch((err) => {
+      console.warn(`[codex-adapter] Outgoing dispatch failed (${label}) for session ${this.sessionId}:`, err);
+    });
   }
 
   onBrowserMessage(cb: (msg: BrowserIncomingMessage) => void): void {
@@ -985,10 +978,7 @@ export class CodexAdapter
     this.connected = false;
     try {
       this.proc.kill("SIGTERM");
-      await Promise.race([
-        this.proc.exited,
-        new Promise((r) => setTimeout(r, 5000)),
-      ]);
+      await Promise.race([this.proc.exited, new Promise((r) => setTimeout(r, 5000))]);
     } catch {}
   }
 
@@ -1011,7 +1001,7 @@ export class CodexAdapter
     try {
       let resumeSnapshot: CodexResumeSnapshot | null = null;
       // Step 1: Send initialize request
-      const result = await this.transport.call("initialize", {
+      const result = (await this.transport.call("initialize", {
         clientInfo: {
           name: "thecompanion",
           title: "The Companion",
@@ -1020,7 +1010,7 @@ export class CodexAdapter
         capabilities: {
           experimentalApi: true,
         },
-      }) as Record<string, unknown>;
+      })) as Record<string, unknown>;
 
       // Step 2: Send initialized notification
       await this.transport.notify("initialized", {});
@@ -1031,13 +1021,13 @@ export class CodexAdapter
       if (this.options.threadId) {
         try {
           // Resume an existing thread
-          const resumeResult = await this.transport.call("thread/resume", {
+          const resumeResult = (await this.transport.call("thread/resume", {
             threadId: this.options.threadId,
             model: this.options.model,
             cwd: this.options.cwd,
             approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
             sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
-          }) as { thread: Record<string, unknown> & { id: string } };
+          })) as { thread: Record<string, unknown> & { id: string } };
           this.threadId = resumeResult.thread.id;
           resumeSnapshot = this.buildResumeSnapshot(resumeResult.thread);
           // Only set currentTurnId if the turn is truly in-progress AND the
@@ -1046,9 +1036,7 @@ export class CodexAdapter
           // turn is stale (it was in-progress in the dead process).
           const threadIsIdle = resumeSnapshot?.threadStatus === "idle";
           this.currentTurnId =
-            !threadIsIdle && resumeSnapshot?.lastTurn?.status === "inProgress"
-              ? resumeSnapshot.lastTurn.id
-              : null;
+            !threadIsIdle && resumeSnapshot?.lastTurn?.status === "inProgress" ? resumeSnapshot.lastTurn.id : null;
         } catch (err) {
           // Fresh or partially-initialized Codex threads may fail resume with
           // "no rollout found". Fall back to a fresh thread to avoid a stuck session.
@@ -1056,22 +1044,22 @@ export class CodexAdapter
           console.warn(
             `[codex-adapter] thread/resume failed for ${this.options.threadId}: ${err}. Starting a fresh thread.`,
           );
-          const threadResult = await this.transport.call("thread/start", {
+          const threadResult = (await this.transport.call("thread/start", {
             model: this.options.model,
             cwd: this.options.cwd,
             approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
             sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
-          }) as { thread: { id: string } };
+          })) as { thread: { id: string } };
           this.threadId = threadResult.thread.id;
         }
       } else {
         // Start a new thread
-        const threadResult = await this.transport.call("thread/start", {
+        const threadResult = (await this.transport.call("thread/start", {
           model: this.options.model,
           cwd: this.options.cwd,
           approvalPolicy: this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission),
           sandbox: this.options.sandbox || this.mapSandboxPolicy(this.options.approvalMode),
-        }) as { thread: { id: string } };
+        })) as { thread: { id: string } };
         this.threadId = threadResult.thread.id;
       }
 
@@ -1121,7 +1109,9 @@ export class CodexAdapter
       try {
         const rateLimitsResult = await this.transport.call("account/rateLimits/read", {});
         this.updateRateLimits(rateLimitsResult as Record<string, unknown>);
-      } catch { /* best-effort — don't fail init if rate limits fetch errors */ }
+      } catch {
+        /* best-effort — don't fail init if rate limits fetch errors */
+      }
 
       // Flush any messages that were queued during initialization
       if (this.pendingOutgoing.length > 0) {
@@ -1144,15 +1134,13 @@ export class CodexAdapter
 
   // ── Outgoing message handlers ───────────────────────────────────────────
 
-  private async handleOutgoingUserMessage(
-    msg: {
-      type: "user_message";
-      content: string;
-      images?: { media_type: string; data: string }[];
-      local_images?: string[];
-      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
-    },
-  ): Promise<void> {
+  private async handleOutgoingUserMessage(msg: {
+    type: "user_message";
+    content: string;
+    images?: { media_type: string; data: string }[];
+    local_images?: string[];
+    vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+  }): Promise<void> {
     // User message is the latest completed message before Codex starts reasoning.
     this.markMessageFinished(Date.now());
     if (!this.threadId) {
@@ -1172,10 +1160,10 @@ export class CodexAdapter
     }
 
     if (
-      isCompactSlashCommand(msg.content)
-      && !msg.images?.length
-      && !msg.local_images?.length
-      && !msg.vscodeSelection
+      isCompactSlashCommand(msg.content) &&
+      !msg.images?.length &&
+      !msg.local_images?.length &&
+      !msg.vscodeSelection
     ) {
       try {
         await this.transport.call("thread/compact/start", {
@@ -1227,9 +1215,10 @@ export class CodexAdapter
     input.push({ type: "text", text: msg.content, text_elements: [] });
     if (msg.vscodeSelection) {
       const selection = msg.vscodeSelection;
-      const selectionText = selection.startLine === selection.endLine
-        ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
-        : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+      const selectionText =
+        selection.startLine === selection.endLine
+          ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
+          : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
       input.push({ type: "text", text: selectionText, text_elements: [] });
     }
 
@@ -1251,15 +1240,13 @@ export class CodexAdapter
       input,
       cwd: this.options.cwd,
     };
-    const collaborationMode = this.collaborationModeSupported
-      ? this.buildCollaborationModeOverride()
-      : null;
+    const collaborationMode = this.collaborationModeSupported ? this.buildCollaborationModeOverride() : null;
     if (collaborationMode) {
       turnStartParams.collaborationMode = collaborationMode;
     }
 
     try {
-      const result = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+      const result = (await this.transport.call("turn/start", turnStartParams)) as { turn: { id: string } };
       this.currentTurnId = result.turn.id;
       this.turnStartedCb?.(result.turn.id);
     } catch (err) {
@@ -1268,11 +1255,9 @@ export class CodexAdapter
       if (collaborationMode && this.isCollaborationModeUnsupportedError(err)) {
         this.collaborationModeSupported = false;
         delete turnStartParams.collaborationMode;
-        console.warn(
-          `[codex-adapter] collaborationMode not supported; falling back for session ${this.sessionId}`,
-        );
+        console.warn(`[codex-adapter] collaborationMode not supported; falling back for session ${this.sessionId}`);
         try {
-          const retry = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+          const retry = (await this.transport.call("turn/start", turnStartParams)) as { turn: { id: string } };
           this.currentTurnId = retry.turn.id;
           this.turnStartedCb?.(retry.turn.id);
           return;
@@ -1291,9 +1276,7 @@ export class CodexAdapter
 
       const requeued = this.handleTurnStartDispatchFailure(msg);
       if (requeued && this.isTransportClosedError(err)) {
-        console.warn(
-          `[codex-adapter] turn/start transport closed; message re-queued for session ${this.sessionId}`,
-        );
+        console.warn(`[codex-adapter] turn/start transport closed; message re-queued for session ${this.sessionId}`);
         return;
       }
       this.emit({ type: "error", message: `Failed to start turn: ${err}` });
@@ -1301,7 +1284,11 @@ export class CodexAdapter
   }
 
   private buildCodexBatchInput(
-    entries: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>,
+    entries: Array<{
+      content: string;
+      local_images?: string[];
+      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+    }>,
   ): Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> {
     const input: Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> = [];
     for (const entry of entries) {
@@ -1313,22 +1300,25 @@ export class CodexAdapter
       input.push({ type: "text", text: entry.content, text_elements: [] });
       if (entry.vscodeSelection) {
         const selection = entry.vscodeSelection;
-        const selectionText = selection.startLine === selection.endLine
-          ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
-          : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+        const selectionText =
+          selection.startLine === selection.endLine
+            ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
+            : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
         input.push({ type: "text", text: selectionText, text_elements: [] });
       }
     }
     return input;
   }
 
-  private async handleOutgoingPendingBatchStart(
-    msg: {
-      type: "codex_start_pending";
-      pendingInputIds: string[];
-      inputs: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>;
-    },
-  ): Promise<void> {
+  private async handleOutgoingPendingBatchStart(msg: {
+    type: "codex_start_pending";
+    pendingInputIds: string[];
+    inputs: Array<{
+      content: string;
+      local_images?: string[];
+      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+    }>;
+  }): Promise<void> {
     if (!this.threadId) {
       this.emit({ type: "error", message: "No Codex thread started yet" });
       return;
@@ -1346,13 +1336,11 @@ export class CodexAdapter
       input,
       cwd: this.options.cwd,
     };
-    const collaborationMode = this.collaborationModeSupported
-      ? this.buildCollaborationModeOverride()
-      : null;
+    const collaborationMode = this.collaborationModeSupported ? this.buildCollaborationModeOverride() : null;
     if (collaborationMode) turnStartParams.collaborationMode = collaborationMode;
 
     try {
-      const result = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+      const result = (await this.transport.call("turn/start", turnStartParams)) as { turn: { id: string } };
       this.currentTurnId = result.turn.id;
       this.turnStartedCb?.(result.turn.id);
     } catch (err) {
@@ -1360,7 +1348,7 @@ export class CodexAdapter
         this.collaborationModeSupported = false;
         delete turnStartParams.collaborationMode;
         try {
-          const retry = await this.transport.call("turn/start", turnStartParams) as { turn: { id: string } };
+          const retry = (await this.transport.call("turn/start", turnStartParams)) as { turn: { id: string } };
           this.currentTurnId = retry.turn.id;
           this.turnStartedCb?.(retry.turn.id);
           return;
@@ -1377,25 +1365,27 @@ export class CodexAdapter
     }
   }
 
-  private async handleOutgoingPendingBatchSteer(
-    msg: {
-      type: "codex_steer_pending";
-      pendingInputIds: string[];
-      expectedTurnId: string;
-      inputs: Array<{ content: string; local_images?: string[]; vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata }>;
-    },
-  ): Promise<void> {
+  private async handleOutgoingPendingBatchSteer(msg: {
+    type: "codex_steer_pending";
+    pendingInputIds: string[];
+    expectedTurnId: string;
+    inputs: Array<{
+      content: string;
+      local_images?: string[];
+      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+    }>;
+  }): Promise<void> {
     if (!this.threadId) {
       this.emit({ type: "error", message: "No Codex thread started yet" });
       return;
     }
     const input = this.buildCodexBatchInput(msg.inputs);
     try {
-      const result = await this.transport.call("turn/steer", {
+      const result = (await this.transport.call("turn/steer", {
         threadId: this.threadId,
         input,
         expectedTurnId: msg.expectedTurnId,
-      }) as { turnId: string };
+      })) as { turnId: string };
       this.turnSteeredCb?.(result.turnId, msg.pendingInputIds);
     } catch (err) {
       this.turnSteerFailedCb?.(msg.pendingInputIds);
@@ -1403,9 +1393,12 @@ export class CodexAdapter
     }
   }
 
-  private async handleOutgoingPermissionResponse(
-    msg: { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown> },
-  ): Promise<void> {
+  private async handleOutgoingPermissionResponse(msg: {
+    type: "permission_response";
+    request_id: string;
+    behavior: "allow" | "deny";
+    updated_input?: Record<string, unknown>;
+  }): Promise<void> {
     const jsonRpcId = this.pendingApprovals.get(msg.request_id);
     if (jsonRpcId === undefined) {
       console.warn(`[codex-adapter] No pending approval for request_id=${msg.request_id}`);
@@ -1438,7 +1431,7 @@ export class CodexAdapter
       }
 
       // Convert browser answers (keyed by index "0","1",...) to Codex format (keyed by question ID)
-      const browserAnswers = msg.updated_input?.answers as Record<string, string> || {};
+      const browserAnswers = (msg.updated_input?.answers as Record<string, string>) || {};
       const codexAnswers: Record<string, { answers: string[] }> = {};
       for (let i = 0; i < questionIds.length; i++) {
         const answer = browserAnswers[String(i)];
@@ -1515,30 +1508,30 @@ export class CodexAdapter
       const statusEntries = await this.listAllMcpServerStatuses();
       const configMap = await this.readMcpServersConfig();
 
-      const names = new Set<string>([
-        ...statusEntries.map((s) => s.name),
-        ...Object.keys(configMap),
-      ]);
+      const names = new Set<string>([...statusEntries.map((s) => s.name), ...Object.keys(configMap)]);
 
       const statusByName = new Map(statusEntries.map((s) => [s.name, s]));
-      const servers: McpServerDetail[] = Array.from(names).sort().map((name) => {
-        const status = statusByName.get(name);
-        const config = this.toMcpServerConfig(configMap[name]);
-        const isEnabled = this.isMcpServerEnabled(configMap[name]);
-        const serverStatus: McpServerDetail["status"] =
-          !isEnabled
+      const servers: McpServerDetail[] = Array.from(names)
+        .sort()
+        .map((name) => {
+          const status = statusByName.get(name);
+          const config = this.toMcpServerConfig(configMap[name]);
+          const isEnabled = this.isMcpServerEnabled(configMap[name]);
+          const serverStatus: McpServerDetail["status"] = !isEnabled
             ? "disabled"
-            : (status?.authStatus === "notLoggedIn" ? "failed" : "connected");
+            : status?.authStatus === "notLoggedIn"
+              ? "failed"
+              : "connected";
 
-        return {
-          name,
-          status: serverStatus,
-          error: status?.authStatus === "notLoggedIn" ? "MCP server requires login" : undefined,
-          config,
-          scope: "user",
-          tools: this.mapMcpTools(status?.tools),
-        };
-      });
+          return {
+            name,
+            status: serverStatus,
+            error: status?.authStatus === "notLoggedIn" ? "MCP server requires login" : undefined,
+            config,
+            scope: "user",
+            tools: this.mapMcpTools(status?.tools),
+          };
+        });
 
       this.emit({ type: "mcp_status", servers });
     } catch (err) {
@@ -1620,107 +1613,107 @@ export class CodexAdapter
     // Verbose per-notification logging removed — use protocol recordings for debugging.
 
     try {
-    switch (method) {
-      case "item/started":
-        this.handleItemStarted(params);
-        break;
-      case "codex/event/patch_apply_begin":
-      case "codex/event/patch_apply_end":
-        this.cachePatchApplyChanges(params);
-        break;
-      case "item/agentMessage/delta":
-        this.handleAgentMessageDelta(params);
-        break;
-      case "item/commandExecution/outputDelta":
-        // Streaming command output — emit as tool_progress so the browser
-        // can render live elapsed time and incremental terminal output.
-        this.emitCommandProgress(params);
-        break;
-      case "item/fileChange/outputDelta":
-        // Streaming file change output. Same as above.
-        break;
-      case "item/reasoning/textDelta":
-      case "item/reasoning/summaryTextDelta":
-      case "item/reasoning/summaryPartAdded":
-        this.handleReasoningDelta(params);
-        break;
-      case "item/mcpToolCall/progress": {
-        // MCP tool call progress — map to tool_progress
-        const itemId = params.itemId as string | undefined;
-        const threadId = params.threadId as string | undefined;
-        if (itemId) {
-          this.emit({
-            type: "tool_progress",
-            tool_use_id: itemId,
-            tool_name: "mcp_tool_call",
-            elapsed_time_seconds: 0,
-          });
+      switch (method) {
+        case "item/started":
+          this.handleItemStarted(params);
+          break;
+        case "codex/event/patch_apply_begin":
+        case "codex/event/patch_apply_end":
+          this.cachePatchApplyChanges(params);
+          break;
+        case "item/agentMessage/delta":
+          this.handleAgentMessageDelta(params);
+          break;
+        case "item/commandExecution/outputDelta":
+          // Streaming command output — emit as tool_progress so the browser
+          // can render live elapsed time and incremental terminal output.
+          this.emitCommandProgress(params);
+          break;
+        case "item/fileChange/outputDelta":
+          // Streaming file change output. Same as above.
+          break;
+        case "item/reasoning/textDelta":
+        case "item/reasoning/summaryTextDelta":
+        case "item/reasoning/summaryPartAdded":
+          this.handleReasoningDelta(params);
+          break;
+        case "item/mcpToolCall/progress": {
+          // MCP tool call progress — map to tool_progress
+          const itemId = params.itemId as string | undefined;
+          const threadId = params.threadId as string | undefined;
+          if (itemId) {
+            this.emit({
+              type: "tool_progress",
+              tool_use_id: itemId,
+              tool_name: "mcp_tool_call",
+              elapsed_time_seconds: 0,
+            });
+          }
+          break;
         }
-        break;
-      }
-      case "item/plan/delta":
-        this.emitPlanTodoWrite(params, "item_plan_delta");
-        break;
-      case "item/updated":
-        this.handleItemUpdated(params);
-        break;
-      case "item/completed":
-        this.handleItemCompleted(params);
-        break;
-      case "rawResponseItem/completed":
-        // Raw model response — internal, not needed for UI.
-        break;
-      case "turn/started":
-        // Turn started, nothing to emit
-        break;
-      case "turn/completed":
-        this.handleTurnCompleted(params);
-        break;
-      case "turn/plan/updated":
-        this.emitPlanTodoWrite(params, "turn_plan_updated");
-        break;
-      case "codex/event/task_complete":
-        this.handleSubagentTaskComplete(params);
-        break;
-      case "turn/diff/updated":
-        // Could show diff, but not needed for MVP
-        break;
-      case "thread/started":
-        // Thread started after init — nothing to emit.
-        break;
-      case "thread/status/changed":
-        this.handleThreadStatusChanged(params);
-        break;
-      case "thread/tokenUsage/updated":
-        this.handleTokenUsageUpdated(params);
-        break;
-      case "account/updated":
-      case "account/login/completed":
-        // Auth events
-        break;
-      case "account/rateLimits/updated":
-        this.updateRateLimits(params);
-        break;
-      case "codex/event/stream_error": {
-        const msg = params.msg as { message?: string } | undefined;
-        if (msg?.message) {
-          console.log(`[codex-adapter] Stream error: ${msg.message}`);
+        case "item/plan/delta":
+          this.emitPlanTodoWrite(params, "item_plan_delta");
+          break;
+        case "item/updated":
+          this.handleItemUpdated(params);
+          break;
+        case "item/completed":
+          this.handleItemCompleted(params);
+          break;
+        case "rawResponseItem/completed":
+          // Raw model response — internal, not needed for UI.
+          break;
+        case "turn/started":
+          // Turn started, nothing to emit
+          break;
+        case "turn/completed":
+          this.handleTurnCompleted(params);
+          break;
+        case "turn/plan/updated":
+          this.emitPlanTodoWrite(params, "turn_plan_updated");
+          break;
+        case "codex/event/task_complete":
+          this.handleSubagentTaskComplete(params);
+          break;
+        case "turn/diff/updated":
+          // Could show diff, but not needed for MVP
+          break;
+        case "thread/started":
+          // Thread started after init — nothing to emit.
+          break;
+        case "thread/status/changed":
+          this.handleThreadStatusChanged(params);
+          break;
+        case "thread/tokenUsage/updated":
+          this.handleTokenUsageUpdated(params);
+          break;
+        case "account/updated":
+        case "account/login/completed":
+          // Auth events
+          break;
+        case "account/rateLimits/updated":
+          this.updateRateLimits(params);
+          break;
+        case "codex/event/stream_error": {
+          const msg = params.msg as { message?: string } | undefined;
+          if (msg?.message) {
+            console.log(`[codex-adapter] Stream error: ${msg.message}`);
+          }
+          break;
         }
-        break;
-      }
-      case "codex/event/error": {
-        const msg = params.msg as { message?: string } | undefined;
-        if (msg?.message) {
-          console.error(`[codex-adapter] Codex error: ${msg.message}`);
-          this.emit({ type: "error", message: msg.message });
+        case "codex/event/error": {
+          const msg = params.msg as { message?: string } | undefined;
+          if (msg?.message) {
+            console.error(`[codex-adapter] Codex error: ${msg.message}`);
+            this.emit({ type: "error", message: msg.message });
+          }
+          break;
         }
-        break;
+        default:
+          // Unknown notification, log for debugging
+          // Silently ignore — protocol recordings capture all messages for debugging.
+          break;
       }
-      default:
-        // Unknown notification, log for debugging
-        // Silently ignore — protocol recordings capture all messages for debugging.
-        break;
-    }
     } catch (err) {
       console.error(`[codex-adapter] Error handling notification ${method}:`, err);
     }
@@ -1749,11 +1742,11 @@ export class CodexAdapter
   private getThreadIdFromRecord(record: Record<string, unknown> | undefined): string | null {
     if (!record) return null;
     const threadId = toSafeText(
-      record.threadId
-      ?? record.senderThreadId
-      ?? record.conversationId
-      ?? record.conversation_id
-      ?? record.new_thread_id,
+      record.threadId ??
+        record.senderThreadId ??
+        record.conversationId ??
+        record.conversation_id ??
+        record.new_thread_id,
     ).trim();
     return threadId || null;
   }
@@ -1814,14 +1807,15 @@ export class CodexAdapter
     const toolUseId = this.getParentToolUseIdForThreadId(threadId);
     if (!toolUseId) return;
 
-    const resultText = toSafeText(
-      msg?.last_agent_message
-      ?? params.last_agent_message
-      ?? msg?.summary
-      ?? params.summary
-      ?? msg?.message
-      ?? params.message,
-    ).trim() || "Subagent completed";
+    const resultText =
+      toSafeText(
+        msg?.last_agent_message ??
+          params.last_agent_message ??
+          msg?.summary ??
+          params.summary ??
+          msg?.message ??
+          params.message,
+      ).trim() || "Subagent completed";
 
     const parentToolUseId = this.pendingSubagentToolUsesByCallId.get(toolUseId)?.parentToolUseId ?? null;
     this.emitToolResult(toolUseId, resultText, false, parentToolUseId);
@@ -1873,19 +1867,20 @@ export class CodexAdapter
 
     const command = params.command as string | string[] | undefined;
     const parsedCmd = params.parsedCmd as string | undefined;
-    const commandStr = (typeof parsedCmd === "string" && parsedCmd.trim())
-      ? parsedCmd
-      : formatCommandForDisplay(command, params.commandActions);
+    const commandStr =
+      typeof parsedCmd === "string" && parsedCmd.trim()
+        ? parsedCmd
+        : formatCommandForDisplay(command, params.commandActions);
 
     const perm: PermissionRequest = {
       request_id: requestId,
       tool_name: "Bash",
       input: {
         command: commandStr,
-        cwd: params.cwd as string || this.options.cwd || "",
+        cwd: (params.cwd as string) || this.options.cwd || "",
       },
-      description: params.reason as string || `Execute: ${commandStr}`,
-      tool_use_id: params.itemId as string || requestId,
+      description: (params.reason as string) || `Execute: ${commandStr}`,
+      tool_use_id: (params.itemId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -1897,7 +1892,7 @@ export class CodexAdapter
     this.pendingApprovals.set(requestId, jsonRpcId);
 
     // Extract file paths from changes array if available
-    const rawChanges = Array.isArray(params.changes) ? params.changes as Array<Record<string, unknown>> : [];
+    const rawChanges = Array.isArray(params.changes) ? (params.changes as Array<Record<string, unknown>>) : [];
     const changes = mapFileChangesForTool(rawChanges);
     const filePaths = changes.map((c) => c.path).filter(Boolean);
     const fileList = filePaths.length > 0 ? filePaths.join(", ") : undefined;
@@ -1906,13 +1901,14 @@ export class CodexAdapter
       request_id: requestId,
       tool_name: "Edit",
       input: {
-        description: params.reason as string || "File changes pending approval",
+        description: (params.reason as string) || "File changes pending approval",
         ...(filePaths[0] ? { file_path: filePaths[0] } : {}),
         ...(filePaths.length > 0 && { file_paths: filePaths }),
         ...(changes.length > 0 && { changes }),
       },
-      description: params.reason as string || (fileList ? `Codex wants to modify: ${fileList}` : "Codex wants to modify files"),
-      tool_use_id: params.itemId as string || requestId,
+      description:
+        (params.reason as string) || (fileList ? `Codex wants to modify: ${fileList}` : "Codex wants to modify files"),
+      tool_use_id: (params.itemId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -1923,16 +1919,16 @@ export class CodexAdapter
     const requestId = `codex-approval-${randomUUID()}`;
     this.pendingApprovals.set(requestId, jsonRpcId);
 
-    const server = params.server as string || "unknown";
-    const tool = params.tool as string || "unknown";
-    const args = params.arguments as Record<string, unknown> || {};
+    const server = (params.server as string) || "unknown";
+    const tool = (params.tool as string) || "unknown";
+    const args = (params.arguments as Record<string, unknown>) || {};
 
     const perm: PermissionRequest = {
       request_id: requestId,
       tool_name: `mcp:${server}:${tool}`,
       input: args,
-      description: params.reason as string || `MCP tool call: ${server}/${tool}`,
-      tool_use_id: params.itemId as string || requestId,
+      description: (params.reason as string) || `MCP tool call: ${server}/${tool}`,
+      tool_use_id: (params.itemId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -1940,9 +1936,9 @@ export class CodexAdapter
   }
 
   private handleDynamicToolCall(jsonRpcId: number, params: Record<string, unknown>): void {
-    const callId = params.callId as string || `dynamic-${randomUUID()}`;
-    const toolName = params.tool as string || "unknown_dynamic_tool";
-    const toolArgs = params.arguments as Record<string, unknown> || {};
+    const callId = (params.callId as string) || `dynamic-${randomUUID()}`;
+    const toolName = (params.tool as string) || "unknown_dynamic_tool";
+    const toolArgs = (params.arguments as Record<string, unknown>) || {};
     const requestId = `codex-dynamic-${randomUUID()}`;
     const parentToolUseId = this.resolveParentToolUseId(params, callId);
 
@@ -2013,13 +2009,12 @@ export class CodexAdapter
     }
 
     const rawContentItems = msg.updated_input?.contentItems;
-    const contentItems = Array.isArray(rawContentItems) && rawContentItems.length > 0
-      ? rawContentItems
-      : [{ type: "inputText", text: String(msg.updated_input?.text || "Dynamic tool call completed") }];
+    const contentItems =
+      Array.isArray(rawContentItems) && rawContentItems.length > 0
+        ? rawContentItems
+        : [{ type: "inputText", text: String(msg.updated_input?.text || "Dynamic tool call completed") }];
 
-    const success = typeof msg.updated_input?.success === "boolean"
-      ? msg.updated_input.success
-      : true;
+    const success = typeof msg.updated_input?.success === "boolean" ? msg.updated_input.success : true;
 
     const structuredContent = msg.updated_input?.structuredContent;
 
@@ -2034,14 +2029,21 @@ export class CodexAdapter
     const requestId = `codex-userinput-${randomUUID()}`;
     this.pendingApprovals.set(requestId, jsonRpcId);
 
-    const questions = params.questions as Array<{
-      id: string; header: string; question: string;
-      isOther: boolean; isSecret: boolean;
-      options: Array<{ label: string; description: string }> | null;
-    }> || [];
+    const questions =
+      (params.questions as Array<{
+        id: string;
+        header: string;
+        question: string;
+        isOther: boolean;
+        isSecret: boolean;
+        options: Array<{ label: string; description: string }> | null;
+      }>) || [];
 
     // Store question IDs so we can map browser indices back to Codex IDs in the response
-    this.pendingUserInputQuestionIds.set(requestId, questions.map((q) => q.id));
+    this.pendingUserInputQuestionIds.set(
+      requestId,
+      questions.map((q) => q.id),
+    );
 
     // Convert to our AskUserQuestion format (matches AskUserQuestionDisplay component)
     const perm: PermissionRequest = {
@@ -2055,7 +2057,7 @@ export class CodexAdapter
         })),
       },
       description: questions[0]?.question || "User input requested",
-      tool_use_id: params.itemId as string || requestId,
+      tool_use_id: (params.itemId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -2067,7 +2069,7 @@ export class CodexAdapter
     this.pendingApprovals.set(requestId, jsonRpcId);
     this.pendingReviewDecisions.add(requestId);
 
-    const fileChanges = params.fileChanges as Record<string, unknown> || {};
+    const fileChanges = (params.fileChanges as Record<string, unknown>) || {};
     const changes = mapFileChangesObjectForTool(fileChanges);
     const filePaths = changes.map((c) => c.path).filter(Boolean);
     const reason = params.reason as string | null;
@@ -2081,10 +2083,10 @@ export class CodexAdapter
         ...(changes.length > 0 ? { changes } : {}),
         ...(reason && { reason }),
       },
-      description: reason || (filePaths.length > 0
-        ? `Codex wants to modify: ${filePaths.join(", ")}`
-        : "Codex wants to modify files"),
-      tool_use_id: params.callId as string || requestId,
+      description:
+        reason ||
+        (filePaths.length > 0 ? `Codex wants to modify: ${filePaths.join(", ")}` : "Codex wants to modify files"),
+      tool_use_id: (params.callId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -2098,7 +2100,7 @@ export class CodexAdapter
 
     const command = params.command as string | string[] | undefined;
     const commandStr = formatCommandForDisplay(command, params.commandActions);
-    const cwd = params.cwd as string || this.options.cwd || "";
+    const cwd = (params.cwd as string) || this.options.cwd || "";
     const reason = params.reason as string | null;
 
     const perm: PermissionRequest = {
@@ -2109,7 +2111,7 @@ export class CodexAdapter
         cwd,
       },
       description: reason || `Execute: ${commandStr}`,
-      tool_use_id: params.callId as string || requestId,
+      tool_use_id: (params.callId as string) || requestId,
       timestamp: Date.now(),
     };
 
@@ -2249,13 +2251,16 @@ export class CodexAdapter
       this.reasoningTextByItemId.set(itemId, "");
     }
 
-    const delta = typeof params.delta === "string"
-      ? params.delta
-      : typeof params.text === "string"
-        ? params.text
-        : (params.part && typeof params.part === "object" && typeof (params.part as Record<string, unknown>).text === "string")
-          ? (params.part as Record<string, unknown>).text as string
-          : undefined;
+    const delta =
+      typeof params.delta === "string"
+        ? params.delta
+        : typeof params.text === "string"
+          ? params.text
+          : params.part &&
+              typeof params.part === "object" &&
+              typeof (params.part as Record<string, unknown>).text === "string"
+            ? ((params.part as Record<string, unknown>).text as string)
+            : undefined;
     if (delta) {
       const current = this.reasoningTextByItemId.get(itemId) || "";
       this.reasoningTextByItemId.set(itemId, current + delta);
@@ -2300,12 +2305,13 @@ export class CodexAdapter
     const status = toSafeText(value).toLowerCase();
     if (status.includes("done") || status.includes("complete") || status.includes("finished")) return "completed";
     if (
-      status.includes("progress")
-      || status.includes("doing")
-      || status.includes("active")
-      || status.includes("running")
-      || status.includes("current")
-    ) return "in_progress";
+      status.includes("progress") ||
+      status.includes("doing") ||
+      status.includes("active") ||
+      status.includes("running") ||
+      status.includes("current")
+    )
+      return "in_progress";
     return "pending";
   }
 
@@ -2379,9 +2385,14 @@ export class CodexAdapter
     }
 
     const toolUseId = `codex-plan-${key}-${++this.planToolUseSeq}`;
-    this.emitToolUseTracked(toolUseId, "TodoWrite", { todos }, {
-      parentToolUseId: this.resolveParentToolUseId(params, toolUseId),
-    });
+    this.emitToolUseTracked(
+      toolUseId,
+      "TodoWrite",
+      { todos },
+      {
+        parentToolUseId: this.resolveParentToolUseId(params, toolUseId),
+      },
+    );
   }
 
   private handleItemCompleted(params: Record<string, unknown>): void {
@@ -2457,11 +2468,7 @@ export class CodexAdapter
           "formatted_output",
           "output",
         ]);
-        const stderr = firstNonEmptyString(cmdRecord, [
-          "stderr",
-          "errorOutput",
-          "error_output",
-        ]);
+        const stderr = firstNonEmptyString(cmdRecord, ["stderr", "errorOutput", "error_output"]);
         const directOutput = [output, stderr].filter(Boolean).join("\n").trim();
         const combinedOutput = directOutput || streamedOutput;
         const exitCode = typeof cmd.exitCode === "number" ? cmd.exitCode : 0;
@@ -2481,9 +2488,7 @@ export class CodexAdapter
         }
         // Append duration if available and significant (>100ms)
         if (durationMs !== undefined && durationMs >= 100) {
-          const durationStr = durationMs >= 1000
-            ? `${(durationMs / 1000).toFixed(1)}s`
-            : `${durationMs}ms`;
+          const durationStr = durationMs >= 1000 ? `${(durationMs / 1000).toFixed(1)}s` : `${durationMs}ms`;
           resultText = `${resultText}\n(${durationStr})`;
         }
 
@@ -2497,10 +2502,15 @@ export class CodexAdapter
         const firstChange = changes[0];
         const toolName = safeKind(firstChange?.kind) === "create" ? "Write" : "Edit";
         // Ensure tool_use was emitted
-        this.ensureToolUseEmitted(item.id, toolName, {
-          file_path: firstChange?.path || "",
-          changes,
-        }, { parentToolUseId });
+        this.ensureToolUseEmitted(
+          item.id,
+          toolName,
+          {
+            file_path: firstChange?.path || "",
+            changes,
+          },
+          { parentToolUseId },
+        );
         const summary = changes.map((c) => `${safeKind(c.kind)}: ${c.path}`).join("\n");
         this.emitToolResult(item.id, summary || "File changes applied", fc.status === "failed", parentToolUseId);
         this.patchChangesByCallId.delete(item.id);
@@ -2511,7 +2521,12 @@ export class CodexAdapter
         const mcp = item as CodexMcpToolCallItem;
         // Ensure tool_use was emitted
         this.ensureToolUseEmitted(item.id, `mcp:${mcp.server}:${mcp.tool}`, mcp.arguments || {}, { parentToolUseId });
-        this.emitToolResult(item.id, mcp.result || mcp.error || "MCP tool call completed", mcp.status === "failed", parentToolUseId);
+        this.emitToolResult(
+          item.id,
+          mcp.result || mcp.error || "MCP tool call completed",
+          mcp.status === "failed",
+          parentToolUseId,
+        );
         break;
       }
 
@@ -2551,7 +2566,13 @@ export class CodexAdapter
               type: "message",
               role: "assistant",
               model: this.options.model || "",
-              content: [{ type: "thinking", thinking: thinkingText, ...(thinkingTimeMs !== undefined ? { thinking_time_ms: thinkingTimeMs } : {}) }],
+              content: [
+                {
+                  type: "thinking",
+                  thinking: thinkingText,
+                  ...(thinkingTimeMs !== undefined ? { thinking_time_ms: thinkingTimeMs } : {}),
+                },
+              ],
               stop_reason: null,
               usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
             },
@@ -2679,9 +2700,7 @@ export class CodexAdapter
       const usedRaw = Number(raw.usedPercent ?? 0);
       // Codex has been observed to report this as either 0..100 or 0..1.
       // Use strict < 1 to avoid treating usedPercent:1 (1%) as 0..1 format → 100%.
-      const normalizedPercent = Number.isFinite(usedRaw)
-        ? (usedRaw > 0 && usedRaw < 1 ? usedRaw * 100 : usedRaw)
-        : 0;
+      const normalizedPercent = Number.isFinite(usedRaw) ? (usedRaw > 0 && usedRaw < 1 ? usedRaw * 100 : usedRaw) : 0;
       const usedPercent = Math.max(0, Math.min(100, normalizedPercent));
       const windowDurationMins = Number(raw.windowDurationMins ?? 0);
       let resetsAt = 0;
@@ -2728,10 +2747,10 @@ export class CodexAdapter
     }
 
     this._rateLimits =
-      this.rateLimitsByLimitId.get("codex")
-      ?? (directLimitId ? this.rateLimitsByLimitId.get(directLimitId) ?? null : null)
-      ?? directNormalized
-      ?? null;
+      this.rateLimitsByLimitId.get("codex") ??
+      (directLimitId ? (this.rateLimitsByLimitId.get(directLimitId) ?? null) : null) ??
+      directNormalized ??
+      null;
 
     if (!this._rateLimits) return;
 
@@ -2965,18 +2984,19 @@ export class CodexAdapter
     return `codex-${kind}-${randomUUID()}`;
   }
 
-  private buildResumeSnapshot(
-    thread: Record<string, unknown> & { id: string },
-  ): CodexResumeSnapshot | null {
+  private buildResumeSnapshot(thread: Record<string, unknown> & { id: string }): CodexResumeSnapshot | null {
     const rawTurns = Array.isArray(thread.turns) ? thread.turns : [];
     const turns = rawTurns.filter((t): t is Record<string, unknown> => !!t && typeof t === "object");
     const last = turns.length > 0 ? turns[turns.length - 1] : null;
 
     // Extract thread-level status (e.g. {type: "idle"} or {type: "active"})
     const rawStatus = thread.status;
-    const threadStatus = typeof rawStatus === "object" && rawStatus !== null
-      ? String((rawStatus as Record<string, unknown>).type ?? "")
-      : typeof rawStatus === "string" ? rawStatus : null;
+    const threadStatus =
+      typeof rawStatus === "object" && rawStatus !== null
+        ? String((rawStatus as Record<string, unknown>).type ?? "")
+        : typeof rawStatus === "string"
+          ? rawStatus
+          : null;
 
     if (!last) {
       return {
@@ -3029,9 +3049,10 @@ export class CodexAdapter
     }
   }
 
-  private buildCollaborationModeOverride():
-    { mode: "default" | "plan"; settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null } }
-    | null {
+  private buildCollaborationModeOverride(): {
+    mode: "default" | "plan";
+    settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null };
+  } | null {
     const mode = this.options.approvalMode === "plan" ? "plan" : "default";
     return {
       mode,
@@ -3052,9 +3073,13 @@ export class CodexAdapter
 
   private isCollaborationModeUnsupportedError(err: unknown): boolean {
     const text = String(err).toLowerCase();
-    return text.includes("collaborationmode")
-      && (text.includes("unknown field") || text.includes("invalid params")
-        || text.includes("-32602") || text.includes("experimentalapi"));
+    return (
+      text.includes("collaborationmode") &&
+      (text.includes("unknown field") ||
+        text.includes("invalid params") ||
+        text.includes("-32602") ||
+        text.includes("experimentalapi"))
+    );
   }
 
   private isTransportClosedError(err: unknown): boolean {
@@ -3073,10 +3098,10 @@ export class CodexAdapter
     let page = 0;
 
     while (page < 50) {
-      const response = await this.transport.call("mcpServerStatus/list", {
+      const response = (await this.transport.call("mcpServerStatus/list", {
         cursor,
         limit: 100,
-      }) as CodexMcpStatusListResponse;
+      })) as CodexMcpStatusListResponse;
       if (Array.isArray(response.data)) {
         out.push(...response.data);
       }
@@ -3089,7 +3114,7 @@ export class CodexAdapter
   }
 
   private async readMcpServersConfig(): Promise<Record<string, unknown>> {
-    const response = await this.transport.call("config/read", {}) as {
+    const response = (await this.transport.call("config/read", {})) as {
       config?: Record<string, unknown>;
     };
     const config = this.asRecord(response?.config) || {};
@@ -3107,16 +3132,12 @@ export class CodexAdapter
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : null;
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
   }
 
   private toMcpServerConfig(value: unknown): McpServerConfig {
     const cfg = this.asRecord(value) || {};
-    const args = Array.isArray(cfg.args)
-      ? cfg.args.filter((a): a is string => typeof a === "string")
-      : undefined;
+    const args = Array.isArray(cfg.args) ? cfg.args.filter((a): a is string => typeof a === "string") : undefined;
     const env = this.asRecord(cfg.env) as Record<string, string> | null;
 
     let type: McpServerConfig["type"] = "sdk";
@@ -3159,24 +3180,20 @@ export class CodexAdapter
     if (typeof cfg.required === "boolean") out.required = cfg.required;
 
     const env = this.asRecord(cfg.env);
-    if (env) out.env = Object.fromEntries(
-      Object.entries(env).filter(([, v]) => typeof v === "string"),
-    );
+    if (env) out.env = Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === "string"));
 
     const envHttpHeaders = this.asRecord(cfg.env_http_headers);
-    if (envHttpHeaders) out.env_http_headers = Object.fromEntries(
-      Object.entries(envHttpHeaders).filter(([, v]) => typeof v === "string"),
-    );
+    if (envHttpHeaders)
+      out.env_http_headers = Object.fromEntries(
+        Object.entries(envHttpHeaders).filter(([, v]) => typeof v === "string"),
+      );
 
     const httpHeaders = this.asRecord(cfg.http_headers);
-    if (httpHeaders) out.http_headers = Object.fromEntries(
-      Object.entries(httpHeaders).filter(([, v]) => typeof v === "string"),
-    );
+    if (httpHeaders)
+      out.http_headers = Object.fromEntries(Object.entries(httpHeaders).filter(([, v]) => typeof v === "string"));
 
     const asStringArray = (arr: unknown): string[] | undefined =>
-      Array.isArray(arr)
-        ? arr.filter((x): x is string => typeof x === "string")
-        : undefined;
+      Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : undefined;
 
     const disabledTools = asStringArray(cfg.disabled_tools);
     if (disabledTools) out.disabled_tools = disabledTools;
@@ -3202,11 +3219,13 @@ export class CodexAdapter
     if (!tools) return [];
     return Object.entries(tools).map(([key, tool]) => {
       const ann = this.asRecord(tool.annotations);
-      const annotations = ann ? {
-        readOnly: (ann.readOnly ?? ann.readOnlyHint) === true,
-        destructive: (ann.destructive ?? ann.destructiveHint) === true,
-        openWorld: (ann.openWorld ?? ann.openWorldHint) === true,
-      } : undefined;
+      const annotations = ann
+        ? {
+            readOnly: (ann.readOnly ?? ann.readOnlyHint) === true,
+            destructive: (ann.destructive ?? ann.destructiveHint) === true,
+            openWorld: (ann.openWorld ?? ann.openWorldHint) === true,
+          }
+        : undefined;
 
       return {
         name: typeof tool.name === "string" ? tool.name : key,

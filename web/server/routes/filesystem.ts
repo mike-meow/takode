@@ -49,9 +49,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
     // Only report cwd if the user launched companion from a real project directory
     // (not from the package root or the home directory itself)
     const packageRoot = process.env.__COMPANION_PACKAGE_ROOT;
-    const isProjectDir =
-      cwd !== home &&
-      (!packageRoot || !cwd.startsWith(packageRoot));
+    const isProjectDir = cwd !== home && (!packageRoot || !cwd.startsWith(packageRoot));
     return c.json({ home, cwd: isProjectDir ? cwd : home });
   });
 
@@ -76,8 +74,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
         const entries = await readdir(dir, { withFileTypes: true });
         const nodes: TreeNode[] = [];
         for (const entry of entries) {
-          if (entry.name.startsWith(".") || entry.name === "node_modules")
-            continue;
+          if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
           const fullPath = join(dir, entry.name);
           if (entry.isDirectory()) {
             const children = await buildTree(fullPath, depth + 1);
@@ -118,10 +115,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
       const content = await readFile(absPath, "utf-8");
       return c.json({ path: absPath, content });
     } catch (e: unknown) {
-      return c.json(
-        { error: e instanceof Error ? e.message : "Cannot read file" },
-        404,
-      );
+      return c.json({ error: e instanceof Error ? e.message : "Cannot read file" }, 404);
     }
   });
 
@@ -156,10 +150,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
         "Cache-Control": "private, max-age=30",
       });
     } catch (e: unknown) {
-      return c.json(
-        { error: e instanceof Error ? e.message : "Cannot read image file" },
-        404,
-      );
+      return c.json({ error: e instanceof Error ? e.message : "Cannot read image file" }, 404);
     }
   });
 
@@ -175,10 +166,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
       await writeFile(absPath, content, "utf-8");
       return c.json({ ok: true, path: absPath });
     } catch (e: unknown) {
-      return c.json(
-        { error: e instanceof Error ? e.message : "Cannot write file" },
-        500,
-      );
+      return c.json({ error: e instanceof Error ? e.message : "Cannot write file" }, 500);
     }
   });
 
@@ -192,7 +180,8 @@ export function createFilesystemRoutes(ctx: RouteContext) {
     const absPath = resolve(filePath);
     try {
       const repoRoot = await execAsync("git rev-parse --show-toplevel", dirname(absPath));
-      const relPath = (await execAsync(`git -C "${repoRoot}" ls-files --full-name -- "${absPath}"`, repoRoot)) || absPath;
+      const relPath =
+        (await execAsync(`git -C "${repoRoot}" ls-files --full-name -- "${absPath}"`, repoRoot)) || absPath;
 
       let diff = "";
       try {
@@ -218,10 +207,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
         const escapedRelPath = relPath.replace(/[\\`"$]/g, "\\$&");
 
         try {
-          const baseContent = await execCaptureStdoutAsync(
-            `git show ${base}:"${escapedRelPath}"`,
-            repoRoot,
-          );
+          const baseContent = await execCaptureStdoutAsync(`git show ${base}:"${escapedRelPath}"`, repoRoot);
           if (Buffer.byteLength(baseContent, "utf-8") <= 1024 * 1024) {
             oldText = baseContent.replace(/\r\n/g, "\n");
           }
@@ -277,14 +263,9 @@ export function createFilesystemRoutes(ctx: RouteContext) {
     try {
       // git diff --numstat returns: "additions\tdeletions\tfilepath" per line
       const rootPrefix = `${repoRoot}/`;
-      const relFiles = body.files.map((f) =>
-        f.startsWith(rootPrefix) ? f.slice(rootPrefix.length) : f,
-      );
+      const relFiles = body.files.map((f) => (f.startsWith(rootPrefix) ? f.slice(rootPrefix.length) : f));
       const fileArgs = relFiles.map((f) => `"${f}"`).join(" ");
-      const raw = await execCaptureStdoutAsync(
-        `git diff --numstat ${body.base} -- ${fileArgs}`,
-        repoRoot,
-      );
+      const raw = await execCaptureStdoutAsync(`git diff --numstat ${body.base} -- ${fileArgs}`, repoRoot);
 
       const stats: Record<string, { additions: number; deletions: number }> = {};
       for (const line of raw.split("\n")) {
@@ -330,10 +311,7 @@ export function createFilesystemRoutes(ctx: RouteContext) {
     try {
       // --no-optional-locks avoids NFS lock contention on .git/index.lock
       // No -M flag: rename detection is too expensive on NFS (reads full file contents)
-      const raw = await execCaptureStdoutAsync(
-        `git --no-optional-locks diff --name-status ${base}`,
-        repoRoot,
-      );
+      const raw = await execCaptureStdoutAsync(`git --no-optional-locks diff --name-status ${base}`, repoRoot);
 
       const files: Array<{
         path: string;
@@ -415,13 +393,9 @@ export function createFilesystemRoutes(ctx: RouteContext) {
       await writeFile(absPath, content, "utf-8");
       return c.json({ ok: true, path: absPath });
     } catch (e: unknown) {
-      return c.json(
-        { error: e instanceof Error ? e.message : "Cannot write file" },
-        500,
-      );
+      return c.json({ error: e instanceof Error ? e.message : "Cannot write file" }, 500);
     }
   });
-
 
   // ─── File search for @ mentions ─────────────────────────────────
 
@@ -485,7 +459,9 @@ export function createFilesystemRoutes(ctx: RouteContext) {
    * Used by the Composer to inject file context before sending a user message.
    */
   api.post("/fs/resolve-mentions", async (c) => {
-    const body = await c.req.json<{ mentions: Array<{ path: string; startLine?: number; endLine?: number }> }>().catch(() => null);
+    const body = await c.req
+      .json<{ mentions: Array<{ path: string; startLine?: number; endLine?: number }> }>()
+      .catch(() => null);
     if (!body?.mentions?.length) return c.json({ error: "mentions[] required" }, 400);
 
     const resolved = await Promise.all(

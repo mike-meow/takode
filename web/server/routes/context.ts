@@ -7,14 +7,9 @@ import type { PerfTracer } from "../perf-tracer.js";
 
 export type ResolvedSession = NonNullable<ReturnType<CliLauncher["getSession"]>>;
 
-export type RequiredAuthResult =
-  | { callerId: string; caller: ResolvedSession }
-  | { response: Response };
+export type RequiredAuthResult = { callerId: string; caller: ResolvedSession } | { response: Response };
 
-export type OptionalAuthResult =
-  | { callerId: string; caller: ResolvedSession }
-  | { response: Response }
-  | null;
+export type OptionalAuthResult = { callerId: string; caller: ResolvedSession } | { response: Response } | null;
 
 export type UiMode = "plan" | "agent";
 
@@ -51,9 +46,7 @@ export interface RouteContext {
 
   ROUTES_DIR: string;
   WEB_DIR: string;
-  buildOrchestratorSystemPrompt: (
-    backend: "claude" | "codex" | "claude-sdk",
-  ) => string;
+  buildOrchestratorSystemPrompt: (backend: "claude" | "codex" | "claude-sdk") => string;
   resolveInitialModeState: (
     backend: "claude" | "codex" | "claude-sdk",
     requestedPermissionMode: unknown,

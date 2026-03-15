@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildHighlightedLines,
-  inferLanguageFromPath,
-  splitHighlightedHtmlByLine,
-} from "./syntax-highlighting.js";
+import { buildHighlightedLines, inferLanguageFromPath, splitHighlightedHtmlByLine } from "./syntax-highlighting.js";
 
 describe("syntax-highlighting utils", () => {
   it("infers language from file path", () => {
@@ -13,7 +9,7 @@ describe("syntax-highlighting utils", () => {
   });
 
   it("splits highlighted html by line while carrying open spans", () => {
-    const lines = splitHighlightedHtmlByLine("<span class=\"hljs-string\">\"a\n b\"</span>");
+    const lines = splitHighlightedHtmlByLine('<span class="hljs-string">"a\n b"</span>');
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain('<span class="hljs-string">');
     expect(lines[1]).toContain('<span class="hljs-string">');

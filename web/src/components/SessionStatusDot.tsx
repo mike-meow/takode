@@ -89,10 +89,10 @@ const SHOULD_GLOW: Record<SessionVisualStatus, boolean> = {
  */
 const GLOW_COLOR: Record<SessionVisualStatus, string> = {
   archived: "",
-  permission: "rgba(245, 158, 11, 0.6)",   // amber
+  permission: "rgba(245, 158, 11, 0.6)", // amber
   disconnected: "",
-  running: "rgba(34, 197, 94, 0.6)",       // green
-  compacting: "rgba(34, 197, 94, 0.6)",    // green
+  running: "rgba(34, 197, 94, 0.6)", // green
+  compacting: "rgba(34, 197, 94, 0.6)", // green
   completed_unread: "",
   idle: "",
 };
@@ -127,13 +127,18 @@ export function SessionStatusDot(props: SessionStatusDotProps) {
   const isDisconnected = visualStatus === "disconnected";
 
   return (
-    <div className="relative shrink-0 mt-[7px]" title={label} aria-label={label} data-testid="session-status-dot" data-status={visualStatus} style={glowStyle}>
+    <div
+      className="relative shrink-0 mt-[7px]"
+      title={label}
+      aria-label={label}
+      data-testid="session-status-dot"
+      data-status={visualStatus}
+      style={glowStyle}
+    >
       {isDisconnected ? (
         <PowerPlugDot className={`block w-2.5 h-2.5 ${dotColor}`} />
       ) : (
-        <YarnBallDot
-          className={`block w-2.5 h-2.5 ${dotColor} ${shouldRoll ? "yarn-ball-roll" : ""}`}
-        />
+        <YarnBallDot className={`block w-2.5 h-2.5 ${dotColor} ${shouldRoll ? "yarn-ball-roll" : ""}`} />
       )}
     </div>
   );

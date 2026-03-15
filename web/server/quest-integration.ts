@@ -10,11 +10,7 @@ const CLAUDE_SKILL_DIR = join(homedir(), ".claude", "skills", "quest");
 const CODEX_SKILL_DIR = join(homedir(), ".codex", "skills", "quest");
 const OLD_SLASH_COMMAND = join(homedir(), ".claude", "commands", "quest.md");
 const OLD_API_DOC = join(homedir(), ".companion", "questmaster", "API.md");
-const TEMPLATE_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "templates",
-  "quest-skill-docs.md",
-);
+const TEMPLATE_PATH = join(dirname(fileURLToPath(import.meta.url)), "templates", "quest-skill-docs.md");
 
 let questSkillDocsTemplate: string | null = null;
 
@@ -205,7 +201,8 @@ function writeAgentSkill(skillDir: string, content: string): void {
 
 function cleanupOldFiles(): void {
   // Remove old slash command (superseded by agent skill)
-  if (existsSync(OLD_SLASH_COMMAND)) { // sync-ok: quest setup, not called during message handling
+  if (existsSync(OLD_SLASH_COMMAND)) {
+    // sync-ok: quest setup, not called during message handling
     try {
       unlinkSync(OLD_SLASH_COMMAND); // sync-ok: quest setup, not called during message handling
     } catch {
@@ -213,7 +210,8 @@ function cleanupOldFiles(): void {
     }
   }
   // Remove old API.md (superseded by CLI)
-  if (existsSync(OLD_API_DOC)) { // sync-ok: quest setup, not called during message handling
+  if (existsSync(OLD_API_DOC)) {
+    // sync-ok: quest setup, not called during message handling
     try {
       unlinkSync(OLD_API_DOC); // sync-ok: quest setup, not called during message handling
     } catch {

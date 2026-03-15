@@ -56,8 +56,8 @@ export class RingBuffer<T> {
 // ─── Event Types ─────────────────────────────────────────────────────────────
 
 export interface LagEvent {
-  ts: number;       // epoch ms
-  lagMs: number;    // actual delay beyond expected
+  ts: number; // epoch ms
+  lagMs: number; // actual delay beyond expected
 }
 
 export interface SlowRequestEvent {

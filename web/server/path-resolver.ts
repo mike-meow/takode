@@ -21,7 +21,8 @@ import { join } from "node:path";
 export function captureUserShellPath(): string {
   try {
     const shell = process.env.SHELL || "/bin/bash";
-    const captured = execSync( // sync-ok: cold path, binary resolution at startup
+    const captured = execSync(
+      // sync-ok: cold path, binary resolution at startup
       `${shell} -lic 'echo "___PATH_START___$PATH___PATH_END___"'`,
       {
         encoding: "utf-8",
@@ -80,22 +81,30 @@ export function buildFallbackPath(): string {
   // Probe nvm-managed node versions
   const nvmDir = process.env.NVM_DIR || join(home, ".nvm");
   const nvmVersionsDir = join(nvmDir, "versions", "node");
-  if (existsSync(nvmVersionsDir)) { // sync-ok: cold path, binary resolution at startup
+  if (existsSync(nvmVersionsDir)) {
+    // sync-ok: cold path, binary resolution at startup
     try {
-      for (const v of readdirSync(nvmVersionsDir)) { // sync-ok: cold path, binary resolution at startup
+      for (const v of readdirSync(nvmVersionsDir)) {
+        // sync-ok: cold path, binary resolution at startup
         candidates.push(join(nvmVersionsDir, v, "bin"));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // fnm (Fast Node Manager) — versions stored in fnm multishell or XDG data
   const fnmDir = join(home, "Library", "Application Support", "fnm", "node-versions");
-  if (existsSync(fnmDir)) { // sync-ok: cold path, binary resolution at startup
+  if (existsSync(fnmDir)) {
+    // sync-ok: cold path, binary resolution at startup
     try {
-      for (const v of readdirSync(fnmDir)) { // sync-ok: cold path, binary resolution at startup
+      for (const v of readdirSync(fnmDir)) {
+        // sync-ok: cold path, binary resolution at startup
         candidates.push(join(fnmDir, v, "installation", "bin"));
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(":"); // sync-ok: cold path, binary resolution at startup
@@ -147,10 +156,9 @@ export function captureUserShellEnv(varNames: string[]): Record<string, string> 
     const shell = process.env.SHELL || "/bin/bash";
     // Print each requested var as KEY=VALUE, using a unique delimiter to avoid
     // collisions with noisy shell startup output.
-    const printCommands = varNames
-      .map((name) => `echo "___ENV_${name}___=\${${name}:-}"`)
-      .join("; ");
-    const captured = execSync( // sync-ok: cold path, one-time capture at startup
+    const printCommands = varNames.map((name) => `echo "___ENV_${name}___=\${${name}:-}"`).join("; ");
+    const captured = execSync(
+      // sync-ok: cold path, one-time capture at startup
       `${shell} -lic '${printCommands}'`,
       {
         encoding: "utf-8",
@@ -239,7 +247,8 @@ export function resolveBinary(name: string): string | null {
 
   const enrichedPath = getEnrichedPath();
   try {
-    const resolved = execSync(`which ${name.replace(/[^a-zA-Z0-9._@/-]/g, "")}`, { // sync-ok: cold path, binary resolution at startup
+    const resolved = execSync(`which ${name.replace(/[^a-zA-Z0-9._@/-]/g, "")}`, {
+      // sync-ok: cold path, binary resolution at startup
 
       encoding: "utf-8",
       timeout: 5_000,

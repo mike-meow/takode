@@ -1,5 +1,17 @@
 import { create } from "zustand";
-import type { SessionState, PermissionRequest, ChatMessage, SdkSessionInfo, TaskItem, McpServerDetail, ToolResultPreview, SessionTaskEntry, PendingCodexInput, QuestmasterTask, VsCodeSelectionState } from "./types.js";
+import type {
+  SessionState,
+  PermissionRequest,
+  ChatMessage,
+  SdkSessionInfo,
+  TaskItem,
+  McpServerDetail,
+  ToolResultPreview,
+  SessionTaskEntry,
+  PendingCodexInput,
+  QuestmasterTask,
+  VsCodeSelectionState,
+} from "./types.js";
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
 import { isEmbeddedInVsCode } from "./utils/embed-context.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
@@ -22,15 +34,15 @@ export function isDarkTheme(theme: ColorTheme): boolean {
 // ─── Pending Session (client-only, pre-creation) ────────────────────────────
 
 export interface PendingSession {
-  id: string;                          // "pending-{uuid}"
+  id: string; // "pending-{uuid}"
   backend: "claude" | "codex" | "claude-sdk";
-  createOpts: CreateSessionOpts;       // stored for retry
+  createOpts: CreateSessionOpts; // stored for retry
   progress: CreationProgressEvent[];
   error: string | null;
   status: "creating" | "error" | "succeeded";
-  realSessionId: string | null;        // set on success, before cleanup
-  cwd: string | null;                  // for sidebar display (folder name)
-  groupKey?: string | null;            // originating sidebar group for per-group defaults
+  realSessionId: string | null; // set on success, before cleanup
+  cwd: string | null; // for sidebar display (folder name)
+  groupKey?: string | null; // originating sidebar group for per-group defaults
   createdAt: number;
 }
 import { scopedGetItem, scopedSetItem, scopedRemoveItem } from "./utils/scoped-storage.js";
@@ -93,8 +105,8 @@ interface AppState {
   streamingOutputTokens: Map<string, number>;
 
   // Streaming timer pause tracking (paused during user-wait states like permissions)
-  streamingPausedDuration: Map<string, number>;  // accumulated pause ms
-  streamingPauseStartedAt: Map<string, number>;  // when current pause began
+  streamingPausedDuration: Map<string, number>; // accumulated pause ms
+  streamingPauseStartedAt: Map<string, number>; // when current pause began
 
   // Pending permissions per session (outer key = sessionId, inner key = request_id)
   pendingPermissions: Map<string, Map<string, PermissionRequest>>;
@@ -166,14 +178,21 @@ interface AppState {
   mcpServers: Map<string, McpServerDetail[]>;
 
   // Tool progress (session → tool_use_id → progress info)
-  toolProgress: Map<string, Map<string, { toolName: string; elapsedSeconds: number; output?: string; outputTruncated?: boolean }>>;
+  toolProgress: Map<
+    string,
+    Map<string, { toolName: string; elapsedSeconds: number; output?: string; outputTruncated?: boolean }>
+  >;
 
   // Tool results (session → tool_use_id → truncated preview)
   toolResults: Map<string, Map<string, ToolResultPreview>>;
 
   // Background agent notifications (task_notification from CLI)
   backgroundAgentNotifs: Map<string, Map<string, { status: string; outputFile?: string; summary?: string }>>;
-  setBackgroundAgentNotif: (sessionId: string, toolUseId: string, notif: { status: string; outputFile?: string; summary?: string }) => void;
+  setBackgroundAgentNotif: (
+    sessionId: string,
+    toolUseId: string,
+    notif: { status: string; outputFile?: string; summary?: string },
+  ) => void;
 
   // Tool start timestamps from server (session → tool_use_id → server Date.now())
   toolStartTimestamps: Map<string, Map<string, number>>;
@@ -280,7 +299,11 @@ interface AppState {
   // Permission actions
   addPermission: (sessionId: string, perm: PermissionRequest) => void;
   removePermission: (sessionId: string, requestId: string) => void;
-  updatePermissionEvaluating: (sessionId: string, requestId: string, evaluating: "queued" | "evaluating" | undefined) => void;
+  updatePermissionEvaluating: (
+    sessionId: string,
+    requestId: string,
+    evaluating: "queued" | "evaluating" | undefined,
+  ) => void;
   updatePermissionDeferralReason: (sessionId: string, requestId: string, reason: string) => void;
   markPermissionAutoApproved: (sessionId: string, requestId: string, reason: string) => void;
   clearPermissions: (sessionId: string) => void;
@@ -379,12 +402,35 @@ interface AppState {
   setSessionStuck: (sessionId: string, stuck: boolean) => void;
 
   // Per-session scroll position (persists across session switches, in-memory only)
-  feedScrollPosition: Map<string, { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number; lastSeenContentBottom?: number | null }>;
-  setFeedScrollPosition: (sessionId: string, pos: { scrollTop: number; scrollHeight: number; isAtBottom: boolean; anchorTurnId?: string | null; anchorOffsetTop?: number; lastSeenContentBottom?: number | null }) => void;
+  feedScrollPosition: Map<
+    string,
+    {
+      scrollTop: number;
+      scrollHeight: number;
+      isAtBottom: boolean;
+      anchorTurnId?: string | null;
+      anchorOffsetTop?: number;
+      lastSeenContentBottom?: number | null;
+    }
+  >;
+  setFeedScrollPosition: (
+    sessionId: string,
+    pos: {
+      scrollTop: number;
+      scrollHeight: number;
+      isAtBottom: boolean;
+      anchorTurnId?: string | null;
+      anchorOffsetTop?: number;
+      lastSeenContentBottom?: number | null;
+    },
+  ) => void;
 
   // Per-session composer drafts (text + images persist across session switches)
   composerDrafts: Map<string, { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }>;
-  setComposerDraft: (sessionId: string, draft: { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }) => void;
+  setComposerDraft: (
+    sessionId: string,
+    draft: { text: string; images: Array<{ name: string; base64: string; mediaType: string }> },
+  ) => void;
   clearComposerDraft: (sessionId: string) => void;
 
   // Turn activity collapse state.
@@ -479,7 +525,6 @@ function getInitialZoomLevel(): number {
   }
   return 0.9;
 }
-
 
 function getInitialCollapsedProjects(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -584,37 +629,41 @@ export const useStore = create<AppState>((set) => ({
   terminalCwd: null,
   terminalId: null,
 
-  addPendingSession: (session) => set((state) => {
-    const next = new Map(state.pendingSessions);
-    next.set(session.id, session);
-    return { pendingSessions: next };
-  }),
-  updatePendingSession: (id, updates) => set((state) => {
-    const existing = state.pendingSessions.get(id);
-    if (!existing) return {};
-    const next = new Map(state.pendingSessions);
-    next.set(id, { ...existing, ...updates });
-    return { pendingSessions: next };
-  }),
-  addPendingProgress: (id, step) => set((state) => {
-    const existing = state.pendingSessions.get(id);
-    if (!existing) return {};
-    const progress = [...existing.progress];
-    const idx = progress.findIndex((s) => s.step === step.step);
-    if (idx >= 0) {
-      progress[idx] = step;
-    } else {
-      progress.push(step);
-    }
-    const next = new Map(state.pendingSessions);
-    next.set(id, { ...existing, progress });
-    return { pendingSessions: next };
-  }),
-  removePendingSession: (id) => set((state) => {
-    const next = new Map(state.pendingSessions);
-    next.delete(id);
-    return { pendingSessions: next };
-  }),
+  addPendingSession: (session) =>
+    set((state) => {
+      const next = new Map(state.pendingSessions);
+      next.set(session.id, session);
+      return { pendingSessions: next };
+    }),
+  updatePendingSession: (id, updates) =>
+    set((state) => {
+      const existing = state.pendingSessions.get(id);
+      if (!existing) return {};
+      const next = new Map(state.pendingSessions);
+      next.set(id, { ...existing, ...updates });
+      return { pendingSessions: next };
+    }),
+  addPendingProgress: (id, step) =>
+    set((state) => {
+      const existing = state.pendingSessions.get(id);
+      if (!existing) return {};
+      const progress = [...existing.progress];
+      const idx = progress.findIndex((s) => s.step === step.step);
+      if (idx >= 0) {
+        progress[idx] = step;
+      } else {
+        progress.push(step);
+      }
+      const next = new Map(state.pendingSessions);
+      next.set(id, { ...existing, progress });
+      return { pendingSessions: next };
+    }),
+  removePendingSession: (id) =>
+    set((state) => {
+      const next = new Map(state.pendingSessions);
+      next.delete(id);
+      return { pendingSessions: next };
+    }),
 
   setColorTheme: (theme) => {
     localStorage.setItem("cc-color-theme", theme);
@@ -1285,7 +1334,7 @@ export const useStore = create<AppState>((set) => ({
   resumeStreamingTimer: (sessionId) =>
     set((s) => {
       const pauseStart = s.streamingPauseStartedAt.get(sessionId);
-      if (!pauseStart) return s;  // not paused
+      if (!pauseStart) return s; // not paused
       const streamingPauseStartedAt = new Map(s.streamingPauseStartedAt);
       const streamingPausedDuration = new Map(s.streamingPausedDuration);
       streamingPauseStartedAt.delete(sessionId);
@@ -1475,9 +1524,12 @@ export const useStore = create<AppState>((set) => ({
       const sessionSearch = new Map(s.sessionSearch);
       const prev = sessionSearch.get(sessionId) ?? DEFAULT_SEARCH_STATE;
       // Preserve currentMatchIndex if valid, otherwise reset to first match
-      const idx = prev.currentMatchIndex >= 0 && prev.currentMatchIndex < matches.length
-        ? prev.currentMatchIndex
-        : matches.length > 0 ? 0 : -1;
+      const idx =
+        prev.currentMatchIndex >= 0 && prev.currentMatchIndex < matches.length
+          ? prev.currentMatchIndex
+          : matches.length > 0
+            ? 0
+            : -1;
       sessionSearch.set(sessionId, { ...prev, matches, currentMatchIndex: idx });
       return { sessionSearch };
     }),
@@ -1495,9 +1547,7 @@ export const useStore = create<AppState>((set) => ({
     const prev = s.sessionSearch.get(sessionId) ?? DEFAULT_SEARCH_STATE;
     if (prev.matches.length === 0) return;
     const len = prev.matches.length;
-    const newIdx = direction === "next"
-      ? (prev.currentMatchIndex + 1) % len
-      : (prev.currentMatchIndex - 1 + len) % len;
+    const newIdx = direction === "next" ? (prev.currentMatchIndex + 1) % len : (prev.currentMatchIndex - 1 + len) % len;
     const sessionSearch = new Map(s.sessionSearch);
     sessionSearch.set(sessionId, { ...prev, currentMatchIndex: newIdx });
     set({ sessionSearch });
@@ -1651,11 +1701,9 @@ export const useStore = create<AppState>((set) => ({
       return { sessionAttention };
     }),
 
-  setSessionOrderMap: (sessionOrder) =>
-    set(() => ({ sessionOrder: new Map(sessionOrder) })),
+  setSessionOrderMap: (sessionOrder) => set(() => ({ sessionOrder: new Map(sessionOrder) })),
 
-  setGroupOrder: (groupOrder) =>
-    set(() => ({ groupOrder: [...groupOrder] })),
+  setGroupOrder: (groupOrder) => set(() => ({ groupOrder: [...groupOrder] })),
 
   toggleProjectCollapse: (projectKey) =>
     set((s) => {
@@ -1890,7 +1938,7 @@ export const useStore = create<AppState>((set) => ({
       toolProgress: new Map(),
       toolResults: new Map(),
       backgroundAgentNotifs: new Map(),
-  toolStartTimestamps: new Map(),
+      toolStartTimestamps: new Map(),
       prStatus: new Map(),
       sessionAttention: new Map(),
       sessionOrder: new Map(),

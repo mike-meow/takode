@@ -37,7 +37,9 @@
     "typecheck": "./scripts/typecheck.sh",
     "test": "./scripts/run-local-tool.sh vitest run --silent --reporter=verbose",
     "test:watch": "./scripts/run-local-tool.sh vitest",
-    "test:codex-contract": "./scripts/run-local-tool.sh vitest run server/codex-protocol-*.test.ts"
+    "test:codex-contract": "./scripts/run-local-tool.sh vitest run server/codex-protocol-*.test.ts",
+    "format": "biome format --write .",
+    "format:check": "biome format ."
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.63",
@@ -52,6 +54,7 @@
     "shell-quote": "^1.8.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -4,7 +4,12 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const mockHomedir = vi.hoisted(() => {
   let dir = "/fake/home";
-  return { get: () => dir, set: (d: string) => { dir = d; } };
+  return {
+    get: () => dir,
+    set: (d: string) => {
+      dir = d;
+    },
+  };
 });
 
 const mockExecSync = vi.hoisted(() => vi.fn());
@@ -387,12 +392,7 @@ describe("listWorktrees", () => {
   });
 
   it("strips refs/heads/ from branch names", () => {
-    const porcelain = [
-      "worktree /repo",
-      "HEAD abc123",
-      "branch refs/heads/feat/something",
-      "",
-    ].join("\n");
+    const porcelain = ["worktree /repo", "HEAD abc123", "branch refs/heads/feat/something", ""].join("\n");
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("worktree list --porcelain")) return porcelain;
@@ -443,9 +443,7 @@ describe("ensureWorktree", () => {
     expect(result.actualBranch).toBe("feat/existing");
     expect(result.isNew).toBe(false);
     // Should NOT have called worktree add
-    const addCalls = mockExecSync.mock.calls.filter((c: unknown[]) =>
-      (c[0] as string).includes("worktree add"),
-    );
+    const addCalls = mockExecSync.mock.calls.filter((c: unknown[]) => (c[0] as string).includes("worktree add"));
     expect(addCalls).toHaveLength(0);
   });
 
@@ -476,11 +474,9 @@ describe("ensureWorktree", () => {
     expect(result.actualBranch).toMatch(/^feat\/local-wt-\d{4}$/);
     expect(result.isNew).toBe(false);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toMatch(/feat\/local-wt-\d{4}/);
+    expect(addCall![0] as string).toMatch(/feat\/local-wt-\d{4}/);
   });
 
   it("creates unique -wt- branch from remote", () => {
@@ -493,8 +489,7 @@ describe("ensureWorktree", () => {
       if (cmd.includes("rev-parse --verify refs/heads/feat/remote") && !cmd.includes("-wt-"))
         throw new Error("not found");
       // Remote branch exists
-      if (cmd.includes("rev-parse --verify refs/remotes/origin/feat/remote"))
-        return "def456";
+      if (cmd.includes("rev-parse --verify refs/remotes/origin/feat/remote")) return "def456";
       // generateUniqueWorktreeBranch checks (random suffix)
       if (/rev-parse --verify refs\/heads\/feat\/remote-wt-\d{4}/.test(cmd)) throw new Error("not found");
       // worktree add -b
@@ -509,12 +504,10 @@ describe("ensureWorktree", () => {
     expect(result.actualBranch).toMatch(/^feat\/remote-wt-\d{4}$/);
     expect(result.isNew).toBe(false);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toContain("origin/feat/remote");
-    expect((addCall![0] as string)).toMatch(/feat\/remote-wt-\d{4}/);
+    expect(addCall![0] as string).toContain("origin/feat/remote");
+    expect(addCall![0] as string).toMatch(/feat\/remote-wt-\d{4}/);
   });
 
   it("creates unique -wt- branch from base when branch does not exist anywhere", () => {
@@ -526,8 +519,7 @@ describe("ensureWorktree", () => {
       // Neither local nor remote branch exists
       if (cmd.includes("rev-parse --verify")) throw new Error("not found");
       // resolveDefaultBranch — not needed since baseBranch is explicit
-      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD"))
-        return "refs/remotes/origin/main";
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) return "refs/remotes/origin/main";
       // worktree add -b
       if (cmd.includes("worktree add -b")) return "";
       throw new Error(`Unmocked: ${cmd}`);
@@ -540,12 +532,10 @@ describe("ensureWorktree", () => {
     expect(result.branch).toBe("feat/new");
     expect(result.actualBranch).toMatch(/^feat\/new-wt-\d{4}$/);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toContain("develop");
-    expect((addCall![0] as string)).toMatch(/feat\/new-wt-\d{4}/);
+    expect(addCall![0] as string).toContain("develop");
+    expect(addCall![0] as string).toMatch(/feat\/new-wt-\d{4}/);
   });
 
   it("throws when createBranch=false and branch does not exist", () => {
@@ -560,9 +550,9 @@ describe("ensureWorktree", () => {
     // Target path doesn't exist yet
     mockExistsSync.mockReturnValue(false);
 
-    expect(() =>
-      gitUtils.ensureWorktree("/repo", "feat/missing", { createBranch: false }),
-    ).toThrow('Branch "feat/missing" does not exist and createBranch is false');
+    expect(() => gitUtils.ensureWorktree("/repo", "feat/missing", { createBranch: false })).toThrow(
+      'Branch "feat/missing" does not exist and createBranch is false',
+    );
   });
 
   it("calls mkdirSync with recursive option when creating worktree", () => {
@@ -583,20 +573,12 @@ describe("ensureWorktree", () => {
 
     gitUtils.ensureWorktree("/repo", "feat/new");
 
-    expect(mockMkdirSync).toHaveBeenCalledWith(
-      "/fake/home/.companion/worktrees/repo",
-      { recursive: true },
-    );
+    expect(mockMkdirSync).toHaveBeenCalledWith("/fake/home/.companion/worktrees/repo", { recursive: true });
   });
 
   it("does not reuse the main worktree even when branch matches", () => {
     // Main worktree is on "main", and we request a worktree for "main"
-    const porcelain = [
-      "worktree /repo",
-      "HEAD abc123",
-      "branch refs/heads/main",
-      "",
-    ].join("\n");
+    const porcelain = ["worktree /repo", "HEAD abc123", "branch refs/heads/main", ""].join("\n");
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("worktree list --porcelain")) return porcelain;
@@ -618,12 +600,10 @@ describe("ensureWorktree", () => {
     expect(result.branch).toBe("main");
     expect(result.actualBranch).toMatch(/^main-wt-\d{4}$/);
     // Should create a branch-tracking worktree
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toMatch(/main-wt-\d{4}/);
-    expect((addCall![0] as string)).toContain("abc123");
+    expect(addCall![0] as string).toMatch(/main-wt-\d{4}/);
+    expect(addCall![0] as string).toContain("abc123");
   });
 
   it("always creates unique -wt- branch even for first worktree on a branch", () => {
@@ -678,21 +658,14 @@ describe("ensureWorktree", () => {
     expect(result.branch).toBe("feat/existing");
     expect(result.actualBranch).toMatch(/^feat\/existing-wt-\d{4}$/);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toMatch(/feat\/existing-wt-\d{4}/);
+    expect(addCall![0] as string).toMatch(/feat\/existing-wt-\d{4}/);
   });
 
   it("generates unique branch when forceNew=true and branch exists locally but no worktree uses it", () => {
     // Main repo is on a different branch (feat/other), not on "main"
-    const porcelain = [
-      "worktree /repo",
-      "HEAD abc123",
-      "branch refs/heads/feat/other",
-      "",
-    ].join("\n");
+    const porcelain = ["worktree /repo", "HEAD abc123", "branch refs/heads/feat/other", ""].join("\n");
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("worktree list --porcelain")) return porcelain;
@@ -715,27 +688,21 @@ describe("ensureWorktree", () => {
     // Should get a unique branch, NOT the raw "main" branch
     expect(result.actualBranch).toMatch(/^main-wt-\d{4}$/);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toMatch(/main-wt-\d{4}/);
+    expect(addCall![0] as string).toMatch(/main-wt-\d{4}/);
   });
 
   it("generates unique branch when forceNew=true and only remote branch exists", () => {
     // No worktree on "main", main repo on different branch
-    const porcelain = [
-      "worktree /repo",
-      "HEAD abc123",
-      "branch refs/heads/feat/other",
-      "",
-    ].join("\n");
+    const porcelain = ["worktree /repo", "HEAD abc123", "branch refs/heads/feat/other", ""].join("\n");
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("worktree list --porcelain")) return porcelain;
       if (cmd.includes("status --porcelain")) return "";
       // "main" does NOT exist locally
-      if (cmd.includes("rev-parse --verify refs/heads/main") && !cmd.includes("-wt-") && !cmd.includes("remotes")) throw new Error("not found");
+      if (cmd.includes("rev-parse --verify refs/heads/main") && !cmd.includes("-wt-") && !cmd.includes("remotes"))
+        throw new Error("not found");
       // "main" exists on remote
       if (cmd.includes("rev-parse --verify refs/remotes/origin/main")) return "bbb222";
       // generateUniqueWorktreeBranch checks
@@ -749,12 +716,10 @@ describe("ensureWorktree", () => {
     expect(result.branch).toBe("main");
     expect(result.actualBranch).toMatch(/^main-wt-\d{4}$/);
 
-    const addCall = mockExecSync.mock.calls.find((c: unknown[]) =>
-      (c[0] as string).includes("worktree add -b"),
-    );
+    const addCall = mockExecSync.mock.calls.find((c: unknown[]) => (c[0] as string).includes("worktree add -b"));
     expect(addCall).toBeDefined();
-    expect((addCall![0] as string)).toMatch(/main-wt-\d{4}/);
-    expect((addCall![0] as string)).toContain("origin/main");
+    expect(addCall![0] as string).toMatch(/main-wt-\d{4}/);
+    expect(addCall![0] as string).toContain("origin/main");
   });
 });
 
@@ -804,9 +769,7 @@ describe("removeWorktree", () => {
     expect(result.removed).toBe(true);
     expect(result.reason).toBeUndefined();
 
-    const pruneCalls = mockExecSync.mock.calls.filter((c: unknown[]) =>
-      (c[0] as string).includes("worktree prune"),
-    );
+    const pruneCalls = mockExecSync.mock.calls.filter((c: unknown[]) => (c[0] as string).includes("worktree prune"));
     expect(pruneCalls).toHaveLength(1);
   });
 
@@ -870,8 +833,7 @@ describe("removeWorktree", () => {
     mockExistsSync.mockReturnValue(true);
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("status --porcelain")) return "";
-      if (cmd.includes("worktree remove"))
-        throw new Error("worktree is locked");
+      if (cmd.includes("worktree remove")) throw new Error("worktree is locked");
       throw new Error(`Unmocked: ${cmd}`);
     });
 
@@ -1016,9 +978,7 @@ describe("resolveDefaultBranchAsync", () => {
     const result = await gitUtils.resolveDefaultBranchAsync("/repo", "jiayi-wt-4719");
     expect(result).toBe("jiayi");
     // Should NOT have called for-each-ref since fast path succeeded
-    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) =>
-      (c[0] as string).includes("for-each-ref"),
-    );
+    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) => (c[0] as string).includes("for-each-ref"));
     expect(forEachRefCalls).toHaveLength(0);
   });
 
@@ -1087,9 +1047,7 @@ describe("resolveDefaultBranchAsync", () => {
     const result = await gitUtils.resolveDefaultBranchAsync("/repo", "HEAD");
     expect(result).toBe("main");
     // Should NOT have called for-each-ref since HEAD is excluded
-    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) =>
-      (c[0] as string).includes("for-each-ref"),
-    );
+    const forEachRefCalls = mockExecCb.mock.calls.filter((c: unknown[]) => (c[0] as string).includes("for-each-ref"));
     expect(forEachRefCalls).toHaveLength(0);
   });
 });

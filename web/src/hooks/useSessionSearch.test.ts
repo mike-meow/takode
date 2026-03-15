@@ -52,10 +52,7 @@ describe("computeMatches", () => {
 
   it("finds all matching messages in strict mode", () => {
     const result = _computeMatches(messages, "hello", "strict");
-    expect(result).toEqual([
-      { messageId: "m1" },
-      { messageId: "m3" },
-    ]);
+    expect(result).toEqual([{ messageId: "m1" }, { messageId: "m3" }]);
   });
 
   it("finds all matching messages in fuzzy mode", () => {
@@ -66,10 +63,7 @@ describe("computeMatches", () => {
 
   it("returns messages in order", () => {
     const result = _computeMatches(messages, "world", "strict");
-    expect(result).toEqual([
-      { messageId: "m1" },
-      { messageId: "m2" },
-    ]);
+    expect(result).toEqual([{ messageId: "m1" }, { messageId: "m2" }]);
   });
 
   it("skips messages with empty content", () => {

@@ -132,7 +132,16 @@ describe("TopBar", () => {
   it("does not show a duplicate plan/agent mode label in title bar", () => {
     resetStore({
       sessions: new Map([["s1", { cwd: "/repo", permissionMode: "plan", backend_type: "codex" }]]),
-      sdkSessions: [{ sessionId: "s1", createdAt: 1, sessionNum: 111, name: "Main Session", permissionMode: "plan", backendType: "codex" }],
+      sdkSessions: [
+        {
+          sessionId: "s1",
+          createdAt: 1,
+          sessionNum: 111,
+          name: "Main Session",
+          permissionMode: "plan",
+          backendType: "codex",
+        },
+      ],
     });
 
     render(<TopBar />);
@@ -142,10 +151,7 @@ describe("TopBar", () => {
   it("shows diff badge count only for files within cwd", () => {
     resetStore({
       changedFiles: new Map([
-        [
-          "s1",
-          new Set(["/repo/src/a.ts", "/repo/src/b.ts", "/Users/stan/.claude/plans/plan.md"]),
-        ],
+        ["s1", new Set(["/repo/src/a.ts", "/repo/src/b.ts", "/Users/stan/.claude/plans/plan.md"])],
       ]),
     });
 

@@ -85,9 +85,7 @@ describe("ContainerManager Codex file seeding", () => {
 
     const commands = mockExecSync.mock.calls.map((call) => String(call[0] ?? ""));
     // Should attempt to copy Codex files from bind mount
-    expect(commands.some((cmd) =>
-      cmd.includes("/companion-host-codex") && cmd.includes("/root/.codex"),
-    )).toBe(true);
+    expect(commands.some((cmd) => cmd.includes("/companion-host-codex") && cmd.includes("/root/.codex"))).toBe(true);
   });
 
   it("copies auth.json, config.toml, and directory seeds for Codex", () => {

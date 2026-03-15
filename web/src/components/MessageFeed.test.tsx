@@ -147,12 +147,7 @@ function makeTurnForSections({
   return {
     id,
     userEntry,
-    allEntries: [
-      ...systemEntries,
-      ...agentEntries,
-      ...promotedEntries,
-      ...(responseEntry ? [responseEntry] : []),
-    ],
+    allEntries: [...systemEntries, ...agentEntries, ...promotedEntries, ...(responseEntry ? [responseEntry] : [])],
     agentEntries,
     systemEntries,
     responseEntry,
@@ -171,11 +166,13 @@ function makeSectionTurns(totalTurns: number): Turn[] {
     const turnNumber = index + 1;
     return makeTurnForSections({
       id: `turn-${turnNumber}`,
-      userEntry: makeFeedEntryMessage(makeMessage({
-        id: `u${turnNumber}`,
-        role: "user",
-        content: `Turn ${turnNumber}`,
-      })),
+      userEntry: makeFeedEntryMessage(
+        makeMessage({
+          id: `u${turnNumber}`,
+          role: "user",
+          content: `Turn ${turnNumber}`,
+        }),
+      ),
     });
   });
 }
@@ -187,15 +184,16 @@ function makeSectionedMessages(sectionCount: number, turnsPerSection = 50): Chat
   for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
     for (let turnIndex = 0; turnIndex < turnsPerSection; turnIndex++) {
       const turnNumber = sectionIndex * turnsPerSection + turnIndex + 1;
-      const label = turnIndex === 0
-        ? `Section ${sectionIndex + 1} marker`
-        : `Section ${sectionIndex + 1} turn ${turnIndex + 1}`;
-      messages.push(makeMessage({
-        id: `u${turnNumber}`,
-        role: "user",
-        content: label,
-        timestamp: timestamp++,
-      }));
+      const label =
+        turnIndex === 0 ? `Section ${sectionIndex + 1} marker` : `Section ${sectionIndex + 1} turn ${turnIndex + 1}`;
+      messages.push(
+        makeMessage({
+          id: `u${turnNumber}`,
+          role: "user",
+          content: label,
+          timestamp: timestamp++,
+        }),
+      );
     }
   }
 
@@ -286,7 +284,7 @@ function setStoreStreamingOutputTokens(sessionId: string, tokens: number | undef
 
 function setStoreToolProgress(
   sessionId: string,
-  entries: Array<{ toolUseId: string; toolName: string; elapsedSeconds: number; output?: string }>
+  entries: Array<{ toolUseId: string; toolName: string; elapsedSeconds: number; output?: string }>,
 ) {
   const toolProgressMap = new Map();
   const sessionProgress = new Map();
@@ -309,25 +307,24 @@ function setStoreToolStartTimestamps(sessionId: string, timestamps: Record<strin
 
 function setStoreToolResults(
   sessionId: string,
-  results: Record<string, { content: string; is_truncated: boolean; duration_seconds?: number; is_error?: boolean }>
+  results: Record<string, { content: string; is_truncated: boolean; duration_seconds?: number; is_error?: boolean }>,
 ) {
   const map = new Map();
   map.set(sessionId, new Map(Object.entries(results)));
   mockStoreValues.toolResults = map;
 }
 
-function setStoreSdkSessionRole(
-  sessionId: string,
-  overrides: { isOrchestrator?: boolean; herdedBy?: string } = {},
-) {
-  mockStoreValues.sdkSessions = [{
-    sessionId,
-    state: "connected",
-    cwd: "/test",
-    createdAt: Date.now(),
-    ...(overrides.isOrchestrator ? { isOrchestrator: true } : {}),
-    ...(overrides.herdedBy ? { herdedBy: overrides.herdedBy } : {}),
-  }];
+function setStoreSdkSessionRole(sessionId: string, overrides: { isOrchestrator?: boolean; herdedBy?: string } = {}) {
+  mockStoreValues.sdkSessions = [
+    {
+      sessionId,
+      state: "connected",
+      cwd: "/test",
+      createdAt: Date.now(),
+      ...(overrides.isOrchestrator ? { isOrchestrator: true } : {}),
+      ...(overrides.herdedBy ? { herdedBy: overrides.herdedBy } : {}),
+    },
+  ];
 }
 
 function setStoreScrollToTurn(sessionId: string, turnId: string) {
@@ -653,9 +650,7 @@ describe("MessageFeed - empty state", () => {
 
   it("does not show empty state when there are messages", () => {
     const sid = "test-not-empty";
-    setStoreMessages(sid, [
-      makeMessage({ role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ role: "user", content: "Hello" })]);
 
     render(<MessageFeed sessionId={sid} />);
 
@@ -666,13 +661,15 @@ describe("MessageFeed - empty state", () => {
     const sid = "test-pending-codex";
     setStoreMessages(sid, []);
     setStoreSessionBackend(sid, "codex");
-    setStorePendingCodexInputs(sid, [{
-      id: "pending-1",
-      content: "Steer the active turn toward auth fixes",
-      timestamp: Date.now(),
-      cancelable: true,
-      draftImages: [],
-    }]);
+    setStorePendingCodexInputs(sid, [
+      {
+        id: "pending-1",
+        content: "Steer the active turn toward auth fixes",
+        timestamp: Date.now(),
+        cancelable: true,
+        draftImages: [],
+      },
+    ]);
 
     render(<MessageFeed sessionId={sid} />);
 
@@ -1068,17 +1065,13 @@ describe("MessageFeed - scroll behavior", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } }],
       }),
       makeMessage({
         id: "a2",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/b.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/b.ts" } }],
       }),
     ]);
 
@@ -1222,7 +1215,9 @@ describe("MessageFeed - scroll behavior", () => {
     setStoreParentStreaming(sid, { "task-follow-floor": "Older subagent output that keeps growing" });
     rerender(<MessageFeed sessionId={sid} />);
 
-    const rerenderedSubagentBlock = container.querySelector('[data-feed-block-id="subagent:task-follow-floor"]') as HTMLElement;
+    const rerenderedSubagentBlock = container.querySelector(
+      '[data-feed-block-id="subagent:task-follow-floor"]',
+    ) as HTMLElement;
     const rerenderedFooterBlock = container.querySelector('[data-feed-block-id="footer:streaming"]') as HTMLElement;
     setElementOffsetMetrics(rerenderedSubagentBlock, 900, 400);
     setElementOffsetMetrics(rerenderedFooterBlock, 1600, 160);
@@ -1453,9 +1448,7 @@ describe("MessageFeed - scroll behavior", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-collapse", name: "Read", input: { file_path: "/tmp/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-collapse", name: "Read", input: { file_path: "/tmp/a.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "First result" }),
       makeMessage({ id: "u2", role: "user", content: "Follow-up" }),
@@ -1507,9 +1500,7 @@ describe("MessageFeed - scroll behavior", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-anchor", name: "Read", input: { file_path: "/tmp/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-anchor", name: "Read", input: { file_path: "/tmp/a.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "First result" }),
       makeMessage({ id: "u2", role: "user", content: "Second request" }),
@@ -1540,19 +1531,20 @@ describe("MessageFeed - scroll behavior", () => {
     });
 
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
-    const makeRect = (top: number, height: number): DOMRect => ({
-      x: 0,
-      y: top,
-      top,
-      bottom: top + height,
-      left: 0,
-      right: 320,
-      width: 320,
-      height,
-      toJSON() {
-        return {};
-      },
-    } as DOMRect);
+    const makeRect = (top: number, height: number): DOMRect =>
+      ({
+        x: 0,
+        y: top,
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 320,
+        width: 320,
+        height,
+        toJSON() {
+          return {};
+        },
+      }) as DOMRect;
 
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRectMock() {
       const element = this as HTMLElement;
@@ -1797,9 +1789,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("renders streaming text with cursor animation", () => {
     const sid = "test-streaming";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
     setStoreStreaming(sid, "I am currently thinking about");
 
     const { container } = render(<MessageFeed sessionId={sid} />);
@@ -1812,9 +1802,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("uses markdown rendering for codex streaming text", () => {
     const sid = "test-streaming-codex";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
     setStoreStreaming(sid, "Codex is streaming\nStill hidden");
     setStoreSessionBackend(sid, "codex");
 
@@ -1827,9 +1815,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("renders live codex thinking when no assistant text is streaming yet", () => {
     const sid = "test-streaming-codex-thinking";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
     setStoreSessionBackend(sid, "codex");
     setStoreThinking(sid, "Checking session restore flow");
 
@@ -1840,9 +1826,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("withholds partial codex lines until a newline commits them", () => {
     const sid = "test-streaming-codex-partial";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
     setStoreStreaming(sid, "Uncommitted partial");
     setStoreSessionBackend(sid, "codex");
 
@@ -1860,9 +1844,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("keeps serif streaming typography for claude sessions", () => {
     const sid = "test-streaming-claude";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
     setStoreStreaming(sid, "Claude is streaming");
     setStoreSessionBackend(sid, "claude");
 
@@ -1877,9 +1859,7 @@ describe("MessageFeed - scroll behavior", () => {
 
   it("does not render streaming indicator when no streaming text", () => {
     const sid = "test-no-stream";
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Hello" }),
-    ]);
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Hello" })]);
 
     const { container } = render(<MessageFeed sessionId={sid} />);
 
@@ -2044,7 +2024,9 @@ describe("MessageFeed - Codex terminal chips", () => {
         ],
       }),
     ]);
-    setStoreToolProgress(sid, [{ toolUseId: "tu-live", toolName: "Bash", elapsedSeconds: 12, output: "RUN  src/ws-bridge.test.ts\n" }]);
+    setStoreToolProgress(sid, [
+      { toolUseId: "tu-live", toolName: "Bash", elapsedSeconds: 12, output: "RUN  src/ws-bridge.test.ts\n" },
+    ]);
     setStoreToolStartTimestamps(sid, { "tu-live": Date.now() - 12_000 });
 
     render(<MessageFeed sessionId={sid} />);
@@ -2066,12 +2048,12 @@ describe("MessageFeed - Codex terminal chips", () => {
           id: "codex-live-dwell-1",
           role: "assistant",
           content: "",
-          contentBlocks: [
-            { type: "tool_use", id: "tu-live-dwell", name: "Bash", input: { command: "npm run lint" } },
-          ],
+          contentBlocks: [{ type: "tool_use", id: "tu-live-dwell", name: "Bash", input: { command: "npm run lint" } }],
         }),
       ]);
-      setStoreToolProgress(sid, [{ toolUseId: "tu-live-dwell", toolName: "Bash", elapsedSeconds: 1, output: "linting...\n" }]);
+      setStoreToolProgress(sid, [
+        { toolUseId: "tu-live-dwell", toolName: "Bash", elapsedSeconds: 1, output: "linting...\n" },
+      ]);
       setStoreToolStartTimestamps(sid, { "tu-live-dwell": new Date("2026-03-10T11:59:56.000Z").getTime() });
 
       render(<MessageFeed sessionId={sid} />);
@@ -2098,12 +2080,12 @@ describe("MessageFeed - Codex terminal chips", () => {
         id: "codex-live-2",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-live-2", name: "Bash", input: { command: "npm run flaky:test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-live-2", name: "Bash", input: { command: "npm run flaky:test" } }],
       }),
     ]);
-    setStoreToolProgress(sid, [{ toolUseId: "tu-live-2", toolName: "Bash", elapsedSeconds: 9, output: "Waiting for reconnect watchdog...\n" }]);
+    setStoreToolProgress(sid, [
+      { toolUseId: "tu-live-2", toolName: "Bash", elapsedSeconds: 9, output: "Waiting for reconnect watchdog...\n" },
+    ]);
     setStoreToolStartTimestamps(sid, { "tu-live-2": Date.now() - 9_000 });
 
     render(<MessageFeed sessionId={sid} />);
@@ -2123,9 +2105,7 @@ describe("MessageFeed - Codex terminal chips", () => {
         id: "codex-live-3",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-live-3", name: "Bash", input: { command: "bun run test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-live-3", name: "Bash", input: { command: "bun run test" } }],
       }),
     ]);
     setStoreToolResults(sid, {
@@ -2152,17 +2132,17 @@ describe("MessageFeed - Codex terminal chips", () => {
         id: "codex-live-4",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-live-4", name: "Bash", input: { command: "find . -name '*.ts'" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-live-4", name: "Bash", input: { command: "find . -name '*.ts'" } }],
       }),
     ]);
-    setStoreToolProgress(sid, [{
-      toolUseId: "tu-live-4",
-      toolName: "Bash",
-      elapsedSeconds: 14,
-      output: "src/store.ts\nsrc/ws-handlers.ts\n",
-    }]);
+    setStoreToolProgress(sid, [
+      {
+        toolUseId: "tu-live-4",
+        toolName: "Bash",
+        elapsedSeconds: 14,
+        output: "src/store.ts\nsrc/ws-handlers.ts\n",
+      },
+    ]);
     setStoreToolResults(sid, {
       "tu-live-4": {
         content: "Terminal command completed, but no output was captured.",
@@ -2405,17 +2385,13 @@ describe("MessageFeed - tool-only message detection", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } }],
       }),
       makeMessage({
         id: "a2",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/b.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-2", name: "Read", input: { file_path: "/b.ts" } }],
       }),
     ]);
 
@@ -2437,17 +2413,13 @@ describe("MessageFeed - tool-only message detection", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test -f package.json" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test -f package.json" } }],
       }),
       makeMessage({
         id: "a2",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "bun run test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-2", name: "Bash", input: { command: "bun run test" } }],
       }),
     ]);
 
@@ -2466,17 +2438,13 @@ describe("MessageFeed - tool-only message detection", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } }],
       }),
       makeMessage({
         id: "a2",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-2", name: "Bash", input: { command: "ls" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-2", name: "Bash", input: { command: "ls" } }],
       }),
     ]);
 
@@ -2562,9 +2530,7 @@ describe("MessageFeed - subagent grouping", () => {
         id: "a1",
         role: "assistant",
         content: "Let me use the playwright agent to check this",
-        contentBlocks: [
-          { type: "text", text: "Let me use the playwright agent to check this" },
-        ],
+        contentBlocks: [{ type: "text", text: "Let me use the playwright agent to check this" }],
       }),
       // Child messages have parentToolUseId but no matching Task in any message
       makeMessage({
@@ -2572,18 +2538,14 @@ describe("MessageFeed - subagent grouping", () => {
         role: "assistant",
         content: "",
         parentToolUseId: "task-orphan-1",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-bash-1", name: "Bash", input: { command: "ls" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-bash-1", name: "Bash", input: { command: "ls" } }],
       }),
       makeMessage({
         id: "child-2",
         role: "assistant",
         content: "",
         parentToolUseId: "task-orphan-1",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-bash-2", name: "Bash", input: { command: "pwd" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-bash-2", name: "Bash", input: { command: "pwd" } }],
       }),
     ]);
 
@@ -2855,9 +2817,7 @@ describe("MessageFeed - subagent grouping", () => {
         role: "assistant",
         content: "",
         parentToolUseId: "task-prompt",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-grep-1", name: "Grep", input: { pattern: "auth" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-grep-1", name: "Grep", input: { pattern: "auth" } }],
       }),
     ]);
 
@@ -3030,9 +2990,7 @@ describe("MessageFeed - subagent grouping", () => {
         role: "assistant",
         content: "Let me inspect README first.",
         parentToolUseId: "task-mixed-child",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-read-1", name: "Read", input: { file_path: "/tmp/README.md" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-read-1", name: "Read", input: { file_path: "/tmp/README.md" } }],
       }),
     ]);
 
@@ -3241,11 +3199,12 @@ describe("MessageFeed - collapsed turns", () => {
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "I investigated worker logs and reproduced the failure.\nRoot cause confirmed; patch queued. @to(user)",
+        content:
+          "I investigated worker logs and reproduced the failure.\nRoot cause confirmed; patch queued. @to(user)",
         leaderUserAddressed: true,
         contentBlocks: [
           { type: "text", text: "I investigated worker logs and reproduced the failure." },
-          { type: "tool_use", id: "tu-200", name: "Bash", input: { command: "rg -n \"leader\" web/src/components" } },
+          { type: "tool_use", id: "tu-200", name: "Bash", input: { command: 'rg -n "leader" web/src/components' } },
           { type: "text", text: "Root cause confirmed; patch queued. @to(user)" },
         ],
       }),
@@ -3272,7 +3231,9 @@ describe("MessageFeed - collapsed turns", () => {
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "status" }),
       makeMessage({
-        id: "a1", role: "assistant", content: "",
+        id: "a1",
+        role: "assistant",
+        content: "",
         contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "ls" } }],
       }),
       makeMessage({
@@ -3341,9 +3302,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a3",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
       }),
     ]);
 
@@ -3372,9 +3331,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a3",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
       }),
     ]);
     // Override uses "u1" — the turn ID (turns no longer split at @to(user))
@@ -3402,9 +3359,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a3",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
       }),
       makeMessage({ id: "u2", role: "user", content: "Follow-up while streaming" }),
     ]);
@@ -3442,10 +3397,10 @@ describe("MessageFeed - collapsed turns", () => {
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "First question" }),
       makeMessage({
-        id: "a1", role: "assistant", content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } },
-        ],
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "/a.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "Here is the answer" }),
       makeMessage({ id: "u2", role: "user", content: "Second question" }),
@@ -3540,9 +3495,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-streaming", name: "Read", input: { file_path: "/tmp/a.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-streaming", name: "Read", input: { file_path: "/tmp/a.ts" } }],
       }),
       makeMessage({ id: "u2", role: "user", content: "Follow-up while previous turn is unfinished" }),
       makeMessage({ id: "a2", role: "assistant", content: "Acknowledged follow-up" }),
@@ -3563,9 +3516,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-prev", name: "Read", input: { file_path: "/tmp/prev.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-prev", name: "Read", input: { file_path: "/tmp/prev.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "Partial in-flight response" }),
       makeMessage({ id: "u2", role: "user", content: "Follow-up during stream" }),
@@ -3585,9 +3536,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-prev", name: "Read", input: { file_path: "/tmp/prev.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-prev", name: "Read", input: { file_path: "/tmp/prev.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "Partial in-flight response" }),
       makeMessage({ id: "u2", role: "user", content: "Follow-up sent during stream" }),
@@ -3608,9 +3557,7 @@ describe("MessageFeed - collapsed turns", () => {
         id: "a1",
         role: "assistant",
         content: "",
-        contentBlocks: [
-          { type: "tool_use", id: "tu-older", name: "Read", input: { file_path: "/tmp/older.ts" } },
-        ],
+        contentBlocks: [{ type: "tool_use", id: "tu-older", name: "Read", input: { file_path: "/tmp/older.ts" } }],
       }),
       makeMessage({ id: "a2", role: "assistant", content: "Older result" }),
       makeMessage({ id: "u2", role: "user", content: "Second request" }),

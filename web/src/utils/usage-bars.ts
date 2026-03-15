@@ -35,10 +35,7 @@ export function formatUsageResetTime(
 }
 
 /** Compute elapsed % within a reset cycle. Returns null if unknown. */
-export function cycleElapsedPct(
-  resetsAt: string | null | undefined,
-  cycleDurationMs: number,
-): number | null {
+export function cycleElapsedPct(resetsAt: string | null | undefined, cycleDurationMs: number): number | null {
   if (!resetsAt) return null;
   try {
     const remainingMs = new Date(resetsAt).getTime() - Date.now();

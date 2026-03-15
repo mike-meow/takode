@@ -16,11 +16,16 @@ vi.mock("node:crypto", async (importOriginal) => {
 });
 
 // Mock child_process.exec to prevent actual git commands from running in tests
-const mockExec = vi.hoisted(() => vi.fn((_cmd: string, _opts: any, cb: any) => {
-  // Simulate immediate success (exec callback signature: err, stdout, stderr)
-  if (typeof _opts === "function") { _opts(null, "", ""); return; }
-  if (cb) cb(null, "", "");
-}));
+const mockExec = vi.hoisted(() =>
+  vi.fn((_cmd: string, _opts: any, cb: any) => {
+    // Simulate immediate success (exec callback signature: err, stdout, stderr)
+    if (typeof _opts === "function") {
+      _opts(null, "", "");
+      return;
+    }
+    if (cb) cb(null, "", "");
+  }),
+);
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = (await importOriginal()) as any;
   return {
@@ -60,26 +65,50 @@ const mockReadFileSync = vi.hoisted(() => vi.fn((..._args: any[]) => ""));
 const mockWriteFileSync = vi.hoisted(() => vi.fn());
 const mockUnlinkSync = vi.hoisted(() => vi.fn());
 const mockSymlinkSync = vi.hoisted(() => vi.fn());
-const mockLstatSync = vi.hoisted(() => vi.fn((_path?: string): any => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); }));
+const mockLstatSync = vi.hoisted(() =>
+  vi.fn((_path?: string): any => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  }),
+);
 const isMockedPath = vi.hoisted(() => (path: string): boolean => {
-  return path.includes(".claude")
-    || path.includes(".codex")
-    || path.includes(".companion")
-    || path.startsWith("/tmp/worktrees/")
-    || path.startsWith("/tmp/main-repo");
+  return (
+    path.includes(".claude") ||
+    path.includes(".codex") ||
+    path.includes(".companion") ||
+    path.startsWith("/tmp/worktrees/") ||
+    path.startsWith("/tmp/main-repo")
+  );
 });
 
 // Async mock functions for node:fs/promises — delegate to sync mocks so test
 // setups (mockExistsSync.mockImplementation, mockReadFileSync.mockImplementation, etc.)
 // and assertions (expect(mockSymlinkSync).toHaveBeenCalledWith, etc.) still work.
-const mockMkdir = vi.hoisted(() => vi.fn(async (...args: any[]) => { mockMkdirSync(...args); }));
-const mockAccess = vi.hoisted(() => vi.fn(async (...args: any[]) => {
-  if (!mockExistsSync(args[0])) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-}));
+const mockMkdir = vi.hoisted(() =>
+  vi.fn(async (...args: any[]) => {
+    mockMkdirSync(...args);
+  }),
+);
+const mockAccess = vi.hoisted(() =>
+  vi.fn(async (...args: any[]) => {
+    if (!mockExistsSync(args[0])) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  }),
+);
 const mockReadFile = vi.hoisted(() => vi.fn(async (...args: any[]) => mockReadFileSync(...args)));
-const mockWriteFile = vi.hoisted(() => vi.fn(async (...args: any[]) => { mockWriteFileSync(...args); }));
-const mockUnlink = vi.hoisted(() => vi.fn(async (...args: any[]) => { mockUnlinkSync(...args); }));
-const mockSymlink = vi.hoisted(() => vi.fn(async (...args: any[]) => { mockSymlinkSync(...args); }));
+const mockWriteFile = vi.hoisted(() =>
+  vi.fn(async (...args: any[]) => {
+    mockWriteFileSync(...args);
+  }),
+);
+const mockUnlink = vi.hoisted(() =>
+  vi.fn(async (...args: any[]) => {
+    mockUnlinkSync(...args);
+  }),
+);
+const mockSymlink = vi.hoisted(() =>
+  vi.fn(async (...args: any[]) => {
+    mockSymlinkSync(...args);
+  }),
+);
 const mockLstat = vi.hoisted(() => vi.fn(async (...args: any[]) => mockLstatSync(...args)));
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -241,7 +270,9 @@ let launcher: CliLauncher;
 beforeEach(() => {
   vi.clearAllMocks();
   // Re-apply default: lstatSync throws ENOENT (file doesn't exist), matching real behavior
-  mockLstatSync.mockImplementation(() => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+  mockLstatSync.mockImplementation(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  });
   delete process.env.COMPANION_CONTAINER_SDK_HOST;
   delete process.env.COMPANION_FORCE_BYPASS_IN_CONTAINER;
   tempDir = mkdtempSync(join(tmpdir(), "launcher-test-"));
@@ -308,10 +339,7 @@ describe("launch", () => {
     const writeCall = mockWriteFile.mock.calls.find((call) => call[0] === expectedPath);
     expect(writeCall).toBeDefined();
     // Should create the ~/.companion/session-auth/ directory, not {cwd}/.companion/
-    expect(mockMkdir).toHaveBeenCalledWith(
-      join(homedir(), ".companion", "session-auth"),
-      { recursive: true },
-    );
+    expect(mockMkdir).toHaveBeenCalledWith(join(homedir(), ".companion", "session-auth"), { recursive: true });
     expect(writeCall?.[2]).toEqual({ mode: 0o600 });
 
     const payload = JSON.parse(String(writeCall?.[1])) as {
@@ -411,13 +439,10 @@ describe("launch", () => {
 
     const [cmdAndArgs] = mockSpawn.mock.calls[0];
     // Each tool gets its own --allowedTools flag
-    const toolFlags = cmdAndArgs.reduce(
-      (acc: string[], arg: string, i: number) => {
-        if (arg === "--allowedTools") acc.push(cmdAndArgs[i + 1]);
-        return acc;
-      },
-      [],
-    );
+    const toolFlags = cmdAndArgs.reduce((acc: string[], arg: string, i: number) => {
+      if (arg === "--allowedTools") acc.push(cmdAndArgs[i + 1]);
+      return acc;
+    }, []);
     expect(toolFlags).toEqual(["Read", "Write", "Bash"]);
   });
 
@@ -669,7 +694,7 @@ describe("launch", () => {
       expect(updatedConfig).toContain("[features]");
       expect(updatedConfig).toContain("multi_agent = true");
       expect(updatedConfig).toContain("[shell_environment_policy]");
-      expect(updatedConfig).toContain("\"PATH\"");
+      expect(updatedConfig).toContain('"PATH"');
     } finally {
       rmSync(customHome, { recursive: true, force: true });
     }
@@ -682,22 +707,26 @@ describe("launch", () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const sessionHome = join(customHome, "test-session-id");
     const configPath = join(sessionHome, "config.toml");
-    const { mkdirSync: realMkdirSync, writeFileSync: realWriteFileSync, readFileSync: realReadFileSync } = require("node:fs");
+    const {
+      mkdirSync: realMkdirSync,
+      writeFileSync: realWriteFileSync,
+      readFileSync: realReadFileSync,
+    } = require("node:fs");
     realMkdirSync(sessionHome, { recursive: true });
     realWriteFileSync(
       configPath,
       [
-        "sandbox_mode = \"workspace-write\"",
+        'sandbox_mode = "workspace-write"',
         "",
         "[features]",
         "multi_agent = false",
         "other_feature = false",
         "",
         "[shell_environment_policy]",
-        "inherit = \"core\"",
+        'inherit = "core"',
         "include_only = [",
-        "    \"PATH\",",
-        "    \"HOME\",",
+        '    "PATH",',
+        '    "HOME",',
         "]",
         "",
       ].join("\n"),
@@ -729,15 +758,15 @@ describe("launch", () => {
       expect(updatedConfig).toContain("multi_agent = true");
       expect(updatedConfig).not.toContain("multi_agent = false");
       expect(updatedConfig).toContain("other_feature = false");
-      expect(updatedConfig).toContain("\"PATH\"");
-      expect(updatedConfig).toContain("\"HOME\"");
-      expect(updatedConfig).toContain("\"COMPANION_SERVER_ID\"");
-      expect(updatedConfig).toContain("\"COMPANION_SESSION_ID\"");
-      expect(updatedConfig).toContain("\"COMPANION_SESSION_NUMBER\"");
-      expect(updatedConfig).toContain("\"COMPANION_AUTH_TOKEN\"");
-      expect(updatedConfig).toContain("\"COMPANION_PORT\"");
-      expect(updatedConfig).toContain("\"TAKODE_ROLE\"");
-      expect(updatedConfig).toContain("\"TAKODE_API_PORT\"");
+      expect(updatedConfig).toContain('"PATH"');
+      expect(updatedConfig).toContain('"HOME"');
+      expect(updatedConfig).toContain('"COMPANION_SERVER_ID"');
+      expect(updatedConfig).toContain('"COMPANION_SESSION_ID"');
+      expect(updatedConfig).toContain('"COMPANION_SESSION_NUMBER"');
+      expect(updatedConfig).toContain('"COMPANION_AUTH_TOKEN"');
+      expect(updatedConfig).toContain('"COMPANION_PORT"');
+      expect(updatedConfig).toContain('"TAKODE_ROLE"');
+      expect(updatedConfig).toContain('"TAKODE_API_PORT"');
     } finally {
       rmSync(customHome, { recursive: true, force: true });
     }
@@ -1010,8 +1039,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdout: null,
       stderr: null,
     };
@@ -1047,8 +1080,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdout: null,
       stderr: null,
     };
@@ -1110,8 +1147,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdout: null,
       stderr: null,
     };
@@ -1144,7 +1185,9 @@ describe("relaunch", () => {
     });
 
     mockIsContainerAlive.mockReturnValueOnce("stopped");
-    mockStartContainer.mockImplementationOnce(() => { throw new Error("container start failed"); });
+    mockStartContainer.mockImplementationOnce(() => {
+      throw new Error("container start failed");
+    });
 
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
@@ -1228,8 +1271,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdout: null,
       stderr: null,
     };
@@ -1254,8 +1301,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdout: null,
       stderr: null,
     };
@@ -1267,7 +1318,9 @@ describe("relaunch", () => {
     // Use persistent implementation (not once) to avoid order-dependent
     // consumption from unrelated async spawn attempts in prior tests.
     mockSpawn.mockImplementation(() => {
-      throw Object.assign(new Error("ENOENT: no such file or directory, posix_spawn '/usr/bin/claude'"), { code: "ENOENT" });
+      throw Object.assign(new Error("ENOENT: no such file or directory, posix_spawn '/usr/bin/claude'"), {
+        code: "ENOENT",
+      });
     });
 
     const result = await launcher.relaunch("test-session-id");
@@ -1297,7 +1350,10 @@ describe("relaunch", () => {
     // On relaunch, Bun.spawn throws ENOENT (node binary path gone).
     // Use persistent implementation (not once) to keep this deterministic.
     mockSpawn.mockImplementation(() => {
-      throw Object.assign(new Error("ENOENT: no such file or directory, posix_spawn '/home/user/.nvm/versions/node/v22/bin/node'"), { code: "ENOENT" });
+      throw Object.assign(
+        new Error("ENOENT: no such file or directory, posix_spawn '/home/user/.nvm/versions/node/v22/bin/node'"),
+        { code: "ENOENT" },
+      );
     });
 
     const result = await launcher.relaunch("test-session-id");
@@ -1328,10 +1384,7 @@ describe("relaunch", () => {
     await store.flushAll();
 
     let pidAlive = true;
-    const killSpy = vi.spyOn(process, "kill").mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: string | number) => {
       if (pid !== 33333) return true;
       if (signal === 0) {
         if (pidAlive) return true;
@@ -1374,10 +1427,7 @@ describe("relaunch", () => {
     ]);
     await store.flushAll();
 
-    const killSpy = vi.spyOn(process, "kill").mockImplementation(((
-      pid: number,
-      signal?: string | number,
-    ) => {
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: string | number) => {
       if (pid !== 44444) return true;
       if (signal === 0) return true;
       return true;
@@ -1405,7 +1455,9 @@ describe("relaunch", () => {
     const firstProc = {
       pid: 11111,
       kill: vi.fn(),
-      exited: new Promise<number>((r) => { resolveFirstExit = r; }),
+      exited: new Promise<number>((r) => {
+        resolveFirstExit = r;
+      }),
       stdin: new WritableStream<Uint8Array>(),
       stdout: new ReadableStream<Uint8Array>(),
       stderr: new ReadableStream<Uint8Array>(),
@@ -1430,7 +1482,9 @@ describe("relaunch", () => {
 
     // Start relaunch (kills first proc, spawns second)
     // Resolve the first proc's exit during terminateKnownProcess
-    firstProc.kill.mockImplementation(() => { resolveFirstExit(143); });
+    firstProc.kill.mockImplementation(() => {
+      resolveFirstExit(143);
+    });
     const result = await launcher.relaunch("test-session-id");
     expect(result).toEqual({ ok: true });
 
@@ -1458,8 +1512,12 @@ describe("relaunch", () => {
     let resolveFirst: (code: number) => void;
     const firstProc = {
       pid: 12345,
-      kill: vi.fn(() => { resolveFirst(0); }),
-      exited: new Promise<number>((r) => { resolveFirst = r; }),
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
       stdin: new WritableStream<Uint8Array>(),
       stdout: new ReadableStream<Uint8Array>(),
       stderr: new ReadableStream<Uint8Array>(),
@@ -1513,10 +1571,7 @@ describe("persistence", () => {
 
       // Mock process.kill(pid, 0) to succeed (process is alive)
       const origKill = process.kill;
-      const killSpy = vi.spyOn(process, "kill").mockImplementation(((
-        pid: number,
-        signal?: string | number,
-      ) => {
+      const killSpy = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: string | number) => {
         if (signal === 0) return true;
         return origKill.call(process, pid, signal as any);
       }) as any);
@@ -1550,10 +1605,7 @@ describe("persistence", () => {
       await store.flushAll();
 
       // Mock process.kill(pid, 0) to throw (process is dead)
-      const killSpy = vi.spyOn(process, "kill").mockImplementation(((
-        _pid: number,
-        signal?: string | number,
-      ) => {
+      const killSpy = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
         if (signal === 0) throw new Error("ESRCH");
         return true;
       }) as any);
@@ -1740,10 +1792,7 @@ describe("symlinkProjectSettings", () => {
     await launchWorktree();
 
     // mkdir should be called for the repo's .claude dir (recursive)
-    expect(mockMkdirSync).toHaveBeenCalledWith(
-      join(REPO_ROOT, ".claude"),
-      { recursive: true },
-    );
+    expect(mockMkdirSync).toHaveBeenCalledWith(join(REPO_ROOT, ".claude"), { recursive: true });
   });
 
   it("merges a real (non-symlink) file into repo and replaces with symlink", async () => {
@@ -1785,9 +1834,7 @@ describe("symlinkProjectSettings", () => {
     });
 
     // Real file should be removed and replaced with symlink
-    expect(mockUnlinkSync).toHaveBeenCalledWith(
-      join(WORKTREE, ".claude", "settings.json"),
-    );
+    expect(mockUnlinkSync).toHaveBeenCalledWith(join(WORKTREE, ".claude", "settings.json"));
     // Both settings.json and settings.local.json should be symlinked
     expect(mockSymlinkSync).toHaveBeenCalledTimes(2);
     expect(mockSymlinkSync).toHaveBeenCalledWith(
@@ -1878,9 +1925,7 @@ describe("symlinkProjectSettings", () => {
 
     // Verify git exclude was written for the settings symlinks
     const writeFileCalls = mockWriteFileSync.mock.calls.map((c: any[]) => c[0]);
-    const excludeCalls = writeFileCalls.filter(
-      (p: string) => typeof p === "string" && p.includes("info/exclude"),
-    );
+    const excludeCalls = writeFileCalls.filter((p: string) => typeof p === "string" && p.includes("info/exclude"));
     // CLAUDE.md + settings.json + settings.local.json = 3 exclude entries
     expect(excludeCalls.length).toBeGreaterThanOrEqual(2);
   });
@@ -1917,7 +1962,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("sub-agent");
     expect(guardrails).toContain("After your own context compaction, refresh worker state before dispatching.");
     expect(guardrails).toContain("Prefer reusing an idle existing worker over spawning a new one.");
-    expect(guardrails).toContain("Only use `takode spawn` when no suitable worker exists or when you explicitly need isolation.");
+    expect(guardrails).toContain(
+      "Only use `takode spawn` when no suitable worker exists or when you explicitly need isolation.",
+    );
   });
 
   it("returns Codex guardrails without Claude-only or sub-agent guidance", () => {
@@ -1928,7 +1975,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Do not use plain absolute-path markdown links");
     expect(guardrails).toContain("After your own context compaction, refresh worker state before dispatching.");
     expect(guardrails).toContain("Prefer reusing an idle existing worker over spawning a new one.");
-    expect(guardrails).toContain("Only use `takode spawn` when no suitable worker exists or when you explicitly need isolation.");
+    expect(guardrails).toContain(
+      "Only use `takode spawn` when no suitable worker exists or when you explicitly need isolation.",
+    );
     expect(guardrails).not.toContain("CLAUDE.md");
     expect(guardrails).not.toContain("sub-agent");
     expect(guardrails).not.toMatch(/\bagent\b/i);
@@ -1944,8 +1993,12 @@ describe("cat herding", () => {
   let herdLauncher: CliLauncher;
 
   async function setupSessions(...ids: string[]): Promise<void> {
-    const sessions = ids.map(id => ({
-      sessionId: id, state: "connected" as const, cwd: "/tmp", createdAt: Date.now(), pid: 99999,
+    const sessions = ids.map((id) => ({
+      sessionId: id,
+      state: "connected" as const,
+      cwd: "/tmp",
+      createdAt: Date.now(),
+      pid: 99999,
     }));
     store.saveLauncher(sessions);
     await store.flushAll(); // ensure launcher.json is written before restoreFromDisk reads it
@@ -1962,7 +2015,7 @@ describe("cat herding", () => {
     expect(result.notFound).toEqual([]);
 
     const herded = herdLauncher.getHerdedSessions("orch-1");
-    expect(herded.map(s => s.sessionId).sort()).toEqual(["worker-1", "worker-2"]);
+    expect(herded.map((s) => s.sessionId).sort()).toEqual(["worker-1", "worker-2"]);
   });
 
   it("herding is idempotent — re-herding same orchestrator is a no-op", async () => {

@@ -41,14 +41,30 @@ function makeCodexAdapterMock() {
   let currentTurnId: string | null = null;
 
   return {
-    onBrowserMessage: vi.fn((cb: (msg: any) => void) => { onBrowserMessageCb = cb; }),
-    onSessionMeta: vi.fn((cb: (meta: any) => void) => { onSessionMetaCb = cb; }),
-    onDisconnect: vi.fn((cb: () => void) => { onDisconnectCb = cb; }),
-    onInitError: vi.fn((cb: (error: string) => void) => { onInitErrorCb = cb; }),
-    onTurnStartFailed: vi.fn((cb: (msg: any) => void) => { onTurnStartFailedCb = cb; }),
-    onTurnStarted: vi.fn((cb: (turnId: string) => void) => { onTurnStartedCb = cb; }),
-    onTurnSteered: vi.fn((cb: (turnId: string, pendingInputIds: string[]) => void) => { onTurnSteeredCb = cb; }),
-    onTurnSteerFailed: vi.fn((cb: (pendingInputIds: string[]) => void) => { onTurnSteerFailedCb = cb; }),
+    onBrowserMessage: vi.fn((cb: (msg: any) => void) => {
+      onBrowserMessageCb = cb;
+    }),
+    onSessionMeta: vi.fn((cb: (meta: any) => void) => {
+      onSessionMetaCb = cb;
+    }),
+    onDisconnect: vi.fn((cb: () => void) => {
+      onDisconnectCb = cb;
+    }),
+    onInitError: vi.fn((cb: (error: string) => void) => {
+      onInitErrorCb = cb;
+    }),
+    onTurnStartFailed: vi.fn((cb: (msg: any) => void) => {
+      onTurnStartFailedCb = cb;
+    }),
+    onTurnStarted: vi.fn((cb: (turnId: string) => void) => {
+      onTurnStartedCb = cb;
+    }),
+    onTurnSteered: vi.fn((cb: (turnId: string, pendingInputIds: string[]) => void) => {
+      onTurnSteeredCb = cb;
+    }),
+    onTurnSteerFailed: vi.fn((cb: (pendingInputIds: string[]) => void) => {
+      onTurnSteerFailedCb = cb;
+    }),
     sendBrowserMessage: vi.fn(() => true),
     isConnected: vi.fn(() => true),
     disconnect: vi.fn(async () => {}),
@@ -146,10 +162,18 @@ function makeClaudeSdkAdapterMock() {
   let onInitErrorCb: ((error: string) => void) | undefined;
 
   return {
-    onBrowserMessage: vi.fn((cb: (msg: any) => void) => { onBrowserMessageCb = cb; }),
-    onSessionMeta: vi.fn((cb: (meta: any) => void) => { onSessionMetaCb = cb; }),
-    onDisconnect: vi.fn((cb: () => void) => { onDisconnectCb = cb; }),
-    onInitError: vi.fn((cb: (error: string) => void) => { onInitErrorCb = cb; }),
+    onBrowserMessage: vi.fn((cb: (msg: any) => void) => {
+      onBrowserMessageCb = cb;
+    }),
+    onSessionMeta: vi.fn((cb: (meta: any) => void) => {
+      onSessionMetaCb = cb;
+    }),
+    onDisconnect: vi.fn((cb: () => void) => {
+      onDisconnectCb = cb;
+    }),
+    onInitError: vi.fn((cb: (error: string) => void) => {
+      onInitErrorCb = cb;
+    }),
     sendBrowserMessage: vi.fn(),
     drainPendingOutgoing: vi.fn((): any[] => []),
     isConnected: vi.fn(() => true),
@@ -203,10 +227,7 @@ describe("traffic accounting", () => {
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const bucket = snapshot.buckets.find(
-      (entry) =>
-        entry.channel === "browser"
-        && entry.direction === "out"
-        && entry.messageType === "session_update",
+      (entry) => entry.channel === "browser" && entry.direction === "out" && entry.messageType === "session_update",
     );
 
     expect(bucket).toBeDefined();
@@ -225,10 +246,7 @@ describe("traffic accounting", () => {
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const bucket = snapshot.buckets.find(
-      (entry) =>
-        entry.channel === "browser"
-        && entry.direction === "in"
-        && entry.messageType === "session_subscribe",
+      (entry) => entry.channel === "browser" && entry.direction === "in" && entry.messageType === "session_subscribe",
     );
 
     expect(bucket).toMatchObject({
@@ -252,16 +270,10 @@ describe("traffic accounting", () => {
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const cliIn = snapshot.buckets.find(
-      (entry) =>
-        entry.channel === "cli"
-        && entry.direction === "in"
-        && entry.messageType === "keep_alive",
+      (entry) => entry.channel === "cli" && entry.direction === "in" && entry.messageType === "keep_alive",
     );
     const cliOut = snapshot.buckets.find(
-      (entry) =>
-        entry.channel === "cli"
-        && entry.direction === "out"
-        && entry.messageType === "user",
+      (entry) => entry.channel === "cli" && entry.direction === "out" && entry.messageType === "user",
     );
 
     expect(cliIn?.messages).toBe(1);
@@ -284,10 +296,13 @@ describe("Codex pending input delivery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "steer me later",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "steer me later",
+      }),
+    );
     await Promise.resolve();
 
     const session = bridge.getSession(sid)!;
@@ -295,7 +310,9 @@ describe("Codex pending input delivery", () => {
     expect(session.pendingCodexInputs[0]).toMatchObject({
       content: "steer me later",
     });
-    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later")).toBe(false);
+    expect(
+      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later"),
+    ).toBe(false);
 
     const pendingBroadcast = browser.send.mock.calls
       .map(([arg]: [string]) => JSON.parse(arg))
@@ -305,7 +322,9 @@ describe("Codex pending input delivery", () => {
     adapter.emitTurnStarted("turn-pending");
 
     expect(session.pendingCodexInputs).toHaveLength(0);
-    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later")).toBe(true);
+    expect(
+      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "steer me later"),
+    ).toBe(true);
   });
 
   it("cancels still-local pending Codex input before delivery", async () => {
@@ -315,10 +334,13 @@ describe("Codex pending input delivery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "do not deliver this",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "do not deliver this",
+      }),
+    );
     await Promise.resolve();
 
     const session = bridge.getSession(sid)!;
@@ -327,15 +349,20 @@ describe("Codex pending input delivery", () => {
     expect(session.pendingCodexInputs[0]?.cancelable).toBe(true);
     expect(session.pendingCodexTurns).toHaveLength(1);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "cancel_pending_codex_input",
-      id: pendingId,
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "cancel_pending_codex_input",
+        id: pendingId,
+      }),
+    );
     await Promise.resolve();
 
     expect(session.pendingCodexInputs).toHaveLength(0);
     expect(session.pendingCodexTurns).toHaveLength(0);
-    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "do not deliver this")).toBe(false);
+    expect(
+      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "do not deliver this"),
+    ).toBe(false);
   });
 
   it("restores pending Codex inputs across restart and delivers them on reconnect", async () => {
@@ -345,14 +372,16 @@ describe("Codex pending input delivery", () => {
       state: bridge.getOrCreateSession(sid, "codex").state,
       messageHistory: [],
       pendingMessages: [],
-      pendingCodexInputs: [{
-        id: "pending-persisted-1",
-        content: "re-deliver me after restart",
-        timestamp: 1,
-        cancelable: true,
-        draftImages: [],
-        deliveryContent: "re-deliver me after restart",
-      }],
+      pendingCodexInputs: [
+        {
+          id: "pending-persisted-1",
+          content: "re-deliver me after restart",
+          timestamp: 1,
+          cancelable: true,
+          draftImages: [],
+          deliveryContent: "re-deliver me after restart",
+        },
+      ],
       pendingPermissions: [],
     });
 
@@ -364,10 +393,12 @@ describe("Codex pending input delivery", () => {
     restored.attachCodexAdapter(sid, adapter as any);
     emitCodexSessionReady(adapter, { cliSessionId: "thread-restored-pending" });
 
-    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: "codex_start_pending",
-      pendingInputIds: ["pending-persisted-1"],
-    }));
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["pending-persisted-1"],
+      }),
+    );
   });
 });
 
@@ -548,10 +579,13 @@ describe("CLI handlers", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "hello queued",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello queued",
+      }),
+    );
 
     // CLI not yet connected, message should be queued
     const session = bridge.getSession("s1")!;
@@ -576,15 +610,20 @@ describe("CLI handlers", () => {
   it("handleCLIMessage: system.init does not re-flush already-sent messages", () => {
     // Messages are flushed on CLI connect, so by the time system.init
     // arrives the queue should already be empty.
-    mockExecSync.mockImplementation(() => { throw new Error("not a git repo"); });
+    mockExecSync.mockImplementation(() => {
+      throw new Error("not a git repo");
+    });
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "hello queued",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello queued",
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages.length).toBe(1);
@@ -615,10 +654,13 @@ describe("CLI handlers", () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
     // User message marks the session running immediately.
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "hello",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello",
+      }),
+    );
     expect(bridge.getSession("s1")!.isGenerating).toBe(true);
 
     // Regression: when system.init arrives before assistant/result output,
@@ -683,17 +725,20 @@ describe("CLI handlers", () => {
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
 
-    bridge.handleCLIMessage(cli, makeInitMsg({
-      model: "claude-opus-4-5-20250929",
-      cwd: "/workspace",
-      tools: ["Bash", "Read", "Edit"],
-      permissionMode: "bypassPermissions",
-      claude_code_version: "2.0",
-      mcp_servers: [{ name: "test-mcp", status: "connected" }],
-      agents: ["agent1"],
-      slash_commands: ["/commit"],
-      skills: ["pdf"],
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      makeInitMsg({
+        model: "claude-opus-4-5-20250929",
+        cwd: "/workspace",
+        tools: ["Bash", "Read", "Edit"],
+        permissionMode: "bypassPermissions",
+        claude_code_version: "2.0",
+        mcp_servers: [{ name: "test-mcp", status: "connected" }],
+        agents: ["agent1"],
+        slash_commands: ["/commit"],
+        skills: ["pdf"],
+      }),
+    );
 
     const state = bridge.getSession("s1")!.state;
     expect(state.model).toBe("claude-opus-4-5-20250929");
@@ -739,7 +784,12 @@ describe("CLI handlers", () => {
 
   it("handleCLIMessage: markWorktree pre-populates repo_root, git_default_branch, and diff_base_branch", async () => {
     // markWorktree sets is_worktree, repo_root, cwd, git_default_branch, and diff_base_branch before CLI connects
-    bridge.markWorktree("s1", "/home/user/companion", "/home/user/.companion/worktrees/companion/jiayi-wt-1234", "jiayi");
+    bridge.markWorktree(
+      "s1",
+      "/home/user/companion",
+      "/home/user/.companion/worktrees/companion/jiayi-wt-1234",
+      "jiayi",
+    );
 
     const state = bridge.getSession("s1")!.state;
     expect(state.is_worktree).toBe(true);
@@ -826,10 +876,12 @@ describe("CLI handlers", () => {
     const calls = (browserWs.send as ReturnType<typeof vi.fn>).mock.calls;
     const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     // Should have a session_update with diff_base_branch
-    expect(messages).toContainEqual(expect.objectContaining({
-      type: "session_update",
-      session: expect.objectContaining({ diff_base_branch: "feature-branch" }),
-    }));
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({ diff_base_branch: "feature-branch" }),
+      }),
+    );
 
     // Non-existent session returns false
     expect(bridge.setDiffBaseBranch("nonexistent", "main")).toBe(false);
@@ -1047,10 +1099,13 @@ describe("Seamless CLI reconnect preserves isGenerating", () => {
 
     // Send system.init to initialize, then send user message to start generation
     bridge.handleCLIMessage(cli1, makeInitMsg());
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Do something",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Do something",
+      }),
+    );
     const session = bridge.getSession("s1")!;
     expect(session.isGenerating).toBe(true);
 
@@ -1090,10 +1145,13 @@ describe("Seamless CLI reconnect preserves isGenerating", () => {
 
     // Start generation
     bridge.handleCLIMessage(cli1, makeInitMsg());
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Do something",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Do something",
+      }),
+    );
     const session = bridge.getSession("s1")!;
     expect(session.isGenerating).toBe(true);
 
@@ -1106,9 +1164,7 @@ describe("Seamless CLI reconnect preserves isGenerating", () => {
     // runFullDisconnect should have emitted turn_end
     const turnEndCalls = spy.mock.calls.filter(([, event]) => event === "turn_end");
     expect(turnEndCalls).toHaveLength(1);
-    expect(turnEndCalls[0]?.[2]).toEqual(
-      expect.objectContaining({ interrupted: true, interrupt_source: "system" }),
-    );
+    expect(turnEndCalls[0]?.[2]).toEqual(expect.objectContaining({ interrupted: true, interrupt_source: "system" }));
     expect(session.isGenerating).toBe(false);
 
     spy.mockRestore();
@@ -1198,20 +1254,23 @@ describe("Browser handlers", () => {
     bridge.handleBrowserOpen(seedBrowser, "s1");
     seedBrowser.send.mockClear();
 
-    bridge.handleBrowserMessage(seedBrowser, JSON.stringify({
-      type: "vscode_selection_update",
-      selection: {
-        absolutePath: "/repo/src/app.ts",
-        startLine: 4,
-        endLine: 8,
-        lineCount: 5,
-      },
-      updatedAt: 100,
-      sourceId: "window-a",
-      sourceType: "vscode-window",
-      sourceLabel: "VS Code A",
-      client_msg_id: "selection-seed",
-    }));
+    bridge.handleBrowserMessage(
+      seedBrowser,
+      JSON.stringify({
+        type: "vscode_selection_update",
+        selection: {
+          absolutePath: "/repo/src/app.ts",
+          startLine: 4,
+          endLine: 8,
+          lineCount: 5,
+        },
+        updatedAt: 100,
+        sourceId: "window-a",
+        sourceType: "vscode-window",
+        sourceLabel: "VS Code A",
+        client_msg_id: "selection-seed",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -1341,7 +1400,7 @@ describe("Browser handlers", () => {
       },
     });
     bridge.handleCLIMessage(cli, controlReq);
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
 
     // Now connect a browser and send session_subscribe
     const browser = makeBrowserSocket("s1");
@@ -1403,30 +1462,39 @@ describe("Browser handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Generate replayable events while no browser is connected.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "a" } },
-      parent_tool_use_id: null,
-      uuid: "u1",
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "b" } },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "a" } },
+        parent_tool_use_id: null,
+        uuid: "u1",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "b" } },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "s1",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
     // Ask for replay after seq=1 (backend_connected). Both stream events should replay.
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 1,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 1,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const replay = calls.find((c: any) => c.type === "event_replay");
@@ -1442,37 +1510,46 @@ describe("Browser handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Populate history so fallback payload has content.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "hist-1",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "from history" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "hist-u1",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "hist-1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "from history" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "hist-u1",
+        session_id: "s1",
+      }),
+    );
 
     // Generate several stream events, then trim the first one from in-memory buffer.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "1" } },
-      parent_tool_use_id: null,
-      uuid: "se-u1",
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "2" } },
-      parent_tool_use_id: null,
-      uuid: "se-u2",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "1" } },
+        parent_tool_use_id: null,
+        uuid: "se-u1",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "2" } },
+        parent_tool_use_id: null,
+        uuid: "se-u2",
+        session_id: "s1",
+      }),
+    );
     const session = bridge.getSession("s1")!;
     session.eventBuffer.shift();
     session.eventBuffer.shift(); // force earliest seq high enough to create a gap for last_seq=1
@@ -1481,11 +1558,14 @@ describe("Browser handlers", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 1,
-      known_frozen_count: 99,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 1,
+        known_frozen_count: 99,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls.some((c: any) => c.type === "message_history")).toBe(false);
@@ -1502,52 +1582,64 @@ describe("Browser handlers", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user_message",
-      content: "hello",
-      timestamp: 1000,
-      session_id: "s1",
-      uuid: "u1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "hist-1",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "from history" }],
-        stop_reason: "end_turn",
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello",
+        timestamp: 1000,
+        session_id: "s1",
+        uuid: "u1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "hist-1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "from history" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "hist-u1",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1,
+        duration_api_ms: 1,
+        num_turns: 1,
+        total_cost_usd: 0,
         usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "hist-u1",
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      duration_ms: 1,
-      duration_api_ms: 1,
-      num_turns: 1,
-      total_cost_usd: 0,
-      usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      session_id: "s1",
-      uuid: "res-1",
-      stop_reason: "end_turn",
-    }));
+        session_id: "s1",
+        uuid: "res-1",
+        stop_reason: "end_turn",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-      known_frozen_count: 2,
-      known_frozen_hash: "deadbeef",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+        known_frozen_count: 2,
+        known_frozen_hash: "deadbeef",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls.some((c: any) => c.type === "message_history")).toBe(false);
@@ -1563,14 +1655,17 @@ describe("Browser handlers", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "history_sync_mismatch",
-      frozen_count: 3,
-      expected_frozen_hash: "expected-frozen",
-      actual_frozen_hash: "actual-frozen",
-      expected_full_hash: "expected-full",
-      actual_full_hash: "actual-full",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "history_sync_mismatch",
+        frozen_count: 3,
+        expected_frozen_hash: "expected-frozen",
+        actual_frozen_hash: "actual-frozen",
+        expected_full_hash: "expected-full",
+        actual_full_hash: "actual-full",
+      }),
+    );
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("[history-sync] Browser reported hash mismatch for session"),
@@ -1587,28 +1682,34 @@ describe("Browser handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Generate a stream_event (transient, seq=2) then an assistant message (history-backed, seq=3)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "streaming" } },
-      parent_tool_use_id: null,
-      uuid: "se-1",
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "asst-missed",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "missed message" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "asst-u1",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "streaming" } },
+        parent_tool_use_id: null,
+        uuid: "se-1",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "asst-missed",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "missed message" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "asst-u1",
+        session_id: "s1",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -1616,10 +1717,13 @@ describe("Browser handlers", () => {
 
     // Browser reconnects claiming it last saw seq=1 (backend_connected event).
     // Event buffer covers seqs 2-3 (no gap), but seq=3 is history-backed.
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 1,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 1,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     // Should send history_sync because history-backed events were missed
@@ -1639,29 +1743,38 @@ describe("Browser handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Generate only transient events
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "a" } },
-      parent_tool_use_id: null,
-      uuid: "se-t1",
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "b" } },
-      parent_tool_use_id: null,
-      uuid: "se-t2",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "a" } },
+        parent_tool_use_id: null,
+        uuid: "se-t1",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "b" } },
+        parent_tool_use_id: null,
+        uuid: "se-t2",
+        session_id: "s1",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 1,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 1,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     // Should NOT send message_history since only transient events were missed
@@ -1682,21 +1795,24 @@ describe("Browser handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Generate an assistant message to populate messageHistory
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "asst-empty-buf",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "should be delivered" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "asst-eb",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "asst-empty-buf",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "should be delivered" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "asst-eb",
+        session_id: "s1",
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     // Clear the event buffer to simulate pruning, but keep nextEventSeq advanced
@@ -1707,10 +1823,13 @@ describe("Browser handlers", () => {
     browser.send.mockClear();
 
     // Browser is behind (last_seq=1 but nextEventSeq > 2)
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 1,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 1,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const historyMsg = calls.find((c: any) => c.type === "history_sync");
@@ -1722,10 +1841,13 @@ describe("Browser handlers", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_ack",
-      last_seq: 42,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_ack",
+        last_seq: 42,
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     expect(session.lastAckSeq).toBe(42);
@@ -1790,7 +1912,12 @@ describe("CLI message routing", () => {
         model: "claude-opus-4-6",
         content: [{ type: "text", text: "Working..." }],
         stop_reason: "tool_use",
-        usage: { input_tokens: 4000, output_tokens: 2000, cache_creation_input_tokens: 5000, cache_read_input_tokens: 30000 },
+        usage: {
+          input_tokens: 4000,
+          output_tokens: 2000,
+          cache_creation_input_tokens: 5000,
+          cache_read_input_tokens: 30000,
+        },
       },
       parent_tool_use_id: null,
       uuid: "uuid-context-mid-turn",
@@ -1880,46 +2007,58 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-missing-tag",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Forgot to add addressing tag this turn." }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-missing-tag",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Forgot to add addressing tag this turn." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        session_id: "s1",
+      }),
+    );
 
     // Reminder is NOT injected on the assistant message itself — it is
     // deferred to handleResultMessage (turn end) to avoid false nudges
     // during intermediate tool-call gaps.
     let reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
+      .find(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      );
     expect(reminderSend).toBeUndefined();
 
     // Now send the result message to end the turn — this triggers enforcement.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      result: "",
-      is_error: false,
-      total_cost_usd: 0.01,
-      num_turns: 1,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "",
+        is_error: false,
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        session_id: "s1",
+      }),
+    );
 
     reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
+      .find(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      );
     expect(reminderSend).toBeDefined();
     expect(String(reminderSend.message?.content)).toMatch(/^\[System \d{2}:\d{2}(?:\s?[AP]M)?\]/i);
-    expect(String(reminderSend.message?.content)).toContain("must end with @to(user) (if addressing the human) or @to(self)");
+    expect(String(reminderSend.message?.content)).toContain(
+      "must end with @to(user) (if addressing the human) or @to(self)",
+    );
 
     const session = bridge.getSession("s1")!;
     const injectedUser = session.messageHistory.findLast((m: any) => m.type === "user_message") as any;
@@ -1941,38 +2080,46 @@ describe("CLI message routing", () => {
 
     const reminderCountBefore = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .filter((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"))
-      .length;
+      .filter(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      ).length;
 
     // Assistant still forgets the suffix on this reminder-triggered turn.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-missing-tag-system-turn",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Still missing suffix on a system-triggered turn." }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      session_id: "s1",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      result: "",
-      is_error: false,
-      total_cost_usd: 0.01,
-      num_turns: 1,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-missing-tag-system-turn",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Still missing suffix on a system-triggered turn." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "",
+        is_error: false,
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        session_id: "s1",
+      }),
+    );
 
     const reminderCountAfter = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .filter((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"))
-      .length;
+      .filter(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      ).length;
 
     expect(reminderCountAfter).toBe(reminderCountBefore);
   });
@@ -1983,42 +2130,53 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "start work",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-missing-tag-interrupted",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Half-finished leader response without suffix." }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-missing-tag-interrupted",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Half-finished leader response without suffix." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        session_id: "s1",
+      }),
+    );
 
     bridge.handleBrowserMessage(browser, JSON.stringify({ type: "interrupt" }));
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      result: "",
-      is_error: false,
-      stop_reason: "interrupted",
-      total_cost_usd: 0.01,
-      num_turns: 1,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "",
+        is_error: false,
+        stop_reason: "interrupted",
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        session_id: "s1",
+      }),
+    );
 
     const reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
+      .find(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      );
     expect(reminderSend).toBeUndefined();
 
     const session = bridge.getSession("s1")!;
@@ -2040,10 +2198,13 @@ describe("CLI message routing", () => {
     bridge.attachClaudeSdkAdapter("s1", adapter as any);
 
     // Send user message via browser so the session has a user turn
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "coordinate workers",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "coordinate workers",
+      }),
+    );
 
     // Adapter emits assistant (missing @to tag — would trigger reminder normally)
     adapter.emitBrowserMessage({
@@ -2094,22 +2255,23 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-tool-only",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [
-          { type: "tool_use", id: "tool-2", name: "Bash", input: { command: "git status" } },
-        ],
-        stop_reason: "tool_use",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-tool-only",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "tool_use", id: "tool-2", name: "Bash", input: { command: "git status" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        session_id: "s1",
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
@@ -2117,7 +2279,9 @@ describe("CLI message routing", () => {
 
     const reminderSend = cli.send.mock.calls
       .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find((payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"));
+      .find(
+        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
+      );
     expect(reminderSend).toBeUndefined();
   });
 
@@ -2219,7 +2383,9 @@ describe("CLI message routing", () => {
     expect(latestAssistant.turn_duration_ms).toBeGreaterThanOrEqual(2000);
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const assistantRebroadcast = [...calls].reverse().find((c: any) => c.type === "assistant" && c.message?.id === "msg-turn-1");
+    const assistantRebroadcast = [...calls]
+      .reverse()
+      .find((c: any) => c.type === "assistant" && c.message?.id === "msg-turn-1");
     expect(assistantRebroadcast).toBeDefined();
     expect(typeof assistantRebroadcast.turn_duration_ms).toBe("number");
   });
@@ -2248,20 +2414,23 @@ describe("CLI message routing", () => {
     session.stuckNotifiedAt = Date.now() - 30_000;
     browser.send.mockClear();
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "Done!",
-      duration_ms: 2500,
-      duration_api_ms: 2000,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 50, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-replayed-result",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Done!",
+        duration_ms: 2500,
+        duration_api_ms: 2000,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 50, output_tokens: 20, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "uuid-replayed-result",
+        session_id: "s1",
+      }),
+    );
 
     expect(session.isGenerating).toBe(false);
     expect(session.generationStartedAt).toBeNull();
@@ -2280,13 +2449,15 @@ describe("CLI message routing", () => {
 
     session.messageHistory.push({
       type: "tool_result_preview",
-      previews: [{
-        tool_use_id: "tool-preview-1",
-        content: "existing preview",
-        is_error: false,
-        total_size: 16,
-        is_truncated: false,
-      }],
+      previews: [
+        {
+          tool_use_id: "tool-preview-1",
+          content: "existing preview",
+          is_error: false,
+          total_size: 16,
+          is_truncated: false,
+        },
+      ],
     } as any);
     session.messageHistory.push({
       type: "result",
@@ -2317,17 +2488,22 @@ describe("CLI message routing", () => {
     expect(session.cliResuming).toBe(true);
     browserReplay.send.mockClear();
 
-    bridge.handleCLIMessage(cliReplay, JSON.stringify({
-      type: "user",
-      message: {
-        content: [{
-          type: "tool_result",
-          tool_use_id: "tool-preview-1",
-          content: "existing preview",
-          is_error: false,
-        }],
-      },
-    }));
+    bridge.handleCLIMessage(
+      cliReplay,
+      JSON.stringify({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-preview-1",
+              content: "existing preview",
+              is_error: false,
+            },
+          ],
+        },
+      }),
+    );
 
     expect(session.messageHistory.filter((m: any) => m.type === "tool_result_preview")).toHaveLength(1);
     expect(session.toolStartTimes.has("tool-preview-1")).toBe(false);
@@ -2342,13 +2518,15 @@ describe("CLI message routing", () => {
 
     session.messageHistory.push({
       type: "tool_result_preview",
-      previews: [{
-        tool_use_id: "tool-preview-2",
-        content: "persisted preview",
-        is_error: false,
-        total_size: 17,
-        is_truncated: false,
-      }],
+      previews: [
+        {
+          tool_use_id: "tool-preview-2",
+          content: "persisted preview",
+          is_error: false,
+          total_size: 17,
+          is_truncated: false,
+        },
+      ],
     } as any);
     session.messageHistory.push({
       type: "result",
@@ -2376,17 +2554,22 @@ describe("CLI message routing", () => {
     bridge.handleCLIOpen(cliReplay, sid);
     expect(session.cliResuming).toBe(true);
 
-    bridge.handleCLIMessage(cliReplay, JSON.stringify({
-      type: "user",
-      message: {
-        content: [{
-          type: "tool_result",
-          tool_use_id: "tool-preview-2",
-          content: "persisted preview",
-          is_error: false,
-        }],
-      },
-    }));
+    bridge.handleCLIMessage(
+      cliReplay,
+      JSON.stringify({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-preview-2",
+              content: "persisted preview",
+              is_error: false,
+            },
+          ],
+        },
+      }),
+    );
 
     bridge.persistSessionSync(sid);
     await store.flushAll();
@@ -2402,34 +2585,40 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-internal",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Internal herd coordination completed. @to(self)" }],
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-internal",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Internal herd coordination completed. @to(self)" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0.01,
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-    }));
-
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done",
-      duration_ms: 1000,
-      duration_api_ms: 900,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-internal-result",
-      session_id: "s1",
-    }));
+        uuid: "uuid-internal-result",
+        session_id: "s1",
+      }),
+    );
 
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
@@ -2440,34 +2629,40 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-user-facing",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Finished q-126. Please verify. @to(user)" }],
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-user-facing",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Finished q-126. Please verify. @to(user)" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0.01,
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-    }));
-
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done",
-      duration_ms: 1000,
-      duration_api_ms: 900,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-user-result",
-      session_id: "s1",
-    }));
+        uuid: "uuid-user-result",
+        session_id: "s1",
+      }),
+    );
 
     expect(bridge.getSession("s1")!.attentionReason).toBe("review");
   });
@@ -2478,40 +2673,49 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
     } as any);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Please fix this quickly",
-      agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please fix this quickly",
+        agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
+      }),
+    );
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-worker",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Worker turn complete." }],
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-worker",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Worker turn complete." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0.01,
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-    }));
-
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done",
-      duration_ms: 1000,
-      duration_api_ms: 900,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-worker-result",
-      session_id: "s1",
-    }));
+        uuid: "uuid-worker-result",
+        session_id: "s1",
+      }),
+    );
 
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
@@ -2522,65 +2726,80 @@ describe("CLI message routing", () => {
       getSession: vi.fn(() => ({ herdedBy: "orch-1" })),
     } as any);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Human request: investigate failing test",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Human request: investigate failing test",
+      }),
+    );
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Leader follow-up: include stack traces",
-      agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Leader follow-up: include stack traces",
+        agentSource: { sessionId: "orch-1", sessionLabel: "#1 leader" },
+      }),
+    );
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-worker-user-turn",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Initial user-triggered turn complete." }],
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-worker-user-turn",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Initial user-triggered turn complete." }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done-user-turn",
+        duration_ms: 1000,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0.01,
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-    }));
-
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done-user-turn",
-      duration_ms: 1000,
-      duration_api_ms: 900,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-worker-result-user-trigger",
-      session_id: "s1",
-    }));
+        uuid: "uuid-worker-result-user-trigger",
+        session_id: "s1",
+      }),
+    );
 
     expect(bridge.getSession("s1")!.attentionReason).toBe("review");
     expect(bridge.getSession("s1")!.isGenerating).toBe(true);
 
     bridge.markSessionRead("s1");
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done-leader-turn",
-      duration_ms: 900,
-      duration_api_ms: 850,
-      num_turns: 2,
-      total_cost_usd: 0.02,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 8, output_tokens: 4, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-worker-result-leader-trigger",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done-leader-turn",
+        duration_ms: 900,
+        duration_api_ms: 850,
+        num_turns: 2,
+        total_cost_usd: 0.02,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 8, output_tokens: 4, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "uuid-worker-result-leader-trigger",
+        session_id: "s1",
+      }),
+    );
 
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
@@ -2628,11 +2847,13 @@ describe("CLI message routing", () => {
       .map(([arg]: [string]) => JSON.parse(arg))
       .filter((msg: any) => msg.type === "leader_group_idle");
     expect(leaderIdleEvents).toHaveLength(1);
-    expect(leaderIdleEvents[0]).toEqual(expect.objectContaining({
-      leader_session_id: leaderId,
-      member_count: 2,
-      leader_label: expect.stringContaining("#7"),
-    }));
+    expect(leaderIdleEvents[0]).toEqual(
+      expect.objectContaining({
+        leader_session_id: leaderId,
+        member_count: 2,
+        leader_label: expect.stringContaining("#7"),
+      }),
+    );
     expect(bridge.getSession(leaderId)!.attentionReason).toBe("review");
     expect(bridge.getSession(workerId)!.attentionReason).toBeNull();
     expect(scheduleNotification).toHaveBeenCalledWith(
@@ -2720,20 +2941,23 @@ describe("CLI message routing", () => {
       .filter((msg: any) => msg.type === "leader_group_idle");
     expect(leaderIdleEvents).toHaveLength(0);
 
-    bridge.handleCLIMessage(workerCli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done",
-      duration_ms: 1000,
-      duration_api_ms: 900,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-worker-2-result",
-      session_id: workerId,
-    }));
+    bridge.handleCLIMessage(
+      workerCli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 1000,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "uuid-worker-2-result",
+        session_id: workerId,
+      }),
+    );
 
     vi.advanceTimersByTime(10_500);
     leaderIdleEvents = leaderBrowser.send.mock.calls
@@ -2887,7 +3111,12 @@ describe("CLI message routing", () => {
       num_turns: 1,
       total_cost_usd: 0.02,
       stop_reason: "end_turn",
-      usage: { input_tokens: 400000, output_tokens: 10000, cache_creation_input_tokens: 15000, cache_read_input_tokens: 25000 },
+      usage: {
+        input_tokens: 400000,
+        output_tokens: 10000,
+        cache_creation_input_tokens: 15000,
+        cache_read_input_tokens: 25000,
+      },
       modelUsage: {
         "claude-opus-4-6": {
           inputTokens: 10,
@@ -2982,7 +3211,7 @@ describe("CLI message routing", () => {
     bridge.handleCLIMessage(cli, msg);
 
     const zeroBrowserWarning = logSpy.mock.calls.find(([line]) =>
-      String(line).includes("Broadcasting stream_event to 0 browsers")
+      String(line).includes("Broadcasting stream_event to 0 browsers"),
     );
     expect(zeroBrowserWarning).toBeUndefined();
     logSpy.mockRestore();
@@ -2999,12 +3228,14 @@ describe("CLI message routing", () => {
         description: "List files",
         tool_use_id: "tu-42",
         agent_id: "agent-1",
-        permission_suggestions: [{ type: "addRules", rules: [{ toolName: "Bash" }], behavior: "allow", destination: "session" }],
+        permission_suggestions: [
+          { type: "addRules", rules: [{ toolName: "Bash" }], behavior: "allow", destination: "session" },
+        ],
       },
     });
 
     bridge.handleCLIMessage(cli, msg);
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingPermissions.size).toBe(1);
@@ -3042,7 +3273,7 @@ describe("CLI message routing", () => {
     });
 
     bridge.handleCLIMessage(cli, msg);
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingPermissions.size).toBe(1);
@@ -3109,15 +3340,18 @@ describe("CLI message routing", () => {
     expect(mockLauncher.touchActivity).not.toHaveBeenCalled();
 
     // A real message (e.g. tool_progress) should update activity
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "tool_progress",
-      tool_use_id: "tu-1",
-      tool_name: "Bash",
-      parent_tool_use_id: null,
-      elapsed_time_seconds: 1,
-      uuid: "uuid-1",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "tool_progress",
+        tool_use_id: "tu-1",
+        tool_name: "Bash",
+        parent_tool_use_id: null,
+        elapsed_time_seconds: 1,
+        uuid: "uuid-1",
+        session_id: "s1",
+      }),
+    );
     expect(mockLauncher.touchActivity).toHaveBeenCalledWith("s1");
   });
 
@@ -3177,10 +3411,13 @@ describe("Browser message routing", () => {
   });
 
   it("user_message: sends NDJSON to CLI and stores in history", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "What is 2+2?",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "What is 2+2?",
+      }),
+    );
 
     // Should have sent NDJSON to CLI
     expect(cli.send).toHaveBeenCalledTimes(1);
@@ -3204,10 +3441,13 @@ describe("Browser message routing", () => {
     bridge.handleCLIClose(cli);
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "queued message",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "queued message",
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingMessages).toHaveLength(1);
@@ -3238,20 +3478,23 @@ describe("Browser message routing", () => {
     bridge.handleBrowserOpen(otherBrowser, "s2");
     otherBrowser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "vscode_selection_update",
-      selection: {
-        absolutePath: "/repo/src/app.ts",
-        startLine: 10,
-        endLine: 12,
-        lineCount: 3,
-      },
-      updatedAt: 200,
-      sourceId: "window-a",
-      sourceType: "vscode-window",
-      sourceLabel: "VS Code A",
-      client_msg_id: "selection-1",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "vscode_selection_update",
+        selection: {
+          absolutePath: "/repo/src/app.ts",
+          startLine: 10,
+          endLine: 12,
+          lineCount: 3,
+        },
+        updatedAt: 200,
+        sourceId: "window-a",
+        sourceType: "vscode-window",
+        sourceLabel: "VS Code A",
+        client_msg_id: "selection-1",
+      }),
+    );
 
     const sessionOneCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const sessionTwoCalls = otherBrowser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -3275,47 +3518,56 @@ describe("Browser message routing", () => {
   });
 
   it("vscode_selection_update: ignores stale updates and keeps inspectable clears", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "vscode_selection_update",
-      selection: {
-        absolutePath: "/repo/src/app.ts",
-        startLine: 10,
-        endLine: 12,
-        lineCount: 3,
-      },
-      updatedAt: 200,
-      sourceId: "window-b",
-      sourceType: "vscode-window",
-      sourceLabel: "VS Code B",
-      client_msg_id: "selection-2",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "vscode_selection_update",
+        selection: {
+          absolutePath: "/repo/src/app.ts",
+          startLine: 10,
+          endLine: 12,
+          lineCount: 3,
+        },
+        updatedAt: 200,
+        sourceId: "window-b",
+        sourceType: "vscode-window",
+        sourceLabel: "VS Code B",
+        client_msg_id: "selection-2",
+      }),
+    );
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "vscode_selection_update",
-      selection: {
-        absolutePath: "/repo/src/older.ts",
-        startLine: 1,
-        endLine: 1,
-        lineCount: 1,
-      },
-      updatedAt: 150,
-      sourceId: "window-a",
-      sourceType: "vscode-window",
-      sourceLabel: "Older",
-      client_msg_id: "selection-3",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "vscode_selection_update",
+        selection: {
+          absolutePath: "/repo/src/older.ts",
+          startLine: 1,
+          endLine: 1,
+          lineCount: 1,
+        },
+        updatedAt: 150,
+        sourceId: "window-a",
+        sourceType: "vscode-window",
+        sourceLabel: "Older",
+        client_msg_id: "selection-3",
+      }),
+    );
     expect(browser.send).not.toHaveBeenCalled();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "vscode_selection_update",
-      selection: null,
-      updatedAt: 250,
-      sourceId: "window-c",
-      sourceType: "vscode-window",
-      sourceLabel: "VS Code C",
-      client_msg_id: "selection-4",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "vscode_selection_update",
+        selection: null,
+        updatedAt: 250,
+        sourceId: "window-c",
+        sourceType: "vscode-window",
+        sourceLabel: "VS Code C",
+        client_msg_id: "selection-4",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual({
@@ -3404,50 +3656,61 @@ describe("Browser message routing", () => {
   });
 
   it("requestVsCodeOpenFile: returns a clear error when no active VSCode windows are registered", async () => {
-    await expect(bridge.requestVsCodeOpenFile({
-      absolutePath: "/repo/src/app.ts",
-    })).rejects.toThrow("No running VS Code was detected on this machine.");
+    await expect(
+      bridge.requestVsCodeOpenFile({
+        absolutePath: "/repo/src/app.ts",
+      }),
+    ).rejects.toThrow("No running VS Code was detected on this machine.");
   });
 
   it("user_message with images: emits error and does not send when imageStore is not set", () => {
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "What's in this image?",
-      images: [
-        { media_type: "image/png", data: "base64data==" },
-      ],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "What's in this image?",
+        images: [{ media_type: "image/png", data: "base64data==" }],
+      }),
+    );
 
     expect(cli.send).not.toHaveBeenCalled();
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls).toContainEqual(expect.objectContaining({
-      type: "error",
-      message: expect.stringContaining("Image failed to send"),
-    }));
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Image failed to send"),
+      }),
+    );
   });
 
   it("user_message with images: non-SDK Claude keeps inline image blocks when imageStore is enabled", async () => {
     const mockImageStore = {
-      store: vi.fn()
+      store: vi
+        .fn()
         .mockResolvedValueOnce({ imageId: "img-1", media_type: "image/png" })
         .mockResolvedValueOnce({ imageId: "img-2", media_type: "image/jpeg" }),
-      convertForApi: vi.fn((data: string, mediaType: string) => Promise.resolve({
-        base64: `${data}-converted`,
-        mediaType,
-      })),
+      convertForApi: vi.fn((data: string, mediaType: string) =>
+        Promise.resolve({
+          base64: `${data}-converted`,
+          mediaType,
+        }),
+      ),
     };
     bridge.setImageStore(mockImageStore as any);
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Please compare these",
-      images: [
-        { media_type: "image/png", data: "img1-base64" },
-        { media_type: "image/jpeg", data: "img2-base64" },
-      ],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please compare these",
+        images: [
+          { media_type: "image/png", data: "img1-base64" },
+          { media_type: "image/jpeg", data: "img2-base64" },
+        ],
+      }),
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cli.send).toHaveBeenCalledTimes(1);
@@ -3478,11 +3741,14 @@ describe("Browser message routing", () => {
     bridge.setImageStore(mockImageStore as any);
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Please inspect this screenshot",
-      images: [{ media_type: "image/png", data: "broken-base64" }],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please inspect this screenshot",
+        images: [{ media_type: "image/png", data: "broken-base64" }],
+      }),
+    );
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cli.send).not.toHaveBeenCalled();
@@ -3490,32 +3756,40 @@ describe("Browser message routing", () => {
     expect(session.messageHistory).toHaveLength(0);
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls).toContainEqual(expect.objectContaining({
-      type: "error",
-      message: expect.stringContaining("Image failed to send: image couldn't be found on server"),
-    }));
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Image failed to send: image couldn't be found on server"),
+      }),
+    );
   });
 
   it("permission_response allow: sends control_response to CLI", async () => {
     // First create a pending permission
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-allow",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "echo hi" },
-        tool_use_id: "tu-allow",
-      },
-    }));
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-allow",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "echo hi" },
+          tool_use_id: "tu-allow",
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
     cli.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-allow",
-      behavior: "allow",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-allow",
+        behavior: "allow",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -3533,24 +3807,30 @@ describe("Browser message routing", () => {
 
   it("permission_response deny: sends deny response to CLI", () => {
     // Create a pending permission
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-deny",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "rm -rf /" },
-        tool_use_id: "tu-deny",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-deny",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "rm -rf /" },
+          tool_use_id: "tu-deny",
+        },
+      }),
+    );
     cli.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-deny",
-      behavior: "deny",
-      message: "Too dangerous",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-deny",
+        behavior: "deny",
+        message: "Too dangerous",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -3567,16 +3847,19 @@ describe("Browser message routing", () => {
   });
 
   it("permission_response: deduplicates repeated client_msg_id", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-dedupe",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "echo hi" },
-        tool_use_id: "tu-dedupe",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-dedupe",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "echo hi" },
+          tool_use_id: "tu-dedupe",
+        },
+      }),
+    );
     cli.send.mockClear();
 
     const payload = {
@@ -3594,9 +3877,12 @@ describe("Browser message routing", () => {
   });
 
   it("interrupt: sends control_request with interrupt subtype to CLI", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "interrupt",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "interrupt",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -3609,18 +3895,27 @@ describe("Browser message routing", () => {
   it("interrupt: emits turn_end with interrupt_source=user", () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "start work",
-    }));
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "interrupt",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      total_cost_usd: 0,
-      num_turns: 1,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "interrupt",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0,
+        num_turns: 1,
+      }),
+    );
 
     const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
     expect(turnEndCalls.length).toBeGreaterThan(0);
@@ -3633,16 +3928,22 @@ describe("Browser message routing", () => {
   it("routeExternalInterrupt: emits turn_end with interrupt_source=leader", async () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "start work",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
     await bridge.routeExternalInterrupt(bridge.getSession("s1")!, "leader");
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      total_cost_usd: 0,
-      num_turns: 1,
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0,
+        num_turns: 1,
+      }),
+    );
 
     const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
     expect(turnEndCalls.length).toBeGreaterThan(0);
@@ -3661,10 +3962,13 @@ describe("Browser message routing", () => {
   });
 
   it("set_model: sends control_request with set_model subtype to CLI", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_model",
-      model: "claude-opus-4-5-20250929",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_model",
+        model: "claude-opus-4-5-20250929",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -3676,10 +3980,13 @@ describe("Browser message routing", () => {
   });
 
   it("set_permission_mode: sends control_request with set_permission_mode subtype to CLI", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_permission_mode",
-      mode: "bypassPermissions",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_permission_mode",
+        mode: "bypassPermissions",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -3796,26 +4103,26 @@ describe("Persistence", () => {
         total_lines_added: 0,
         total_lines_removed: 0,
       },
-      messageHistory: [
-        { type: "user_message", content: "Hello", timestamp: 1000 },
-      ],
+      messageHistory: [{ type: "user_message", content: "Hello", timestamp: 1000 }],
       pendingMessages: [],
-      pendingCodexTurns: [{
-        adapterMsg: { type: "user_message", content: "Hello" },
-        userMessageId: "restored-user-1",
-        userContent: "Hello",
-        historyIndex: -1,
-        status: "queued",
-        dispatchCount: 0,
-        createdAt: 1700000000000,
-        updatedAt: 1700000000000,
-        acknowledgedAt: null,
-        turnTarget: null,
-        lastError: null,
-        turnId: "turn-restored-1",
-        disconnectedAt: 1700000000000,
-        resumeConfirmedAt: null,
-      }],
+      pendingCodexTurns: [
+        {
+          adapterMsg: { type: "user_message", content: "Hello" },
+          userMessageId: "restored-user-1",
+          userContent: "Hello",
+          historyIndex: -1,
+          status: "queued",
+          dispatchCount: 0,
+          createdAt: 1700000000000,
+          updatedAt: 1700000000000,
+          acknowledgedAt: null,
+          turnTarget: null,
+          lastError: null,
+          turnId: "turn-restored-1",
+          disconnectedAt: 1700000000000,
+          resumeConfirmedAt: null,
+        },
+      ],
       pendingPermissions: [],
       processedClientMessageIds: ["restored-client-1"],
     } as any);
@@ -3978,55 +4285,64 @@ describe("Persistence", () => {
     saveSpy.mockClear();
 
     // assistant message should trigger persist
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Test" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "uuid-p1",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Test" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "uuid-p1",
+        session_id: "s1",
+      }),
+    );
     expect(saveSpy).toHaveBeenCalled();
 
     saveSpy.mockClear();
 
     // result message should trigger persist
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      duration_ms: 1000,
-      duration_api_ms: 800,
-      num_turns: 1,
-      total_cost_usd: 0.01,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "uuid-p2",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "uuid-p2",
+        session_id: "s1",
+      }),
+    );
     expect(saveSpy).toHaveBeenCalled();
 
     saveSpy.mockClear();
 
     // control_request (can_use_tool) should trigger persist
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-persist",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "echo test" },
-        tool_use_id: "tu-persist",
-      },
-    }));
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-persist",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "echo test" },
+          tool_use_id: "tu-persist",
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
     expect(saveSpy).toHaveBeenCalled();
 
     saveSpy.mockClear();
@@ -4034,10 +4350,13 @@ describe("Persistence", () => {
     // user message from browser should trigger persist
     const browserWs = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browserWs, "s1");
-    bridge.handleBrowserMessage(browserWs, JSON.stringify({
-      type: "user_message",
-      content: "test persist",
-    }));
+    bridge.handleBrowserMessage(
+      browserWs,
+      JSON.stringify({
+        type: "user_message",
+        content: "test persist",
+      }),
+    );
     expect(saveSpy).toHaveBeenCalled();
   });
 
@@ -4052,10 +4371,13 @@ describe("Persistence", () => {
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "persist this retry context",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "persist this retry context",
+      }),
+    );
 
     // This guards the restart path: a user turn that disconnects immediately
     // after dispatch still needs its recovery state on disk.
@@ -4216,28 +4538,39 @@ describe("permission_response with updated_permissions", () => {
 
   it("allow with updated_permissions forwards updatedPermissions in control_response", () => {
     // Create pending permission
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-perm-update",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "echo hello" },
-        tool_use_id: "tu-perm-update",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-perm-update",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "echo hello" },
+          tool_use_id: "tu-perm-update",
+        },
+      }),
+    );
     cli.send.mockClear();
 
     const updatedPermissions = [
-      { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "echo *" }], behavior: "allow", destination: "session" },
+      {
+        type: "addRules",
+        rules: [{ toolName: "Bash", ruleContent: "echo *" }],
+        behavior: "allow",
+        destination: "session",
+      },
     ];
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-perm-update",
-      behavior: "allow",
-      updated_permissions: updatedPermissions,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-perm-update",
+        behavior: "allow",
+        updated_permissions: updatedPermissions,
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -4249,23 +4582,29 @@ describe("permission_response with updated_permissions", () => {
 
   it("allow without updated_permissions does not include updatedPermissions key", () => {
     // Create pending permission
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-no-perm",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Read",
-        input: { file_path: "/test.ts" },
-        tool_use_id: "tu-no-perm",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-no-perm",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Read",
+          input: { file_path: "/test.ts" },
+          tool_use_id: "tu-no-perm",
+        },
+      }),
+    );
     cli.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-no-perm",
-      behavior: "allow",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-no-perm",
+        behavior: "allow",
+      }),
+    );
 
     const sentRaw = cli.send.mock.calls[0][0] as string;
     const sent = JSON.parse(sentRaw.trim());
@@ -4273,24 +4612,30 @@ describe("permission_response with updated_permissions", () => {
   });
 
   it("allow with empty updated_permissions does not include updatedPermissions key", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-empty-perm",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Read",
-        input: { file_path: "/test.ts" },
-        tool_use_id: "tu-empty-perm",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-empty-perm",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Read",
+          input: { file_path: "/test.ts" },
+          tool_use_id: "tu-empty-perm",
+        },
+      }),
+    );
     cli.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-empty-perm",
-      behavior: "allow",
-      updated_permissions: [],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-empty-perm",
+        behavior: "allow",
+        updated_permissions: [],
+      }),
+    );
 
     const sentRaw = cli.send.mock.calls[0][0] as string;
     const sent = JSON.parse(sentRaw.trim());
@@ -4607,15 +4952,18 @@ describe("Session not found scenarios", () => {
     // Do NOT call handleCLIOpen — session does not exist in the bridge
 
     expect(() => {
-      bridge.handleCLIMessage(cli, JSON.stringify({
-        type: "tool_progress",
-        tool_use_id: "tu-unknown",
-        tool_name: "Bash",
-        parent_tool_use_id: null,
-        elapsed_time_seconds: 1,
-        uuid: "uuid-unknown",
-        session_id: "unknown-session",
-      }));
+      bridge.handleCLIMessage(
+        cli,
+        JSON.stringify({
+          type: "tool_progress",
+          tool_use_id: "tu-unknown",
+          tool_name: "Bash",
+          parent_tool_use_id: null,
+          elapsed_time_seconds: 1,
+          uuid: "uuid-unknown",
+          session_id: "unknown-session",
+        }),
+      );
     }).not.toThrow();
 
     // Session should not have been created
@@ -4646,10 +4994,13 @@ describe("Session not found scenarios", () => {
     const browser = makeBrowserSocket("nonexistent");
 
     expect(() => {
-      bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "hello",
-      }));
+      bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "hello",
+        }),
+      );
     }).not.toThrow();
 
     expect(bridge.getSession("nonexistent")).toBeUndefined();
@@ -4661,22 +5012,28 @@ describe("Session not found scenarios", () => {
 describe("Restore from disk with pendingPermissions", () => {
   it("restores sessions with pending permissions as a Map", async () => {
     const pendingPerms: [string, any][] = [
-      ["req-restored-1", {
-        request_id: "req-restored-1",
-        tool_name: "Bash",
-        input: { command: "rm -rf /tmp/test" },
-        tool_use_id: "tu-restored-1",
-        timestamp: 1700000000000,
-      }],
-      ["req-restored-2", {
-        request_id: "req-restored-2",
-        tool_name: "Edit",
-        input: { file_path: "/test.ts" },
-        description: "Edit file",
-        tool_use_id: "tu-restored-2",
-        agent_id: "agent-1",
-        timestamp: 1700000001000,
-      }],
+      [
+        "req-restored-1",
+        {
+          request_id: "req-restored-1",
+          tool_name: "Bash",
+          input: { command: "rm -rf /tmp/test" },
+          tool_use_id: "tu-restored-1",
+          timestamp: 1700000000000,
+        },
+      ],
+      [
+        "req-restored-2",
+        {
+          request_id: "req-restored-2",
+          tool_name: "Edit",
+          input: { file_path: "/test.ts" },
+          description: "Edit file",
+          tool_use_id: "tu-restored-2",
+          agent_id: "agent-1",
+          timestamp: 1700000001000,
+        },
+      ],
     ];
 
     store.saveSync({
@@ -4760,13 +5117,16 @@ describe("Restore from disk with pendingPermissions", () => {
       messageHistory: [],
       pendingMessages: [],
       pendingPermissions: [
-        ["req-replay", {
-          request_id: "req-replay",
-          tool_name: "Bash",
-          input: { command: "echo test" },
-          tool_use_id: "tu-replay",
-          timestamp: 1700000000000,
-        }],
+        [
+          "req-replay",
+          {
+            request_id: "req-replay",
+            tool_name: "Bash",
+            input: { command: "echo test" },
+            tool_use_id: "tu-replay",
+            timestamp: 1700000000000,
+          },
+        ],
       ],
     });
 
@@ -4876,7 +5236,6 @@ describe("Restore from disk with pendingPermissions", () => {
   });
 });
 
-
 // ─── broadcastNameUpdate ──────────────────────────────────────────────────────
 
 describe("broadcastNameUpdate", () => {
@@ -4974,9 +5333,12 @@ describe("MCP control messages", () => {
   });
 
   it("mcp_get_status: sends mcp_status control_request to CLI", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_get_status",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_get_status",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -4989,11 +5351,14 @@ describe("MCP control messages", () => {
   it("mcp_toggle: sends mcp_toggle control_request to CLI", () => {
     // Use vi.useFakeTimers to prevent the delayed mcp_get_status
     vi.useFakeTimers();
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_toggle",
-      serverName: "my-server",
-      enabled: false,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_toggle",
+        serverName: "my-server",
+        enabled: false,
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -5007,10 +5372,13 @@ describe("MCP control messages", () => {
 
   it("mcp_reconnect: sends mcp_reconnect control_request to CLI", () => {
     vi.useFakeTimers();
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_reconnect",
-      serverName: "failing-server",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_reconnect",
+        serverName: "failing-server",
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -5023,9 +5391,12 @@ describe("MCP control messages", () => {
 
   it("control_response for mcp_status: broadcasts mcp_status to browsers", () => {
     // Send mcp_get_status to create the pending request
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_get_status",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_get_status",
+      }),
+    );
     browser.send.mockClear();
 
     // Simulate CLI responding with control_response
@@ -5039,14 +5410,17 @@ describe("MCP control messages", () => {
       },
     ];
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_response",
-      response: {
-        subtype: "success",
-        request_id: "test-uuid",
-        response: { mcpServers: mockServers },
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: "test-uuid",
+          response: { mcpServers: mockServers },
+        },
+      }),
+    );
 
     expect(browser.send).toHaveBeenCalledTimes(1);
     const browserMsg = JSON.parse(browser.send.mock.calls[0][0] as string);
@@ -5058,33 +5432,42 @@ describe("MCP control messages", () => {
   });
 
   it("control_response with error: does not broadcast to browsers", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_get_status",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_get_status",
+      }),
+    );
     browser.send.mockClear();
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_response",
-      response: {
-        subtype: "error",
-        request_id: "test-uuid",
-        error: "MCP not available",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "error",
+          request_id: "test-uuid",
+          error: "MCP not available",
+        },
+      }),
+    );
 
     // Should not broadcast anything
     expect(browser.send).not.toHaveBeenCalled();
   });
 
   it("control_response for unknown request_id: ignored silently", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_response",
-      response: {
-        subtype: "success",
-        request_id: "unknown-id",
-        response: { mcpServers: [] },
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: "unknown-id",
+          response: { mcpServers: [] },
+        },
+      }),
+    );
 
     // Should not throw and not send anything
     expect(browser.send).not.toHaveBeenCalled();
@@ -5099,10 +5482,13 @@ describe("MCP control messages", () => {
         args: ["-y", "@modelcontextprotocol/server-memory"],
       },
     };
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "mcp_set_servers",
-      servers,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "mcp_set_servers",
+        servers,
+      }),
+    );
 
     expect(cli.send).toHaveBeenCalledTimes(1);
     const sentRaw = cli.send.mock.calls[0][0] as string;
@@ -5125,13 +5511,24 @@ describe("compact_boundary handling", () => {
 
     // Send init + an assistant message so history is non-empty
     bridge.handleCLIMessage(cli, makeInitMsg());
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hello" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "hello" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Verify history has the assistant message
     const sessionBefore = bridge.getOrCreateSession("s1");
@@ -5139,13 +5536,16 @@ describe("compact_boundary handling", () => {
     expect(historyLenBefore).toBeGreaterThan(0);
 
     // Send compact_boundary with metadata
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual", pre_tokens: 50000 },
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 50000 },
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
 
     // History should have old messages PLUS the new compact_marker appended
     const sessionAfter = bridge.getOrCreateSession("s1");
@@ -5168,13 +5568,16 @@ describe("compact_boundary handling", () => {
     const session = bridge.getOrCreateSession("s1");
     session.state.context_used_percent = 68;
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 167048 },
-      uuid: "u-ctx-compact",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 167048 },
+        uuid: "u-ctx-compact",
+        session_id: "cli-123",
+      }),
+    );
 
     // 167048 / 200000 * 100 = 84
     expect(bridge.getOrCreateSession("s1").state.context_used_percent).toBe(84);
@@ -5189,40 +5592,68 @@ describe("compact_boundary handling", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send an assistant message
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-a", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "first response" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "ua",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-a",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "first response" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "ua",
+        session_id: "cli-123",
+      }),
+    );
 
     // First compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 30000 },
-      uuid: "uc1",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 30000 },
+        uuid: "uc1",
+        session_id: "cli-123",
+      }),
+    );
 
     // Another assistant message after compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-b", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "second response" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "ub",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-b",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "second response" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "ub",
+        session_id: "cli-123",
+      }),
+    );
 
     // Second compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
-      uuid: "uc2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+        uuid: "uc2",
+        session_id: "cli-123",
+      }),
+    );
 
     // History should contain: [assistant(first), compact_marker(1), assistant(second), compact_marker(2)]
     const session = bridge.getOrCreateSession("s1");
@@ -5259,20 +5690,26 @@ describe("compact_boundary handling", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg());
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 64000 },
-      uuid: "compact-uuid-1",
-      session_id: "cli-123",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 64000 },
-      uuid: "compact-uuid-2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 64000 },
+        uuid: "compact-uuid-1",
+        session_id: "cli-123",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 64000 },
+        uuid: "compact-uuid-2",
+        session_id: "cli-123",
+      }),
+    );
 
     const session = bridge.getOrCreateSession("s1");
     const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
@@ -5287,22 +5724,28 @@ describe("compact_boundary handling", () => {
     bridge.handleBrowserOpen(browser, "s1");
 
     // Subscribe browser so it receives sequenced broadcasts
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     bridge.handleCLIMessage(cli, makeInitMsg());
     browser.send.mockClear();
 
     // Send compact_boundary
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 80000 },
-      uuid: "u4",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 80000 },
+        uuid: "u4",
+        session_id: "cli-123",
+      }),
+    );
 
     // Browser should have received a compact_boundary message with metadata
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -5320,33 +5763,43 @@ describe("compact_boundary handling", () => {
     bridge.handleBrowserOpen(browser, "s1");
 
     // Subscribe browser
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send compact_boundary (sets awaitingCompactSummary)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto" },
-      uuid: "u5",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto" },
+        uuid: "u5",
+        session_id: "cli-123",
+      }),
+    );
 
     browser.send.mockClear();
 
     // Send a CLI "user" message with a text block (this is the compaction summary)
-    const summaryText = "This session is being continued from a previous conversation. Key context: the user is building a web app.";
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "text", text: summaryText }] },
-      parent_tool_use_id: null,
-      uuid: "u6",
-      session_id: "cli-123",
-    }));
+    const summaryText =
+      "This session is being continued from a previous conversation. Key context: the user is building a web app.";
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: summaryText }] },
+        parent_tool_use_id: null,
+        uuid: "u6",
+        session_id: "cli-123",
+      }),
+    );
 
     // compact_marker in history should now have the summary
     const session = bridge.getOrCreateSession("s1");
@@ -5370,33 +5823,42 @@ describe("compact_boundary handling", () => {
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send compact_boundary
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
-      uuid: "u-str-1",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+        uuid: "u-str-1",
+        session_id: "cli-123",
+      }),
+    );
 
     browser.send.mockClear();
 
     // CLI sends the summary as a plain string (not an array of content blocks)
     const summaryText = "This session is being continued from a previous conversation. The user is building a web UI.";
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: summaryText },
-      parent_tool_use_id: null,
-      uuid: "u-str-2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: summaryText },
+        parent_tool_use_id: null,
+        uuid: "u-str-2",
+        session_id: "cli-123",
+      }),
+    );
 
     // compact_marker in history should have the summary
     const session = bridge.getOrCreateSession("s1");
@@ -5420,49 +5882,72 @@ describe("compact_boundary handling", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // First compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "auto", pre_tokens: 30000 },
-      uuid: "uf1",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 30000 },
+        uuid: "uf1",
+        session_id: "cli-123",
+      }),
+    );
 
     // Provide summary for first compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: "First compaction summary" },
-      parent_tool_use_id: null,
-      uuid: "uf2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "First compaction summary" },
+        parent_tool_use_id: null,
+        uuid: "uf2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Some more messages between compactions
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-mid", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "middle" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "uf3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-mid",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "middle" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "uf3",
+        session_id: "cli-123",
+      }),
+    );
 
     // Second compaction
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual", pre_tokens: 60000 },
-      uuid: "uf4",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+        uuid: "uf4",
+        session_id: "cli-123",
+      }),
+    );
 
     // Provide summary for second compaction — should attach to the LAST marker
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: "Second compaction summary" },
-      parent_tool_use_id: null,
-      uuid: "uf5",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "Second compaction summary" },
+        parent_tool_use_id: null,
+        uuid: "uf5",
+        session_id: "cli-123",
+      }),
+    );
 
     const session = bridge.getOrCreateSession("s1");
     const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
@@ -5480,31 +5965,40 @@ describe("compact_boundary handling", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send compact_boundary
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "compact_boundary",
-      compact_metadata: { trigger: "manual" },
-      uuid: "u7",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual" },
+        uuid: "u7",
+        session_id: "cli-123",
+      }),
+    );
 
     // Send summary (consumes awaitingCompactSummary)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "text", text: "Summary text" }] },
-      parent_tool_use_id: null,
-      uuid: "u8",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: "Summary text" }] },
+        parent_tool_use_id: null,
+        uuid: "u8",
+        session_id: "cli-123",
+      }),
+    );
 
     // Now send a normal tool_result user message — should be handled normally
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "result data" }] },
-      parent_tool_use_id: null,
-      uuid: "u9",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "result data" }] },
+        parent_tool_use_id: null,
+        uuid: "u9",
+        session_id: "cli-123",
+      }),
+    );
 
     // The tool_result_preview should be in history (not silently dropped)
     const session = bridge.getOrCreateSession("s1");
@@ -5579,18 +6073,24 @@ describe("compaction_finished herd event", () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
     // Enter compacting
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
 
     // Exit compacting
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "idle",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "idle",
+      }),
+    );
 
     const finishedCalls = spy.mock.calls.filter(([, event]) => event === "compaction_finished");
     expect(finishedCalls).toHaveLength(1);
@@ -5625,12 +6125,22 @@ describe("compaction_finished herd event", () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
     // Enter then exit compacting
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system", subtype: "status", status: "compacting",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system", subtype: "status", status: "idle",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "idle",
+      }),
+    );
 
     const finishedCalls = spy.mock.calls.filter(([, event]) => event === "compaction_finished");
     expect(finishedCalls).toHaveLength(1);
@@ -5655,13 +6165,23 @@ describe("compaction_finished herd event", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Replayed compacting status (suppressed by cliResuming guard)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system", subtype: "status", status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
     // Replayed idle status
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system", subtype: "status", status: "idle",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "idle",
+      }),
+    );
 
     // Neither compaction_started nor compaction_finished should be emitted
     const compactionCalls = spy.mock.calls.filter(
@@ -5691,48 +6211,60 @@ describe("Compaction preserves generation state (regression)", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Start generation via user message
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "implement the feature",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "implement the feature",
+      }),
+    );
     const session = bridge.getSession("s1")!;
     expect(session.isGenerating).toBe(true);
 
     // CLI enters compaction mid-turn
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
 
     // isGenerating must stay true — compaction is NOT a turn boundary
     expect(session.isGenerating).toBe(true);
     expect(session.state.is_compacting).toBe(true);
 
     // CLI finishes compaction, continues turn
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "idle",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "idle",
+      }),
+    );
     expect(session.state.is_compacting).toBe(false);
     expect(session.isGenerating).toBe(true);
 
     // Turn ends normally — result properly transitions to idle
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "done",
-      duration_ms: 5000,
-      duration_api_ms: 5000,
-      num_turns: 1,
-      total_cost_usd: 0.05,
-      stop_reason: "end_turn",
-      usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      uuid: "result-1",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 5000,
+        duration_api_ms: 5000,
+        num_turns: 1,
+        total_cost_usd: 0.05,
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "result-1",
+        session_id: "cli-123",
+      }),
+    );
     expect(session.isGenerating).toBe(false);
   });
 
@@ -5744,38 +6276,47 @@ describe("Compaction preserves generation state (regression)", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Start generation
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run the tests",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run the tests",
+      }),
+    );
 
     // CLI sends assistant message with a tool_use
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-tool",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "tool_use", id: "tool-bash-1", name: "Bash", input: { command: "bun run test" } }],
-        stop_reason: "tool_use",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u-tool",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-tool",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "tool_use", id: "tool-bash-1", name: "Bash", input: { command: "bun run test" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u-tool",
+        session_id: "cli-123",
+      }),
+    );
 
     const session = bridge.getSession("s1")!;
     expect(session.isGenerating).toBe(true);
     expect(session.toolStartTimes.has("tool-bash-1")).toBe(true);
 
     // Compaction starts mid-tool-call
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
 
     // Both generation AND tool state must be preserved
     expect(session.isGenerating).toBe(true);
@@ -5783,11 +6324,14 @@ describe("Compaction preserves generation state (regression)", () => {
     expect(session.state.is_compacting).toBe(true);
 
     // Compaction finishes
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "idle",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "idle",
+      }),
+    );
 
     // Still generating, tool still tracked
     expect(session.isGenerating).toBe(true);
@@ -5805,10 +6349,13 @@ describe("Compaction preserves generation state (regression)", () => {
     bridge.handleBrowserOpen(browser, sid);
 
     // Start generation
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "implement feature",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "implement feature",
+      }),
+    );
     adapter.emitTurnStarted("turn-codex-compact");
     const session = bridge.getSession(sid)!;
     expect(session.isGenerating).toBe(true);
@@ -5834,10 +6381,13 @@ describe("Compaction preserves generation state (regression)", () => {
     bridge.handleBrowserOpen(browser, sid);
 
     // Start generation
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run tests",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run tests",
+      }),
+    );
     adapter.emitTurnStarted("turn-codex-compact-tool");
 
     // Codex emits assistant with tool_use
@@ -5894,10 +6444,13 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     bridge.handleBrowserOpen(browser, sid);
 
     // Send user message to start the turn
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "implement the feature and run tests",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "implement the feature and run tests",
+      }),
+    );
 
     // Disconnect mid-turn (simulates crash during compaction)
     adapter1.emitDisconnect("turn-compact");
@@ -5931,7 +6484,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
     const firstRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstRetryCall).toBeDefined();
-    const retried = ((firstRetryCall as unknown as [any])[0]) as any;
+    const retried = (firstRetryCall as unknown as [any])[0] as any;
     expect(getCodexStartPendingInputs(retried)[0]?.content).toBe("implement the feature and run tests");
   });
 
@@ -5948,11 +6501,14 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "implement the fix from this screenshot",
-      images: [{ media_type: "image/png", data: "image-bytes" }],
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "implement the fix from this screenshot",
+        images: [{ media_type: "image/png", data: "image-bytes" }],
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     adapter1.emitDisconnect("turn-compact-image");
@@ -5985,17 +6541,18 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
+      "/tmp/companion-images/img-1.transport.jpeg",
+    ]);
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
-    const retried = ((firstImageRetryCall as unknown as [any])[0]) as any;
+    const retried = (firstImageRetryCall as unknown as [any])[0] as any;
     expect(retried.images).toBeUndefined();
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const retrySkipError = calls.find((c: any) =>
-      c.type === "error"
-      && typeof c.message === "string"
-      && c.message.includes("non-text tool activity"));
+    const retrySkipError = calls.find(
+      (c: any) => c.type === "error" && typeof c.message === "string" && c.message.includes("non-text tool activity"),
+    );
     expect(retrySkipError).toBeUndefined();
   });
 
@@ -6011,10 +6568,13 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "check status",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "check status",
+      }),
+    );
     adapter1.emitDisconnect("turn-recover");
 
     // Reconnect with agent messages that weren't streamed before disconnect
@@ -6062,13 +6622,24 @@ describe("handleSessionSubscribe — no double message_history", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Add a message to history
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hi" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "hi" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Verify history is non-empty before connecting browser
     const session = bridge.getOrCreateSession("s1");
@@ -6091,23 +6662,37 @@ describe("handleSessionSubscribe — no double message_history", () => {
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg());
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hi" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "hi" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
     // Now subscribe with last_seq=0
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     // Should now receive history_sync + state_snapshot
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6117,11 +6702,13 @@ describe("handleSessionSubscribe — no double message_history", () => {
     // state_snapshot should be sent last with authoritative transient state
     const snapshots = calls.filter((m: any) => m.type === "state_snapshot");
     expect(snapshots.length).toBe(1);
-    expect(snapshots[0]).toEqual(expect.objectContaining({
-      type: "state_snapshot",
-      backendConnected: true,
-      permissionMode: expect.any(String),
-    }));
+    expect(snapshots[0]).toEqual(
+      expect.objectContaining({
+        type: "state_snapshot",
+        backendConnected: true,
+        permissionMode: expect.any(String),
+      }),
+    );
   });
 
   it("includes nextEventSeq in session_init", () => {
@@ -6157,10 +6744,13 @@ describe("state_snapshot", () => {
   });
 
   it("sends state_snapshot after session_subscribe with lastSeq=0", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const snapshots = calls.filter((m: any) => m.type === "state_snapshot");
@@ -6173,19 +6763,33 @@ describe("state_snapshot", () => {
 
   it("state_snapshot is the last message sent during subscribe", () => {
     // Add history so multiple messages are sent
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "hi" }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "hi" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     // state_snapshot should be the very last message
@@ -6194,23 +6798,40 @@ describe("state_snapshot", () => {
 
   it("reports sessionStatus as 'running' when session is actively generating", () => {
     // Send a user message (sets isGenerating = true) followed by an assistant message (no result)
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Do something",
-    }));
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: { id: "msg-1", type: "message", role: "assistant", model: "claude", content: [{ type: "text", text: "working..." }], stop_reason: null, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-      parent_tool_use_id: null,
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Do something",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "working..." }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const snapshot = calls.find((m: any) => m.type === "state_snapshot");
@@ -6221,10 +6842,13 @@ describe("state_snapshot", () => {
     bridge.handleCLIClose(cli);
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "session_subscribe",
-      last_seq: 0,
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "session_subscribe",
+        last_seq: 0,
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const snapshot = calls.find((m: any) => m.type === "state_snapshot");
@@ -6251,24 +6875,30 @@ describe("permission broadcasts include request_id", () => {
 
   it("permission_approved broadcast includes request_id", () => {
     // Create pending permission for a notable tool (ExitPlanMode) so approval is broadcast
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-plan",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "ExitPlanMode",
-        input: {},
-        tool_use_id: "tu-plan",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-plan",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "ExitPlanMode",
+          input: {},
+          tool_use_id: "tu-plan",
+        },
+      }),
+    );
     browser.send.mockClear();
 
     // Approve the permission
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-plan",
-      behavior: "allow",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-plan",
+        behavior: "allow",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const approved = calls.find((m: any) => m.type === "permission_approved");
@@ -6278,25 +6908,31 @@ describe("permission broadcasts include request_id", () => {
   });
 
   it("permission_denied broadcast includes request_id", async () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-deny-test",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Bash",
-        input: { command: "rm -rf /" },
-        tool_use_id: "tu-deny-test",
-      },
-    }));
-    await new Promise(r => setTimeout(r, 0)); // flush async handleControlRequest
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-deny-test",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "rm -rf /" },
+          tool_use_id: "tu-deny-test",
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "req-deny-test",
-      behavior: "deny",
-      message: "Nope",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "req-deny-test",
+        behavior: "deny",
+        message: "Nope",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const denied = calls.find((m: any) => m.type === "permission_denied");
@@ -6326,16 +6962,19 @@ describe("AskUserQuestion is never auto-approved in bypassPermissions mode", () 
   });
 
   it("does not auto-approve AskUserQuestion — sends permission_request to browser instead", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-ask",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "AskUserQuestion",
-        input: { questions: [{ question: "Which approach?", options: ["A", "B"] }] },
-        tool_use_id: "tu-ask",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-ask",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "AskUserQuestion",
+          input: { questions: [{ question: "Which approach?", options: ["A", "B"] }] },
+          tool_use_id: "tu-ask",
+        },
+      }),
+    );
 
     // CLI should NOT receive an auto-approval control_response
     const cliCalls = cli.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6350,16 +6989,19 @@ describe("AskUserQuestion is never auto-approved in bypassPermissions mode", () 
   });
 
   it("does not auto-approve ExitPlanMode — sends permission_request to browser instead", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-plan",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "ExitPlanMode",
-        input: {},
-        tool_use_id: "tu-plan",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-plan",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "ExitPlanMode",
+          input: {},
+          tool_use_id: "tu-plan",
+        },
+      }),
+    );
 
     const cliCalls = cli.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const autoResponse = cliCalls.find((m: any) => m.type === "control_response");
@@ -6372,16 +7014,19 @@ describe("AskUserQuestion is never auto-approved in bypassPermissions mode", () 
   });
 
   it("still auto-approves regular tools like Edit in bypassPermissions mode", () => {
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "control_request",
-      request_id: "req-edit",
-      request: {
-        subtype: "can_use_tool",
-        tool_name: "Edit",
-        input: { file_path: "/test/foo.ts", old_string: "a", new_string: "b" },
-        tool_use_id: "tu-edit",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "control_request",
+        request_id: "req-edit",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Edit",
+          input: { file_path: "/test/foo.ts", old_string: "a", new_string: "b" },
+          tool_use_id: "tu-edit",
+        },
+      }),
+    );
 
     // CLI should receive an auto-approval
     const cliCalls = cli.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6409,10 +7054,13 @@ describe("status_change: running on user_message", () => {
   });
 
   it("broadcasts user_message and status_change: running when user sends a message", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Hello",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
 
@@ -6429,16 +7077,22 @@ describe("status_change: running on user_message", () => {
   });
 
   it("does not rebroadcast status_change: running when already generating", () => {
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "First message",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "First message",
+      }),
+    );
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Second message while still running",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Second message while still running",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const statusChanges = calls.filter((m: any) => m.type === "status_change" && m.status === "running");
@@ -6448,10 +7102,13 @@ describe("status_change: running on user_message", () => {
   it("reverts optimistic running to idle after 30s without backend output", () => {
     vi.useFakeTimers();
     try {
-      bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "Hello",
-      }));
+      bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "Hello",
+        }),
+      );
       browser.send.mockClear();
 
       vi.advanceTimersByTime(30_000);
@@ -6469,22 +7126,28 @@ describe("status_change: running on user_message", () => {
   it("cancels optimistic running timeout when backend output arrives", () => {
     vi.useFakeTimers();
     try {
-      bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "Hello",
-      }));
+      bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "Hello",
+        }),
+      );
 
       // First backend output should cancel the timeout.
-      bridge.handleCLIMessage(cli, JSON.stringify({
-        type: "assistant",
-        message: {
-          id: "msg-timeout-cancel",
-          role: "assistant",
-          content: [{ type: "text", text: "Working..." }],
-          model: "claude-sonnet-4-5-20250929",
-          stop_reason: null,
-        },
-      }));
+      bridge.handleCLIMessage(
+        cli,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "msg-timeout-cancel",
+            role: "assistant",
+            content: [{ type: "text", text: "Working..." }],
+            model: "claude-sonnet-4-5-20250929",
+            stop_reason: null,
+          },
+        }),
+      );
       browser.send.mockClear();
 
       vi.advanceTimersByTime(30_000);
@@ -6518,10 +7181,13 @@ describe("status_change: running on user_message", () => {
     browser.send.mockClear();
     browser2.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Hello from browser 1",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Hello from browser 1",
+      }),
+    );
 
     // Both browsers should receive the user_message broadcast
     const browser1Calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6540,10 +7206,13 @@ describe("status_change: running on user_message", () => {
 
   it("deriveSessionStatus returns 'running' when user_message sets isGenerating", () => {
     // Send a user message — this sets isGenerating = true
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Hello",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }),
+    );
     browser.send.mockClear();
 
     // Reconnect a new browser — state_snapshot should report "running"
@@ -6559,29 +7228,38 @@ describe("status_change: running on user_message", () => {
 
   it("deriveSessionStatus returns 'idle' after result even if history ends with assistant", () => {
     // Send a user message (isGenerating = true)
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Hello",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }),
+    );
 
     // CLI sends an assistant message
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1",
-        role: "assistant",
-        content: [{ type: "text", text: "Hi there" }],
-        model: "claude-sonnet-4-5-20250929",
-        stop_reason: "end_turn",
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: [{ type: "text", text: "Hi there" }],
+          model: "claude-sonnet-4-5-20250929",
+          stop_reason: "end_turn",
+        },
+      }),
+    );
 
     // CLI sends result (isGenerating = false)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "result",
-      total_cost_usd: 0.01,
-      num_turns: 1,
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0.01,
+        num_turns: 1,
+      }),
+    );
     browser.send.mockClear();
 
     // Reconnect a new browser — should see "idle" not "running"
@@ -6598,22 +7276,28 @@ describe("status_change: running on user_message", () => {
   it("deriveSessionStatus returns 'idle' after CLI relaunch (simulating server restart)", () => {
     vi.useFakeTimers();
     // Session was generating when CLI disconnected (interrupted generation)
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Do something",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Do something",
+      }),
+    );
 
     // CLI sends an assistant message mid-generation
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1",
-        role: "assistant",
-        content: [{ type: "text", text: "Working on it..." }],
-        model: "claude-sonnet-4-5-20250929",
-        stop_reason: null,
-      },
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: [{ type: "text", text: "Working on it..." }],
+          model: "claude-sonnet-4-5-20250929",
+          stop_reason: null,
+        },
+      }),
+    );
 
     // CLI disconnects (server restart scenario)
     bridge.handleCLIClose(cli);
@@ -6675,27 +7359,36 @@ describe("Tool call duration tracking", () => {
     browser.send.mockClear();
 
     // Send assistant message with tool_use block
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "ls" } }],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "ls" } }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Send tool_result
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "file.txt" }] },
-      parent_tool_use_id: null,
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "file.txt" }] },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
 
     // Find the tool_result_preview broadcast
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6718,33 +7411,45 @@ describe("Tool call duration tracking", () => {
     browser.send.mockClear();
 
     // Send assistant with two parallel tool_use blocks
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [
-          { type: "tool_use", id: "tu-a", name: "Grep", input: { pattern: "foo" } },
-          { type: "tool_use", id: "tu-b", name: "Glob", input: { pattern: "*.ts" } },
-        ],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            { type: "tool_use", id: "tu-a", name: "Grep", input: { pattern: "foo" } },
+            { type: "tool_use", id: "tu-b", name: "Glob", input: { pattern: "*.ts" } },
+          ],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Send tool_result for both
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [
-        { type: "tool_result", tool_use_id: "tu-a", content: "match1" },
-        { type: "tool_result", tool_use_id: "tu-b", content: "match2" },
-      ] },
-      parent_tool_use_id: null,
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tu-a", content: "match1" },
+            { type: "tool_result", tool_use_id: "tu-b", content: "match2" },
+          ],
+        },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const preview = calls.find((m: any) => m.type === "tool_result_preview");
@@ -6766,13 +7471,16 @@ describe("Tool call duration tracking", () => {
     browser.send.mockClear();
 
     // Send tool_result WITHOUT a preceding tool_use (simulates server restart)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-orphan", content: "data" }] },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-orphan", content: "data" }] },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const preview = calls.find((m: any) => m.type === "tool_result_preview");
@@ -6786,30 +7494,39 @@ describe("Tool call duration tracking", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send tool_use
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "a.txt" } }],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "tool_use", id: "tu-1", name: "Read", input: { file_path: "a.txt" } }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     const session = bridge.getOrCreateSession("s1");
     expect(session.toolStartTimes.has("tu-1")).toBe(true);
 
     // Send tool_result
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "contents" }] },
-      parent_tool_use_id: null,
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "contents" }] },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
 
     // Start time should be cleaned up
     expect(session.toolStartTimes.has("tu-1")).toBe(false);
@@ -6821,26 +7538,35 @@ describe("Tool call duration tracking", () => {
     bridge.handleCLIMessage(cli, makeInitMsg());
 
     // Send tool_use + tool_result
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test" } }],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "test" } }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "ok" }] },
-      parent_tool_use_id: null,
-      uuid: "u3",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-1", content: "ok" }] },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
 
     // Check messageHistory contains the preview with duration
     const session = bridge.getOrCreateSession("s1");
@@ -6860,21 +7586,27 @@ describe("Tool call duration tracking", () => {
     browser.send.mockClear();
 
     // Send assistant message with tool_use blocks
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [
-          { type: "tool_use", id: "tu-a", name: "Bash", input: { command: "ls" } },
-          { type: "tool_use", id: "tu-b", name: "Read", input: { file_path: "x.ts" } },
-        ],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            { type: "tool_use", id: "tu-a", name: "Bash", input: { command: "ls" } },
+            { type: "tool_use", id: "tu-b", name: "Read", input: { file_path: "x.ts" } },
+          ],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     // Find the assistant broadcast
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
@@ -6897,18 +7629,24 @@ describe("Tool call duration tracking", () => {
     browser.send.mockClear();
 
     // Send assistant message with only text (no tool_use)
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-1", type: "message", role: "assistant", model: "claude",
-        content: [{ type: "text", text: "Hello" }],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u2",
-      session_id: "cli-123",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "Hello" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
 
     const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
     const assistantMsg = calls.find((m: any) => m.type === "assistant");
@@ -6930,32 +7668,44 @@ describe("Tool call duration tracking", () => {
       browser.send.mockClear();
 
       vi.setSystemTime(new Date(1700000000000));
-      bridge.handleCLIMessage(cli, JSON.stringify({
-        type: "assistant",
-        message: {
-          id: "msg-1", type: "message", role: "assistant", model: "claude",
-          content: [{ type: "text", text: "Part 1" }],
-          stop_reason: null,
-          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
-        parent_tool_use_id: null,
-        uuid: "u2",
-        session_id: "cli-123",
-      }));
+      bridge.handleCLIMessage(
+        cli,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "msg-1",
+            type: "message",
+            role: "assistant",
+            model: "claude",
+            content: [{ type: "text", text: "Part 1" }],
+            stop_reason: null,
+            usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          uuid: "u2",
+          session_id: "cli-123",
+        }),
+      );
 
       vi.setSystemTime(new Date(1700000005000));
-      bridge.handleCLIMessage(cli, JSON.stringify({
-        type: "assistant",
-        message: {
-          id: "msg-1", type: "message", role: "assistant", model: "claude",
-          content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "pwd" } }],
-          stop_reason: "tool_use",
-          usage: { input_tokens: 12, output_tokens: 9, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
-        parent_tool_use_id: null,
-        uuid: "u3",
-        session_id: "cli-123",
-      }));
+      bridge.handleCLIMessage(
+        cli,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "msg-1",
+            type: "message",
+            role: "assistant",
+            model: "claude",
+            content: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "pwd" } }],
+            stop_reason: "tool_use",
+            usage: { input_tokens: 12, output_tokens: 9, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          uuid: "u3",
+          session_id: "cli-123",
+        }),
+      );
 
       const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
       const assistantMsgs = calls.filter((m: any) => m.type === "assistant");
@@ -6964,7 +7714,9 @@ describe("Tool call duration tracking", () => {
       expect(assistantMsgs[1].timestamp).toBe(1700000005000);
 
       const session = bridge.getOrCreateSession("s1");
-      const hist = session.messageHistory.find((m) => m.type === "assistant") as { type: "assistant"; timestamp?: number } | undefined;
+      const hist = session.messageHistory.find((m) => m.type === "assistant") as
+        | { type: "assistant"; timestamp?: number }
+        | undefined;
       expect(hist?.timestamp).toBe(1700000005000);
     } finally {
       vi.useRealTimers();
@@ -7278,12 +8030,16 @@ describe("Diff stats computation", () => {
     expect(session.state.total_lines_added).toBe(0);
     expect(session.state.total_lines_removed).toBe(0);
     expect(session.diffStatsDirty).toBe(false);
-    expect((browser.send as any).mock.calls.some(([raw]: [string]) => {
-      const msg = JSON.parse(raw);
-      return msg.type === "session_update"
-        && msg.session?.total_lines_added === 0
-        && msg.session?.total_lines_removed === 0;
-    })).toBe(true);
+    expect(
+      (browser.send as any).mock.calls.some(([raw]: [string]) => {
+        const msg = JSON.parse(raw);
+        return (
+          msg.type === "session_update" &&
+          msg.session?.total_lines_added === 0 &&
+          msg.session?.total_lines_removed === 0
+        );
+      }),
+    ).toBe(true);
   });
 
   it("refreshWorktreeGitStateForSnapshot skips git work when the worktree fingerprint is unchanged", async () => {
@@ -7339,73 +8095,88 @@ describe("Diff stats computation", () => {
     session.diffStatsDirty = false;
 
     // Read-only tool (e.g. Read) should NOT mark dirty
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-read",
-        type: "message",
-        role: "assistant",
-        model: "claude",
-        content: [{
-          type: "tool_use",
-          id: "tool-read",
-          name: "Read",
-          input: { file_path: "/repo/file.ts" },
-        }],
-        stop_reason: "tool_use",
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u-read",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-read",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-read",
+              name: "Read",
+              input: { file_path: "/repo/file.ts" },
+            },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u-read",
+        session_id: "s1",
+      }),
+    );
     expect(session.diffStatsDirty).toBe(false);
 
     // Non-read-only tool (Edit) should mark dirty and track the file
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-edit",
-        type: "message",
-        role: "assistant",
-        model: "claude",
-        content: [{
-          type: "tool_use",
-          id: "tool-edit",
-          name: "Edit",
-          input: { file_path: "/repo/file.ts", old_string: "a", new_string: "b" },
-        }],
-        stop_reason: "tool_use",
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u-edit",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-edit",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-edit",
+              name: "Edit",
+              input: { file_path: "/repo/file.ts", old_string: "a", new_string: "b" },
+            },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u-edit",
+        session_id: "s1",
+      }),
+    );
     expect(session.diffStatsDirty).toBe(true);
 
     // Bash tool (not in READ_ONLY_TOOLS) should also mark dirty
     session.diffStatsDirty = false;
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-bash",
-        type: "message",
-        role: "assistant",
-        model: "claude",
-        content: [{
-          type: "tool_use",
-          id: "tool-bash",
-          name: "Bash",
-          input: { command: "echo hello" },
-        }],
-        stop_reason: "tool_use",
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "u-bash",
-      session_id: "s1",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-bash",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-bash",
+              name: "Bash",
+              input: { command: "echo hello" },
+            },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u-bash",
+        session_id: "s1",
+      }),
+    );
     expect(session.diffStatsDirty).toBe(true);
   });
 
@@ -7565,10 +8336,9 @@ describe("Codex adapter result handling", () => {
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const resultBroadcasts = calls.filter((c: any) => c.type === "result");
     expect(resultBroadcasts).toHaveLength(1);
-    const diffUpdate = calls.find((c: any) =>
-      c.type === "session_update"
-      && c.session?.total_lines_added === 12
-      && c.session?.total_lines_removed === 4,
+    const diffUpdate = calls.find(
+      (c: any) =>
+        c.type === "session_update" && c.session?.total_lines_added === 12 && c.session?.total_lines_removed === 4,
     );
     expect(diffUpdate).toBeDefined();
   });
@@ -7900,7 +8670,7 @@ describe("Codex adapter result handling", () => {
             type: "tool_use",
             id: "quest-tool-2",
             name: "Bash",
-            input: { command: "quest complete q-74 --items \"Verify\" --json" },
+            input: { command: 'quest complete q-74 --items "Verify" --json' },
           },
         ],
         stop_reason: null,
@@ -8029,7 +8799,8 @@ describe("Codex adapter result handling", () => {
             id: "quest-tool-multi-1",
             name: "Bash",
             input: {
-              command: "quest claim q-74 --json | jq '{id,status}'; quest complete q-74 --items \"Verify\" --json | jq '{id,status}'",
+              command:
+                "quest claim q-74 --json | jq '{id,status}'; quest complete q-74 --items \"Verify\" --json | jq '{id,status}'",
             },
           },
         ],
@@ -8225,10 +8996,13 @@ describe("Codex disconnect auto-relaunch", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_permission_mode",
-      mode: "plan",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_permission_mode",
+        mode: "plan",
+      }),
+    );
 
     // Simulate the disconnect from the intentional relaunch teardown.
     adapter.emitDisconnect();
@@ -8322,10 +9096,12 @@ describe("Codex disconnect auto-relaunch", () => {
 
     expect(relaunchCb).toHaveBeenCalledTimes(3);
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls).toContainEqual(expect.objectContaining({
-      type: "error",
-      message: expect.stringContaining("Session stopped after 3 consecutive launch failures"),
-    }));
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Session stopped after 3 consecutive launch failures"),
+      }),
+    );
   });
 });
 
@@ -8387,10 +9163,13 @@ describe("Codex user-message-driven relaunch for idle sessions", () => {
     browser.send.mockClear();
 
     // Send a user message — should trigger relaunch
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "continue working",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "continue working",
+      }),
+    );
 
     expect(relaunchCb).toHaveBeenCalledWith(sid);
     // Message should be queued in the authoritative Codex turn queue
@@ -8423,10 +9202,13 @@ describe("Codex user-message-driven relaunch for idle sessions", () => {
     relaunchCb.mockClear();
 
     // Send a user message — should reset failures and trigger relaunch
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "try again",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "try again",
+      }),
+    );
 
     expect(session.consecutiveAdapterFailures).toBe(0);
     expect(relaunchCb).toHaveBeenCalledWith(sid);
@@ -8456,10 +9238,13 @@ describe("Codex user-message-driven relaunch for idle sessions", () => {
     relaunchCb.mockClear();
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "hello",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello",
+      }),
+    );
 
     expect(relaunchCb).toHaveBeenCalledWith(sid);
     expect(launcherInfo.killedByIdleManager).toBe(false);
@@ -8483,10 +9268,13 @@ describe("Codex user-message-driven relaunch for idle sessions", () => {
     bridge.handleBrowserOpen(browser, sid);
     relaunchCb.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "this should go to the adapter directly",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "this should go to the adapter directly",
+      }),
+    );
 
     // Message should go to adapter, not trigger relaunch
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
@@ -8583,10 +9371,13 @@ describe("injectUserMessage triggers relaunch for exited sessions (q-15)", () =>
     session.backendType = "claude-sdk";
     relaunchCb.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "wake up from idle",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "wake up from idle",
+      }),
+    );
 
     expect(relaunchCb).toHaveBeenCalledWith(sid);
     expect(launcherInfo.killedByIdleManager).toBe(false);
@@ -8611,11 +9402,14 @@ describe("Codex broken-session recovery regression", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Please inspect this screenshot",
-      images: [{ media_type: "image/jpeg", data: "inline-image-data" }],
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please inspect this screenshot",
+        images: [{ media_type: "image/jpeg", data: "inline-image-data" }],
+      }),
+    );
     await flush();
 
     const session = bridge.getSession(sid)!;
@@ -8643,10 +9437,13 @@ describe("Codex broken-session recovery regression", () => {
 
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Hello",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Hello",
+      }),
+    );
     await flush();
 
     expect(getPendingCodexTurn(session)).toMatchObject({
@@ -8660,10 +9457,12 @@ describe("Codex broken-session recovery regression", () => {
     expect(session.isGenerating).toBe(false);
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls).toContainEqual(expect.objectContaining({
-      type: "error",
-      message: "Codex session is broken. Your message was queued and will run after relaunch.",
-    }));
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: "Codex session is broken. Your message was queued and will run after relaunch.",
+      }),
+    );
     expect(calls.find((msg: any) => msg.type === "status_change" && msg.status === "running")).toBeUndefined();
   });
 
@@ -8678,10 +9477,13 @@ describe("Codex broken-session recovery regression", () => {
     emitCodexSessionReady(adapter1, { cliSessionId: "thread-replay" });
     emitCodexSessionReady(adapter1, { cliSessionId: "thread-original" });
 
-    await bridge.handleBrowserMessage(makeBrowserSocket(sid), JSON.stringify({
-      type: "user_message",
-      content: "original turn",
-    }));
+    await bridge.handleBrowserMessage(
+      makeBrowserSocket(sid),
+      JSON.stringify({
+        type: "user_message",
+        content: "original turn",
+      }),
+    );
     await flush();
 
     adapter1.emitTurnStarted("turn-original");
@@ -8691,10 +9493,13 @@ describe("Codex broken-session recovery regression", () => {
     bridge.attachCodexAdapter(sid, adapter2 as any);
     adapter2.emitInitError("Transport closed");
 
-    await bridge.handleBrowserMessage(makeBrowserSocket(sid), JSON.stringify({
-      type: "user_message",
-      content: "queued behind broken turn",
-    }));
+    await bridge.handleBrowserMessage(
+      makeBrowserSocket(sid),
+      JSON.stringify({
+        type: "user_message",
+        content: "queued behind broken turn",
+      }),
+    );
     await flush();
 
     const session = bridge.getSession(sid)!;
@@ -8705,9 +9510,7 @@ describe("Codex broken-session recovery regression", () => {
     expect(adapter3.sendBrowserMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({
         type: "codex_start_pending",
-        inputs: expect.arrayContaining([
-          expect.objectContaining({ content: "queued behind broken turn" }),
-        ]),
+        inputs: expect.arrayContaining([expect.objectContaining({ content: "queued behind broken turn" })]),
       }),
     );
     expect(session.pendingMessages).toHaveLength(0);
@@ -8745,22 +9548,24 @@ describe("Codex broken-session recovery regression", () => {
     adapter1.emitSessionMeta({ cliSessionId: "thread-old", model: "gpt-5.3-codex", cwd: "/repo" });
 
     const session = bridge.getSession(sid)!;
-    session.pendingCodexTurns = [{
-      adapterMsg: { type: "user_message", content: "new turn" },
-      userMessageId: "user-1",
-      userContent: "new turn",
-      historyIndex: 0,
-      status: "queued",
-      dispatchCount: 0,
-      createdAt: 1,
-      updatedAt: 1,
-      acknowledgedAt: null,
-      turnTarget: null,
-      lastError: null,
-      turnId: null,
-      disconnectedAt: null,
-      resumeConfirmedAt: null,
-    }] as any;
+    session.pendingCodexTurns = [
+      {
+        adapterMsg: { type: "user_message", content: "new turn" },
+        userMessageId: "user-1",
+        userContent: "new turn",
+        historyIndex: 0,
+        status: "queued",
+        dispatchCount: 0,
+        createdAt: 1,
+        updatedAt: 1,
+        acknowledgedAt: null,
+        turnTarget: null,
+        lastError: null,
+        turnId: null,
+        disconnectedAt: null,
+        resumeConfirmedAt: null,
+      },
+    ] as any;
 
     const adapter2 = makeCodexAdapterMock();
     bridge.attachCodexAdapter(sid, adapter2 as any);
@@ -8789,10 +9594,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "please recover this",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "please recover this",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-123");
 
@@ -8825,10 +9633,12 @@ describe("Codex resumed-turn recovery", () => {
     );
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const recovered = calls.find((c: any) =>
-      c.type === "assistant"
-      && c.message?.id === "codex-agent-item-a1"
-      && c.message?.content?.[0]?.text === "Recovered answer from resumed turn");
+    const recovered = calls.find(
+      (c: any) =>
+        c.type === "assistant" &&
+        c.message?.id === "codex-agent-item-a1" &&
+        c.message?.content?.[0]?.text === "Recovered answer from resumed turn",
+    );
     expect(recovered).toBeDefined();
   });
 
@@ -8842,10 +9652,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "recover and replay",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "recover and replay",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-replay");
 
@@ -8892,8 +9705,11 @@ describe("Codex resumed-turn recovery", () => {
     });
 
     const session = bridge.getSession(sid)!;
-    expect(session.messageHistory.filter((msg: any) =>
-      msg.type === "assistant" && msg.message?.id === "codex-agent-item-replay")).toHaveLength(1);
+    expect(
+      session.messageHistory.filter(
+        (msg: any) => msg.type === "assistant" && msg.message?.id === "codex-agent-item-replay",
+      ),
+    ).toHaveLength(1);
     expect(browser.send).not.toHaveBeenCalled();
   });
 
@@ -8907,10 +9723,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "keep going after compaction",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "keep going after compaction",
+      }),
+    );
 
     const session = bridge.getSession(sid)!;
     session.pendingCodexTurns.push({
@@ -9008,14 +9827,22 @@ describe("Codex resumed-turn recovery", () => {
     expect(adapter2.sendBrowserMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "user_message", content: "follow-up should stay queued" }),
     );
-    expect(session.messageHistory.filter((msg: any) =>
-      msg.type === "assistant"
-      && msg.message?.content?.[0]?.type === "text"
-      && msg.message.content[0].text === "First commentary before compaction")).toHaveLength(1);
-    expect(session.messageHistory.filter((msg: any) =>
-      msg.type === "assistant"
-      && msg.message?.content?.[0]?.type === "text"
-      && msg.message.content[0].text === "Second commentary before compaction")).toHaveLength(1);
+    expect(
+      session.messageHistory.filter(
+        (msg: any) =>
+          msg.type === "assistant" &&
+          msg.message?.content?.[0]?.type === "text" &&
+          msg.message.content[0].text === "First commentary before compaction",
+      ),
+    ).toHaveLength(1);
+    expect(
+      session.messageHistory.filter(
+        (msg: any) =>
+          msg.type === "assistant" &&
+          msg.message?.content?.[0]?.type === "text" &&
+          msg.message.content[0].text === "Second commentary before compaction",
+      ),
+    ).toHaveLength(1);
     const assistantCalls = browser.send.mock.calls
       .map(([arg]: [string]) => JSON.parse(arg))
       .filter((msg: any) => msg.type === "assistant");
@@ -9054,16 +9881,22 @@ describe("Codex resumed-turn recovery", () => {
 
     const eventSpy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Draft the first pass",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Draft the first pass",
+      }),
+    );
     adapter1.emitTurnStarted("turn-rearm-resumed-followup-1");
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Then add the reconnect details",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Then add the reconnect details",
+      }),
+    );
     await Promise.resolve();
     const steeredPendingId = bridge.getSession(sid)?.pendingCodexInputs[0]?.id;
     expect(steeredPendingId).toBeDefined();
@@ -9163,9 +9996,11 @@ describe("Codex resumed-turn recovery", () => {
       ([eventSid, eventType]) => eventSid === sid && eventType === "turn_end",
     );
     expect(turnEndCalls).toHaveLength(3);
-    expect(turnEndCalls[2]?.[2]).toEqual(expect.not.objectContaining({
-      interrupted: true,
-    }));
+    expect(turnEndCalls[2]?.[2]).toEqual(
+      expect.not.objectContaining({
+        interrupted: true,
+      }),
+    );
 
     eventSpy.mockRestore();
   });
@@ -9179,10 +10014,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "retry me",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "retry me",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-456");
 
@@ -9199,9 +10037,7 @@ describe("Codex resumed-turn recovery", () => {
           id: "turn-456",
           status: "completed",
           error: null,
-          items: [
-            { type: "userMessage", content: [{ type: "text", text: "retry me" }] },
-          ],
+          items: [{ type: "userMessage", content: [{ type: "text", text: "retry me" }] }],
         },
       },
     });
@@ -9225,10 +10061,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "plan this safely",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "plan this safely",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-789");
 
@@ -9261,10 +10100,9 @@ describe("Codex resumed-turn recovery", () => {
     const session = bridge.getSession(sid)!;
     expect(getPendingCodexTurn(session)).not.toBeNull();
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const retrySkipError = calls.find((c: any) =>
-      c.type === "error"
-      && typeof c.message === "string"
-      && c.message.includes("non-text tool activity"));
+    const retrySkipError = calls.find(
+      (c: any) => c.type === "error" && typeof c.message === "string" && c.message.includes("non-text tool activity"),
+    );
     expect(retrySkipError).toBeUndefined();
   });
 
@@ -9278,10 +10116,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "resume without last turn",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "resume without last turn",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-missing");
 
@@ -9316,10 +10157,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "retry the orphaned dispatch",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "retry the orphaned dispatch",
+      }),
+    );
 
     // Reproduce the session-140 race: Codex accepted turn/start, but the
     // transport closed before the adapter captured the returned turn id.
@@ -9367,18 +10211,21 @@ describe("Codex resumed-turn recovery", () => {
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "describe this screenshot",
-      images: [{ media_type: "image/png", data: "image-bytes" }],
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "describe this screenshot",
+        images: [{ media_type: "image/png", data: "image-bytes" }],
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     const expectedPath = join(homedir(), ".companion", "images", sid, "img-1.orig.png");
     expect((getPendingCodexTurn(bridge.getSession(sid)!) as any)?.userContent).toBe(
-      "describe this screenshot\n"
-      + "[📎 Inline image file paths (same order as images above):\n"
-      + `Attachment 1: ${expectedPath}]`,
+      "describe this screenshot\n" +
+        "[📎 Inline image file paths (same order as images above):\n" +
+        `Attachment 1: ${expectedPath}]`,
     );
 
     // Reproduce the transport-drop window where turn/start disconnects before
@@ -9403,13 +10250,15 @@ describe("Codex resumed-turn recovery", () => {
           items: [
             {
               type: "userMessage",
-              content: [{
-                type: "text",
-                text:
-                  "describe this screenshot\n"
-                  + "[📎 Inline image file paths (same order as images above):\n"
-                  + `Attachment 1: ${expectedPath}]`,
-              }],
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "describe this screenshot\n" +
+                    "[📎 Inline image file paths (same order as images above):\n" +
+                    `Attachment 1: ${expectedPath}]`,
+                },
+              ],
             },
           ],
         },
@@ -9421,7 +10270,9 @@ describe("Codex resumed-turn recovery", () => {
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
+      "/tmp/companion-images/img-1.transport.jpeg",
+    ]);
   });
 
   it("retries when resumed snapshot lastTurn does not match pending disconnected turn", async () => {
@@ -9434,10 +10285,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "retry unmatched turn",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "retry unmatched turn",
+      }),
+    );
 
     adapter1.emitDisconnect("turn-expected");
 
@@ -9480,10 +10334,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run terminal command",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run terminal command",
+      }),
+    );
     adapter1.emitBrowserMessage({
       type: "assistant",
       message: {
@@ -9525,8 +10382,12 @@ describe("Codex resumed-turn recovery", () => {
     });
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const preview = calls.find((c: any) =>
-      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_1"));
+    const preview = calls.find(
+      (c: any) =>
+        c.type === "tool_result_preview" &&
+        Array.isArray(c.previews) &&
+        c.previews.some((p: any) => p.tool_use_id === "cmd_1"),
+    );
     expect(preview).toBeDefined();
     expect(preview.previews[0].content).toContain("hi");
 
@@ -9547,10 +10408,13 @@ describe("Codex resumed-turn recovery", () => {
       bridge.handleBrowserOpen(browser, sid);
       browser.send.mockClear();
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "run command",
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run command",
+        }),
+      );
       adapter.emitBrowserMessage({
         type: "assistant",
         message: {
@@ -9571,8 +10435,12 @@ describe("Codex resumed-turn recovery", () => {
       vi.advanceTimersByTime(120_000);
 
       const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-      const preview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_watch"));
+      const preview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_watch"),
+      );
       expect(preview).toBeDefined();
       expect(preview.previews[0].is_error).toBe(true);
       expect(preview.previews[0].content).toContain("interrupted");
@@ -9594,10 +10462,13 @@ describe("Codex resumed-turn recovery", () => {
       bridge.handleBrowserOpen(browser, sid);
       browser.send.mockClear();
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "run long command",
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run long command",
+        }),
+      );
       adapter1.emitBrowserMessage({
         type: "assistant",
         message: {
@@ -9622,8 +10493,12 @@ describe("Codex resumed-turn recovery", () => {
       vi.advanceTimersByTime(120_000);
 
       const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-      const preview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_live"));
+      const preview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_live"),
+      );
       expect(preview).toBeUndefined();
       expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_live")).toBe(true);
     } finally {
@@ -9643,10 +10518,13 @@ describe("Codex resumed-turn recovery", () => {
       bridge.handleBrowserOpen(browser, sid);
       browser.send.mockClear();
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "run reconnecting command",
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run reconnecting command",
+        }),
+      );
       adapter1.emitBrowserMessage({
         type: "assistant",
         message: {
@@ -9688,17 +10566,25 @@ describe("Codex resumed-turn recovery", () => {
 
       const pending = getPendingCodexTurn(bridge.getSession(sid)!);
       expect(pending?.resumeConfirmedAt).not.toBeNull();
-      expect(browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg)).find((c: any) =>
-        c.type === "error"
-        && typeof c.message === "string"
-        && c.message.includes("non-text tool activity"))).toBeUndefined();
+      expect(
+        browser.send.mock.calls
+          .map(([arg]: [string]) => JSON.parse(arg))
+          .find(
+            (c: any) =>
+              c.type === "error" && typeof c.message === "string" && c.message.includes("non-text tool activity"),
+          ),
+      ).toBeUndefined();
 
       browser.send.mockClear();
       vi.advanceTimersByTime(120_000);
 
       const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-      const preview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_reconnect"));
+      const preview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_reconnect"),
+      );
       expect(preview).toBeDefined();
       expect(preview.previews[0].is_error).toBe(true);
       expect(preview.previews[0].content).toContain("interrupted");
@@ -9719,10 +10605,13 @@ describe("Codex resumed-turn recovery", () => {
       bridge.handleBrowserOpen(browser, sid);
       browser.send.mockClear();
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "run two commands",
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run two commands",
+        }),
+      );
 
       adapter.emitBrowserMessage({
         type: "assistant",
@@ -9761,8 +10650,12 @@ describe("Codex resumed-turn recovery", () => {
       expect(session.toolStartTimes.has("cmd_new_running")).toBe(true);
 
       const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-      const stalePreview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_old_running"));
+      const stalePreview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_old_running"),
+      );
       expect(stalePreview).toBeUndefined();
     } finally {
       vi.useRealTimers();
@@ -9780,10 +10673,13 @@ describe("Codex resumed-turn recovery", () => {
       bridge.handleBrowserOpen(browser, sid);
       browser.send.mockClear();
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content: "run two commands",
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run two commands",
+        }),
+      );
 
       adapter.emitBrowserMessage({
         type: "assistant",
@@ -9836,10 +10732,18 @@ describe("Codex resumed-turn recovery", () => {
       });
 
       const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-      const newPreview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_new"));
-      const stalePreview = calls.find((c: any) =>
-        c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_old"));
+      const newPreview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_new"),
+      );
+      const stalePreview = calls.find(
+        (c: any) =>
+          c.type === "tool_result_preview" &&
+          Array.isArray(c.previews) &&
+          c.previews.some((p: any) => p.tool_use_id === "cmd_old"),
+      );
 
       expect(newPreview).toBeDefined();
       expect(stalePreview).toBeDefined();
@@ -9861,10 +10765,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run silent command",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run silent command",
+      }),
+    );
     adapter.emitBrowserMessage({
       type: "assistant",
       message: {
@@ -9900,8 +10807,12 @@ describe("Codex resumed-turn recovery", () => {
     });
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const preview = calls.find((c: any) =>
-      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_silent"));
+    const preview = calls.find(
+      (c: any) =>
+        c.type === "tool_result_preview" &&
+        Array.isArray(c.previews) &&
+        c.previews.some((p: any) => p.tool_use_id === "cmd_silent"),
+    );
     expect(preview).toBeDefined();
     expect(preview.previews[0].is_error).toBe(false);
     expect(preview.previews[0].content).toContain("no output was captured");
@@ -9917,10 +10828,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run two commands",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run two commands",
+      }),
+    );
 
     adapter.emitBrowserMessage({
       type: "assistant",
@@ -9929,7 +10843,14 @@ describe("Codex resumed-turn recovery", () => {
         type: "message",
         role: "assistant",
         model: "gpt-5.3-codex",
-        content: [{ type: "tool_use", id: "cmd_old", name: "Bash", input: { command: "git --no-optional-locks status --short" } }],
+        content: [
+          {
+            type: "tool_use",
+            id: "cmd_old",
+            name: "Bash",
+            input: { command: "git --no-optional-locks status --short" },
+          },
+        ],
         stop_reason: "tool_use",
         usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
@@ -9981,8 +10902,12 @@ describe("Codex resumed-turn recovery", () => {
     });
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const stalePreview = calls.find((c: any) =>
-      c.type === "tool_result_preview" && Array.isArray(c.previews) && c.previews.some((p: any) => p.tool_use_id === "cmd_old"));
+    const stalePreview = calls.find(
+      (c: any) =>
+        c.type === "tool_result_preview" &&
+        Array.isArray(c.previews) &&
+        c.previews.some((p: any) => p.tool_use_id === "cmd_old"),
+    );
 
     expect(stalePreview).toBeDefined();
     expect(stalePreview.previews[0].content).toContain("M web/src/components/MessageFeed.tsx");
@@ -10002,10 +10927,13 @@ describe("Codex resumed-turn recovery", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "run a command",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "run a command",
+      }),
+    );
     adapter1.emitDisconnect("turn-stale");
 
     // Reconnect with inProgress turn but idle thread
@@ -10035,15 +10963,16 @@ describe("Codex resumed-turn recovery", () => {
     expect(adapter2.sendBrowserMessage).toHaveBeenCalled();
     const firstToolRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstToolRetryCall).toBeDefined();
-    const retried = (((firstToolRetryCall as unknown as [any])[0]) as any);
+    const retried = (firstToolRetryCall as unknown as [any])[0] as any;
     expect(getCodexStartPendingInputs(retried)[0]?.content).toBe("run a command");
 
     // No "non-text tool activity" error sent
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls.find((c: any) =>
-      c.type === "error"
-      && typeof c.message === "string"
-      && c.message.includes("non-text tool activity"))).toBeUndefined();
+    expect(
+      calls.find(
+        (c: any) => c.type === "error" && typeof c.message === "string" && c.message.includes("non-text tool activity"),
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -10064,10 +10993,13 @@ describe("Codex runtime settings updates", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_model",
-      model: "gpt-5.3-codex",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_model",
+        model: "gpt-5.3-codex",
+      }),
+    );
 
     const session = bridge.getSession(sid)!;
     expect(session.state.model).toBe("gpt-5.3-codex");
@@ -10077,10 +11009,12 @@ describe("Codex runtime settings updates", () => {
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const update = calls.find((c: any) => c.type === "session_update");
-    expect(update).toEqual(expect.objectContaining({
-      type: "session_update",
-      session: expect.objectContaining({ model: "gpt-5.3-codex" }),
-    }));
+    expect(update).toEqual(
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({ model: "gpt-5.3-codex" }),
+      }),
+    );
   });
 
   it("set_codex_reasoning_effort updates session state and requests relaunch", async () => {
@@ -10099,10 +11033,13 @@ describe("Codex runtime settings updates", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_codex_reasoning_effort",
-      effort: "high",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_codex_reasoning_effort",
+        effort: "high",
+      }),
+    );
 
     const session = bridge.getSession(sid)!;
     expect(session.state.codex_reasoning_effort).toBe("high");
@@ -10131,10 +11068,13 @@ describe("Codex runtime settings updates", () => {
     session.state.askPermission = true;
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_ask_permission",
-      askPermission: false,
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_ask_permission",
+        askPermission: false,
+      }),
+    );
 
     expect(session.state.permissionMode).toBe("plan");
     expect(session.state.uiMode).toBe("plan");
@@ -10145,14 +11085,16 @@ describe("Codex runtime settings updates", () => {
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const update = calls.find((m: any) => m.type === "session_update");
-    expect(update).toEqual(expect.objectContaining({
-      type: "session_update",
-      session: expect.objectContaining({
-        askPermission: false,
-        permissionMode: "plan",
-        uiMode: "plan",
+    expect(update).toEqual(
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({
+          askPermission: false,
+          permissionMode: "plan",
+          uiMode: "plan",
+        }),
       }),
-    }));
+    );
   });
 });
 
@@ -10187,7 +11129,7 @@ describe("Codex permission mode switch with pending approvals", () => {
       },
     });
     // Flush async permission pipeline — settings rule check reads from disk
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     const session = bridge.getSession(sid)!;
     expect(session.pendingPermissions.has("perm-stuck")).toBe(true);
     browser.send.mockClear();
@@ -10197,10 +11139,13 @@ describe("Codex permission mode switch with pending approvals", () => {
     vi.useFakeTimers();
 
     // Switch to bypassPermissions (auto-approve mode)
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_permission_mode",
-      mode: "bypassPermissions",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_permission_mode",
+        mode: "bypassPermissions",
+      }),
+    );
 
     // Pending permission should be cleared
     expect(session.pendingPermissions.size).toBe(0);
@@ -10220,9 +11165,7 @@ describe("Codex permission mode switch with pending approvals", () => {
     const approved = msgs.find((m: any) => m.type === "permission_approved");
     expect(approved).toBeDefined();
     expect(approved.request_id).toBe("perm-stuck");
-    const modeUpdate = msgs.find((m: any) =>
-      m.type === "session_update" && m.session?.permissionMode,
-    );
+    const modeUpdate = msgs.find((m: any) => m.type === "session_update" && m.session?.permissionMode);
     expect(modeUpdate?.session?.permissionMode).toBe("bypassPermissions");
 
     // Relaunch should be requested (after setTimeout delay)
@@ -10261,7 +11204,7 @@ describe("Codex permission mode switch with pending approvals", () => {
       },
     });
     // Flush async permission pipeline — settings rule check reads from disk
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     const session = bridge.getSession(sid)!;
     expect(session.pendingPermissions.has("perm-cancel")).toBe(true);
     browser.send.mockClear();
@@ -10269,10 +11212,13 @@ describe("Codex permission mode switch with pending approvals", () => {
     // Switch to suggest mode — pending permissions should be denied/cancelled
     // Use fake timers only for the relaunch delay
     vi.useFakeTimers();
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_permission_mode",
-      mode: "suggest",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_permission_mode",
+        mode: "suggest",
+      }),
+    );
 
     expect(session.pendingPermissions.size).toBe(0);
 
@@ -10314,10 +11260,13 @@ describe("Codex permission mode switch with pending approvals", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "set_permission_mode",
-      mode: "bypassPermissions",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "set_permission_mode",
+        mode: "bypassPermissions",
+      }),
+    );
 
     // No adapter calls for permission resolution
     expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
@@ -10339,10 +11288,13 @@ describe("Codex /compact passthrough", () => {
     emitCodexSessionReady(adapter, { cliSessionId: "thread-compact" });
     bridge.handleBrowserOpen(browser, "s1");
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "/compact",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "/compact",
+      }),
+    );
     adapter.emitTurnStarted("turn-compact");
 
     // Adapter should receive the message.
@@ -10369,10 +11321,13 @@ describe("Codex /compact passthrough", () => {
       emitCodexSessionReady(adapter, { cliSessionId: `thread-${content.trim()}` });
       bridge.handleBrowserOpen(browser, sid);
 
-      await bridge.handleBrowserMessage(browser, JSON.stringify({
-        type: "user_message",
-        content,
-      }));
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content,
+        }),
+      );
 
       expect(adapter.sendBrowserMessage).toHaveBeenCalled();
       const compactVariationCalls = adapter.sendBrowserMessage.mock.calls as any[];
@@ -10430,10 +11385,13 @@ describe("Codex user_message takode events", () => {
 
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Please prioritize fixing auth bug first",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please prioritize fixing auth bug first",
+      }),
+    );
     await Promise.resolve();
 
     expect(spy).toHaveBeenCalledWith(
@@ -10458,17 +11416,23 @@ describe("Codex user_message takode events", () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
     // Start an active turn.
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Run full test suite",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Run full test suite",
+      }),
+    );
     adapter.emitTurnStarted("turn-running-1");
 
     // Mid-turn follow-up message causes Codex to interrupt the active turn first.
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Actually run only server tests",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Actually run only server tests",
+      }),
+    );
 
     // Adapter reports completion of the interrupted turn.
     adapter.emitBrowserMessage({
@@ -10496,9 +11460,7 @@ describe("Codex user_message takode events", () => {
 
     await Promise.resolve();
 
-    const turnEndCalls = spy.mock.calls.filter(
-      ([eventSid, eventType]) => eventSid === sid && eventType === "turn_end",
-    );
+    const turnEndCalls = spy.mock.calls.filter(([eventSid, eventType]) => eventSid === sid && eventType === "turn_end");
     expect(turnEndCalls.length).toBeGreaterThan(0);
     const lastTurnEnd = turnEndCalls[turnEndCalls.length - 1];
     expect(lastTurnEnd[2]).toEqual(expect.objectContaining({ interrupted: true, interrupt_source: "user" }));
@@ -10516,16 +11478,22 @@ describe("Codex user_message takode events", () => {
 
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Run the full test suite",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Run the full test suite",
+      }),
+    );
     adapter.emitTurnStarted("turn-running-2");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "Then summarize only the failures",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Then summarize only the failures",
+      }),
+    );
 
     adapter.emitBrowserMessage({
       type: "result",
@@ -10575,16 +11543,18 @@ describe("Codex user_message takode events", () => {
 
     await Promise.resolve();
 
-    const turnEndCalls = spy.mock.calls.filter(
-      ([eventSid, eventType]) => eventSid === sid && eventType === "turn_end",
-    );
+    const turnEndCalls = spy.mock.calls.filter(([eventSid, eventType]) => eventSid === sid && eventType === "turn_end");
     expect(turnEndCalls).toHaveLength(2);
-    expect(turnEndCalls[0]?.[2]).toEqual(expect.not.objectContaining({
-      interrupted: true,
-    }));
-    expect(turnEndCalls[1]?.[2]).toEqual(expect.not.objectContaining({
-      interrupted: true,
-    }));
+    expect(turnEndCalls[0]?.[2]).toEqual(
+      expect.not.objectContaining({
+        interrupted: true,
+      }),
+    );
+    expect(turnEndCalls[1]?.[2]).toEqual(
+      expect.not.objectContaining({
+        interrupted: true,
+      }),
+    );
 
     spy.mockRestore();
   });
@@ -10624,19 +11594,25 @@ describe("Codex user_message takode events", () => {
     const herdInjectSpy = vi.spyOn(bridge, "injectUserMessage");
 
     // Initial worker task turn.
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Implement the first version",
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Implement the first version",
+      }),
+    );
     await Promise.resolve();
     workerAdapter.emitTurnStarted("turn-worker-correction-1");
 
     // Mid-turn correction from leader.
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Correction: include edge-case handling",
-      agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Correction: include edge-case handling",
+        agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
+      }),
+    );
     await Promise.resolve();
 
     // First result ends interrupted turn.
@@ -10669,25 +11645,28 @@ describe("Codex user_message takode events", () => {
     await Promise.resolve();
 
     // Leader processes injected herd event message and returns idle.
-    bridge.handleCLIMessage(leaderCli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "ack",
-      duration_ms: 100,
-      duration_api_ms: 100,
-      num_turns: 1,
-      total_cost_usd: 0,
-      stop_reason: "end_turn",
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-      uuid: "leader-herd-ack-1",
-      session_id: leaderId,
-    }));
+    bridge.handleCLIMessage(
+      leaderCli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "ack",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "leader-herd-ack-1",
+        session_id: leaderId,
+      }),
+    );
     await Promise.resolve();
 
     // Second result ends the resumed follow-up turn.
@@ -10722,13 +11701,17 @@ describe("Codex user_message takode events", () => {
         ([sid, eventType]) => sid === workerId && eventType === "turn_end",
       );
       expect(workerTurnEndCalls).toHaveLength(2);
-      expect(workerTurnEndCalls[0]?.[2]).toEqual(expect.objectContaining({
-        interrupted: true,
-        interrupt_source: "leader",
-      }));
-      expect(workerTurnEndCalls[1]?.[2]).toEqual(expect.not.objectContaining({
-        interrupted: true,
-      }));
+      expect(workerTurnEndCalls[0]?.[2]).toEqual(
+        expect.objectContaining({
+          interrupted: true,
+          interrupt_source: "leader",
+        }),
+      );
+      expect(workerTurnEndCalls[1]?.[2]).toEqual(
+        expect.not.objectContaining({
+          interrupted: true,
+        }),
+      );
 
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
@@ -10779,18 +11762,24 @@ describe("Codex user_message takode events", () => {
     const eventSpy = vi.spyOn(bridge, "emitTakodeEvent");
     const herdInjectSpy = vi.spyOn(bridge, "injectUserMessage");
 
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Implement the first version",
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Implement the first version",
+      }),
+    );
     await Promise.resolve();
     workerAdapter1.emitTurnStarted("turn-worker-correction-reconnect-1");
 
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Correction: include edge-case handling",
-      agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Correction: include edge-case handling",
+        agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
+      }),
+    );
     await Promise.resolve();
 
     workerAdapter1.emitDisconnect("turn-worker-correction-reconnect-1");
@@ -10799,25 +11788,28 @@ describe("Codex user_message takode events", () => {
     vi.advanceTimersByTime(600);
     await Promise.resolve();
 
-    bridge.handleCLIMessage(leaderCli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "ack",
-      duration_ms: 100,
-      duration_api_ms: 100,
-      num_turns: 1,
-      total_cost_usd: 0,
-      stop_reason: "end_turn",
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-      uuid: "leader-herd-ack-reconnect-1",
-      session_id: leaderId,
-    }));
+    bridge.handleCLIMessage(
+      leaderCli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "ack",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "leader-herd-ack-reconnect-1",
+        session_id: leaderId,
+      }),
+    );
     await Promise.resolve();
 
     const workerAdapter2 = makeCodexAdapterMock();
@@ -10884,13 +11876,17 @@ describe("Codex user_message takode events", () => {
         ([sid, eventType]) => sid === workerId && eventType === "turn_end",
       );
       expect(workerTurnEndCalls).toHaveLength(2);
-      expect(workerTurnEndCalls[0]?.[2]).toEqual(expect.objectContaining({
-        interrupted: true,
-        interrupt_source: "system",
-      }));
-      expect(workerTurnEndCalls[1]?.[2]).toEqual(expect.not.objectContaining({
-        interrupted: true,
-      }));
+      expect(workerTurnEndCalls[0]?.[2]).toEqual(
+        expect.objectContaining({
+          interrupted: true,
+          interrupt_source: "system",
+        }),
+      );
+      expect(workerTurnEndCalls[1]?.[2]).toEqual(
+        expect.not.objectContaining({
+          interrupted: true,
+        }),
+      );
 
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
@@ -10941,18 +11937,24 @@ describe("Codex user_message takode events", () => {
     const eventSpy = vi.spyOn(bridge, "emitTakodeEvent");
     const herdInjectSpy = vi.spyOn(bridge, "injectUserMessage");
 
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Implement the baseline version",
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Implement the baseline version",
+      }),
+    );
     await Promise.resolve();
     workerAdapter.emitTurnStarted("turn-worker-correction-no-interrupt-1");
 
-    bridge.handleBrowserMessage(workerBrowser, JSON.stringify({
-      type: "user_message",
-      content: "Correction: also include validation",
-      agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
-    }));
+    bridge.handleBrowserMessage(
+      workerBrowser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Correction: also include validation",
+        agentSource: { sessionId: leaderId, sessionLabel: "#1 leader" },
+      }),
+    );
     await Promise.resolve();
 
     workerAdapter.emitBrowserMessage({
@@ -10982,25 +11984,28 @@ describe("Codex user_message takode events", () => {
     vi.advanceTimersByTime(600);
     await Promise.resolve();
 
-    bridge.handleCLIMessage(leaderCli, JSON.stringify({
-      type: "result",
-      subtype: "success",
-      is_error: false,
-      result: "ack",
-      duration_ms: 100,
-      duration_api_ms: 100,
-      num_turns: 1,
-      total_cost_usd: 0,
-      stop_reason: "end_turn",
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
-      uuid: "leader-herd-ack-no-interrupt-1",
-      session_id: leaderId,
-    }));
+    bridge.handleCLIMessage(
+      leaderCli,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "ack",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "leader-herd-ack-no-interrupt-1",
+        session_id: leaderId,
+      }),
+    );
     await Promise.resolve();
 
     workerAdapter.emitBrowserMessage({
@@ -11034,12 +12039,16 @@ describe("Codex user_message takode events", () => {
         ([sid, eventType]) => sid === workerId && eventType === "turn_end",
       );
       expect(workerTurnEndCalls).toHaveLength(2);
-      expect(workerTurnEndCalls[0]?.[2]).toEqual(expect.not.objectContaining({
-        interrupted: true,
-      }));
-      expect(workerTurnEndCalls[1]?.[2]).toEqual(expect.not.objectContaining({
-        interrupted: true,
-      }));
+      expect(workerTurnEndCalls[0]?.[2]).toEqual(
+        expect.not.objectContaining({
+          interrupted: true,
+        }),
+      );
+      expect(workerTurnEndCalls[1]?.[2]).toEqual(
+        expect.not.objectContaining({
+          interrupted: true,
+        }),
+      );
 
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
@@ -11066,29 +12075,40 @@ describe("Codex explicit stop semantics", () => {
     emitCodexSessionReady(adapter, { cliSessionId: "thread-stop-clears-queue" });
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "initial active turn",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "initial active turn",
+      }),
+    );
     adapter.emitTurnStarted("turn-initial");
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "queued follow-up after stop",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "queued follow-up after stop",
+      }),
+    );
     await Promise.resolve();
 
     const session = bridge.getSession(sid)!;
     expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("queued follow-up after stop");
-    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: "codex_steer_pending",
-      expectedTurnId: "turn-initial",
-    }));
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_steer_pending",
+        expectedTurnId: "turn-initial",
+      }),
+    );
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "interrupt",
-      interruptSource: "user",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "interrupt",
+        interruptSource: "user",
+      }),
+    );
     await Promise.resolve();
 
     expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("queued follow-up after stop");
@@ -11104,28 +12124,36 @@ describe("Codex active-turn steering", () => {
     emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-active" });
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "initial turn",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "initial turn",
+      }),
+    );
     await Promise.resolve();
     adapter.emitTurnStarted("turn-initial");
 
     const session = bridge.getSession(sid)!;
     const beforeCount = session.pendingCodexTurns.length;
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "follow-up steer",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "follow-up steer",
+      }),
+    );
     await Promise.resolve();
 
     expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("follow-up steer");
     expect(session.pendingCodexTurns.length).toBe(beforeCount);
-    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: "codex_steer_pending",
-      expectedTurnId: "turn-initial",
-    }));
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_steer_pending",
+        expectedTurnId: "turn-initial",
+      }),
+    );
   });
 
   it("restores pending Codex input to cancelable state when steer delivery fails", async () => {
@@ -11136,21 +12164,29 @@ describe("Codex active-turn steering", () => {
     emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-failure" });
     bridge.handleBrowserOpen(browser, sid);
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "initial turn",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "initial turn",
+      }),
+    );
     await Promise.resolve();
     adapter.emitTurnStarted("turn-initial");
 
-    await bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "follow-up steer failure",
-    }));
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "follow-up steer failure",
+      }),
+    );
     await Promise.resolve();
 
     const session = bridge.getSession(sid)!;
-    expect(session.pendingCodexInputs.find((input: any) => input.content === "follow-up steer failure")?.cancelable).toBe(false);
+    expect(
+      session.pendingCodexInputs.find((input: any) => input.content === "follow-up steer failure")?.cancelable,
+    ).toBe(false);
 
     const pendingId = session.pendingCodexInputs.find((input: any) => input.content === "follow-up steer failure")?.id;
     expect(pendingId).toBeTruthy();
@@ -11192,18 +12228,21 @@ describe("Codex image transport", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "describe this image",
-      images: [{ media_type: "image/png", data: "large-base64-data" }],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "describe this image",
+        images: [{ media_type: "image/png", data: "large-base64-data" }],
+      }),
+    );
     await flush();
 
     // Adapter should receive local paths and skip inline payload compression.
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const firstImageCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstImageCall).toBeDefined();
-    const sentMsg = ((firstImageCall as unknown as [any])[0]) as any;
+    const sentMsg = (firstImageCall as unknown as [any])[0] as any;
     const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
@@ -11232,17 +12271,20 @@ describe("Codex image transport", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "what is this?",
-      images: [{ media_type: "image/png", data: "small-data" }],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "what is this?",
+        images: [{ media_type: "image/png", data: "small-data" }],
+      }),
+    );
     await flush();
 
     // Adapter receives local_images and no inline image payload.
     const firstFallbackCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstFallbackCall).toBeDefined();
-    const sentMsg = ((firstFallbackCall as unknown as [any])[0]) as any;
+    const sentMsg = (firstFallbackCall as unknown as [any])[0] as any;
     const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
@@ -11275,19 +12317,22 @@ describe("Codex image transport", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "compare these images",
-      images: [
-        { media_type: "image/png", data: "image-one-data" },
-        { media_type: "image/png", data: "image-two-data" },
-      ],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "compare these images",
+        images: [
+          { media_type: "image/png", data: "image-one-data" },
+          { media_type: "image/png", data: "image-two-data" },
+        ],
+      }),
+    );
     await flush();
 
     const firstMultiImageCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstMultiImageCall).toBeDefined();
-    const sentMsg = ((firstMultiImageCall as unknown as [any])[0]) as any;
+    const sentMsg = (firstMultiImageCall as unknown as [any])[0] as any;
     const expectedPath1 = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     const expectedPath2 = join(homedir(), ".companion", "images", "s1", "img-2.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
@@ -11310,19 +12355,24 @@ describe("Codex image transport", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "no store",
-      images: [{ media_type: "image/png", data: "raw-data" }],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "no store",
+        images: [{ media_type: "image/png", data: "raw-data" }],
+      }),
+    );
     await flush();
 
     expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
     const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(browserCalls).toContainEqual(expect.objectContaining({
-      type: "error",
-      message: expect.stringContaining("Image failed to send"),
-    }));
+    expect(browserCalls).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Image failed to send"),
+      }),
+    );
   });
 });
 
@@ -11345,11 +12395,14 @@ describe("Claude SDK image transport", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "describe this image",
-      images: [{ media_type: "image/png", data: "large-base64-data" }],
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "describe this image",
+        images: [{ media_type: "image/png", data: "large-base64-data" }],
+      }),
+    );
     await flush();
 
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
@@ -11381,10 +12434,13 @@ describe("Claude SDK adapter queue handoff", () => {
 
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "hello from sdk queue",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hello from sdk queue",
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     const session = bridge.getSession(sid)!;
@@ -11518,14 +12574,18 @@ describe("Codex permission_request emits herd event", () => {
         input: { command: "rm -rf node_modules" },
       },
     });
-    await new Promise(r => setTimeout(r, 50)); // flush async permission pipeline (settings rule check reads from disk)
+    await new Promise((r) => setTimeout(r, 50)); // flush async permission pipeline (settings rule check reads from disk)
 
     // Verify herd event was emitted with correct data
-    expect(spy).toHaveBeenCalledWith("s1", "permission_request", expect.objectContaining({
-      tool_name: "Bash",
-      request_id: "perm-1",
-      summary: "rm -rf node_modules",
-    }));
+    expect(spy).toHaveBeenCalledWith(
+      "s1",
+      "permission_request",
+      expect.objectContaining({
+        tool_name: "Bash",
+        request_id: "perm-1",
+        summary: "rm -rf node_modules",
+      }),
+    );
 
     // Verify permission was also stored on the session
     const session = bridge.getSession("s1")!;
@@ -11549,13 +12609,17 @@ describe("Codex permission_request emits herd event", () => {
         input: { file_path: "/home/user/project/test.txt" },
       },
     });
-    await new Promise(r => setTimeout(r, 50)); // flush async permission pipeline (settings rule check reads from disk)
+    await new Promise((r) => setTimeout(r, 50)); // flush async permission pipeline (settings rule check reads from disk)
 
-    expect(spy).toHaveBeenCalledWith("s1", "permission_request", expect.objectContaining({
-      tool_name: "Write",
-      request_id: "perm-2",
-      summary: "Write",
-    }));
+    expect(spy).toHaveBeenCalledWith(
+      "s1",
+      "permission_request",
+      expect.objectContaining({
+        tool_name: "Write",
+        request_id: "perm-2",
+        summary: "Write",
+      }),
+    );
 
     spy.mockRestore();
   });
@@ -11594,10 +12658,13 @@ describe("Codex adapter sets cliInitReceived on attach", () => {
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
     // Trigger generating state via user message
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "user_message",
-      content: "test",
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "test",
+      }),
+    );
     adapter.emitTurnStarted("turn-idle-check");
 
     const session = bridge.getSession(sid)!;
@@ -11730,11 +12797,14 @@ describe("cliResuming debounce prevents false compaction events on --resume repl
     expect(session.cliResuming).toBe(true); // still true — debounced
 
     // Simulate replayed system.status with compacting — should be suppressed.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
 
     // No compaction_started event should have been emitted.
     const compactionCalls = spy.mock.calls.filter(([, event]) => event === "compaction_started");
@@ -11769,11 +12839,14 @@ describe("cliResuming debounce prevents false compaction events on --resume repl
     expect(session.cliResuming).toBe(false);
 
     // Now a REAL compaction status arrives — should emit event.
-    bridge.handleCLIMessage(cli, JSON.stringify({
-      type: "system",
-      subtype: "status",
-      status: "compacting",
-    }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      }),
+    );
 
     const compactionCalls = spy.mock.calls.filter(([, event]) => event === "compaction_started");
     expect(compactionCalls).toHaveLength(1);
@@ -12334,12 +13407,15 @@ describe("Claude SDK interactive tool permissions", () => {
 
     // Step 2: Browser sends approval
     adapter.sendBrowserMessage.mockClear();
-    bridge.handleBrowserMessage(browser, JSON.stringify({
-      type: "permission_response",
-      request_id: "perm-exit-plan-2",
-      behavior: "allow",
-      updated_input: { allowedPrompts: [] },
-    }));
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "perm-exit-plan-2",
+        behavior: "allow",
+        updated_input: { allowedPrompts: [] },
+      }),
+    );
 
     // Step 3: Verify response was forwarded to SDK adapter
     // Note: the response may be sent twice (once by the SDK-specific handler

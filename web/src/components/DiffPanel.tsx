@@ -78,9 +78,7 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
   const changedFilesSet = useStore((s) => s.changedFiles.get(sessionId));
 
   const cwd = session?.cwd || sdkSession?.cwd;
-  const repoRoot = (session?.repo_root && cwd?.startsWith(session.repo_root + "/"))
-    ? session.repo_root
-    : cwd;
+  const repoRoot = session?.repo_root && cwd?.startsWith(session.repo_root + "/") ? session.repo_root : cwd;
 
   // Initialize from cached stats so re-opening DiffPanel doesn't flash empty.
   // Fresh diffs are always fetched on mount to replace stale cached values.
@@ -149,13 +147,17 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
   const resolvedDefault = serverDefaultBranch || fallbackDefault;
   const effectiveBranch = baseBranch || resolvedDefault || null;
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
-  const [recentCommits, setRecentCommits] = useState<{ sha: string; shortSha: string; message: string; timestamp: number }[]>([]);
+  const [recentCommits, setRecentCommits] = useState<
+    { sha: string; shortSha: string; message: string; timestamp: number }[]
+  >([]);
   const branchesFetched = useRef(false);
 
   const changedFiles = useMemo(() => changedFilesSet ?? new Set<string>(), [changedFilesSet]);
 
   // Git-based changed files (authoritative — includes deletions, renames)
-  const [gitDiffFiles, setGitDiffFiles] = useState<Array<{ path: string; status: "A" | "M" | "D" | "R"; oldPath?: string }>>([]);
+  const [gitDiffFiles, setGitDiffFiles] = useState<
+    Array<{ path: string; status: "A" | "M" | "D" | "R"; oldPath?: string }>
+  >([]);
 
   const branchOptions = useMemo(() => {
     const options = new Set(availableBranches);
@@ -206,16 +208,25 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
     if (!cwd || branchesFetched.current) return;
     branchesFetched.current = true;
     if (!serverDefaultBranch) {
-      api.getRepoInfo(cwd).then((info) => {
-        if (info?.defaultBranch) setFallbackDefault(info.defaultBranch);
-      }).catch(() => {});
+      api
+        .getRepoInfo(cwd)
+        .then((info) => {
+          if (info?.defaultBranch) setFallbackDefault(info.defaultBranch);
+        })
+        .catch(() => {});
     }
-    api.listBranches(cwd, { localOnly: true }).then((branches) => {
-      setAvailableBranches(branches.map((b) => b.name));
-    }).catch(() => {});
-    api.getRecentCommits(cwd, 20).then((res) => {
-      setRecentCommits(res.commits);
-    }).catch(() => {});
+    api
+      .listBranches(cwd, { localOnly: true })
+      .then((branches) => {
+        setAvailableBranches(branches.map((b) => b.name));
+      })
+      .catch(() => {});
+    api
+      .getRecentCommits(cwd, 20)
+      .then((res) => {
+        setRecentCommits(res.commits);
+      })
+      .catch(() => {});
   }, [cwd, serverDefaultBranch]);
 
   // Fetch git-based changed files when base branch changes.
@@ -225,21 +236,27 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
       setGitDiffFiles([]);
       return;
     }
-    api.getDiffFiles(repoRoot, effectiveBranch).then((res) => {
-      setGitDiffFiles(res.files);
-    }).catch(() => {
-      setGitDiffFiles([]);
-    });
+    api
+      .getDiffFiles(repoRoot, effectiveBranch)
+      .then((res) => {
+        setGitDiffFiles(res.files);
+      })
+      .catch(() => {
+        setGitDiffFiles([]);
+      });
   }, [repoRoot, effectiveBranch]);
 
-  const handleBaseBranchChange = useCallback((value: string | null) => {
-    setBaseBranch(value);
-    api.setDiffBase(sessionId, value || "").catch(() => {});
-    fetchedFilesRef.current.clear();
-    setFileStats(new Map());
-    setAllDiffs(new Map());
-    useStore.getState().setDiffFileStats(sessionId, new Map());
-  }, [sessionId]);
+  const handleBaseBranchChange = useCallback(
+    (value: string | null) => {
+      setBaseBranch(value);
+      api.setDiffBase(sessionId, value || "").catch(() => {});
+      fetchedFilesRef.current.clear();
+      setFileStats(new Map());
+      setAllDiffs(new Map());
+      useStore.getState().setDiffFileStats(sessionId, new Map());
+    },
+    [sessionId],
+  );
 
   // Fetch diffs for ALL changed files
   useEffect(() => {
@@ -265,18 +282,23 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
           const batch = newFiles.slice(i, i + BATCH_SIZE);
           const results = await Promise.all(
             batch.map(({ abs }) =>
-              withTimeout(
-                api.getFileDiff(abs, effectiveBranch, { includeContents: true }),
-                DIFF_REQUEST_TIMEOUT_MS,
-              ).then((res) => {
-                return {
+              withTimeout(api.getFileDiff(abs, effectiveBranch, { includeContents: true }), DIFF_REQUEST_TIMEOUT_MS)
+                .then((res) => {
+                  return {
+                    abs,
+                    diff: res.diff,
+                    oldText: res.oldText,
+                    newText: res.newText,
+                    stats: countDiffStats(res.diff),
+                  };
+                })
+                .catch(() => ({
                   abs,
-                  diff: res.diff,
-                  oldText: res.oldText,
-                  newText: res.newText,
-                  stats: countDiffStats(res.diff),
-                };
-              }).catch(() => ({ abs, diff: "", oldText: undefined, newText: undefined, stats: { additions: 0, deletions: 0 } })),
+                  diff: "",
+                  oldText: undefined,
+                  newText: undefined,
+                  stats: { additions: 0, deletions: 0 },
+                })),
             ),
           );
           if (cancelled || !isCurrentLoad()) return;
@@ -306,16 +328,26 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [relativeChangedFiles, effectiveBranch]);
 
   // Total line stats from server. When server totals are zero but the panel has
   // already fetched full per-file diffs, fall back to locally computed totals
   // so the header stays consistent with what's rendered below.
-  const serverTotals = useMemo(() => ({
-    additions: session?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0,
-    deletions: session?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0,
-  }), [session?.total_lines_added, session?.total_lines_removed, sdkSession?.totalLinesAdded, sdkSession?.totalLinesRemoved]);
+  const serverTotals = useMemo(
+    () => ({
+      additions: session?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0,
+      deletions: session?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0,
+    }),
+    [
+      session?.total_lines_added,
+      session?.total_lines_removed,
+      sdkSession?.totalLinesAdded,
+      sdkSession?.totalLinesRemoved,
+    ],
+  );
 
   const localTotals = useMemo(() => {
     if (visibleChangedFiles.length === 0) {
@@ -377,7 +409,9 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
       if (el) {
         scrollingToFileRef.current = true;
         el.scrollIntoView({ behavior: "smooth", block: "start" });
-        setTimeout(() => { scrollingToFileRef.current = false; }, 600);
+        setTimeout(() => {
+          scrollingToFileRef.current = false;
+        }, 600);
       }
     },
     [sessionId, setSelectedFile],
@@ -420,129 +454,141 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
       {/* Top bar: branch selector, total stats, file picker, line numbers toggle */}
       <div className="shrink-0 px-3 py-2 bg-cc-card border-b border-cc-border">
         <div className="flex flex-wrap items-center gap-2">
-        {/* Branch selector */}
-        <select
-          value={selectedBranch ?? ""}
-          onChange={(e) => {
-            const next = e.target.value || null;
-            setSelectedBranch(next);
-            handleBaseBranchChange(next);
-          }}
-          className="w-full sm:w-auto max-w-full sm:max-w-[180px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
-          title="Base branch for diff comparison"
-        >
-          <option value="">
-            {resolvedDefault ? `vs ${formatBranchLabel(resolvedDefault)} (default)` : "vs default branch"}
-          </option>
-          {branchOptions.map((b) => (
-            <option key={b} value={b}>vs {formatBranchLabel(b)}</option>
-          ))}
-        </select>
-
-        {/* Commit selector */}
-        {recentCommits.length > 0 && (
+          {/* Branch selector */}
           <select
-            value={baseBranch && /^[0-9a-f]{7,40}$/.test(baseBranch) ? baseBranch : ""}
+            value={selectedBranch ?? ""}
             onChange={(e) => {
-              const nextCommit = e.target.value || null;
-              if (nextCommit) {
-                handleBaseBranchChange(nextCommit);
-              } else {
-                // Clearing commit selection restores the user's branch selection.
-                // If no explicit branch was chosen, fall back to the repo default.
-                const restoredBranch = selectedBranch ?? resolvedDefault ?? null;
-                setSelectedBranch(restoredBranch);
-                handleBaseBranchChange(restoredBranch);
-              }
+              const next = e.target.value || null;
+              setSelectedBranch(next);
+              handleBaseBranchChange(next);
             }}
-            className="w-full sm:w-auto max-w-full sm:max-w-[200px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
-            title="Compare against a specific commit"
+            className="w-full sm:w-auto max-w-full sm:max-w-[180px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
+            title="Base branch for diff comparison"
           >
-            <option value="">commit...</option>
-            {recentCommits.map((c) => {
-              const message = typeof c.message === "string" ? c.message : "";
-              const preview = message
-                ? (message.length > 35 ? message.slice(0, 35) + "…" : message)
-                : "(no message)";
-              return (
-                <option key={c.sha} value={c.sha}>
-                  {c.shortSha} {preview}
-                </option>
-              );
-            })}
+            <option value="">
+              {resolvedDefault ? `vs ${formatBranchLabel(resolvedDefault)} (default)` : "vs default branch"}
+            </option>
+            {branchOptions.map((b) => (
+              <option key={b} value={b}>
+                vs {formatBranchLabel(b)}
+              </option>
+            ))}
           </select>
-        )}
 
-        {/* Move stats + file controls to a second row on mobile */}
-        <div data-testid="diff-header-mobile-break" className="basis-full h-0 sm:basis-auto" />
-
-        {(totalStats.additions > 0 || totalStats.deletions > 0) && (
-          <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1">
-            <span className="text-green-500">+{totalStats.additions}</span>
-            <span className="text-red-400">-{totalStats.deletions}</span>
-          </span>
-        )}
-
-        <div className="ml-auto flex items-center gap-2">
-
-        {/* File picker dropdown */}
-        {visibleChangedFiles.length > 0 && (
-          <div className="relative" ref={filePickerRef}>
-            <button
-              onClick={() => setFilePickerOpen((v) => !v)}
-              className="flex items-center gap-1.5 text-[11px] text-cc-muted hover:text-cc-fg border border-cc-border rounded px-2 py-0.5 cursor-pointer hover:border-cc-fg/30 transition-colors"
-              title="Jump to file"
+          {/* Commit selector */}
+          {recentCommits.length > 0 && (
+            <select
+              value={baseBranch && /^[0-9a-f]{7,40}$/.test(baseBranch) ? baseBranch : ""}
+              onChange={(e) => {
+                const nextCommit = e.target.value || null;
+                if (nextCommit) {
+                  handleBaseBranchChange(nextCommit);
+                } else {
+                  // Clearing commit selection restores the user's branch selection.
+                  // If no explicit branch was chosen, fall back to the repo default.
+                  const restoredBranch = selectedBranch ?? resolvedDefault ?? null;
+                  setSelectedBranch(restoredBranch);
+                  handleBaseBranchChange(restoredBranch);
+                }
+              }}
+              className="w-full sm:w-auto max-w-full sm:max-w-[200px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
+              title="Compare against a specific commit"
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0">
-                <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
-              </svg>
-              <span>{visibleChangedFiles.length} file{visibleChangedFiles.length !== 1 ? "s" : ""}</span>
-              <svg viewBox="0 0 16 16" fill="currentColor" className={`w-2.5 h-2.5 transition-transform ${filePickerOpen ? "rotate-180" : ""}`}>
-                <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z" />
-              </svg>
-            </button>
-            {filePickerOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-cc-card border border-cc-border rounded-lg shadow-lg py-1 min-w-[200px] max-w-[340px] max-h-[300px] overflow-y-auto">
-                {visibleChangedFiles.map(({ abs, rel, status, oldPath }) => (
-                  <button
-                    key={abs}
-                    onClick={() => handleFileSelect(abs)}
-                    className={`flex items-center gap-2 w-full px-3 py-1.5 text-[12px] hover:bg-cc-hover transition-colors cursor-pointer text-left ${
-                      abs === selectedFile ? "bg-cc-active text-cc-fg" : "text-cc-fg/70"
-                    }`}
+              <option value="">commit...</option>
+              {recentCommits.map((c) => {
+                const message = typeof c.message === "string" ? c.message : "";
+                const preview = message ? (message.length > 35 ? message.slice(0, 35) + "…" : message) : "(no message)";
+                return (
+                  <option key={c.sha} value={c.sha}>
+                    {c.shortSha} {preview}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+
+          {/* Move stats + file controls to a second row on mobile */}
+          <div data-testid="diff-header-mobile-break" className="basis-full h-0 sm:basis-auto" />
+
+          {(totalStats.additions > 0 || totalStats.deletions > 0) && (
+            <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1">
+              <span className="text-green-500">+{totalStats.additions}</span>
+              <span className="text-red-400">-{totalStats.deletions}</span>
+            </span>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {/* File picker dropdown */}
+            {visibleChangedFiles.length > 0 && (
+              <div className="relative" ref={filePickerRef}>
+                <button
+                  onClick={() => setFilePickerOpen((v) => !v)}
+                  className="flex items-center gap-1.5 text-[11px] text-cc-muted hover:text-cc-fg border border-cc-border rounded px-2 py-0.5 cursor-pointer hover:border-cc-fg/30 transition-colors"
+                  title="Jump to file"
+                >
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0">
+                    <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
+                  </svg>
+                  <span>
+                    {visibleChangedFiles.length} file{visibleChangedFiles.length !== 1 ? "s" : ""}
+                  </span>
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className={`w-2.5 h-2.5 transition-transform ${filePickerOpen ? "rotate-180" : ""}`}
                   >
-                    <span className="truncate flex-1">{rel}</span>
-                    {status === "D" && (
-                      <span className="text-[9px] font-bold text-red-400 shrink-0 border border-red-400/30 rounded px-1">DEL</span>
-                    )}
-                    {status === "R" && (
-                      <span className="text-[9px] font-bold text-yellow-400 shrink-0 border border-yellow-400/30 rounded px-1" title={oldPath ? `Renamed from ${oldPath}` : "Renamed"}>REN</span>
-                    )}
-                    {fileStats.has(abs) && (
-                      <span className="text-[10px] font-mono-code shrink-0 flex items-center gap-1">
-                        <span className="text-green-500">+{fileStats.get(abs)!.additions}</span>
-                        <span className="text-red-400">-{fileStats.get(abs)!.deletions}</span>
-                      </span>
-                    )}
-                  </button>
-                ))}
+                    <path d="M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z" />
+                  </svg>
+                </button>
+                {filePickerOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-cc-card border border-cc-border rounded-lg shadow-lg py-1 min-w-[200px] max-w-[340px] max-h-[300px] overflow-y-auto">
+                    {visibleChangedFiles.map(({ abs, rel, status, oldPath }) => (
+                      <button
+                        key={abs}
+                        onClick={() => handleFileSelect(abs)}
+                        className={`flex items-center gap-2 w-full px-3 py-1.5 text-[12px] hover:bg-cc-hover transition-colors cursor-pointer text-left ${
+                          abs === selectedFile ? "bg-cc-active text-cc-fg" : "text-cc-fg/70"
+                        }`}
+                      >
+                        <span className="truncate flex-1">{rel}</span>
+                        {status === "D" && (
+                          <span className="text-[9px] font-bold text-red-400 shrink-0 border border-red-400/30 rounded px-1">
+                            DEL
+                          </span>
+                        )}
+                        {status === "R" && (
+                          <span
+                            className="text-[9px] font-bold text-yellow-400 shrink-0 border border-yellow-400/30 rounded px-1"
+                            title={oldPath ? `Renamed from ${oldPath}` : "Renamed"}
+                          >
+                            REN
+                          </span>
+                        )}
+                        {fileStats.has(abs) && (
+                          <span className="text-[10px] font-mono-code shrink-0 flex items-center gap-1">
+                            <span className="text-green-500">+{fileStats.get(abs)!.additions}</span>
+                            <span className="text-red-400">-{fileStats.get(abs)!.deletions}</span>
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        <button
-          onClick={toggleLineNumbers}
-          className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer shrink-0 ${
-            showLineNumbers ? "text-cc-fg bg-cc-hover" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-          }`}
-          title={showLineNumbers ? "Hide line numbers" : "Show line numbers"}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-            <path d="M3 3v10M7 3h6M7 8h6M7 13h4" strokeLinecap="round" />
-          </svg>
-        </button>
-        </div>
+            <button
+              onClick={toggleLineNumbers}
+              className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer shrink-0 ${
+                showLineNumbers ? "text-cc-fg bg-cc-hover" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              }`}
+              title={showLineNumbers ? "Hide line numbers" : "Show line numbers"}
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                <path d="M3 3v10M7 3h6M7 8h6M7 13h4" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -567,17 +613,18 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
               // This hides empty cards for pure renames (no content change), or deleted
               // files whose diff is empty. These files still appear in the file picker
               // dropdown with DEL/REN badges.
-              if (diffData && !diffData.diff.trim() && diffData.oldText === undefined && diffData.newText === undefined) {
+              if (
+                diffData &&
+                !diffData.diff.trim() &&
+                diffData.oldText === undefined &&
+                diffData.newText === undefined
+              ) {
                 return null;
               }
 
               const hasFullSource = diffData?.oldText !== undefined || diffData?.newText !== undefined;
-              const displayName = status === "R" && oldPath
-                ? `${oldPath.split("/").pop()} → ${rel}`
-                : rel;
-              const statusLabel = status === "D" ? " (deleted)"
-                : status === "R" ? " (renamed)"
-                : "";
+              const displayName = status === "R" && oldPath ? `${oldPath.split("/").pop()} → ${rel}` : rel;
+              const statusLabel = status === "D" ? " (deleted)" : status === "R" ? " (renamed)" : "";
               return (
                 <div
                   key={abs}
@@ -592,7 +639,13 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
                     newText={hasFullSource ? diffData?.newText : undefined}
                     unifiedDiff={hasFullSource ? undefined : (diffData?.diff ?? "")}
                     fileName={displayName}
-                    fileStatsLabel={stats ? `+${stats.additions} -${stats.deletions}${statusLabel}` : (statusLabel ? statusLabel.trim() : undefined)}
+                    fileStatsLabel={
+                      stats
+                        ? `+${stats.additions} -${stats.deletions}${statusLabel}`
+                        : statusLabel
+                          ? statusLabel.trim()
+                          : undefined
+                    }
                     mode="full"
                     showLineNumbers={showLineNumbers}
                   />

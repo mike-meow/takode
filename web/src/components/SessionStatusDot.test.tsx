@@ -31,11 +31,13 @@ describe("deriveSessionStatus", () => {
   it("returns 'archived' when session is archived, regardless of other state", () => {
     // Even if there are pending permissions and the session is running,
     // an archived session should always show as archived.
-    const result = deriveSessionStatus(makeProps({
-      archived: true,
-      permCount: 3,
-      status: "running",
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        archived: true,
+        permCount: 3,
+        status: "running",
+      }),
+    );
     expect(result).toBe("archived");
   });
 
@@ -46,29 +48,35 @@ describe("deriveSessionStatus", () => {
 
   it("returns 'disconnected' when sdkState is 'exited'", () => {
     // CLI process has exited — session should show as disconnected.
-    const result = deriveSessionStatus(makeProps({
-      sdkState: "exited",
-      isConnected: false,
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        sdkState: "exited",
+        isConnected: false,
+      }),
+    );
     expect(result).toBe("disconnected");
   });
 
   it("returns 'disconnected' when not connected and sdkState is null", () => {
     // WebSocket disconnected and no SDK process info — disconnected state.
-    const result = deriveSessionStatus(makeProps({
-      isConnected: false,
-      sdkState: null,
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: false,
+        sdkState: null,
+      }),
+    );
     expect(result).toBe("disconnected");
   });
 
   it("does NOT return 'disconnected' when not connected but still starting", () => {
     // During initial startup, isConnected may be false briefly.
     // We should NOT show disconnected while sdkState is "starting".
-    const result = deriveSessionStatus(makeProps({
-      isConnected: false,
-      sdkState: "starting",
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: false,
+        sdkState: "starting",
+      }),
+    );
     expect(result).not.toBe("disconnected");
     expect(result).toBe("idle");
   });
@@ -76,10 +84,12 @@ describe("deriveSessionStatus", () => {
   it("returns 'idle' when CLI is connected (REST fallback provides accurate isConnected)", () => {
     // With the REST API enriching sessions with cliConnected, non-active sessions
     // now get an accurate isConnected value. When the CLI is alive, isConnected=true.
-    const result = deriveSessionStatus(makeProps({
-      isConnected: true,
-      sdkState: "connected",
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: true,
+        sdkState: "connected",
+      }),
+    );
     expect(result).toBe("idle");
   });
 
@@ -134,52 +144,62 @@ describe("deriveSessionStatus", () => {
   // Idle-killed sessions show as "idle" (gray) instead of "disconnected" (red)
   it("returns 'idle' for disconnected sessions killed by idle manager", () => {
     // Sessions killed by the idle manager should not show the alarming red dot.
-    const result = deriveSessionStatus(makeProps({
-      isConnected: false,
-      sdkState: "exited",
-      idleKilled: true,
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: false,
+        sdkState: "exited",
+        idleKilled: true,
+      }),
+    );
     expect(result).toBe("idle");
   });
 
   it("returns 'disconnected' when not idle-killed (normal disconnect)", () => {
     // Normal disconnects without idle kill should still show red.
-    const result = deriveSessionStatus(makeProps({
-      isConnected: false,
-      sdkState: "exited",
-      idleKilled: false,
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: false,
+        sdkState: "exited",
+        idleKilled: false,
+      }),
+    );
     expect(result).toBe("disconnected");
   });
 
   it("returns 'permission' over idle-killed", () => {
     // Permission always takes priority, even for idle-killed sessions.
-    const result = deriveSessionStatus(makeProps({
-      isConnected: false,
-      sdkState: "exited",
-      idleKilled: true,
-      permCount: 1,
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        isConnected: false,
+        sdkState: "exited",
+        idleKilled: true,
+        permCount: 1,
+      }),
+    );
     expect(result).toBe("permission");
   });
 
   // Priority tests: permission > disconnected > running
   it("prioritizes 'permission' over 'running'", () => {
     // If agent is running but also has a pending permission, permission wins.
-    const result = deriveSessionStatus(makeProps({
-      permCount: 1,
-      status: "running",
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        permCount: 1,
+        status: "running",
+      }),
+    );
     expect(result).toBe("permission");
   });
 
   it("prioritizes 'permission' over 'disconnected'", () => {
     // Edge case: permissions pending but also disconnected. Permission wins.
-    const result = deriveSessionStatus(makeProps({
-      permCount: 1,
-      isConnected: false,
-      sdkState: "exited",
-    }));
+    const result = deriveSessionStatus(
+      makeProps({
+        permCount: 1,
+        isConnected: false,
+        sdkState: "exited",
+      }),
+    );
     expect(result).toBe("permission");
   });
 });

@@ -2,9 +2,7 @@ import { getHighlightParts } from "./highlight.js";
 
 describe("getHighlightParts", () => {
   it("returns a single unmatched part when query is empty", () => {
-    expect(getHighlightParts("Quest title", "")).toEqual([
-      { text: "Quest title", matched: false },
-    ]);
+    expect(getHighlightParts("Quest title", "")).toEqual([{ text: "Quest title", matched: false }]);
   });
 
   it("splits text and marks matched segments case-insensitively", () => {

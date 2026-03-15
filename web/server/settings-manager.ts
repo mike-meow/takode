@@ -1,8 +1,4 @@
-import {
-  mkdirSync,
-  readFileSync,
-  existsSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, dirname, basename, extname } from "node:path";
 import { homedir } from "node:os";
@@ -52,12 +48,8 @@ export interface CompanionSettings {
 export type EnhancementMode = "default" | "bullet";
 
 /** Available OpenAI STT models. */
-export const STT_MODELS = [
-  "gpt-4o-mini-transcribe",
-  "gpt-4o-transcribe",
-  "gpt-4o-mini-transcribe-2025-12-15",
-] as const;
-export type SttModel = typeof STT_MODELS[number];
+export const STT_MODELS = ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe-2025-12-15"] as const;
+export type SttModel = (typeof STT_MODELS)[number];
 
 /** Configuration for voice transcription (STT + optional LLM enhancement). */
 export interface TranscriptionConfig {
@@ -121,7 +113,15 @@ let settings: CompanionSettings = {
   autoApprovalTimeoutSeconds: 45,
   namerConfig: { backend: "claude" },
   autoNamerEnabled: true,
-  transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini", customVocabulary: "", enhancementMode: "default", sttModel: "gpt-4o-mini-transcribe" },
+  transcriptionConfig: {
+    apiKey: "",
+    baseUrl: "https://api.openai.com/v1",
+    enhancementEnabled: true,
+    enhancementModel: "gpt-5-mini",
+    customVocabulary: "",
+    enhancementMode: "default",
+    sttModel: "gpt-4o-mini-transcribe",
+  },
   editorConfig: { editor: "none" },
   updatedAt: 0,
 };
@@ -179,7 +179,9 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
   if (cfg && typeof cfg === "object" && !Array.isArray(cfg)) {
     const c = cfg as Record<string, unknown>;
     const rawSttModel = typeof c.sttModel === "string" ? c.sttModel : "";
-    const sttModel = (STT_MODELS as readonly string[]).includes(rawSttModel) ? rawSttModel as SttModel : "gpt-4o-mini-transcribe";
+    const sttModel = (STT_MODELS as readonly string[]).includes(rawSttModel)
+      ? (rawSttModel as SttModel)
+      : "gpt-4o-mini-transcribe";
     return {
       apiKey: typeof c.apiKey === "string" ? c.apiKey : "",
       baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : "https://api.openai.com/v1",
@@ -189,7 +191,14 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
       sttModel,
     };
   }
-  return { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini", customVocabulary: "", sttModel: "gpt-4o-mini-transcribe" };
+  return {
+    apiKey: "",
+    baseUrl: "https://api.openai.com/v1",
+    enhancementEnabled: true,
+    enhancementModel: "gpt-5-mini",
+    customVocabulary: "",
+    sttModel: "gpt-4o-mini-transcribe",
+  };
 }
 
 function normalizeEditorConfig(raw: Record<string, unknown> | null | undefined): EditorConfig {
@@ -214,15 +223,13 @@ function normalizeSecrets(raw: Record<string, unknown> | null | undefined): Comp
   };
 }
 
-function mergeSecretsIntoSettings(
-  base: CompanionSettings,
-  nextSecrets: CompanionSecrets,
-): CompanionSettings {
+function mergeSecretsIntoSettings(base: CompanionSettings, nextSecrets: CompanionSecrets): CompanionSettings {
   return {
     ...base,
-    namerConfig: base.namerConfig.backend === "openai"
-      ? { ...base.namerConfig, apiKey: nextSecrets.namerOpenAIApiKey }
-      : base.namerConfig,
+    namerConfig:
+      base.namerConfig.backend === "openai"
+        ? { ...base.namerConfig, apiKey: nextSecrets.namerOpenAIApiKey }
+        : base.namerConfig,
     transcriptionConfig: {
       ...base.transcriptionConfig,
       apiKey: nextSecrets.transcriptionApiKey,
@@ -233,9 +240,7 @@ function mergeSecretsIntoSettings(
 function stripSecretsFromSettings(base: CompanionSettings): CompanionSettings {
   return {
     ...base,
-    namerConfig: base.namerConfig.backend === "openai"
-      ? { ...base.namerConfig, apiKey: "" }
-      : base.namerConfig,
+    namerConfig: base.namerConfig.backend === "openai" ? { ...base.namerConfig, apiKey: "" } : base.namerConfig,
     transcriptionConfig: {
       ...base.transcriptionConfig,
       apiKey: "",
@@ -256,7 +261,8 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     serverId: typeof raw?.serverId === "string" ? raw.serverId : "",
     pushoverUserKey: typeof raw?.pushoverUserKey === "string" ? raw.pushoverUserKey : "",
     pushoverApiToken: typeof raw?.pushoverApiToken === "string" ? raw.pushoverApiToken : "",
-    pushoverDelaySeconds: typeof raw?.pushoverDelaySeconds === "number" && raw.pushoverDelaySeconds >= 5 ? raw.pushoverDelaySeconds : 30,
+    pushoverDelaySeconds:
+      typeof raw?.pushoverDelaySeconds === "number" && raw.pushoverDelaySeconds >= 5 ? raw.pushoverDelaySeconds : 30,
     pushoverEnabled: typeof raw?.pushoverEnabled === "boolean" ? raw.pushoverEnabled : true,
     pushoverBaseUrl: typeof raw?.pushoverBaseUrl === "string" ? raw.pushoverBaseUrl : "",
     claudeBinary: typeof raw?.claudeBinary === "string" ? raw.claudeBinary : "",
@@ -264,8 +270,14 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
     autoApprovalEnabled: typeof raw?.autoApprovalEnabled === "boolean" ? raw.autoApprovalEnabled : false,
     autoApprovalModel: typeof raw?.autoApprovalModel === "string" ? raw.autoApprovalModel : "",
-    autoApprovalMaxConcurrency: typeof raw?.autoApprovalMaxConcurrency === "number" && raw.autoApprovalMaxConcurrency >= 1 ? Math.floor(raw.autoApprovalMaxConcurrency) : 4,
-    autoApprovalTimeoutSeconds: typeof raw?.autoApprovalTimeoutSeconds === "number" && raw.autoApprovalTimeoutSeconds >= 5 ? Math.floor(raw.autoApprovalTimeoutSeconds) : 45,
+    autoApprovalMaxConcurrency:
+      typeof raw?.autoApprovalMaxConcurrency === "number" && raw.autoApprovalMaxConcurrency >= 1
+        ? Math.floor(raw.autoApprovalMaxConcurrency)
+        : 4,
+    autoApprovalTimeoutSeconds:
+      typeof raw?.autoApprovalTimeoutSeconds === "number" && raw.autoApprovalTimeoutSeconds >= 5
+        ? Math.floor(raw.autoApprovalTimeoutSeconds)
+        : 45,
     namerConfig: normalizeNamerConfig(raw),
     autoNamerEnabled: typeof raw?.autoNamerEnabled === "boolean" ? raw.autoNamerEnabled : true,
     transcriptionConfig: normalizeTranscriptionConfig(raw),
@@ -276,7 +288,8 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
 
 function loadSecretsFromDisk(): CompanionSecrets {
   try {
-    if (existsSync(secretsPath)) { // sync-ok: cold path, cached after first load
+    if (existsSync(secretsPath)) {
+      // sync-ok: cold path, cached after first load
       const raw = readFileSync(secretsPath, "utf-8"); // sync-ok: cold path, cached after first load
       return normalizeSecrets(JSON.parse(raw) as Record<string, unknown>);
     }
@@ -290,7 +303,8 @@ function ensureLoaded(): void {
   if (loaded) return;
   let normalized = normalize(null);
   try {
-    if (existsSync(filePath)) { // sync-ok: cold path, cached after first load
+    if (existsSync(filePath)) {
+      // sync-ok: cold path, cached after first load
       const raw = readFileSync(filePath, "utf-8"); // sync-ok: cold path, cached after first load
       normalized = normalize(JSON.parse(raw) as Partial<CompanionSettings>);
     }
@@ -302,10 +316,9 @@ function ensureLoaded(): void {
     const persistedSecrets = loadSecretsFromDisk();
     secrets = {
       namerOpenAIApiKey:
-        persistedSecrets.namerOpenAIApiKey
-        || (normalized.namerConfig.backend === "openai" ? normalized.namerConfig.apiKey : ""),
-      transcriptionApiKey:
-        persistedSecrets.transcriptionApiKey || normalized.transcriptionConfig.apiKey,
+        persistedSecrets.namerOpenAIApiKey ||
+        (normalized.namerConfig.backend === "openai" ? normalized.namerConfig.apiKey : ""),
+      transcriptionApiKey: persistedSecrets.transcriptionApiKey || normalized.transcriptionConfig.apiKey,
     };
     secretsLoaded = true;
   }
@@ -325,18 +338,14 @@ function persist(): void {
   mkdirSync(dirname(path), { recursive: true });
   // Chain writes so each waits for the previous to finish. This prevents
   // an earlier write from completing after a later one and overwriting it.
-  _pendingWrite = _pendingWrite.then(() =>
-    writeFile(path, data, "utf-8").catch(() => {}),
-  );
+  _pendingWrite = _pendingWrite.then(() => writeFile(path, data, "utf-8").catch(() => {}));
 }
 
 function persistSecrets(): void {
   const data = JSON.stringify(secrets, null, 2);
   const path = secretsPath; // capture current path before any async re-assignment
   mkdirSync(dirname(path), { recursive: true });
-  _pendingSecretsWrite = _pendingSecretsWrite.then(() =>
-    writeFile(path, data, "utf-8").catch(() => {}),
-  );
+  _pendingSecretsWrite = _pendingSecretsWrite.then(() => writeFile(path, data, "utf-8").catch(() => {}));
 }
 
 export function getSettings(): CompanionSettings {
@@ -345,15 +354,31 @@ export function getSettings(): CompanionSettings {
 }
 
 export function updateSettings(
-  patch: Partial<Pick<CompanionSettings,
-    "pushoverUserKey" | "pushoverApiToken" | "pushoverDelaySeconds" | "pushoverEnabled" | "pushoverBaseUrl" | "claudeBinary" | "codexBinary" | "maxKeepAlive" | "autoApprovalEnabled" | "autoApprovalModel" | "autoApprovalMaxConcurrency" | "autoApprovalTimeoutSeconds" | "namerConfig" | "autoNamerEnabled" | "transcriptionConfig" | "editorConfig"
-  >>,
+  patch: Partial<
+    Pick<
+      CompanionSettings,
+      | "pushoverUserKey"
+      | "pushoverApiToken"
+      | "pushoverDelaySeconds"
+      | "pushoverEnabled"
+      | "pushoverBaseUrl"
+      | "claudeBinary"
+      | "codexBinary"
+      | "maxKeepAlive"
+      | "autoApprovalEnabled"
+      | "autoApprovalModel"
+      | "autoApprovalMaxConcurrency"
+      | "autoApprovalTimeoutSeconds"
+      | "namerConfig"
+      | "autoNamerEnabled"
+      | "transcriptionConfig"
+      | "editorConfig"
+    >
+  >,
 ): CompanionSettings {
   ensureLoaded();
   // Filter out undefined values so they don't overwrite existing settings
-  const defined = Object.fromEntries(
-    Object.entries(patch).filter(([, v]) => v !== undefined),
-  );
+  const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
 
   if (defined.namerConfig) {
     const nextNamerConfig = defined.namerConfig as NamerConfig;
@@ -415,7 +440,8 @@ export function getServerId(): string {
 export async function initWithPort(port: number): Promise<void> {
   const portPath = join(homedir(), ".companion", `settings-${port}.json`);
   const portSecretsPath = deriveSecretsPath(portPath);
-  if (!existsSync(portPath) && existsSync(LEGACY_PATH)) { // sync-ok: cold path, cached after first load
+  if (!existsSync(portPath) && existsSync(LEGACY_PATH)) {
+    // sync-ok: cold path, cached after first load
     try {
       const raw = readFileSync(LEGACY_PATH, "utf-8"); // sync-ok: cold path, cached after first load
       const legacy = normalize(JSON.parse(raw) as Partial<CompanionSettings>);

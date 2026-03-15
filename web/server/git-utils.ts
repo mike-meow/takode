@@ -70,7 +70,8 @@ function findUniquePath(basePath: string): string {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function git(cmd: string, cwd: string): string {
-  return execSync(`git --no-optional-locks ${cmd}`, { // sync-ok: session setup, not called during message handling
+  return execSync(`git --no-optional-locks ${cmd}`, {
+    // sync-ok: session setup, not called during message handling
     cwd,
     encoding: "utf-8",
     timeout: GIT_CMD_TIMEOUT,
@@ -121,9 +122,10 @@ async function findClosestParentBranchAsync(repoRoot: string, currentBranch: str
   const output = await gitSafeAsync("for-each-ref --format=%(refname:short) --contains=HEAD refs/heads/", repoRoot);
   if (!output) return null;
 
-  const candidates = output.split("\n")
-    .map(b => b.trim())
-    .filter(b => b && b !== currentBranch);
+  const candidates = output
+    .split("\n")
+    .map((b) => b.trim())
+    .filter((b) => b && b !== currentBranch);
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
@@ -153,7 +155,7 @@ export async function resolveDefaultBranchAsync(repoRoot: string, currentBranch?
   if (originRef) {
     return originRef.replace("refs/remotes/origin/", "");
   }
-  const branches = await gitSafeAsync("branch --list main master", repoRoot) || "";
+  const branches = (await gitSafeAsync("branch --list main master", repoRoot)) || "";
   if (branches.includes("main")) return "main";
   if (branches.includes("master")) return "master";
   return "main";
@@ -164,15 +166,11 @@ export async function getRepoInfoAsync(cwd: string): Promise<GitRepoInfo | null>
   const toplevel = await gitSafeAsync("rev-parse --show-toplevel", cwd);
   if (!toplevel) return null;
 
-  const currentBranch = await gitSafeAsync("rev-parse --abbrev-ref HEAD", cwd) || "HEAD";
-  const gitDir = await gitSafeAsync("rev-parse --git-dir", cwd) || "";
+  const currentBranch = (await gitSafeAsync("rev-parse --abbrev-ref HEAD", cwd)) || "HEAD";
+  const gitDir = (await gitSafeAsync("rev-parse --git-dir", cwd)) || "";
   const isWorktree = gitDir.includes("/worktrees/");
-  const commonDir = isWorktree
-    ? await gitSafeAsync("rev-parse --git-common-dir", cwd)
-    : null;
-  const repoRoot = isWorktree && commonDir
-    ? resolve(cwd, commonDir, "..")
-    : toplevel;
+  const commonDir = isWorktree ? await gitSafeAsync("rev-parse --git-common-dir", cwd) : null;
+  const repoRoot = isWorktree && commonDir ? resolve(cwd, commonDir, "..") : toplevel;
   const defaultBranch = await resolveDefaultBranchAsync(repoRoot, currentBranch);
 
   return {
@@ -185,14 +183,8 @@ export async function getRepoInfoAsync(cwd: string): Promise<GitRepoInfo | null>
 }
 
 /** Async version of getBranchStatus. Non-blocking for route handlers. */
-async function getBranchStatusAsync(
-  repoRoot: string,
-  branchName: string,
-): Promise<{ ahead: number; behind: number }> {
-  const raw = await gitSafeAsync(
-    `rev-list --left-right --count origin/${branchName}...${branchName}`,
-    repoRoot,
-  );
+async function getBranchStatusAsync(repoRoot: string, branchName: string): Promise<{ ahead: number; behind: number }> {
+  const raw = await gitSafeAsync(`rev-list --left-right --count origin/${branchName}...${branchName}`, repoRoot);
   if (!raw) return { ahead: 0, behind: 0 };
   const [behind, ahead] = raw.split(/\s+/).map(Number);
   return { ahead: ahead || 0, behind: behind || 0 };
@@ -229,10 +221,7 @@ async function listWorktreesAsync(repoRoot: string): Promise<GitWorktreeInfo[]> 
 }
 
 /** Async version of listBranches. Non-blocking for route handlers. */
-export async function listBranchesAsync(
-  repoRoot: string,
-  opts?: { localOnly?: boolean },
-): Promise<GitBranchInfo[]> {
+export async function listBranchesAsync(repoRoot: string, opts?: { localOnly?: boolean }): Promise<GitBranchInfo[]> {
   const worktrees = await listWorktreesAsync(repoRoot);
   const worktreeByBranch = new Map<string, string>();
   for (const wt of worktrees) {
@@ -243,10 +232,7 @@ export async function listBranchesAsync(
 
   // Local branches — skip expensive per-branch ahead/behind counts.
   // Per-session ahead/behind is already provided by refreshGitInfo in ws-bridge.ts.
-  const localRaw = await gitSafeAsync(
-    "for-each-ref '--format=%(refname:short)%09%(HEAD)' refs/heads/",
-    repoRoot,
-  );
+  const localRaw = await gitSafeAsync("for-each-ref '--format=%(refname:short)%09%(HEAD)' refs/heads/", repoRoot);
   if (localRaw) {
     for (const line of localRaw.split("\n")) {
       if (!line.trim()) continue;
@@ -267,10 +253,7 @@ export async function listBranchesAsync(
   // Skip when localOnly is set — the caller doesn't need them.
   if (!opts?.localOnly) {
     const localNames = new Set(result.map((b) => b.name));
-    const remoteRaw = await gitSafeAsync(
-      "for-each-ref '--format=%(refname:short)' refs/remotes/origin/",
-      repoRoot,
-    );
+    const remoteRaw = await gitSafeAsync("for-each-ref '--format=%(refname:short)' refs/remotes/origin/", repoRoot);
     if (remoteRaw) {
       for (const line of remoteRaw.split("\n")) {
         const full = line.trim();
@@ -325,12 +308,8 @@ export function getRepoInfo(cwd: string): GitRepoInfo | null {
   const gitDir = gitSafe("rev-parse --git-dir", cwd) || "";
   // A linked worktree's .git dir is inside the main repo's .git/worktrees/
   const isWorktree = gitDir.includes("/worktrees/");
-  const commonDir = isWorktree
-    ? gitSafe("rev-parse --git-common-dir", cwd)
-    : null;
-  const repoRoot = isWorktree && commonDir
-    ? resolve(cwd, commonDir, "..")
-    : toplevel;
+  const commonDir = isWorktree ? gitSafe("rev-parse --git-common-dir", cwd) : null;
+  const repoRoot = isWorktree && commonDir ? resolve(cwd, commonDir, "..") : toplevel;
 
   const defaultBranch = resolveDefaultBranch(repoRoot, currentBranch);
 
@@ -386,9 +365,10 @@ function findClosestParentBranch(repoRoot: string, currentBranch: string): strin
   const output = gitSafe("for-each-ref --format=%(refname:short) --contains=HEAD refs/heads/", repoRoot);
   if (!output) return null;
 
-  const candidates = output.split("\n")
-    .map(b => b.trim())
-    .filter(b => b && b !== currentBranch);
+  const candidates = output
+    .split("\n")
+    .map((b) => b.trim())
+    .filter((b) => b && b !== currentBranch);
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
@@ -418,10 +398,7 @@ export function listBranches(repoRoot: string): GitBranchInfo[] {
   const result: GitBranchInfo[] = [];
 
   // Local branches
-  const localRaw = gitSafe(
-    "for-each-ref '--format=%(refname:short)%09%(HEAD)' refs/heads/",
-    repoRoot,
-  );
+  const localRaw = gitSafe("for-each-ref '--format=%(refname:short)%09%(HEAD)' refs/heads/", repoRoot);
   if (localRaw) {
     for (const line of localRaw.split("\n")) {
       if (!line.trim()) continue;
@@ -441,10 +418,7 @@ export function listBranches(repoRoot: string): GitBranchInfo[] {
 
   // Remote branches (only those without a local counterpart)
   const localNames = new Set(result.map((b) => b.name));
-  const remoteRaw = gitSafe(
-    "for-each-ref '--format=%(refname:short)' refs/remotes/origin/",
-    repoRoot,
-  );
+  const remoteRaw = gitSafe("for-each-ref '--format=%(refname:short)' refs/remotes/origin/", repoRoot);
   if (remoteRaw) {
     for (const line of remoteRaw.split("\n")) {
       const full = line.trim();
@@ -544,10 +518,8 @@ export function ensureWorktree(
   }
 
   // Check if branch already exists locally or on remote
-  const branchExists =
-    gitSafe(`rev-parse --verify refs/heads/${branchName}`, repoRoot) !== null;
-  const remoteBranchExists =
-    gitSafe(`rev-parse --verify refs/remotes/origin/${branchName}`, repoRoot) !== null;
+  const branchExists = gitSafe(`rev-parse --verify refs/heads/${branchName}`, repoRoot) !== null;
+  const remoteBranchExists = gitSafe(`rev-parse --verify refs/remotes/origin/${branchName}`, repoRoot) !== null;
 
   if (branchExists) {
     const commitHash = git(`rev-parse refs/heads/${branchName}`, repoRoot);
@@ -588,7 +560,8 @@ export function removeWorktree(
   worktreePath: string,
   options?: { force?: boolean; branchToDelete?: string },
 ): { removed: boolean; reason?: string } {
-  if (!existsSync(worktreePath)) { // sync-ok: session setup, not called during message handling
+  if (!existsSync(worktreePath)) {
+    // sync-ok: session setup, not called during message handling
     // Already gone, clean up git's reference
     gitSafe("worktree prune", repoRoot);
     if (options?.branchToDelete) {
@@ -646,9 +619,7 @@ export function gitFetch(cwd: string): { success: boolean; output: string } {
   }
 }
 
-export function gitPull(
-  cwd: string,
-): { success: boolean; output: string } {
+export function gitPull(cwd: string): { success: boolean; output: string } {
   try {
     const output = git("pull", cwd);
     return { success: true, output };
@@ -657,19 +628,12 @@ export function gitPull(
   }
 }
 
-
 export function checkoutBranch(cwd: string, branchName: string): void {
   git(`checkout ${branchName}`, cwd);
 }
 
-export function getBranchStatus(
-  repoRoot: string,
-  branchName: string,
-): { ahead: number; behind: number } {
-  const raw = gitSafe(
-    `rev-list --left-right --count origin/${branchName}...${branchName}`,
-    repoRoot,
-  );
+export function getBranchStatus(repoRoot: string, branchName: string): { ahead: number; behind: number } {
+  const raw = gitSafe(`rev-list --left-right --count origin/${branchName}...${branchName}`, repoRoot);
   if (!raw) return { ahead: 0, behind: 0 };
   const [behind, ahead] = raw.split(/\s+/).map(Number);
   return { ahead: ahead || 0, behind: behind || 0 };

@@ -9,12 +9,7 @@ import {
   type Modifier,
   type DraggableAttributes,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProjectGroup as ProjectGroupType } from "../utils/project-grouping.js";
 
@@ -83,14 +78,7 @@ function SortableSessionItem({
     isDragging: boolean;
   }) => React.ReactNode;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -174,7 +162,9 @@ export function ProjectGroup({
   return (
     <div className={!isFirst ? "mt-1 pt-1 border-t border-cc-border/50" : ""}>
       {/* Group header */}
-      <div className={`w-full px-2 py-1.5 flex items-center gap-1 rounded-md transition-colors ${groupDragging ? "bg-cc-hover/70" : "hover:bg-cc-hover"}`}>
+      <div
+        className={`w-full px-2 py-1.5 flex items-center gap-1 rounded-md transition-colors ${groupDragging ? "bg-cc-hover/70" : "hover:bg-cc-hover"}`}
+      >
         <button
           onClick={() => onToggleCollapse(group.key)}
           className="min-w-0 flex-1 flex items-center gap-1.5 cursor-pointer"
@@ -186,25 +176,30 @@ export function ProjectGroup({
           >
             <path d="M6 4l4 4-4 4" />
           </svg>
-          <span className="text-[11px] font-semibold text-cc-fg/80 truncate">
-            {group.label}
-          </span>
+          <span className="text-[11px] font-semibold text-cc-fg/80 truncate">{group.label}</span>
           {hasStatus && (
             <span className="flex items-center gap-1 ml-auto shrink-0 text-[10px] font-medium">
               {group.runningCount > 0 && (
-                <span className="text-cc-success flex items-center gap-0.5">{group.runningCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" /></span>
+                <span className="text-cc-success flex items-center gap-0.5">
+                  {group.runningCount}
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" />
+                </span>
               )}
               {group.permCount > 0 && (
-                <span className="text-cc-warning flex items-center gap-0.5">{group.permCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" /></span>
+                <span className="text-cc-warning flex items-center gap-0.5">
+                  {group.permCount}
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" />
+                </span>
               )}
               {group.unreadCount > 0 && (
-                <span className="text-blue-500 flex items-center gap-0.5">{group.unreadCount}<span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" /></span>
+                <span className="text-blue-500 flex items-center gap-0.5">
+                  {group.unreadCount}
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
+                </span>
               )}
             </span>
           )}
-          <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">
-            {group.sessions.length}
-          </span>
+          <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">{group.sessions.length}</span>
         </button>
         <button
           type="button"
@@ -253,11 +248,7 @@ export function ProjectGroup({
                 return (
                   <SortableSessionItem key={s.id} id={s.id}>
                     {({ setNodeRef, style, listeners, attributes, isDragging }) => (
-                      <div
-                        ref={setNodeRef}
-                        style={style}
-                        {...(!touchDevice ? { ...listeners, ...attributes } : {})}
-                      >
+                      <div ref={setNodeRef} style={style} {...(!touchDevice ? { ...listeners, ...attributes } : {})}>
                         <SessionItem
                           session={s}
                           isActive={currentSessionId === s.id}
@@ -289,12 +280,14 @@ export function ProjectGroup({
                           herdHoverHighlight={herdHoverHighlights?.get(s.id)}
                           reorderMode={reorderMode}
                           onMobileReorderHandleActiveChange={onMobileReorderHandleActiveChange}
-                          dragHandleProps={reorderMode && touchDevice
-                            ? {
-                                listeners: listeners as Record<string, unknown> | undefined,
-                                attributes: attributes as unknown as Record<string, unknown>,
-                              }
-                            : undefined}
+                          dragHandleProps={
+                            reorderMode && touchDevice
+                              ? {
+                                  listeners: listeners as Record<string, unknown> | undefined,
+                                  attributes: attributes as unknown as Record<string, unknown>,
+                                }
+                              : undefined
+                          }
                         />
                       </div>
                     )}

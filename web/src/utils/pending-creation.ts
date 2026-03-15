@@ -102,11 +102,7 @@ export function cancelPendingCreation(pendingId: string): void {
   }
 }
 
-async function _runCreation(
-  pendingId: string,
-  pending: PendingSession,
-  signal: AbortSignal,
-): Promise<void> {
+async function _runCreation(pendingId: string, pending: PendingSession, signal: AbortSignal): Promise<void> {
   try {
     const result = await createSessionStream(
       pending.createOpts,

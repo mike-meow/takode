@@ -13,11 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 import { getEnrichedPath } from "./path-resolver.js";
-import type {
-  BrowserIncomingMessage,
-  BrowserOutgoingMessage,
-  PermissionRequest,
-} from "./session-types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, PermissionRequest } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { trafficStats } from "./traffic-stats.js";
 import type { BackendAdapter, PendingOutgoingAwareAdapter } from "./bridge/adapter-interface.js";
@@ -52,7 +48,9 @@ export interface ClaudeSdkSessionMeta {
 }
 
 interface PendingPermission {
-  resolve: (result: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }) => void;
+  resolve: (
+    result: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string },
+  ) => void;
   reject: (err: Error) => void;
   requestId: string;
   toolName: string;
@@ -121,7 +119,9 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
     this.connected = false;
     try {
       this.sdkSession?.close();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     // Reject any pending permissions
     for (const [, pending] of this.pendingPermissions) {
       pending.reject(new Error("Session disconnected"));
@@ -225,7 +225,11 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
         });
         cachedV4Class = probe?.query?.transport?.constructor ?? null;
         // Close the probe session immediately
-        try { probe?.close?.(); } catch { /* ignore */ }
+        try {
+          probe?.close?.();
+        } catch {
+          /* ignore */
+        }
       } catch {
         // Probe failed — V4 class unavailable, skip the patch
       }
@@ -250,7 +254,9 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
         return originalInitialize.call(this);
       };
     } else {
-      console.warn(`[claude-sdk-adapter] Could not patch V4.prototype.initialize — settingSources and plugins may not reach the CLI`);
+      console.warn(
+        `[claude-sdk-adapter] Could not patch V4.prototype.initialize — settingSources and plugins may not reach the CLI`,
+      );
     }
 
     // WORKAROUND: The SDK's v2 session API (SDKSessionOptions) does NOT expose
@@ -285,7 +291,11 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
     } finally {
       // Restore immediately — the subprocess has already been spawned synchronously.
       if (process.cwd() !== originalCwd) {
-        try { process.chdir(originalCwd); } catch { /* ignore */ }
+        try {
+          process.chdir(originalCwd);
+        } catch {
+          /* ignore */
+        }
       }
       // Always restore the original V4.prototype.initialize
       if (v4Class && originalInitialize) {
@@ -294,7 +304,9 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
     }
 
     this.connected = true;
-    console.log(`[claude-sdk-adapter] Session ${this.sessionId} initialized${this.options.cliSessionId ? " (resumed)" : ""}`);
+    console.log(
+      `[claude-sdk-adapter] Session ${this.sessionId} initialized${this.options.cliSessionId ? " (resumed)" : ""}`,
+    );
 
     // Flush pending outgoing messages
     for (const msg of this.pendingOutgoing.splice(0)) {
@@ -342,16 +354,12 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
 
     // Record raw incoming message
     const raw = JSON.stringify(msg);
-    this.options.recorder?.record(
-      this.sessionId, "in", raw, "cli", "claude-sdk", this.options.cwd,
-    );
+    this.options.recorder?.record(this.sessionId, "in", raw, "cli", "claude-sdk", this.options.cwd);
     trafficStats.record({
       sessionId: this.sessionId,
       channel: "cli",
       direction: "in",
-      messageType: typeof msg.subtype === "string" && msg.subtype
-        ? `${msg.type}.${msg.subtype}`
-        : msg.type,
+      messageType: typeof msg.subtype === "string" && msg.subtype ? `${msg.type}.${msg.subtype}` : msg.type,
       payloadBytes: Buffer.byteLength(raw, "utf-8"),
     });
 
@@ -453,18 +461,28 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
     // If the promise isn't registered yet, the approval is silently dropped and
     // the tool hangs until the SDK's abort signal fires (~3.5 minutes).
     return new Promise((resolve) => {
-      this.pendingPermissions.set(requestId, { resolve, reject: (err: Error) => {
-        // On unexpected errors, resolve with deny (never reject — rejected promises
-        // confuse the SDK's retry logic and cause the session to loop through
-        // alternative approaches without permission).
-        resolve({ behavior: "deny", message: err.message || "Permission request failed" });
-      }, requestId, toolName, originalInput: input });
+      this.pendingPermissions.set(requestId, {
+        resolve,
+        reject: (err: Error) => {
+          // On unexpected errors, resolve with deny (never reject — rejected promises
+          // confuse the SDK's retry logic and cause the session to loop through
+          // alternative approaches without permission).
+          resolve({ behavior: "deny", message: err.message || "Permission request failed" });
+        },
+        requestId,
+        toolName,
+        originalInput: input,
+      });
 
       // Handle abort signal — resolve with deny, don't reject
-      options.signal.addEventListener("abort", () => {
-        this.pendingPermissions.delete(requestId);
-        resolve({ behavior: "deny", message: "Permission request aborted" });
-      }, { once: true });
+      options.signal.addEventListener(
+        "abort",
+        () => {
+          this.pendingPermissions.delete(requestId);
+          resolve({ behavior: "deny", message: "Permission request aborted" });
+        },
+        { once: true },
+      );
 
       // Now emit the permission request — this may trigger synchronous auto-approval
       this.emitBrowserMessage({
@@ -537,9 +555,7 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
             // back to the original tool input from the permission request.
             pending.resolve({
               behavior: "allow",
-              updatedInput: (updatedInput && Object.keys(updatedInput).length > 0)
-                ? updatedInput
-                : pending.originalInput,
+              updatedInput: updatedInput && Object.keys(updatedInput).length > 0 ? updatedInput : pending.originalInput,
             });
           } else {
             pending.resolve({
@@ -578,7 +594,9 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
         // DO NOT send setPermissionMode to the CLI subprocess — it corrupts the
         // SDK's stdin/stdout stream, breaking subsequent tool calls with
         // "Stream closed" errors.
-        console.log(`[claude-sdk-adapter] Permission mode change to "${(msg as any).mode}" for session ${this.sessionId} (server-side only)`);
+        console.log(
+          `[claude-sdk-adapter] Permission mode change to "${(msg as any).mode}" for session ${this.sessionId} (server-side only)`,
+        );
         return true;
       }
 
@@ -633,11 +651,14 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
     //   "bypassPermissions" → "bypassPermissions" (auto-approve everything)
     //   "default" / other   → "default" (canUseTool callback handles permissions)
     switch (mode) {
-      case "bypassPermissions": return "bypassPermissions";
-      case "acceptEdits": return "acceptEdits";
-      case "plan": return "plan";
-      default: return "default";
+      case "bypassPermissions":
+        return "bypassPermissions";
+      case "acceptEdits":
+        return "acceptEdits";
+      case "plan":
+        return "plan";
+      default:
+        return "default";
     }
   }
-
 }

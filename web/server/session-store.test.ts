@@ -71,20 +71,28 @@ function makeTurnMessages(turnIndex: number): PersistedSession["messageHistory"]
 /** Helper: build tool results for a turn. */
 function makeToolResults(turnIndex: number): NonNullable<PersistedSession["toolResults"]> {
   return [
-    [`tu-${turnIndex}`, { content: `Tool result for turn ${turnIndex}`, is_error: false, timestamp: Date.now() + turnIndex * 1000 + 600 }],
+    [
+      `tu-${turnIndex}`,
+      { content: `Tool result for turn ${turnIndex}`, is_error: false, timestamp: Date.now() + turnIndex * 1000 + 600 },
+    ],
   ];
 }
 
-function makeToolResultPreviewMessage(toolUseId: string, content = `Preview for ${toolUseId}`): PersistedSession["messageHistory"][number] {
+function makeToolResultPreviewMessage(
+  toolUseId: string,
+  content = `Preview for ${toolUseId}`,
+): PersistedSession["messageHistory"][number] {
   return {
     type: "tool_result_preview",
-    previews: [{
-      tool_use_id: toolUseId,
-      content,
-      is_error: false,
-      total_size: content.length,
-      is_truncated: false,
-    }],
+    previews: [
+      {
+        tool_use_id: toolUseId,
+        content,
+        is_error: false,
+        total_size: content.length,
+        is_truncated: false,
+      },
+    ],
   } as PersistedSession["messageHistory"][number];
 }
 
@@ -131,22 +139,24 @@ describe("saveSync / load", () => {
     const session = makeSession("s2", {
       messageHistory: [{ type: "error", message: "test error" }],
       pendingMessages: ["msg1", "msg2"],
-      pendingCodexTurns: [{
-        adapterMsg: { type: "user_message", content: "retry persisted turn" },
-        userMessageId: "user-persisted-1",
-        userContent: "retry persisted turn",
-        historyIndex: 0,
-        status: "backend_acknowledged",
-        dispatchCount: 1,
-        createdAt: 1700000000000,
-        updatedAt: 1700000001000,
-        acknowledgedAt: 1700000000500,
-        turnTarget: "current",
-        lastError: null,
-        turnId: "turn-persisted-1",
-        disconnectedAt: 1700000000000,
-        resumeConfirmedAt: null,
-      }],
+      pendingCodexTurns: [
+        {
+          adapterMsg: { type: "user_message", content: "retry persisted turn" },
+          userMessageId: "user-persisted-1",
+          userContent: "retry persisted turn",
+          historyIndex: 0,
+          status: "backend_acknowledged",
+          dispatchCount: 1,
+          createdAt: 1700000000000,
+          updatedAt: 1700000001000,
+          acknowledgedAt: 1700000000500,
+          turnTarget: "current",
+          lastError: null,
+          turnId: "turn-persisted-1",
+          disconnectedAt: 1700000000000,
+          resumeConfirmedAt: null,
+        },
+      ],
       pendingPermissions: [
         [
           "req-1",
@@ -159,9 +169,7 @@ describe("saveSync / load", () => {
           },
         ],
       ],
-      eventBuffer: [
-        { seq: 1, message: { type: "backend_connected" } },
-      ],
+      eventBuffer: [{ seq: 1, message: { type: "backend_connected" } }],
       nextEventSeq: 2,
       lastAckSeq: 1,
       processedClientMessageIds: ["client-msg-1", "client-msg-2"],
@@ -409,7 +417,19 @@ describe("append-only frozen history", () => {
     const turn1 = makeTurnMessages(1);
     const inProgress = [
       { type: "user_message", content: "Still thinking...", timestamp: Date.now() + 5000 },
-      { type: "assistant", message: { id: "msg-ip", role: "assistant", model: "claude-sonnet-4-5-20250929", content: [{ type: "text", text: "Working..." }], stop_reason: null, usage: null }, parent_tool_use_id: null, timestamp: Date.now() + 5500 },
+      {
+        type: "assistant",
+        message: {
+          id: "msg-ip",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Working..." }],
+          stop_reason: null,
+          usage: null,
+        },
+        parent_tool_use_id: null,
+        timestamp: Date.now() + 5500,
+      },
     ] as PersistedSession["messageHistory"];
 
     const session = makeSession("freeze-1", {
@@ -450,7 +470,7 @@ describe("append-only frozen history", () => {
     await store.flushAll();
 
     const logAfterTurn1 = readFileSync(join(tempDir, "incr-1.history.jsonl"), "utf-8");
-    const linesAfterTurn1 = logAfterTurn1.split("\n").filter(l => l.trim());
+    const linesAfterTurn1 = logAfterTurn1.split("\n").filter((l) => l.trim());
     // Header + 3 messages + 1 tool results batch = 5 lines
     expect(linesAfterTurn1.length).toBe(5);
 
@@ -462,7 +482,7 @@ describe("append-only frozen history", () => {
     await store.flushAll();
 
     const logAfterTurn2 = readFileSync(join(tempDir, "incr-1.history.jsonl"), "utf-8");
-    const linesAfterTurn2 = logAfterTurn2.split("\n").filter(l => l.trim());
+    const linesAfterTurn2 = logAfterTurn2.split("\n").filter((l) => l.trim());
     // Previous 5 lines + 3 new messages + 1 tool results batch = 9 lines
     expect(linesAfterTurn2.length).toBe(9);
 
@@ -480,7 +500,19 @@ describe("append-only frozen history", () => {
     const session = makeSession("no-freeze", {
       messageHistory: [
         { type: "user_message", content: "Hello", timestamp: Date.now() },
-        { type: "assistant", message: { id: "msg-1", role: "assistant", model: "claude-sonnet-4-5-20250929", content: [{ type: "text", text: "Hi!" }], stop_reason: null, usage: null }, parent_tool_use_id: null, timestamp: Date.now() },
+        {
+          type: "assistant",
+          message: {
+            id: "msg-1",
+            role: "assistant",
+            model: "claude-sonnet-4-5-20250929",
+            content: [{ type: "text", text: "Hi!" }],
+            stop_reason: null,
+            usage: null,
+          },
+          parent_tool_use_id: null,
+          timestamp: Date.now(),
+        },
       ] as PersistedSession["messageHistory"],
     });
 
@@ -628,13 +660,7 @@ describe("append-only frozen history", () => {
     const repeatedPreview = makeToolResultPreviewMessage("tu-replayed", "Replay-generated preview");
     const uniquePreview = makeToolResultPreviewMessage("tu-unique", "Latest preview");
     const session = makeSession("trim-loaded-preview-tail", {
-      messageHistory: [
-        repeatedPreview,
-        uniquePreview,
-        repeatedPreview,
-        uniquePreview,
-        repeatedPreview,
-      ],
+      messageHistory: [repeatedPreview, uniquePreview, repeatedPreview, uniquePreview, repeatedPreview],
     });
 
     store.saveSync(session);
@@ -658,7 +684,7 @@ describe("append-only frozen history", () => {
     // Corrupt the last line of the JSONL by truncating it
     const logPath = join(tempDir, "corrupt-log.history.jsonl");
     const logContent = readFileSync(logPath, "utf-8");
-    const lines = logContent.split("\n").filter(l => l.trim());
+    const lines = logContent.split("\n").filter((l) => l.trim());
     // Replace last line with truncated JSON
     lines[lines.length - 1] = '{"type":"result","data":{"type"';
     writeFileSync(logPath, lines.join("\n") + "\n", "utf-8");
@@ -827,7 +853,11 @@ describe("property-based: frozen history correctness", () => {
   function makeMsg(type: MsgType, index: number): PersistedSession["messageHistory"][number] {
     switch (type) {
       case "user_message":
-        return { type: "user_message", content: `user-${index}`, timestamp: 1000 + index } as PersistedSession["messageHistory"][number];
+        return {
+          type: "user_message",
+          content: `user-${index}`,
+          timestamp: 1000 + index,
+        } as PersistedSession["messageHistory"][number];
       case "assistant":
         return {
           type: "assistant",
@@ -882,10 +912,7 @@ describe("property-based: frozen history correctness", () => {
    *  Ensures at least some structural realism: user messages precede
    *  assistants, and result messages only appear after at least one
    *  non-result message (to avoid empty turns). */
-  function randomMessageSequence(
-    rng: () => number,
-    count: number,
-  ): PersistedSession["messageHistory"] {
+  function randomMessageSequence(rng: () => number, count: number): PersistedSession["messageHistory"] {
     const msgs: PersistedSession["messageHistory"] = [];
     for (let i = 0; i < count; i++) {
       const typeIdx = Math.floor(rng() * MSG_TYPES.length);
@@ -959,7 +986,7 @@ describe("property-based: frozen history correctness", () => {
 
     // In-progress tail (no result)
     for (let i = 0; i < inProgressMessages; i++) {
-      const type = rng() > 0.5 ? "user_message" : (rng() > 0.5 ? "assistant" : "stream_event");
+      const type = rng() > 0.5 ? "user_message" : rng() > 0.5 ? "assistant" : "stream_event";
       msgs.push(makeMsg(type as MsgType, idx++));
     }
 
@@ -1000,7 +1027,9 @@ describe("property-based: frozen history correctness", () => {
       expect(loaded!.toolResults ?? [], `seed=${seed}: toolResults length`).toHaveLength(toolResults.length);
       for (let i = 0; i < toolResults.length; i++) {
         expect(loaded!.toolResults![i][0], `seed=${seed}: toolResult[${i}] key`).toBe(toolResults[i][0]);
-        expect(loaded!.toolResults![i][1].content, `seed=${seed}: toolResult[${i}] content`).toBe(toolResults[i][1].content);
+        expect(loaded!.toolResults![i][1].content, `seed=${seed}: toolResult[${i}] content`).toBe(
+          toolResults[i][1].content,
+        );
       }
 
       // Clean up files to keep the test directory manageable
@@ -1128,10 +1157,9 @@ describe("property-based: frozen history correctness", () => {
       const hotRaw = JSON.parse(readFileSync(join(tempDir, `${sessionId}.json`), "utf-8"));
       const expected = expectedFreezeCutoff(messages);
 
-      expect(
-        hotRaw._frozenCount,
-        `seed=${seed}: _frozenCount=${hotRaw._frozenCount} but expected=${expected}`,
-      ).toBe(expected);
+      expect(hotRaw._frozenCount, `seed=${seed}: _frozenCount=${hotRaw._frozenCount} but expected=${expected}`).toBe(
+        expected,
+      );
 
       store.remove(sessionId);
       await store.flushAll();
@@ -1203,7 +1231,9 @@ describe("property-based: frozen history correctness", () => {
         expect(loaded!.messageHistory[i], `seed=${seed}: phase1 msg[${i}]`).toEqual(phase1Msgs[i]);
       }
       for (let i = 0; i < crashTurnMsgs.length; i++) {
-        expect(loaded!.messageHistory[phase1Msgs.length + i], `seed=${seed}: crash msg[${i}]`).toEqual(crashTurnMsgs[i]);
+        expect(loaded!.messageHistory[phase1Msgs.length + i], `seed=${seed}: crash msg[${i}]`).toEqual(
+          crashTurnMsgs[i],
+        );
       }
 
       store.remove(sessionId);

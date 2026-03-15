@@ -20,18 +20,23 @@ vi.hoisted(() => {
 
   // Node.js 22+ native localStorage may be broken (invalid --localstorage-file).
   // Polyfill before store.ts import triggers getInitialSessionId().
-  if (
-    typeof globalThis.localStorage === "undefined" ||
-    typeof globalThis.localStorage.getItem !== "function"
-  ) {
+  if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage.getItem !== "function") {
     const store = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {
       value: {
         getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => { store.set(key, String(value)); },
-        removeItem: (key: string) => { store.delete(key); },
-        clear: () => { store.clear(); },
-        get length() { return store.size; },
+        setItem: (key: string, value: string) => {
+          store.set(key, String(value));
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+        clear: () => {
+          store.clear();
+        },
+        get length() {
+          return store.size;
+        },
         key: (index: number) => [...store.keys()][index] ?? null,
       },
       writable: true,
@@ -336,10 +341,7 @@ describe("Messages", () => {
     useStore.getState().addSession(makeSession("s1"));
     useStore.getState().appendMessage("s1", makeMessage({ content: "old" }));
 
-    const newMessages = [
-      makeMessage({ content: "new1" }),
-      makeMessage({ content: "new2" }),
-    ];
+    const newMessages = [makeMessage({ content: "new1" }), makeMessage({ content: "new2" })];
     useStore.getState().setMessages("s1", newMessages);
 
     const messages = useStore.getState().messages.get("s1")!;
@@ -520,10 +522,7 @@ describe("Tasks", () => {
 
   it("setTasks: replaces all tasks for a session", () => {
     useStore.getState().addTask("s1", makeTask({ subject: "old" }));
-    const newTasks = [
-      makeTask({ subject: "new1" }),
-      makeTask({ subject: "new2" }),
-    ];
+    const newTasks = [makeTask({ subject: "new1" }), makeTask({ subject: "new2" })];
     useStore.getState().setTasks("s1", newTasks);
 
     const tasks = useStore.getState().sessionTasks.get("s1")!;
@@ -691,9 +690,7 @@ describe("reset", () => {
     useStore.getState().setCliConnected("s1", true);
     useStore.getState().setSessionStatus("s1", "running");
     useStore.getState().setPreviousPermissionMode("s1", "default");
-    useStore.getState().setSdkSessions([
-      { sessionId: "s1", state: "connected", cwd: "/", createdAt: 0 },
-    ]);
+    useStore.getState().setSdkSessions([{ sessionId: "s1", state: "connected", cwd: "/", createdAt: 0 }]);
 
     useStore.getState().reset();
     const state = useStore.getState();

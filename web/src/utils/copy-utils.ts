@@ -7,9 +7,7 @@ import type { ChatMessage } from "../types.js";
 export function getMessageMarkdown(message: ChatMessage): string {
   const blocks = message.contentBlocks;
   if (blocks && blocks.length > 0) {
-    const textParts = blocks
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { type: "text"; text: string }).text);
+    const textParts = blocks.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text);
     if (textParts.length > 0) return textParts.join("\n\n");
   }
   return message.content;

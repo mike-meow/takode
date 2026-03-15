@@ -40,7 +40,12 @@ function spawnBackend(): Subprocess {
     cwd: webDir,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, NODE_ENV: "development", COMPANION_SUPERVISED: "1", UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "32" },
+    env: {
+      ...process.env,
+      NODE_ENV: "development",
+      COMPANION_SUPERVISED: "1",
+      UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "32",
+    },
   });
   prefix("api", "\x1b[36m", proc.stdout);
   prefix("api", "\x1b[31m", proc.stderr);

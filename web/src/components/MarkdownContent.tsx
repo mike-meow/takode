@@ -1,4 +1,14 @@
-import { useRef, useCallback, useMemo, useState, useEffect, Children, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import {
+  useRef,
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  Children,
+  type ComponentProps,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api.js";
@@ -58,9 +68,7 @@ interface ResolvedFileLinkTarget {
 }
 
 function isAbsoluteFilePath(path: string): boolean {
-  return path.startsWith("/")
-    || /^\/[A-Za-z]:\//.test(path)
-    || /^[A-Za-z]:[\\/]/.test(path);
+  return path.startsWith("/") || /^\/[A-Za-z]:\//.test(path) || /^[A-Za-z]:[\\/]/.test(path);
 }
 
 function normalizeRepoRelativePath(path: string): string | null {
@@ -93,9 +101,7 @@ function resolveFileLinkTarget(target: FileLinkTarget, repoRoot: string | null):
 
   const separator = repoRoot.includes("\\") ? "\\" : "/";
   const normalizedRepoRoot = repoRoot.replace(/[\\/]+$/, "");
-  const relativePath = separator === "\\"
-    ? normalizedRelativePath.replace(/\//g, "\\")
-    : normalizedRelativePath;
+  const relativePath = separator === "\\" ? normalizedRelativePath.replace(/\//g, "\\") : normalizedRelativePath;
 
   return {
     absolutePath: `${normalizedRepoRoot}${separator}${relativePath}`,
@@ -187,7 +193,13 @@ function parseFileLinkFromHref(href?: string): FileLinkTarget | null {
   if (line < 1 || column < 1) return null;
   if (Number.isFinite(endLine) && Number(endLine) < line) return null;
 
-  return { path, line, column, ...(Number.isFinite(endLine) ? { endLine: Number(endLine) } : {}), isRelative: !isAbsolute };
+  return {
+    path,
+    line,
+    column,
+    ...(Number.isFinite(endLine) ? { endLine: Number(endLine) } : {}),
+    isRelative: !isAbsolute,
+  };
 }
 
 function transformMarkdownUrl(url: string): string {
@@ -196,9 +208,9 @@ function transformMarkdownUrl(url: string): string {
   // Block dangerous protocols while preserving normal links.
   const normalized = url.toLowerCase().replace(/[\u0000-\u001f\u007f\s]+/g, "");
   if (
-    normalized.startsWith("javascript:")
-    || normalized.startsWith("vbscript:")
-    || normalized.startsWith("data:text/html")
+    normalized.startsWith("javascript:") ||
+    normalized.startsWith("vbscript:") ||
+    normalized.startsWith("data:text/html")
   ) {
     return "";
   }
@@ -216,9 +228,7 @@ export function MarkdownContent({
   sessionId?: string;
   searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
 }) {
-  const sizeClass = size === "sm"
-    ? "text-xs"
-    : "text-[14px] sm:text-[15px]";
+  const sizeClass = size === "sm" ? "text-xs" : "text-[14px] sm:text-[15px]";
 
   // Helper: replaces string children with HighlightedText when search is active
   const hl = searchHighlight;
@@ -227,14 +237,7 @@ export function MarkdownContent({
       if (!hl || !hl.query) return children;
       return Children.map(children, (child) => {
         if (typeof child === "string") {
-          return (
-            <HighlightedText
-              text={child}
-              query={hl.query}
-              mode={hl.mode}
-              isCurrent={hl.isCurrent}
-            />
-          );
+          return <HighlightedText text={child} query={hl.query} mode={hl.mode} isCurrent={hl.isCurrent} />;
         }
         return child;
       });
@@ -248,15 +251,9 @@ export function MarkdownContent({
         remarkPlugins={[remarkGfm]}
         urlTransform={transformMarkdownUrl}
         components={{
-          p: ({ children }) => (
-            <p className="mb-3 last:mb-0">{highlightChildren(children)}</p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold text-cc-fg">{highlightChildren(children)}</strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic">{highlightChildren(children)}</em>
-          ),
+          p: ({ children }) => <p className="mb-3 last:mb-0">{highlightChildren(children)}</p>,
+          strong: ({ children }) => <strong className="font-semibold text-cc-fg">{highlightChildren(children)}</strong>,
+          em: ({ children }) => <em className="italic">{highlightChildren(children)}</em>,
           h1: ({ children }) => (
             <h1 className="text-xl font-bold text-cc-fg mt-4 mb-2">{highlightChildren(children)}</h1>
           ),
@@ -266,31 +263,17 @@ export function MarkdownContent({
           h3: ({ children }) => (
             <h3 className="text-base font-semibold text-cc-fg mt-3 mb-1">{highlightChildren(children)}</h3>
           ),
-          ul: ({ children }) => (
-            <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>
-          ),
-          li: ({ children }) => (
-            <li className="text-cc-fg">{highlightChildren(children)}</li>
-          ),
+          ul: ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="text-cc-fg">{highlightChildren(children)}</li>,
           a: ({ href, children }) => {
             const questId = parseQuestIdFromHref(href);
             if (questId) {
-              return (
-                <QuestMarkdownLink questId={questId}>
-                  {children}
-                </QuestMarkdownLink>
-              );
+              return <QuestMarkdownLink questId={questId}>{children}</QuestMarkdownLink>;
             }
             const sessionNum = parseSessionNumFromHref(href);
             if (sessionNum != null) {
-              return (
-                <SessionMarkdownLink sessionNum={sessionNum}>
-                  {children}
-                </SessionMarkdownLink>
-              );
+              return <SessionMarkdownLink sessionNum={sessionNum}>{children}</SessionMarkdownLink>;
             }
             const fileTarget = parseFileLinkFromHref(href);
             if (fileTarget) {
@@ -311,9 +294,7 @@ export function MarkdownContent({
               {children}
             </blockquote>
           ),
-          hr: () => (
-            <hr className="border-cc-border my-4" />
-          ),
+          hr: () => <hr className="border-cc-border my-4" />,
           code: (props: ComponentProps<"code">) => {
             const { children, className } = props;
             const match = /language-(\w+)/.exec(className || "");
@@ -337,18 +318,14 @@ export function MarkdownContent({
               </table>
             </div>
           ),
-          thead: ({ children }) => (
-            <thead className="bg-cc-code-bg/50">{children}</thead>
-          ),
+          thead: ({ children }) => <thead className="bg-cc-code-bg/50">{children}</thead>,
           th: ({ children }) => (
             <th className="px-3 py-1.5 text-left text-xs font-semibold text-cc-fg border-b border-cc-border">
               {highlightChildren(children)}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-1.5 text-xs text-cc-fg border-b border-cc-border">
-              {highlightChildren(children)}
-            </td>
+            <td className="px-3 py-1.5 text-xs text-cc-fg border-b border-cc-border">{highlightChildren(children)}</td>
           ),
         }}
       >
@@ -363,9 +340,12 @@ function QuestMarkdownLink({ questId, children }: { questId: string; children: R
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    },
+    [],
+  );
 
   const quest = useMemo(
     () => quests.find((item) => item.questId.toLowerCase() === questId.toLowerCase()) ?? null,
@@ -436,9 +416,12 @@ function SessionMarkdownLink({ sessionNum, children }: { sessionNum: number; chi
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    },
+    [],
+  );
 
   const sdkInfo = useMemo(
     () => sdkSessions.find((session) => session.sessionNum === sessionNum),
@@ -452,12 +435,10 @@ function SessionMarkdownLink({ sessionNum, children }: { sessionNum: number; chi
     const bridgeState = sessions.get(sessionId);
     const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
     const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
-    const gitAhead = bridgeState?.git_ahead === 0 && sdkGitAhead > 0
-      ? sdkGitAhead
-      : (bridgeState?.git_ahead ?? sdkGitAhead);
-    const gitBehind = bridgeState?.git_behind === 0 && sdkGitBehind > 0
-      ? sdkGitBehind
-      : (bridgeState?.git_behind ?? sdkGitBehind);
+    const gitAhead =
+      bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
+    const gitBehind =
+      bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
 
     return {
       id: sessionId,
@@ -571,26 +552,26 @@ function FileMarkdownLink({
     () => getFileLinkBasePath(sessionId, currentSessionId, sessions, sdkSessions),
     [currentSessionId, sdkSessions, sessionId, sessions],
   );
-  const resolvedTarget = useMemo(
-    () => resolveFileLinkTarget(target, basePath),
-    [basePath, target],
-  );
+  const resolvedTarget = useMemo(() => resolveFileLinkTarget(target, basePath), [basePath, target]);
 
-  const onClick = useCallback(async (e: MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    if (!resolvedTarget) return;
-    let settings;
-    try {
-      settings = await api.getSettings();
-    } catch {
-      return;
-    }
-    try {
-      await openFileWithEditorPreference(resolvedTarget, settings.editorConfig?.editor ?? "none");
-    } catch (error) {
-      showEditorOpenError(error instanceof Error ? error.message : String(error));
-    }
-  }, [resolvedTarget]);
+  const onClick = useCallback(
+    async (e: MouseEvent<HTMLAnchorElement>) => {
+      e.preventDefault();
+      if (!resolvedTarget) return;
+      let settings;
+      try {
+        settings = await api.getSettings();
+      } catch {
+        return;
+      }
+      try {
+        await openFileWithEditorPreference(resolvedTarget, settings.editorConfig?.editor ?? "none");
+      } catch (error) {
+        showEditorOpenError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [resolvedTarget],
+  );
 
   const locationSuffix = formatFileLinkLocation(target);
   const href = `file:${target.path}${locationSuffix}`;
@@ -601,7 +582,9 @@ function FileMarkdownLink({
   return (
     <a
       href={href}
-      onClick={(e) => { void onClick(e); }}
+      onClick={(e) => {
+        void onClick(e);
+      }}
       className={resolvedTarget ? "text-cc-primary hover:underline" : "text-cc-muted"}
       title={title}
     >
@@ -627,9 +610,7 @@ function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
     <div className="group/code my-2 rounded-lg overflow-hidden border border-cc-border relative">
       {lang ? (
         <div className="flex items-center justify-between px-3 py-1.5 bg-cc-code-bg/80 border-b border-cc-border">
-          <span className="text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">
-            {lang}
-          </span>
+          <span className="text-[10px] text-cc-muted font-mono-code uppercase tracking-wider">{lang}</span>
           <CodeCopyButton getText={getText} />
         </div>
       ) : (

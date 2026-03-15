@@ -28,7 +28,14 @@ interface ClaudeMdEditorProps {
   onClose: () => void;
 }
 
-export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", initialPath, onClose }: ClaudeMdEditorProps) {
+export function ClaudeMdEditor({
+  cwd,
+  repoRoot,
+  open,
+  initialView = "file",
+  initialPath,
+  onClose,
+}: ClaudeMdEditorProps) {
   const [files, setFiles] = useState<ClaudeMdFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -51,17 +58,19 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
     ])
       .then(([res, aaRes]) => {
         setFiles(res.files);
-        setAutoApproval(aaRes.config ? {
-          label: aaRes.config.label,
-          criteria: aaRes.config.criteria,
-          enabled: aaRes.config.enabled,
-          projectPath: aaRes.config.projectPath,
-        } : null);
+        setAutoApproval(
+          aaRes.config
+            ? {
+                label: aaRes.config.label,
+                criteria: aaRes.config.criteria,
+                enabled: aaRes.config.enabled,
+                projectPath: aaRes.config.projectPath,
+              }
+            : null,
+        );
         setShowAutoApproval(initialView === "autoApproval" && !!aaRes.config);
         if (res.files.length > 0) {
-          const idx = initialPath
-            ? res.files.findIndex((f) => f.path === initialPath)
-            : 0;
+          const idx = initialPath ? res.files.findIndex((f) => f.path === initialPath) : 0;
           const selected = idx >= 0 ? idx : 0;
           setSelectedIdx(selected);
           setEditContent(res.files[selected].content);
@@ -112,11 +121,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
       if (createMode) {
         load();
       } else {
-        setFiles((prev) =>
-          prev.map((f, i) =>
-            i === selectedIdx ? { ...f, content: editContent } : f,
-          ),
-        );
+        setFiles((prev) => prev.map((f, i) => (i === selectedIdx ? { ...f, content: editContent } : f)));
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
@@ -126,8 +131,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
   };
 
   const handleCreate = (location: "root" | "dotclaude") => {
-    const path =
-      location === "root" ? `${cwd}/CLAUDE.md` : `${cwd}/.claude/CLAUDE.md`;
+    const path = location === "root" ? `${cwd}/CLAUDE.md` : `${cwd}/.claude/CLAUDE.md`;
     setCreateMode(path);
     setEditContent("# CLAUDE.md\n\n");
     setDirty(true);
@@ -140,14 +144,11 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
 
   if (!open) return null;
 
-  const relPath = (p: string) =>
-    p.startsWith(cwd + "/") ? p.slice(cwd.length + 1) : p;
+  const relPath = (p: string) => (p.startsWith(cwd + "/") ? p.slice(cwd.length + 1) : p);
 
   // Check which locations already have files
   const hasRoot = files.some((f) => f.path === `${cwd}/CLAUDE.md`);
-  const hasDotClaude = files.some(
-    (f) => f.path === `${cwd}/.claude/CLAUDE.md`,
-  );
+  const hasDotClaude = files.some((f) => f.path === `${cwd}/.claude/CLAUDE.md`);
   const selectedFile = files[selectedIdx];
   const isSelectedWritable = createMode ? true : selectedFile?.writable !== false;
 
@@ -155,11 +156,7 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
   return createPortal(
     <>
       {/* Backdrop */}
-      <div
-        data-claude-md-editor-root="true"
-        className="fixed inset-0 bg-black/40 z-50"
-        onClick={handleClose}
-      />
+      <div data-claude-md-editor-root="true" className="fixed inset-0 bg-black/40 z-50" onClick={handleClose} />
 
       {/* Modal */}
       <div
@@ -171,32 +168,20 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
         <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 bg-cc-card border-b border-cc-border">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-cc-primary/10 flex items-center justify-center">
-              <svg
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="w-3.5 h-3.5 text-cc-primary"
-              >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-primary">
                 <path d="M4 1.5a.5.5 0 01.5-.5h7a.5.5 0 01.354.146l2 2A.5.5 0 0114 3.5v11a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-13zm1 .5v12h8V4h-1.5a.5.5 0 01-.5-.5V2H5zm6 0v1h1l-1-1z" />
               </svg>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-cc-fg">CLAUDE.md</h2>
-              <p className="text-[11px] text-cc-muted">
-                Project instructions for Claude Code
-              </p>
+              <p className="text-[11px] text-cc-muted">Project instructions for Claude Code</p>
             </div>
           </div>
           <button
             onClick={handleClose}
             className="w-7 h-7 flex items-center justify-center rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
           >
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="w-4 h-4"
-            >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
               <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
             </svg>
           </button>
@@ -281,16 +266,10 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                       key={f.path}
                       onClick={() => handleSelect(i)}
                       className={`flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] transition-colors cursor-pointer ${
-                        !createMode && selectedIdx === i
-                          ? "bg-cc-active text-cc-fg"
-                          : "text-cc-fg/70 hover:bg-cc-hover"
+                        !createMode && selectedIdx === i ? "bg-cc-active text-cc-fg" : "text-cc-fg/70 hover:bg-cc-hover"
                       }`}
                     >
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        className="w-3 h-3 text-cc-primary shrink-0"
-                      >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-primary shrink-0">
                         <path d="M4 1.5a.5.5 0 01.5-.5h7a.5.5 0 01.354.146l2 2A.5.5 0 0114 3.5v11a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-13z" />
                       </svg>
                       <span className="truncate font-mono-code">
@@ -301,16 +280,10 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                   ))}
                   {createMode && (
                     <div className="flex items-center gap-2 w-full px-3 py-2 text-[12px] bg-cc-active text-cc-fg">
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        className="w-3 h-3 text-cc-success shrink-0"
-                      >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-success shrink-0">
                         <path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z" />
                       </svg>
-                      <span className="truncate font-mono-code">
-                        {relPath(createMode)}
-                      </span>
+                      <span className="truncate font-mono-code">{relPath(createMode)}</span>
                     </div>
                   )}
                   {/* Auto-approval criteria entry */}
@@ -323,17 +296,13 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                         setDirty(false);
                       }}
                       className={`flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] transition-colors cursor-pointer ${
-                        showAutoApproval
-                          ? "bg-cc-active text-cc-fg"
-                          : "text-cc-fg/70 hover:bg-cc-hover"
+                        showAutoApproval ? "bg-cc-active text-cc-fg" : "text-cc-fg/70 hover:bg-cc-hover"
                       }`}
                     >
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-warning shrink-0">
                         <path d="M8 1.5a.5.5 0 01.424.235l6.5 10.5A.5.5 0 0114.5 13h-13a.5.5 0 01-.424-.765l6.5-10.5A.5.5 0 018 1.5zM7.5 6v3.5a.5.5 0 001 0V6a.5.5 0 00-1 0zm.5 5.5a.6.6 0 100 1.2.6.6 0 000-1.2z" />
                       </svg>
-                      <span className="truncate text-[11px]">
-                        Auto-Approval Rules
-                      </span>
+                      <span className="truncate text-[11px]">Auto-Approval Rules</span>
                     </button>
                   )}
                 </div>
@@ -341,19 +310,13 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                 {/* Create new file button */}
                 {(!hasRoot || !hasDotClaude) && !createMode && (
                   <div className="shrink-0 border-t border-cc-border p-2">
-                    <div className="text-[10px] text-cc-muted uppercase tracking-wider px-1 mb-1">
-                      Create new
-                    </div>
+                    <div className="text-[10px] text-cc-muted uppercase tracking-wider px-1 mb-1">Create new</div>
                     {!hasRoot && (
                       <button
                         onClick={() => handleCreate("root")}
                         className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] text-cc-fg/70 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
                       >
-                        <svg
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          className="w-3 h-3 text-cc-success shrink-0"
-                        >
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-success shrink-0">
                           <path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z" />
                         </svg>
                         <span className="font-mono-code">CLAUDE.md</span>
@@ -364,16 +327,10 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                         onClick={() => handleCreate("dotclaude")}
                         className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] text-cc-fg/70 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
                       >
-                        <svg
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          className="w-3 h-3 text-cc-success shrink-0"
-                        >
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-success shrink-0">
                           <path d="M8 2a.5.5 0 01.5.5v5h5a.5.5 0 010 1h-5v5a.5.5 0 01-1 0v-5h-5a.5.5 0 010-1h5v-5A.5.5 0 018 2z" />
                         </svg>
-                        <span className="font-mono-code">
-                          .claude/CLAUDE.md
-                        </span>
+                        <span className="font-mono-code">.claude/CLAUDE.md</span>
                       </button>
                     )}
                   </div>
@@ -396,7 +353,9 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                     </div>
                     <div className="flex-1 overflow-y-auto p-4">
                       <div className="mb-3">
-                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">Project</span>
+                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">
+                          Project
+                        </span>
                         <p className="text-[12px] text-cc-fg/80 font-mono-code mt-0.5">{autoApproval.projectPath}</p>
                       </div>
                       <div className="mb-3">
@@ -404,32 +363,31 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                         <p className="text-[12px] text-cc-fg/80 mt-0.5">{autoApproval.label}</p>
                       </div>
                       <div>
-                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">Criteria</span>
-                        <pre className="mt-1 p-3 bg-cc-card border border-cc-border rounded-lg text-[13px] text-cc-fg font-mono-code leading-relaxed whitespace-pre-wrap">{autoApproval.criteria}</pre>
+                        <span className="text-[10px] font-semibold text-cc-muted uppercase tracking-wider">
+                          Criteria
+                        </span>
+                        <pre className="mt-1 p-3 bg-cc-card border border-cc-border rounded-lg text-[13px] text-cc-fg font-mono-code leading-relaxed whitespace-pre-wrap">
+                          {autoApproval.criteria}
+                        </pre>
                       </div>
                       <p className="mt-4 text-[11px] text-cc-muted leading-relaxed">
-                        These criteria are evaluated by the auto-approver LLM when permission requests arrive for this project.
-                        Edit them in Settings &rarr; Auto-Approval.
+                        These criteria are evaluated by the auto-approver LLM when permission requests arrive for this
+                        project. Edit them in Settings &rarr; Auto-Approval.
                       </p>
                     </div>
                   </div>
                 ) : files.length === 0 && !createMode ? (
                   <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
                     <div className="w-14 h-14 rounded-2xl bg-cc-card border border-cc-border flex items-center justify-center">
-                      <svg
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        className="w-6 h-6 text-cc-muted"
-                      >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-6 h-6 text-cc-muted">
                         <path d="M4 1.5a.5.5 0 01.5-.5h7a.5.5 0 01.354.146l2 2A.5.5 0 0114 3.5v11a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-13z" />
                       </svg>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-cc-fg font-medium mb-1">
-                        No CLAUDE.md found
-                      </p>
+                      <p className="text-sm text-cc-fg font-medium mb-1">No CLAUDE.md found</p>
                       <p className="text-xs text-cc-muted leading-relaxed max-w-[280px]">
-                        Create a CLAUDE.md file to give Claude Code project-specific instructions, coding conventions, and context.
+                        Create a CLAUDE.md file to give Claude Code project-specific instructions, coding conventions,
+                        and context.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -452,19 +410,13 @@ export function ClaudeMdEditor({ cwd, repoRoot, open, initialView = "file", init
                     {/* File path bar */}
                     <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-cc-card border-b border-cc-border">
                       <span className="text-[12px] text-cc-muted font-mono-code truncate">
-                        {createMode
-                          ? relPath(createMode)
-                          : relPath(files[selectedIdx]?.path ?? "")}
+                        {createMode ? relPath(createMode) : relPath(files[selectedIdx]?.path ?? "")}
                       </span>
                       <div className="flex items-center gap-2">
                         {!isSelectedWritable && (
                           <span className="text-[10px] text-cc-muted font-medium">Read-only</span>
                         )}
-                        {dirty && (
-                          <span className="text-[10px] text-cc-warning font-medium">
-                            Unsaved
-                          </span>
-                        )}
+                        {dirty && <span className="text-[10px] text-cc-warning font-medium">Unsaved</span>}
                         <button
                           onClick={handleSave}
                           disabled={!dirty || saving || !isSelectedWritable}

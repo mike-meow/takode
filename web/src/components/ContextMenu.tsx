@@ -98,7 +98,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
         </div>
       ) : (
         <div className="py-1">
-          {items.map((item, idx) => (
+          {items.map((item, idx) =>
             item.disabled ? (
               <div
                 key={`${item.label}-${idx}`}
@@ -113,7 +113,11 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
                   if (item.confirm) {
                     setConfirmingItem(item);
                   } else {
-                    try { item.onClick(); } catch (e) { console.error("Menu action error:", e); }
+                    try {
+                      item.onClick();
+                    } catch (e) {
+                      console.error("Menu action error:", e);
+                    }
                     onClose();
                   }
                 }}
@@ -121,8 +125,8 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               >
                 {item.label}
               </button>
-            )
-          ))}
+            ),
+          )}
         </div>
       )}
     </div>,

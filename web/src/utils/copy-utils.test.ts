@@ -47,9 +47,7 @@ describe("getMessageMarkdown", () => {
   it("falls back to message.content when no text blocks exist", () => {
     const msg = makeMessage({
       content: "Fallback content",
-      contentBlocks: [
-        { type: "tool_use", id: "t1", name: "Read", input: {} } as any,
-      ],
+      contentBlocks: [{ type: "tool_use", id: "t1", name: "Read", input: {} } as any],
     });
     expect(getMessageMarkdown(msg)).toBe("Fallback content");
   });

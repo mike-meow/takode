@@ -37,10 +37,7 @@ export function createGitRoutes(ctx: RouteContext) {
     const limitStr = c.req.query("limit");
     const limit = Math.min(Math.max(parseInt(limitStr || "20", 10) || 20, 1), 100);
     try {
-      const raw = await execCaptureStdoutAsync(
-        `git log --format="%H%x00%h%x00%s%x00%ct" -${limit}`,
-        repoRoot,
-      );
+      const raw = await execCaptureStdoutAsync(`git log --format="%H%x00%h%x00%s%x00%ct" -${limit}`, repoRoot);
       const commits = raw
         .split("\n")
         .filter(Boolean)
@@ -134,7 +131,6 @@ export function createGitRoutes(ctx: RouteContext) {
     const pr = await fetchPRInfoAsync(cwd, branch);
     return c.json({ available: true, pr });
   });
-
 
   return api;
 }

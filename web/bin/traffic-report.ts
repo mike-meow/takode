@@ -70,9 +70,7 @@ function withinWindow(recording: Recording, options: CliOptions): boolean {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const filenames = (await readdir(options.dir))
-    .filter((name) => name.endsWith(".jsonl"))
-    .sort();
+  const filenames = (await readdir(options.dir)).filter((name) => name.endsWith(".jsonl")).sort();
 
   const recordings = filenames
     .map((name) => {
@@ -88,13 +86,19 @@ async function main(): Promise<void> {
     .filter((recording) => withinWindow(recording, options));
 
   const summary = summarizeRecordings(recordings);
-  console.log(JSON.stringify({
-    directory: options.dir,
-    sessionId: options.sessionId,
-    since: options.since,
-    until: options.until,
-    ...summary,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        directory: options.dir,
+        sessionId: options.sessionId,
+        since: options.since,
+        until: options.until,
+        ...summary,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 main().catch((err) => {

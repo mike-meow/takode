@@ -5,10 +5,7 @@
 vi.hoisted(() => {
   // Node.js 22+ native localStorage may be broken (invalid --localstorage-file).
   // Polyfill before scoped-storage.ts import triggers localStorage access.
-  if (
-    typeof globalThis.localStorage === "undefined" ||
-    typeof globalThis.localStorage.getItem !== "function"
-  ) {
+  if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage.getItem !== "function") {
     const store = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {
       value: {
@@ -33,13 +30,7 @@ vi.hoisted(() => {
   }
 });
 
-import {
-  scopedKey,
-  scopedGetItem,
-  scopedSetItem,
-  scopedRemoveItem,
-  bootstrapServerId,
-} from "./scoped-storage.js";
+import { scopedKey, scopedGetItem, scopedSetItem, scopedRemoveItem, bootstrapServerId } from "./scoped-storage.js";
 
 beforeEach(() => {
   localStorage.clear();
@@ -70,9 +61,7 @@ describe("scopedKey", () => {
     expect(scopedKey("cc-dark-mode")).toBe("cc-dark-mode");
     expect(scopedKey("cc-zoom-level")).toBe("cc-zoom-level");
     expect(scopedKey("cc-notification-sound")).toBe("cc-notification-sound");
-    expect(scopedKey("cc-notification-desktop")).toBe(
-      "cc-notification-desktop",
-    );
+    expect(scopedKey("cc-notification-desktop")).toBe("cc-notification-desktop");
   });
 });
 
@@ -165,12 +154,8 @@ describe("bootstrapServerId", () => {
 
     bootstrapServerId("srv1");
 
-    expect(localStorage.getItem("srv1:cc-model-claude")).toBe(
-      "claude-sonnet-4-5-20250929",
-    );
-    expect(localStorage.getItem("srv1:cc-model-codex")).toBe(
-      "codex-mini-latest",
-    );
+    expect(localStorage.getItem("srv1:cc-model-claude")).toBe("claude-sonnet-4-5-20250929");
+    expect(localStorage.getItem("srv1:cc-model-codex")).toBe("codex-mini-latest");
   });
 
   it("migrates companion:last-seq keys", () => {

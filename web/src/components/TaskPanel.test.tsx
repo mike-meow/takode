@@ -37,15 +37,18 @@ interface MockStoreState {
   sessionTaskHistory: Map<string, { title: string; triggerMessageId: string }[]>;
   requestScrollToTurn: ReturnType<typeof vi.fn>;
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
-  sessions: Map<string, {
-    backend_type?: string;
-    cwd?: string;
-    git_branch?: string;
-    codex_token_details?: CodexTokenDetails;
-    claude_token_details?: Omit<CodexTokenDetails, "reasoningOutputTokens">;
-    codex_rate_limits?: CodexRateLimits;
-    context_used_percent?: number;
-  }>;
+  sessions: Map<
+    string,
+    {
+      backend_type?: string;
+      cwd?: string;
+      git_branch?: string;
+      codex_token_details?: CodexTokenDetails;
+      claude_token_details?: Omit<CodexTokenDetails, "reasoningOutputTokens">;
+      codex_rate_limits?: CodexRateLimits;
+      context_used_percent?: number;
+    }
+  >;
   sdkSessions: {
     sessionId: string;
     backendType?: string;
@@ -101,13 +104,15 @@ describe("TaskPanel", () => {
     // Regression coverage: Codex sessions should display the same task/todo UI
     // as Claude sessions whenever the store has extracted tasks.
     resetStore({
-      sessionTasks: new Map([[
-        "s1",
+      sessionTasks: new Map([
         [
-          { id: "t1", status: "in_progress", subject: "Implement adapter fix" },
-          { id: "t2", status: "pending", subject: "Add regression tests" },
+          "s1",
+          [
+            { id: "t1", status: "in_progress", subject: "Implement adapter fix" },
+            { id: "t2", status: "pending", subject: "Add regression tests" },
+          ],
         ],
-      ]]),
+      ]),
       sessions: new Map([["s1", { backend_type: "codex" }]]),
     });
 
@@ -145,16 +150,11 @@ describe("TaskPanel", () => {
 
     render(<ClaudeMdCollapsible cwd="/repo" repoRoot="/repo" />);
 
-    await waitFor(
-      () => expect(mockApi.getAutoApprovalConfigForPath).toHaveBeenCalledWith("/repo", "/repo"),
-      { timeout: 5000 },
-    );
+    await waitFor(() => expect(mockApi.getAutoApprovalConfigForPath).toHaveBeenCalledWith("/repo", "/repo"), {
+      timeout: 5000,
+    });
 
-    const autoApprovalButton = await screen.findByRole(
-      "button",
-      { name: "Auto-Approval Rules" },
-      { timeout: 5000 },
-    );
+    const autoApprovalButton = await screen.findByRole("button", { name: "Auto-Approval Rules" }, { timeout: 5000 });
     fireEvent.click(autoApprovalButton);
     await screen.findByText("Read-only", {}, { timeout: 5000 });
   });
@@ -170,10 +170,15 @@ describe("CodexRateLimitsSection", () => {
 
   it("renders nothing when both primary and secondary are null", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        codex_rate_limits: { primary: null, secondary: null },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            codex_rate_limits: { primary: null, secondary: null },
+          },
+        ],
+      ]),
     });
     const { container } = render(<CodexRateLimitsSection sessionId="s1" />);
     expect(container.firstChild).toBeNull();
@@ -181,13 +186,18 @@ describe("CodexRateLimitsSection", () => {
 
   it("renders primary rate limit bar with percentage and window label", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        codex_rate_limits: {
-          primary: { usedPercent: 62, windowDurationMins: 300, resetsAt: Date.now() + 7_200_000 },
-          secondary: null,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            codex_rate_limits: {
+              primary: { usedPercent: 62, windowDurationMins: 300, resetsAt: Date.now() + 7_200_000 },
+              secondary: null,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexRateLimitsSection sessionId="s1" />);
     // 300 mins = 5h
@@ -197,13 +207,18 @@ describe("CodexRateLimitsSection", () => {
 
   it("renders both primary and secondary limits", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        codex_rate_limits: {
-          primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: Date.now() + 3_600_000 },
-          secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: Date.now() + 86_400_000 },
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            codex_rate_limits: {
+              primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: Date.now() + 3_600_000 },
+              secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: Date.now() + 86_400_000 },
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexRateLimitsSection sessionId="s1" />);
     // 300 mins = 5h, 10080 mins = 7d
@@ -219,13 +234,18 @@ describe("CodexRateLimitsSection", () => {
       vi.setSystemTime(new Date("2026-02-25T00:00:00.000Z"));
       const resetAtSec = Math.floor(Date.now() / 1000) + 7200;
       resetStore({
-        sessions: new Map([["s1", {
-          backend_type: "codex",
-          codex_rate_limits: {
-            primary: { usedPercent: 62, windowDurationMins: 300, resetsAt: resetAtSec },
-            secondary: null,
-          },
-        }]]),
+        sessions: new Map([
+          [
+            "s1",
+            {
+              backend_type: "codex",
+              codex_rate_limits: {
+                primary: { usedPercent: 62, windowDurationMins: 300, resetsAt: resetAtSec },
+                secondary: null,
+              },
+            },
+          ],
+        ]),
       });
       render(<CodexRateLimitsSection sessionId="s1" />);
       expect(screen.getByText("(2h0m)")).toBeInTheDocument();
@@ -244,17 +264,22 @@ describe("CodexTokenDetailsSection", () => {
 
   it("renders input and output token counts", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        context_used_percent: 42,
-        codex_token_details: {
-          inputTokens: 84_230,
-          outputTokens: 12_450,
-          cachedInputTokens: 0,
-          reasoningOutputTokens: 0,
-          modelContextWindow: 200_000,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            context_used_percent: 42,
+            codex_token_details: {
+              inputTokens: 84_230,
+              outputTokens: 12_450,
+              cachedInputTokens: 0,
+              reasoningOutputTokens: 0,
+              modelContextWindow: 200_000,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     expect(screen.getByText("Tokens")).toBeInTheDocument();
@@ -264,16 +289,21 @@ describe("CodexTokenDetailsSection", () => {
 
   it("renders Claude token details from normalized modelUsage", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "claude",
-        context_used_percent: 38,
-        claude_token_details: {
-          inputTokens: 12_000,
-          outputTokens: 3_400,
-          cachedInputTokens: 98_000,
-          modelContextWindow: 200_000,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "claude",
+            context_used_percent: 38,
+            claude_token_details: {
+              inputTokens: 12_000,
+              outputTokens: 3_400,
+              cachedInputTokens: 98_000,
+              modelContextWindow: 200_000,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     expect(screen.getByText("Tokens")).toBeInTheDocument();
@@ -285,17 +315,22 @@ describe("CodexTokenDetailsSection", () => {
 
   it("shows cached and reasoning rows only when non-zero", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        context_used_percent: 55,
-        codex_token_details: {
-          inputTokens: 100_000,
-          outputTokens: 5_000,
-          cachedInputTokens: 41_200,
-          reasoningOutputTokens: 8_900,
-          modelContextWindow: 200_000,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            context_used_percent: 55,
+            codex_token_details: {
+              inputTokens: 100_000,
+              outputTokens: 5_000,
+              cachedInputTokens: 41_200,
+              reasoningOutputTokens: 8_900,
+              modelContextWindow: 200_000,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     // Cached and reasoning should be visible
@@ -307,17 +342,22 @@ describe("CodexTokenDetailsSection", () => {
 
   it("hides cached and reasoning rows when zero", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        context_used_percent: 20,
-        codex_token_details: {
-          inputTokens: 10_000,
-          outputTokens: 1_000,
-          cachedInputTokens: 0,
-          reasoningOutputTokens: 0,
-          modelContextWindow: 200_000,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            context_used_percent: 20,
+            codex_token_details: {
+              inputTokens: 10_000,
+              outputTokens: 1_000,
+              cachedInputTokens: 0,
+              reasoningOutputTokens: 0,
+              modelContextWindow: 200_000,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     expect(screen.queryByText("Cached")).not.toBeInTheDocument();
@@ -329,17 +369,22 @@ describe("CodexTokenDetailsSection", () => {
     // Naive local calc would give 112%, but server caps at 100
     // This verifies the UI uses the session's context_used_percent (capped at 100)
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        context_used_percent: 100,
-        codex_token_details: {
-          inputTokens: 289_500,
-          outputTokens: 2_100,
-          cachedInputTokens: 210_300,
-          reasoningOutputTokens: 741,
-          modelContextWindow: 258_400,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            context_used_percent: 100,
+            codex_token_details: {
+              inputTokens: 289_500,
+              outputTokens: 2_100,
+              cachedInputTokens: 210_300,
+              reasoningOutputTokens: 741,
+              modelContextWindow: 258_400,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     // Should show 100%, not 112%
@@ -349,17 +394,22 @@ describe("CodexTokenDetailsSection", () => {
 
   it("hides context bar when modelContextWindow is 0", () => {
     resetStore({
-      sessions: new Map([["s1", {
-        backend_type: "codex",
-        context_used_percent: 0,
-        codex_token_details: {
-          inputTokens: 1_000,
-          outputTokens: 500,
-          cachedInputTokens: 0,
-          reasoningOutputTokens: 0,
-          modelContextWindow: 0,
-        },
-      }]]),
+      sessions: new Map([
+        [
+          "s1",
+          {
+            backend_type: "codex",
+            context_used_percent: 0,
+            codex_token_details: {
+              inputTokens: 1_000,
+              outputTokens: 500,
+              cachedInputTokens: 0,
+              reasoningOutputTokens: 0,
+              modelContextWindow: 0,
+            },
+          },
+        ],
+      ]),
     });
     render(<CodexTokenDetailsSection sessionId="s1" />);
     expect(screen.queryByText("Context")).not.toBeInTheDocument();

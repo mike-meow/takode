@@ -23,7 +23,8 @@ export type QuestmasterViewState = {
 function normalizeCollapsedGroups(value: unknown): QuestmasterCollapsedGroup[] {
   if (!Array.isArray(value)) return [];
   return value.filter((status): status is QuestmasterCollapsedGroup =>
-    QUESTMASTER_COLLAPSE_GROUPS.has(status as QuestmasterCollapsedGroup));
+    QUESTMASTER_COLLAPSE_GROUPS.has(status as QuestmasterCollapsedGroup),
+  );
 }
 
 export function loadQuestmasterViewState(): QuestmasterViewState | null {
@@ -31,9 +32,8 @@ export function loadQuestmasterViewState(): QuestmasterViewState | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { scrollTop?: unknown; collapsedGroups?: unknown };
-    const scrollTop = typeof parsed.scrollTop === "number" && Number.isFinite(parsed.scrollTop)
-      ? Math.max(0, parsed.scrollTop)
-      : 0;
+    const scrollTop =
+      typeof parsed.scrollTop === "number" && Number.isFinite(parsed.scrollTop) ? Math.max(0, parsed.scrollTop) : 0;
     return {
       scrollTop,
       collapsedGroups: normalizeCollapsedGroups(parsed.collapsedGroups),

@@ -4,10 +4,7 @@ import type { CliLauncher } from "./cli-launcher.js";
 import type { WsBridge } from "./ws-bridge.js";
 import type { SdkSessionInfo } from "./cli-launcher.js";
 
-function makeSession(
-  id: string,
-  overrides: Partial<SdkSessionInfo> = {},
-): SdkSessionInfo {
+function makeSession(id: string, overrides: Partial<SdkSessionInfo> = {}): SdkSessionInfo {
   return {
     sessionId: id,
     state: "running",
@@ -94,11 +91,7 @@ describe("IdleManager", () => {
   });
 
   it("skips exited sessions when counting alive", async () => {
-    const sessions = [
-      makeSession("s1", { state: "exited" }),
-      makeSession("s2"),
-      makeSession("s3"),
-    ];
+    const sessions = [makeSession("s1", { state: "exited" }), makeSession("s2"), makeSession("s3")];
     // Only s2 and s3 are alive — within limit of 2
     const { launcher, wsBridge, getSettings } = createMocks(sessions, new Set(), 2);
     const mgr = new IdleManager(launcher, wsBridge, getSettings);
@@ -108,11 +101,7 @@ describe("IdleManager", () => {
   });
 
   it("skips archived sessions when counting alive", async () => {
-    const sessions = [
-      makeSession("s1", { archived: true }),
-      makeSession("s2"),
-      makeSession("s3"),
-    ];
+    const sessions = [makeSession("s1", { archived: true }), makeSession("s2"), makeSession("s3")];
     const { launcher, wsBridge, getSettings } = createMocks(sessions, new Set(), 2);
     const mgr = new IdleManager(launcher, wsBridge, getSettings);
 
@@ -204,9 +193,7 @@ describe("IdleManager", () => {
     ];
     const { launcher, wsBridge, getSettings } = createMocks(sessions, new Set(), 2);
     // killSession returns false for s1 (simulating SDK session kill failure)
-    (wsBridge.killSession as ReturnType<typeof vi.fn>).mockImplementation(
-      (id: string) => Promise.resolve(id !== "s1"),
-    );
+    (wsBridge.killSession as ReturnType<typeof vi.fn>).mockImplementation((id: string) => Promise.resolve(id !== "s1"));
     const mgr = new IdleManager(launcher, wsBridge, getSettings);
 
     const killed = await mgr.sweep();
@@ -220,12 +207,7 @@ describe("IdleManager", () => {
 
   it("start/stop controls the interval timer", () => {
     vi.useFakeTimers();
-    const sessions = [
-      makeSession("s1"),
-      makeSession("s2"),
-      makeSession("s3"),
-      makeSession("s4"),
-    ];
+    const sessions = [makeSession("s1"), makeSession("s2"), makeSession("s3"), makeSession("s4")];
     const { launcher, wsBridge, getSettings } = createMocks(sessions, new Set(), 2);
     const mgr = new IdleManager(launcher, wsBridge, getSettings);
 

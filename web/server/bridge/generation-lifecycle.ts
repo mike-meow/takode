@@ -205,12 +205,12 @@ export function reconcileTerminalResultState<S extends GenerationLifecycleSessio
   }
 
   const hadResidualState =
-    session.generationStartedAt !== null
-    || session.stuckNotifiedAt !== null
-    || session.interruptedDuringTurn
-    || session.interruptSourceDuringTurn !== null
-    || session.compactedDuringTurn
-    || session.userMessageIdsThisTurn.length > 0;
+    session.generationStartedAt !== null ||
+    session.stuckNotifiedAt !== null ||
+    session.interruptedDuringTurn ||
+    session.interruptSourceDuringTurn !== null ||
+    session.compactedDuringTurn ||
+    session.userMessageIdsThisTurn.length > 0;
   if (!hadResidualState) {
     return { endedTurn: false, clearedResidualState: false };
   }
@@ -254,12 +254,14 @@ export function setGenerating<S extends GenerationLifecycleSession>(
     const elapsed = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
     session.generationStartedAt = null;
     session.stuckNotifiedAt = null;
-    console.log(`[ws-bridge] Generation ended for session ${sessionTag(session.id)} (${reason}, duration: ${elapsed}ms)`);
+    console.log(
+      `[ws-bridge] Generation ended for session ${sessionTag(session.id)} (${reason}, duration: ${elapsed}ms)`,
+    );
     deps.recordGenerationEnded?.(session, reason, elapsed);
 
     const toolSummary = deps.buildTurnToolSummary(session);
     const interrupted = session.interruptedDuringTurn;
-    const interruptSource = interrupted ? (session.interruptSourceDuringTurn || "system") : null;
+    const interruptSource = interrupted ? session.interruptSourceDuringTurn || "system" : null;
     const compacted = session.compactedDuringTurn;
     const turnSource = deps.getCurrentTurnTriggerSource?.(session) ?? "unknown";
     session.interruptedDuringTurn = false;

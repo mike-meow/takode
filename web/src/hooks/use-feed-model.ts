@@ -29,11 +29,7 @@ export interface SubagentBatch {
   subagents: SubagentGroup[];
 }
 
-export type FeedEntry =
-  | { kind: "message"; msg: ChatMessage }
-  | ToolMsgGroup
-  | SubagentGroup
-  | SubagentBatch;
+export type FeedEntry = { kind: "message"; msg: ChatMessage } | ToolMsgGroup | SubagentGroup | SubagentBatch;
 
 interface TaskInfo {
   description: string;
@@ -69,7 +65,10 @@ function getToolOnlyName(msg: ChatMessage): string | null {
 function extractToolItems(msg: ChatMessage): ToolItem[] {
   const blocks = msg.contentBlocks || [];
   return blocks
-    .filter((b): b is ContentBlock & { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => b.type === "tool_use")
+    .filter(
+      (b): b is ContentBlock & { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
+        b.type === "tool_use",
+    )
     .map((b) => ({ id: b.id, name: b.name, input: b.input }));
 }
 
@@ -140,9 +139,7 @@ function buildEntries(
       for (const taskId of taskIds) {
         const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
         const children = childrenByParent.get(taskId);
-        const childEntries = children && children.length > 0
-          ? buildEntries(children, taskInfo, childrenByParent)
-          : [];
+        const childEntries = children && children.length > 0 ? buildEntries(children, taskInfo, childrenByParent) : [];
         result.push({
           kind: "subagent",
           taskToolUseId: taskId,
@@ -170,9 +167,7 @@ function buildEntries(
     for (const taskId of taskIds) {
       const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
       const children = childrenByParent.get(taskId);
-      const childEntries = children && children.length > 0
-        ? buildEntries(children, taskInfo, childrenByParent)
-        : [];
+      const childEntries = children && children.length > 0 ? buildEntries(children, taskInfo, childrenByParent) : [];
       result.push({
         kind: "subagent",
         taskToolUseId: taskId,
@@ -389,7 +384,8 @@ function countEntryStats(entries: FeedEntry[]): {
  *  quest_submitted currently remains a system entry under this classifier. */
 function isSystemEntry(entry: FeedEntry): boolean {
   if (entry.kind !== "message" || entry.msg.role !== "system") return false;
-  if (entry.msg.variant === "denied" || entry.msg.variant === "approved" || entry.msg.variant === "quest_claimed") return false;
+  if (entry.msg.variant === "denied" || entry.msg.variant === "approved" || entry.msg.variant === "quest_claimed")
+    return false;
   return true;
 }
 
@@ -403,10 +399,10 @@ function getEntryId(entry: FeedEntry): string {
 
 export function isUserBoundaryEntry(entry: FeedEntry | null): boolean {
   return !!(
-    entry
-    && entry.kind === "message"
-    && entry.msg.role === "user"
-    && entry.msg.agentSource?.sessionId !== "herd-events"
+    entry &&
+    entry.kind === "message" &&
+    entry.msg.role === "user" &&
+    entry.msg.agentSource?.sessionId !== "herd-events"
   );
 }
 
@@ -440,10 +436,10 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
     if (
-      e.kind === "message"
-      && e.msg.role === "assistant"
-      && e.msg.content?.trim()
-      && (!leaderMode || e.msg.leaderUserAddressed === true)
+      e.kind === "message" &&
+      e.msg.role === "assistant" &&
+      e.msg.content?.trim() &&
+      (!leaderMode || e.msg.leaderUserAddressed === true)
     ) {
       responseEntry = e;
       agentEntries.splice(i, 1);
@@ -459,9 +455,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   let allEntries: FeedEntry[] = entries;
   if (leaderMode && responseEntry) {
     const isSelfAddressed = (e: FeedEntry) =>
-      e.kind === "message"
-      && e.msg.role === "assistant"
-      && e.msg.content?.trimEnd().endsWith("@to(self)");
+      e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trimEnd().endsWith("@to(self)");
 
     // Collect indices to splice: promote (user-facing text) or hide (@to(self))
     const toSplice: { i: number; promote: boolean }[] = [];
@@ -488,8 +482,12 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 
   // Stable ID: prefer user message ID, fall back to first agent entry ID, then synthetic
   const id = userEntry
-    ? (userEntry.kind === "message" ? userEntry.msg.id : `turn-u-${turnIndex}`)
-    : (entries.length > 0 ? `turn-a-${getEntryId(entries[0])}` : `turn-${turnIndex}`);
+    ? userEntry.kind === "message"
+      ? userEntry.msg.id
+      : `turn-u-${turnIndex}`
+    : entries.length > 0
+      ? `turn-a-${getEntryId(entries[0])}`
+      : `turn-${turnIndex}`;
 
   return {
     id,
@@ -555,11 +553,7 @@ function concatFeedModels(base: FeedModel, next: FeedModel): FeedModel {
   // last frozen turn so they appear as one continuous agent turn in the UI,
   // rather than creating a phantom turn boundary that causes incorrect collapsing.
   let mergedTurns: Turn[];
-  if (
-    next.turns.length > 0
-    && base.turns.length > 0
-    && next.turns[0].userEntry === null
-  ) {
+  if (next.turns.length > 0 && base.turns.length > 0 && next.turns[0].userEntry === null) {
     const lastBase = base.turns[base.turns.length - 1];
     const firstNext = next.turns[0];
     // Re-derive the merged turn via makeTurn so stats, response entry,
@@ -569,11 +563,7 @@ function concatFeedModels(base: FeedModel, next: FeedModel): FeedModel {
       [...lastBase.allEntries, ...firstNext.allEntries],
       base.turns.length - 1,
     );
-    mergedTurns = [
-      ...base.turns.slice(0, -1),
-      merged,
-      ...next.turns.slice(1),
-    ];
+    mergedTurns = [...base.turns.slice(0, -1), merged, ...next.turns.slice(1)];
   } else {
     mergedTurns = [...base.turns, ...next.turns];
   }
@@ -614,19 +604,19 @@ export function useFeedModel(
     let frozenModel: FeedModel;
     const cached = cacheRef.current;
     if (
-      cached
-      && cached.leaderMode === leaderMode
-      && cached.frozenCount === frozenCount
-      && cached.frozenRevision === frozenRevision
-      && haveSameMessageRefs(cached.frozenMessages, frozenMessages)
+      cached &&
+      cached.leaderMode === leaderMode &&
+      cached.frozenCount === frozenCount &&
+      cached.frozenRevision === frozenRevision &&
+      haveSameMessageRefs(cached.frozenMessages, frozenMessages)
     ) {
       frozenModel = cached.frozenModel;
     } else if (
-      cached
-      && cached.leaderMode === leaderMode
-      && cached.frozenRevision === frozenRevision
-      && frozenCount >= cached.frozenCount
-      && haveSameMessageRefs(cached.frozenMessages, frozenMessages.slice(0, cached.frozenCount))
+      cached &&
+      cached.leaderMode === leaderMode &&
+      cached.frozenRevision === frozenRevision &&
+      frozenCount >= cached.frozenCount &&
+      haveSameMessageRefs(cached.frozenMessages, frozenMessages.slice(0, cached.frozenCount))
     ) {
       const newlyFrozen = frozenMessages.slice(cached.frozenCount);
       const deltaModel = buildFeedModel(newlyFrozen, leaderMode, cached.frozenModel.turns.length);

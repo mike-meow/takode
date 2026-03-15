@@ -157,9 +157,8 @@ export function getTrafficMessageType(value: unknown): string {
     return type;
   }
   if (
-    Object.prototype.hasOwnProperty.call(record, "id")
-    && (Object.prototype.hasOwnProperty.call(record, "result")
-      || Object.prototype.hasOwnProperty.call(record, "error"))
+    Object.prototype.hasOwnProperty.call(record, "id") &&
+    (Object.prototype.hasOwnProperty.call(record, "result") || Object.prototype.hasOwnProperty.call(record, "error"))
   ) {
     return "jsonrpc_response";
   }
@@ -217,8 +216,7 @@ export class TrafficStatsCollector {
     this.historySyncBreakdownTotals.frozenDeltaMessages += frozenDeltaMessages;
     this.historySyncBreakdownTotals.hotMessagesCount += hotMessagesCount;
 
-    const sessionTotals =
-      this.historySyncBreakdownBySession.get(event.sessionId) ?? createHistorySyncBreakdownTotals();
+    const sessionTotals = this.historySyncBreakdownBySession.get(event.sessionId) ?? createHistorySyncBreakdownTotals();
     sessionTotals.requests += 1;
     sessionTotals.frozenDeltaBytes += frozenDeltaBytes;
     sessionTotals.hotMessagesBytes += hotMessagesBytes;
@@ -229,7 +227,8 @@ export class TrafficStatsCollector {
 
   recordToolResultFetch(event: ToolResultFetchRecord): void {
     const payloadBytes = Math.max(0, Math.floor(event.payloadBytes));
-    const sessionEntries = this.toolResultFetchesBySession.get(event.sessionId) ?? new Map<string, ToolResultFetchEntry>();
+    const sessionEntries =
+      this.toolResultFetchesBySession.get(event.sessionId) ?? new Map<string, ToolResultFetchEntry>();
     const existing = sessionEntries.get(event.toolUseId) ?? createToolResultFetchEntry();
 
     existing.requests += 1;

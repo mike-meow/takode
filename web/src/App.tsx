@@ -27,15 +27,19 @@ import {
 } from "./utils/vscode-context.js";
 import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
 
-type TakodeDebugWindow = Window & typeof globalThis & {
-  __TAKODE_VSCODE_CONTEXT__?: VsCodeSelectionContextPayload | null;
-  __TAKODE_SET_VSCODE_CONTEXT__?: (payload: VsCodeSelectionContextPayload | null) => void;
-  __TAKODE_CLEAR_VSCODE_CONTEXT__?: () => void;
-};
+type TakodeDebugWindow = Window &
+  typeof globalThis & {
+    __TAKODE_VSCODE_CONTEXT__?: VsCodeSelectionContextPayload | null;
+    __TAKODE_SET_VSCODE_CONTEXT__?: (payload: VsCodeSelectionContextPayload | null) => void;
+    __TAKODE_CLEAR_VSCODE_CONTEXT__?: () => void;
+  };
 
 function useHash() {
   return useSyncExternalStore(
-    (cb) => { window.addEventListener("hashchange", cb); return () => window.removeEventListener("hashchange", cb); },
+    (cb) => {
+      window.addEventListener("hashchange", cb);
+      return () => window.removeEventListener("hashchange", cb);
+    },
     () => window.location.hash,
   );
 }
@@ -74,9 +78,10 @@ export default function App() {
 
   useEffect(() => {
     const debugWindow = window as TakodeDebugWindow;
-    const selectionSourceId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? `browser:${crypto.randomUUID()}`
-      : `browser:${Date.now()}`;
+    const selectionSourceId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? `browser:${crypto.randomUUID()}`
+        : `browser:${Date.now()}`;
     const applyVsCodeContext = (context: VsCodeSelectionContextPayload | null) => {
       debugWindow.__TAKODE_VSCODE_CONTEXT__ = context;
       const updatedAt = Date.now();
@@ -84,11 +89,11 @@ export default function App() {
         type: "vscode_selection_update",
         selection: context
           ? {
-            absolutePath: context.absolutePath,
-            startLine: context.startLine,
-            endLine: context.endLine,
-            lineCount: context.lineCount,
-          }
+              absolutePath: context.absolutePath,
+              startLine: context.startLine,
+              endLine: context.endLine,
+              lineCount: context.lineCount,
+            }
           : null,
         updatedAt,
         sourceId: selectionSourceId,
@@ -247,13 +252,18 @@ export default function App() {
   }
 
   return (
-    <div className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased" style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left', width: `${100 / zoomLevel}%`, height: `${100 / zoomLevel}%` }}>
+    <div
+      className="flex font-sans-ui bg-cc-bg text-cc-fg antialiased"
+      style={{
+        transform: `scale(${zoomLevel})`,
+        transformOrigin: "top left",
+        width: `${100 / zoomLevel}%`,
+        height: `${100 / zoomLevel}%`,
+      }}
+    >
       {/* Mobile overlay backdrop */}
       {sidebarOpen && !isDesktopShell && (
-        <div
-          className="fixed inset-0 bg-black/30 z-30"
-          onClick={() => useStore.getState().setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/30 z-30" onClick={() => useStore.getState().setSidebarOpen(false)} />
       )}
 
       {/* Sidebar — overlay on mobile, inline on desktop */}
@@ -263,8 +273,12 @@ export default function App() {
           h-full shrink-0 transition-all duration-200
           ${
             isDesktopShell
-              ? (sidebarOpen ? "w-[260px] translate-x-0" : "w-0")
-              : (sidebarOpen ? "w-[80vw] translate-x-0" : "w-0 -translate-x-full")
+              ? sidebarOpen
+                ? "w-[260px] translate-x-0"
+                : "w-0"
+              : sidebarOpen
+                ? "w-[80vw] translate-x-0"
+                : "w-0 -translate-x-full"
           }
           overflow-hidden
         `}
@@ -284,9 +298,7 @@ export default function App() {
           {!serverReachable && (
             <div className="absolute top-0 left-0 right-0 z-10 px-4 py-2 bg-red-500/10 border-b border-red-500/20 backdrop-blur-sm text-center flex items-center justify-center gap-2">
               <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse shrink-0" />
-              <span className="text-xs text-red-400 font-medium">
-                Server unreachable
-              </span>
+              <span className="text-xs text-red-400 font-medium">Server unreachable</span>
             </div>
           )}
           <div className={`absolute inset-0 ${isSettingsPage ? "" : "hidden"}`}>
@@ -377,9 +389,7 @@ export default function App() {
           <div className="bg-cc-card border border-cc-border rounded-xl p-6 text-center max-w-sm">
             <div className="animate-spin w-8 h-8 border-2 border-cc-primary border-t-transparent rounded-full mx-auto mb-4" />
             <h2 className="text-sm font-semibold text-cc-fg">Server Restarting</h2>
-            <p className="mt-2 text-xs text-cc-muted">
-              Sessions will automatically reconnect when the server is back.
-            </p>
+            <p className="mt-2 text-xs text-cc-muted">Sessions will automatically reconnect when the server is back.</p>
           </div>
         </div>
       )}

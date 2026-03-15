@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { api, checkHealth, type ImportStats, type AutoApprovalConfig, type NamerConfig, type TranscriptionConfig, type EditorKind } from "../api.js";
+import {
+  api,
+  checkHealth,
+  type ImportStats,
+  type AutoApprovalConfig,
+  type NamerConfig,
+  type TranscriptionConfig,
+  type EditorKind,
+} from "../api.js";
 import { useStore, COLOR_THEMES } from "../store.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
@@ -36,8 +44,18 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [codexBin, setCodexBin] = useState("");
   const [binSaving, setBinSaving] = useState(false);
   const [binError, setBinError] = useState("");
-  const [claudeTest, setClaudeTest] = useState<{ ok: boolean; resolvedPath?: string; version?: string; error?: string } | null>(null);
-  const [codexTest, setCodexTest] = useState<{ ok: boolean; resolvedPath?: string; version?: string; error?: string } | null>(null);
+  const [claudeTest, setClaudeTest] = useState<{
+    ok: boolean;
+    resolvedPath?: string;
+    version?: string;
+    error?: string;
+  } | null>(null);
+  const [codexTest, setCodexTest] = useState<{
+    ok: boolean;
+    resolvedPath?: string;
+    version?: string;
+    error?: string;
+  } | null>(null);
   const [claudeTesting, setClaudeTesting] = useState(false);
   const [codexTesting, setCodexTesting] = useState(false);
   const [editorChoice, setEditorChoice] = useState<EditorKind>("none");
@@ -125,7 +143,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
 
   function loadAutoApprovalConfigs() {
     setAaConfigsLoading(true);
-    api.getAutoApprovalConfigs()
+    api
+      .getAutoApprovalConfigs()
       .then(setAaConfigs)
       .catch(() => {})
       .finally(() => setAaConfigsLoading(false));
@@ -149,7 +168,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setAaTimeoutSeconds(s.autoApprovalTimeoutSeconds ?? 45);
         setNamerBackend(s.namerConfig.backend);
         if (s.namerConfig.backend === "openai") {
-          setNamerApiKey(s.namerConfig.apiKey === "***" ? "***" : (s.namerConfig.apiKey || ""));
+          setNamerApiKey(s.namerConfig.apiKey === "***" ? "***" : s.namerConfig.apiKey || "");
           setNamerBaseUrl(s.namerConfig.baseUrl || "");
           setNamerModel(s.namerConfig.model || "");
         } else {
@@ -157,7 +176,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         }
         setNamerEnabled(s.autoNamerEnabled ?? true);
         if (s.transcriptionConfig) {
-          setTranscriptionApiKey(s.transcriptionConfig.apiKey === "***" ? "***" : (s.transcriptionConfig.apiKey || ""));
+          setTranscriptionApiKey(s.transcriptionConfig.apiKey === "***" ? "***" : s.transcriptionConfig.apiKey || "");
           setTranscriptionBaseUrl(s.transcriptionConfig.baseUrl || "");
           setTranscriptionModel(s.transcriptionConfig.enhancementModel || "");
           setSttModel(s.transcriptionConfig.sttModel || "gpt-4o-mini-transcribe");
@@ -180,7 +199,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
     try {
       const saved = localStorage.getItem(SCROLL_STORAGE_KEY);
       if (saved) el.scrollTop = JSON.parse(saved);
-    } catch { /* ignore corrupt data */ }
+    } catch {
+      /* ignore corrupt data */
+    }
 
     let timeout: ReturnType<typeof setTimeout>;
     const onScroll = () => {
@@ -264,7 +285,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   }
 
   async function onTestBinary(which: "claude" | "codex") {
-    const binary = which === "claude" ? (claudeBin.trim() || "claude") : (codexBin.trim() || "codex");
+    const binary = which === "claude" ? claudeBin.trim() || "claude" : codexBin.trim() || "codex";
     const setTesting = which === "claude" ? setClaudeTesting : setCodexTesting;
     const setResult = which === "claude" ? setClaudeTest : setCodexTest;
     setTesting(true);
@@ -312,7 +333,12 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   }
 
   async function onRestartServer() {
-    if (!confirm("Restart the server? All browser connections will briefly disconnect. Sessions will reconnect automatically.")) return;
+    if (
+      !confirm(
+        "Restart the server? All browser connections will briefly disconnect. Sessions will reconnect automatically.",
+      )
+    )
+      return;
 
     setRestarting(true);
     setRestartError("");
@@ -394,14 +420,15 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   }
 
   return (
-    <div ref={scrollRef} className={`${embedded ? "h-full" : "h-[100dvh]"} bg-cc-bg text-cc-fg font-sans-ui antialiased overflow-y-auto`}>
+    <div
+      ref={scrollRef}
+      className={`${embedded ? "h-full" : "h-[100dvh]"} bg-cc-bg text-cc-fg font-sans-ui antialiased overflow-y-auto`}
+    >
       <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-4">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div>
             <h1 className="text-xl font-semibold text-cc-fg">Settings</h1>
-            <p className="mt-1 text-sm text-cc-muted">
-              Configure notifications, appearance, and workspace defaults.
-            </p>
+            <p className="mt-1 text-sm text-cc-muted">Configure notifications, appearance, and workspace defaults.</p>
           </div>
           {!embedded && (
             <button
@@ -438,7 +465,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
           >
             <span>Theme</span>
-            <span className="text-xs text-cc-muted">{COLOR_THEMES.find((t) => t.id === colorTheme)?.label ?? colorTheme}</span>
+            <span className="text-xs text-cc-muted">
+              {COLOR_THEMES.find((t) => t.id === colorTheme)?.label ?? colorTheme}
+            </span>
           </button>
           <div className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg">
             <span>Zoom</span>
@@ -550,9 +579,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </div>
             {claudeTest && (
               <p className={`mt-1.5 text-xs ${claudeTest.ok ? "text-cc-success" : "text-cc-error"}`}>
-                {claudeTest.ok
-                  ? `${claudeTest.resolvedPath} — ${claudeTest.version}`
-                  : claudeTest.error}
+                {claudeTest.ok ? `${claudeTest.resolvedPath} — ${claudeTest.version}` : claudeTest.error}
               </p>
             )}
           </div>
@@ -589,9 +616,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </div>
             {codexTest && (
               <p className={`mt-1.5 text-xs ${codexTest.ok ? "text-cc-success" : "text-cc-error"}`}>
-                {codexTest.ok
-                  ? `${codexTest.resolvedPath} — ${codexTest.version}`
-                  : codexTest.error}
+                {codexTest.ok ? `${codexTest.resolvedPath} — ${codexTest.version}` : codexTest.error}
               </p>
             )}
           </div>
@@ -612,7 +637,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               <option value="none">None</option>
             </select>
             <p className="mt-1.5 text-xs text-cc-muted">
-              Used for clickable <code className="font-mono">file:</code> links in chat messages. Choose remote to open files through the Takode server's VSCode extension on that machine.
+              Used for clickable <code className="font-mono">file:</code> links in chat messages. Choose remote to open
+              files through the Takode server's VSCode extension on that machine.
             </p>
           </div>
 
@@ -627,9 +653,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </div>
           )}
 
-          {(binSaving || editorSaving) && (
-            <p className="text-xs text-cc-muted">Saving...</p>
-          )}
+          {(binSaving || editorSaving) && <p className="text-xs text-cc-muted">Saving...</p>}
 
           <button
             type="button"
@@ -664,8 +688,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                 className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
               />
               <p className="mt-1.5 text-xs text-cc-muted">
-                Maximum number of live CLI processes. Set to 0 for unlimited.
-                Oldest idle sessions are killed first. Busy sessions are never killed.
+                Maximum number of live CLI processes. Set to 0 for unlimited. Oldest idle sessions are killed first.
+                Busy sessions are never killed.
               </p>
             </div>
 
@@ -675,9 +699,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               </div>
             )}
 
-            {lifecycleSaving && (
-              <p className="text-xs text-cc-muted">Saving...</p>
-            )}
+            {lifecycleSaving && <p className="text-xs text-cc-muted">Saving...</p>}
           </div>
 
           {/* Session Data — export/import */}
@@ -685,8 +707,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             <div>
               <span className="text-sm font-medium text-cc-fg">Session Data</span>
               <p className="mt-1 text-xs text-cc-muted">
-                Export all sessions to a portable archive, or import sessions from another machine.
-                Paths are automatically rewritten to match this machine.
+                Export all sessions to a portable archive, or import sessions from another machine. Paths are
+                automatically rewritten to match this machine.
               </p>
             </div>
 
@@ -754,10 +776,16 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success space-y-0.5">
                 <div className="font-medium">Import complete</div>
                 {importResult.sessionsNew > 0 && <div>{importResult.sessionsNew} new sessions imported</div>}
-                {importResult.sessionsUpdated > 0 && <div>{importResult.sessionsUpdated} updated (archive was newer)</div>}
-                {importResult.sessionsSkipped > 0 && <div>{importResult.sessionsSkipped} skipped (local was newer)</div>}
+                {importResult.sessionsUpdated > 0 && (
+                  <div>{importResult.sessionsUpdated} updated (archive was newer)</div>
+                )}
+                {importResult.sessionsSkipped > 0 && (
+                  <div>{importResult.sessionsSkipped} skipped (local was newer)</div>
+                )}
                 {importResult.claudeSessionsRestored > 0 && (
-                  <div>{importResult.claudeSessionsRestored} Claude Code sessions restored (conversation context preserved)</div>
+                  <div>
+                    {importResult.claudeSessionsRestored} Claude Code sessions restored (conversation context preserved)
+                  </div>
                 )}
                 {importResult.worktreeSessionsNeedingRecreation > 0 && (
                   <div>{importResult.worktreeSessionsNeedingRecreation} worktree sessions will recreate on open</div>
@@ -834,9 +862,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               onChange={(e) => setPoDelay(Number(e.target.value) || 30)}
               className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
             />
-            <p className="mt-1.5 text-xs text-cc-muted">
-              Wait this long before sending a push notification (5-300s).
-            </p>
+            <p className="mt-1.5 text-xs text-cc-muted">Wait this long before sending a push notification (5-300s).</p>
           </div>
 
           <button
@@ -861,11 +887,13 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           )}
 
           {poTestResult && (
-            <div className={`px-3 py-2 rounded-lg text-xs ${
-              poTestResult.ok
-                ? "bg-cc-success/10 border border-cc-success/20 text-cc-success"
-                : "bg-cc-error/10 border border-cc-error/20 text-cc-error"
-            }`}>
+            <div
+              className={`px-3 py-2 rounded-lg text-xs ${
+                poTestResult.ok
+                  ? "bg-cc-success/10 border border-cc-success/20 text-cc-success"
+                  : "bg-cc-error/10 border border-cc-error/20 text-cc-error"
+              }`}
+            >
               {poTestResult.ok ? "Test notification sent!" : `Test failed: ${poTestResult.error}`}
             </div>
           )}
@@ -1045,11 +1073,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             )}
 
             {aaConfigs.map((config) => (
-              <AutoApprovalConfigCard
-                key={config.slug}
-                config={config}
-                onUpdate={loadAutoApprovalConfigs}
-              />
+              <AutoApprovalConfigCard key={config.slug} config={config} onUpdate={loadAutoApprovalConfigs} />
             ))}
 
             {/* Add new config form */}
@@ -1060,7 +1084,10 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               <div className="space-y-1">
                 {aaNewProjectPaths.map((p, i) => (
                   <div key={i} className="flex items-center gap-1">
-                    <span className="flex-1 px-2 py-1 text-[10px] font-mono-code bg-cc-hover rounded truncate" title={p}>
+                    <span
+                      className="flex-1 px-2 py-1 text-[10px] font-mono-code bg-cc-hover rounded truncate"
+                      title={p}
+                    >
                       {p}
                     </span>
                     <button
@@ -1089,9 +1116,11 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                         }
                       }
                     }}
-                    placeholder={aaNewProjectPaths.length === 0
-                      ? "Project path (e.g. /home/user/my-project)"
-                      : "Add another project path..."}
+                    placeholder={
+                      aaNewProjectPaths.length === 0
+                        ? "Project path (e.g. /home/user/my-project)"
+                        : "Add another project path..."
+                    }
                     className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
                   />
                   <button
@@ -1229,7 +1258,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </select>
           </div>
 
-          {(namerBackend === "claude") && (
+          {namerBackend === "claude" && (
             <div className="space-y-3 pl-3 border-l-2 border-cc-border">
               <div>
                 <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-claude-model">
@@ -1244,13 +1273,14 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                   className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
                 />
                 <p className="mt-1 text-xs text-cc-muted">
-                  Claude CLI model name passed to <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">--model</code>. Defaults to haiku.
+                  Claude CLI model name passed to{" "}
+                  <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">--model</code>. Defaults to haiku.
                 </p>
               </div>
             </div>
           )}
 
-          {(namerBackend === "openai") && (
+          {namerBackend === "openai" && (
             <div className="space-y-3 pl-3 border-l-2 border-cc-border">
               <div>
                 <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="namer-api-key">
@@ -1261,7 +1291,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                   type="password"
                   value={namerApiKey}
                   onChange={(e) => setNamerApiKey(e.target.value)}
-                  onFocus={() => { if (namerApiKey === "***") setNamerApiKey(""); }}
+                  onFocus={() => {
+                    if (namerApiKey === "***") setNamerApiKey("");
+                  }}
                   placeholder="sk-..."
                   className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
                 />
@@ -1367,7 +1399,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                 type="password"
                 value={transcriptionApiKey}
                 onChange={(e) => setTranscriptionApiKey(e.target.value)}
-                onFocus={() => { if (transcriptionApiKey === "***") setTranscriptionApiKey(""); }}
+                onFocus={() => {
+                  if (transcriptionApiKey === "***") setTranscriptionApiKey("");
+                }}
                 placeholder="sk-..."
                 className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
               />
@@ -1427,9 +1461,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             </label>
             {transcriptionEnhancement && (
               <div>
-                <label className="block text-xs font-medium text-cc-muted mb-1.5">
-                  Enhancement Style
-                </label>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5">Enhancement Style</label>
                 <div className="flex rounded-lg border border-cc-border overflow-hidden">
                   <button
                     type="button"
@@ -1532,13 +1564,14 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         <CollapsibleSection id="server" title="Server & Diagnostics">
           <div className="space-y-3">
             <p className="text-xs text-cc-muted">
-              Restart the server process. Useful after pulling new code.
-              Sessions will reconnect automatically.
+              Restart the server process. Useful after pulling new code. Sessions will reconnect automatically.
             </p>
 
             {!restartSupported && (
               <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
-                Restart not available. Start the server with <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make dev</code> or <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make serve</code> to enable.
+                Restart not available. Start the server with{" "}
+                <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make dev</code> or{" "}
+                <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make serve</code> to enable.
               </div>
             )}
 
@@ -1569,17 +1602,13 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
 
 // ── AutoApprovalConfigCard — card summary + modal editor for one project config ──
 
-function AutoApprovalConfigCard({
-  config,
-  onUpdate,
-}: {
-  config: AutoApprovalConfig;
-  onUpdate: () => void;
-}) {
+function AutoApprovalConfigCard({ config, onUpdate }: { config: AutoApprovalConfig; onUpdate: () => void }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [criteria, setCriteria] = useState(config.criteria);
   const [label, setLabel] = useState(config.label);
-  const [paths, setPaths] = useState<string[]>(config.projectPaths?.length ? config.projectPaths : [config.projectPath]);
+  const [paths, setPaths] = useState<string[]>(
+    config.projectPaths?.length ? config.projectPaths : [config.projectPath],
+  );
   const [enabled, setEnabled] = useState(config.enabled);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1588,9 +1617,8 @@ function AutoApprovalConfigCard({
   const [newPath, setNewPath] = useState("");
   const [showPathPicker, setShowPathPicker] = useState(false);
   const allPaths = config.projectPaths?.length ? config.projectPaths : [config.projectPath];
-  const criteriaPreview = config.criteria.length > 240
-    ? `${config.criteria.slice(0, 240).trimEnd()}...`
-    : config.criteria;
+  const criteriaPreview =
+    config.criteria.length > 240 ? `${config.criteria.slice(0, 240).trimEnd()}...` : config.criteria;
 
   useEffect(() => {
     setEnabled(config.enabled);
@@ -1793,7 +1821,10 @@ function AutoApprovalConfigCard({
                 <span className="text-xs text-cc-muted">Project Paths</span>
                 {paths.map((p, i) => (
                   <div key={i} className="flex items-center gap-1.5">
-                    <span className="flex-1 px-2.5 py-1.5 text-xs font-mono-code bg-cc-hover rounded truncate" title={p}>
+                    <span
+                      className="flex-1 px-2.5 py-1.5 text-xs font-mono-code bg-cc-hover rounded truncate"
+                      title={p}
+                    >
                       {p}
                     </span>
                     <button

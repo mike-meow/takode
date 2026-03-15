@@ -25,9 +25,7 @@ const MIME_TO_EXT: Record<string, string> = {
 };
 
 /** Formats supported by Claude/Codex vision APIs. */
-const API_SUPPORTED_FORMATS = new Set([
-  "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"
-]);
+const API_SUPPORTED_FORMATS = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]);
 
 const DEFAULT_BASE_DIR = join(homedir(), ".companion", "images");
 
@@ -141,7 +139,11 @@ export class ImageStore {
    * SDK sessions can handle larger payloads (~1MB) through stdio.
    * Images below the threshold are returned unchanged.
    */
-  async compressForTransport(base64Data: string, mediaType: string, maxBase64Chars = TRANSPORT_MAX_BASE64_CHARS): Promise<{ base64: string; mediaType: string }> {
+  async compressForTransport(
+    base64Data: string,
+    mediaType: string,
+    maxBase64Chars = TRANSPORT_MAX_BASE64_CHARS,
+  ): Promise<{ base64: string; mediaType: string }> {
     if (base64Data.length <= maxBase64Chars) {
       return { base64: base64Data, mediaType };
     }

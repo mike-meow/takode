@@ -33,43 +33,55 @@ function makeGraphQLResponse(prOverrides?: Record<string, unknown>) {
     data: {
       repository: {
         pullRequests: {
-          nodes: prOverrides === null ? [] : [{
-            number: 162,
-            title: "feat: add dark mode toggle",
-            url: "https://github.com/org/repo/pull/162",
-            state: "OPEN",
-            isDraft: false,
-            isCrossRepository: false,
-            reviewDecision: "CHANGES_REQUESTED",
-            additions: 91,
-            deletions: 88,
-            changedFiles: 24,
-            reviewThreads: {
-              totalCount: 4,
-              nodes: [
-                { isResolved: true },
-                { isResolved: true },
-                { isResolved: false },
-                { isResolved: false },
-              ],
-            },
-            commits: {
-              nodes: [{
-                commit: {
-                  statusCheckRollup: {
-                    contexts: {
+          nodes:
+            prOverrides === null
+              ? []
+              : [
+                  {
+                    number: 162,
+                    title: "feat: add dark mode toggle",
+                    url: "https://github.com/org/repo/pull/162",
+                    state: "OPEN",
+                    isDraft: false,
+                    isCrossRepository: false,
+                    reviewDecision: "CHANGES_REQUESTED",
+                    additions: 91,
+                    deletions: 88,
+                    changedFiles: 24,
+                    reviewThreads: {
+                      totalCount: 4,
+                      nodes: [{ isResolved: true }, { isResolved: true }, { isResolved: false }, { isResolved: false }],
+                    },
+                    commits: {
                       nodes: [
-                        { __typename: "CheckRun", name: "CI / Build", status: "COMPLETED", conclusion: "SUCCESS" },
-                        { __typename: "CheckRun", name: "CI / Test", status: "COMPLETED", conclusion: "FAILURE" },
-                        { __typename: "StatusContext", context: "deploy/preview", state: "SUCCESS" },
+                        {
+                          commit: {
+                            statusCheckRollup: {
+                              contexts: {
+                                nodes: [
+                                  {
+                                    __typename: "CheckRun",
+                                    name: "CI / Build",
+                                    status: "COMPLETED",
+                                    conclusion: "SUCCESS",
+                                  },
+                                  {
+                                    __typename: "CheckRun",
+                                    name: "CI / Test",
+                                    status: "COMPLETED",
+                                    conclusion: "FAILURE",
+                                  },
+                                  { __typename: "StatusContext", context: "deploy/preview", state: "SUCCESS" },
+                                ],
+                              },
+                            },
+                          },
+                        },
                       ],
                     },
+                    ...prOverrides,
                   },
-                },
-              }],
-            },
-            ...prOverrides,
-          }],
+                ],
         },
       },
     },
@@ -122,8 +134,8 @@ describe("parseGraphQLResponse", () => {
     const result = mod.parseGraphQLResponse(makeGraphQLResponse())!;
     expect(result.checksSummary).toEqual({
       total: 3,
-      success: 2,  // CI/Build SUCCESS + deploy/preview SUCCESS
-      failure: 1,  // CI/Test FAILURE
+      success: 2, // CI/Build SUCCESS + deploy/preview SUCCESS
+      failure: 1, // CI/Test FAILURE
       pending: 0,
     });
   });
@@ -160,36 +172,42 @@ describe("parseGraphQLResponse", () => {
   });
 
   it("handles PR with no checks (statusCheckRollup null)", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
-    }))!;
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
+      }),
+    )!;
     expect(result.checks).toEqual([]);
     expect(result.checksSummary).toEqual({ total: 0, success: 0, failure: 0, pending: 0 });
   });
 
   it("handles PR with no review threads", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      reviewThreads: { totalCount: 0, nodes: [] },
-    }))!;
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        reviewThreads: { totalCount: 0, nodes: [] },
+      }),
+    )!;
     expect(result.reviewThreads).toEqual({ total: 0, resolved: 0, unresolved: 0 });
   });
 
   it("handles pending StatusContext (PENDING state)", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      commits: {
-        nodes: [{
-          commit: {
-            statusCheckRollup: {
-              contexts: {
-                nodes: [
-                  { __typename: "StatusContext", context: "ci/deploy", state: "PENDING" },
-                ],
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [{ __typename: "StatusContext", context: "ci/deploy", state: "PENDING" }],
+                  },
+                },
               },
             },
-          },
-        }],
-      },
-    }))!;
+          ],
+        },
+      }),
+    )!;
     expect(result.checks[0]).toEqual({
       name: "ci/deploy",
       status: "IN_PROGRESS",
@@ -199,42 +217,48 @@ describe("parseGraphQLResponse", () => {
   });
 
   it("counts NEUTRAL and SKIPPED as success", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      commits: {
-        nodes: [{
-          commit: {
-            statusCheckRollup: {
-              contexts: {
-                nodes: [
-                  { __typename: "CheckRun", name: "optional", status: "COMPLETED", conclusion: "NEUTRAL" },
-                  { __typename: "CheckRun", name: "skipped", status: "COMPLETED", conclusion: "SKIPPED" },
-                ],
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [
+                      { __typename: "CheckRun", name: "optional", status: "COMPLETED", conclusion: "NEUTRAL" },
+                      { __typename: "CheckRun", name: "skipped", status: "COMPLETED", conclusion: "SKIPPED" },
+                    ],
+                  },
+                },
               },
             },
-          },
-        }],
-      },
-    }))!;
+          ],
+        },
+      }),
+    )!;
     expect(result.checksSummary.success).toBe(2);
     expect(result.checksSummary.failure).toBe(0);
   });
 
   it("treats StatusContext ERROR state as failure", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      commits: {
-        nodes: [{
-          commit: {
-            statusCheckRollup: {
-              contexts: {
-                nodes: [
-                  { __typename: "StatusContext", context: "ci/build", state: "ERROR" },
-                ],
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [{ __typename: "StatusContext", context: "ci/build", state: "ERROR" }],
+                  },
+                },
               },
             },
-          },
-        }],
-      },
-    }))!;
+          ],
+        },
+      }),
+    )!;
     expect(result.checks[0]).toEqual({
       name: "ci/build",
       status: "COMPLETED",
@@ -245,22 +269,26 @@ describe("parseGraphQLResponse", () => {
   });
 
   it("counts CANCELLED and TIMED_OUT as failure", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      commits: {
-        nodes: [{
-          commit: {
-            statusCheckRollup: {
-              contexts: {
-                nodes: [
-                  { __typename: "CheckRun", name: "cancelled", status: "COMPLETED", conclusion: "CANCELLED" },
-                  { __typename: "CheckRun", name: "timeout", status: "COMPLETED", conclusion: "TIMED_OUT" },
-                ],
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [
+                      { __typename: "CheckRun", name: "cancelled", status: "COMPLETED", conclusion: "CANCELLED" },
+                      { __typename: "CheckRun", name: "timeout", status: "COMPLETED", conclusion: "TIMED_OUT" },
+                    ],
+                  },
+                },
               },
             },
-          },
-        }],
-      },
-    }))!;
+          ],
+        },
+      }),
+    )!;
     expect(result.checksSummary.failure).toBe(2);
   });
 
@@ -287,10 +315,12 @@ describe("parseGraphQLResponse", () => {
   });
 
   it("parses a merged PR correctly", () => {
-    const result = mod.parseGraphQLResponse(makeGraphQLResponse({
-      state: "MERGED",
-      reviewDecision: "APPROVED",
-    }))!;
+    const result = mod.parseGraphQLResponse(
+      makeGraphQLResponse({
+        state: "MERGED",
+        reviewDecision: "APPROVED",
+      }),
+    )!;
     expect(result).not.toBeNull();
     expect(result.state).toBe("MERGED");
     expect(result.reviewDecision).toBe("APPROVED");
@@ -319,9 +349,7 @@ describe("parseGraphQLResponse", () => {
       data: {
         repository: {
           pullRequests: {
-            nodes: [
-              { ...makeGraphQLResponse().data.repository.pullRequests.nodes[0], isCrossRepository: true },
-            ],
+            nodes: [{ ...makeGraphQLResponse().data.repository.pullRequests.nodes[0], isCrossRepository: true }],
           },
         },
       },
@@ -347,10 +375,9 @@ describe("fetchPRInfo", () => {
   it("returns parsed PR info on success", async () => {
     // which gh + gh repo view use execSync; gh api graphql uses execFileSync
     mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")       // which gh
+      .mockReturnValueOnce("/opt/homebrew/bin/gh") // which gh
       .mockReturnValueOnce("The-Vibe-Company/companion"); // gh repo view
-    mockExecFileSync
-      .mockReturnValueOnce(JSON.stringify(makeGraphQLResponse())); // gh api graphql
+    mockExecFileSync.mockReturnValueOnce(JSON.stringify(makeGraphQLResponse())); // gh api graphql
 
     const result = await mod.fetchPRInfo("/project", "feat/dark-mode");
     expect(result).not.toBeNull();
@@ -360,8 +387,10 @@ describe("fetchPRInfo", () => {
 
   it("returns null when repo slug cannot be resolved", async () => {
     mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")  // which gh
-      .mockImplementationOnce(() => { throw new Error("not a gh repo"); }); // gh repo view
+      .mockReturnValueOnce("/opt/homebrew/bin/gh") // which gh
+      .mockImplementationOnce(() => {
+        throw new Error("not a gh repo");
+      }); // gh repo view
 
     const result = await mod.fetchPRInfo("/not-a-repo", "main");
     expect(result).toBeNull();
@@ -369,10 +398,11 @@ describe("fetchPRInfo", () => {
 
   it("returns null when graphql query fails", async () => {
     mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")       // which gh
-      .mockReturnValueOnce("owner/repo");                // gh repo view
-    mockExecFileSync
-      .mockImplementationOnce(() => { throw new Error("timeout"); }); // gh api graphql
+      .mockReturnValueOnce("/opt/homebrew/bin/gh") // which gh
+      .mockReturnValueOnce("owner/repo"); // gh repo view
+    mockExecFileSync.mockImplementationOnce(() => {
+      throw new Error("timeout");
+    }); // gh api graphql
 
     const result = await mod.fetchPRInfo("/project", "main");
     expect(result).toBeNull();
@@ -380,22 +410,16 @@ describe("fetchPRInfo", () => {
 
   it("returns null when no PR exists for branch", async () => {
     const emptyResponse = { data: { repository: { pullRequests: { nodes: [] } } } };
-    mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")
-      .mockReturnValueOnce("owner/repo");
-    mockExecFileSync
-      .mockReturnValueOnce(JSON.stringify(emptyResponse));
+    mockExecSync.mockReturnValueOnce("/opt/homebrew/bin/gh").mockReturnValueOnce("owner/repo");
+    mockExecFileSync.mockReturnValueOnce(JSON.stringify(emptyResponse));
 
     const result = await mod.fetchPRInfo("/project", "no-pr-branch");
     expect(result).toBeNull();
   });
 
   it("caches results within TTL", async () => {
-    mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")
-      .mockReturnValueOnce("owner/repo");
-    mockExecFileSync
-      .mockReturnValueOnce(JSON.stringify(makeGraphQLResponse()));
+    mockExecSync.mockReturnValueOnce("/opt/homebrew/bin/gh").mockReturnValueOnce("owner/repo");
+    mockExecFileSync.mockReturnValueOnce(JSON.stringify(makeGraphQLResponse()));
 
     const first = await mod.fetchPRInfo("/project", "feat/cached");
     const second = await mod.fetchPRInfo("/project", "feat/cached");
@@ -407,11 +431,8 @@ describe("fetchPRInfo", () => {
   });
 
   it("returns null for malformed JSON response", async () => {
-    mockExecSync
-      .mockReturnValueOnce("/opt/homebrew/bin/gh")
-      .mockReturnValueOnce("owner/repo");
-    mockExecFileSync
-      .mockReturnValueOnce("NOT VALID JSON{{{");
+    mockExecSync.mockReturnValueOnce("/opt/homebrew/bin/gh").mockReturnValueOnce("owner/repo");
+    mockExecFileSync.mockReturnValueOnce("NOT VALID JSON{{{");
 
     const result = await mod.fetchPRInfo("/project", "main");
     expect(result).toBeNull();
@@ -453,46 +474,74 @@ describe("computeAdaptiveTTL", () => {
   });
 
   it("returns 10s for CI pending", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      checksSummary: { total: 3, success: 1, failure: 0, pending: 2 },
-    }))).toBe(10_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          checksSummary: { total: 3, success: 1, failure: 0, pending: 2 },
+        }),
+      ),
+    ).toBe(10_000);
   });
 
   it("returns 30s for CI failed", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      checksSummary: { total: 3, success: 2, failure: 1, pending: 0 },
-    }))).toBe(30_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          checksSummary: { total: 3, success: 2, failure: 1, pending: 0 },
+        }),
+      ),
+    ).toBe(30_000);
   });
 
   it("returns 30s for changes requested", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      reviewDecision: "CHANGES_REQUESTED",
-    }))).toBe(30_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          reviewDecision: "CHANGES_REQUESTED",
+        }),
+      ),
+    ).toBe(30_000);
   });
 
   it("returns 120s for approved with no pending checks", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      reviewDecision: "APPROVED",
-      checksSummary: { total: 2, success: 2, failure: 0, pending: 0 },
-    }))).toBe(120_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          reviewDecision: "APPROVED",
+          checksSummary: { total: 2, success: 2, failure: 0, pending: 0 },
+        }),
+      ),
+    ).toBe(120_000);
   });
 
   it("returns 45s for review required", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      reviewDecision: "REVIEW_REQUIRED",
-    }))).toBe(45_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          reviewDecision: "REVIEW_REQUIRED",
+        }),
+      ),
+    ).toBe(45_000);
   });
 
   it("returns 45s for null reviewDecision (open PR)", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      reviewDecision: null,
-    }))).toBe(45_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          reviewDecision: null,
+        }),
+      ),
+    ).toBe(45_000);
   });
 
   it("pending checks take priority over review state", () => {
-    expect(mod.computeAdaptiveTTL(makePR({
-      reviewDecision: "CHANGES_REQUESTED",
-      checksSummary: { total: 3, success: 1, failure: 0, pending: 2 },
-    }))).toBe(10_000);
+    expect(
+      mod.computeAdaptiveTTL(
+        makePR({
+          reviewDecision: "CHANGES_REQUESTED",
+          checksSummary: { total: 3, success: 1, failure: 0, pending: 2 },
+        }),
+      ),
+    ).toBe(10_000);
   });
 });

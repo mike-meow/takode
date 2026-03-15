@@ -17,9 +17,9 @@ export interface ModeOption {
 // ─── Icon assignment for dynamically fetched models ──────────────────────────
 
 const MODEL_ICONS: Record<string, string> = {
-  "codex": "\u2733",    // ✳ for codex-optimized models
-  "max": "\u25A0",      // ■ for max/flagship
-  "mini": "\u26A1",     // ⚡ for mini/fast
+  codex: "\u2733", // ✳ for codex-optimized models
+  max: "\u25A0", // ■ for max/flagship
+  mini: "\u26A1", // ⚡ for mini/fast
 };
 
 function pickIcon(slug: string, index: number): string {
@@ -49,9 +49,7 @@ export const CLAUDE_MODELS: ModelOption[] = [
   { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 [200K]", icon: "\u26A1" },
 ];
 
-export const CODEX_MODELS: ModelOption[] = [
-  { value: "gpt-5.4", label: "GPT-5.4", icon: "\u2733" },
-];
+export const CODEX_MODELS: ModelOption[] = [{ value: "gpt-5.4", label: "GPT-5.4", icon: "\u2733" }];
 
 export const CLAUDE_MODES: ModeOption[] = [
   { value: "agent", label: "Agent" },
@@ -75,18 +73,24 @@ export const CODEX_REASONING_EFFORTS: ModeOption[] = [
 export function getModelsForBackend(backend: BackendType): ModelOption[] {
   switch (backend) {
     case "claude":
-    case "claude-sdk":  return CLAUDE_MODELS;
-    case "codex":       return CODEX_MODELS;
-    default:            return assertNever(backend);
+    case "claude-sdk":
+      return CLAUDE_MODELS;
+    case "codex":
+      return CODEX_MODELS;
+    default:
+      return assertNever(backend);
   }
 }
 
 export function getModesForBackend(backend: BackendType): ModeOption[] {
   switch (backend) {
     case "claude":
-    case "claude-sdk":  return CLAUDE_MODES;
-    case "codex":       return CODEX_MODES;
-    default:            return assertNever(backend);
+    case "claude-sdk":
+      return CLAUDE_MODES;
+    case "codex":
+      return CODEX_MODES;
+    default:
+      return assertNever(backend);
   }
 }
 
@@ -97,9 +101,12 @@ export function getDefaultModel(backend: BackendType): string {
 export function getDefaultMode(backend: BackendType): string {
   switch (backend) {
     case "claude":
-    case "claude-sdk":  return CLAUDE_MODES[0].value;
-    case "codex":       return CODEX_MODES[0].value;
-    default:            return assertNever(backend);
+    case "claude-sdk":
+      return CLAUDE_MODES[0].value;
+    case "codex":
+      return CODEX_MODES[0].value;
+    default:
+      return assertNever(backend);
   }
 }
 

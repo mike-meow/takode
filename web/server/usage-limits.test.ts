@@ -63,14 +63,14 @@ function makeFetchResponse(body: object, ok = true) {
 
 function withExecFileSuccess(stdout: string): void {
   mockExecFile.mockImplementation((...args: unknown[]) => {
-    const cb = args[args.length - 1] as ((err: Error | null, stdout: string, stderr: string) => void);
+    const cb = args[args.length - 1] as (err: Error | null, stdout: string, stderr: string) => void;
     cb(null, stdout, "");
   });
 }
 
 function withExecFileError(message: string): void {
   mockExecFile.mockImplementation((...args: unknown[]) => {
-    const cb = args[args.length - 1] as ((err: Error) => void);
+    const cb = args[args.length - 1] as (err: Error) => void;
     cb(new Error(message));
   });
 }
@@ -138,10 +138,7 @@ describe("getCredentials (Windows)", () => {
   it("reads token from credentials file on Windows", async () => {
     const claudeDir = join(tempDir, ".claude");
     mkdirSync(claudeDir, { recursive: true });
-    writeFileSync(
-      join(claudeDir, ".credentials.json"),
-      makeCredentialsJson(SAMPLE_TOKEN),
-    );
+    writeFileSync(join(claudeDir, ".credentials.json"), makeCredentialsJson(SAMPLE_TOKEN));
     process.env.USERPROFILE = tempDir;
 
     // Re-import to pick up the mocked platform
@@ -212,9 +209,7 @@ describe("fetchUsageLimits", () => {
   });
 
   it("normalizes missing fields to null", async () => {
-    mockFetch.mockReturnValue(
-      makeFetchResponse({ five_hour: { utilization: 10, resets_at: null } }),
-    );
+    mockFetch.mockReturnValue(makeFetchResponse({ five_hour: { utilization: 10, resets_at: null } }));
     const result = await mod.fetchUsageLimits(SAMPLE_TOKEN);
     expect(result).toEqual({
       five_hour: { utilization: 10, resets_at: null },

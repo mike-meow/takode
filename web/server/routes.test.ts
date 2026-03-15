@@ -28,7 +28,7 @@ vi.mock("node:child_process", () => {
 
 const mockResolveBinary = vi.hoisted(() => vi.fn((_name: string) => null as string | null));
 const mockExpandTilde = vi.hoisted(() => vi.fn((p: string) => p)); // pass-through by default
-const mockCaptureUserShellEnv = vi.hoisted(() => vi.fn((_varNames: string[]) => ({} as Record<string, string>)));
+const mockCaptureUserShellEnv = vi.hoisted(() => vi.fn((_varNames: string[]) => ({}) as Record<string, string>));
 vi.mock("./path-resolver.js", () => ({
   resolveBinary: mockResolveBinary,
   expandTilde: mockExpandTilde,
@@ -100,15 +100,27 @@ vi.mock("./settings-manager.js", () => ({
   getSettings: vi.fn(() => ({
     serverName: "",
     serverId: "",
-    pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-    claudeBinary: "", codexBinary: "",
+    pushoverUserKey: "",
+    pushoverApiToken: "",
+    pushoverDelaySeconds: 30,
+    pushoverEnabled: true,
+    pushoverBaseUrl: "",
+    claudeBinary: "",
+    codexBinary: "",
     maxKeepAlive: 0,
-    autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+    autoApprovalEnabled: false,
+    autoApprovalModel: "haiku",
+    autoApprovalMaxConcurrency: 4,
+    autoApprovalTimeoutSeconds: 45,
     namerConfig: { backend: "claude" },
     autoNamerEnabled: true,
-    transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
-      editorConfig: { editor: "none" },
+    transcriptionConfig: {
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: true,
+      enhancementModel: "gpt-5-mini",
+    },
+    editorConfig: { editor: "none" },
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -128,7 +140,12 @@ vi.mock("./settings-manager.js", () => ({
     autoApprovalTimeoutSeconds: patch.autoApprovalTimeoutSeconds ?? 45,
     namerConfig: patch.namerConfig ?? { backend: "claude" },
     autoNamerEnabled: patch.autoNamerEnabled ?? true,
-    transcriptionConfig: patch.transcriptionConfig ?? { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+    transcriptionConfig: patch.transcriptionConfig ?? {
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      enhancementEnabled: true,
+      enhancementModel: "gpt-5-mini",
+    },
     editorConfig: patch.editorConfig ?? { editor: "none" },
     updatedAt: Date.now(),
   })),
@@ -213,19 +230,23 @@ function createMockBridge() {
     broadcastToSession: vi.fn(),
     broadcastGlobal: vi.fn(),
     broadcastNameUpdate: vi.fn(),
-    getVsCodeSelectionState: vi.fn(function (this: any) { return this._vscodeSelectionState; }),
-    updateVsCodeSelectionState: vi.fn(function (this: any, state: any) { this._vscodeSelectionState = state; return true; }),
-    getVsCodeWindowStates: vi.fn(function (this: any) { return this._vscodeWindows; }),
+    getVsCodeSelectionState: vi.fn(function (this: any) {
+      return this._vscodeSelectionState;
+    }),
+    updateVsCodeSelectionState: vi.fn(function (this: any, state: any) {
+      this._vscodeSelectionState = state;
+      return true;
+    }),
+    getVsCodeWindowStates: vi.fn(function (this: any) {
+      return this._vscodeWindows;
+    }),
     upsertVsCodeWindowState: vi.fn(function (this: any, state: any) {
       const next = {
         ...state,
         workspaceRoots: [...(state.workspaceRoots ?? [])],
         lastSeenAt: 9999,
       };
-      this._vscodeWindows = [
-        ...this._vscodeWindows.filter((window: any) => window.sourceId !== state.sourceId),
-        next,
-      ];
+      this._vscodeWindows = [...this._vscodeWindows.filter((window: any) => window.sourceId !== state.sourceId), next];
       return next;
     }),
     pollVsCodeOpenFileCommands: vi.fn(() => []),
@@ -318,7 +339,10 @@ beforeEach(() => {
   _resetModelCache();
   // Stub global fetch to prevent LiteLLM proxy calls in tests.
   // Model endpoint tests exercise the fallback path (models_cache.json).
-  vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("no proxy in tests"))));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.reject(new Error("no proxy in tests"))),
+  );
   launcher = createMockLauncher();
   bridge = createMockBridge();
   sessionStore = createMockStore();
@@ -788,10 +812,7 @@ describe("POST /api/sessions/create", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(buildSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dockerfile.companion-dev"),
-      "companion-dev:latest",
-    );
+    expect(buildSpy).toHaveBeenCalledWith(expect.stringContaining("Dockerfile.companion-dev"), "companion-dev:latest");
     expect(launcher.launch).toHaveBeenCalled();
   });
 
@@ -818,7 +839,8 @@ describe("POST /api/sessions/create", () => {
       state: "running",
     });
     vi.spyOn(containerManager, "retrack").mockImplementation(() => {});
-    const execAsyncSpy = vi.spyOn(containerManager, "execInContainerAsync")
+    const execAsyncSpy = vi
+      .spyOn(containerManager, "execInContainerAsync")
       .mockResolvedValueOnce({ exitCode: 0, output: "installed!" });
 
     const res = await app.request("/api/sessions/create", {
@@ -860,8 +882,10 @@ describe("POST /api/sessions/create", () => {
       state: "running",
     });
     const removeSpy = vi.spyOn(containerManager, "removeContainer").mockImplementation(() => {});
-    vi.spyOn(containerManager, "execInContainerAsync")
-      .mockResolvedValueOnce({ exitCode: 1, output: "npm ERR! missing script" });
+    vi.spyOn(containerManager, "execInContainerAsync").mockResolvedValueOnce({
+      exitCode: 1,
+      output: "npm ERR! missing script",
+    });
 
     const res = await app.request("/api/sessions/create", {
       method: "POST",
@@ -894,16 +918,43 @@ describe("GET /api/sessions", () => {
     const json = await res.json();
     expect(json).toEqual([
       {
-        sessionId: "s1", state: "running", cwd: "/a", name: "Fix auth bug", sessionNum: null,
-        gitBranch: "", gitAhead: 0, gitBehind: 0, totalLinesAdded: 0, totalLinesRemoved: 0,
-        numTurns: 0, contextUsedPercent: 0, lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
-        claimedQuestId: null, claimedQuestStatus: null,
+        sessionId: "s1",
+        state: "running",
+        cwd: "/a",
+        name: "Fix auth bug",
+        sessionNum: null,
+        gitBranch: "",
+        gitAhead: 0,
+        gitBehind: 0,
+        totalLinesAdded: 0,
+        totalLinesRemoved: 0,
+        numTurns: 0,
+        contextUsedPercent: 0,
+        lastMessagePreview: "",
+        cliConnected: false,
+        taskHistory: [],
+        keywords: [],
+        claimedQuestId: null,
+        claimedQuestStatus: null,
       },
       {
-        sessionId: "s2", state: "stopped", cwd: "/b", sessionNum: null,
-        gitBranch: "", gitAhead: 0, gitBehind: 0, totalLinesAdded: 0, totalLinesRemoved: 0,
-        numTurns: 0, contextUsedPercent: 0, lastMessagePreview: "", cliConnected: false, taskHistory: [], keywords: [],
-        claimedQuestId: null, claimedQuestStatus: null,
+        sessionId: "s2",
+        state: "stopped",
+        cwd: "/b",
+        sessionNum: null,
+        gitBranch: "",
+        gitAhead: 0,
+        gitBehind: 0,
+        totalLinesAdded: 0,
+        totalLinesRemoved: 0,
+        numTurns: 0,
+        contextUsedPercent: 0,
+        lastMessagePreview: "",
+        cliConnected: false,
+        taskHistory: [],
+        keywords: [],
+        claimedQuestId: null,
+        claimedQuestStatus: null,
       },
     ]);
   });
@@ -951,9 +1002,7 @@ describe("GET /api/sessions", () => {
   });
 
   it("includes restored context usage metadata from bridge state", async () => {
-    launcher.listSessions.mockReturnValue([
-      { sessionId: "s1", state: "connected", cwd: "/a", backendType: "codex" },
-    ]);
+    launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a", backendType: "codex" }]);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
     bridge.getAllSessions.mockReturnValue([
       {
@@ -987,9 +1036,7 @@ describe("GET /api/sessions", () => {
   });
 
   it("includes restored Claude token metadata from bridge state", async () => {
-    launcher.listSessions.mockReturnValue([
-      { sessionId: "s1", state: "connected", cwd: "/a", backendType: "claude" },
-    ]);
+    launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a", backendType: "claude" }]);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
     bridge.getAllSessions.mockReturnValue([
       {
@@ -1021,13 +1068,9 @@ describe("GET /api/sessions", () => {
   });
 
   it("reports generating sessions as running when the bridge is active", async () => {
-    launcher.listSessions.mockReturnValue([
-      { sessionId: "s1", state: "connected", cwd: "/a" },
-    ]);
+    launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a" }]);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
-    bridge.getAllSessions.mockReturnValue([
-      { session_id: "s1" },
-    ]);
+    bridge.getAllSessions.mockReturnValue([{ session_id: "s1" }]);
     bridge.getSession.mockReturnValue({ isGenerating: true } as any);
     bridge.isBackendConnected.mockReturnValue(true);
 
@@ -1046,9 +1089,7 @@ describe("GET /api/sessions", () => {
     // Previously this test verified that the route ran `git rev-list` per worktree
     // session. That was removed (caused 800-1300ms latency on NFS). Now the route
     // uses cached bridge values from refreshGitInfo (updated on CLI connect).
-    const sessions = [
-      { sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, branch: "jiayi" },
-    ];
+    const sessions = [{ sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, branch: "jiayi" }];
     launcher.listSessions.mockReturnValue(sessions);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
     bridge.getAllSessions.mockReturnValue([
@@ -1078,9 +1119,7 @@ describe("GET /api/sessions", () => {
   });
 
   it("refreshes worktree diff totals before returning session rows", async () => {
-    const sessions = [
-      { sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, archived: false },
-    ];
+    const sessions = [{ sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, archived: false }];
     const bridgeSession = {
       state: {
         session_id: "s1",
@@ -1164,9 +1203,7 @@ describe("GET /api/sessions/search", () => {
     ]);
     bridge.getMessageHistory.mockImplementation((id: string) => {
       if (id === "s-archived") {
-        return [
-          { type: "user_message", content: "find me from archived history", timestamp: 1234, id: "u-1" },
-        ];
+        return [{ type: "user_message", content: "find me from archived history", timestamp: 1234, id: "u-1" }];
       }
       return [];
     });
@@ -1182,7 +1219,14 @@ describe("GET /api/sessions/search", () => {
     launcher.listSessions.mockReturnValue([
       { sessionId: "s-meta", state: "running", cwd: "/meta", createdAt: 1, archived: false, lastActivityAt: 10 },
       { sessionId: "s-msg", state: "running", cwd: "/msg", createdAt: 2, archived: false, lastActivityAt: 999 },
-      { sessionId: "s-archived", state: "exited", cwd: "/archived", createdAt: 3, archived: true, lastActivityAt: 1000 },
+      {
+        sessionId: "s-archived",
+        state: "exited",
+        cwd: "/archived",
+        createdAt: 3,
+        archived: true,
+        lastActivityAt: 1000,
+      },
     ]);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({
       "s-meta": "Needle session",
@@ -1199,7 +1243,9 @@ describe("GET /api/sessions/search", () => {
         return [{ type: "user_message", content: "contains needle in user message", timestamp: 9999, id: "u-msg" }];
       }
       if (id === "s-archived") {
-        return [{ type: "user_message", content: "contains needle in archived message", timestamp: 11111, id: "u-arch" }];
+        return [
+          { type: "user_message", content: "contains needle in archived message", timestamp: 11111, id: "u-arch" },
+        ];
       }
       return [];
     });
@@ -1440,9 +1486,7 @@ describe("POST /api/sessions/:id/unarchive", () => {
 
 describe("GET /api/envs", () => {
   it("returns the list of environments", async () => {
-    const envs = [
-      { name: "Dev", slug: "dev", variables: { A: "1" }, createdAt: 1, updatedAt: 1 },
-    ];
+    const envs = [{ name: "Dev", slug: "dev", variables: { A: "1" }, createdAt: 1, updatedAt: 1 }];
     vi.mocked(envManager.listEnvs).mockResolvedValue(envs);
 
     const res = await app.request("/api/envs", { method: "GET" });
@@ -1559,7 +1603,7 @@ describe("GET /api/health", () => {
     const after = Date.now();
 
     expect(res.status).toBe(200);
-    const json = await res.json() as { ok: boolean; timestamp: number };
+    const json = (await res.json()) as { ok: boolean; timestamp: number };
     expect(json.ok).toBe(true);
     expect(json.timestamp).toBeGreaterThanOrEqual(before);
     expect(json.timestamp).toBeLessThanOrEqual(after);
@@ -1664,10 +1708,14 @@ describe("GET /api/sessions/:id/tool-result/:toolUseId", () => {
         toolUseId: "tu-1",
         requests: 2,
         repeatedRequests: 1,
-        payloadBytes: Buffer.byteLength(JSON.stringify({ content: "full terminal output", is_error: false }), "utf8") * 2,
+        payloadBytes:
+          Buffer.byteLength(JSON.stringify({ content: "full terminal output", is_error: false }), "utf8") * 2,
         errorRequests: 0,
         lastFetchedAt: expect.any(Number),
-        maxPayloadBytes: Buffer.byteLength(JSON.stringify({ content: "full terminal output", is_error: false }), "utf8"),
+        maxPayloadBytes: Buffer.byteLength(
+          JSON.stringify({ content: "full terminal output", is_error: false }),
+          "utf8",
+        ),
       },
     ]);
   });
@@ -1838,15 +1886,17 @@ describe("POST /api/vscode/windows", () => {
 
 describe("GET /api/vscode/windows", () => {
   it("lists registered VSCode windows", async () => {
-    bridge._vscodeWindows = [{
-      sourceId: "window-a",
-      sourceType: "vscode-window",
-      sourceLabel: "Repo A",
-      workspaceRoots: ["/repo"],
-      updatedAt: 5000,
-      lastActivityAt: 4900,
-      lastSeenAt: 9999,
-    }];
+    bridge._vscodeWindows = [
+      {
+        sourceId: "window-a",
+        sourceType: "vscode-window",
+        sourceLabel: "Repo A",
+        workspaceRoots: ["/repo"],
+        updatedAt: 5000,
+        lastActivityAt: 4900,
+        lastSeenAt: 9999,
+      },
+    ];
 
     const res = await app.request("/api/vscode/windows", { method: "GET" });
 
@@ -1859,23 +1909,8 @@ describe("GET /api/vscode/windows", () => {
 
 describe("GET /api/vscode/windows/:sourceId/commands", () => {
   it("returns queued remote open-file commands for a VSCode window", async () => {
-    bridge.pollVsCodeOpenFileCommands.mockReturnValue([{
-      commandId: "cmd-1",
-      sourceId: "window-a",
-      target: {
-        absolutePath: "/repo/src/app.ts",
-        line: 12,
-        column: 3,
-      },
-      createdAt: 6000,
-    }]);
-
-    const res = await app.request("/api/vscode/windows/window-a/commands", { method: "GET" });
-
-    expect(res.status).toBe(200);
-    expect(bridge.pollVsCodeOpenFileCommands).toHaveBeenCalledWith("window-a");
-    expect(await res.json()).toEqual({
-      commands: [{
+    bridge.pollVsCodeOpenFileCommands.mockReturnValue([
+      {
         commandId: "cmd-1",
         sourceId: "window-a",
         target: {
@@ -1884,7 +1919,26 @@ describe("GET /api/vscode/windows/:sourceId/commands", () => {
           column: 3,
         },
         createdAt: 6000,
-      }],
+      },
+    ]);
+
+    const res = await app.request("/api/vscode/windows/window-a/commands", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(bridge.pollVsCodeOpenFileCommands).toHaveBeenCalledWith("window-a");
+    expect(await res.json()).toEqual({
+      commands: [
+        {
+          commandId: "cmd-1",
+          sourceId: "window-a",
+          target: {
+            absolutePath: "/repo/src/app.ts",
+            line: 12,
+            column: 3,
+          },
+          createdAt: 6000,
+        },
+      ],
     });
   });
 });
@@ -2009,22 +2063,8 @@ describe("POST /api/vscode/windows", () => {
 
 describe("GET /api/vscode/windows/:sourceId/commands", () => {
   it("returns queued open-file commands for a VSCode window", async () => {
-    bridge.pollVsCodeOpenFileCommands.mockReturnValue([{
-      commandId: "cmd-1",
-      sourceId: "window-a",
-      createdAt: 5000,
-      target: {
-        absolutePath: "/repo/src/app.ts",
-        line: 12,
-        column: 3,
-      },
-    }]);
-
-    const res = await app.request("/api/vscode/windows/window-a/commands", { method: "GET" });
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      commands: [{
+    bridge.pollVsCodeOpenFileCommands.mockReturnValue([
+      {
         commandId: "cmd-1",
         sourceId: "window-a",
         createdAt: 5000,
@@ -2033,7 +2073,25 @@ describe("GET /api/vscode/windows/:sourceId/commands", () => {
           line: 12,
           column: 3,
         },
-      }],
+      },
+    ]);
+
+    const res = await app.request("/api/vscode/windows/window-a/commands", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      commands: [
+        {
+          commandId: "cmd-1",
+          sourceId: "window-a",
+          createdAt: 5000,
+          target: {
+            absolutePath: "/repo/src/app.ts",
+            line: 12,
+            column: 3,
+          },
+        },
+      ],
     });
   });
 });
@@ -2137,13 +2195,7 @@ describe("POST /api/transcribe", () => {
     form.append(
       "audio",
       new File(
-        [
-          new Uint8Array([
-            0x00, 0x00, 0x00, 0x18,
-            0x66, 0x74, 0x79, 0x70,
-            0x4d, 0x34, 0x41, 0x20,
-          ]),
-        ],
+        [new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20])],
         "recording.webm",
         { type: "audio/webm" },
       ),
@@ -2153,7 +2205,7 @@ describe("POST /api/transcribe", () => {
     const res = await app.request("/api/transcribe", { method: "POST", body: form });
 
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("\"text\":\"transcribed text\"");
+    expect(await res.text()).toContain('"text":"transcribed text"');
     expect(fetch).toHaveBeenCalledOnce();
 
     const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
@@ -2204,12 +2256,15 @@ describe("POST /api/transcribe", () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({
-          choices: [{ message: { content: "- Short bullet\n- Another bullet" } }],
-        }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "- Short bullet\n- Another bullet" } }],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       );
 
     const form = new FormData();
@@ -2224,10 +2279,10 @@ describe("POST /api/transcribe", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain("event: stt_complete");
-    expect(body).toContain("\"nextPhase\":\"editing\"");
+    expect(body).toContain('"nextPhase":"editing"');
     expect(body).toContain("event: result");
-    expect(body).toContain("\"mode\":\"edit\"");
-    expect(body).toContain("\"instructionText\":\"turn this into bullet points\"");
+    expect(body).toContain('"mode":"edit"');
+    expect(body).toContain('"instructionText":"turn this into bullet points"');
     expect(body).toContain("- Short bullet");
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -2255,14 +2310,26 @@ describe("GET /api/settings", () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "",
       serverId: "",
-      pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "http://localhost:3456",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "u123",
+      pushoverApiToken: "t456",
+      pushoverDelaySeconds: 60,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "http://localhost:3456",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 123,
     });
@@ -2285,7 +2352,12 @@ describe("GET /api/settings", () => {
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
@@ -2297,14 +2369,26 @@ describe("GET /api/settings", () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 123,
     });
@@ -2327,7 +2411,12 @@ describe("GET /api/settings", () => {
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
@@ -2340,14 +2429,26 @@ describe("GET /api/settings", () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "My Frontend",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 0,
     });
@@ -2419,14 +2520,26 @@ describe("PUT /api/settings", () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
       serverName: "",
       serverId: "",
-      pushoverUserKey: "u123", pushoverApiToken: "t456", pushoverDelaySeconds: 60, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "u123",
+      pushoverApiToken: "t456",
+      pushoverDelaySeconds: 60,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 456,
     });
@@ -2469,7 +2582,12 @@ describe("PUT /api/settings", () => {
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
     });
   });
@@ -2478,14 +2596,26 @@ describe("PUT /api/settings", () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
       serverName: "",
       serverId: "",
-      pushoverUserKey: "trimmed", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "trimmed",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 789,
     });
@@ -2519,14 +2649,26 @@ describe("PUT /api/settings", () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
       serverName: "My Backend",
       serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: Date.now(),
     });
@@ -2623,15 +2765,28 @@ describe("PUT /api/settings", () => {
 
   it("updates claudeBinary setting", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      serverName: "", serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "/usr/local/bin/claude", codexBinary: "",
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "/usr/local/bin/claude",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: Date.now(),
     });
@@ -2700,15 +2855,28 @@ describe("PUT /api/settings", () => {
 
   it("updates maxKeepAlive setting", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      serverName: "", serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 5,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-    autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "none" },
       updatedAt: Date.now(),
     });
@@ -2720,9 +2888,7 @@ describe("PUT /api/settings", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ maxKeepAlive: 5 }),
-    );
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ maxKeepAlive: 5 }));
     const json = await res.json();
     expect(json.maxKeepAlive).toBe(5);
   });
@@ -2823,15 +2989,28 @@ describe("PUT /api/settings", () => {
 
   it("updates editorConfig setting", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
-      serverName: "", serverId: "",
-      pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-      claudeBinary: "", codexBinary: "",
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
       maxKeepAlive: 0,
-      autoApprovalEnabled: false, autoApprovalModel: "haiku",
-      autoApprovalMaxConcurrency: 4, autoApprovalTimeoutSeconds: 45,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", enhancementEnabled: true, enhancementModel: "gpt-5-mini" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
       editorConfig: { editor: "cursor" },
       updatedAt: Date.now(),
     });
@@ -3056,7 +3235,6 @@ describe("DELETE /api/git/worktree", () => {
     expect(gitUtils.removeWorktree).toHaveBeenCalledWith("/repo", "/wt/feat", { force: true });
   });
 });
-
 
 // ─── Session Naming ─────────────────────────────────────────────────────────
 
@@ -3384,9 +3562,7 @@ line3`;
     expect(json.diff).toBe(diffOutput);
     expect(json.path).toContain("file.ts");
     expect(json.baseBranch).toBe("main");
-    expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-      expect.stringContaining("git diff main"),
-    );
+    expect(vi.mocked(execSync)).toHaveBeenCalledWith(expect.stringContaining("git diff main"));
   });
 
   it("returns no-index diff for untracked files", async () => {
@@ -3419,9 +3595,7 @@ index 0000000..e69de29
 
     expect(res.status).toBe(200);
     expect(json.diff).toContain("new file mode");
-    expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-      expect.stringContaining("git diff --no-index -- /dev/null"),
-    );
+    expect(vi.mocked(execSync)).toHaveBeenCalledWith(expect.stringContaining("git diff --no-index -- /dev/null"));
   });
 
   it("returns old/new file contents when includeContents=1", async () => {
@@ -3437,17 +3611,14 @@ index 0000000..e69de29
       if (cmd.includes("rev-parse --show-toplevel")) return "/repo\n";
       if (cmd.includes("ls-files --full-name")) return "file.ts\n";
       if (cmd.includes("git diff main")) return diffOutput;
-      if (cmd.includes("git show main:\"file.ts\"")) return "const value = 1;\n";
+      if (cmd.includes('git show main:"file.ts"')) return "const value = 1;\n";
       throw new Error(`Unmocked: ${cmd}`);
     });
 
     vi.mocked(stat).mockResolvedValueOnce({ size: 100 } as any);
     vi.mocked(readFile).mockResolvedValueOnce("const value = 2;\n" as any);
 
-    const res = await app.request(
-      "/api/fs/diff?path=/repo/file.ts&base=main&includeContents=1",
-      { method: "GET" },
-    );
+    const res = await app.request("/api/fs/diff?path=/repo/file.ts&base=main&includeContents=1", { method: "GET" });
 
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -3478,9 +3649,7 @@ index 0000000..e69de29
     const json = await res.json();
     expect(json.diff).toBe(diffOutput);
     expect(json.baseBranch).toBe("develop");
-    expect(vi.mocked(execSync)).toHaveBeenCalledWith(
-      expect.stringContaining("git diff develop"),
-    );
+    expect(vi.mocked(execSync)).toHaveBeenCalledWith(expect.stringContaining("git diff develop"));
   });
 
   it("returns empty diff when git command fails", async () => {
@@ -3534,9 +3703,9 @@ describe("GET /api/backends", () => {
   it("returns both backends with availability status", async () => {
     // resolveBinary returns a path for all binaries
     mockResolveBinary
-      .mockReturnValueOnce("/usr/bin/claude")   // claude
-      .mockReturnValueOnce("/usr/bin/claude")   // claude-sdk (same binary)
-      .mockReturnValueOnce("/usr/bin/codex");   // codex
+      .mockReturnValueOnce("/usr/bin/claude") // claude
+      .mockReturnValueOnce("/usr/bin/claude") // claude-sdk (same binary)
+      .mockReturnValueOnce("/usr/bin/codex"); // codex
 
     const res = await app.request("/api/backends", { method: "GET" });
 
@@ -3551,10 +3720,7 @@ describe("GET /api/backends", () => {
 
   it("marks backends as unavailable when binary is not found", async () => {
     // resolveBinary returns null for all
-    mockResolveBinary
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(null);
+    mockResolveBinary.mockReturnValueOnce(null).mockReturnValueOnce(null).mockReturnValueOnce(null);
 
     const res = await app.request("/api/backends", { method: "GET" });
 
@@ -3577,9 +3743,9 @@ describe("GET /api/backends", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json[0].available).toBe(true);   // claude
-    expect(json[1].available).toBe(true);   // claude-sdk
-    expect(json[2].available).toBe(false);  // codex
+    expect(json[0].available).toBe(true); // claude
+    expect(json[1].available).toBe(true); // claude-sdk
+    expect(json[2].available).toBe(false); // codex
   });
 });
 
@@ -3587,11 +3753,35 @@ describe("GET /api/backends/:id/models", () => {
   it("filters old codex models and sorts current models by version descending", async () => {
     const cacheContent = JSON.stringify({
       models: [
-        { slug: "gpt-5.3-codex-spark", display_name: "gpt-5.3-codex-spark", description: "Fast model", visibility: "list", priority: 0 },
-        { slug: "gpt-5.3-codex", display_name: "gpt-5.3-codex", description: "Main codex model", visibility: "list", priority: 50 },
+        {
+          slug: "gpt-5.3-codex-spark",
+          display_name: "gpt-5.3-codex-spark",
+          description: "Fast model",
+          visibility: "list",
+          priority: 0,
+        },
+        {
+          slug: "gpt-5.3-codex",
+          display_name: "gpt-5.3-codex",
+          description: "Main codex model",
+          visibility: "list",
+          priority: 50,
+        },
         { slug: "gpt-5.4", display_name: "gpt-5.4", description: "Frontier model", visibility: "list", priority: 0 },
-        { slug: "gpt-5.2-codex", display_name: "gpt-5.2-codex", description: "Old model", visibility: "list", priority: 0 },
-        { slug: "gpt-5.1-codex-mini", display_name: "gpt-5.1-codex-mini", description: "Older model", visibility: "list", priority: 0 },
+        {
+          slug: "gpt-5.2-codex",
+          display_name: "gpt-5.2-codex",
+          description: "Old model",
+          visibility: "list",
+          priority: 0,
+        },
+        {
+          slug: "gpt-5.1-codex-mini",
+          display_name: "gpt-5.1-codex-mini",
+          description: "Older model",
+          visibility: "list",
+          priority: 0,
+        },
         { slug: "gpt-5-codex", display_name: "gpt-5-codex", description: "Old model", visibility: "hide", priority: 8 },
       ],
     });
@@ -3649,9 +3839,7 @@ describe("POST /api/sessions/create with backend", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }));
   });
 
   it("uses the shared codex default model when none is provided", async () => {
@@ -3662,9 +3850,7 @@ describe("POST /api/sessions/create with backend", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.4", backendType: "codex" }));
   });
 
   it("injects orchestrator env vars for codex leader sessions", async () => {
@@ -3696,9 +3882,7 @@ describe("POST /api/sessions/create with backend", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ backendType: "claude" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ backendType: "claude" }));
   });
 });
 
@@ -3706,7 +3890,9 @@ describe("buildOrchestratorSystemPrompt", () => {
   it("keeps the Codex leader startup prompt free of Claude/sub-agent wording", () => {
     const prompt = buildOrchestratorSystemPrompt("codex");
     expect(prompt).toContain("leader session");
-    expect(prompt).toContain("Delegate non-trivial implementation, investigation, and verification to worker sessions.");
+    expect(prompt).toContain(
+      "Delegate non-trivial implementation, investigation, and verification to worker sessions.",
+    );
     expect(prompt).toContain("override any conflicting generic markdown-link or file-reference instructions");
     expect(prompt).toContain("Do not use plain absolute-path markdown links");
     expect(prompt).not.toContain("CLAUDE.md");
@@ -3724,10 +3910,7 @@ describe("buildOrchestratorSystemPrompt", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
-      "session-1",
-      buildOrchestratorSystemPrompt("codex"),
-    );
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith("session-1", buildOrchestratorSystemPrompt("codex"));
   });
 });
 
@@ -3744,9 +3927,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "plan" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "plan" }));
     expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "plan");
   });
 
@@ -3760,9 +3941,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "bypassPermissions" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "bypassPermissions" }));
     expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
   });
 
@@ -3775,9 +3954,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "plan" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "plan" }));
   });
 
   it("uses 'suggest' permission mode for codex sessions when askPermission is true", async () => {
@@ -3788,9 +3965,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "suggest" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "suggest" }));
     expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "agent");
   });
 
@@ -3802,9 +3977,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "bypassPermissions" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "bypassPermissions" }));
     expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
   });
 
@@ -4069,9 +4242,7 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     // Should include git operations
     expect(steps).toContain("fetching_git");
@@ -4100,9 +4271,7 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     expect(steps).toContain("creating_worktree");
     expect(steps).toContain("launching_cli");
@@ -4137,9 +4306,7 @@ describe("POST /api/sessions/create-stream", () => {
       createBranch: undefined,
       forceNew: true,
     });
-    expect(launcher.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ cwd: "/test-wt-main" }),
-    );
+    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/test-wt-main" }));
   });
 
   it("emits creating_worktree error when useWorktree is enabled without cwd", async () => {
@@ -4247,9 +4414,7 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     expect(steps).toContain("creating_container");
     expect(steps).toContain("launching_cli");
@@ -4293,16 +4458,11 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     // Should have pulling_image step
     expect(steps).toContain("pulling_image");
-    expect(pullSpy).toHaveBeenCalledWith(
-      expect.stringContaining("docker.io"),
-      "the-companion:latest",
-    );
+    expect(pullSpy).toHaveBeenCalledWith(expect.stringContaining("docker.io"), "the-companion:latest");
 
     // Should NOT have building_image (pull succeeded)
     expect(steps).not.toContain("building_image");
@@ -4342,17 +4502,12 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     // Should have both pulling_image and building_image steps
     expect(steps).toContain("pulling_image");
     expect(steps).toContain("building_image");
-    expect(buildSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Dockerfile.the-companion"),
-      "the-companion:latest",
-    );
+    expect(buildSpy).toHaveBeenCalledWith(expect.stringContaining("Dockerfile.the-companion"), "the-companion:latest");
   });
 
   it("emits init script progress events when env has initScript", async () => {
@@ -4377,8 +4532,7 @@ describe("POST /api/sessions/create-stream", () => {
       state: "running",
     });
     vi.spyOn(containerManager, "retrack").mockImplementation(() => {});
-    vi.spyOn(containerManager, "execInContainerAsync")
-      .mockResolvedValueOnce({ exitCode: 0, output: "ok" });
+    vi.spyOn(containerManager, "execInContainerAsync").mockResolvedValueOnce({ exitCode: 0, output: "ok" });
 
     const res = await app.request("/api/sessions/create-stream", {
       method: "POST",
@@ -4388,9 +4542,7 @@ describe("POST /api/sessions/create-stream", () => {
 
     expect(res.status).toBe(200);
     const events = await parseSSE(res);
-    const steps = events
-      .filter((e) => e.event === "progress")
-      .map((e) => JSON.parse(e.data).step);
+    const steps = events.filter((e) => e.event === "progress").map((e) => JSON.parse(e.data).step);
 
     expect(steps).toContain("running_init_script");
     expect(steps).toContain("launching_cli");
@@ -4422,8 +4574,10 @@ describe("POST /api/sessions/create-stream", () => {
       state: "running",
     });
     const removeSpy = vi.spyOn(containerManager, "removeContainer").mockImplementation(() => {});
-    vi.spyOn(containerManager, "execInContainerAsync")
-      .mockResolvedValueOnce({ exitCode: 1, output: "npm ERR! missing script" });
+    vi.spyOn(containerManager, "execInContainerAsync").mockResolvedValueOnce({
+      exitCode: 1,
+      output: "npm ERR! missing script",
+    });
 
     const res = await app.request("/api/sessions/create-stream", {
       method: "POST",
@@ -4472,9 +4626,19 @@ describe("POST /api/sessions/:id/revert", () => {
     const mockSession = {
       messageHistory: [
         { type: "user_message", id: "user-msg-1", content: "Hello" },
-        { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "claude" }, uuid: "cli-uuid-1", parent_tool_use_id: null },
+        {
+          type: "assistant",
+          message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "claude" },
+          uuid: "cli-uuid-1",
+          parent_tool_use_id: null,
+        },
         { type: "user_message", id: "user-msg-2", content: "Do something" },
-        { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "claude" }, uuid: "cli-uuid-2", parent_tool_use_id: null },
+        {
+          type: "assistant",
+          message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "claude" },
+          uuid: "cli-uuid-2",
+          parent_tool_use_id: null,
+        },
       ],
       pendingPermissions: new Map(),
     };
@@ -4646,9 +4810,7 @@ describe("PATCH /api/quests/:questId", () => {
       status: "in_progress",
     });
     expect(bridge.updateQuestTaskEntries).toHaveBeenCalledWith("session-1", "q-1", "Updated quest title");
-    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "quest_list_updated" }),
-    );
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(expect.objectContaining({ type: "quest_list_updated" }));
   });
 });
 
@@ -4755,12 +4917,12 @@ describe("POST /api/quests/:questId/claim", () => {
       claimedAt: Date.now(),
       description: "Ready",
     } as any);
-    launcher.getSession.mockImplementation((sid: string) => (
-      sid === "session-2"
-        ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false }
-        : undefined
-    ));
-    launcher.verifySessionAuthToken.mockImplementation((sid: string, token: string) => sid === "session-2" && token === "tok-2");
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-2" ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-2" && token === "tok-2",
+    );
 
     const res = await app.request("/api/quests/q-1/claim", {
       method: "POST",
@@ -4769,20 +4931,16 @@ describe("POST /api/quests/:questId/claim", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(questStore.claimQuest).toHaveBeenCalledWith(
-      "q-1",
-      "session-2",
-      expect.any(Object),
-    );
+    expect(questStore.claimQuest).toHaveBeenCalledWith("q-1", "session-2", expect.any(Object));
   });
 
   it("returns 403 when body sessionId mismatches authenticated caller", async () => {
-    launcher.getSession.mockImplementation((sid: string) => (
-      sid === "session-2"
-        ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false }
-        : undefined
-    ));
-    launcher.verifySessionAuthToken.mockImplementation((sid: string, token: string) => sid === "session-2" && token === "tok-2");
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-2" ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-2" && token === "tok-2",
+    );
 
     const res = await app.request("/api/quests/q-1/claim", {
       method: "POST",
@@ -4899,12 +5057,12 @@ describe("POST /api/quests/:questId/feedback", () => {
   });
 
   it("accepts authenticated caller identity for agent feedback when sessionId is omitted", async () => {
-    launcher.getSession.mockImplementation((sid: string) => (
-      sid === "session-1"
-        ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false }
-        : undefined
-    ));
-    launcher.verifySessionAuthToken.mockImplementation((sid: string, token: string) => sid === "session-1" && token === "tok-1");
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-1" ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-1" && token === "tok-1",
+    );
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v3",
       questId: "q-1",
@@ -4944,12 +5102,12 @@ describe("POST /api/quests/:questId/feedback", () => {
   });
 
   it("returns 403 when feedback sessionId mismatches authenticated caller", async () => {
-    launcher.getSession.mockImplementation((sid: string) => (
-      sid === "session-1"
-        ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false }
-        : undefined
-    ));
-    launcher.verifySessionAuthToken.mockImplementation((sid: string, token: string) => sid === "session-1" && token === "tok-1");
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-1" ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-1" && token === "tok-1",
+    );
 
     const res = await app.request("/api/quests/q-1/feedback", {
       method: "POST",
@@ -5018,7 +5176,9 @@ describe("POST /api/quests/:questId/feedback", () => {
     });
 
     expect(res.status).toBe(200);
-    const feedback = (patchSpy.mock.calls[0][1] as { feedback: Array<{ author: string; authorSessionId?: string; text: string }> }).feedback;
+    const feedback = (
+      patchSpy.mock.calls[0][1] as { feedback: Array<{ author: string; authorSessionId?: string; text: string }> }
+    ).feedback;
     expect(feedback[feedback.length - 1]).toMatchObject({
       author: "agent",
       authorSessionId: "session-1",
@@ -5059,10 +5219,7 @@ describe("POST /api/quests/:questId/done", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(questStore.transitionQuest).toHaveBeenCalledWith(
-      "q-1",
-      expect.objectContaining({ status: "done" }),
-    );
+    expect(questStore.transitionQuest).toHaveBeenCalledWith("q-1", expect.objectContaining({ status: "done" }));
     expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
   });
 });
@@ -5127,9 +5284,7 @@ describe("POST /api/quests/:questId/verification/read", () => {
 
     expect(res.status).toBe(200);
     expect(questStore.markQuestVerificationRead).toHaveBeenCalledWith("q-1");
-    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "quest_list_updated" }),
-    );
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(expect.objectContaining({ type: "quest_list_updated" }));
   });
 });
 
@@ -5157,9 +5312,7 @@ describe("POST /api/quests/:questId/verification/inbox", () => {
 
     expect(res.status).toBe(200);
     expect(questStore.markQuestVerificationInboxUnread).toHaveBeenCalledWith("q-1");
-    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "quest_list_updated" }),
-    );
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(expect.objectContaining({ type: "quest_list_updated" }));
   });
 });
 
@@ -5173,9 +5326,7 @@ describe("POST /api/quests/_notify", () => {
     const json = await res.json();
     expect(json).toEqual({ ok: true });
     // Verify it called broadcastGlobal to notify browsers
-    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "quest_list_updated" }),
-    );
+    expect(bridge.broadcastGlobal).toHaveBeenCalledWith(expect.objectContaining({ type: "quest_list_updated" }));
   });
 });
 
@@ -5214,7 +5365,9 @@ describe("Takode server-authoritative auth", () => {
     launcher.getSession.mockImplementation((id: string) => sessions[id]);
     launcher.listSessions.mockReturnValue(Object.values(sessions));
     launcher.resolveSessionId.mockImplementation((id: string) => (sessions[id] ? id : null));
-    launcher.verifySessionAuthToken.mockImplementation((id: string, token: string) => id === "orch-1" && token === "tok-1");
+    launcher.verifySessionAuthToken.mockImplementation(
+      (id: string, token: string) => id === "orch-1" && token === "tok-1",
+    );
     return sessions;
   }
 
@@ -5295,10 +5448,7 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.routeExternalInterrupt).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "worker-1" }),
-      "leader",
-    );
+    expect(bridge.routeExternalInterrupt).toHaveBeenCalledWith(expect.objectContaining({ id: "worker-1" }), "leader");
     expect(launcher.kill).not.toHaveBeenCalled();
     expect(sessions["worker-1"].repoRoot).toBe("/repo");
   });
@@ -5357,11 +5507,7 @@ describe("Takode server-authoritative auth", () => {
       body: JSON.stringify({ content: "ship it" }),
     });
     expect(allowed.status).toBe(200);
-    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
-      "worker-1",
-      "ship it",
-      { sessionId: "orch-1" },
-    );
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith("worker-1", "ship it", { sessionId: "orch-1" });
   });
 
   it("prefers launcher permissionMode over bridge default in takode info", async () => {

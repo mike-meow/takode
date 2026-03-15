@@ -51,7 +51,9 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
             <div className="text-[11px] text-cc-muted">{quest.questId}</div>
             <div className="text-sm font-semibold text-cc-fg leading-snug break-words">{quest.title}</div>
           </div>
-          <span className={`shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${statusTheme.bg} ${statusTheme.text} ${statusTheme.border}`}>
+          <span
+            className={`shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${statusTheme.bg} ${statusTheme.text} ${statusTheme.border}`}
+          >
             <span className={`w-1.5 h-1.5 rounded-full ${statusTheme.dot}`} />
             {statusTheme.label}
           </span>

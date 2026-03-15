@@ -132,7 +132,10 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
               )}
               <span className="text-[11px] text-cc-muted font-mono-code truncate flex-1">{browsePath}</span>
               <button
-                onClick={() => { setShowDirInput(true); setDirInput(browsePath); }}
+                onClick={() => {
+                  setShowDirInput(true);
+                  setDirInput(browsePath);
+                }}
                 className="w-6 h-6 flex items-center justify-center rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer shrink-0"
                 title="Type path manually"
               >
@@ -166,10 +169,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
                 <div className="px-4 py-6 text-xs text-cc-muted text-center">No subdirectories</div>
               ) : (
                 browseDirs.map((d) => (
-                  <div
-                    key={d.path}
-                    className="flex items-center hover:bg-cc-hover transition-colors"
-                  >
+                  <div key={d.path} className="flex items-center hover:bg-cc-hover transition-colors">
                     <button
                       onClick={() => loadDirs(d.path)}
                       onDoubleClick={() => selectDir(d.path)}

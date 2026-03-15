@@ -163,10 +163,7 @@ export async function createEnv(
   return env;
 }
 
-export async function updateEnv(
-  slug: string,
-  updates: EnvUpdateFields,
-): Promise<CompanionEnv | null> {
+export async function updateEnv(slug: string, updates: EnvUpdateFields): Promise<CompanionEnv | null> {
   await ensureDir();
   const existing = await getEnv(slug);
   if (!existing) return null;
@@ -176,7 +173,7 @@ export async function updateEnv(
   if (!newSlug) throw new Error("Environment name must contain alphanumeric characters");
 
   // If name changed, check for slug collision with a different env
-  if (newSlug !== slug && await fileExists(filePath(newSlug))) {
+  if (newSlug !== slug && (await fileExists(filePath(newSlug)))) {
     throw new Error(`An environment with a similar name already exists ("${newSlug}")`);
   }
 
@@ -198,7 +195,11 @@ export async function updateEnv(
 
   // If slug changed, delete old file
   if (newSlug !== slug) {
-    try { await unlink(filePath(slug)); } catch { /* ok */ }
+    try {
+      await unlink(filePath(slug));
+    } catch {
+      /* ok */
+    }
   }
 
   await writeFile(filePath(newSlug), JSON.stringify(env, null, 2), "utf-8");

@@ -17,10 +17,7 @@ const mediaState = {
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
-    matches:
-      query === "(hover: none) and (pointer: coarse)"
-        ? mediaState.touchDevice
-        : false,
+    matches: query === "(hover: none) and (pointer: coarse)" ? mediaState.touchDevice : false,
     media: query,
     onchange: null,
     addListener: vi.fn(),
@@ -32,7 +29,9 @@ Object.defineProperty(window, "matchMedia", {
 });
 
 const mockSendToSession = vi.fn().mockReturnValue(true);
-const mockTranscribe = vi.fn().mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
+const mockTranscribe = vi
+  .fn()
+  .mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
 const mockGetBackendModels = vi.fn().mockResolvedValue([]);
 const mockRefreshSessionSkills = vi.fn().mockResolvedValue({ ok: true, skills: [] });
 
@@ -55,7 +54,12 @@ vi.mock("../api.js", () => ({
 
 const mockVoiceState = {
   isSupportedOverride: null as boolean | null,
-  unsupportedReasonOverride: null as "insecure-context" | "missing-media-devices" | "missing-media-recorder" | "unsupported-environment" | null,
+  unsupportedReasonOverride: null as
+    | "insecure-context"
+    | "missing-media-devices"
+    | "missing-media-recorder"
+    | "unsupported-environment"
+    | null,
   unsupportedMessageOverride: null as string | null,
   onAudioReady: null as ((blob: Blob) => void | Promise<void>) | null,
 };
@@ -66,11 +70,12 @@ vi.mock("../hooks/useVoiceInput.js", () => ({
     const isSupported = mockVoiceState.isSupportedOverride ?? window.isSecureContext !== false;
     const unsupportedReason = isSupported
       ? null
-      : (mockVoiceState.unsupportedReasonOverride ?? (window.isSecureContext === false ? "insecure-context" : "unsupported-environment"));
+      : (mockVoiceState.unsupportedReasonOverride ??
+        (window.isSecureContext === false ? "insecure-context" : "unsupported-environment"));
     const unsupportedMessage = isSupported
       ? null
-      : (mockVoiceState.unsupportedMessageOverride
-        ?? (unsupportedReason === "insecure-context"
+      : (mockVoiceState.unsupportedMessageOverride ??
+        (unsupportedReason === "insecure-context"
           ? "Voice input requires HTTPS or localhost in this browser."
           : "Voice input is unavailable."));
     return {
@@ -102,7 +107,9 @@ const mockRequestBottomAlignOnNextUserMessage = vi.fn();
 
 // Shared listener set for mock store reactivity
 const mockStoreListeners = new Set<() => void>();
-function notifyMockStore() { mockStoreListeners.forEach((l) => l()); }
+function notifyMockStore() {
+  mockStoreListeners.forEach((l) => l());
+}
 
 vi.mock("../store.js", async () => {
   const React = await import("react");
@@ -111,7 +118,9 @@ vi.mock("../store.js", async () => {
     const [, forceUpdate] = React.useReducer((c: number) => c + 1, 0);
     React.useEffect(() => {
       mockStoreListeners.add(forceUpdate);
-      return () => { mockStoreListeners.delete(forceUpdate); };
+      return () => {
+        mockStoreListeners.delete(forceUpdate);
+      };
     }, []);
     return selector(mockStoreState);
   };
@@ -150,26 +159,28 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
   };
 }
 
-function setupMockStore(overrides: {
-  isConnected?: boolean;
-  sessionStatus?: "idle" | "running" | "compacting" | null;
-  session?: Partial<SessionState>;
-  draftText?: string;
-  zoomLevel?: number;
-  sdkSessionTotals?: { added: number; removed: number };
-  vscodeSelectionContext?: {
-    selection: {
-      absolutePath: string;
-      startLine: number;
-      endLine: number;
-      lineCount: number;
+function setupMockStore(
+  overrides: {
+    isConnected?: boolean;
+    sessionStatus?: "idle" | "running" | "compacting" | null;
+    session?: Partial<SessionState>;
+    draftText?: string;
+    zoomLevel?: number;
+    sdkSessionTotals?: { added: number; removed: number };
+    vscodeSelectionContext?: {
+      selection: {
+        absolutePath: string;
+        startLine: number;
+        endLine: number;
+        lineCount: number;
+      } | null;
+      updatedAt: number;
+      sourceId: string;
+      sourceType?: "browser-panel" | "vscode-window";
+      sourceLabel?: string;
     } | null;
-    updatedAt: number;
-    sourceId: string;
-    sourceType?: "browser-panel" | "vscode-window";
-    sourceLabel?: string;
-  } | null;
-} = {}) {
+  } = {},
+) {
   const {
     isConnected = true,
     sessionStatus = "idle",
@@ -210,11 +221,15 @@ function setupMockStore(overrides: {
     requestBottomAlignOnNextUserMessage: mockRequestBottomAlignOnNextUserMessage,
     zoomLevel,
     vscodeSelectionContext,
-    sdkSessions: sdkSessionTotals ? [{
-      sessionId: "s1",
-      totalLinesAdded: sdkSessionTotals.added,
-      totalLinesRemoved: sdkSessionTotals.removed,
-    }] : [],
+    sdkSessions: sdkSessionTotals
+      ? [
+          {
+            sessionId: "s1",
+            totalLinesAdded: sdkSessionTotals.added,
+            totalLinesRemoved: sdkSessionTotals.removed,
+          },
+        ]
+      : [],
     setComposerDraft: vi.fn((sessionId: string, draft: { text: string; images: unknown[] }) => {
       (mockStoreState.composerDrafts as Map<string, unknown>).set(sessionId, draft);
       notifyMockStore();
@@ -570,11 +585,14 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "test message" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "test message",
-      session_id: "s1",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "test message",
+        session_id: "s1",
+      }),
+    );
     expect(mockRequestBottomAlignOnNextUserMessage).toHaveBeenCalledWith("s1");
   });
 
@@ -597,10 +615,13 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "send from side panel" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "send from side panel",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "send from side panel",
+      }),
+    );
   });
 
   it("keeps the desktop composer layout when zoom makes the effective width wide enough", () => {
@@ -618,10 +639,13 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "click send" } });
     fireEvent.click(screen.getByTitle("Send message"));
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "click send",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "click send",
+      }),
+    );
   });
 
   it("sends VS Code selection metadata separately from the visible user message", () => {
@@ -644,18 +668,21 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "check this bug" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "check this bug",
-      vscodeSelection: {
-        absolutePath: "/test/web/src/App.tsx",
-        relativePath: "web/src/App.tsx",
-        displayPath: "App.tsx",
-        startLine: 42,
-        endLine: 44,
-        lineCount: 3,
-      },
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "check this bug",
+        vscodeSelection: {
+          absolutePath: "/test/web/src/App.tsx",
+          relativePath: "web/src/App.tsx",
+          displayPath: "App.tsx",
+          startLine: 42,
+          endLine: 44,
+          lineCount: 3,
+        },
+      }),
+    );
   });
 
   it("does not send VS Code metadata when there is no selection", () => {
@@ -673,10 +700,13 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "check this bug" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "check this bug",
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "check this bug",
+      }),
+    );
     expect(mockSendToSession.mock.calls.at(-1)?.[1]).not.toHaveProperty("vscodeSelection");
   });
 
@@ -704,18 +734,21 @@ describe("Composer sending messages", () => {
     fireEvent.change(textarea, { target: { value: "check this external file" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
 
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-      content: "check this external file",
-      vscodeSelection: {
-        absolutePath: "/test/project-b/src/Other.ts",
-        relativePath: "/test/project-b/src/Other.ts",
-        displayPath: "/test/project-b/src/Other.ts",
-        startLine: 7,
-        endLine: 9,
-        lineCount: 3,
-      },
-    }));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "check this external file",
+        vscodeSelection: {
+          absolutePath: "/test/project-b/src/Other.ts",
+          relativePath: "/test/project-b/src/Other.ts",
+          displayPath: "/test/project-b/src/Other.ts",
+          startLine: 7,
+          endLine: 9,
+          lineCount: 3,
+        },
+      }),
+    );
   });
 
   it("textarea is cleared after sending", () => {
@@ -746,9 +779,12 @@ describe("Composer sending messages", () => {
       type: "set_permission_mode",
       mode: "plan",
     });
-    expect(mockSendToSession).not.toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-    }));
+    expect(mockSendToSession).not.toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+      }),
+    );
   });
 
   it("treats /suggest as a Codex mode switch to suggest mode", () => {
@@ -769,9 +805,12 @@ describe("Composer sending messages", () => {
       type: "set_permission_mode",
       mode: "suggest",
     });
-    expect(mockSendToSession).not.toHaveBeenCalledWith("s1", expect.objectContaining({
-      type: "user_message",
-    }));
+    expect(mockSendToSession).not.toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+      }),
+    );
   });
 });
 
@@ -1024,11 +1063,14 @@ describe("Composer slash menu", () => {
     });
 
     const sessions = mockStoreState.sessions as Map<string, SessionState>;
-    sessions.set("s1", makeSession({
-      backend_type: "codex",
-      slash_commands: [],
-      skills: ["review"],
-    }));
+    sessions.set(
+      "s1",
+      makeSession({
+        backend_type: "codex",
+        slash_commands: [],
+        skills: ["review"],
+      }),
+    );
     notifyMockStore();
 
     const textarea = container.querySelector("textarea")!;

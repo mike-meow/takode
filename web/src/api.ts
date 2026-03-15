@@ -159,14 +159,7 @@ export interface CliSession {
   backend?: "claude" | "codex";
 }
 
-export type SessionSearchMatchedField =
-  | "name"
-  | "task"
-  | "keyword"
-  | "branch"
-  | "path"
-  | "repo"
-  | "user_message";
+export type SessionSearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
 export interface SessionSearchResult {
   sessionId: string;
@@ -573,10 +566,7 @@ export async function createSessionStream(
 
 export const api = {
   createSession: (opts?: CreateSessionOpts) =>
-    post<{ sessionId: string; state: string; cwd: string }>(
-      "/sessions/create",
-      opts,
-    ),
+    post<{ sessionId: string; state: string; cwd: string }>("/sessions/create", opts),
 
   listSessions: () => get<SdkSessionInfo[]>("/sessions"),
 
@@ -611,17 +601,13 @@ export const api = {
     return res.json() as Promise<SessionSearchResponse>;
   },
 
-  killSession: (sessionId: string) =>
-    post(`/sessions/${encodeURIComponent(sessionId)}/kill`),
+  killSession: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/kill`),
 
-  deleteSession: (sessionId: string) =>
-    del(`/sessions/${encodeURIComponent(sessionId)}`),
+  deleteSession: (sessionId: string) => del(`/sessions/${encodeURIComponent(sessionId)}`),
 
-  relaunchSession: (sessionId: string) =>
-    post(`/sessions/${encodeURIComponent(sessionId)}/relaunch`),
+  relaunchSession: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/relaunch`),
 
-  forceCompact: (sessionId: string) =>
-    post(`/sessions/${encodeURIComponent(sessionId)}/force-compact`),
+  forceCompact: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/force-compact`),
 
   revertToMessage: (sessionId: string, messageId: string) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/revert`, { messageId }),
@@ -629,8 +615,7 @@ export const api = {
   archiveSession: (sessionId: string, opts?: { force?: boolean }) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/archive`, opts),
 
-  unarchiveSession: (sessionId: string) =>
-    post(`/sessions/${encodeURIComponent(sessionId)}/unarchive`),
+  unarchiveSession: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/unarchive`),
 
   getToolResult: (sessionId: string, toolUseId: string) =>
     get<{ content: string; is_error: boolean }>(
@@ -638,10 +623,7 @@ export const api = {
     ),
 
   renameSession: (sessionId: string, name: string) =>
-    patch<{ ok: boolean; name: string }>(
-      `/sessions/${encodeURIComponent(sessionId)}/name`,
-      { name },
-    ),
+    patch<{ ok: boolean; name: string }>(`/sessions/${encodeURIComponent(sessionId)}/name`, { name }),
 
   updateSessionOrder: (groupKey: string, orderedIds: string[]) =>
     patch<SessionOrderResponse>("/sessions/order", { groupKey, orderedIds }),
@@ -649,66 +631,49 @@ export const api = {
   updateGroupOrder: (orderedGroupKeys: string[]) =>
     patch<GroupOrderResponse>("/sessions/groups/order", { orderedGroupKeys }),
 
-  markSessionRead: (sessionId: string) =>
-    patch<{ ok: boolean }>(
-      `/sessions/${encodeURIComponent(sessionId)}/read`,
-    ),
+  markSessionRead: (sessionId: string) => patch<{ ok: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/read`),
 
-  markSessionUnread: (sessionId: string) =>
-    patch<{ ok: boolean }>(
-      `/sessions/${encodeURIComponent(sessionId)}/unread`,
-    ),
+  markSessionUnread: (sessionId: string) => patch<{ ok: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/unread`),
 
-  markAllSessionsRead: () =>
-    post<{ ok: boolean }>("/sessions/mark-all-read"),
+  markAllSessionsRead: () => post<{ ok: boolean }>("/sessions/mark-all-read"),
 
   setDiffBase: (sessionId: string, branch: string) =>
-    patch<{ ok: boolean; diff_base_branch: string }>(
-      `/sessions/${encodeURIComponent(sessionId)}/diff-base`,
-      { branch },
-    ),
+    patch<{ ok: boolean; diff_base_branch: string }>(`/sessions/${encodeURIComponent(sessionId)}/diff-base`, {
+      branch,
+    }),
 
   // Cat herding (orchestrator→worker relationships)
   herdSessions: (orchId: string, workerIds: string[]) =>
-    post<{ herded: string[]; notFound: string[] }>(
-      `/sessions/${encodeURIComponent(orchId)}/herd`,
-      { workerIds },
-    ),
+    post<{ herded: string[]; notFound: string[] }>(`/sessions/${encodeURIComponent(orchId)}/herd`, { workerIds }),
 
   unherdSession: (orchId: string, workerId: string) =>
     del<{ ok: boolean; removed: boolean }>(
       `/sessions/${encodeURIComponent(orchId)}/herd/${encodeURIComponent(workerId)}`,
     ),
 
-  getHerdedSessions: (orchId: string) =>
-    get<SdkSessionInfo[]>(
-      `/sessions/${encodeURIComponent(orchId)}/herd`,
-    ),
+  getHerdedSessions: (orchId: string) => get<SdkSessionInfo[]>(`/sessions/${encodeURIComponent(orchId)}/herd`),
 
   getHerdDiagnostics: (sessionId: string) =>
-    get<Record<string, unknown>>(
-      `/sessions/${encodeURIComponent(sessionId)}/herd-diagnostics`,
-    ),
+    get<Record<string, unknown>>(`/sessions/${encodeURIComponent(sessionId)}/herd-diagnostics`),
 
-  listDirs: (path?: string) =>
-    get<DirListResult>(
-      `/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`,
-    ),
+  listDirs: (path?: string) => get<DirListResult>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
   getHome: () => get<{ home: string; cwd: string }>("/fs/home"),
 
   // Environments
   listEnvs: () => get<CompanionEnv[]>("/envs"),
-  getEnv: (slug: string) =>
-    get<CompanionEnv>(`/envs/${encodeURIComponent(slug)}`),
-  createEnv: (name: string, variables: Record<string, string>, docker?: {
-    dockerfile?: string;
-    baseImage?: string;
-    ports?: number[];
-    volumes?: string[];
-    initScript?: string;
-  }) =>
-    post<CompanionEnv>("/envs", { name, variables, ...docker }),
+  getEnv: (slug: string) => get<CompanionEnv>(`/envs/${encodeURIComponent(slug)}`),
+  createEnv: (
+    name: string,
+    variables: Record<string, string>,
+    docker?: {
+      dockerfile?: string;
+      baseImage?: string;
+      ports?: number[];
+      volumes?: string[];
+      initScript?: string;
+    },
+  ) => post<CompanionEnv>("/envs", { name, variables, ...docker }),
   updateEnv: (
     slug: string,
     data: {
@@ -724,16 +689,13 @@ export const api = {
   deleteEnv: (slug: string) => del(`/envs/${encodeURIComponent(slug)}`),
 
   // Environment Docker builds
-  buildEnvImage: (slug: string) =>
-    post<{ ok: boolean; imageTag: string }>(`/envs/${encodeURIComponent(slug)}/build`),
+  buildEnvImage: (slug: string) => post<{ ok: boolean; imageTag: string }>(`/envs/${encodeURIComponent(slug)}/build`),
   getEnvBuildStatus: (slug: string) =>
     get<{ buildStatus: string; buildError?: string; lastBuiltAt?: number; imageTag?: string }>(
       `/envs/${encodeURIComponent(slug)}/build-status`,
     ),
-  buildBaseImage: () =>
-    post<{ ok: boolean; tag: string }>("/docker/build-base"),
-  getBaseImageStatus: () =>
-    get<{ exists: boolean; tag: string }>("/docker/base-image"),
+  buildBaseImage: () => post<{ ok: boolean; tag: string }>("/docker/build-base"),
+  getBaseImageStatus: () => get<{ exists: boolean; tag: string }>("/docker/base-image"),
 
   // Server control
   restartServer: () => post<{ ok: boolean }>("/server/restart", {}),
@@ -745,12 +707,18 @@ export const api = {
   getSettings: () => get<AppSettings>("/settings"),
   updateSettings: (data: {
     serverName?: string;
-    pushoverUserKey?: string; pushoverApiToken?: string; pushoverDelaySeconds?: number;
-    pushoverEnabled?: boolean; pushoverBaseUrl?: string;
-    claudeBinary?: string; codexBinary?: string;
+    pushoverUserKey?: string;
+    pushoverApiToken?: string;
+    pushoverDelaySeconds?: number;
+    pushoverEnabled?: boolean;
+    pushoverBaseUrl?: string;
+    claudeBinary?: string;
+    codexBinary?: string;
     maxKeepAlive?: number;
-    autoApprovalEnabled?: boolean; autoApprovalModel?: string;
-    autoApprovalMaxConcurrency?: number; autoApprovalTimeoutSeconds?: number;
+    autoApprovalEnabled?: boolean;
+    autoApprovalModel?: string;
+    autoApprovalMaxConcurrency?: number;
+    autoApprovalTimeoutSeconds?: number;
     namerConfig?: NamerConfig;
     autoNamerEnabled?: boolean;
     transcriptionConfig?: TranscriptionConfig;
@@ -761,8 +729,7 @@ export const api = {
   testPushover: () => post<{ ok: boolean }>("/pushover/test"),
 
   // Git operations
-  getRepoInfo: (path: string) =>
-    get<GitRepoInfo>(`/git/repo-info?path=${encodeURIComponent(path)}`),
+  getRepoInfo: (path: string) => get<GitRepoInfo>(`/git/repo-info?path=${encodeURIComponent(path)}`),
   listBranches: (repoRoot: string, opts?: { localOnly?: boolean }) =>
     get<GitBranchInfo[]>(
       `/git/branches?repoRoot=${encodeURIComponent(repoRoot)}${opts?.localOnly ? "&localOnly=1" : ""}`,
@@ -771,8 +738,7 @@ export const api = {
     get<{ commits: { sha: string; shortSha: string; message: string; timestamp: number }[] }>(
       `/git/commits?repoRoot=${encodeURIComponent(repoRoot)}&limit=${limit}`,
     ),
-  gitFetch: (repoRoot: string) =>
-    post<{ success: boolean; output: string }>("/git/fetch", { repoRoot }),
+  gitFetch: (repoRoot: string) => post<{ success: boolean; output: string }>("/git/fetch", { repoRoot }),
   gitPull: (cwd: string, sessionId?: string) =>
     post<{
       success: boolean;
@@ -783,14 +749,8 @@ export const api = {
 
   // Git worktrees
   listWorktrees: (repoRoot: string) =>
-    get<GitWorktreeInfo[]>(
-      `/git/worktrees?repoRoot=${encodeURIComponent(repoRoot)}`,
-    ),
-  createWorktree: (
-    repoRoot: string,
-    branch: string,
-    opts?: { baseBranch?: string; createBranch?: boolean },
-  ) =>
+    get<GitWorktreeInfo[]>(`/git/worktrees?repoRoot=${encodeURIComponent(repoRoot)}`),
+  createWorktree: (repoRoot: string, branch: string, opts?: { baseBranch?: string; createBranch?: boolean }) =>
     post<WorktreeCreateResult>("/git/worktree", {
       repoRoot,
       branch,
@@ -801,14 +761,11 @@ export const api = {
 
   // GitHub PR status
   getPRStatus: (cwd: string, branch: string) =>
-    get<PRStatusResponse>(
-      `/git/pr-status?cwd=${encodeURIComponent(cwd)}&branch=${encodeURIComponent(branch)}`,
-    ),
+    get<PRStatusResponse>(`/git/pr-status?cwd=${encodeURIComponent(cwd)}&branch=${encodeURIComponent(branch)}`),
 
   // Backends
   getBackends: () => get<BackendInfo[]>("/backends"),
-  getBackendModels: (backendId: string) =>
-    get<BackendModelInfo[]>(`/backends/${encodeURIComponent(backendId)}/models`),
+  getBackendModels: (backendId: string) => get<BackendModelInfo[]>(`/backends/${encodeURIComponent(backendId)}/models`),
 
   // Containers
   getContainerStatus: () => get<ContainerStatus>("/containers/status"),
@@ -819,10 +776,7 @@ export const api = {
     ),
 
   // Editor
-  startEditor: (sessionId: string) =>
-    post<{ url: string }>(
-      `/sessions/${encodeURIComponent(sessionId)}/editor/start`,
-    ),
+  startEditor: (sessionId: string) => post<{ url: string }>(`/sessions/${encodeURIComponent(sessionId)}/editor/start`),
 
   // File search for @ mentions
   searchFiles: (root: string, query: string, signal?: AbortSignal) =>
@@ -836,18 +790,10 @@ export const api = {
     }>("/fs/resolve-mentions", { mentions }),
 
   // Editor filesystem
-  getFileTree: (path: string) =>
-    get<{ path: string; tree: TreeNode[] }>(
-      `/fs/tree?path=${encodeURIComponent(path)}`,
-    ),
-  readFile: (path: string) =>
-    get<{ path: string; content: string }>(
-      `/fs/read?path=${encodeURIComponent(path)}`,
-    ),
-  getFsImageUrl: (path: string) =>
-    `${BASE}/fs/image?path=${encodeURIComponent(path)}`,
-  writeFile: (path: string, content: string) =>
-    put<{ ok: boolean; path: string }>("/fs/write", { path, content }),
+  getFileTree: (path: string) => get<{ path: string; tree: TreeNode[] }>(`/fs/tree?path=${encodeURIComponent(path)}`),
+  readFile: (path: string) => get<{ path: string; content: string }>(`/fs/read?path=${encodeURIComponent(path)}`),
+  getFsImageUrl: (path: string) => `${BASE}/fs/image?path=${encodeURIComponent(path)}`,
+  writeFile: (path: string, content: string) => put<{ ok: boolean; path: string }>("/fs/write", { path, content }),
   getFileDiff: (path: string, base?: string, opts?: { includeContents?: boolean }) => {
     let url = `/fs/diff?path=${encodeURIComponent(path)}`;
     if (base) url += `&base=${encodeURIComponent(base)}`;
@@ -855,14 +801,17 @@ export const api = {
     return get<{ path: string; diff: string; baseBranch?: string; oldText?: string; newText?: string }>(url);
   },
   getDiffStats: (files: string[], repoRoot: string, base?: string) =>
-    post<{ stats: Record<string, { additions: number; deletions: number }>; baseBranch?: string }>(
-      "/fs/diff-stats",
-      { files, repoRoot, base: base || undefined },
-    ),
+    post<{ stats: Record<string, { additions: number; deletions: number }>; baseBranch?: string }>("/fs/diff-stats", {
+      files,
+      repoRoot,
+      base: base || undefined,
+    }),
   getDiffFiles: (cwd: string, base: string) =>
-    get<{ files: Array<{ path: string; status: "A" | "M" | "D" | "R"; oldPath?: string }>; repoRoot: string; base: string }>(
-      `/fs/diff-files?cwd=${encodeURIComponent(cwd)}&base=${encodeURIComponent(base)}`,
-    ),
+    get<{
+      files: Array<{ path: string; status: "A" | "M" | "D" | "R"; oldPath?: string }>;
+      repoRoot: string;
+      base: string;
+    }>(`/fs/diff-files?cwd=${encodeURIComponent(cwd)}&base=${encodeURIComponent(base)}`),
   getClaudeMdFiles: (cwd: string) =>
     get<{ cwd: string; files: { path: string; content: string; writable?: boolean }[] }>(
       `/fs/claude-md?cwd=${encodeURIComponent(cwd)}`,
@@ -966,10 +915,8 @@ export const api = {
   // Terminal
   spawnTerminal: (cwd: string, cols?: number, rows?: number) =>
     post<{ terminalId: string }>("/terminal/spawn", { cwd, cols, rows }),
-  killTerminal: () =>
-    post<{ ok: boolean }>("/terminal/kill"),
-  getTerminal: () =>
-    get<{ active: boolean; terminalId?: string; cwd?: string }>("/terminal"),
+  killTerminal: () => post<{ ok: boolean }>("/terminal/kill"),
+  getTerminal: () => get<{ active: boolean; terminalId?: string; cwd?: string }>("/terminal"),
 
   // Cron jobs
   listCronJobs: () => get<CronJobInfo[]>("/cron/jobs"),
@@ -980,28 +927,22 @@ export const api = {
   deleteCronJob: (id: string) => del(`/cron/jobs/${encodeURIComponent(id)}`),
   toggleCronJob: (id: string) => post<CronJobInfo>(`/cron/jobs/${encodeURIComponent(id)}/toggle`),
   runCronJob: (id: string) => post(`/cron/jobs/${encodeURIComponent(id)}/run`),
-  getCronJobExecutions: (id: string) =>
-    get<CronJobExecution[]>(`/cron/jobs/${encodeURIComponent(id)}/executions`),
+  getCronJobExecutions: (id: string) => get<CronJobExecution[]>(`/cron/jobs/${encodeURIComponent(id)}/executions`),
 
   // Cross-session messaging
   sendSessionMessage: (sessionId: string, content: string) =>
     post<{ ok: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/message`, { content }),
 
   // Transcription debug logs
-  getTranscriptionLogs: () =>
-    get<TranscriptionLogIndexEntry[]>("/transcription-logs"),
-  getTranscriptionLogEntry: (id: number) =>
-    get<TranscriptionLogEntry>(`/transcription-logs/${id}`),
+  getTranscriptionLogs: () => get<TranscriptionLogIndexEntry[]>("/transcription-logs"),
+  getTranscriptionLogEntry: (id: number) => get<TranscriptionLogEntry>(`/transcription-logs/${id}`),
 
   // Namer debug logs
-  getNamerLogs: () =>
-    get<NamerLogIndexEntry[]>("/namer-logs"),
-  getNamerLogEntry: (id: number) =>
-    get<NamerLogEntry>(`/namer-logs/${id}`),
+  getNamerLogs: () => get<NamerLogIndexEntry[]>("/namer-logs"),
+  getNamerLogEntry: (id: number) => get<NamerLogEntry>(`/namer-logs/${id}`),
 
   // Auto-Approval configs
-  getAutoApprovalConfigs: () =>
-    get<AutoApprovalConfig[]>("/auto-approval/configs"),
+  getAutoApprovalConfigs: () => get<AutoApprovalConfig[]>("/auto-approval/configs"),
   getAutoApprovalConfig: (slug: string) =>
     get<AutoApprovalConfig>(`/auto-approval/configs/${encodeURIComponent(slug)}`),
   /** Find the matching auto-approval config for a given cwd (longest prefix match).
@@ -1011,18 +952,22 @@ export const api = {
     if (repoRoot) url += `&repo_root=${encodeURIComponent(repoRoot)}`;
     return get<{ config: AutoApprovalConfig | null }>(url);
   },
-  createAutoApprovalConfig: (data: { projectPath: string; projectPaths?: string[]; label: string; criteria: string; enabled?: boolean }) =>
-    post<AutoApprovalConfig>("/auto-approval/configs", data),
-  updateAutoApprovalConfig: (slug: string, data: { label?: string; criteria?: string; enabled?: boolean; projectPaths?: string[] }) =>
-    put<AutoApprovalConfig>(`/auto-approval/configs/${encodeURIComponent(slug)}`, data),
-  deleteAutoApprovalConfig: (slug: string) =>
-    del(`/auto-approval/configs/${encodeURIComponent(slug)}`),
+  createAutoApprovalConfig: (data: {
+    projectPath: string;
+    projectPaths?: string[];
+    label: string;
+    criteria: string;
+    enabled?: boolean;
+  }) => post<AutoApprovalConfig>("/auto-approval/configs", data),
+  updateAutoApprovalConfig: (
+    slug: string,
+    data: { label?: string; criteria?: string; enabled?: boolean; projectPaths?: string[] },
+  ) => put<AutoApprovalConfig>(`/auto-approval/configs/${encodeURIComponent(slug)}`, data),
+  deleteAutoApprovalConfig: (slug: string) => del(`/auto-approval/configs/${encodeURIComponent(slug)}`),
 
   // Auto-Approval debug logs
-  getAutoApprovalLogs: () =>
-    get<AutoApprovalLogIndexEntry[]>("/auto-approval/logs"),
-  getAutoApprovalLogEntry: (id: number) =>
-    get<AutoApprovalLogEntry>(`/auto-approval/logs/${id}`),
+  getAutoApprovalLogs: () => get<AutoApprovalLogIndexEntry[]>("/auto-approval/logs"),
+  getAutoApprovalLogEntry: (id: number) => get<AutoApprovalLogEntry>(`/auto-approval/logs/${id}`),
 
   // CLI session discovery (for resume)
   listCliSessions: (backend?: "claude" | "codex") =>
@@ -1037,8 +982,7 @@ export const api = {
     const qs = params.toString();
     return get<import("./types.js").QuestmasterTask[]>(`/quests${qs ? `?${qs}` : ""}`);
   },
-  getQuest: (id: string) =>
-    get<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}`),
+  getQuest: (id: string) => get<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}`),
   getQuestHistory: (id: string) =>
     get<import("./types.js").QuestmasterTask[]>(`/quests/${encodeURIComponent(id)}/history`),
   createQuest: (input: import("./types.js").QuestCreateInput) =>
@@ -1047,8 +991,7 @@ export const api = {
     patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}`, body),
   transitionQuest: (id: string, input: import("./types.js").QuestTransitionInput) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/transition`, input),
-  deleteQuest: (id: string) =>
-    del(`/quests/${encodeURIComponent(id)}`),
+  deleteQuest: (id: string) => del(`/quests/${encodeURIComponent(id)}`),
   claimQuest: (id: string, sessionId: string) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/claim`, { sessionId }),
   completeQuest: (id: string, verificationItems: import("./types.js").QuestVerificationItem[]) =>
@@ -1061,20 +1004,28 @@ export const api = {
       cancelled?: boolean;
     },
   ) =>
-    post<import("./types.js").QuestmasterTask>(
-      `/quests/${encodeURIComponent(id)}/transition`,
-      { status: "done", ...(input ?? {}) },
-    ),
+    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/transition`, {
+      status: "done",
+      ...(input ?? {}),
+    }),
   checkQuestVerification: (id: string, index: number, checked: boolean) =>
     patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/${index}`, { checked }),
   markQuestVerificationRead: (id: string) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/read`, {}),
   markQuestVerificationInbox: (id: string) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/verification/inbox`, {}),
-  addQuestFeedback: (id: string, text: string, author: "human" | "agent" = "human", images?: import("./types.js").QuestImage[]) =>
+  addQuestFeedback: (
+    id: string,
+    text: string,
+    author: "human" | "agent" = "human",
+    images?: import("./types.js").QuestImage[],
+  ) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback`, { text, author, images }),
-  editQuestFeedback: (id: string, index: number, updates: { text?: string; images?: import("./types.js").QuestImage[] }) =>
-    patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`, updates),
+  editQuestFeedback: (
+    id: string,
+    index: number,
+    updates: { text?: string; images?: import("./types.js").QuestImage[] },
+  ) => patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`, updates),
   toggleFeedbackAddressed: (id: string, index: number) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}/addressed`, {}),
 
@@ -1110,7 +1061,9 @@ export const api = {
     return res.json();
   },
   removeQuestImage: (questId: string, imageId: string) =>
-    del<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(questId)}/images/${encodeURIComponent(imageId)}`),
+    del<import("./types.js").QuestmasterTask>(
+      `/quests/${encodeURIComponent(questId)}/images/${encodeURIComponent(imageId)}`,
+    ),
   /** URL for displaying a quest image in the browser */
   questImageUrl: (imageId: string) => `${BASE}/quests/_images/${encodeURIComponent(imageId)}`,
 

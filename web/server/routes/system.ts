@@ -98,9 +98,7 @@ async function fetchLitellmModels(): Promise<string[] | null> {
     if (!body.data || !Array.isArray(body.data)) return null;
 
     // Filter out wildcard routing duplicates (e.g. "gpt-5.3-codex*")
-    const ids = body.data
-      .map((m) => m.id)
-      .filter((id) => !id.endsWith("*"));
+    const ids = body.data.map((m) => m.id).filter((id) => !id.endsWith("*"));
 
     _modelCache = { allIds: ids, fetchedAt: Date.now() };
     return ids;
@@ -151,9 +149,10 @@ function modelIdToLabel(id: string): string {
 
   // GPT models: "gpt-5.3-codex" → "GPT-5.3 Codex"
   if (id.startsWith("gpt-")) {
-    return id.replace(/^gpt-/, "GPT-")
+    return id
+      .replace(/^gpt-/, "GPT-")
       .split("-")
-      .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+      .map((part, i) => (i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
       .join(" ");
   }
 
@@ -203,7 +202,10 @@ function modelIdToLabel(id: string): string {
   }
 
   // Gemini or other: capitalize first letter of each segment
-  return id.split("-").map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+  return id
+    .split("-")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
 }
 
 export function createSystemRoutes(ctx: RouteContext) {
@@ -230,11 +232,11 @@ export function createSystemRoutes(ctx: RouteContext) {
       snapshot: wsBridge.getTrafficStatsSnapshot(),
       recording: recorder
         ? {
-          available: true,
-          recordingsDir: recorder.getRecordingsDir(),
-          globalEnabled: recorder.isGloballyEnabled(),
-          maxLines: recorder.getMaxLines(),
-        }
+            available: true,
+            recordingsDir: recorder.getRecordingsDir(),
+            globalEnabled: recorder.isGloballyEnabled(),
+            maxLines: recorder.getMaxLines(),
+          }
         : { available: false },
     });
   });
@@ -261,7 +263,7 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const record = body && typeof body === "object" ? body as Record<string, unknown> : null;
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
     if (!record) {
       return c.json({ error: "Invalid selection payload" }, 400);
     }
@@ -269,9 +271,9 @@ export function createSystemRoutes(ctx: RouteContext) {
     const selectionRecord =
       record.selection === null
         ? null
-        : (record.selection && typeof record.selection === "object"
-          ? record.selection as Record<string, unknown>
-          : undefined);
+        : record.selection && typeof record.selection === "object"
+          ? (record.selection as Record<string, unknown>)
+          : undefined;
     const updatedAt = record.updatedAt;
     const sourceId = record.sourceId;
     const sourceType = record.sourceType;
@@ -297,25 +299,26 @@ export function createSystemRoutes(ctx: RouteContext) {
       const endLine = selectionRecord.endLine;
       const lineCount = selectionRecord.lineCount;
       if (
-        typeof absolutePath !== "string"
-        || absolutePath.trim().length === 0
-        || !Number.isFinite(startLine)
-        || !Number.isFinite(endLine)
-        || !Number.isFinite(lineCount)
+        typeof absolutePath !== "string" ||
+        absolutePath.trim().length === 0 ||
+        !Number.isFinite(startLine) ||
+        !Number.isFinite(endLine) ||
+        !Number.isFinite(lineCount)
       ) {
         return c.json({ error: "selection must include absolutePath, startLine, endLine, and lineCount" }, 400);
       }
     }
 
     wsBridge.updateVsCodeSelectionState({
-      selection: selectionRecord === null
-        ? null
-        : {
-          absolutePath: selectionRecord.absolutePath as string,
-          startLine: Number(selectionRecord.startLine),
-          endLine: Number(selectionRecord.endLine),
-          lineCount: Number(selectionRecord.lineCount),
-        },
+      selection:
+        selectionRecord === null
+          ? null
+          : {
+              absolutePath: selectionRecord.absolutePath as string,
+              startLine: Number(selectionRecord.startLine),
+              endLine: Number(selectionRecord.endLine),
+              lineCount: Number(selectionRecord.lineCount),
+            },
       updatedAt: Number(updatedAt),
       sourceId,
       sourceType,
@@ -342,7 +345,7 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const record = body && typeof body === "object" ? body as Record<string, unknown> : null;
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
     if (!record) {
       return c.json({ error: "Invalid VSCode window payload" }, 400);
     }
@@ -399,7 +402,7 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const record = body && typeof body === "object" ? body as Record<string, unknown> : null;
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
     if (!record) {
       return c.json({ error: "Invalid VSCode command result payload" }, 400);
     }
@@ -410,14 +413,10 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "error must be a string when provided" }, 400);
     }
 
-    const handled = wsBridge.resolveVsCodeOpenFileResult(
-      c.req.param("sourceId"),
-      c.req.param("commandId"),
-      {
-        ok: record.ok,
-        ...(typeof record.error === "string" ? { error: record.error } : {}),
-      },
-    );
+    const handled = wsBridge.resolveVsCodeOpenFileResult(c.req.param("sourceId"), c.req.param("commandId"), {
+      ok: record.ok,
+      ...(typeof record.error === "string" ? { error: record.error } : {}),
+    });
     if (!handled) {
       return c.json({ error: "VSCode open-file command not found" }, 404);
     }
@@ -432,7 +431,7 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const record = body && typeof body === "object" ? body as Record<string, unknown> : null;
+    const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
     if (!record) {
       return c.json({ error: "Invalid open-file payload" }, 400);
     }
@@ -478,7 +477,10 @@ export function createSystemRoutes(ctx: RouteContext) {
     api.get("/perf/lag", (c) => c.json(perfTracer.getLagEvents(Number(c.req.query("limit")) || 50)));
     api.get("/perf/slow", (c) => c.json(perfTracer.getSlowRequests(Number(c.req.query("limit")) || 50)));
     api.get("/perf/ws", (c) => c.json(perfTracer.getSlowWsMessages(Number(c.req.query("limit")) || 50)));
-    api.post("/perf/reset", (c) => { perfTracer.reset(); return c.json({ ok: true }); });
+    api.post("/perf/reset", (c) => {
+      perfTracer.reset();
+      return c.json({ ok: true });
+    });
   }
 
   // ─── Available backends ─────────────────────────────────────
@@ -488,7 +490,11 @@ export function createSystemRoutes(ctx: RouteContext) {
     const backends: Array<{ id: string; name: string; available: boolean }> = [];
 
     backends.push({ id: "claude", name: "Claude Code", available: resolveBinary(s.claudeBinary || "claude") !== null });
-    backends.push({ id: "claude-sdk", name: "Claude SDK", available: resolveBinary(s.claudeBinary || "claude") !== null });
+    backends.push({
+      id: "claude-sdk",
+      name: "Claude SDK",
+      available: resolveBinary(s.claudeBinary || "claude") !== null,
+    });
     backends.push({ id: "codex", name: "Codex", available: resolveBinary(s.codexBinary || "codex") !== null });
 
     return c.json(backends);
@@ -671,7 +677,8 @@ export function createSystemRoutes(ctx: RouteContext) {
     if (!containerManager.checkDocker()) return c.json({ error: "Docker is not available" }, 503);
     // Build the-companion base image from the repo's Dockerfile
     const dockerfilePath = join(WEB_DIR, "docker", "Dockerfile.the-companion");
-    if (!existsSync(dockerfilePath)) { // sync-ok: route handler, not called during message handling
+    if (!existsSync(dockerfilePath)) {
+      // sync-ok: route handler, not called during message handling
       return c.json({ error: "Base Dockerfile not found at " + dockerfilePath }, 404);
     }
     try {
@@ -773,7 +780,10 @@ export function createSystemRoutes(ctx: RouteContext) {
       if (!backend) return c.json({ error: "Invalid backend. Use claude, codex, or both." }, 400);
 
       const roots = getSkillRoots(backend);
-      const bySlug = new Map<string, { slug: string; name: string; description: string; path: string; backends: Array<"claude" | "codex"> }>();
+      const bySlug = new Map<
+        string,
+        { slug: string; name: string; description: string; path: string; backends: Array<"claude" | "codex"> }
+      >();
       for (const root of roots) {
         if (!(await pathExists(root.dir))) continue;
         const entries = await readdir(root.dir, { withFileTypes: true });
@@ -842,7 +852,10 @@ export function createSystemRoutes(ctx: RouteContext) {
       return c.json({ error: "name is required" }, 400);
     }
     // Slugify: lowercase, replace non-alphanumeric with dashes
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
     if (!slug) return c.json({ error: "Invalid name" }, 400);
 
     const roots = getSkillRoots(backend);
@@ -863,7 +876,13 @@ export function createSystemRoutes(ctx: RouteContext) {
       paths[root.backend] = skillMdPath;
     }
 
-    return c.json({ slug, name, description: description || `Skill: ${name}`, backends: roots.map((r) => r.backend), paths });
+    return c.json({
+      slug,
+      name,
+      description: description || `Skill: ${name}`,
+      backends: roots.map((r) => r.backend),
+      paths,
+    });
   });
 
   api.put("/skills/:slug", async (c) => {
@@ -943,9 +962,8 @@ export function createSystemRoutes(ctx: RouteContext) {
         enabled: body.enabled ?? true,
         permissionMode: body.permissionMode || "bypassPermissions",
         codexInternetAccess: body.codexInternetAccess,
-        codexReasoningEffort: typeof body.codexReasoningEffort === "string"
-          ? (body.codexReasoningEffort.trim() || undefined)
-          : undefined,
+        codexReasoningEffort:
+          typeof body.codexReasoningEffort === "string" ? body.codexReasoningEffort.trim() || undefined : undefined,
       });
       if (job.enabled) cronScheduler?.scheduleJob(job);
       return c.json(job, 201);
@@ -960,7 +978,20 @@ export function createSystemRoutes(ctx: RouteContext) {
     try {
       // Only allow user-editable fields — prevent tampering with internal tracking
       const allowed: Record<string, unknown> = {};
-      for (const key of ["name", "prompt", "schedule", "recurring", "backendType", "model", "cwd", "envSlug", "enabled", "permissionMode", "codexInternetAccess", "codexReasoningEffort"] as const) {
+      for (const key of [
+        "name",
+        "prompt",
+        "schedule",
+        "recurring",
+        "backendType",
+        "model",
+        "cwd",
+        "envSlug",
+        "enabled",
+        "permissionMode",
+        "codexInternetAccess",
+        "codexReasoningEffort",
+      ] as const) {
         if (key in body) allowed[key] = body[key];
       }
       if (typeof allowed.codexReasoningEffort === "string") {

@@ -226,7 +226,9 @@ async function handleSessions(base: string, args: string[]): Promise<void> {
       break;
     }
     default:
-      err(`Unknown sessions subcommand: ${sub}. Available: list, get, create, kill, relaunch, archive, rename, send-message`);
+      err(
+        `Unknown sessions subcommand: ${sub}. Available: list, get, create, kill, relaunch, archive, rename, send-message`,
+      );
   }
 }
 
@@ -293,7 +295,9 @@ async function handleCron(base: string, args: string[]): Promise<void> {
     case "create": {
       const flags = parseFlags(rest);
       if (!flags.name || !flags.schedule || !flags.prompt)
-        err("Usage: companion cron create --name <name> --schedule <cron|datetime> --prompt <prompt> [--cwd <path>] [--model <model>] [--env <slug>] [--recurring] [--backend <type>] [--permission-mode <mode>]");
+        err(
+          "Usage: companion cron create --name <name> --schedule <cron|datetime> --prompt <prompt> [--cwd <path>] [--model <model>] [--env <slug>] [--recurring] [--backend <type>] [--permission-mode <mode>]",
+        );
       const body: Record<string, unknown> = {
         name: flags.name,
         schedule: flags.schedule,
@@ -305,8 +309,10 @@ async function handleCron(base: string, args: string[]): Promise<void> {
       if (flags.backend) body.backendType = flags.backend;
       if (flags["permission-mode"]) body.permissionMode = flags["permission-mode"];
       // Default: recurring=true for cron expressions, false if looks like a datetime
-      body.recurring = flags.recurring === true || flags.recurring === "true"
-        || (flags.recurring === undefined && !(flags.schedule as string).includes("T"));
+      body.recurring =
+        flags.recurring === true ||
+        flags.recurring === "true" ||
+        (flags.recurring === undefined && !(flags.schedule as string).includes("T"));
       out(await apiPost(base, "/cron/jobs", body));
       break;
     }
@@ -371,7 +377,8 @@ async function handleSettings(base: string, args: string[]): Promise<void> {
       if (flags["server-name"]) body.serverName = flags["server-name"];
       if (flags["pushover-user-key"]) body.pushoverUserKey = flags["pushover-user-key"];
       if (flags["pushover-api-token"]) body.pushoverApiToken = flags["pushover-api-token"];
-      if (Object.keys(body).length === 0) err("Usage: companion settings set --server-name <name> or --pushover-user-key <key>");
+      if (Object.keys(body).length === 0)
+        err("Usage: companion settings set --server-name <name> or --pushover-user-key <key>");
       out(await apiPut(base, "/settings", body));
       break;
     }
@@ -432,7 +439,8 @@ async function handleSkills(base: string, args: string[]): Promise<void> {
     }
     case "create": {
       const flags = parseFlags(rest);
-      if (!flags.name) err("Usage: companion skills create --name <name> [--description <desc>] [--content <markdown>]");
+      if (!flags.name)
+        err("Usage: companion skills create --name <name> [--description <desc>] [--content <markdown>]");
       const body: Record<string, unknown> = { name: flags.name };
       if (flags.description) body.description = flags.description;
       if (flags.content) body.content = flags.content;
@@ -489,7 +497,8 @@ export async function handleCtlCommand(command: string, rawArgv: string[]): Prom
         await handleStatus(base);
         break;
       case "sessions":
-        if (argv.length === 0) err("Usage: companion sessions <list|get|create|kill|relaunch|archive|rename|send-message>");
+        if (argv.length === 0)
+          err("Usage: companion sessions <list|get|create|kill|relaunch|archive|rename|send-message>");
         await handleSessions(base, argv);
         break;
       case "envs":

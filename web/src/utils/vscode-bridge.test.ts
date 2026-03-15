@@ -30,14 +30,18 @@ describe("vscode-bridge", () => {
   });
 
   it("keeps absolute file paths unchanged", () => {
-    expect(resolveEmbeddedVsCodePath("/workspace/project/src/app.ts", "/workspace/project")).toBe("/workspace/project/src/app.ts");
+    expect(resolveEmbeddedVsCodePath("/workspace/project/src/app.ts", "/workspace/project")).toBe(
+      "/workspace/project/src/app.ts",
+    );
   });
 
   it("posts file-open requests to the VS Code wrapper when embedded", () => {
     window.history.replaceState({}, "", "/?takodeHost=vscode");
     const postMessageSpy = vi.spyOn(window.parent, "postMessage");
 
-    expect(openFileInEmbeddedVsCode({ absolutePath: "/workspace/project/src/app.ts", line: 42, column: 3, endLine: 44 })).toBe(true);
+    expect(
+      openFileInEmbeddedVsCode({ absolutePath: "/workspace/project/src/app.ts", line: 42, column: 3, endLine: 44 }),
+    ).toBe(true);
     expect(postMessageSpy).toHaveBeenCalledWith(
       {
         source: "takode-vscode-prototype",
@@ -61,12 +65,12 @@ describe("vscode-bridge", () => {
   });
 
   it("builds local editor URIs for explicit local editors", () => {
-    expect(buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts", line: 42, column: 3 }, "vscode-local")).toBe(
-      "vscode://file//workspace/project/src/app.ts:42:3",
-    );
-    expect(buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts", line: 42, endLine: 44 }, "vscode-local")).toBe(
-      "vscode://file//workspace/project/src/app.ts:42:1",
-    );
+    expect(
+      buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts", line: 42, column: 3 }, "vscode-local"),
+    ).toBe("vscode://file//workspace/project/src/app.ts:42:3");
+    expect(
+      buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts", line: 42, endLine: 44 }, "vscode-local"),
+    ).toBe("vscode://file//workspace/project/src/app.ts:42:1");
     expect(buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts" }, "cursor")).toBe(
       "cursor://file//workspace/project/src/app.ts:1:1",
     );
@@ -112,8 +116,12 @@ describe("vscode-bridge", () => {
 
   it("switches the persisted editor preference to vscode-remote when embedded", async () => {
     window.history.replaceState({}, "", "/?takodeHost=vscode");
-    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "none" } } as Awaited<ReturnType<typeof api.getSettings>>);
-    vi.mocked(api.updateSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<ReturnType<typeof api.updateSettings>>);
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "none" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
+    vi.mocked(api.updateSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<
+      ReturnType<typeof api.updateSettings>
+    >);
 
     await ensureVsCodeEditorPreference();
 
@@ -122,7 +130,9 @@ describe("vscode-bridge", () => {
 
   it("keeps the existing editor preference when it is already vscode-remote", async () => {
     window.history.replaceState({}, "", "/?takodeHost=vscode");
-    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<ReturnType<typeof api.getSettings>>);
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
 
     await ensureVsCodeEditorPreference();
 

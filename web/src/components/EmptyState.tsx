@@ -18,12 +18,8 @@ export function EmptyState() {
   return (
     <div className="flex-1 h-full flex flex-col items-center justify-center px-4">
       <SleepingCat className="w-32 h-24 mb-4" />
-      <h1 className="text-lg font-semibold text-cc-fg mb-1">
-        {serverName || "Takode"}
-      </h1>
-      <p className="text-sm text-cc-muted mb-6">
-        No active sessions
-      </p>
+      <h1 className="text-lg font-semibold text-cc-fg mb-1">{serverName || "Takode"}</h1>
+      <p className="text-sm text-cc-muted mb-6">No active sessions</p>
       <button
         onClick={() => useStore.getState().openNewSessionModal()}
         className="px-4 py-2.5 text-sm font-medium rounded-xl bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors cursor-pointer flex items-center gap-2"

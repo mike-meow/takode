@@ -19,8 +19,8 @@ import { HighlightedText } from "./HighlightedText.js";
  * Returns null when no search is active (zero overhead path).
  */
 function useMessageSearchHighlight(sessionId: string | undefined, messageId: string) {
-  const query = useStore((s) => sessionId ? getSessionSearchState(s, sessionId).query : "");
-  const mode = useStore((s) => sessionId ? getSessionSearchState(s, sessionId).mode : "strict" as const);
+  const query = useStore((s) => (sessionId ? getSessionSearchState(s, sessionId).query : ""));
+  const mode = useStore((s) => (sessionId ? getSessionSearchState(s, sessionId).mode : ("strict" as const)));
   const isCurrent = useStore((s) => {
     if (!sessionId) return false;
     const ss = getSessionSearchState(s, sessionId);
@@ -101,7 +101,8 @@ export const MessageBubble = memo(function MessageBubble({
             <p className="text-sm font-medium text-cc-error">{message.content}</p>
             {isContextLimit && (
               <p className="text-xs text-cc-muted mt-1">
-                Try <code className="px-1 py-0.5 rounded bg-cc-code-bg/30 text-[11px] font-mono-code">/compact</code> to reduce context, or start a new session.
+                Try <code className="px-1 py-0.5 rounded bg-cc-code-bg/30 text-[11px] font-mono-code">/compact</code> to
+                reduce context, or start a new session.
               </p>
             )}
           </div>
@@ -112,7 +113,13 @@ export const MessageBubble = memo(function MessageBubble({
       return (
         <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-red-500/10 text-xs text-red-400/80 font-mono-code">
-            <svg className="w-3 h-3 text-red-400/60 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              className="w-3 h-3 text-red-400/60 shrink-0"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <circle cx="8" cy="8" r="6.5" />
               <line x1="4" y1="12" x2="12" y2="4" />
             </svg>
@@ -127,7 +134,13 @@ export const MessageBubble = memo(function MessageBubble({
         return (
           <div className="flex justify-end animate-[fadeSlideIn_0.2s_ease-out]">
             <div className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs font-mono-code max-w-[85%]">
-              <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <svg
+                className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
                 <circle cx="8" cy="8" r="6.5" />
                 <path d="M5.5 8.5l2 2 3.5-4" />
               </svg>
@@ -150,7 +163,10 @@ export const MessageBubble = memo(function MessageBubble({
     if ((message.variant === "quest_claimed" || message.variant === "quest_submitted") && message.metadata?.quest) {
       return (
         <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-          <QuestClaimBlock quest={message.metadata.quest} variant={message.variant === "quest_submitted" ? "submitted" : "claimed"} />
+          <QuestClaimBlock
+            quest={message.metadata.quest}
+            variant={message.variant === "quest_submitted" ? "submitted" : "claimed"}
+          />
         </div>
       );
     }
@@ -171,9 +187,7 @@ export const MessageBubble = memo(function MessageBubble({
     return (
       <div className="flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-cc-border" />
-        <span className="text-[11px] text-cc-muted italic font-mono-code shrink-0 px-1">
-          {message.content}
-        </span>
+        <span className="text-[11px] text-cc-muted italic font-mono-code shrink-0 px-1">{message.content}</span>
         <div className="flex-1 h-px bg-cc-border" />
       </div>
     );
@@ -185,13 +199,25 @@ export const MessageBubble = memo(function MessageBubble({
   }
 
   if (message.role === "user") {
-    return <UserMessage message={message} sessionId={sessionId} showTimestamp={showTimestamp} searchHighlight={searchHighlight} />;
+    return (
+      <UserMessage
+        message={message}
+        sessionId={sessionId}
+        showTimestamp={showTimestamp}
+        searchHighlight={searchHighlight}
+      />
+    );
   }
 
   // Assistant message
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-      <AssistantMessage message={message} sessionId={sessionId} showTimestamp={showTimestamp} searchHighlight={searchHighlight} />
+      <AssistantMessage
+        message={message}
+        sessionId={sessionId}
+        showTimestamp={showTimestamp}
+        searchHighlight={searchHighlight}
+      />
     </div>
   );
 });
@@ -215,10 +241,7 @@ function CollapsibleContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative">
-      <div
-        ref={contentRef}
-        style={isCollapsed ? { maxHeight: COLLAPSE_THRESHOLD, overflow: "hidden" } : undefined}
-      >
+      <div ref={contentRef} style={isCollapsed ? { maxHeight: COLLAPSE_THRESHOLD, overflow: "hidden" } : undefined}>
         {children}
       </div>
       {isCollapsed && (
@@ -263,12 +286,16 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
     if (hasOpenableSession) {
       list.push({
         label: `Open session`,
-        onClick: () => { window.location.hash = `#/sessions/${source.sessionId}`; },
+        onClick: () => {
+          window.location.hash = `#/sessions/${source.sessionId}`;
+        },
       });
     }
     list.push({
       label: `ID: ${source.sessionId.slice(0, 12)}${source.sessionId.length > 12 ? "…" : ""}`,
-      onClick: () => { writeClipboardText(source.sessionId).catch(console.error); },
+      onClick: () => {
+        writeClipboardText(source.sessionId).catch(console.error);
+      },
     });
     return list;
   }, [source.sessionId, hasOpenableSession]);
@@ -287,14 +314,7 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
         </svg>
         <span className="font-mono-code">via {label}</span>
       </button>
-      {menuPos && (
-        <ContextMenu
-          x={menuPos.x}
-          y={menuPos.y}
-          items={items}
-          onClose={() => setMenuPos(null)}
-        />
-      )}
+      {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
     </div>
   );
 }
@@ -304,9 +324,7 @@ function HerdEventMessage({ message }: { message: ChatMessage; showTimestamp: bo
   // The content is formatted by formatHerdEventBatch():
   // "N events from N sessions\n\n#34 Worker A | turn_end | ✓ 56.3s\n#35 Worker B | ..."
   // Extract individual event lines (skip the header and blank lines).
-  const lines = message.content
-    .split("\n")
-    .filter((line) => line.trim().length > 0 && line.startsWith("#"));
+  const lines = message.content.split("\n").filter((line) => line.trim().length > 0 && line.startsWith("#"));
 
   if (lines.length === 0) {
     // Fallback for unexpected format — render as simple muted text
@@ -320,7 +338,10 @@ function HerdEventMessage({ message }: { message: ChatMessage; showTimestamp: bo
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out] space-y-0">
       {lines.map((line, i) => (
-        <div key={i} className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 leading-snug">
+        <div
+          key={i}
+          className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 leading-snug"
+        >
           <span className="text-amber-500/60 shrink-0">◇</span>
           <span className="truncate">{line}</span>
         </div>
@@ -331,7 +352,17 @@ function HerdEventMessage({ message }: { message: ChatMessage; showTimestamp: bo
 
 type SearchHighlightInfo = { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
 
-function UserMessage({ message, sessionId, showTimestamp, searchHighlight }: { message: ChatMessage; sessionId?: string; showTimestamp: boolean; searchHighlight?: SearchHighlightInfo }) {
+function UserMessage({
+  message,
+  sessionId,
+  showTimestamp,
+  searchHighlight,
+}: {
+  message: ChatMessage;
+  sessionId?: string;
+  showTimestamp: boolean;
+  searchHighlight?: SearchHighlightInfo;
+}) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const isCodex = useStore((s) => s.sessions.get(sessionId ?? "")?.backend_type === "codex");
@@ -379,21 +410,22 @@ function UserMessage({ message, sessionId, showTimestamp, searchHighlight }: { m
         )}
         <CollapsibleContent>
           <pre className="text-[13px] sm:text-[14px] whitespace-pre-wrap break-words font-sans-ui leading-relaxed">
-            {searchHighlight
-              ? <HighlightedText text={message.content} query={searchHighlight.query} mode={searchHighlight.mode} isCurrent={searchHighlight.isCurrent} />
-              : message.content}
+            {searchHighlight ? (
+              <HighlightedText
+                text={message.content}
+                query={searchHighlight.query}
+                mode={searchHighlight.mode}
+                isCurrent={searchHighlight.isCurrent}
+              />
+            ) : (
+              message.content
+            )}
           </pre>
         </CollapsibleContent>
         {showTimestamp && <MessageTimestamp timestamp={message.timestamp} align="right" />}
       </div>
       <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} />
-      {lightboxSrc && (
-        <Lightbox
-          src={lightboxSrc}
-          alt="attachment"
-          onClose={() => setLightboxSrc(null)}
-        />
-      )}
+      {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
     </div>
   );
 }
@@ -401,16 +433,26 @@ function UserMessage({ message, sessionId, showTimestamp, searchHighlight }: { m
 /** Inline menu button for user messages — copy, revert, etc.
  *  Uses the ContextMenu component (proven to work on iOS Safari)
  *  which portals to document.body to escape overflow-hidden ancestors. */
-function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessage; sessionId?: string; canRevert: boolean }) {
+function UserMessageMenu({
+  message,
+  sessionId,
+  canRevert,
+}: {
+  message: ChatMessage;
+  sessionId?: string;
+  canRevert: boolean;
+}) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const handleCopy = useCallback(() => {
-    writeClipboardText(message.content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(console.error);
+    writeClipboardText(message.content)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(console.error);
   }, [message.content]);
 
   const handleRevert = useCallback(async () => {
@@ -434,9 +476,7 @@ function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessa
   }, [menuPos]);
 
   const items = useMemo(() => {
-    const list: ContextMenuItem[] = [
-      { label: "Copy message", onClick: handleCopy },
-    ];
+    const list: ContextMenuItem[] = [{ label: "Copy message", onClick: handleCopy }];
     if (canRevert) {
       list.push({
         label: "Revert to here",
@@ -463,7 +503,13 @@ function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessa
         title="Message options"
       >
         {copied ? (
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-success">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="w-3.5 h-3.5 text-cc-success"
+          >
             <path d="M3 8.5l3.5 3.5 6.5-8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : (
@@ -474,14 +520,7 @@ function UserMessageMenu({ message, sessionId, canRevert }: { message: ChatMessa
           </svg>
         )}
       </button>
-      {menuPos && (
-        <ContextMenu
-          x={menuPos.x}
-          y={menuPos.y}
-          items={items}
-          onClose={() => setMenuPos(null)}
-        />
-      )}
+      {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
     </div>
   );
 }
@@ -554,7 +593,17 @@ function LeaderUserAddressedMarker() {
   );
 }
 
-function AssistantMessage({ message, sessionId, showTimestamp, searchHighlight }: { message: ChatMessage; sessionId?: string; showTimestamp: boolean; searchHighlight?: SearchHighlightInfo }) {
+function AssistantMessage({
+  message,
+  sessionId,
+  showTimestamp,
+  searchHighlight,
+}: {
+  message: ChatMessage;
+  sessionId?: string;
+  showTimestamp: boolean;
+  searchHighlight?: SearchHighlightInfo;
+}) {
   const contentRef = useRef<HTMLDivElement>(null);
   const hidePaw = useContext(HidePawContext);
   const userAddressed = message.leaderUserAddressed === true;
@@ -581,8 +630,7 @@ function AssistantMessage({ message, sessionId, showTimestamp, searchHighlight }
   const shouldRenderContentFallback = displayMessage.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
 
   // Only show copy-message button when there's actual text content to copy
-  const hasTextContent = displayMessage.content
-    || blocks.some((b) => b.type === "text" || b.type === "thinking");
+  const hasTextContent = displayMessage.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
 
   if (blocks.length === 0 && displayMessage.content) {
     return (
@@ -595,7 +643,9 @@ function AssistantMessage({ message, sessionId, showTimestamp, searchHighlight }
         >
           {userAddressed && <LeaderUserAddressedMarker />}
           <MarkdownContent text={displayMessage.content} sessionId={sessionId} searchHighlight={searchHighlight} />
-          {showTimestamp && <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />}
+          {showTimestamp && (
+            <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
+          )}
         </div>
         <CopyMessageButton message={displayMessage} contentRef={contentRef} />
       </div>
@@ -611,10 +661,19 @@ function AssistantMessage({ message, sessionId, showTimestamp, searchHighlight }
         className={`flex-1 min-w-0 space-y-3 pr-6 ${userAddressedBodyClass}`}
       >
         {userAddressed && <LeaderUserAddressedMarker />}
-        {shouldRenderContentFallback && <MarkdownContent text={displayMessage.content} sessionId={sessionId} searchHighlight={searchHighlight} />}
+        {shouldRenderContentFallback && (
+          <MarkdownContent text={displayMessage.content} sessionId={sessionId} searchHighlight={searchHighlight} />
+        )}
         {grouped.map((group, i) => {
           if (group.kind === "content") {
-            return <ContentBlockRenderer key={i} block={group.block} sessionId={sessionId} searchHighlight={searchHighlight} />;
+            return (
+              <ContentBlockRenderer
+                key={i}
+                block={group.block}
+                sessionId={sessionId}
+                searchHighlight={searchHighlight}
+              />
+            );
           }
           // Single tool_use renders as before
           if (group.items.length === 1) {
@@ -624,18 +683,25 @@ function AssistantMessage({ message, sessionId, showTimestamp, searchHighlight }
           // Grouped tool_uses
           return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
         })}
-        {showTimestamp && <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />}
+        {showTimestamp && (
+          <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
+        )}
       </div>
       {hasTextContent && <CopyMessageButton message={displayMessage} contentRef={contentRef} />}
     </div>
   );
 }
 
-
 /** Copy button for assistant messages.
  *  Uses the ContextMenu component (proven to work on iOS Safari)
  *  which portals to document.body to escape overflow-hidden ancestors. */
-function CopyMessageButton({ message, contentRef }: { message: ChatMessage; contentRef: React.RefObject<HTMLDivElement | null> }) {
+function CopyMessageButton({
+  message,
+  contentRef,
+}: {
+  message: ChatMessage;
+  contentRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -647,18 +713,24 @@ function CopyMessageButton({ message, contentRef }: { message: ChatMessage; cont
 
   const handleCopyMarkdown = useCallback(() => {
     const md = getMessageMarkdown(message);
-    writeClipboardText(md).then(() => showFeedback("Markdown")).catch(console.error);
+    writeClipboardText(md)
+      .then(() => showFeedback("Markdown"))
+      .catch(console.error);
   }, [message, showFeedback]);
 
   const handleCopyPlainText = useCallback(() => {
     const text = getMessagePlainText(message);
-    writeClipboardText(text).then(() => showFeedback("Plain text")).catch(console.error);
+    writeClipboardText(text)
+      .then(() => showFeedback("Plain text"))
+      .catch(console.error);
   }, [message, showFeedback]);
 
   const handleCopyRichText = useCallback(() => {
     const html = contentRef.current?.innerHTML ?? "";
     const plain = getMessagePlainText(message);
-    copyRichText(html, plain).then(() => showFeedback("Rich text")).catch(console.error);
+    copyRichText(html, plain)
+      .then(() => showFeedback("Rich text"))
+      .catch(console.error);
   }, [message, contentRef, showFeedback]);
 
   const toggle = useCallback(() => {
@@ -670,11 +742,14 @@ function CopyMessageButton({ message, contentRef }: { message: ChatMessage; cont
     }
   }, [menuPos]);
 
-  const items = useMemo<ContextMenuItem[]>(() => [
-    { label: "Copy as Markdown", onClick: handleCopyMarkdown },
-    { label: "Copy as Rich Text", onClick: handleCopyRichText },
-    { label: "Copy as Plain Text", onClick: handleCopyPlainText },
-  ], [handleCopyMarkdown, handleCopyRichText, handleCopyPlainText]);
+  const items = useMemo<ContextMenuItem[]>(
+    () => [
+      { label: "Copy as Markdown", onClick: handleCopyMarkdown },
+      { label: "Copy as Rich Text", onClick: handleCopyRichText },
+      { label: "Copy as Plain Text", onClick: handleCopyPlainText },
+    ],
+    [handleCopyMarkdown, handleCopyRichText, handleCopyPlainText],
+  );
 
   return (
     <div className="absolute top-0 right-0 shrink-0">
@@ -687,24 +762,29 @@ function CopyMessageButton({ message, contentRef }: { message: ChatMessage; cont
         title="Copy message"
       >
         {copied ? (
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-success">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="w-3.5 h-3.5 text-cc-success"
+          >
             <path d="M3 8.5l3.5 3.5 6.5-8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : (
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3.5 h-3.5 text-cc-muted hover:text-cc-fg">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            className="w-3.5 h-3.5 text-cc-muted hover:text-cc-fg"
+          >
             <rect x="5.5" y="5.5" width="7" height="8" rx="1" />
             <path d="M3.5 10.5V3a1 1 0 011-1h5.5" />
           </svg>
         )}
       </button>
-      {menuPos && (
-        <ContextMenu
-          x={menuPos.x}
-          y={menuPos.y}
-          items={items}
-          onClose={() => setMenuPos(null)}
-        />
-      )}
+      {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
     </div>
   );
 }
@@ -718,14 +798,22 @@ function AutoApprovedChip({ content, reason }: { content: string; reason?: strin
         onClick={() => setExpanded((v) => !v)}
         className="flex items-start gap-1.5 px-3 py-1.5 rounded-[14px] rounded-br-[4px] bg-green-500/10 text-xs text-green-400/80 font-mono-code max-w-[85%] text-left cursor-pointer hover:bg-green-500/15 transition-colors"
       >
-        <svg className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg
+          className="w-3 h-3 text-green-400/60 shrink-0 mt-0.5"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
           <circle cx="8" cy="8" r="6.5" />
           <path d="M5.5 8.5l2 2 3.5-4" />
         </svg>
         <div className="min-w-0">
           <span className={expanded ? "" : "line-clamp-1"}>{content}</span>
           {reason && (
-            <span className={`block text-[10px] text-green-400/40 mt-0.5 ${expanded ? "" : "line-clamp-1"}`}>{reason}</span>
+            <span className={`block text-[10px] text-green-400/40 mt-0.5 ${expanded ? "" : "line-clamp-1"}`}>
+              {reason}
+            </span>
           )}
         </div>
       </button>
@@ -747,7 +835,13 @@ function CompactMarker({ message, sessionId }: { message: ChatMessage; sessionId
             hasSummary ? "hover:bg-cc-hover cursor-pointer" : ""
           }`}
         >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3 shrink-0 opacity-60">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="w-3 h-3 shrink-0 opacity-60"
+          >
             <path d="M2 4h12M4 8h8M6 12h4" strokeLinecap="round" />
           </svg>
           <span>Conversation compacted</span>
@@ -772,8 +866,16 @@ function CompactMarker({ message, sessionId }: { message: ChatMessage; sessionId
   );
 }
 
-function ContentBlockRenderer({ block, sessionId, searchHighlight }: { block: ContentBlock; sessionId?: string; searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null }) {
-  const isCodex = useStore((s) => sessionId ? s.sessions.get(sessionId)?.backend_type === "codex" : false);
+function ContentBlockRenderer({
+  block,
+  sessionId,
+  searchHighlight,
+}: {
+  block: ContentBlock;
+  sessionId?: string;
+  searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
+}) {
+  const isCodex = useStore((s) => (sessionId ? s.sessions.get(sessionId)?.backend_type === "codex" : false));
 
   if (block.type === "text") {
     return <MarkdownContent text={block.text} sessionId={sessionId} searchHighlight={searchHighlight} />;
@@ -791,11 +893,11 @@ function ContentBlockRenderer({ block, sessionId, searchHighlight }: { block: Co
     const content = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
     const isError = block.is_error;
     return (
-      <div className={`text-xs font-mono-code rounded-lg px-3 py-2 border ${
-        isError
-          ? "bg-cc-error/5 border-cc-error/20 text-cc-error"
-          : "bg-cc-card border-cc-border text-cc-muted"
-      } max-h-40 overflow-y-auto whitespace-pre-wrap`}>
+      <div
+        className={`text-xs font-mono-code rounded-lg px-3 py-2 border ${
+          isError ? "bg-cc-error/5 border-cc-error/20 text-cc-error" : "bg-cc-card border-cc-border text-cc-muted"
+        } max-h-40 overflow-y-auto whitespace-pre-wrap`}
+      >
         {content}
       </div>
     );
@@ -875,24 +977,23 @@ function normalizeCodexThinkingSummary(text: string): string {
 
 const CODEX_THINKING_PREVIEW_MAX_CHARS = 80;
 
-export function CodexThinkingInline({
-  text,
-  thinkingTimeMs,
-}: {
-  text: string;
-  thinkingTimeMs?: number;
-}) {
+export function CodexThinkingInline({ text, thinkingTimeMs }: { text: string; thinkingTimeMs?: number }) {
   const [open, setOpen] = useState(false);
   const summaryText = normalizeCodexThinkingSummary(text);
   const isLongSummary = summaryText.length > CODEX_THINKING_PREVIEW_MAX_CHARS;
-  const visibleSummary = isLongSummary && !open
-    ? `${summaryText.slice(0, CODEX_THINKING_PREVIEW_MAX_CHARS).trimEnd()}`
-    : summaryText;
+  const visibleSummary =
+    isLongSummary && !open ? `${summaryText.slice(0, CODEX_THINKING_PREVIEW_MAX_CHARS).trimEnd()}` : summaryText;
   const timeSuffix = typeof thinkingTimeMs === "number" ? ` (${formatThinkingSeconds(thinkingTimeMs)} s)` : "";
 
   return (
     <div className="flex items-start gap-1.5 text-xs text-cc-muted leading-relaxed py-0.5">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-muted/80 shrink-0 mt-[1px]">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="w-3.5 h-3.5 text-cc-muted/80 shrink-0 mt-[1px]"
+      >
         <path d="M8 2.5a4 4 0 014 4c0 1.4-.7 2.5-1.7 3.2-.5.3-.8.9-.8 1.5V12H6.5v-.8c0-.6-.3-1.2-.8-1.5A3.9 3.9 0 014 6.5a4 4 0 014-4z" />
         <path d="M6.2 13.5h3.6M6.7 15h2.6" strokeLinecap="round" />
       </svg>

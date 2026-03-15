@@ -15,7 +15,9 @@ vi.mock("../api.js", () => ({
 beforeEach(() => {
   vi.mocked(api.getSettings).mockReset();
   vi.mocked(api.openVsCodeRemoteFile).mockReset();
-  vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-local" } } as Awaited<ReturnType<typeof api.getSettings>>);
+  vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-local" } } as Awaited<
+    ReturnType<typeof api.getSettings>
+  >);
 });
 
 // ─── getToolIcon ─────────────────────────────────────────────────────────────
@@ -232,13 +234,7 @@ describe("ToolIcon", () => {
 
 describe("ToolBlock", () => {
   it("renders with correct label and preview", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "echo hello" }}
-        toolUseId="tool-1"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "echo hello" }} toolUseId="tool-1" />);
     expect(screen.queryByText("Terminal")).toBeNull();
     // Preview text appears in the header button area
     const previewSpan = screen.getByText("echo hello");
@@ -247,62 +243,31 @@ describe("ToolBlock", () => {
   });
 
   it("renders with label only when no preview is available", () => {
-    render(
-      <ToolBlock
-        name="WebFetch"
-        input={{ url: "https://example.com" }}
-        toolUseId="tool-2"
-      />
-    );
+    render(<ToolBlock name="WebFetch" input={{ url: "https://example.com" }} toolUseId="tool-2" />);
     expect(screen.getByText("Web Fetch")).toBeTruthy();
   });
 
   it("can hide the repeated label when a grouped bash row already has an outer heading", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "echo hello" }}
-        toolUseId="tool-hide-label"
-        hideLabel
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "echo hello" }} toolUseId="tool-hide-label" hideLabel />);
 
     expect(screen.queryByText("Terminal")).toBeNull();
     expect(screen.getByText("echo hello")).toBeTruthy();
   });
 
   it("keeps standalone bash rows labelless when there is no preview", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{}}
-        toolUseId="tool-bash-no-preview"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{}} toolUseId="tool-bash-no-preview" />);
 
     expect(screen.queryByText("Terminal")).toBeNull();
   });
 
   it("is collapsed by default (does not show details)", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "ls -la" }}
-        toolUseId="tool-3"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "ls -la" }} toolUseId="tool-3" />);
     // The expanded detail area should not be present
     expect(screen.queryByText("$")).toBeNull();
   });
 
   it("expands on click to show input details", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "ls -la" }}
-        toolUseId="tool-4"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "ls -la" }} toolUseId="tool-4" />);
 
     // Click the button to expand
     const button = screen.getByRole("button");
@@ -317,13 +282,7 @@ describe("ToolBlock", () => {
   });
 
   it("collapses on second click", () => {
-    const { container } = render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "ls -la" }}
-        toolUseId="tool-5"
-      />
-    );
+    const { container } = render(<ToolBlock name="Bash" input={{ command: "ls -la" }} toolUseId="tool-5" />);
 
     const button = screen.getByRole("button");
 
@@ -337,13 +296,7 @@ describe("ToolBlock", () => {
   });
 
   it("renders Bash command with $ prefix when expanded", () => {
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "npm install" }}
-        toolUseId="tool-6"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "npm install" }} toolUseId="tool-6" />);
 
     fireEvent.click(screen.getByRole("button"));
 
@@ -367,7 +320,7 @@ describe("ToolBlock", () => {
           new_string: "const x = 2;",
         }}
         toolUseId="tool-7"
-      />
+      />,
     );
 
     expect(screen.getByText("Edit File")).toBeTruthy();
@@ -403,7 +356,7 @@ describe("ToolBlock", () => {
           ],
         }}
         toolUseId="tool-7b"
-      />
+      />,
     );
 
     expect(screen.getByText("Edit File")).toBeTruthy();
@@ -423,10 +376,10 @@ describe("ToolBlock", () => {
         name="Write"
         input={{
           file_path: "/home/user/src/new-file.ts",
-          content: 'export const answer = 42;\n',
+          content: "export const answer = 42;\n",
         }}
         toolUseId="tool-7c"
-      />
+      />,
     );
 
     expect(screen.getByText("Write File")).toBeTruthy();
@@ -448,15 +401,12 @@ describe("ToolBlock", () => {
             {
               path: "/home/user/src/new-file.ts",
               kind: "create",
-              diff: [
-                "+export const answer = 42;",
-                "+export const question = 'life';",
-              ].join("\n"),
+              diff: ["+export const answer = 42;", "+export const question = 'life';"].join("\n"),
             },
           ],
         }}
         toolUseId="tool-7c-codex-write"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Write Filesrc\/new-file\.ts/ }));
@@ -475,16 +425,12 @@ describe("ToolBlock", () => {
             {
               path: "/home/user/plans/design.md",
               kind: "create",
-              diff: [
-                "+# Design",
-                "+",
-                "+Draft content",
-              ].join("\n"),
+              diff: ["+# Design", "+", "+Draft content"].join("\n"),
             },
           ],
         }}
         toolUseId="tool-7c-codex-edit"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Edit Fileplans\/design\.md/ }));
@@ -544,8 +490,14 @@ describe("ToolBlock", () => {
   });
 
   it("routes diff Open File through remote VSCode when configured", async () => {
-    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<ReturnType<typeof api.getSettings>>);
-    vi.mocked(api.openVsCodeRemoteFile).mockResolvedValue({ ok: true, sourceId: "window-a", commandId: "cmd-1" } as Awaited<ReturnType<typeof api.openVsCodeRemoteFile>>);
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "vscode-remote" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
+    vi.mocked(api.openVsCodeRemoteFile).mockResolvedValue({
+      ok: true,
+      sourceId: "window-a",
+      commandId: "cmd-1",
+    } as Awaited<ReturnType<typeof api.openVsCodeRemoteFile>>);
 
     render(
       <ToolBlock
@@ -683,7 +635,7 @@ describe("ToolBlock", () => {
           ],
         }}
         toolUseId="tool-7u"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
@@ -702,18 +654,12 @@ describe("ToolBlock", () => {
             {
               path: "/home/user/src/app.ts",
               kind: "update",
-              diff: [
-                "@@ -1,3 +1,3 @@",
-                " const a = 1;",
-                "-const b = 2;",
-                "+const b = 42;",
-                " const c = 3;",
-              ].join("\n"),
+              diff: ["@@ -1,3 +1,3 @@", " const a = 1;", "-const b = 2;", "+const b = 42;", " const c = 3;"].join("\n"),
             },
           ],
         }}
         toolUseId="tool-7h"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
@@ -732,7 +678,7 @@ describe("ToolBlock", () => {
           changes: [{ path: "/home/user/src/app.ts", kind: "modify" }],
         }}
         toolUseId="tool-7c"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
@@ -740,13 +686,7 @@ describe("ToolBlock", () => {
   });
 
   it("renders Read file path when expanded", () => {
-    render(
-      <ToolBlock
-        name="Read"
-        input={{ file_path: "/home/user/test.txt" }}
-        toolUseId="tool-8"
-      />
-    );
+    render(<ToolBlock name="Read" input={{ file_path: "/home/user/test.txt" }} toolUseId="tool-8" />);
 
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("/home/user/test.txt")).toBeTruthy();
@@ -754,11 +694,7 @@ describe("ToolBlock", () => {
 
   it("shows a 3-format copy menu for ExitPlanMode detail blocks", () => {
     render(
-      <ToolBlock
-        name="ExitPlanMode"
-        input={{ plan: "## Plan title\n\n1. First step" }}
-        toolUseId="tool-plan-copy"
-      />
+      <ToolBlock name="ExitPlanMode" input={{ plan: "## Plan title\n\n1. First step" }} toolUseId="tool-plan-copy" />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -788,7 +724,7 @@ describe("ToolBlock", () => {
         input={{ file_path: "/home/user/screenshot.jpg" }}
         toolUseId="tool-image-2"
         sessionId="s-image"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -819,7 +755,7 @@ describe("ToolBlock", () => {
         input={{ command: "cat web/public/logo.png" }}
         toolUseId="tool-image-bash"
         sessionId="s-image-bash"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -830,13 +766,7 @@ describe("ToolBlock", () => {
   });
 
   it("renders JSON for unknown tools when expanded", () => {
-    render(
-      <ToolBlock
-        name="CustomTool"
-        input={{ foo: "bar", count: 42 }}
-        toolUseId="tool-9"
-      />
-    );
+    render(<ToolBlock name="CustomTool" input={{ foo: "bar", count: 42 }} toolUseId="tool-9" />);
 
     fireEvent.click(screen.getByRole("button"));
     const preElement = document.querySelector("pre");
@@ -861,7 +791,7 @@ describe("ToolBlock", () => {
         input={{ command: "python scripts/mix_dataset.py --chunks 512" }}
         toolUseId="tu-live-output"
         sessionId="live-session"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -883,12 +813,7 @@ describe("ToolBlock", () => {
     useStore.setState({ toolProgress, toolResults: new Map() });
 
     render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "sleep 30" }}
-        toolUseId="tu-live-empty"
-        sessionId="live-session"
-      />
+      <ToolBlock name="Bash" input={{ command: "sleep 30" }} toolUseId="tu-live-empty" sessionId="live-session" />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -927,7 +852,7 @@ describe("ToolBlock", () => {
         input={{ command: "find src -name '*.ts'" }}
         toolUseId="tu-live-complete"
         sessionId="live-session"
-      />
+      />,
     );
 
     const liveBadge = screen.getByTestId("completed-live-badge");
@@ -993,14 +918,7 @@ describe("ToolBlock duration display", () => {
     toolResults.set("test-session", sessionResults);
     useStore.setState({ toolResults });
 
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "npm test" }}
-        toolUseId="tu-dur-1"
-        sessionId="test-session"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "npm test" }} toolUseId="tu-dur-1" sessionId="test-session" />);
 
     // Should show the server-reported ground-truth duration
     expect(screen.getByText("5.2s")).toBeTruthy();
@@ -1017,14 +935,7 @@ describe("ToolBlock duration display", () => {
     toolStartTimestamps.set("test-session", sessionTimestamps);
     useStore.setState({ toolStartTimestamps });
 
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "npm test" }}
-        toolUseId="tu-live"
-        sessionId="test-session"
-      />
-    );
+    render(<ToolBlock name="Bash" input={{ command: "npm test" }} toolUseId="tu-live" sessionId="test-session" />);
 
     // Should show a live timer badge with primary color (indicating in-progress)
     const badge = document.querySelector(".tabular-nums");
@@ -1050,12 +961,7 @@ describe("ToolBlock duration display", () => {
     useStore.setState({ toolResults });
 
     const { container } = render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "echo hi" }}
-        toolUseId="tu-no-dur"
-        sessionId="test-session"
-      />
+      <ToolBlock name="Bash" input={{ command: "echo hi" }} toolUseId="tu-no-dur" sessionId="test-session" />,
     );
 
     // No tabular-nums span (duration badge) should exist
@@ -1079,7 +985,7 @@ describe("ToolBlock duration display", () => {
         input={{ command: "npm run build" }}
         toolUseId="tu-progress-fallback"
         sessionId="test-session"
-      />
+      />,
     );
 
     const badge = screen.getByText("7.0s");
@@ -1111,12 +1017,7 @@ describe("ToolBlock duration display", () => {
     useStore.setState({ toolResults, toolStartTimestamps });
 
     const { container } = render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "sleep 3" }}
-        toolUseId="tu-restart"
-        sessionId="test-session"
-      />
+      <ToolBlock name="Bash" input={{ command: "sleep 3" }} toolUseId="tu-restart" sessionId="test-session" />,
     );
 
     // Should NOT show a live timer (no tabular-nums badge at all)
@@ -1125,13 +1026,7 @@ describe("ToolBlock duration display", () => {
   });
 
   it("does not show duration badge without sessionId", () => {
-    const { container } = render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "echo hi" }}
-        toolUseId="tu-no-session"
-      />
-    );
+    const { container } = render(<ToolBlock name="Bash" input={{ command: "echo hi" }} toolUseId="tu-no-session" />);
 
     const durationBadge = container.querySelector(".tabular-nums");
     expect(durationBadge).toBeNull();
@@ -1165,7 +1060,7 @@ describe("WebSearch result suppression", () => {
         input={{ query: "Codex CLI skills documentation" }}
         toolUseId="ws-echo"
         sessionId="s-ws"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -1194,7 +1089,7 @@ describe("WebSearch result suppression", () => {
         input={{ query: "react hooks best practices" }}
         toolUseId="ws-placeholder"
         sessionId="s-ws2"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button"));
@@ -1206,7 +1101,8 @@ describe("WebSearch result suppression", () => {
     const sessionResults = new Map();
     sessionResults.set("ws-real", {
       tool_use_id: "ws-real",
-      content: "React Hooks API Reference\nhttps://react.dev/reference/react/hooks\nA comprehensive guide to React hooks...",
+      content:
+        "React Hooks API Reference\nhttps://react.dev/reference/react/hooks\nA comprehensive guide to React hooks...",
       is_error: false,
       total_size: 100,
       is_truncated: false,
@@ -1214,14 +1110,7 @@ describe("WebSearch result suppression", () => {
     toolResults.set("s-ws3", sessionResults);
     useStore.setState({ toolResults });
 
-    render(
-      <ToolBlock
-        name="WebSearch"
-        input={{ query: "react hooks" }}
-        toolUseId="ws-real"
-        sessionId="s-ws3"
-      />
-    );
+    render(<ToolBlock name="WebSearch" input={{ query: "react hooks" }} toolUseId="ws-real" sessionId="s-ws3" />);
 
     fireEvent.click(screen.getByRole("button"));
     // Meaningful results should show the Result section

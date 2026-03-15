@@ -118,7 +118,8 @@ Find the repo path by checking where this Takode server is running from (e.g. lo
  */
 export function ensureAssistantWorkspace(): void {
   mkdirSync(ASSISTANT_DIR, { recursive: true }); // sync-ok: cold path, workspace initialization at startup
-  if (!existsSync(CLAUDE_MD_PATH)) { // sync-ok: cold path, workspace initialization at startup
+  if (!existsSync(CLAUDE_MD_PATH)) {
+    // sync-ok: cold path, workspace initialization at startup
     writeFileSync(CLAUDE_MD_PATH, DEFAULT_CLAUDE_MD); // sync-ok: cold path, workspace initialization at startup
     console.log("[assistant-workspace] Created CLAUDE.md at", CLAUDE_MD_PATH);
   }

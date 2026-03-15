@@ -39,6 +39,5 @@ export function createRecordingsRoutes(ctx: RouteContext) {
     return c.json({ recordings: await recorder.listRecordings() });
   });
 
-
   return api;
 }

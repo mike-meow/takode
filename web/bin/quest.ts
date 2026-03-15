@@ -49,11 +49,7 @@ import { getName } from "../server/session-names.js";
 import { readFile } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
-import {
-  getSessionAuthDir,
-  getSessionAuthFilePrefixes,
-  parseSessionAuthFileData,
-} from "../shared/session-auth.js";
+import { getSessionAuthDir, getSessionAuthFilePrefixes, parseSessionAuthFileData } from "../shared/session-auth.js";
 
 const DEFAULT_PORT = 3456;
 const COMPANION_SESSION_ID_HEADER = "x-companion-session-id";
@@ -70,12 +66,7 @@ function dedupeCompanionCredentials(candidates: CompanionCredentials[]): Compani
   const seen = new Set<string>();
   const deduped: CompanionCredentials[] = [];
   for (const candidate of candidates) {
-    const key = [
-      candidate.serverId || "",
-      candidate.sessionId,
-      candidate.authToken,
-      candidate.port ?? "",
-    ].join("\0");
+    const key = [candidate.serverId || "", candidate.sessionId, candidate.authToken, candidate.port ?? ""].join("\0");
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(candidate);
@@ -204,7 +195,9 @@ function getCredentials(): CompanionCredentials | null {
       const serverMatches = uniqueCandidates.filter((candidate) => candidate.serverId === envServerId);
       if (serverMatches.length === 1) return serverMatches[0];
       if (serverMatches.length > 1) {
-        die(`Multiple Companion auth contexts matched server ${envServerId} for ${cwd}. Refusing to guess which server to use.`);
+        die(
+          `Multiple Companion auth contexts matched server ${envServerId} for ${cwd}. Refusing to guess which server to use.`,
+        );
       }
     }
 
@@ -213,7 +206,9 @@ function getCredentials(): CompanionCredentials | null {
       const sessionMatches = uniqueCandidates.filter((candidate) => candidate.sessionId === envSessionId);
       if (sessionMatches.length === 1) return sessionMatches[0];
       if (sessionMatches.length > 1) {
-        die(`Multiple Companion auth contexts matched session ${envSessionId} for ${cwd}. Refusing to guess which server to use.`);
+        die(
+          `Multiple Companion auth contexts matched session ${envSessionId} for ${cwd}. Refusing to guess which server to use.`,
+        );
       }
     }
 
@@ -221,12 +216,16 @@ function getCredentials(): CompanionCredentials | null {
       const portMatches = uniqueCandidates.filter((candidate) => candidate.port === envPort);
       if (portMatches.length === 1) return portMatches[0];
       if (portMatches.length > 1) {
-        die(`Multiple Companion auth contexts matched port ${envPort} for ${cwd}. Refusing to guess which server to use.`);
+        die(
+          `Multiple Companion auth contexts matched port ${envPort} for ${cwd}. Refusing to guess which server to use.`,
+        );
       }
     }
 
     if (uniqueCandidates.length === 1) return uniqueCandidates[0];
-    die(`Multiple Companion auth contexts were found for ${cwd}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars.`);
+    die(
+      `Multiple Companion auth contexts were found for ${cwd}. Refusing to guess which server to use. Relaunch this session to restore COMPANION_* env vars.`,
+    );
   }
 
   const legacyCentral = (() => {
@@ -356,11 +355,7 @@ function isVerificationInboxUnreadQuest(q: QuestmasterTask): boolean {
   return q.status === "needs_verification" && !!(q as { verificationInboxUnread?: boolean }).verificationInboxUnread;
 }
 
-function requireNeedsVerificationQuest(
-  quest: QuestmasterTask,
-  questId: string,
-  action: "later" | "inbox",
-): void {
+function requireNeedsVerificationQuest(quest: QuestmasterTask, questId: string, action: "later" | "inbox"): void {
   if (quest.status === "needs_verification") return;
   die(`Quest ${questId} is ${quest.status}; quest ${action} only applies to needs_verification quests.`);
 }
@@ -382,7 +377,7 @@ async function getSessionArchivedMap(): Promise<Map<string, boolean>> {
       signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) throw new Error(res.statusText);
-    const sessions = await res.json() as { sessionId: string; archived?: boolean }[];
+    const sessions = (await res.json()) as { sessionId: string; archived?: boolean }[];
     sessionArchivedCache = new Map(sessions.map((s) => [s.sessionId, !!s.archived]));
     return sessionArchivedCache;
   } catch {
@@ -396,7 +391,8 @@ function formatSessionLabel(sid: string, archivedMap?: Map<string, boolean>): st
   const isYou = currentSessionId === sid;
   const archived = archivedMap?.get(sid) ? ", archived" : "";
   const you = isYou ? ", you" : "";
-  const suffix = archived || you ? ` (${[archived.replace(/^, /, ""), you.replace(/^, /, "")].filter(Boolean).join(", ")})` : "";
+  const suffix =
+    archived || you ? ` (${[archived.replace(/^, /, ""), you.replace(/^, /, "")].filter(Boolean).join(", ")})` : "";
   return name ? `"${name}" (${sid.slice(0, 8)})${suffix}` : `${sid.slice(0, 8)}${suffix}`;
 }
 
@@ -445,33 +441,38 @@ function formatQuestDetail(q: QuestmasterTask, archivedMap?: Map<string, boolean
     lines.push(`Claimed:     ${timeAgo((q as { claimedAt: number }).claimedAt)}`);
   }
   if ("verificationItems" in q) {
-    const items = (q as { verificationItems: { text: string; checked: boolean }[] })
-      .verificationItems;
+    const items = (q as { verificationItems: { text: string; checked: boolean }[] }).verificationItems;
     const checked = items.filter((i) => i.checked).length;
     lines.push(`Verification: ${checked}/${items.length}`);
-    lines.push(`Inbox:        ${isVerificationInboxUnreadQuest(q) ? "unread (Verification Inbox)" : "acknowledged (Verification)"}`);
+    lines.push(
+      `Inbox:        ${isVerificationInboxUnreadQuest(q) ? "unread (Verification Inbox)" : "acknowledged (Verification)"}`,
+    );
     for (let i = 0; i < items.length; i++) {
       lines.push(`  [${items[i].checked ? "x" : " "}] ${i}: ${items[i].text}`);
     }
   }
   if ("feedback" in q) {
-    const entries = (q as {
-      feedback?: {
-        author: string;
-        text: string;
-        ts: number;
-        addressed?: boolean;
-        authorSessionId?: string;
-        images?: { filename: string; path: string }[];
-      }[];
-    }).feedback;
+    const entries = (
+      q as {
+        feedback?: {
+          author: string;
+          text: string;
+          ts: number;
+          addressed?: boolean;
+          authorSessionId?: string;
+          images?: { filename: string; path: string }[];
+        }[];
+      }
+    ).feedback;
     if (entries?.length) {
       lines.push(`Feedback:`);
       for (const entry of entries) {
         const authorLabel = entry.authorSessionId
           ? `${entry.author}:${formatSessionLabel(entry.authorSessionId, archivedMap)}`
           : entry.author;
-        const tag = entry.addressed ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}` : `${authorLabel}, ${timeAgo(entry.ts)}`;
+        const tag = entry.addressed
+          ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}`
+          : `${authorLabel}, ${timeAgo(entry.ts)}`;
         lines.push(`  [${tag}] ${entry.text}`);
         if (entry.images?.length) {
           for (const img of entry.images) {
@@ -539,10 +540,7 @@ async function uploadQuestImage(port: string, rawPath: string): Promise<QuestIma
   const filePath = resolve(rawPath);
   const data = await readFile(filePath);
   const form = new FormData();
-  form.set(
-    "file",
-    new File([data], basename(filePath), { type: guessMimeType(filePath) }),
-  );
+  form.set("file", new File([data], basename(filePath), { type: guessMimeType(filePath) }));
   const res = await fetch(`http://localhost:${port}/api/quests/_images`, {
     method: "POST",
     headers: companionAuthHeaders(),
@@ -553,7 +551,7 @@ async function uploadQuestImage(port: string, rawPath: string): Promise<QuestIma
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error((err as { error?: string }).error || res.statusText);
   }
-  return await res.json() as QuestImageRef;
+  return (await res.json()) as QuestImageRef;
 }
 
 // ─── Commands ───────────────────────────────────────────────────────────────
@@ -565,8 +563,8 @@ async function cmdList(): Promise<void> {
   const invalidVerification = verificationTokens.filter((token) => !VERIFICATION_FILTER_VALUES.has(token));
   if (invalidVerification.length > 0) {
     die(
-      `Invalid --verification value(s): ${invalidVerification.join(", ")}. `
-      + "Valid values: all, inbox, reviewed (aliases: verification, needs_verification, unread, new, non-inbox, non_inbox, read, acknowledged).",
+      `Invalid --verification value(s): ${invalidVerification.join(", ")}. ` +
+        "Valid values: all, inbox, reviewed (aliases: verification, needs_verification, unread, new, non-inbox, non_inbox, read, acknowledged).",
     );
   }
   const quests = applyQuestListFilters(await listQuests(), {
@@ -629,26 +627,32 @@ async function cmdHistory(): Promise<void> {
 async function cmdCreate(): Promise<void> {
   validateFlags(["desc", "tags", "image", "images", "json"]);
   const title = positional(0);
-  if (!title) die("Usage: quest create <title> [--desc \"...\"] [--tags \"t1,t2\"] [--image <path>] [--images \"p1,p2\"]");
+  if (!title) die('Usage: quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"]');
 
   const description = option("desc");
   const tagsStr = option("tags");
-  const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
+  const tags = tagsStr
+    ? tagsStr
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : undefined;
   const imagePaths = [
     ...options("image"),
     ...options("images").flatMap((group) => group.split(",").map((p) => p.trim())),
   ].filter(Boolean);
 
   try {
-    const uploadedImages = imagePaths.length > 0
-      ? (() => {
-        const port = companionPort;
-        if (!port) {
-          die("Companion server port not found. Set COMPANION_PORT env var.");
-        }
-        return Promise.all(imagePaths.map((p) => uploadQuestImage(port, p)));
-      })()
-      : undefined;
+    const uploadedImages =
+      imagePaths.length > 0
+        ? (() => {
+            const port = companionPort;
+            if (!port) {
+              die("Companion server port not found. Set COMPANION_PORT env var.");
+            }
+            return Promise.all(imagePaths.map((p) => uploadQuestImage(port, p)));
+          })()
+        : undefined;
     const resolvedImages = uploadedImages ? await uploadedImages : undefined;
     const quest = await createQuest({
       title,
@@ -675,9 +679,7 @@ async function cmdClaim(): Promise<void> {
 
   const sessionId = option("session") || currentSessionId;
   if (!sessionId && !companionPort) {
-    die(
-      "No session identity. Pass --session <id> or run from a Companion session.",
-    );
+    die("No session identity. Pass --session <id> or run from a Companion session.");
   }
 
   // Prefer HTTP endpoint when server is available — it handles session name
@@ -694,13 +696,11 @@ async function cmdClaim(): Promise<void> {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         die((err as { error: string }).error || res.statusText);
       }
-      const quest = await res.json() as QuestmasterTask;
+      const quest = (await res.json()) as QuestmasterTask;
       if (jsonOutput) {
         out(quest);
       } else {
-        const owner = "sessionId" in quest && typeof quest.sessionId === "string"
-          ? quest.sessionId
-          : sessionId;
+        const owner = "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : sessionId;
         console.log(`Claimed ${quest.questId} "${quest.title}" for session ${formatSessionLabel(owner || "unknown")}`);
       }
       return;
@@ -711,9 +711,7 @@ async function cmdClaim(): Promise<void> {
 
   // Fallback: direct filesystem claim (no session name integration)
   if (!sessionId) {
-    die(
-      "No session identity. Pass --session <id> or run from a Companion session.",
-    );
+    die("No session identity. Pass --session <id> or run from a Companion session.");
   }
   try {
     const quest = await claimQuest(id, sessionId);
@@ -732,7 +730,7 @@ async function cmdClaim(): Promise<void> {
 async function cmdComplete(): Promise<void> {
   validateFlags(["items", "json"]);
   const id = positional(0);
-  if (!id) die("Usage: quest complete <questId> [--items \"check1,check2\"]");
+  if (!id) die('Usage: quest complete <questId> [--items "check1,check2"]');
 
   const itemsStr = option("items");
   let items: { text: string; checked: boolean }[] = [];
@@ -744,7 +742,9 @@ async function cmdComplete(): Promise<void> {
       .map((text) => ({ text, checked: false }));
   }
   if (items.length === 0) {
-    console.error("Warning: quest submitted for verification without verification items. Consider adding --items for trackable verification.");
+    console.error(
+      "Warning: quest submitted for verification without verification items. Consider adding --items for trackable verification.",
+    );
   }
 
   // Prefer HTTP endpoint when server is available — it broadcasts quest status
@@ -761,7 +761,7 @@ async function cmdComplete(): Promise<void> {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         die((err as { error: string }).error || res.statusText);
       }
-      const quest = await res.json() as QuestmasterTask;
+      const quest = (await res.json()) as QuestmasterTask;
       if (jsonOutput) {
         out(quest);
       } else {
@@ -795,7 +795,7 @@ async function cmdComplete(): Promise<void> {
 async function cmdDone(): Promise<void> {
   validateFlags(["notes", "cancelled", "json"]);
   const id = positional(0);
-  if (!id) die("Usage: quest done <questId> [--notes \"...\"] [--cancelled]");
+  if (!id) die('Usage: quest done <questId> [--notes "..."] [--cancelled]');
 
   const notes = option("notes");
   const cancelled = flag("cancelled");
@@ -818,7 +818,7 @@ async function cmdDone(): Promise<void> {
 async function cmdCancel(): Promise<void> {
   validateFlags(["notes", "json"]);
   const id = positional(0);
-  if (!id) die("Usage: quest cancel <id> [--notes \"reason\"] [--json]");
+  if (!id) die('Usage: quest cancel <id> [--notes "reason"] [--json]');
 
   const notes = option("notes");
 
@@ -839,7 +839,7 @@ async function cmdCancel(): Promise<void> {
 async function cmdTransition(): Promise<void> {
   validateFlags(["status", "desc", "session", "json"]);
   const id = positional(0);
-  if (!id) die("Usage: quest transition <questId> --status <s> [--desc \"...\"]");
+  if (!id) die('Usage: quest transition <questId> --status <s> [--desc "..."]');
 
   const status = option("status");
   if (!status) die("--status is required");
@@ -884,7 +884,7 @@ async function cmdLater(): Promise<void> {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         die((err as { error: string }).error || res.statusText);
       }
-      const quest = await res.json() as QuestmasterTask;
+      const quest = (await res.json()) as QuestmasterTask;
       requireNeedsVerificationQuest(quest, id, "later");
       if (jsonOutput) {
         out(quest);
@@ -935,7 +935,7 @@ async function cmdInbox(): Promise<void> {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         die((err as { error: string }).error || res.statusText);
       }
-      const quest = await res.json() as QuestmasterTask;
+      const quest = (await res.json()) as QuestmasterTask;
       requireNeedsVerificationQuest(quest, id, "inbox");
       if (jsonOutput) {
         out(quest);
@@ -970,12 +970,17 @@ async function cmdInbox(): Promise<void> {
 async function cmdEdit(): Promise<void> {
   validateFlags(["title", "desc", "tags", "json"]);
   const id = positional(0);
-  if (!id) die("Usage: quest edit <questId> [--title \"...\"] [--desc \"...\"] [--tags \"t1,t2\"]");
+  if (!id) die('Usage: quest edit <questId> [--title "..."] [--desc "..."] [--tags "t1,t2"]');
 
   const title = option("title");
   const description = option("desc");
   const tagsStr = option("tags");
-  const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
+  const tags = tagsStr
+    ? tagsStr
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : undefined;
 
   if (title === undefined && description === undefined && tags === undefined) {
     die("At least one of --title, --desc, or --tags is required");
@@ -1023,8 +1028,7 @@ async function cmdCheck(): Promise<void> {
     if (jsonOutput) {
       out(quest);
     } else {
-      const item = (quest as { verificationItems: { text: string; checked: boolean }[] })
-        .verificationItems[index];
+      const item = (quest as { verificationItems: { text: string; checked: boolean }[] }).verificationItems[index];
       console.log(`[${item.checked ? "x" : " "}] ${item.text}`);
     }
   } catch (e) {
@@ -1036,7 +1040,9 @@ async function cmdFeedback(): Promise<void> {
   validateFlags(["text", "author", "session", "image", "images", "json"]);
   const id = positional(0);
   if (!id) {
-    die("Usage: quest feedback <questId> --text \"...\" [--author agent|human] [--session <sid>] [--image <path>] [--images \"p1,p2\"]");
+    die(
+      'Usage: quest feedback <questId> --text "..." [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"]',
+    );
   }
 
   const text = option("text");
@@ -1059,9 +1065,8 @@ async function cmdFeedback(): Promise<void> {
   }
 
   try {
-    const uploadedImages = imagePaths.length > 0
-      ? await Promise.all(imagePaths.map((p) => uploadQuestImage(port, p)))
-      : undefined;
+    const uploadedImages =
+      imagePaths.length > 0 ? await Promise.all(imagePaths.map((p) => uploadQuestImage(port, p))) : undefined;
     const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/feedback`, {
       method: "POST",
       headers: companionAuthHeaders({ "Content-Type": "application/json" }),
@@ -1077,7 +1082,7 @@ async function cmdFeedback(): Promise<void> {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       die((err as { error: string }).error || res.statusText);
     }
-    const quest = await res.json() as QuestmasterTask;
+    const quest = (await res.json()) as QuestmasterTask;
     if (jsonOutput) {
       out(quest);
     } else {
@@ -1117,7 +1122,7 @@ async function cmdAddress(): Promise<void> {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       die((err as { error: string }).error || res.statusText);
     }
-    const quest = await res.json() as QuestmasterTask;
+    const quest = (await res.json()) as QuestmasterTask;
     if (jsonOutput) {
       out(quest);
     } else {

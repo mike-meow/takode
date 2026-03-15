@@ -26,11 +26,7 @@ function findScrollParent(el: HTMLElement): HTMLElement | null {
  * Collapse and adjust scroll so the header appears at the same viewport
  * position the collapse button occupied — feels like "folding up" into place.
  */
-function collapseAndSnap(
-  e: React.MouseEvent,
-  headerRef: RefObject<HTMLElement | null>,
-  onCollapse: () => void,
-) {
+function collapseAndSnap(e: React.MouseEvent, headerRef: RefObject<HTMLElement | null>, onCollapse: () => void) {
   const buttonY = e.currentTarget.getBoundingClientRect().top;
   flushSync(() => onCollapse());
   const header = headerRef.current;
@@ -80,11 +76,7 @@ export function CollapseFooter({
       onClick={(e) => collapseAndSnap(e, headerRef, onCollapse)}
       className="w-full flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-cc-muted/40 hover:text-cc-muted hover:bg-cc-hover/40 transition-colors cursor-pointer"
     >
-      <svg
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        className="w-2.5 h-2.5 shrink-0"
-      >
+      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0">
         <path d="M4 10l4-4 4 4" />
       </svg>
       <span className="font-mono-code">{label}</span>
@@ -109,11 +101,7 @@ export function TurnCollapseFooter({
       className="w-full flex items-center justify-center gap-1 py-0.5 px-2 rounded hover:bg-cc-hover/40 transition-colors cursor-pointer text-[10px] text-cc-muted/40 hover:text-cc-muted font-mono-code"
       title="Collapse this turn"
     >
-      <svg
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        className="w-2.5 h-2.5 shrink-0"
-      >
+      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0">
         <path d="M4 10l4-4 4 4" />
       </svg>
       <span>Collapse</span>

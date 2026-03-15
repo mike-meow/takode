@@ -24,9 +24,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     const state = useStore.getState();
     const currentSessionId = state.currentSessionId;
-    const changedFilesCount = currentSessionId
-      ? (state.changedFiles.get(currentSessionId)?.size ?? 0)
-      : 0;
+    const changedFilesCount = currentSessionId ? (state.changedFiles.get(currentSessionId)?.size ?? 0) : 0;
     const errorContext = {
       currentSessionId,
       activeTab: state.activeTab,
@@ -54,9 +52,7 @@ export class AppErrorBoundary extends Component<Props, State> {
         <div className="h-[100dvh] flex items-center justify-center bg-cc-bg text-cc-fg px-4">
           <div className="max-w-md w-full rounded-xl border border-cc-border bg-cc-card p-5 shadow-sm">
             <h1 className="text-base font-semibold">A runtime error occurred</h1>
-            <p className="text-sm text-cc-muted mt-2">
-              Reload the page to recover.
-            </p>
+            <p className="text-sm text-cc-muted mt-2">Reload the page to recover.</p>
             <button
               type="button"
               onClick={() => window.location.reload()}

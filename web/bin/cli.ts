@@ -13,9 +13,7 @@ process.env.__COMPANION_PACKAGE_ROOT = resolve(__dirname, "..");
 const command = process.argv[2];
 
 // Management subcommands that delegate to ctl.ts
-const CTL_COMMANDS = new Set([
-  "sessions", "envs", "cron", "skills", "settings", "assistant", "ctl-help",
-]);
+const CTL_COMMANDS = new Set(["sessions", "envs", "cron", "skills", "settings", "assistant", "ctl-help"]);
 
 function printUsage(): void {
   console.log(`

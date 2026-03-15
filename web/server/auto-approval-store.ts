@@ -105,9 +105,7 @@ async function readAll(): Promise<AutoApprovalConfig[]> {
 function persist(configs: AutoApprovalConfig[]): void {
   const data = JSON.stringify(configs, null, 2);
   const path = storePath; // capture before any async re-assignment
-  _pendingWrite = _pendingWrite.then(() =>
-    writeFile(path, data, "utf-8").catch(() => {}),
-  );
+  _pendingWrite = _pendingWrite.then(() => writeFile(path, data, "utf-8").catch(() => {}));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -162,16 +160,11 @@ export async function getConfigForPath(cwd: string, extraPaths?: string[]): Prom
   let bestLen = 0;
 
   for (const config of configs) {
-    const configPaths = config.projectPaths?.length
-      ? config.projectPaths
-      : [config.projectPath];
+    const configPaths = config.projectPaths?.length ? config.projectPaths : [config.projectPath];
     for (const pp of configPaths) {
       const normalizedProject = normalizePath(pp);
       for (const normalizedCwd of candidates) {
-        if (
-          normalizedCwd === normalizedProject ||
-          normalizedCwd.startsWith(normalizedProject + "/")
-        ) {
+        if (normalizedCwd === normalizedProject || normalizedCwd.startsWith(normalizedProject + "/")) {
           if (normalizedProject.length > bestLen) {
             bestLen = normalizedProject.length;
             bestMatch = config;
@@ -246,7 +239,9 @@ export async function updateConfig(
     ...(updates.label !== undefined ? { label: updates.label.trim() } : {}),
     ...(updates.criteria !== undefined ? { criteria: updates.criteria.trim() } : {}),
     ...(updates.enabled !== undefined ? { enabled: updates.enabled } : {}),
-    ...(normalizedPaths !== undefined ? { projectPaths: normalizedPaths.length > 0 ? normalizedPaths : undefined } : {}),
+    ...(normalizedPaths !== undefined
+      ? { projectPaths: normalizedPaths.length > 0 ? normalizedPaths : undefined }
+      : {}),
     updatedAt: Date.now(),
   };
 

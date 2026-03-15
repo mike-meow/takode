@@ -98,11 +98,13 @@ describe("SessionHoverCard", () => {
   });
 
   it("falls back to sdk session metadata when no live session state is present", () => {
-    mockStoreState.sdkSessions = [{
-      sessionId: "s1",
-      contextUsedPercent: 73,
-      codexTokenDetails: { modelContextWindow: 258_400 },
-    }];
+    mockStoreState.sdkSessions = [
+      {
+        sessionId: "s1",
+        contextUsedPercent: 73,
+        codexTokenDetails: { modelContextWindow: 258_400 },
+      },
+    ];
 
     try {
       render(

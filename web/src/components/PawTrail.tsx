@@ -12,9 +12,9 @@ export type PawCounterState = {
   cache: Map<string, number>;
 };
 
-export const PawCounterContext = createContext<React.MutableRefObject<PawCounterState>>(
-  { current: { next: 0, cache: new Map() } } as React.MutableRefObject<PawCounterState>,
-);
+export const PawCounterContext = createContext<React.MutableRefObject<PawCounterState>>({
+  current: { next: 0, cache: new Map() },
+} as React.MutableRefObject<PawCounterState>);
 
 // ─── Shared scroll manager ──────────────────────────────────────────────────
 //
@@ -50,15 +50,20 @@ export function PawScrollProvider({
   const lastScrollTop = useRef(0);
   const dirDown = useRef(true);
 
-  const register = useCallback((fn: PawUpdateFn) => {
-    callbacks.current.add(fn);
-    // Give the newly registered paw an immediate position update
-    const el = scrollRef.current;
-    if (el) {
-      requestAnimationFrame(() => fn(el.getBoundingClientRect(), dirDown.current));
-    }
-    return () => { callbacks.current.delete(fn); };
-  }, [scrollRef]);
+  const register = useCallback(
+    (fn: PawUpdateFn) => {
+      callbacks.current.add(fn);
+      // Give the newly registered paw an immediate position update
+      const el = scrollRef.current;
+      if (el) {
+        requestAnimationFrame(() => fn(el.getBoundingClientRect(), dirDown.current));
+      }
+      return () => {
+        callbacks.current.delete(fn);
+      };
+    },
+    [scrollRef],
+  );
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -123,11 +128,7 @@ export function PawScrollProvider({
  * PawScrollProvider that drives updates via a single listener + rAF.
  * Style updates are written directly to DOM refs — no React re-renders.
  */
-export function PawTrailAvatar({
-  isStreaming,
-}: {
-  isStreaming?: boolean;
-}) {
+export function PawTrailAvatar({ isStreaming }: { isStreaming?: boolean }) {
   const componentId = useId();
   const counter = useContext(PawCounterContext);
   const [index] = useState(() => {
@@ -214,15 +215,9 @@ export function PawTrailAvatar({
       {/* Paw print — alternates left/right, visible near edge of feed.
           Always mounted (display toggled by scroll manager) to avoid
           mount/unmount churn during scroll. */}
-      <CatPawLeft
-        ref={pawRef}
-        className="absolute w-3 h-3 text-cc-primary pointer-events-none"
-      />
+      <CatPawLeft ref={pawRef} className="absolute w-3 h-3 text-cc-primary pointer-events-none" />
       {/* Dot — grows in as paw fades out */}
-      <div
-        ref={dotRef}
-        className="w-1.5 h-1.5 rounded-full bg-cc-primary/50 pointer-events-none"
-      />
+      <div ref={dotRef} className="w-1.5 h-1.5 rounded-full bg-cc-primary/50 pointer-events-none" />
     </div>
   );
 }

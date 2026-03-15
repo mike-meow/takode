@@ -40,12 +40,11 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /** Initial system prompt injected into leader/orchestrator sessions on startup. */
-export function buildOrchestratorSystemPrompt(
-  backend: "claude" | "codex" | "claude-sdk",
-): string {
+export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "claude-sdk"): string {
   const isCodexLeader = backend === "codex";
 
-  return `[System] You are a leader session. Your job is to coordinate worker sessions in your herd.\n\n` +
+  return (
+    `[System] You are a leader session. Your job is to coordinate worker sessions in your herd.\n\n` +
     `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers. Forwarded messages from other sessions may also appear with their own source tags.\n\n` +
     `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
     `${TAKODE_LINK_SYNTAX_INSTRUCTIONS}\n\n` +
@@ -54,7 +53,8 @@ export function buildOrchestratorSystemPrompt(
     `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +
     (isCodexLeader
       ? `**Role focus**: Keep your own work to triage, coordination, and short spot checks. Delegate non-trivial implementation, investigation, and verification to worker sessions.\n\nUse the orchestration instructions already loaded in this session as your source of truth. Do not assume Claude-specific tools or files exist.`
-      : `**Role focus**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions.\n\nRead your project's instruction files for full orchestration documentation and workflow guidelines.`);
+      : `**Role focus**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions.\n\nRead your project's instruction files for full orchestration documentation and workflow guidelines.`)
+  );
 }
 
 /** Non-blocking exec — runs a shell command without stalling the event loop. */
@@ -81,9 +81,7 @@ function resolveInitialModeState(
   askPermissionRequested: boolean,
 ): InitialModeState {
   if (backend !== "codex") {
-    const requested = typeof requestedPermissionMode === "string"
-      ? requestedPermissionMode.trim()
-      : "";
+    const requested = typeof requestedPermissionMode === "string" ? requestedPermissionMode.trim() : "";
     if (requested === "acceptEdits") {
       return { permissionMode: "acceptEdits", askPermission: true, uiMode: "agent" };
     }
@@ -101,9 +99,7 @@ function resolveInitialModeState(
     };
   }
 
-  const requested = typeof requestedPermissionMode === "string"
-    ? requestedPermissionMode.trim()
-    : "";
+  const requested = typeof requestedPermissionMode === "string" ? requestedPermissionMode.trim() : "";
 
   switch (requested) {
     case "plan":
@@ -160,10 +156,7 @@ export function createRoutes(
 
   const resolveId = (raw: string): string | null => launcher.resolveSessionId(raw);
 
-  const authenticateTakodeCaller = (
-    c: Context,
-    opts?: { requireOrchestrator?: boolean },
-  ) => {
+  const authenticateTakodeCaller = (c: Context, opts?: { requireOrchestrator?: boolean }) => {
     const result = validateCompanionAuth(c, launcher, resolveId, {
       required: true,
       requireOrchestrator: opts?.requireOrchestrator,
@@ -175,10 +168,11 @@ export function createRoutes(
     return result;
   };
 
-  const authenticateCompanionCallerOptional = (c: Context) => validateCompanionAuth(c, launcher, resolveId, {
-    required: false,
-    headerLabel: "Companion",
-  });
+  const authenticateCompanionCallerOptional = (c: Context) =>
+    validateCompanionAuth(c, launcher, resolveId, {
+      required: false,
+      headerLabel: "Companion",
+    });
 
   if (perfTracer) {
     api.use("/*", async (c, next) => {

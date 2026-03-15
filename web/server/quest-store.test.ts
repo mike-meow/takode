@@ -83,24 +83,20 @@ describe("createQuest", () => {
   });
 
   it("throws on empty title", async () => {
-    await expect(questStore.createQuest({ title: "" })).rejects.toThrow(
-      "Quest title is required",
-    );
-    await expect(questStore.createQuest({ title: "   " })).rejects.toThrow(
-      "Quest title is required",
-    );
+    await expect(questStore.createQuest({ title: "" })).rejects.toThrow("Quest title is required");
+    await expect(questStore.createQuest({ title: "   " })).rejects.toThrow("Quest title is required");
   });
 
   it("throws when creating with in_progress status directly", async () => {
-    await expect(
-      questStore.createQuest({ title: "Bad", status: "in_progress" }),
-    ).rejects.toThrow('Cannot create a quest directly in "in_progress" status');
+    await expect(questStore.createQuest({ title: "Bad", status: "in_progress" })).rejects.toThrow(
+      'Cannot create a quest directly in "in_progress" status',
+    );
   });
 
   it("throws when refined status is missing description", async () => {
-    await expect(
-      questStore.createQuest({ title: "No desc", status: "refined" }),
-    ).rejects.toThrow("Description is required for refined status");
+    await expect(questStore.createQuest({ title: "No desc", status: "refined" })).rejects.toThrow(
+      "Description is required for refined status",
+    );
   });
 
   it("saves tags and parentId", async () => {
@@ -342,9 +338,7 @@ describe("backward transitions", () => {
       description: "Original plan",
     });
     await questStore.claimQuest("q-1", "sess-1");
-    await questStore.completeQuest("q-1", [
-      { text: "Check UI", checked: false },
-    ]);
+    await questStore.completeQuest("q-1", [{ text: "Check UI", checked: false }]);
 
     // Now go backwards to in_progress (rework)
     const rework = await questStore.transitionQuest("q-1", {
@@ -399,9 +393,7 @@ describe("claimQuest", () => {
     });
     await questStore.claimQuest("q-1", "sess-1");
 
-    await expect(questStore.claimQuest("q-1", "sess-2")).rejects.toThrow(
-      "already claimed by session sess-1",
-    );
+    await expect(questStore.claimQuest("q-1", "sess-2")).rejects.toThrow("already claimed by session sess-1");
   });
 
   it("allows transfer when current owner is archived", async () => {
@@ -472,9 +464,7 @@ describe("markDone", () => {
       description: "Ready",
     });
     await questStore.claimQuest("q-1", "sess-1");
-    await questStore.completeQuest("q-1", [
-      { text: "Verify", checked: true },
-    ]);
+    await questStore.completeQuest("q-1", [{ text: "Verify", checked: true }]);
 
     const done = await questStore.markDone("q-1");
     expect(done?.status).toBe("done");
@@ -550,9 +540,7 @@ describe("cancelQuest", () => {
       description: "Verify this",
     });
     await questStore.claimQuest("q-1", "sess-1");
-    await questStore.completeQuest("q-1", [
-      { text: "Check UI", checked: false },
-    ]);
+    await questStore.completeQuest("q-1", [{ text: "Check UI", checked: false }]);
 
     const cancelled = await questStore.cancelQuest("q-1");
     expect(cancelled).not.toBeNull();
@@ -592,9 +580,7 @@ describe("patchQuest", () => {
     expect(patched?.version).toBe(1); // no new version
 
     // Only one file on disk
-    const files = readdirSync(questDir()).filter(
-      (f) => f.startsWith("q-1") && f.endsWith(".json"),
-    );
+    const files = readdirSync(questDir()).filter((f) => f.startsWith("q-1") && f.endsWith(".json"));
     expect(files).toHaveLength(1);
   });
 
@@ -635,17 +621,13 @@ describe("checkVerificationItem", () => {
     await questStore.claimQuest("q-1", "sess-1");
     await questStore.completeQuest("q-1", [{ text: "Only one", checked: false }]);
 
-    await expect(questStore.checkVerificationItem("q-1", 5, true)).rejects.toThrow(
-      "out of range",
-    );
+    await expect(questStore.checkVerificationItem("q-1", 5, true)).rejects.toThrow("out of range");
   });
 
   it("throws when quest has no verification items", async () => {
     await questStore.createQuest({ title: "No items" });
 
-    await expect(questStore.checkVerificationItem("q-1", 0, true)).rejects.toThrow(
-      "does not have verification items",
-    );
+    await expect(questStore.checkVerificationItem("q-1", 0, true)).rejects.toThrow("does not have verification items");
   });
 });
 
@@ -661,18 +643,14 @@ describe("deleteQuest", () => {
     });
 
     // Should have 2 version files
-    const filesBefore = readdirSync(questDir()).filter(
-      (f) => f.startsWith("q-1"),
-    );
+    const filesBefore = readdirSync(questDir()).filter((f) => f.startsWith("q-1"));
     expect(filesBefore).toHaveLength(2);
 
     const result = await questStore.deleteQuest("q-1");
     expect(result).toBe(true);
 
     // All version files gone
-    const filesAfter = readdirSync(questDir()).filter(
-      (f) => f.startsWith("q-1"),
-    );
+    const filesAfter = readdirSync(questDir()).filter((f) => f.startsWith("q-1"));
     expect(filesAfter).toHaveLength(0);
 
     // Quest no longer findable
@@ -690,9 +668,7 @@ describe("deleteQuest", () => {
 describe("transition validation", () => {
   it("requires description for refined status", async () => {
     await questStore.createQuest({ title: "No desc" });
-    await expect(
-      questStore.transitionQuest("q-1", { status: "refined" }),
-    ).rejects.toThrow("Description is required");
+    await expect(questStore.transitionQuest("q-1", { status: "refined" })).rejects.toThrow("Description is required");
   });
 
   it("requires sessionId for in_progress status", async () => {
@@ -701,9 +677,7 @@ describe("transition validation", () => {
       status: "refined",
       description: "Ready",
     });
-    await expect(
-      questStore.transitionQuest("q-1", { status: "in_progress" }),
-    ).rejects.toThrow("sessionId is required");
+    await expect(questStore.transitionQuest("q-1", { status: "in_progress" })).rejects.toThrow("sessionId is required");
   });
 
   it("allows needs_verification with empty verificationItems (auto-pass)", async () => {
@@ -739,9 +713,7 @@ describe("transition validation", () => {
     expect(done).not.toBeNull();
     expect(done?.status).toBe("done");
     if (done?.status === "done") {
-      expect(done.verificationItems).toEqual([
-        { text: "User verified: works as expected", checked: true },
-      ]);
+      expect(done.verificationItems).toEqual([{ text: "User verified: works as expected", checked: true }]);
     }
   });
 
@@ -762,9 +734,7 @@ describe("transition validation", () => {
   });
 
   it("returns null when transitioning non-existent quest", async () => {
-    expect(
-      await questStore.transitionQuest("q-999", { status: "refined", description: "x" }),
-    ).toBeNull();
+    expect(await questStore.transitionQuest("q-999", { status: "refined", description: "x" })).toBeNull();
   });
 });
 
@@ -860,7 +830,8 @@ describe("feedback", () => {
     });
     // Append second entry (caller manages the array)
     const current = await questStore.getQuest("q-1");
-    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    const existing =
+      (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
     await questStore.patchQuest("q-1", {
       feedback: [...existing, { author: "agent" as const, text: "Fixed issue 1", ts: Date.now() }],
     });
@@ -891,7 +862,8 @@ describe("feedback", () => {
     await questStore.markQuestVerificationRead("q-1");
 
     const current = await questStore.getQuest("q-1");
-    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    const existing =
+      (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
     await questStore.patchQuest("q-1", {
       feedback: [...existing, { author: "agent", text: "Addressed in latest patch", ts: Date.now() }],
     });
@@ -909,7 +881,8 @@ describe("feedback", () => {
     await questStore.markQuestVerificationRead("q-1");
 
     const current = await questStore.getQuest("q-1");
-    const existing = (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
+    const existing =
+      (current as { feedback?: { author: "human" | "agent"; text: string; ts: number }[] }).feedback ?? [];
     await questStore.patchQuest("q-1", {
       feedback: [...existing, { author: "human", text: "Please tweak spacing", ts: Date.now() }],
     });
@@ -981,7 +954,14 @@ describe("counter reconciliation", () => {
     for (let i = 1; i <= 5; i++) {
       writeFileSync(
         join(dir, `q-${i}-v1.json`),
-        JSON.stringify({ id: `q-${i}-v1`, questId: `q-${i}`, version: 1, title: `Old quest ${i}`, status: "idea", createdAt: Date.now() }),
+        JSON.stringify({
+          id: `q-${i}-v1`,
+          questId: `q-${i}`,
+          version: 1,
+          title: `Old quest ${i}`,
+          status: "idea",
+          createdAt: Date.now(),
+        }),
       );
     }
 
@@ -1004,7 +984,14 @@ describe("counter reconciliation", () => {
 
     writeFileSync(
       join(dir, "q-10-v1.json"),
-      JSON.stringify({ id: "q-10-v1", questId: "q-10", version: 1, title: "Quest 10", status: "idea", createdAt: Date.now() }),
+      JSON.stringify({
+        id: "q-10-v1",
+        questId: "q-10",
+        version: 1,
+        title: "Quest 10",
+        status: "idea",
+        createdAt: Date.now(),
+      }),
     );
 
     // No _quest_counter.json exists — readCounter returns 1, but scan

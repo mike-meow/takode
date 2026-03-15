@@ -27,7 +27,7 @@ async function resolveFromSdk(): Promise<string | null> {
     // can fail under modern package "exports" rules.
     const sdkEntry = require.resolve("@anthropic-ai/claude-agent-sdk");
     const pkgRoot = dirname(sdkEntry);
-    const arch = process.arch;         // 'x64' | 'arm64'
+    const arch = process.arch; // 'x64' | 'arm64'
     const platform = process.platform; // 'linux' | 'darwin' | 'win32'
     const ext = platform === "win32" ? ".exe" : "";
     const rgPath = join(pkgRoot, "vendor", "ripgrep", `${arch}-${platform}`, `rg${ext}`);

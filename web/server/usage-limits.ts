@@ -47,17 +47,20 @@ function getStdoutString(result: unknown): string {
     "stdout" in result &&
     Buffer.isBuffer((result as { stdout?: unknown }).stdout)
   ) {
-    return ((result as { stdout: Buffer }).stdout).toString("utf-8");
+    return (result as { stdout: Buffer }).stdout.toString("utf-8");
   }
   return "";
 }
 
-async function readRawCredentials(): Promise<{ raw: string; parsed: Record<string, unknown>; oauth: OAuthCredentials } | null> {
+async function readRawCredentials(): Promise<{
+  raw: string;
+  parsed: Record<string, unknown>;
+  oauth: OAuthCredentials;
+} | null> {
   try {
     if (process.platform !== "darwin") {
       // Windows and Linux: read from credentials file
-      const home =
-        process.env.USERPROFILE || process.env.HOME || homedir() || "";
+      const home = process.env.USERPROFILE || process.env.HOME || homedir() || "";
       const credPath = join(home, ".claude", ".credentials.json");
       try {
         await access(credPath);
@@ -72,16 +75,13 @@ async function readRawCredentials(): Promise<{ raw: string; parsed: Record<strin
 
     // macOS: use Keychain
     const raw = getStdoutString(
-      await execFilePromise(
-        "security",
-        ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
-        { encoding: "utf-8", timeout: 5000 },
-      ),
+      await execFilePromise("security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"], {
+        encoding: "utf-8",
+        timeout: 5000,
+      }),
     ).trim();
 
-    const decoded = raw.startsWith("{")
-      ? raw
-      : Buffer.from(raw, "hex").toString("utf-8");
+    const decoded = raw.startsWith("{") ? raw : Buffer.from(raw, "hex").toString("utf-8");
 
     const parsed = JSON.parse(decoded);
     if (!parsed?.claudeAiOauth?.accessToken) return null;
@@ -96,8 +96,7 @@ async function writeCredentials(creds: Record<string, unknown>): Promise<void> {
     const json = JSON.stringify(creds);
     if (process.platform !== "darwin") {
       // Windows and Linux: write to credentials file
-      const home =
-        process.env.USERPROFILE || process.env.HOME || homedir() || "";
+      const home = process.env.USERPROFILE || process.env.HOME || homedir() || "";
       const credPath = join(home, ".claude", ".credentials.json");
       await writeFile(credPath, json, "utf-8");
     } else {
@@ -174,9 +173,7 @@ async function getValidAccessToken(): Promise<string | null> {
   return refreshed.accessToken;
 }
 
-export async function fetchUsageLimits(
-  token: string,
-): Promise<UsageLimits | null> {
+export async function fetchUsageLimits(token: string): Promise<UsageLimits | null> {
   try {
     const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
       method: "GET",

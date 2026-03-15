@@ -7,20 +7,14 @@ const EMPTY_SERVERS: McpServerDetail[] = [];
 const EMPTY_MCP_INIT: { name: string; status: string }[] = [];
 
 const STATUS_STYLES: Record<string, { label: string; badge: string; dot: string }> = {
-  connected:  { label: "Connected",  badge: "text-cc-success bg-cc-success/10", dot: "bg-cc-success" },
+  connected: { label: "Connected", badge: "text-cc-success bg-cc-success/10", dot: "bg-cc-success" },
   connecting: { label: "Connecting", badge: "text-cc-warning bg-cc-warning/10", dot: "bg-cc-warning animate-pulse" },
-  failed:     { label: "Failed",     badge: "text-cc-error bg-cc-error/10",     dot: "bg-cc-error" },
-  disabled:   { label: "Disabled",   badge: "text-cc-muted bg-cc-hover",        dot: "bg-cc-muted opacity-40" },
+  failed: { label: "Failed", badge: "text-cc-error bg-cc-error/10", dot: "bg-cc-error" },
+  disabled: { label: "Disabled", badge: "text-cc-muted bg-cc-hover", dot: "bg-cc-muted opacity-40" },
 };
 const DEFAULT_STATUS = { label: "Unknown", badge: "text-cc-muted bg-cc-hover", dot: "bg-cc-muted opacity-40" };
 
-function McpServerRow({
-  server,
-  sessionId,
-}: {
-  server: McpServerDetail;
-  sessionId: string;
-}) {
+function McpServerRow({ server, sessionId }: { server: McpServerDetail; sessionId: string }) {
   const [expanded, setExpanded] = useState(false);
   const style = STATUS_STYLES[server.status] || DEFAULT_STATUS;
   const isEnabled = server.status !== "disabled";
@@ -33,13 +27,8 @@ function McpServerRow({
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
 
         {/* Name + expand toggle */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex-1 min-w-0 text-left cursor-pointer"
-        >
-          <span className="text-[12px] font-medium text-cc-fg truncate block">
-            {server.name}
-          </span>
+        <button onClick={() => setExpanded(!expanded)} className="flex-1 min-w-0 text-left cursor-pointer">
+          <span className="text-[12px] font-medium text-cc-fg truncate block">{server.name}</span>
         </button>
 
         <span className={`text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 ${style.badge}`}>
@@ -119,17 +108,13 @@ function McpServerRow({
 
           {/* Error */}
           {server.error && (
-            <div className="text-[11px] text-cc-error bg-cc-error/5 rounded px-2 py-1">
-              {server.error}
-            </div>
+            <div className="text-[11px] text-cc-error bg-cc-error/5 rounded px-2 py-1">{server.error}</div>
           )}
 
           {/* Tools */}
           {toolCount > 0 && (
             <div className="space-y-1">
-              <span className="text-[10px] text-cc-muted uppercase tracking-wider">
-                Tools ({toolCount})
-              </span>
+              <span className="text-[10px] text-cc-muted uppercase tracking-wider">Tools ({toolCount})</span>
               <div className="flex flex-wrap gap-1">
                 {server.tools!.map((tool) => (
                   <span
@@ -158,22 +143,14 @@ function McpServerRow({
 
 type ServerType = "stdio" | "sse" | "http";
 
-function AddServerForm({
-  sessionId,
-  onDone,
-}: {
-  sessionId: string;
-  onDone: () => void;
-}) {
+function AddServerForm({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
   const [name, setName] = useState("");
   const [serverType, setServerType] = useState<ServerType>("stdio");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
 
-  const canSubmit =
-    name.trim() &&
-    (serverType === "stdio" ? command.trim() : url.trim());
+  const canSubmit = name.trim() && (serverType === "stdio" ? command.trim() : url.trim());
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -195,9 +172,7 @@ function AddServerForm({
     <form onSubmit={handleSubmit} className="space-y-2 p-2.5 rounded-lg border border-cc-border bg-cc-bg">
       {/* Server name */}
       <div>
-        <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">
-          Server Name
-        </label>
+        <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">Server Name</label>
         <input
           type="text"
           value={name}
@@ -209,9 +184,7 @@ function AddServerForm({
 
       {/* Server type */}
       <div>
-        <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">
-          Type
-        </label>
+        <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">Type</label>
         <div className="flex gap-1">
           {(["stdio", "sse", "http"] as const).map((t) => (
             <button
@@ -234,9 +207,7 @@ function AddServerForm({
       {serverType === "stdio" && (
         <>
           <div>
-            <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">
-              Command
-            </label>
+            <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">Command</label>
             <input
               type="text"
               value={command}
@@ -263,9 +234,7 @@ function AddServerForm({
       {/* URL field for sse/http */}
       {(serverType === "sse" || serverType === "http") && (
         <div>
-          <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">
-            URL
-          </label>
+          <label className="text-[10px] text-cc-muted uppercase tracking-wider block mb-0.5">URL</label>
           <input
             type="text"
             value={url}
@@ -301,16 +270,22 @@ function AddServerForm({
   );
 }
 
-export function McpSection({ sessionId, collapsed, onToggle }: { sessionId: string; collapsed?: boolean; onToggle?: () => void }) {
+export function McpSection({
+  sessionId,
+  collapsed,
+  onToggle,
+}: {
+  sessionId: string;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const servers = useStore((s) => s.mcpServers.get(sessionId) || EMPTY_SERVERS);
   const cliConnected = useStore((s) => s.cliConnected.get(sessionId) ?? false);
   const [showAddForm, setShowAddForm] = useState(false);
 
   // The session_init mcp_servers gives us basic info (name + status).
   // We can detect if MCP servers exist from session state to show the section.
-  const sessionMcpServers = useStore(
-    (s) => s.sessions.get(sessionId)?.mcp_servers ?? EMPTY_MCP_INIT,
-  );
+  const sessionMcpServers = useStore((s) => s.sessions.get(sessionId)?.mcp_servers ?? EMPTY_MCP_INIT);
 
   const hasMcp = servers.length > 0 || sessionMcpServers.length > 0;
 
@@ -361,9 +336,7 @@ export function McpSection({ sessionId, collapsed, onToggle }: { sessionId: stri
               onClick={() => setShowAddForm(!showAddForm)}
               disabled={!cliConnected}
               className={`text-[11px] font-medium transition-colors ${
-                cliConnected
-                  ? "text-cc-muted hover:text-cc-fg cursor-pointer"
-                  : "text-cc-muted/30 cursor-not-allowed"
+                cliConnected ? "text-cc-muted hover:text-cc-fg cursor-pointer" : "text-cc-muted/30 cursor-not-allowed"
               }`}
               title="Add MCP server"
             >
@@ -376,9 +349,7 @@ export function McpSection({ sessionId, collapsed, onToggle }: { sessionId: stri
               onClick={() => sendMcpGetStatus(sessionId)}
               disabled={!cliConnected}
               className={`text-[11px] font-medium transition-colors ${
-                cliConnected
-                  ? "text-cc-muted hover:text-cc-fg cursor-pointer"
-                  : "text-cc-muted/30 cursor-not-allowed"
+                cliConnected ? "text-cc-muted hover:text-cc-fg cursor-pointer" : "text-cc-muted/30 cursor-not-allowed"
               }`}
               title="Refresh MCP server status"
             >
@@ -396,10 +367,7 @@ export function McpSection({ sessionId, collapsed, onToggle }: { sessionId: stri
           {/* Add server form */}
           {showAddForm && (
             <div className="px-3 py-2 border-b border-cc-border">
-              <AddServerForm
-                sessionId={sessionId}
-                onDone={() => setShowAddForm(false)}
-              />
+              <AddServerForm sessionId={sessionId} onDone={() => setShowAddForm(false)} />
             </div>
           )}
 
@@ -407,11 +375,7 @@ export function McpSection({ sessionId, collapsed, onToggle }: { sessionId: stri
           {displayServers.length > 0 && (
             <div className="px-3 py-2 space-y-1.5 border-b border-cc-border">
               {displayServers.map((server) => (
-                <McpServerRow
-                  key={server.name}
-                  server={server}
-                  sessionId={sessionId}
-                />
+                <McpServerRow key={server.name} server={server} sessionId={sessionId} />
               ))}
             </div>
           )}

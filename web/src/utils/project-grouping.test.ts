@@ -31,15 +31,11 @@ function makeItem(overrides: Partial<SessionItem> = {}): SessionItem {
 
 describe("extractProjectKey", () => {
   it("uses repoRoot when available (worktree normalization)", () => {
-    expect(
-      extractProjectKey("/home/user/myapp-wt-1234", "/home/user/myapp"),
-    ).toBe("/home/user/myapp");
+    expect(extractProjectKey("/home/user/myapp-wt-1234", "/home/user/myapp")).toBe("/home/user/myapp");
   });
 
   it("falls back to cwd when repoRoot is undefined", () => {
-    expect(extractProjectKey("/home/user/projects/myapp")).toBe(
-      "/home/user/projects/myapp",
-    );
+    expect(extractProjectKey("/home/user/projects/myapp")).toBe("/home/user/projects/myapp");
   });
 
   it("removes trailing slashes", () => {
@@ -51,9 +47,7 @@ describe("extractProjectKey", () => {
   });
 
   it("prefers repoRoot over cwd even when both are valid", () => {
-    expect(
-      extractProjectKey("/home/user/myapp/web", "/home/user/myapp"),
-    ).toBe("/home/user/myapp");
+    expect(extractProjectKey("/home/user/myapp/web", "/home/user/myapp")).toBe("/home/user/myapp");
   });
 });
 
@@ -77,10 +71,7 @@ describe("extractProjectLabel", () => {
 
 describe("groupSessionsByProject", () => {
   it("groups sessions sharing the same cwd into one group", () => {
-    const sessions = [
-      makeItem({ id: "s1", cwd: "/home/user/myapp" }),
-      makeItem({ id: "s2", cwd: "/home/user/myapp" }),
-    ];
+    const sessions = [makeItem({ id: "s1", cwd: "/home/user/myapp" }), makeItem({ id: "s2", cwd: "/home/user/myapp" })];
     const groups = groupSessionsByProject(sessions);
     expect(groups).toHaveLength(1);
     expect(groups[0].sessions).toHaveLength(2);
@@ -138,10 +129,7 @@ describe("groupSessionsByProject", () => {
   });
 
   it("handles sessions with empty cwd as a separate group", () => {
-    const sessions = [
-      makeItem({ id: "s1", cwd: "/a/app" }),
-      makeItem({ id: "s2", cwd: "" }),
-    ];
+    const sessions = [makeItem({ id: "s1", cwd: "/a/app" }), makeItem({ id: "s2", cwd: "" })];
     const groups = groupSessionsByProject(sessions);
     expect(groups).toHaveLength(2);
   });
@@ -163,8 +151,8 @@ describe("groupSessionsByProject", () => {
 
   it("counts unread only when no higher-priority state applies", () => {
     const attention = new Map<string, "action" | "error" | "review" | null>([
-      ["s1", "review"],  // has permissions → counted as waiting, not unread
-      ["s2", "review"],  // idle + unread → counted as unread
+      ["s1", "review"], // has permissions → counted as waiting, not unread
+      ["s2", "review"], // idle + unread → counted as unread
     ]);
     const sessions = [
       makeItem({ id: "s1", cwd: "/a/app", permCount: 1 }),
@@ -295,8 +283,20 @@ describe("groupSessionsByProject", () => {
   it("multiple worktrees of the same repo all land in one group", () => {
     const sessions = [
       makeItem({ id: "s1", cwd: "/home/user/repo", repoRoot: "/home/user/repo", createdAt: 300 }),
-      makeItem({ id: "s2", cwd: "/home/user/repo-wt-feat1", repoRoot: "/home/user/repo", isContainerized: true, createdAt: 200 }),
-      makeItem({ id: "s3", cwd: "/home/user/repo-wt-feat2", repoRoot: "/home/user/repo", isContainerized: true, createdAt: 100 }),
+      makeItem({
+        id: "s2",
+        cwd: "/home/user/repo-wt-feat1",
+        repoRoot: "/home/user/repo",
+        isContainerized: true,
+        createdAt: 200,
+      }),
+      makeItem({
+        id: "s3",
+        cwd: "/home/user/repo-wt-feat2",
+        repoRoot: "/home/user/repo",
+        isContainerized: true,
+        createdAt: 100,
+      }),
     ];
     const groups = groupSessionsByProject(sessions);
     expect(groups).toHaveLength(1);

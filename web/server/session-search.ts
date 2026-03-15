@@ -1,13 +1,6 @@
 import type { BrowserIncomingMessage, SessionTaskEntry } from "./session-types.js";
 
-export type SessionSearchMatchedField =
-  | "name"
-  | "task"
-  | "keyword"
-  | "branch"
-  | "path"
-  | "repo"
-  | "user_message";
+export type SessionSearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
 export interface SessionSearchDocument {
   sessionId: string;
@@ -76,10 +69,7 @@ function compareCandidates(a: SessionSearchResult, b: SessionSearchResult): numb
   return a.sessionId.localeCompare(b.sessionId);
 }
 
-function pushIfBetter(
-  current: SessionSearchResult | null,
-  next: SessionSearchResult,
-): SessionSearchResult {
+function pushIfBetter(current: SessionSearchResult | null, next: SessionSearchResult): SessionSearchResult {
   if (!current) return next;
   return compareCandidates(current, next) <= 0 ? current : next;
 }
@@ -102,9 +92,7 @@ function messageMatchCandidate(
     if (!content) continue;
     if (!content.toLowerCase().includes(q)) continue;
 
-    const timestamp = typeof msg.timestamp === "number"
-      ? msg.timestamp
-      : (doc.lastActivityAt ?? doc.createdAt);
+    const timestamp = typeof msg.timestamp === "number" ? msg.timestamp : (doc.lastActivityAt ?? doc.createdAt);
 
     return {
       sessionId: doc.sessionId,
@@ -131,11 +119,7 @@ export function searchSessionDocuments(
 
   const includeArchived = options.includeArchived !== false;
   const limit = clampInt(Math.floor(options.limit ?? 50), 1, 200);
-  const messageLimitPerSession = clampInt(
-    Math.floor(options.messageLimitPerSession ?? 400),
-    50,
-    2000,
-  );
+  const messageLimitPerSession = clampInt(Math.floor(options.messageLimitPerSession ?? 400), 50, 2000);
 
   const matches: SessionSearchResult[] = [];
 

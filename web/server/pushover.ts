@@ -90,12 +90,7 @@ export class PushoverNotifier {
    * Schedule a notification for a session event.
    * For permissions/questions, multiple rapid-fire events are batched.
    */
-  scheduleNotification(
-    sessionId: string,
-    eventType: PushoverEventType,
-    detail?: string,
-    requestId?: string,
-  ): void {
+  scheduleNotification(sessionId: string, eventType: PushoverEventType, detail?: string, requestId?: string): void {
     if (!this.isConfigured()) return;
 
     const isBatchable = eventType === "permission" || eventType === "question";
@@ -138,7 +133,7 @@ export class PushoverNotifier {
       timer: setTimeout(() => this.fire(key), delayMs),
       detail,
       requestIds: requestId ? [requestId] : [],
-      toolNames: detail ? [detail.split(":")[0]?.trim()].filter(Boolean) as string[] : [],
+      toolNames: detail ? ([detail.split(":")[0]?.trim()].filter(Boolean) as string[]) : [],
     };
     this.pending.set(key, pending);
   }
@@ -179,12 +174,7 @@ export class PushoverNotifier {
       return { ok: false, error: "Pushover credentials not configured" };
     }
     const serverName = this.opts.getServerName();
-    return this.sendToApi(
-      settings,
-      "Companion",
-      `${serverName}\nPushover is configured correctly.`,
-      -1,
-    );
+    return this.sendToApi(settings, "Companion", `${serverName}\nPushover is configured correctly.`, -1);
   }
 
   /** Clean up all timers for graceful shutdown. */

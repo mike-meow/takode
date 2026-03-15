@@ -8,7 +8,11 @@ import { CopyFormatButton } from "./CopyFormatButton.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
-import { openFileWithEditorPreference, resolveEmbeddedVsCodePath, showEditorOpenError } from "../utils/vscode-bridge.js";
+import {
+  openFileWithEditorPreference,
+  resolveEmbeddedVsCodePath,
+  showEditorOpenError,
+} from "../utils/vscode-bridge.js";
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: "terminal",
@@ -74,17 +78,11 @@ export function formatDuration(seconds: number): string {
  *  then switches to the server-reported ground-truth duration on completion. */
 function ToolDurationBadge({ toolUseId, sessionId }: { toolUseId: string; sessionId: string }) {
   // Tool result preview (present once the tool has completed)
-  const toolResult = useStore((s) =>
-    s.toolResults.get(sessionId)?.get(toolUseId)
-  );
+  const toolResult = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId));
   const finalDuration = toolResult?.duration_seconds;
-  const progressElapsedSeconds = useStore((s) =>
-    s.toolProgress.get(sessionId)?.get(toolUseId)?.elapsedSeconds
-  );
+  const progressElapsedSeconds = useStore((s) => s.toolProgress.get(sessionId)?.get(toolUseId)?.elapsedSeconds);
   // Server start timestamp (from tool_start_times on the assistant message)
-  const startTimestamp = useStore((s) =>
-    s.toolStartTimestamps.get(sessionId)?.get(toolUseId)
-  );
+  const startTimestamp = useStore((s) => s.toolStartTimestamps.get(sessionId)?.get(toolUseId));
 
   const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -151,12 +149,9 @@ export const ToolBlock = memo(function ToolBlock({
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
-  const resultPreview = useStore((s) => sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined);
-  const retainedProgress = useStore((s) => sessionId ? s.toolProgress.get(sessionId)?.get(toolUseId) : undefined);
-  const showCompletedLiveBadge =
-    name === "Bash"
-    && !!resultPreview
-    && retainedProgress?.toolName === "Bash";
+  const resultPreview = useStore((s) => (sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined));
+  const retainedProgress = useStore((s) => (sessionId ? s.toolProgress.get(sessionId)?.get(toolUseId) : undefined));
+  const showCompletedLiveBadge = name === "Bash" && !!resultPreview && retainedProgress?.toolName === "Bash";
 
   // Extract the most useful preview
   const preview = getPreview(name, input);
@@ -184,12 +179,17 @@ export const ToolBlock = memo(function ToolBlock({
         <ToolIcon type={iconType} />
         {!hideHeaderLabel && <span className="text-xs font-medium text-cc-fg">{label}</span>}
         {preview && (
-          <span className={`text-xs truncate flex-1 font-mono-code ${hideHeaderLabel ? "text-cc-fg/90" : "text-cc-muted"}`}>
+          <span
+            className={`text-xs truncate flex-1 font-mono-code ${hideHeaderLabel ? "text-cc-fg/90" : "text-cc-muted"}`}
+          >
             {preview}
           </span>
         )}
         {showCompletedLiveBadge && (
-          <span className="shrink-0 rounded-full bg-cc-hover px-1.5 py-0.5 text-[10px] font-medium text-cc-muted" data-testid="completed-live-badge">
+          <span
+            className="shrink-0 rounded-full bg-cc-hover px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
+            data-testid="completed-live-badge"
+          >
             live
           </span>
         )}
@@ -202,12 +202,7 @@ export const ToolBlock = memo(function ToolBlock({
             <ToolDetail name={name} input={input} sessionId={sessionId} />
           </div>
           {sessionId && !isSubagentToolName(name) && (
-            <ToolResultSection
-              toolUseId={toolUseId}
-              sessionId={sessionId}
-              toolName={name}
-              input={input}
-            />
+            <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} toolName={name} input={input} />
           )}
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
@@ -230,12 +225,8 @@ function TodoWriteInline({ input }: { input: Record<string, unknown> }) {
         <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-muted shrink-0">
           <path d="M4 4.5h8M4 8h8M4 11.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        <span className="text-xs leading-snug truncate text-cc-fg">
-          {label}
-        </span>
-        <span className="text-[11px] text-cc-muted shrink-0 tabular-nums">
-          ({todos.length} tasks)
-        </span>
+        <span className="text-xs leading-snug truncate text-cc-fg">{label}</span>
+        <span className="text-[11px] text-cc-muted shrink-0 tabular-nums">({todos.length} tasks)</span>
       </div>
     );
   }
@@ -247,11 +238,13 @@ function TodoWriteInline({ input }: { input: Record<string, unknown> }) {
   return (
     <div className="flex items-center gap-2 px-3 py-1.5">
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-success shrink-0">
-        <path fillRule="evenodd" d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z"
+          clipRule="evenodd"
+        />
       </svg>
-      <span className="text-xs leading-snug truncate text-cc-muted line-through">
-        {highlightText}
-      </span>
+      <span className="text-xs leading-snug truncate text-cc-muted line-through">{highlightText}</span>
       <span className="text-[11px] text-cc-muted shrink-0 tabular-nums">
         ({completed}/{todos.length})
       </span>
@@ -270,12 +263,7 @@ function isLikelyImagePath(path: string): boolean {
 }
 
 function extractImagePathForPreview(toolName: string, input: Record<string, unknown>): string | null {
-  const directCandidates = [
-    input.file_path,
-    input.path,
-    input.filePath,
-    input.filename,
-  ];
+  const directCandidates = [input.file_path, input.path, input.filePath, input.filename];
   for (const candidate of directCandidates) {
     if (typeof candidate === "string" && isLikelyImagePath(candidate)) return candidate;
   }
@@ -283,7 +271,9 @@ function extractImagePathForPreview(toolName: string, input: Record<string, unkn
   // Codex often maps file reads to Bash commandExecution. If the command clearly
   // targets an image path, use that for the preview thumbnail.
   if (toolName === "Bash" && typeof input.command === "string") {
-    const match = input.command.match(/(?:^|[\s'"])([^\s'"]+\.(?:png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif|tiff?))/i);
+    const match = input.command.match(
+      /(?:^|[\s'"])([^\s'"]+\.(?:png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif|tiff?))/i,
+    );
     if (match?.[1]) return match[1];
   }
   return null;
@@ -292,7 +282,9 @@ function extractImagePathForPreview(toolName: string, input: Record<string, unkn
 function shouldPreferLiveTerminalTranscript(content: string): boolean {
   const trimmed = content.trim();
   if (!trimmed) return true;
-  return /terminal command (completed|failed|was interrupted).*?(no output was captured|before the final tool result was delivered)/i.test(trimmed);
+  return /terminal command (completed|failed|was interrupted).*?(no output was captured|before the final tool result was delivered)/i.test(
+    trimmed,
+  );
 }
 
 function ToolResultSection({
@@ -313,22 +305,16 @@ function ToolResultSection({
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const liveOutput = progress?.output || "";
-  const isCompletedLiveTerminal =
-    toolName === "Bash"
-    && progress?.toolName === "Bash";
+  const isCompletedLiveTerminal = toolName === "Bash" && progress?.toolName === "Bash";
   const shouldUseLiveTranscriptFallback =
-    !!preview
-    && isCompletedLiveTerminal
-    && liveOutput.length > 0
-    && shouldPreferLiveTerminalTranscript(preview.content);
+    !!preview &&
+    isCompletedLiveTerminal &&
+    liveOutput.length > 0 &&
+    shouldPreferLiveTerminalTranscript(preview.content);
 
   // Suppress the result section for web search when the result just echoes the
   // query or is a generic placeholder — the query is already shown in ToolDetail.
-  if (
-    preview
-    && !preview.is_error
-    && (toolName === "WebSearch" || toolName === "web_search")
-  ) {
+  if (preview && !preview.is_error && (toolName === "WebSearch" || toolName === "web_search")) {
     const query = extractWebSearchQuery(input);
     const content = preview.content.trim();
     if (!content || content === query || content === "Web search completed") {
@@ -339,11 +325,7 @@ function ToolResultSection({
   // Suppress the result section for successful Edit/Write calls — the diff
   // already shows the edit succeeded, and the "file has been updated" message
   // is redundant. Only show the result section when the edit failed.
-  if (
-    preview
-    && !preview.is_error
-    && (toolName === "Edit" || toolName === "Write")
-  ) {
+  if (preview && !preview.is_error && (toolName === "Edit" || toolName === "Write")) {
     return null;
   }
 
@@ -353,10 +335,10 @@ function ToolResultSection({
       <div className="mt-2 pt-2 border-t border-cc-border/50">
         <div className="flex items-center gap-2 mb-1.5">
           <span className="text-[10px] font-medium text-cc-muted uppercase tracking-wider">Live output</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary font-medium">running</span>
-          {progress.outputTruncated && (
-            <span className="text-[10px] text-cc-muted">showing latest 12KB</span>
-          )}
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary font-medium">
+            running
+          </span>
+          {progress.outputTruncated && <span className="text-[10px] text-cc-muted">showing latest 12KB</span>}
         </div>
         {liveOutput ? (
           <div className="group/code relative rounded-lg overflow-hidden">
@@ -393,13 +375,8 @@ function ToolResultSection({
     );
   }
 
-  const displayContent = shouldUseLiveTranscriptFallback
-    ? liveOutput
-    : (fullContent ?? preview.content);
-  const showExpandButton =
-    !shouldUseLiveTranscriptFallback
-    && preview.is_truncated
-    && fullContent === null;
+  const displayContent = shouldUseLiveTranscriptFallback ? liveOutput : (fullContent ?? preview.content);
+  const showExpandButton = !shouldUseLiveTranscriptFallback && preview.is_truncated && fullContent === null;
 
   const fetchFull = async () => {
     setLoading(true);
@@ -445,14 +422,15 @@ function ToolResultSection({
         <div className="absolute top-1.5 right-1.5 z-10">
           <CodeCopyButton text={displayContent} />
         </div>
-        <pre className={`text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 ${
-          fullContent === null ? "max-h-40" : "max-h-96"
-        } overflow-y-auto overflow-x-auto ${
-          preview.is_error
-            ? "bg-cc-error/5 border border-cc-error/20 text-cc-error"
-            : "bg-cc-code-bg text-cc-muted"
-        }`}>
-          {showExpandButton ? "..." : ""}{displayContent}
+        <pre
+          className={`text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 ${
+            fullContent === null ? "max-h-40" : "max-h-96"
+          } overflow-y-auto overflow-x-auto ${
+            preview.is_error ? "bg-cc-error/5 border border-cc-error/20 text-cc-error" : "bg-cc-code-bg text-cc-muted"
+          }`}
+        >
+          {showExpandButton ? "..." : ""}
+          {displayContent}
         </pre>
       </div>
     </div>
@@ -506,7 +484,11 @@ function ToolDetail({ name, input, sessionId }: { name: string; input: Record<st
 // ─── Per-tool detail components ─────────────────────────────────────────────
 
 function normalizeDiffFilePath(filePath: string): string {
-  return filePath.trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/^(?:[ab]\/)+/, "");
+  return filePath
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/^(?:[ab]\/)+/, "");
 }
 
 function getFirstChangedLineFromPatch(diffText: string): number {
@@ -531,12 +513,10 @@ function changePathMatchesDiffFile(change: Record<string, unknown>, filePath: st
   const rawChangePath = typeof change.path === "string" ? change.path : "";
   const normalizedChangePath = normalizeDiffFilePath(rawChangePath);
   if (
-    normalizedChangePath
-    && (
-      normalizedChangePath === normalizedTarget
-      || normalizedChangePath.endsWith(`/${normalizedTarget}`)
-      || normalizedTarget.endsWith(`/${normalizedChangePath}`)
-    )
+    normalizedChangePath &&
+    (normalizedChangePath === normalizedTarget ||
+      normalizedChangePath.endsWith(`/${normalizedTarget}`) ||
+      normalizedTarget.endsWith(`/${normalizedChangePath}`))
   ) {
     return true;
   }
@@ -547,10 +527,7 @@ function changePathMatchesDiffFile(change: Record<string, unknown>, filePath: st
   return new RegExp(`^\\+\\+\\+\\s+(?:b/)?${escapedPath}$`, "m").test(patch);
 }
 
-function getFirstChangedLineForEditFile(
-  parsed: ReturnType<typeof parseEditToolInput>,
-  filePath: string,
-): number {
+function getFirstChangedLineForEditFile(parsed: ReturnType<typeof parseEditToolInput>, filePath: string): number {
   const matchingChange = parsed.changes.find((change) => changePathMatchesDiffFile(change, filePath));
   if (matchingChange) {
     return getFirstChangedLineFromPatch(getChangePatch(matchingChange));
@@ -563,10 +540,7 @@ function getFirstChangedLineForEditFile(
   return 1;
 }
 
-function getOpenFilePathForEditFile(
-  parsed: ReturnType<typeof parseEditToolInput>,
-  filePath: string,
-): string {
+function getOpenFilePathForEditFile(parsed: ReturnType<typeof parseEditToolInput>, filePath: string): string {
   const matchingChange = parsed.changes.find((change) => changePathMatchesDiffFile(change, filePath));
   if (matchingChange && typeof matchingChange.path === "string" && matchingChange.path.trim()) {
     return matchingChange.path;
@@ -579,15 +553,7 @@ function getOpenFilePathForEditFile(
   return filePath || parsed.filePath;
 }
 
-function DiffOpenFileButton({
-  filePath,
-  sessionId,
-  line,
-}: {
-  filePath: string;
-  sessionId?: string;
-  line: number;
-}) {
+function DiffOpenFileButton({ filePath, sessionId, line }: { filePath: string; sessionId?: string; line: number }) {
   const sessionCwd = useStore((s) => {
     if (!sessionId) return null;
     return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
@@ -602,11 +568,14 @@ function DiffOpenFileButton({
       onClick={async () => {
         try {
           const settings = await api.getSettings();
-          await openFileWithEditorPreference({
-            absolutePath,
-            line,
-            column: 1,
-          }, settings.editorConfig?.editor ?? "none");
+          await openFileWithEditorPreference(
+            {
+              absolutePath,
+              line,
+              column: 1,
+            },
+            settings.editorConfig?.editor ?? "none",
+          );
         } catch (error) {
           showEditorOpenError(error instanceof Error ? error.message : String(error));
         }
@@ -622,9 +591,7 @@ function BashDetail({ input }: { input: Record<string, unknown> }) {
   const command = String(input.command || "");
   return (
     <div className="space-y-1.5">
-      {!!input.description && (
-        <div className="text-[11px] text-cc-muted italic">{String(input.description)}</div>
-      )}
+      {!!input.description && <div className="text-[11px] text-cc-muted italic">{String(input.description)}</div>}
       <div className="group/code relative rounded-lg overflow-hidden">
         <div className="absolute top-1.5 right-1.5 z-10">
           <CodeCopyButton text={command} />
@@ -634,22 +601,14 @@ function BashDetail({ input }: { input: Record<string, unknown> }) {
           {command}
         </pre>
       </div>
-      {!!input.timeout && (
-        <div className="text-[10px] text-cc-muted">timeout: {String(input.timeout)}ms</div>
-      )}
+      {!!input.timeout && <div className="text-[10px] text-cc-muted">timeout: {String(input.timeout)}ms</div>}
     </div>
   );
 }
 
 function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const parsed = parseEditToolInput(input);
-  const {
-    filePath,
-    oldText: oldStr,
-    newText: newStr,
-    changes,
-    unifiedDiff,
-  } = parsed;
+  const { filePath, oldText: oldStr, newText: newStr, changes, unifiedDiff } = parsed;
   const renderOpenFileButton = (targetFilePath: string, line: number) => (
     <DiffOpenFileButton filePath={targetFilePath} sessionId={sessionId} line={line} />
   );
@@ -660,10 +619,12 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
         unifiedDiff={unifiedDiff}
         fileName={filePath}
         mode="full"
-        renderHeaderActions={(diffFilePath) => renderOpenFileButton(
-          getOpenFilePathForEditFile(parsed, diffFilePath),
-          getFirstChangedLineForEditFile(parsed, diffFilePath),
-        )}
+        renderHeaderActions={(diffFilePath) =>
+          renderOpenFileButton(
+            getOpenFilePathForEditFile(parsed, diffFilePath),
+            getFirstChangedLineForEditFile(parsed, diffFilePath),
+          )
+        }
       />
     );
   }
@@ -679,9 +640,11 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
               className="flex items-center justify-between gap-3 rounded-md border border-cc-border/70 px-2 py-1.5"
             >
               <span className="min-w-0 text-[11px] text-cc-muted font-mono-code">
-                {(typeof change.kind === "string" ? change.kind : "modify")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
+                {typeof change.kind === "string" ? change.kind : "modify"}:{" "}
+                {typeof change.path === "string" ? change.path : filePath || "(unknown file)"}
               </span>
-              {typeof change.path === "string" && renderOpenFileButton(change.path, getFirstChangedLineForEditFile(parsed, change.path))}
+              {typeof change.path === "string" &&
+                renderOpenFileButton(change.path, getFirstChangedLineForEditFile(parsed, change.path))}
             </div>
           ))}
         </div>
@@ -701,10 +664,12 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
         newText={newStr}
         fileName={filePath}
         mode="full"
-        renderHeaderActions={(diffFilePath) => renderOpenFileButton(
-          getOpenFilePathForEditFile(parsed, diffFilePath),
-          getFirstChangedLineForEditFile(parsed, diffFilePath),
-        )}
+        renderHeaderActions={(diffFilePath) =>
+          renderOpenFileButton(
+            getOpenFilePathForEditFile(parsed, diffFilePath),
+            getFirstChangedLineForEditFile(parsed, diffFilePath),
+          )
+        }
       />
     </div>
   );
@@ -737,7 +702,8 @@ function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>;
               className="flex items-center justify-between gap-3 rounded-md border border-cc-border/70 px-2 py-1.5"
             >
               <span className="min-w-0 text-[11px] text-cc-muted font-mono-code">
-                {(typeof change.kind === "string" ? change.kind : "create")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
+                {typeof change.kind === "string" ? change.kind : "create"}:{" "}
+                {typeof change.path === "string" ? change.path : filePath || "(unknown file)"}
               </span>
               {typeof change.path === "string" && (
                 <DiffOpenFileButton filePath={change.path} sessionId={sessionId} line={1} />
@@ -806,10 +772,14 @@ function GrepDetail({ input }: { input: Record<string, unknown> }) {
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-cc-muted">
         {!!input.path && (
-          <span>path: <span className="font-mono-code">{String(input.path)}</span></span>
+          <span>
+            path: <span className="font-mono-code">{String(input.path)}</span>
+          </span>
         )}
         {!!input.glob && (
-          <span>glob: <span className="font-mono-code">{String(input.glob)}</span></span>
+          <span>
+            glob: <span className="font-mono-code">{String(input.glob)}</span>
+          </span>
         )}
         {!!input.output_mode && <span>mode: {String(input.output_mode)}</span>}
         {!!input.context && <span>context: {String(input.context)}</span>}
@@ -873,11 +843,7 @@ function WebSearchDetail({ input }: { input: Record<string, unknown> }) {
   return (
     <div className="space-y-1">
       {query ? <div className="text-xs text-cc-fg font-medium">{query}</div> : null}
-      {domains.length > 0 && (
-        <div className="text-[10px] text-cc-muted">
-          domains: {domains.join(", ")}
-        </div>
-      )}
+      {domains.length > 0 && <div className="text-[10px] text-cc-muted">domains: {domains.join(", ")}</div>}
     </div>
   );
 }
@@ -885,12 +851,8 @@ function WebSearchDetail({ input }: { input: Record<string, unknown> }) {
 function WebFetchDetail({ input }: { input: Record<string, unknown> }) {
   return (
     <div className="space-y-1">
-      {!!input.url && (
-        <div className="text-xs font-mono-code text-cc-primary truncate">{String(input.url)}</div>
-      )}
-      {!!input.prompt && (
-        <div className="text-[11px] text-cc-muted italic line-clamp-2">{String(input.prompt)}</div>
-      )}
+      {!!input.url && <div className="text-xs font-mono-code text-cc-primary truncate">{String(input.url)}</div>}
+      {!!input.prompt && <div className="text-[11px] text-cc-muted italic line-clamp-2">{String(input.prompt)}</div>}
     </div>
   );
 }
@@ -898,9 +860,7 @@ function WebFetchDetail({ input }: { input: Record<string, unknown> }) {
 function TaskDetail({ input }: { input: Record<string, unknown> }) {
   return (
     <div className="space-y-1.5">
-      {!!input.description && (
-        <div className="text-xs text-cc-fg font-medium">{String(input.description)}</div>
-      )}
+      {!!input.description && <div className="text-xs text-cc-fg font-medium">{String(input.description)}</div>}
       {!!input.subagent_type && (
         <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary">
           {String(input.subagent_type)}
@@ -934,11 +894,24 @@ function TodoWriteDetail({ input }: { input: Record<string, unknown> }) {
             <span className="shrink-0 mt-0.5">
               {status === "completed" ? (
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-success">
-                  <path fillRule="evenodd" d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" clipRule="evenodd" />
+                  <path
+                    fillRule="evenodd"
+                    d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               ) : status === "in_progress" ? (
                 <svg className="w-3.5 h-3.5 text-cc-primary animate-spin" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="6"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeDasharray="28"
+                    strokeDashoffset="8"
+                    strokeLinecap="round"
+                  />
                 </svg>
               ) : (
                 <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-muted">
@@ -946,7 +919,9 @@ function TodoWriteDetail({ input }: { input: Record<string, unknown> }) {
                 </svg>
               )}
             </span>
-            <span className={`text-[11px] leading-snug ${status === "completed" ? "text-cc-muted line-through" : "text-cc-fg"}`}>
+            <span
+              className={`text-[11px] leading-snug ${status === "completed" ? "text-cc-muted line-through" : "text-cc-fg"}`}
+            >
               {todo.content || "Task"}
             </span>
           </div>
@@ -991,9 +966,7 @@ function SendMessageDetail({ input }: { input: Record<string, unknown> }) {
           to: <span className="font-medium text-cc-fg">{String(input.recipient)}</span>
         </div>
       )}
-      {!!input.content && (
-        <div className="text-xs text-cc-fg whitespace-pre-wrap">{String(input.content)}</div>
-      )}
+      {!!input.content && <div className="text-xs text-cc-fg whitespace-pre-wrap">{String(input.content)}</div>}
     </div>
   );
 }
@@ -1024,7 +997,10 @@ function ExitPlanModeDetail({ input }: { input: Record<string, unknown> }) {
           <div className="text-[10px] text-cc-muted uppercase tracking-wider">Requested permissions</div>
           <div className="space-y-1">
             {allowedPrompts.map((p: Record<string, unknown>, i: number) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5"
+              >
                 <span className="text-cc-muted shrink-0">{String(p.tool || "")}</span>
                 <span className="text-cc-fg">{String(p.prompt || "")}</span>
               </div>
@@ -1032,22 +1008,20 @@ function ExitPlanModeDetail({ input }: { input: Record<string, unknown> }) {
           </div>
         </div>
       )}
-      {!plan && allowedPrompts.length === 0 && (
-        <div className="text-xs text-cc-muted">Plan approval requested</div>
-      )}
+      {!plan && allowedPrompts.length === 0 && <div className="text-xs text-cc-muted">Plan approval requested</div>}
     </div>
   );
 }
 
 function AskUserQuestionDetail({ input }: { input: Record<string, unknown> }) {
-  const questions = Array.isArray(input.questions) ? input.questions as Record<string, unknown>[] : [];
+  const questions = Array.isArray(input.questions) ? (input.questions as Record<string, unknown>[]) : [];
 
   return (
     <div className="space-y-2">
       {questions.map((q, i) => {
         const header = typeof q.header === "string" ? q.header : "";
         const question = typeof q.question === "string" ? q.question : "";
-        const options = Array.isArray(q.options) ? q.options as Record<string, unknown>[] : [];
+        const options = Array.isArray(q.options) ? (q.options as Record<string, unknown>[]) : [];
         return (
           <div key={i} className="space-y-1.5">
             {header && (
@@ -1055,16 +1029,17 @@ function AskUserQuestionDetail({ input }: { input: Record<string, unknown> }) {
                 {header}
               </span>
             )}
-            {question && (
-              <div className="text-xs text-cc-fg font-medium">{question}</div>
-            )}
+            {question && <div className="text-xs text-cc-fg font-medium">{question}</div>}
             {options.length > 0 && (
               <div className="space-y-1">
                 {options.map((opt, j) => {
                   const label = typeof opt.label === "string" ? opt.label : "";
                   const desc = typeof opt.description === "string" ? opt.description : "";
                   return (
-                    <div key={j} className="flex items-start gap-2 text-[11px] bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+                    <div
+                      key={j}
+                      className="flex items-start gap-2 text-[11px] bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5"
+                    >
                       <span className="text-cc-fg font-medium shrink-0">{label}</span>
                       {desc && <span className="text-cc-muted">{desc}</span>}
                     </div>

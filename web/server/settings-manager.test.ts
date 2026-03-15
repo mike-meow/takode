@@ -49,7 +49,14 @@ describe("settings-manager", () => {
       autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", customVocabulary: "", enhancementEnabled: true, enhancementModel: "gpt-5-mini", sttModel: "gpt-4o-mini-transcribe" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        customVocabulary: "",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        sttModel: "gpt-4o-mini-transcribe",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 0,
     });
@@ -263,7 +270,14 @@ describe("settings-manager", () => {
       autoApprovalTimeoutSeconds: 45,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
-      transcriptionConfig: { apiKey: "", baseUrl: "https://api.openai.com/v1", customVocabulary: "", enhancementEnabled: true, enhancementModel: "gpt-5-mini", sttModel: "gpt-4o-mini-transcribe" },
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        customVocabulary: "",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        sttModel: "gpt-4o-mini-transcribe",
+      },
       editorConfig: { editor: "none" },
       updatedAt: 0,
     });
@@ -401,11 +415,7 @@ describe("CLI binary settings", () => {
   });
 
   it("loads claudeBinary from existing settings file", () => {
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({ claudeBinary: "/custom/claude", updatedAt: 0 }),
-      "utf-8",
-    );
+    writeFileSync(settingsPath, JSON.stringify({ claudeBinary: "/custom/claude", updatedAt: 0 }), "utf-8");
     _resetForTest(settingsPath);
     expect(getSettings().claudeBinary).toBe("/custom/claude");
   });
@@ -437,21 +447,13 @@ describe("maxKeepAlive settings", () => {
   });
 
   it("normalizes negative maxKeepAlive to 0", () => {
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({ maxKeepAlive: -3, updatedAt: 0 }),
-      "utf-8",
-    );
+    writeFileSync(settingsPath, JSON.stringify({ maxKeepAlive: -3, updatedAt: 0 }), "utf-8");
     _resetForTest(settingsPath);
     expect(getSettings().maxKeepAlive).toBe(0);
   });
 
   it("normalizes non-integer maxKeepAlive to floor", () => {
-    writeFileSync(
-      settingsPath,
-      JSON.stringify({ maxKeepAlive: 3.7, updatedAt: 0 }),
-      "utf-8",
-    );
+    writeFileSync(settingsPath, JSON.stringify({ maxKeepAlive: 3.7, updatedAt: 0 }), "utf-8");
     _resetForTest(settingsPath);
     expect(getSettings().maxKeepAlive).toBe(3);
   });
@@ -536,11 +538,7 @@ describe("initWithPort", () => {
   it("clears serverId during migration so each instance gets a unique one", () => {
     // Create port-scoped file with cleared serverId (simulating migration)
     const portPath = join(portDir, "settings-3456.json");
-    writeFileSync(
-      portPath,
-      JSON.stringify({ serverName: "Migrated", serverId: "", updatedAt: 100 }),
-      "utf-8",
-    );
+    writeFileSync(portPath, JSON.stringify({ serverName: "Migrated", serverId: "", updatedAt: 100 }), "utf-8");
     _resetForTest(portPath);
 
     // getServerId should auto-generate a new UUID

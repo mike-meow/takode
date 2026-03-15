@@ -96,10 +96,7 @@ export async function createJob(data: CronJobCreateInput): Promise<CronJob> {
   return job;
 }
 
-export async function updateJob(
-  id: string,
-  updates: Partial<CronJob>,
-): Promise<CronJob | null> {
+export async function updateJob(id: string, updates: Partial<CronJob>): Promise<CronJob | null> {
   const existing = await getJob(id);
   if (!existing) return null;
 

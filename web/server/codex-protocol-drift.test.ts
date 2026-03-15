@@ -37,10 +37,14 @@ describe("Codex adapter method drift vs upstream protocol snapshot", () => {
       [...adapter.matchAll(/this\.transport\.(?:call|notify)\("([^"]+)"/g)].map((m) => m[1]),
     );
 
-    const upstreamServerNotifications = extractMethods(readFile("server/protocol/codex-upstream/ServerNotification.ts.txt"));
+    const upstreamServerNotifications = extractMethods(
+      readFile("server/protocol/codex-upstream/ServerNotification.ts.txt"),
+    );
     const upstreamServerRequests = extractMethods(readFile("server/protocol/codex-upstream/ServerRequest.ts.txt"));
     const upstreamClientRequests = extractMethods(readFile("server/protocol/codex-upstream/ClientRequest.ts.txt"));
-    const upstreamClientNotifications = extractMethods(readFile("server/protocol/codex-upstream/ClientNotification.ts.txt"));
+    const upstreamClientNotifications = extractMethods(
+      readFile("server/protocol/codex-upstream/ClientNotification.ts.txt"),
+    );
 
     const legacyNotifications = new Set([
       "item/updated",
@@ -58,9 +62,7 @@ describe("Codex adapter method drift vs upstream protocol snapshot", () => {
       "thread/status/changed",
     ]);
 
-    const legacyServerRequests = new Set([
-      "item/mcpToolCall/requestApproval",
-    ]);
+    const legacyServerRequests = new Set(["item/mcpToolCall/requestApproval"]);
 
     for (const method of handledNotifications) {
       expect(

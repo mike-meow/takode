@@ -45,9 +45,7 @@ function normalizeMode(
   }
 
   const modes = getModesForBackend(backend);
-  const mode = rawMode && modes.some((entry) => entry.value === rawMode)
-    ? rawMode
-    : getDefaultMode(backend);
+  const mode = rawMode && modes.some((entry) => entry.value === rawMode) ? rawMode : getDefaultMode(backend);
   return {
     mode,
     askPermission: normalizeAskPermission(rawAskPermission),
@@ -78,7 +76,7 @@ function parseGroupDefaultsMap(): Record<string, StoredGroupDefaults> {
 }
 
 function buildDefaults(candidate: Partial<NewSessionDefaults>): NewSessionDefaults {
-  const backend = (candidate.backend && VALID_BACKENDS.has(candidate.backend)) ? candidate.backend : "claude";
+  const backend = candidate.backend && VALID_BACKENDS.has(candidate.backend) ? candidate.backend : "claude";
   const { mode, askPermission } = normalizeMode(backend, candidate.mode, candidate.askPermission);
   return {
     backend,
@@ -94,7 +92,7 @@ function buildDefaults(candidate: Partial<NewSessionDefaults>): NewSessionDefaul
 
 export function getGlobalNewSessionDefaults(): NewSessionDefaults {
   const raw = scopedGetItem("cc-backend");
-  const backend = (raw && VALID_BACKENDS.has(raw as NewSessionBackend)) ? raw as NewSessionBackend : "claude";
+  const backend = raw && VALID_BACKENDS.has(raw as NewSessionBackend) ? (raw as NewSessionBackend) : "claude";
   const askPermissionRaw = (() => {
     const stored = scopedGetItem("cc-ask-permission");
     return stored !== null ? stored === "true" : null;

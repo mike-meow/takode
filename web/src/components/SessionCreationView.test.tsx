@@ -20,7 +20,9 @@ vi.mock("../store.js", async () => {
     const [, forceUpdate] = React.useReducer((c: number) => c + 1, 0);
     React.useEffect(() => {
       listeners.add(forceUpdate);
-      return () => { listeners.delete(forceUpdate); };
+      return () => {
+        listeners.delete(forceUpdate);
+      };
     }, []);
     return selector(mockStoreState);
   };

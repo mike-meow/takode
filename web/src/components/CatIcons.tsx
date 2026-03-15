@@ -26,7 +26,15 @@ export function CatPawAvatar({ className = "w-3 h-3" }: { className?: string }) 
  * Toes fan slightly left for a natural walking splay.
  * Designed to look like a real cat pawprint at small sizes (12–16px).
  */
-export function CatPawLeft({ className = "w-3 h-3", style, ref }: { className?: string; style?: React.CSSProperties; ref?: React.Ref<SVGSVGElement> }) {
+export function CatPawLeft({
+  className = "w-3 h-3",
+  style,
+  ref,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  ref?: React.Ref<SVGSVGElement>;
+}) {
   return (
     <svg ref={ref} viewBox="0 0 16 16" fill="currentColor" className={className} style={style}>
       <path d="M 8.1 6 C 8.4 6 8.5 6 8.7 6.1 C 8.9 6.1 9.2 6.3 9.3 6.4 C 9.5 6.5 9.6 6.6 9.8 6.9 C 10 7.2 10.2 8 10.5 8.3 C 10.8 8.7 11.1 8.7 11.4 9 C 11.7 9.2 12 9.6 12.1 9.9 C 12.2 10.1 12.3 10.3 12.3 10.5 C 12.3 10.8 12.3 11.1 12.2 11.4 C 12.1 11.7 12 12 11.8 12.2 C 11.7 12.4 11.5 12.6 11.2 12.7 C 10.8 12.8 10.4 13 9.9 12.9 C 9.3 12.9 8.6 12.4 8.1 12.4 C 7.7 12.3 7.4 12.8 7.1 12.9 C 6.7 13 6.4 13 6.1 12.9 C 5.8 12.9 5.4 12.8 5.1 12.6 C 4.8 12.4 4.5 12.1 4.4 11.7 C 4.2 11.4 4.2 10.9 4.2 10.5 C 4.3 10.1 4.4 9.8 4.7 9.5 C 4.9 9.1 5.6 8.8 6 8.4 C 6.3 8 6.5 7.3 6.7 6.9 C 6.9 6.6 7 6.5 7.2 6.4 C 7.4 6.2 7.9 6.1 8.1 6 Z" />
@@ -80,7 +88,13 @@ export function PowerPlugDot({ className = "", style }: { className?: string; st
       {/* Plug body */}
       <rect x="4" y="4.5" width="8" height="4" rx="1.5" />
       {/* Cord */}
-      <path d="M8 8.5 L8 11 Q8 12.5 9.5 13 Q11 13.5 11 15" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      <path
+        d="M8 8.5 L8 11 Q8 12.5 9.5 13 Q11 13.5 11 15"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        fill="none"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -106,7 +120,11 @@ export function SleepingCat({ className = "w-28 h-20" }: { className?: string })
   return (
     <svg viewBox="0 0 140 90" fill="none" className={className}>
       {/* Curled body — organic bean shape */}
-      <path d="M28 62 Q18 38 48 32 Q72 27 95 34 Q115 42 108 60 Q102 74 72 78 Q42 80 28 62 Z" fill="currentColor" className="text-cc-muted/15" />
+      <path
+        d="M28 62 Q18 38 48 32 Q72 27 95 34 Q115 42 108 60 Q102 74 72 78 Q42 80 28 62 Z"
+        fill="currentColor"
+        className="text-cc-muted/15"
+      />
       {/* Head — round and large for cuteness */}
       <circle cx="98" cy="38" r="18" fill="currentColor" className="text-cc-muted/20" />
       {/* Outer ears */}
@@ -116,13 +134,41 @@ export function SleepingCat({ className = "w-28 h-20" }: { className?: string })
       <path d="M86 23 L83 12 L91 21 Z" fill="currentColor" className="text-cc-primary/15" />
       <path d="M108 21 L113 11 L115 22 Z" fill="currentColor" className="text-cc-primary/15" />
       {/* Closed eyes — happy curved arcs */}
-      <path d="M90 37 Q93 33 96 37" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-cc-muted/45" fill="none" />
-      <path d="M102 36 Q105 32 108 36" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-cc-muted/45" fill="none" />
+      <path
+        d="M90 37 Q93 33 96 37"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="text-cc-muted/45"
+        fill="none"
+      />
+      <path
+        d="M102 36 Q105 32 108 36"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="text-cc-muted/45"
+        fill="none"
+      />
       {/* Tiny nose */}
       <ellipse cx="99" cy="41" rx="1.2" ry="0.8" fill="currentColor" className="text-cc-primary/25" />
       {/* Mouth — small W */}
-      <path d="M97 42.5 Q96 44.5 94 43.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-cc-muted/25" fill="none" />
-      <path d="M101 42.5 Q102 44.5 104 43.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-cc-muted/25" fill="none" />
+      <path
+        d="M97 42.5 Q96 44.5 94 43.5"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        className="text-cc-muted/25"
+        fill="none"
+      />
+      <path
+        d="M101 42.5 Q102 44.5 104 43.5"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        className="text-cc-muted/25"
+        fill="none"
+      />
       {/* Rosy cheeks */}
       <ellipse cx="88" cy="42" rx="3" ry="1.5" fill="currentColor" className="text-cc-primary/8" />
       <ellipse cx="110" cy="41" rx="3" ry="1.5" fill="currentColor" className="text-cc-primary/8" />
@@ -130,13 +176,50 @@ export function SleepingCat({ className = "w-28 h-20" }: { className?: string })
       <ellipse cx="82" cy="58" rx="7" ry="4.5" fill="currentColor" className="text-cc-muted/18" />
       <ellipse cx="96" cy="59" rx="7" ry="4.5" fill="currentColor" className="text-cc-muted/18" />
       {/* Tail curling around */}
-      <path d="M28 58 Q14 42 28 28 Q42 20 44 35" stroke="currentColor" strokeWidth="5" strokeLinecap="round" className="text-cc-muted/18" fill="none" />
+      <path
+        d="M28 58 Q14 42 28 28 Q42 20 44 35"
+        stroke="currentColor"
+        strokeWidth="5"
+        strokeLinecap="round"
+        className="text-cc-muted/18"
+        fill="none"
+      />
       {/* Tail tip */}
       <circle cx="44" cy="35" r="3" fill="currentColor" className="text-cc-muted/18" />
       {/* Zzz — floating above */}
-      <text x="120" y="22" fill="currentColor" className="text-cc-muted/30" fontSize="12" fontFamily="ui-monospace" fontWeight="bold">z</text>
-      <text x="127" y="13" fill="currentColor" className="text-cc-muted/22" fontSize="9" fontFamily="ui-monospace" fontWeight="bold">z</text>
-      <text x="132" y="7" fill="currentColor" className="text-cc-muted/15" fontSize="7" fontFamily="ui-monospace" fontWeight="bold">z</text>
+      <text
+        x="120"
+        y="22"
+        fill="currentColor"
+        className="text-cc-muted/30"
+        fontSize="12"
+        fontFamily="ui-monospace"
+        fontWeight="bold"
+      >
+        z
+      </text>
+      <text
+        x="127"
+        y="13"
+        fill="currentColor"
+        className="text-cc-muted/22"
+        fontSize="9"
+        fontFamily="ui-monospace"
+        fontWeight="bold"
+      >
+        z
+      </text>
+      <text
+        x="132"
+        y="7"
+        fill="currentColor"
+        className="text-cc-muted/15"
+        fontSize="7"
+        fontFamily="ui-monospace"
+        fontWeight="bold"
+      >
+        z
+      </text>
     </svg>
   );
 }

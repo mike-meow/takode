@@ -1,12 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  loadRecording,
-  filterEntries,
-  getExpectedBrowserMessages,
-  getIncomingCLIMessages,
-} from "./replay.js";
+import { loadRecording, filterEntries, getExpectedBrowserMessages, getIncomingCLIMessages } from "./replay.js";
 import type { RecordingHeader, RecordingEntry } from "./recorder.js";
 
 let tempDir: string;
@@ -44,11 +39,7 @@ function makeEntry(overrides: Partial<RecordingEntry> = {}): RecordingEntry {
 }
 
 /** Write a JSONL recording file and return its path. */
-function writeRecording(
-  header: RecordingHeader,
-  entries: RecordingEntry[],
-  filename = "test.jsonl",
-): string {
+function writeRecording(header: RecordingHeader, entries: RecordingEntry[], filename = "test.jsonl"): string {
   const lines = [JSON.stringify(header), ...entries.map((e) => JSON.stringify(e))];
   const filePath = join(tempDir, filename);
   writeFileSync(filePath, lines.join("\n") + "\n");
@@ -98,7 +89,8 @@ describe("loadRecording", () => {
     const path = join(tempDir, "bad-version.jsonl");
     writeFileSync(
       path,
-      JSON.stringify({ _header: true, version: 99, session_id: "x", backend_type: "claude", started_at: 0, cwd: "/" }) + "\n",
+      JSON.stringify({ _header: true, version: 99, session_id: "x", backend_type: "claude", started_at: 0, cwd: "/" }) +
+        "\n",
     );
 
     expect(() => loadRecording(path)).toThrow("version");

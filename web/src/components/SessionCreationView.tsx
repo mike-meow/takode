@@ -16,11 +16,7 @@ export function SessionCreationView({ pendingId }: Props) {
   const pending = useStore((s) => s.pendingSessions.get(pendingId));
 
   if (!pending) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-cc-muted text-sm">
-        Session not found
-      </div>
-    );
+    return <div className="flex-1 flex items-center justify-center text-cc-muted text-sm">Session not found</div>;
   }
 
   const { progress, error, status, backend } = pending;
@@ -57,7 +53,9 @@ export function SessionCreationView({ pendingId }: Props) {
           <div className="absolute -inset-3 z-0">
             <svg className="w-full h-full animate-spin-slow" viewBox="0 0 100 100">
               <circle
-                cx="50" cy="50" r="46"
+                cx="50"
+                cy="50"
+                r="46"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.5"
@@ -69,15 +67,11 @@ export function SessionCreationView({ pendingId }: Props) {
           </div>
         )}
         {/* Success ring */}
-        {status === "succeeded" && (
-          <div className="absolute -inset-3 z-0 rounded-full border-2 border-cc-success/30" />
-        )}
+        {status === "succeeded" && <div className="absolute -inset-3 z-0 rounded-full border-2 border-cc-success/30" />}
       </div>
 
       {/* Status text */}
-      <p className={`text-sm font-medium mb-6 transition-colors ${
-        hasError ? "text-cc-error" : "text-cc-fg"
-      }`}>
+      <p className={`text-sm font-medium mb-6 transition-colors ${hasError ? "text-cc-error" : "text-cc-fg"}`}>
         {subtitle}
       </p>
 
@@ -88,9 +82,7 @@ export function SessionCreationView({ pendingId }: Props) {
       {error && (
         <div className="mt-5 w-full max-w-xs px-4">
           <div className="px-3 py-2.5 rounded-lg bg-cc-error/5 border border-cc-error/20">
-            <p className="text-[11px] text-cc-error whitespace-pre-wrap font-mono-code leading-relaxed">
-              {error}
-            </p>
+            <p className="text-[11px] text-cc-error whitespace-pre-wrap font-mono-code leading-relaxed">{error}</p>
           </div>
         </div>
       )}
@@ -144,9 +136,7 @@ export function StepList({ steps }: { steps: CreationProgressEvent[] }) {
         >
           {/* Icon */}
           <div className="w-5 h-5 flex items-center justify-center shrink-0">
-            {step.status === "in_progress" && (
-              <YarnBallSpinner className="w-4 h-4 text-cc-primary" />
-            )}
+            {step.status === "in_progress" && <YarnBallSpinner className="w-4 h-4 text-cc-primary" />}
             {step.status === "done" && (
               <div className="w-5 h-5 rounded-full bg-cc-success/15 flex items-center justify-center">
                 <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3 text-cc-success">
@@ -163,12 +153,7 @@ export function StepList({ steps }: { steps: CreationProgressEvent[] }) {
             {step.status === "error" && (
               <div className="w-5 h-5 rounded-full bg-cc-error/15 flex items-center justify-center">
                 <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3 text-cc-error">
-                  <path
-                    d="M4 4l8 8M12 4l-8 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
+                  <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </div>
             )}
@@ -189,9 +174,7 @@ export function StepList({ steps }: { steps: CreationProgressEvent[] }) {
 
           {/* Detail */}
           {step.detail && step.status === "in_progress" && (
-            <span className="text-[10px] text-cc-muted truncate ml-auto max-w-[120px]">
-              {step.detail}
-            </span>
+            <span className="text-[10px] text-cc-muted truncate ml-auto max-w-[120px]">{step.detail}</span>
           )}
         </div>
       ))}

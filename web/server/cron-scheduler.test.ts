@@ -8,7 +8,9 @@ const mockHomedir = vi.hoisted(() => {
   let dir = "";
   return {
     get: () => dir,
-    set: (d: string) => { dir = d; },
+    set: (d: string) => {
+      dir = d;
+    },
   };
 });
 
@@ -29,7 +31,10 @@ let CronSchedulerClass: typeof import("./cron-scheduler.js").CronScheduler;
 
 // Minimal mock launcher
 function createMockLauncher() {
-  const sessions = new Map<string, { sessionId: string; state: string; exitCode?: number | null; cronJobId?: string; cronJobName?: string }>();
+  const sessions = new Map<
+    string,
+    { sessionId: string; state: string; exitCode?: number | null; cronJobId?: string; cronJobName?: string }
+  >();
   let launchCount = 0;
   return {
     launch: vi.fn((options: Record<string, unknown>) => {
@@ -232,11 +237,10 @@ describe("execution", () => {
       expect.stringContaining("[cron:run-me Run Me]"),
       { sessionId: "cron:run-me", sessionLabel: "cron: Run Me" },
     );
-    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.stringContaining("Check PRs"),
-      { sessionId: "cron:run-me", sessionLabel: "cron: Run Me" },
-    );
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("Check PRs"), {
+      sessionId: "cron:run-me",
+      sessionLabel: "cron: Run Me",
+    });
 
     // Verify job tracking was updated
     const updated = await cronStore.getJob("run-me");
@@ -591,10 +595,7 @@ describe("prompt formatting", () => {
 
     await scheduler.executeJob("pr-check");
 
-    expect(setName).toHaveBeenCalledWith(
-      expect.stringMatching(/^mock-session-/),
-      "⏰ PR Check",
-    );
+    expect(setName).toHaveBeenCalledWith(expect.stringMatching(/^mock-session-/), "⏰ PR Check");
 
     scheduler.destroy();
   });

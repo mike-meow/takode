@@ -29,8 +29,11 @@ function suggestionLabel(s: PermissionUpdate): string {
 function deriveDefaultPattern(toolName: string, input: Record<string, unknown>): string {
   if (toolName === "Bash") return typeof input.command === "string" ? input.command : "";
   if (["Edit", "Write", "Read", "MultiEdit", "NotebookEdit"].includes(toolName))
-    return typeof input.file_path === "string" ? input.file_path
-      : typeof input.notebook_path === "string" ? input.notebook_path : "";
+    return typeof input.file_path === "string"
+      ? input.file_path
+      : typeof input.notebook_path === "string"
+        ? input.notebook_path
+        : "";
   if (toolName === "Glob") return typeof input.pattern === "string" ? input.pattern : "";
   if (toolName === "Grep") return typeof input.pattern === "string" ? input.pattern : "";
   if (toolName === "WebFetch") return typeof input.url === "string" ? input.url : "";
@@ -41,14 +44,26 @@ function deriveDefaultPattern(toolName: string, input: Record<string, unknown>):
 function getPlanPreview(permission: PermissionRequest): string {
   const planText = typeof permission.input?.plan === "string" ? permission.input.plan : "";
   return planText
-    ? planText.split("\n").find((l: string) => l.trim())?.replace(/^#+\s*/, "").trim() || "Plan approval"
+    ? planText
+        .split("\n")
+        .find((l: string) => l.trim())
+        ?.replace(/^#+\s*/, "")
+        .trim() || "Plan approval"
     : "Plan approval requested";
 }
 
 // ── Minimize icon SVG (square with horizontal line — reused in plan + permissions headers) ──
 function MinimizeIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="1.5" y="1.5" width="9" height="9" rx="1.5" />
       <path d="M4 8h4" />
     </svg>
@@ -58,7 +73,13 @@ function MinimizeIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
 // ── Plan icon SVG (reused in overlay + collapsed chip) ─────────────────────
 function PlanIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={`${className} text-cc-primary`}>
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={`${className} text-cc-primary`}
+    >
       <rect x="3" y="2" width="10" height="12" rx="1" />
       <path d="M6 5h4M6 8h4M6 11h2" />
     </svg>
@@ -161,7 +182,10 @@ export function PlanReviewOverlay({
               <div className="text-[10px] text-cc-muted uppercase tracking-wider">Requested permissions</div>
               <div className="space-y-1">
                 {allowedPrompts.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5"
+                  >
                     <span className="text-cc-muted shrink-0">{String(p.tool || "")}</span>
                     <span className="text-cc-fg">{String(p.prompt || "")}</span>
                   </div>
@@ -190,20 +214,21 @@ export function PlanReviewOverlay({
             {stamping ? "Approved" : "Allow"}
           </button>
 
-          {!stamping && suggestions?.map((suggestion, i) => (
-            <button
-              key={i}
-              onClick={() => handleAllow(undefined, [suggestion])}
-              disabled={loading}
-              title={`${suggestion.type}: ${JSON.stringify(suggestion)}`}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-                <path d="M3 8.5l3.5 3.5 6.5-7" />
-              </svg>
-              {suggestionLabel(suggestion)}
-            </button>
-          ))}
+          {!stamping &&
+            suggestions?.map((suggestion, i) => (
+              <button
+                key={i}
+                onClick={() => handleAllow(undefined, [suggestion])}
+                disabled={loading}
+                title={`${suggestion.type}: ${JSON.stringify(suggestion)}`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                  <path d="M3 8.5l3.5 3.5 6.5-7" />
+                </svg>
+                {suggestionLabel(suggestion)}
+              </button>
+            ))}
 
           {!stamping && (
             <button
@@ -295,27 +320,36 @@ export function PlanCollapsedChip({
             Plan
           </span>
           <span className="text-xs text-cc-fg truncate flex-1">{planPreview}</span>
-          <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-3 h-3 text-cc-muted shrink-0"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M3 5l3 3 3-3" />
           </svg>
         </button>
 
         {/* Inline action buttons */}
         <div className="shrink-0 flex items-center gap-1.5">
-          {!stamping && suggestions?.map((suggestion, i) => (
-            <button
-              key={i}
-              onClick={() => handleAllow([suggestion])}
-              disabled={loading}
-              title={suggestionLabel(suggestion)}
-              className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-md bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5">
-                <path d="M3 8.5l3.5 3.5 6.5-7" />
-              </svg>
-              {suggestionLabel(suggestion)}
-            </button>
-          ))}
+          {!stamping &&
+            suggestions?.map((suggestion, i) => (
+              <button
+                key={i}
+                onClick={() => handleAllow([suggestion])}
+                disabled={loading}
+                title={suggestionLabel(suggestion)}
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-md bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5">
+                  <path d="M3 8.5l3.5 3.5 6.5-7" />
+                </svg>
+                {suggestionLabel(suggestion)}
+              </button>
+            ))}
           <button
             onClick={() => handleAllow()}
             disabled={loading}
@@ -380,17 +414,17 @@ function CustomRuleEditor({
   const [pattern, setPattern] = useState(
     () => suggestion?.rules[0]?.ruleContent || deriveDefaultPattern(toolName, input),
   );
-  const [scope, setScope] = useState<ScopeOption>(
-    () => (suggestion?.destination as ScopeOption) || "session",
-  );
+  const [scope, setScope] = useState<ScopeOption>(() => (suggestion?.destination as ScopeOption) || "session");
 
   function handleSubmit() {
     const update: PermissionUpdate = {
       type: "addRules",
-      rules: [{
-        toolName,
-        ...(pattern.trim() ? { ruleContent: pattern.trim() } : {}),
-      }],
+      rules: [
+        {
+          toolName,
+          ...(pattern.trim() ? { ruleContent: pattern.trim() } : {}),
+        },
+      ],
       behavior: "allow",
       destination: scope,
     };
@@ -401,14 +435,14 @@ function CustomRuleEditor({
     <div className="mt-2.5 p-3 rounded-lg border border-cc-border/50 bg-cc-code-bg/20 space-y-3 animate-[fadeSlideIn_0.2s_ease-out]">
       {/* Pattern input */}
       <div className="space-y-1">
-        <label className="text-[10px] text-cc-muted uppercase tracking-wider font-medium">
-          Pattern
-        </label>
+        <label className="text-[10px] text-cc-muted uppercase tracking-wider font-medium">Pattern</label>
         <input
           type="text"
           value={pattern}
           onChange={(e) => setPattern(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !disabled) handleSubmit(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !disabled) handleSubmit();
+          }}
           placeholder={`e.g. ${toolName === "Bash" ? "npm test*" : "**/*.ts"}`}
           className="w-full px-2.5 py-1.5 text-xs font-mono-code bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 transition-colors"
           disabled={disabled}
@@ -470,9 +504,10 @@ export function EvaluatingCollapsedChip({
   onExpand: () => void;
 }) {
   const toolName = permission.tool_name;
-  const desc = permission.description
-    ?? (toolName === "Bash" && typeof permission.input?.command === "string"
-      ? permission.input.command as string
+  const desc =
+    permission.description ??
+    (toolName === "Bash" && typeof permission.input?.command === "string"
+      ? (permission.input.command as string)
       : toolName);
   const isQueued = permission.evaluating === "queued";
 
@@ -481,36 +516,59 @@ export function EvaluatingCollapsedChip({
       <div className="max-w-3xl mx-auto">
         <button
           onClick={onExpand}
-          title={isQueued
-            ? "Queued for auto-approval — click to expand and approve manually"
-            : "Evaluating for auto-approval — click to expand and approve manually"}
+          title={
+            isQueued
+              ? "Queued for auto-approval — click to expand and approve manually"
+              : "Evaluating for auto-approval — click to expand and approve manually"
+          }
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-cc-muted/20 bg-cc-muted/5 hover:bg-cc-muted/10 transition-colors cursor-pointer text-left"
         >
           {/* Icon: clock for queued, spinner for evaluating */}
           <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-muted/10 border border-cc-muted/20">
             {isQueued ? (
               // Clock icon (waiting in queue)
-              <svg className="w-3.5 h-3.5 text-cc-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="w-3.5 h-3.5 text-cc-muted"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <circle cx="8" cy="8" r="6" />
                 <path d="M8 5v3l2 1.5" />
               </svg>
             ) : (
               // Spinner icon (LLM call in progress)
               <svg className="w-3.5 h-3.5 text-cc-muted animate-spin" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="7" strokeLinecap="round" />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray="28"
+                  strokeDashoffset="7"
+                  strokeLinecap="round"
+                />
               </svg>
             )}
           </div>
           <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-muted/10 text-cc-muted shrink-0">
             {toolName}
           </span>
-          <span className="text-[10px] text-cc-muted/60 shrink-0">
-            {isQueued ? "queued" : "evaluating"}
-          </span>
-          <span className="text-xs text-cc-muted truncate flex-1 min-w-0">
-            {desc}
-          </span>
-          <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <span className="text-[10px] text-cc-muted/60 shrink-0">{isQueued ? "queued" : "evaluating"}</span>
+          <span className="text-xs text-cc-muted truncate flex-1 min-w-0">{desc}</span>
+          <svg
+            className="w-3 h-3 text-cc-muted shrink-0"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M3 5l3 3 3-3" />
           </svg>
         </button>
@@ -519,13 +577,7 @@ export function EvaluatingCollapsedChip({
   );
 }
 
-export function PermissionBanner({
-  permission,
-  sessionId,
-}: {
-  permission: PermissionRequest;
-  sessionId: string;
-}) {
+export function PermissionBanner({ permission, sessionId }: { permission: PermissionRequest; sessionId: string }) {
   const [loading, setLoading] = useState(false);
   const [stamping, setStamping] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -631,14 +683,14 @@ export function PermissionBanner({
   const suggestions = permission.permission_suggestions;
 
   // Extract first question info for collapsed preview
-  const questions = isAskUser && Array.isArray(permission.input?.questions)
-    ? (permission.input.questions as Record<string, unknown>[])
-    : [];
+  const questions =
+    isAskUser && Array.isArray(permission.input?.questions)
+      ? (permission.input.questions as Record<string, unknown>[])
+      : [];
   const firstQuestion = questions[0];
   const previewHeader = firstQuestion && typeof firstQuestion.header === "string" ? firstQuestion.header : "";
-  const previewText = firstQuestion && typeof firstQuestion.question === "string"
-    ? firstQuestion.question
-    : "Question from assistant";
+  const previewText =
+    firstQuestion && typeof firstQuestion.question === "string" ? firstQuestion.question : "Question from assistant";
 
   // Collapsed AskUser chip — compact single-line view
   if (isAskUser && collapsed) {
@@ -653,7 +705,11 @@ export function PermissionBanner({
             {/* Question icon */}
             <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-primary/10 border border-cc-primary/20">
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-cc-primary">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
 
@@ -669,13 +725,19 @@ export function PermissionBanner({
 
             {/* Question count badge if multiple questions */}
             {questions.length > 1 && (
-              <span className="text-[10px] text-cc-muted shrink-0">
-                {questions.length} questions
-              </span>
+              <span className="text-[10px] text-cc-muted shrink-0">{questions.length} questions</span>
             )}
 
             {/* Expand chevron */}
-            <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="w-3 h-3 text-cc-muted shrink-0"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M3 5l3 3 3-3" />
             </svg>
           </button>
@@ -689,18 +751,28 @@ export function PermissionBanner({
       <div className="max-w-3xl mx-auto">
         <div className="flex items-start gap-2 sm:gap-3">
           {/* Icon */}
-          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-            isAskUser
-              ? "bg-cc-primary/10 border border-cc-primary/20"
-              : "bg-cc-warning/10 border border-cc-warning/20"
-          }`}>
+          <div
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+              isAskUser
+                ? "bg-cc-primary/10 border border-cc-primary/20"
+                : "bg-cc-warning/10 border border-cc-warning/20"
+            }`}
+          >
             {isAskUser ? (
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-cc-primary">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                  clipRule="evenodd"
+                />
               </svg>
             ) : (
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-cc-warning">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
               </svg>
             )}
           </div>
@@ -711,16 +783,22 @@ export function PermissionBanner({
               <span className={`text-xs font-semibold ${isAskUser ? "text-cc-primary" : "text-cc-warning"}`}>
                 {isAskUser ? "Question" : "Permission Request"}
               </span>
-              {!isAskUser && (
-                <span className="text-[11px] text-cc-muted font-mono-code">{permission.tool_name}</span>
-              )}
+              {!isAskUser && <span className="text-[11px] text-cc-muted font-mono-code">{permission.tool_name}</span>}
               {isAskUser && (
                 <button
                   onClick={() => setCollapsed(true)}
                   className="ml-auto p-1 rounded hover:bg-cc-hover transition-colors cursor-pointer text-cc-muted hover:text-cc-fg"
                   title="Minimize question"
                 >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M9 7l-3-3-3 3" />
                   </svg>
                 </button>
@@ -729,16 +807,12 @@ export function PermissionBanner({
 
             {/* Show when user took over from auto-approval */}
             {expandedFromEvaluating && !permission.evaluating && (
-              <div className="text-[11px] text-amber-500/70 italic mb-1">
-                Auto-approval cancelled — you took over
-              </div>
+              <div className="text-[11px] text-amber-500/70 italic mb-1">Auto-approval cancelled — you took over</div>
             )}
 
             {/* Show why the auto-approver deferred this permission to the human */}
             {!expandedFromEvaluating && permission.deferralReason && (
-              <div className="text-[11px] text-cc-warning/70 italic mb-1">
-                {permission.deferralReason}
-              </div>
+              <div className="text-[11px] text-cc-warning/70 italic mb-1">{permission.deferralReason}</div>
             )}
 
             {isAskUser ? (
@@ -748,85 +822,98 @@ export function PermissionBanner({
                 disabled={loading}
               />
             ) : (
-              <ToolInputDisplay toolName={permission.tool_name} input={permission.input} description={permission.description} />
+              <ToolInputDisplay
+                toolName={permission.tool_name}
+                input={permission.input}
+                description={permission.description}
+              />
             )}
 
             {/* Actions - only for non-AskUserQuestion tools */}
-            {!isAskUser && (<>
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <button
-                  onClick={() => handleAllow()}
-                  disabled={loading}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer ${stamping ? "animate-[paw-approve_400ms_ease-out_forwards]" : ""}`}
-                >
-                  {stamping ? (
-                    <CatPawAvatar className="w-3.5 h-3.5" />
-                  ) : (
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                      <path d="M3 8.5l3.5 3.5 6.5-7" />
-                    </svg>
+            {!isAskUser && (
+              <>
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <button
+                    onClick={() => handleAllow()}
+                    disabled={loading}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-success/90 hover:bg-cc-success text-white disabled:opacity-50 transition-colors cursor-pointer ${stamping ? "animate-[paw-approve_400ms_ease-out_forwards]" : ""}`}
+                  >
+                    {stamping ? (
+                      <CatPawAvatar className="w-3.5 h-3.5" />
+                    ) : (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                        <path d="M3 8.5l3.5 3.5 6.5-7" />
+                      </svg>
+                    )}
+                    {stamping ? "Approved" : "Allow"}
+                  </button>
+
+                  {/* Permission suggestion buttons — only when CLI provides them */}
+                  {!stamping &&
+                    suggestions?.map((suggestion, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleAllow(undefined, [suggestion])}
+                        disabled={loading}
+                        title={`${suggestion.type}: ${JSON.stringify(suggestion)}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                          <path d="M3 8.5l3.5 3.5 6.5-7" />
+                        </svg>
+                        {suggestionLabel(suggestion)}
+                      </button>
+                    ))}
+
+                  {!stamping && (
+                    <button
+                      onClick={handleDeny}
+                      disabled={loading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
+                      Deny
+                    </button>
                   )}
-                  {stamping ? "Approved" : "Allow"}
-                </button>
 
-                {/* Permission suggestion buttons — only when CLI provides them */}
-                {!stamping && suggestions?.map((suggestion, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleAllow(undefined, [suggestion])}
-                    disabled={loading}
-                    title={`${suggestion.type}: ${JSON.stringify(suggestion)}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-primary/10 hover:bg-cc-primary/20 text-cc-primary border border-cc-primary/20 disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-                      <path d="M3 8.5l3.5 3.5 6.5-7" />
-                    </svg>
-                    {suggestionLabel(suggestion)}
-                  </button>
-                ))}
+                  {/* Custom rule editor toggle */}
+                  {!stamping && (
+                    <button
+                      onClick={() => setCustomEditorOpen(!customEditorOpen)}
+                      disabled={loading}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover border border-cc-border/30 disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                        <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" />
+                      </svg>
+                      Customize
+                      <svg
+                        className={`w-3 h-3 transition-transform ${customEditorOpen ? "rotate-180" : ""}`}
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M3 5l3 3 3-3" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
 
-                {!stamping && (
-                  <button
-                    onClick={handleDeny}
+                {/* Custom rule editor panel */}
+                {customEditorOpen && !stamping && (
+                  <CustomRuleEditor
+                    toolName={permission.tool_name}
+                    input={permission.input}
+                    suggestions={permission.permission_suggestions}
+                    onApply={(update) => handleAllow(undefined, [update])}
                     disabled={loading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-hover hover:bg-cc-active text-cc-fg border border-cc-border disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                      <path d="M4 4l8 8M12 4l-8 8" />
-                    </svg>
-                    Deny
-                  </button>
+                  />
                 )}
-
-                {/* Custom rule editor toggle */}
-                {!stamping && (
-                  <button
-                    onClick={() => setCustomEditorOpen(!customEditorOpen)}
-                    disabled={loading}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover border border-cc-border/30 disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
-                      <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" />
-                    </svg>
-                    Customize
-                    <svg className={`w-3 h-3 transition-transform ${customEditorOpen ? "rotate-180" : ""}`} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M3 5l3 3 3-3" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-
-              {/* Custom rule editor panel */}
-              {customEditorOpen && !stamping && (
-                <CustomRuleEditor
-                  toolName={permission.tool_name}
-                  input={permission.input}
-                  suggestions={permission.permission_suggestions}
-                  onApply={(update) => handleAllow(undefined, [update])}
-                  disabled={loading}
-                />
-              )}
-            </>)}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -877,7 +964,8 @@ function BashDisplay({ input }: { input: Record<string, unknown> }) {
     <div className="space-y-1.5">
       {desc && <div className="text-xs text-cc-muted">{desc}</div>}
       <pre className="text-xs text-cc-fg font-mono-code bg-cc-code-bg/30 rounded-lg px-2 sm:px-3 py-2 max-h-32 overflow-y-auto overflow-x-auto whitespace-pre-wrap break-words">
-        <span className="text-cc-muted select-none">$ </span>{command}
+        <span className="text-cc-muted select-none">$ </span>
+        {command}
       </pre>
     </div>
   );
@@ -927,11 +1015,7 @@ function AskUserQuestionDisplay({
     // Fallback for simple question string
     const question = typeof input.question === "string" ? input.question : "";
     if (question) {
-      return (
-        <div className="text-sm text-cc-fg bg-cc-code-bg/30 rounded-lg px-3 py-2">
-          {question}
-        </div>
-      );
+      return <div className="text-sm text-cc-fg bg-cc-code-bg/30 rounded-lg px-3 py-2">{question}</div>;
     }
     return <GenericDisplay input={input} />;
   }
@@ -953,9 +1037,7 @@ function AskUserQuestionDisplay({
                 {header}
               </span>
             )}
-            {text && (
-              <p className="text-sm text-cc-fg leading-relaxed">{text}</p>
-            )}
+            {text && <p className="text-sm text-cc-fg leading-relaxed">{text}</p>}
             {options.length > 0 && (
               <div className="space-y-1.5">
                 {options.map((opt: Record<string, unknown>, j: number) => {
@@ -975,9 +1057,11 @@ function AskUserQuestionDisplay({
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          isSelected ? "border-cc-primary" : "border-cc-muted/40"
-                        }`}>
+                        <span
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            isSelected ? "border-cc-primary" : "border-cc-muted/40"
+                          }`}
+                        >
                           {isSelected && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
                         </span>
                         <div>
@@ -1000,9 +1084,11 @@ function AskUserQuestionDisplay({
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                      isCustom ? "border-cc-primary" : "border-cc-muted/40"
-                    }`}>
+                    <span
+                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        isCustom ? "border-cc-primary" : "border-cc-muted/40"
+                      }`}
+                    >
                       {isCustom && <span className="w-2 h-2 rounded-full bg-cc-primary" />}
                     </span>
                     <span className="text-xs font-medium text-cc-muted">Other...</span>
@@ -1015,7 +1101,9 @@ function AskUserQuestionDisplay({
                       type="text"
                       value={customText[key] || ""}
                       onChange={(e) => setCustomText((prev) => ({ ...prev, [key]: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleCustomSubmit(i); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleCustomSubmit(i);
+                      }}
                       placeholder="Type your answer..."
                       className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/50"
                       autoFocus
@@ -1059,13 +1147,7 @@ function EditDisplay({ input }: { input: Record<string, unknown> }) {
   } = parseEditToolInput(input, { fallbackToFirstChangePath: true });
 
   if (!oldStr && !newStr && unifiedDiff) {
-    return (
-      <DiffViewer
-        unifiedDiff={unifiedDiff}
-        fileName={filePath}
-        mode="full"
-      />
-    );
+    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="full" />;
   }
 
   if (!oldStr && !newStr && changes.length > 0) {
@@ -1073,34 +1155,22 @@ function EditDisplay({ input }: { input: Record<string, unknown> }) {
       <div className="text-xs text-cc-muted font-mono-code bg-cc-code-bg/30 rounded-lg px-3 py-2 space-y-1">
         {changes.map((change, i) => (
           <div key={`${typeof change.path === "string" ? change.path : "file"}-${i}`}>
-            {(typeof change.kind === "string" ? change.kind : "modify")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
+            {typeof change.kind === "string" ? change.kind : "modify"}:{" "}
+            {typeof change.path === "string" ? change.path : filePath || "(unknown file)"}
           </div>
         ))}
       </div>
     );
   }
 
-  return (
-    <DiffViewer
-      oldText={oldStr}
-      newText={newStr}
-      fileName={filePath}
-      mode="full"
-    />
-  );
+  return <DiffViewer oldText={oldStr} newText={newStr} fileName={filePath} mode="full" />;
 }
 
 function WriteDisplay({ input }: { input: Record<string, unknown> }) {
   const { filePath, content, changes, unifiedDiff } = parseWriteToolInput(input);
 
   if (!content && unifiedDiff) {
-    return (
-      <DiffViewer
-        unifiedDiff={unifiedDiff}
-        fileName={filePath}
-        mode="full"
-      />
-    );
+    return <DiffViewer unifiedDiff={unifiedDiff} fileName={filePath} mode="full" />;
   }
 
   if (!content && changes.length > 0) {
@@ -1108,29 +1178,20 @@ function WriteDisplay({ input }: { input: Record<string, unknown> }) {
       <div className="text-xs text-cc-muted font-mono-code bg-cc-code-bg/30 rounded-lg px-3 py-2 space-y-1">
         {changes.map((change, i) => (
           <div key={`${typeof change.path === "string" ? change.path : "file"}-${i}`}>
-            {(typeof change.kind === "string" ? change.kind : "create")}: {typeof change.path === "string" ? change.path : (filePath || "(unknown file)")}
+            {typeof change.kind === "string" ? change.kind : "create"}:{" "}
+            {typeof change.path === "string" ? change.path : filePath || "(unknown file)"}
           </div>
         ))}
       </div>
     );
   }
 
-  return (
-    <DiffViewer
-      newText={content}
-      fileName={filePath}
-      mode="full"
-    />
-  );
+  return <DiffViewer newText={content} fileName={filePath} mode="full" />;
 }
 
 function ReadDisplay({ input }: { input: Record<string, unknown> }) {
   const filePath = String(input.file_path || "");
-  return (
-    <div className="text-xs text-cc-muted font-mono-code bg-cc-code-bg/30 rounded-lg px-3 py-2">
-      {filePath}
-    </div>
-  );
+  return <div className="text-xs text-cc-muted font-mono-code bg-cc-code-bg/30 rounded-lg px-3 py-2">{filePath}</div>;
 }
 
 function GlobDisplay({ input }: { input: Record<string, unknown> }) {
@@ -1173,7 +1234,10 @@ function ExitPlanModeDisplay({ input }: { input: Record<string, unknown> }) {
           <div className="text-[10px] text-cc-muted uppercase tracking-wider">Requested permissions</div>
           <div className="space-y-1">
             {allowedPrompts.map((p: Record<string, unknown>, i: number) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5">
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[11px] font-mono-code bg-cc-code-bg/30 rounded-lg px-2.5 py-1.5"
+              >
                 <span className="text-cc-muted shrink-0">{String(p.tool || "")}</span>
                 <span className="text-cc-fg">{String(p.prompt || "")}</span>
               </div>
@@ -1181,23 +1245,13 @@ function ExitPlanModeDisplay({ input }: { input: Record<string, unknown> }) {
           </div>
         </div>
       )}
-      {!plan && allowedPrompts.length === 0 && (
-        <div className="text-xs text-cc-muted">Plan approval requested</div>
-      )}
+      {!plan && allowedPrompts.length === 0 && <div className="text-xs text-cc-muted">Plan approval requested</div>}
     </div>
   );
 }
 
-function GenericDisplay({
-  input,
-  description,
-}: {
-  input: Record<string, unknown>;
-  description?: string;
-}) {
-  const entries = Object.entries(input).filter(
-    ([, v]) => v !== undefined && v !== null && v !== "",
-  );
+function GenericDisplay({ input, description }: { input: Record<string, unknown>; description?: string }) {
+  const entries = Object.entries(input).filter(([, v]) => v !== undefined && v !== null && v !== "");
 
   if (entries.length === 0 && description) {
     return <div className="text-xs text-cc-fg">{description}</div>;
@@ -1208,9 +1262,12 @@ function GenericDisplay({
       {description && <div className="text-xs text-cc-muted mb-1">{description}</div>}
       <div className="bg-cc-code-bg/30 rounded-lg px-3 py-2 space-y-1">
         {entries.map(([key, value]) => {
-          const displayValue = typeof value === "string"
-            ? value.length > 200 ? value.slice(0, 200) + "..." : value
-            : JSON.stringify(value);
+          const displayValue =
+            typeof value === "string"
+              ? value.length > 200
+                ? value.slice(0, 200) + "..."
+                : value
+              : JSON.stringify(value);
           return (
             <div key={key} className="flex gap-2 text-[11px] font-mono-code">
               <span className="text-cc-muted shrink-0">{key}:</span>
@@ -1234,9 +1291,10 @@ export function PermissionsCollapsedChip({
 }) {
   const toolNames = permissions.map((p) => p.tool_name);
   const uniqueTools = [...new Set(toolNames)];
-  const summary = uniqueTools.length <= 3
-    ? uniqueTools.join(", ")
-    : `${uniqueTools.slice(0, 2).join(", ")} +${uniqueTools.length - 2} more`;
+  const summary =
+    uniqueTools.length <= 3
+      ? uniqueTools.join(", ")
+      : `${uniqueTools.slice(0, 2).join(", ")} +${uniqueTools.length - 2} more`;
 
   return (
     <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 sm:px-4 py-2 animate-[fadeSlideIn_0.2s_ease-out]">
@@ -1248,7 +1306,11 @@ export function PermissionsCollapsedChip({
         >
           <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-cc-warning/10 border border-cc-warning/20">
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-cc-warning">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
           </div>
           <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-cc-warning/10 text-cc-warning shrink-0">
@@ -1257,7 +1319,15 @@ export function PermissionsCollapsedChip({
           <span className="text-xs text-cc-fg truncate flex-1">
             pending approval{permissions.length !== 1 ? "s" : ""}: {summary}
           </span>
-          <svg className="w-3 h-3 text-cc-muted shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-3 h-3 text-cc-muted shrink-0"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M3 5l3 3 3-3" />
           </svg>
         </button>

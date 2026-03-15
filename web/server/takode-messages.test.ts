@@ -239,11 +239,7 @@ describe("buildPeekResponse", () => {
 
   it("truncates long content in peek mode (full=false)", () => {
     const longText = "x".repeat(200);
-    const history: BrowserIncomingMessage[] = [
-      userMsg(longText, 1000),
-      assistantMsg(longText, 2000),
-      resultMsg(1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg(longText, 1000), assistantMsg(longText, 2000), resultMsg(1000)];
 
     const result = buildPeekResponse(history, { turns: 1, full: false });
     // User messages are short but this one is long — should be truncated
@@ -253,11 +249,7 @@ describe("buildPeekResponse", () => {
 
   it("preserves full content when full=true", () => {
     const longText = "x".repeat(200);
-    const history: BrowserIncomingMessage[] = [
-      userMsg(longText, 1000),
-      assistantMsg(longText, 2000),
-      resultMsg(1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg(longText, 1000), assistantMsg(longText, 2000), resultMsg(1000)];
 
     const result = buildPeekResponse(history, { turns: 1, full: true });
     expect(result[0].messages[0].content).toBe(longText);
@@ -357,11 +349,16 @@ describe("buildPeekResponse", () => {
     // Stream events and other non-peekable messages are skipped but indices should
     // still reflect the original array position
     const history: BrowserIncomingMessage[] = [
-      userMsg("Question", 1000),               // idx 0
-      { type: "stream_event", event: {}, parent_tool_use_id: null } as BrowserIncomingMessage,  // idx 1 - skipped
-      assistantMsg("Answer", 2000),             // idx 2
-      { type: "tool_progress", tool_use_id: "tu1", tool_name: "Bash", elapsed_time_seconds: 1 } as BrowserIncomingMessage, // idx 3 - skipped
-      resultMsg(1000),                          // idx 4
+      userMsg("Question", 1000), // idx 0
+      { type: "stream_event", event: {}, parent_tool_use_id: null } as BrowserIncomingMessage, // idx 1 - skipped
+      assistantMsg("Answer", 2000), // idx 2
+      {
+        type: "tool_progress",
+        tool_use_id: "tu1",
+        tool_name: "Bash",
+        elapsed_time_seconds: 1,
+      } as BrowserIncomingMessage, // idx 3 - skipped
+      resultMsg(1000), // idx 4
     ];
 
     const result = buildPeekResponse(history, { turns: 1 });
@@ -377,9 +374,7 @@ describe("buildPeekResponse", () => {
     ]);
     const history: BrowserIncomingMessage[] = [
       userMsg("Investigate the bug", 1000),
-      assistantMsg("", 2000, [
-        { name: "Agent", input: { prompt: "Look into the websocket bug" } },
-      ]),
+      assistantMsg("", 2000, [{ name: "Agent", input: { prompt: "Look into the websocket bug" } }]),
       assistantMsg("streaming child detail", 2500, undefined, "tu-Agent"),
       toolResultPreview("tu-Agent", subagentResult),
       resultMsg(3000),
@@ -440,9 +435,7 @@ describe("buildPeekDefault", () => {
 
 describe("buildPeekRange", () => {
   it("shows the subagent result preview and hides child messages in range mode", () => {
-    const subagentResult = JSON.stringify([
-      { type: "text", text: "Range preview from child agent" },
-    ]);
+    const subagentResult = JSON.stringify([{ type: "text", text: "Range preview from child agent" }]);
     const history: BrowserIncomingMessage[] = [
       userMsg("Range turn", 1000),
       assistantMsg("", 2000, [{ name: "Task", input: { prompt: "Check one narrow thing" } }]),
@@ -498,17 +491,13 @@ describe("buildPeekRange", () => {
 
 describe("buildReadResponse", () => {
   it("returns null for out-of-bounds index", () => {
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Hello", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg("Hello", 1000)];
     expect(buildReadResponse(history, 5)).toBeNull();
     expect(buildReadResponse(history, -1)).toBeNull();
   });
 
   it("reads a user message with full content", () => {
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Hello world\nSecond line\nThird line", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg("Hello world\nSecond line\nThird line", 1000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.idx).toBe(0);
@@ -520,9 +509,7 @@ describe("buildReadResponse", () => {
 
   it("reads an assistant message with text and tool blocks", () => {
     const history: BrowserIncomingMessage[] = [
-      assistantMsg("Let me help.", 1000, [
-        { name: "Bash", input: { command: "ls -la" } },
-      ]),
+      assistantMsg("Let me help.", 1000, [{ name: "Bash", input: { command: "ls -la" } }]),
     ];
 
     const result = buildReadResponse(history, 0)!;
@@ -534,9 +521,7 @@ describe("buildReadResponse", () => {
   });
 
   it("reads a result message", () => {
-    const history: BrowserIncomingMessage[] = [
-      resultMsg(5000),
-    ];
+    const history: BrowserIncomingMessage[] = [resultMsg(5000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.type).toBe("result");
@@ -544,9 +529,7 @@ describe("buildReadResponse", () => {
   });
 
   it("reads a result message with errors", () => {
-    const history: BrowserIncomingMessage[] = [
-      resultMsg(1000, true),
-    ];
+    const history: BrowserIncomingMessage[] = [resultMsg(1000, true)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.content).toContain("Something went wrong");
@@ -554,9 +537,7 @@ describe("buildReadResponse", () => {
 
   it("paginates content by lines", () => {
     const lines = Array.from({ length: 10 }, (_, i) => `Line ${i + 1}`);
-    const history: BrowserIncomingMessage[] = [
-      userMsg(lines.join("\n"), 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg(lines.join("\n"), 1000)];
 
     // Get lines 3-5 (offset=2, limit=3)
     const result = buildReadResponse(history, 0, { offset: 2, limit: 3 })!;
@@ -567,9 +548,7 @@ describe("buildReadResponse", () => {
   });
 
   it("handles offset beyond total lines", () => {
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Short message", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg("Short message", 1000)];
 
     const result = buildReadResponse(history, 0, { offset: 100, limit: 10 })!;
     expect(result.totalLines).toBe(1);
@@ -577,18 +556,14 @@ describe("buildReadResponse", () => {
   });
 
   it("does not include contentBlocks for non-assistant messages", () => {
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Hello", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg("Hello", 1000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.contentBlocks).toBeUndefined();
   });
 
   it("reads a compact_marker message", () => {
-    const history: BrowserIncomingMessage[] = [
-      compactMarker("Context was compacted to save tokens", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [compactMarker("Context was compacted to save tokens", 1000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.type).toBe("compact_marker");
@@ -596,9 +571,7 @@ describe("buildReadResponse", () => {
   });
 
   it("reads a permission_approved message", () => {
-    const history: BrowserIncomingMessage[] = [
-      permissionApproved("Edit", "server/routes.ts +15 lines", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [permissionApproved("Edit", "server/routes.ts +15 lines", 1000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.type).toBe("permission_approved");
@@ -606,9 +579,7 @@ describe("buildReadResponse", () => {
   });
 
   it("defaults offset to 0 and limit to 200", () => {
-    const history: BrowserIncomingMessage[] = [
-      userMsg("Hello", 1000),
-    ];
+    const history: BrowserIncomingMessage[] = [userMsg("Hello", 1000)];
 
     const result = buildReadResponse(history, 0)!;
     expect(result.offset).toBe(0);
@@ -627,9 +598,7 @@ describe("buildReadResponse", () => {
     ];
 
     const result = buildReadResponse(history, 0, {
-      getToolResult: (toolUseId) => toolUseId === "tu-Agent"
-        ? { content: full, is_error: false }
-        : null,
+      getToolResult: (toolUseId) => (toolUseId === "tu-Agent" ? { content: full, is_error: false } : null),
     })!;
 
     expect(result.content).toBe("Full subagent answer");

@@ -1,11 +1,5 @@
 import { execSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -130,11 +124,7 @@ export class ContainerManager {
    * - Mounts `hostCwd` at `/workspace`
    * - Publishes requested ports with auto-assigned host ports (`-p 0:PORT`)
    */
-  createContainer(
-    sessionId: string,
-    hostCwd: string,
-    config: ContainerConfig,
-  ): ContainerInfo {
+  createContainer(sessionId: string, hostCwd: string, config: ContainerConfig): ContainerInfo {
     const name = `companion-${sessionId.slice(0, 8)}`;
     const homedir = process.env.HOME || process.env.USERPROFILE || "/root";
 
@@ -154,26 +144,33 @@ export class ContainerManager {
 
     // Build docker create args
     const args: string[] = [
-      "docker", "create",
-      "--name", name,
+      "docker",
+      "create",
+      "--name",
+      name,
       // Ensure host.docker.internal resolves (automatic on Mac/Win Docker
       // Desktop, but required explicitly on Linux)
       "--add-host=host.docker.internal:host-gateway",
       // Seed auth/config from host home, but keep runtime writes inside container.
-      "-v", `${homedir}/.claude:/companion-host-claude:ro`,
-      "--tmpfs", "/root/.claude",
+      "-v",
+      `${homedir}/.claude:/companion-host-claude:ro`,
+      "--tmpfs",
+      "/root/.claude",
       // Seed Codex auth/config from host (if present)
       ...(existsSync(join(homedir, ".codex")) // sync-ok: container management, not called during message handling
         ? ["-v", `${homedir}/.codex:/companion-host-codex:ro`, "--tmpfs", "/root/.codex"]
         : []),
       // Isolated workspace: named volume populated later via docker cp
-      "-v", `${volumeName}:/workspace`,
-      "-w", "/workspace",
+      "-v",
+      `${volumeName}:/workspace`,
+      "-w",
+      "/workspace",
     ];
 
     // Mount host .gitconfig so git user.name/email are available for commits
     const gitconfigPath = join(homedir, ".gitconfig");
-    if (existsSync(gitconfigPath)) { // sync-ok: container management, not called during message handling
+    if (existsSync(gitconfigPath)) {
+      // sync-ok: container management, not called during message handling
       args.push("-v", `${gitconfigPath}:/root/.gitconfig:ro`);
     }
 
@@ -235,18 +232,24 @@ export class ContainerManager {
       this.containers.set(sessionId, info);
       console.log(
         `[container-manager] Created container ${name} (${containerId.slice(0, 12)}) ` +
-        `ports: ${info.portMappings.map((p) => `${p.containerPort}->${p.hostPort}`).join(", ")}`,
+          `ports: ${info.portMappings.map((p) => `${p.containerPort}->${p.hostPort}`).join(", ")}`,
       );
 
       return info;
     } catch (e) {
       // Cleanup partial creation (container + volume)
-      try { exec(`docker rm -f ${shellEscape(name)}`); } catch { /* ignore */ }
-      try { exec(`docker volume rm ${shellEscape(volumeName)}`); } catch { /* ignore */ }
+      try {
+        exec(`docker rm -f ${shellEscape(name)}`);
+      } catch {
+        /* ignore */
+      }
+      try {
+        exec(`docker volume rm ${shellEscape(volumeName)}`);
+      } catch {
+        /* ignore */
+      }
       info.state = "removed";
-      throw new Error(
-        `Failed to create container: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      throw new Error(`Failed to create container: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -261,7 +264,8 @@ export class ContainerManager {
   private seedAuthFiles(containerId: string): void {
     try {
       this.execInContainer(containerId, [
-        "sh", "-lc",
+        "sh",
+        "-lc",
         [
           "mkdir -p /root/.claude",
           "for f in .credentials.json auth.json .auth.json credentials.json; do " +
@@ -272,7 +276,9 @@ export class ContainerManager {
           "true",
         ].join("; "),
       ]);
-    } catch { /* best-effort — container may not have /companion-host-claude mounted */ }
+    } catch {
+      /* best-effort — container may not have /companion-host-claude mounted */
+    }
   }
 
   /**
@@ -283,7 +289,8 @@ export class ContainerManager {
   private seedCodexFiles(containerId: string): void {
     try {
       this.execInContainer(containerId, [
-        "sh", "-lc",
+        "sh",
+        "-lc",
         [
           "[ -d /companion-host-codex ] || exit 0",
           "mkdir -p /root/.codex",
@@ -294,7 +301,9 @@ export class ContainerManager {
           "true",
         ].join("; "),
       ]);
-    } catch { /* best-effort — container may not have /companion-host-codex mounted */ }
+    } catch {
+      /* best-effort — container may not have /companion-host-codex mounted */
+    }
   }
 
   /**
@@ -316,25 +325,29 @@ export class ContainerManager {
         encoding: "utf-8",
         timeout: QUICK_EXEC_TIMEOUT_MS,
       });
-    } catch { /* best-effort — gh may not be installed on host */ }
+    } catch {
+      /* best-effort — gh may not be installed on host */
+    }
 
     // If host token exists, seed gh auth state in the container.
     if (token) {
       try {
         this.execInContainer(containerId, [
-          "sh", "-lc",
+          "sh",
+          "-lc",
           `printf '%s\n' ${shellEscape(token)} | gh auth login --with-token 2>/dev/null; true`,
         ]);
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
 
     // Always wire git credentials to gh token flow.
     try {
-      this.execInContainer(containerId, [
-        "sh", "-lc",
-        "gh auth setup-git 2>/dev/null; true",
-      ]);
-    } catch { /* best-effort */ }
+      this.execInContainer(containerId, ["sh", "-lc", "gh auth setup-git 2>/dev/null; true"]);
+    } catch {
+      /* best-effort */
+    }
 
     // Disable GPG/SSH commit signing — host signing tools (1Password, GPG agent)
     // aren't available inside the container and would cause git commit to fail.
@@ -342,21 +355,24 @@ export class ContainerManager {
     // (containers don't have the host's SSH keys).
     try {
       this.execInContainer(containerId, [
-        "sh", "-lc",
+        "sh",
+        "-lc",
         [
           "git config --global commit.gpgsign false 2>/dev/null",
           // Rewrite git@github.com:org/repo → https://github.com/org/repo for all remotes
           "cd /workspace 2>/dev/null && " +
             "git remote -v 2>/dev/null | grep 'git@github.com:' | awk '{print $1}' | sort -u | " +
             "while read remote; do " +
-              "url=$(git remote get-url \"$remote\" 2>/dev/null); " +
-              "https_url=$(echo \"$url\" | sed 's|git@github.com:|https://github.com/|'); " +
-              "git remote set-url \"$remote\" \"$https_url\" 2>/dev/null; " +
+            'url=$(git remote get-url "$remote" 2>/dev/null); ' +
+            "https_url=$(echo \"$url\" | sed 's|git@github.com:|https://github.com/|'); " +
+            'git remote set-url "$remote" "$https_url" 2>/dev/null; ' +
             "done",
           "true",
         ].join("; "),
       ]);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /**
@@ -364,10 +380,7 @@ export class ContainerManager {
    * Uses `docker cp` which works with both running and stopped containers.
    * The trailing `/.` ensures directory contents are copied (not the directory itself).
    */
-  async copyWorkspaceToContainer(
-    containerId: string,
-    hostCwd: string,
-  ): Promise<void> {
+  async copyWorkspaceToContainer(containerId: string, hostCwd: string): Promise<void> {
     validateContainerId(containerId);
 
     const src = hostCwd.endsWith("/") ? `${hostCwd}.` : `${hostCwd}/.`;
@@ -382,9 +395,7 @@ export class ContainerManager {
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
-      throw new Error(
-        `docker cp failed (exit ${exitCode}): ${stderrText.trim() || "unknown error"}`,
-      );
+      throw new Error(`docker cp failed (exit ${exitCode}): ${stderrText.trim() || "unknown error"}`);
     }
   }
 
@@ -401,9 +412,7 @@ export class ContainerManager {
     const mappings: PortMapping[] = [];
     for (const containerPort of ports) {
       try {
-        const raw = exec(
-          `docker port ${shellEscape(containerId)} ${containerPort}`,
-        );
+        const raw = exec(`docker port ${shellEscape(containerId)} ${containerPort}`);
         // Output like "0.0.0.0:49152" or "[::]:49152"
         const match = raw.match(/:(\d+)$/m);
         if (match) {
@@ -413,9 +422,7 @@ export class ContainerManager {
           });
         }
       } catch {
-        console.warn(
-          `[container-manager] Could not resolve port ${containerPort} for ${containerId.slice(0, 12)}`,
-        );
+        console.warn(`[container-manager] Could not resolve port ${containerPort} for ${containerId.slice(0, 12)}`);
       }
     }
     return mappings;
@@ -427,11 +434,7 @@ export class ContainerManager {
    */
   execInContainer(containerId: string, cmd: string[], timeout = STANDARD_EXEC_TIMEOUT_MS): string {
     validateContainerId(containerId);
-    const dockerCmd = [
-      "docker", "exec",
-      shellEscape(containerId),
-      ...cmd.map(shellEscape),
-    ].join(" ");
+    const dockerCmd = ["docker", "exec", shellEscape(containerId), ...cmd.map(shellEscape)].join(" ");
     return exec(dockerCmd, { encoding: "utf-8", timeout });
   }
 
@@ -447,11 +450,7 @@ export class ContainerManager {
   ): Promise<{ exitCode: number; output: string }> {
     validateContainerId(containerId);
     const timeout = opts?.timeout ?? 120_000;
-    const dockerCmd = [
-      "docker", "exec",
-      containerId,
-      ...cmd,
-    ];
+    const dockerCmd = ["docker", "exec", containerId, ...cmd];
 
     const proc = Bun.spawn(dockerCmd, {
       stdout: "pipe",
@@ -542,9 +541,7 @@ export class ContainerManager {
     try {
       exec(`docker rm -f ${shellEscape(info.containerId)}`);
       info.state = "removed";
-      console.log(
-        `[container-manager] Removed container ${info.name} (${info.containerId.slice(0, 12)})`,
-      );
+      console.log(`[container-manager] Removed container ${info.name} (${info.containerId.slice(0, 12)})`);
     } catch (e) {
       console.warn(
         `[container-manager] Failed to remove container ${info.name}:`,
@@ -600,10 +597,10 @@ export class ContainerManager {
   isContainerAlive(containerId: string): "running" | "stopped" | "missing" {
     validateContainerId(containerId);
     try {
-      const state = exec(
-        `docker inspect --format '{{.State.Running}}' ${shellEscape(containerId)}`,
-        { encoding: "utf-8", timeout: QUICK_EXEC_TIMEOUT_MS },
-      );
+      const state = exec(`docker inspect --format '{{.State.Running}}' ${shellEscape(containerId)}`, {
+        encoding: "utf-8",
+        timeout: QUICK_EXEC_TIMEOUT_MS,
+      });
       return state === "true" ? "running" : "stopped";
     } catch {
       return "missing";
@@ -617,10 +614,10 @@ export class ContainerManager {
   hasBinaryInContainer(containerId: string, binary: string): boolean {
     validateContainerId(containerId);
     try {
-      exec(
-        `docker exec ${shellEscape(containerId)} bash -lc 'which ${shellEscape(binary)}'`,
-        { encoding: "utf-8", timeout: QUICK_EXEC_TIMEOUT_MS },
-      );
+      exec(`docker exec ${shellEscape(containerId)} bash -lc 'which ${shellEscape(binary)}'`, {
+        encoding: "utf-8",
+        timeout: QUICK_EXEC_TIMEOUT_MS,
+      });
       return true;
     } catch {
       return false;
@@ -633,9 +630,7 @@ export class ContainerManager {
    */
   restoreContainer(sessionId: string, info: ContainerInfo): boolean {
     try {
-      const state = exec(
-        `docker inspect --format '{{.State.Running}}' ${shellEscape(info.containerId)}`,
-      );
+      const state = exec(`docker inspect --format '{{.State.Running}}' ${shellEscape(info.containerId)}`);
       if (state === "true") {
         info.state = "running";
       } else {
@@ -670,10 +665,7 @@ export class ContainerManager {
       }
       writeFileSync(filePath, JSON.stringify(entries, null, 2), "utf-8"); // sync-ok: container management, not called during message handling
     } catch (e) {
-      console.warn(
-        "[container-manager] Failed to persist state:",
-        e instanceof Error ? e.message : String(e),
-      );
+      console.warn("[container-manager] Failed to persist state:", e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -694,10 +686,7 @@ export class ContainerManager {
       }
       return restored;
     } catch (e) {
-      console.warn(
-        "[container-manager] Failed to restore state:",
-        e instanceof Error ? e.message : String(e),
-      );
+      console.warn("[container-manager] Failed to restore state:", e instanceof Error ? e.message : String(e));
       return 0;
     }
   }
@@ -720,9 +709,7 @@ export class ContainerManager {
       console.log(`[container-manager] Built image ${tag}`);
       return output;
     } catch (e) {
-      throw new Error(
-        `Failed to build image ${tag}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      throw new Error(`Failed to build image ${tag}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -742,12 +729,7 @@ export class ContainerManager {
     writeFileSync(dockerfilePath, dockerfileContent, "utf-8"); // sync-ok: container management, not called during message handling
 
     try {
-      const args = [
-        "docker", "build",
-        "-t", tag,
-        "-f", dockerfilePath,
-        buildDir,
-      ];
+      const args = ["docker", "build", "-t", tag, "-f", dockerfilePath, buildDir];
 
       const proc = Bun.spawn(args, {
         stdout: "pipe",
@@ -811,7 +793,11 @@ export class ContainerManager {
       return { success: false, log };
     } finally {
       // Clean up temp build directory
-      try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* ignore */ } // sync-ok: container management, not called during message handling
+      try {
+        rmSync(buildDir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      } // sync-ok: container management, not called during message handling
     }
   }
 
@@ -829,11 +815,7 @@ export class ContainerManager {
    * Pull a Docker image from a registry and optionally tag it locally.
    * Returns true on success, false on failure (never throws).
    */
-  async pullImage(
-    remoteImage: string,
-    localTag: string,
-    onProgress?: (line: string) => void,
-  ): Promise<boolean> {
+  async pullImage(remoteImage: string, localTag: string, onProgress?: (line: string) => void): Promise<boolean> {
     try {
       const proc = Bun.spawn(["docker", "pull", remoteImage], {
         stdout: "pipe",
@@ -893,10 +875,7 @@ export class ContainerManager {
       console.log(`[container-manager] Pulled ${remoteImage} → ${localTag}`);
       return true;
     } catch (e) {
-      console.warn(
-        `[container-manager] Pull failed for ${remoteImage}:`,
-        e instanceof Error ? e.message : String(e),
-      );
+      console.warn(`[container-manager] Pull failed for ${remoteImage}:`, e instanceof Error ? e.message : String(e));
       return false;
     }
   }

@@ -14,16 +14,14 @@ import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type AutoApprovalResult =
-  | { decision: "approve"; reason: string }
-  | { decision: "defer"; reason: string };
+export type AutoApprovalResult = { decision: "approve"; reason: string } | { decision: "defer"; reason: string };
 
 /** Why a callModel() invocation failed (null result). */
 export type AutoApprovalFailureReason =
-  | "timeout"         // 30s deadline hit, subprocess killed
-  | "non_zero_exit"   // claude -p returned exit code != 0 (rate limit, auth error, etc.)
-  | "aborted"         // user responded manually before LLM finished
-  | "no_binary";      // claude binary not found
+  | "timeout" // 30s deadline hit, subprocess killed
+  | "non_zero_exit" // claude -p returned exit code != 0 (rate limit, auth error, etc.)
+  | "aborted" // user responded manually before LLM finished
+  | "no_binary"; // claude binary not found
 
 export interface AutoApprovalLogEntry {
   id: number;
@@ -71,16 +69,23 @@ class Semaphore {
   private _maxPermits: number;
   private _queue: Array<() => void> = [];
 
-  constructor(permits: number) { this._permits = permits; this._maxPermits = permits; }
+  constructor(permits: number) {
+    this._permits = permits;
+    this._maxPermits = permits;
+  }
 
   async acquire(): Promise<void> {
-    if (this._permits > 0) { this._permits--; return; }
-    return new Promise<void>(resolve => this._queue.push(resolve));
+    if (this._permits > 0) {
+      this._permits--;
+      return;
+    }
+    return new Promise<void>((resolve) => this._queue.push(resolve));
   }
 
   release(): void {
     const next = this._queue.shift();
-    if (next) next();       // hand permit to next waiter
+    if (next)
+      next(); // hand permit to next waiter
     else if (this._permits < this._maxPermits) this._permits++;
   }
 
@@ -99,7 +104,9 @@ class Semaphore {
     // If shrinking, permits will drain naturally as releases happen
   }
 
-  get queueLength(): number { return this._queue.length; }
+  get queueLength(): number {
+    return this._queue.length;
+  }
 }
 
 const approvalSemaphore = new Semaphore(DEFAULT_MAX_CONCURRENT);
@@ -112,9 +119,7 @@ const EMA_ALPHA = 0.3;
 let avgQueueWaitMs = 0;
 
 function recordQueueWait(waitMs: number): void {
-  avgQueueWaitMs = avgQueueWaitMs === 0
-    ? waitMs
-    : EMA_ALPHA * waitMs + (1 - EMA_ALPHA) * avgQueueWaitMs;
+  avgQueueWaitMs = avgQueueWaitMs === 0 ? waitMs : EMA_ALPHA * waitMs + (1 - EMA_ALPHA) * avgQueueWaitMs;
 
   if (avgQueueWaitMs > QUEUE_WARN_AVG_WAIT_MS) {
     console.warn(
@@ -156,25 +161,27 @@ function trunc(s: string, maxLen: number): string {
  * regardless of tool type — same format for recent context and the
  * permission request being evaluated.
  */
-export function formatToolCall(
-  toolName: string,
-  input: Record<string, unknown>,
-): string {
+export function formatToolCall(toolName: string, input: Record<string, unknown>): string {
   const cleaned: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
     if (v === undefined || v === null) continue;
     cleaned[k] = typeof v === "string" ? trunc(v, MAX_INPUT_CHARS) : v;
   }
-  return [
-    `Tool: ${toolName}`,
-    `Arguments: ${JSON.stringify(cleaned, null, 2)}`,
-  ].join("\n");
+  return [`Tool: ${toolName}`, `Arguments: ${JSON.stringify(cleaned, null, 2)}`].join("\n");
 }
 
 /** Tools that add noise to recent-call context without aiding the evaluator. */
 const SKIP_IN_RECENT_CONTEXT: ReadonlySet<string> = new Set([
-  "Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Glob",
-  "TodoWrite", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
+  "Read",
+  "Edit",
+  "Write",
+  "MultiEdit",
+  "NotebookEdit",
+  "Glob",
+  "TodoWrite",
+  "AskUserQuestion",
+  "EnterPlanMode",
+  "ExitPlanMode",
 ]);
 
 function buildPrompt(
@@ -188,9 +195,7 @@ function buildPrompt(
   let recentContext = "";
   if (recentToolCalls && recentToolCalls.length > 0) {
     // Filter out low-signal tool calls (reads, edits, etc.) to keep context focused
-    const interesting = recentToolCalls.filter(
-      (tc) => !SKIP_IN_RECENT_CONTEXT.has(tc.toolName),
-    );
+    const interesting = recentToolCalls.filter((tc) => !SKIP_IN_RECENT_CONTEXT.has(tc.toolName));
     if (interesting.length > 0) {
       const blocks = interesting.map((tc, i) => {
         return `### ${i + 1}.\n${formatToolCall(tc.toolName, tc.input)}`;
@@ -246,9 +251,13 @@ function stripCodeFences(raw: string): string {
  */
 function parseYaml(text: string): AutoApprovalResult | null {
   // Normalize: trim each line to handle indentation, filter blanks
-  const normalized = text.split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
-  const rationaleMatch = normalized.match(/^rationale:\s*"?(.*?)"?\s*$/mi);
-  const decisionMatch = normalized.match(/^decision:\s*"?(.*?)"?\s*$/mi);
+  const normalized = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join("\n");
+  const rationaleMatch = normalized.match(/^rationale:\s*"?(.*?)"?\s*$/im);
+  const decisionMatch = normalized.match(/^decision:\s*"?(.*?)"?\s*$/im);
   if (!decisionMatch) return null;
 
   const decision = decisionMatch[1].trim().toUpperCase();
@@ -269,7 +278,10 @@ function parseYaml(text: string): AutoApprovalResult | null {
  * Accepts legacy DENY as a compat alias for DEFER.
  */
 function parseFreeForm(text: string): AutoApprovalResult | null {
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length === 0) return null;
 
   const lastLine = lines[lines.length - 1];
@@ -345,11 +357,15 @@ async function callModel(
     binary,
     "-p",
     "--no-session-persistence",
-    "--setting-sources", "",
+    "--setting-sources",
+    "",
     "--strict-mcp-config",
-    "--mcp-config", '{"mcpServers":{}}',
-    "--system-prompt", SYSTEM_PROMPT,
-    "--model", model,
+    "--mcp-config",
+    '{"mcpServers":{}}',
+    "--system-prompt",
+    SYSTEM_PROMPT,
+    "--model",
+    model,
     prompt,
   ];
 
@@ -360,7 +376,9 @@ async function callModel(
       env: { ...process.env, PATH: getEnrichedPath() },
     });
 
-    const abortHandler = () => { proc.kill(); };
+    const abortHandler = () => {
+      proc.kill();
+    };
     if (signal) {
       signal.addEventListener("abort", abortHandler, { once: true });
     }
@@ -397,7 +415,11 @@ async function callModel(
       if (!signal?.aborted) {
         console.warn(`[auto-approver] claude -p exited with code ${result.exitCode}: ${result.stderr}`);
       }
-      return { output: null, failureReason: "non_zero_exit", failureDetail: `exit ${result.exitCode}: ${result.stderr}` };
+      return {
+        output: null,
+        failureReason: "non_zero_exit",
+        failureDetail: `exit ${result.exitCode}: ${result.stderr}`,
+      };
     }
 
     return { output: result.output };
@@ -415,9 +437,7 @@ const MAX_LOG_ENTRIES = 500;
 let logIdCounter = 0;
 const approvalLog: AutoApprovalLogEntry[] = [];
 
-function addLogEntry(
-  entry: Omit<AutoApprovalLogEntry, "id" | "promptLength" | "systemPrompt">,
-): AutoApprovalLogEntry {
+function addLogEntry(entry: Omit<AutoApprovalLogEntry, "id" | "promptLength" | "systemPrompt">): AutoApprovalLogEntry {
   const full: AutoApprovalLogEntry = {
     ...entry,
     id: ++logIdCounter,
@@ -432,12 +452,8 @@ function addLogEntry(
 }
 
 /** List all log entries (lightweight: no prompt/rawResponse/systemPrompt). Newest first. */
-export function getApprovalLogIndex(): Array<
-  Omit<AutoApprovalLogEntry, "prompt" | "rawResponse" | "systemPrompt">
-> {
-  return approvalLog
-    .map(({ prompt: _p, rawResponse: _r, systemPrompt: _s, ...rest }) => rest)
-    .reverse();
+export function getApprovalLogIndex(): Array<Omit<AutoApprovalLogEntry, "prompt" | "rawResponse" | "systemPrompt">> {
+  return approvalLog.map(({ prompt: _p, rawResponse: _r, systemPrompt: _s, ...rest }) => rest).reverse();
 }
 
 /** Get a single log entry by ID (includes full prompt + response). */
@@ -452,7 +468,10 @@ export function getApprovalLogEntry(id: number): AutoApprovalLogEntry | undefine
  * Used by ws-bridge to decide which flow path to take before creating the
  * permission request. Does NOT call the LLM — just checks config.
  */
-export async function shouldAttemptAutoApproval(cwd: string, extraPaths?: string[]): Promise<AutoApprovalConfig | null> {
+export async function shouldAttemptAutoApproval(
+  cwd: string,
+  extraPaths?: string[],
+): Promise<AutoApprovalConfig | null> {
   const settings = getSettings();
   if (!settings.autoApprovalEnabled) return null;
   const config = await getConfigForPath(cwd, extraPaths);
@@ -515,9 +534,16 @@ export async function evaluatePermission(
     // Bail out if aborted while waiting in queue
     if (signal?.aborted) {
       addLogEntry({
-        sessionId, timestamp: Date.now(), toolName, model, prompt,
-        rawResponse: null, parsed: null, projectPath: config.projectPath,
-        durationMs: Date.now() - queueStart, queueWaitMs,
+        sessionId,
+        timestamp: Date.now(),
+        toolName,
+        model,
+        prompt,
+        rawResponse: null,
+        parsed: null,
+        projectPath: config.projectPath,
+        durationMs: Date.now() - queueStart,
+        queueWaitMs,
         failureReason: "aborted",
       });
       return null;

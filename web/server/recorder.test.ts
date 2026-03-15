@@ -1,12 +1,4 @@
-import {
-  mkdtempSync,
-  rmSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  existsSync,
-  utimesSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionRecorder, RecorderManager } from "./recorder.js";
@@ -35,12 +27,7 @@ function readDirSafe(dir: string): string[] {
  * Create a fake JSONL recording file with a given number of entry lines.
  * Returns the full path. The header counts as 1 line, so total lines = 1 + entryCount.
  */
-function createFakeRecording(
-  dir: string,
-  filename: string,
-  entryCount: number,
-  mtime?: Date,
-): string {
+function createFakeRecording(dir: string, filename: string, entryCount: number, mtime?: Date): string {
   const header = JSON.stringify({
     _header: true,
     version: 1,

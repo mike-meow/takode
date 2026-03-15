@@ -146,27 +146,26 @@ function extractTasksFromBlocks(sessionId: string, blocks: ContentBlock[]) {
   if (hadTaskUpdate) {
     const tasks = useStore.getState().sessionTasks.get(sessionId);
     const active = tasks?.find((t) => t.status === "in_progress");
-    store.setSessionTaskPreview(sessionId, active ? (active.activeForm || active.subject) : null);
+    store.setSessionTaskPreview(sessionId, active ? active.activeForm || active.subject : null);
   }
 }
 
 function extractChangedFilesFromBlocks(sessionId: string, blocks: ContentBlock[]) {
   const store = useStore.getState();
   const session = store.sessions.get(sessionId);
-  const sessionCwd =
-    session?.cwd ||
-    store.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd;
+  const sessionCwd = session?.cwd || store.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd;
   // Use repo root as scope so files outside session cwd (e.g. repo-root CLAUDE.md) are tracked.
   // For worktrees, repo_root points to the main repo (not the worktree directory), so fall
   // back to cwd when repo_root isn't an ancestor of cwd.
-  const scope = (session?.repo_root && sessionCwd?.startsWith(session.repo_root + "/"))
-    ? session.repo_root
-    : sessionCwd;
+  const scope = session?.repo_root && sessionCwd?.startsWith(session.repo_root + "/") ? session.repo_root : sessionCwd;
   for (const block of blocks) {
     if (block.type !== "tool_use") continue;
     const { name, input } = block;
     const filePath = name === "NotebookEdit" ? input.notebook_path : input.file_path;
-    if ((name === "Edit" || name === "Write" || name === "MultiEdit" || name === "NotebookEdit") && typeof filePath === "string") {
+    if (
+      (name === "Edit" || name === "Write" || name === "MultiEdit" || name === "NotebookEdit") &&
+      typeof filePath === "string"
+    ) {
       const resolvedPath = resolveSessionFilePath(filePath, sessionCwd);
       if (isPathInSessionScope(resolvedPath, scope)) {
         store.addChangedFile(sessionId, resolvedPath);
@@ -291,7 +290,9 @@ function normalizeHistoryMessages(
         extractTasksFromBlocks(sessionId, msg.content);
         extractChangedFilesFromBlocks(sessionId, msg.content);
       }
-      const histToolStartTimes = (histMsg as Record<string, unknown>).tool_start_times as Record<string, number> | undefined;
+      const histToolStartTimes = (histMsg as Record<string, unknown>).tool_start_times as
+        | Record<string, number>
+        | undefined;
       if (histToolStartTimes) {
         store.setToolStartTimestamps(sessionId, histToolStartTimes);
       }
@@ -347,9 +348,7 @@ function normalizeHistoryMessages(
       store.setTasks(sessionId, []);
       store.setSessionTaskPreview(sessionId, null);
       if (r.is_error) {
-        const errorText = r.errors?.length
-          ? r.errors.join(", ")
-          : r.result || "An error occurred";
+        const errorText = r.errors?.length ? r.errors.join(", ") : r.result || "An error occurred";
         chatMessages.push({
           id: `hist-error-${historyIndex}`,
           role: "system",
@@ -399,8 +398,8 @@ function verifyHistorySync(
   }
   console.error(
     `[history-sync] hash mismatch for ${sessionId.slice(0, 8)}: ` +
-    `frozen expected=${data.expected_frozen_hash} actual=${actualFrozenHash}; ` +
-    `full expected=${data.expected_full_hash} actual=${actualFullHash}`,
+      `frozen expected=${data.expected_frozen_hash} actual=${actualFrozenHash}; ` +
+      `full expected=${data.expected_full_hash} actual=${actualFullHash}`,
   );
   deps.reportHistorySyncMismatch(sessionId, {
     frozenCount: normalizedFrozenCount,
@@ -524,9 +523,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           ...(data.leader_user_addressed !== undefined
             ? { leaderUserAddressed: data.leader_user_addressed === true }
             : {}),
-          ...(typeof data.turn_duration_ms === "number"
-            ? { turnDurationMs: data.turn_duration_ms }
-            : {}),
+          ...(typeof data.turn_duration_ms === "number" ? { turnDurationMs: data.turn_duration_ms } : {}),
         });
       } else {
         store.appendMessage(sessionId, chatMsg);
@@ -598,15 +595,15 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
             const parentToolUseId = data.parent_tool_use_id;
             const current = parentToolUseId
-              ? (store.streamingByParentToolUseId.get(sessionId)?.get(parentToolUseId) || "")
-              : (store.streaming.get(sessionId) || "");
+              ? store.streamingByParentToolUseId.get(sessionId)?.get(parentToolUseId) || ""
+              : store.streaming.get(sessionId) || "";
             store.setStreaming(sessionId, current + delta.text, parentToolUseId);
           }
           if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
             const parentToolUseId = data.parent_tool_use_id;
             const current = parentToolUseId
-              ? (store.streamingThinkingByParentToolUseId.get(sessionId)?.get(parentToolUseId) || "")
-              : (store.streamingThinking.get(sessionId) || "");
+              ? store.streamingThinkingByParentToolUseId.get(sessionId)?.get(parentToolUseId) || ""
+              : store.streamingThinking.get(sessionId) || "";
             store.setStreamingThinking(sessionId, current + delta.thinking, parentToolUseId);
           }
         }
@@ -624,7 +621,13 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
 
     case "result": {
       const r = data.data;
-      const sessionUpdates: Partial<{ total_cost_usd: number; num_turns: number; context_used_percent: number; total_lines_added: number; total_lines_removed: number }> = {
+      const sessionUpdates: Partial<{
+        total_cost_usd: number;
+        num_turns: number;
+        context_used_percent: number;
+        total_lines_added: number;
+        total_lines_removed: number;
+      }> = {
         total_cost_usd: r.total_cost_usd,
         num_turns: r.num_turns,
       };
@@ -646,16 +649,16 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // Play notification sound if enabled and tab is not focused
       if (notifyOnResult && !document.hasFocus() && store.notificationSound) {
         const sdk = store.sdkSessions.find((s) => s.sessionId === sessionId);
-        console.log(`[notification] result sound: session=${sessionId.slice(0, 8)} isOrch=${!!sdk?.isOrchestrator} herdedBy=${sdk?.herdedBy ?? "none"}`);
+        console.log(
+          `[notification] result sound: session=${sessionId.slice(0, 8)} isOrch=${!!sdk?.isOrchestrator} herdedBy=${sdk?.herdedBy ?? "none"}`,
+        );
         playNotificationSound();
       }
       if (notifyOnResult && !document.hasFocus() && store.notificationDesktop) {
         sendBrowserNotification("Session completed", "Claude finished the task", sessionId);
       }
       if (r.is_error) {
-        const errorText = r.errors?.length
-          ? r.errors.join(", ")
-          : r.result || "An error occurred";
+        const errorText = r.errors?.length ? r.errors.join(", ") : r.result || "An error occurred";
         const isContextLimit = errorText.toLowerCase().includes("prompt is too long");
 
         // If user tried /compact but it failed because context is full,
@@ -664,7 +667,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         // so /compact gets treated as a regular prompt and overflows again.
         if (isContextLimit) {
           const msgs = store.messages.get(sessionId) || [];
-          const lastUserMsg = [...msgs].reverse().find(m => m.role === "user");
+          const lastUserMsg = [...msgs].reverse().find((m) => m.role === "user");
           if (lastUserMsg?.content.trim().toLowerCase() === "/compact") {
             store.appendMessage(sessionId, {
               id: nextId(),
@@ -707,22 +710,20 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         if (!document.hasFocus() && store.notificationDesktop) {
           const req = data.request;
           console.log(`[notification] permission_request: session=${sessionId.slice(0, 8)} tool=${req.tool_name}`);
-          sendBrowserNotification(
-            "Permission needed",
-            `${req.tool_name}: approve or deny`,
-            req.request_id,
-          );
+          sendBrowserNotification("Permission needed", `${req.tool_name}: approve or deny`, req.request_id);
         }
       }
       // Also extract tasks and changed files from permission requests
       const req = data.request;
       if (req.tool_name && req.input) {
-        const permBlocks = [{
-          type: "tool_use" as const,
-          id: req.tool_use_id,
-          name: req.tool_name,
-          input: req.input,
-        }];
+        const permBlocks = [
+          {
+            type: "tool_use" as const,
+            id: req.tool_use_id,
+            name: req.tool_name,
+            input: req.input,
+          },
+        ];
         extractTasksFromBlocks(sessionId, permBlocks);
         extractChangedFilesFromBlocks(sessionId, permBlocks);
       }
@@ -793,11 +794,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // NOW pause timer and send notification since this needs user attention
       store.pauseStreamingTimer(sessionId);
       if (!document.hasFocus() && store.notificationDesktop) {
-        sendBrowserNotification(
-          "Permission needed",
-          `${data.tool_name}: approve or deny`,
-          data.request_id,
-        );
+        sendBrowserNotification("Permission needed", `${data.tool_name}: approve or deny`, data.request_id);
       }
       store.appendMessage(sessionId, {
         id: nextId(),
@@ -828,7 +825,9 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "leader_group_idle": {
-      console.log(`[notification] leader_group_idle: leader=${data.leader_label} members=${data.member_count} idle_for=${data.idle_for_ms}ms focus=${document.hasFocus()} sound=${store.notificationSound}`);
+      console.log(
+        `[notification] leader_group_idle: leader=${data.leader_label} members=${data.member_count} idle_for=${data.idle_for_ms}ms focus=${document.hasFocus()} sound=${store.notificationSound}`,
+      );
       if (!document.hasFocus() && store.notificationSound) {
         playNotificationSound();
       }
@@ -871,8 +870,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       for (const preview of data.previews) {
         const retainedProgress = store.toolProgress.get(sessionId)?.get(preview.tool_use_id);
         const shouldRetainTerminalTranscript =
-          store.sessions.get(sessionId)?.backend_type === "codex"
-          && retainedProgress?.toolName === "Bash";
+          store.sessions.get(sessionId)?.backend_type === "codex" && retainedProgress?.toolName === "Bash";
         store.setToolResult(sessionId, preview.tool_use_id, preview);
         // Preserve completed Codex Bash output so the inline card can keep the
         // captured transcript after the live terminal chip disappears.
@@ -940,11 +938,14 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       const createdId = data.session_id;
       if (createdId && typeof createdId === "string") {
         console.log(`[ws] session_created: refreshing session list for ${createdId}`);
-        api.listSessions().then((list) => {
-          store.setSdkSessions(list);
-        }).catch((err) => {
-          console.warn("[ws] Failed to refresh sessions after session_created:", err);
-        });
+        api
+          .listSessions()
+          .then((list) => {
+            store.setSdkSessions(list);
+          })
+          .catch((err) => {
+            console.warn("[ws] Failed to refresh sessions after session_created:", err);
+          });
       }
       break;
     }
@@ -1043,7 +1044,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       const nextOrder = new Map<string, string[]>();
       for (const [groupKey, orderedIds] of Object.entries(data.sessionOrder || {})) {
         if (!Array.isArray(orderedIds)) continue;
-        nextOrder.set(groupKey, orderedIds.filter((id): id is string => typeof id === "string"));
+        nextOrder.set(
+          groupKey,
+          orderedIds.filter((id): id is string => typeof id === "string"),
+        );
       }
       store.setSessionOrderMap(nextOrder);
       break;
@@ -1060,7 +1064,9 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     case "session_name_update": {
       // Server is authoritative for all name updates (auto-naming, manual rename, etc.)
       const prevName = store.sessionNames.get(sessionId);
-      console.log(`[ws] session_name_update for ${sessionId}: "${prevName}" → "${data.name}" source=${(data as Record<string, unknown>).source ?? "none"}`);
+      console.log(
+        `[ws] session_name_update for ${sessionId}: "${prevName}" → "${data.name}" source=${(data as Record<string, unknown>).source ?? "none"}`,
+      );
       // When a quest is actively claiming the session name, ignore non-quest name updates
       // (prevents auto-namer race conditions from overwriting the quest title)
       if (store.questNamedSessions.has(sessionId) && data.source !== "quest") {
@@ -1107,9 +1113,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     case "compact_summary": {
       // Update the most recent compact marker with the full summary text
       const msgs = store.messages.get(sessionId) || [];
-      const lastCompact = [...msgs].reverse().find(
-        (m) => m.role === "system" && m.id.startsWith("compact-boundary-"),
-      );
+      const lastCompact = [...msgs].reverse().find((m) => m.role === "system" && m.id.startsWith("compact-boundary-"));
       if (lastCompact) {
         store.updateMessage(sessionId, lastCompact.id, { content: data.summary });
       }
@@ -1180,46 +1184,49 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           break;
         }
         const isSubmitted = isStatusChange && data.quest.status === "needs_verification";
-        const variant = isSubmitted ? "quest_submitted" as const : "quest_claimed" as const;
+        const variant = isSubmitted ? ("quest_submitted" as const) : ("quest_claimed" as const);
         const label = isSubmitted ? "Quest submitted" : "Quest claimed";
         // Only insert chat message for new claims or submission — skip redundant status updates
         if (!isStatusChange || isSubmitted) {
-          api.getQuest(questId).then((quest) => {
-            const questMeta: ChatMessage["metadata"] = {
-              quest: {
-                questId: quest.questId,
-                title: quest.title,
-                description: "description" in quest ? quest.description : undefined,
-                status: quest.status,
-                tags: quest.tags,
-                images: quest.images,
-                verificationItems: "verificationItems" in quest ? quest.verificationItems : undefined,
-              },
-            };
-            useStore.getState().appendMessage(sessionId, {
-              id: `${variant}-${questId}-${Date.now()}`,
-              role: "system",
-              content: `${label}: ${quest.title}`,
-              timestamp: Date.now(),
-              variant,
-              metadata: questMeta,
-            });
-          }).catch(() => {
-            useStore.getState().appendMessage(sessionId, {
-              id: `${variant}-${questId}-${Date.now()}`,
-              role: "system",
-              content: `${label}: ${data.quest!.title}`,
-              timestamp: Date.now(),
-              variant,
-              metadata: {
+          api
+            .getQuest(questId)
+            .then((quest) => {
+              const questMeta: ChatMessage["metadata"] = {
                 quest: {
-                  questId: questId,
-                  title: data.quest!.title,
-                  status: data.quest!.status ?? (isSubmitted ? "needs_verification" : "in_progress"),
+                  questId: quest.questId,
+                  title: quest.title,
+                  description: "description" in quest ? quest.description : undefined,
+                  status: quest.status,
+                  tags: quest.tags,
+                  images: quest.images,
+                  verificationItems: "verificationItems" in quest ? quest.verificationItems : undefined,
                 },
-              },
+              };
+              useStore.getState().appendMessage(sessionId, {
+                id: `${variant}-${questId}-${Date.now()}`,
+                role: "system",
+                content: `${label}: ${quest.title}`,
+                timestamp: Date.now(),
+                variant,
+                metadata: questMeta,
+              });
+            })
+            .catch(() => {
+              useStore.getState().appendMessage(sessionId, {
+                id: `${variant}-${questId}-${Date.now()}`,
+                role: "system",
+                content: `${label}: ${data.quest!.title}`,
+                timestamp: Date.now(),
+                variant,
+                metadata: {
+                  quest: {
+                    questId: questId,
+                    title: data.quest!.title,
+                    status: data.quest!.status ?? (isSubmitted ? "needs_verification" : "in_progress"),
+                  },
+                },
+              });
             });
-          });
         }
       }
       break;
@@ -1247,19 +1254,13 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         Math.min(store.messageFrozenCounts.get(sessionId) ?? 0, existingMessages.length),
       );
       const reusableFrozenCount = Math.max(0, Math.min(existingFrozenCount, data.frozen_base_count));
-      const frozenPrefix = reusableFrozenCount > 0
-        ? existingMessages.slice(0, reusableFrozenCount)
-        : [];
+      const frozenPrefix = reusableFrozenCount > 0 ? existingMessages.slice(0, reusableFrozenCount) : [];
       const { chatMessages: frozenDeltaMessages } = normalizeHistoryMessages(
         sessionId,
         data.frozen_delta,
         data.frozen_base_count,
       );
-      const { chatMessages: hotMessages } = normalizeHistoryMessages(
-        sessionId,
-        data.hot_messages,
-        data.frozen_count,
-      );
+      const { chatMessages: hotMessages } = normalizeHistoryMessages(sessionId, data.hot_messages, data.frozen_count);
       const mergedMessages = [...frozenPrefix, ...frozenDeltaMessages, ...hotMessages];
       const nextFrozenCount = Math.max(
         frozenPrefix.length,

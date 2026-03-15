@@ -7,9 +7,7 @@ const POLL_INTERVAL = 60_000;
 const limitsCache = new Map<string, UsageLimits>();
 
 export function useUsageLimits(sessionId: string | null): UsageLimits | null {
-  const [limits, setLimits] = useState<UsageLimits | null>(
-    sessionId ? (limitsCache.get(sessionId) ?? null) : null,
-  );
+  const [limits, setLimits] = useState<UsageLimits | null>(sessionId ? (limitsCache.get(sessionId) ?? null) : null);
 
   const fetchLimits = useCallback(async () => {
     if (!sessionId) return;

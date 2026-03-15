@@ -31,14 +31,7 @@ describe("ClaudeMdEditor", () => {
       ],
     });
 
-    render(
-      <ClaudeMdEditor
-        cwd="/repo"
-        open
-        initialPath="/repo/.claude/CLAUDE.md"
-        onClose={() => {}}
-      />,
-    );
+    render(<ClaudeMdEditor cwd="/repo" open initialPath="/repo/.claude/CLAUDE.md" onClose={() => {}} />);
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText("Write your project instructions here...") as HTMLTextAreaElement;
@@ -49,19 +42,10 @@ describe("ClaudeMdEditor", () => {
   it("marks settings files as read-only and disables save", async () => {
     mockApi.getClaudeMdFiles.mockResolvedValue({
       cwd: "/repo",
-      files: [
-        { path: "/repo/.claude/settings.json", content: "{\"model\":\"sonnet\"}", writable: false },
-      ],
+      files: [{ path: "/repo/.claude/settings.json", content: '{"model":"sonnet"}', writable: false }],
     });
 
-    render(
-      <ClaudeMdEditor
-        cwd="/repo"
-        open
-        initialPath="/repo/.claude/settings.json"
-        onClose={() => {}}
-      />,
-    );
+    render(<ClaudeMdEditor cwd="/repo" open initialPath="/repo/.claude/settings.json" onClose={() => {}} />);
 
     await waitFor(() => {
       expect(screen.getByText("Read-only")).toBeTruthy();
@@ -80,14 +64,7 @@ describe("ClaudeMdEditor", () => {
     });
     const onClose = vi.fn();
 
-    render(
-      <ClaudeMdEditor
-        cwd="/repo"
-        open
-        initialPath="/repo/CLAUDE.md"
-        onClose={onClose}
-      />,
-    );
+    render(<ClaudeMdEditor cwd="/repo" open initialPath="/repo/CLAUDE.md" onClose={onClose} />);
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText("Write your project instructions here...") as HTMLTextAreaElement;
@@ -111,13 +88,7 @@ describe("ClaudeMdEditor", () => {
       files: [{ path: "/repo/CLAUDE.md", content: "root file", writable: true }],
     });
 
-    render(
-      <ClaudeMdEditor
-        cwd="/repo"
-        open
-        onClose={() => {}}
-      />,
-    );
+    render(<ClaudeMdEditor cwd="/repo" open onClose={() => {}} />);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Write your project instructions here...")).toBeTruthy();
@@ -143,14 +114,7 @@ describe("ClaudeMdEditor", () => {
       },
     });
 
-    render(
-      <ClaudeMdEditor
-        cwd="/repo"
-        open
-        initialView="autoApproval"
-        onClose={() => {}}
-      />,
-    );
+    render(<ClaudeMdEditor cwd="/repo" open initialView="autoApproval" onClose={() => {}} />);
 
     await waitFor(() => {
       expect(screen.getByText("Read-only")).toBeTruthy();

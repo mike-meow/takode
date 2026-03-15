@@ -18,9 +18,7 @@ describe("sessionTag", () => {
 
   it('returns shortHash "name" for named sessions', () => {
     mockedGetName.mockReturnValue("Debug persistent NFS issues");
-    expect(sessionTag("7316c239abcdef1234567890")).toBe(
-      '7316c239 "Debug persistent NFS issues"',
-    );
+    expect(sessionTag("7316c239abcdef1234567890")).toBe('7316c239 "Debug persistent NFS issues"');
   });
 
   it("passes the full ID to getName (not the truncated one)", () => {

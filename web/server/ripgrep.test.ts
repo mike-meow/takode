@@ -51,15 +51,7 @@ describe("getRipgrepPath", () => {
     const result = await getRipgrepPath();
     const ext = process.platform === "win32" ? ".exe" : "";
     expect(mockRequireResolve).toHaveBeenCalledWith("@anthropic-ai/claude-agent-sdk");
-    expect(result).toBe(
-      join(
-        "/mock/sdk",
-        "vendor",
-        "ripgrep",
-        `${process.arch}-${process.platform}`,
-        `rg${ext}`,
-      ),
-    );
+    expect(result).toBe(join("/mock/sdk", "vendor", "ripgrep", `${process.arch}-${process.platform}`, `rg${ext}`));
     expect(mockExec).not.toHaveBeenCalled();
   });
 

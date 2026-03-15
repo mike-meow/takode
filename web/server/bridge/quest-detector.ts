@@ -1,8 +1,6 @@
 export type QuestLifecycleStatus = "in_progress" | "needs_verification" | "done";
 
-export type QuestDetectionInput =
-  | { kind: "command"; text: string }
-  | { kind: "result"; text: string };
+export type QuestDetectionInput = { kind: "command"; text: string } | { kind: "result"; text: string };
 
 export interface DetectedQuestEvent {
   questId?: string;
@@ -41,13 +39,13 @@ function extractJsonObjectCandidates(text: string): string[] {
         escaping = false;
       } else if (ch === "\\") {
         escaping = true;
-      } else if (ch === "\"") {
+      } else if (ch === '"') {
         inString = false;
       }
       continue;
     }
 
-    if (ch === "\"") {
+    if (ch === '"') {
       inString = true;
       continue;
     }
@@ -98,14 +96,10 @@ function detectFromResult(resultText: string): DetectedQuestEvent | null {
     try {
       const parsed = JSON.parse(candidate) as Record<string, unknown>;
       const questId = normalizeQuestId(
-        typeof parsed.questId === "string"
-          ? parsed.questId
-          : (typeof parsed.id === "string" ? parsed.id : undefined),
+        typeof parsed.questId === "string" ? parsed.questId : typeof parsed.id === "string" ? parsed.id : undefined,
       );
       const title = typeof parsed.title === "string" ? parsed.title : undefined;
-      const status = normalizeQuestStatus(
-        typeof parsed.status === "string" ? parsed.status : undefined,
-      );
+      const status = normalizeQuestStatus(typeof parsed.status === "string" ? parsed.status : undefined);
       if (!questId && !title && !status) return null;
       return { questId, title, status };
     } catch {

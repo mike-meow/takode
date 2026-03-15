@@ -23,7 +23,7 @@ function readJson(req: IncomingMessage): Promise<JsonObject> {
       body += String(chunk);
     });
     req.on("end", () => {
-      resolve(body ? JSON.parse(body) as JsonObject : {});
+      resolve(body ? (JSON.parse(body) as JsonObject) : {});
     });
   });
 }
@@ -53,8 +53,12 @@ async function runTakode(
 
   let stdout = "";
   let stderr = "";
-  child.stdout?.on("data", (chunk) => { stdout += String(chunk); });
-  child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+  child.stdout?.on("data", (chunk) => {
+    stdout += String(chunk);
+  });
+  child.stderr?.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
 
   const [code] = await once(child, "close");
   return { status: code as number | null, stdout, stderr };
@@ -110,7 +114,9 @@ describe("takode auth fallback", () => {
     } finally {
       server.close();
       rmSync(tmp, { recursive: true, force: true });
-      try { unlinkSync(authPath); } catch {}
+      try {
+        unlinkSync(authPath);
+      } catch {}
     }
   });
 
@@ -166,7 +172,9 @@ describe("takode auth fallback", () => {
     } finally {
       server.close();
       rmSync(tmp, { recursive: true, force: true });
-      try { unlinkSync(authPath); } catch {}
+      try {
+        unlinkSync(authPath);
+      } catch {}
     }
   });
 
@@ -278,18 +286,20 @@ describe("takode access control", () => {
       }
       if (method === "GET" && url === "/api/takode/sessions") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify([
-          {
-            sessionId: "worker-list",
-            sessionNum: 153,
-            name: "Worker List",
-            state: "idle",
-            archived: false,
-            cwd: "/repo",
-            createdAt: Date.now(),
-            cliConnected: true,
-          },
-        ]));
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-list",
+              sessionNum: 153,
+              name: "Worker List",
+              state: "idle",
+              archived: false,
+              cwd: "/repo",
+              createdAt: Date.now(),
+              cliConnected: true,
+            },
+          ]),
+        );
         return;
       }
 
@@ -333,30 +343,32 @@ describe("takode access control", () => {
       }
       if (method === "GET" && url === "/api/sessions/153/messages") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          sessionId: "session-153",
-          sessionNum: 153,
-          sessionName: "Worker Peek",
-          status: "idle",
-          quest: null,
-          mode: "default",
-          totalTurns: 1,
-          totalMessages: 2,
-          collapsedTurns: [],
-          omittedTurnCount: 0,
-          expandedTurn: {
-            turnNum: 1,
-            startedAt: now - 2_000,
-            endedAt: now,
-            durationMs: 2_000,
-            messages: [
-              { idx: 0, type: "user", content: "check status", ts: now - 2_000 },
-              { idx: 1, type: "result", content: "all good", ts: now, success: true },
-            ],
-            stats: { tools: 0, messages: 2, subagents: 0 },
-            omittedMessageCount: 0,
-          },
-        }));
+        res.end(
+          JSON.stringify({
+            sessionId: "session-153",
+            sessionNum: 153,
+            sessionName: "Worker Peek",
+            status: "idle",
+            quest: null,
+            mode: "default",
+            totalTurns: 1,
+            totalMessages: 2,
+            collapsedTurns: [],
+            omittedTurnCount: 0,
+            expandedTurn: {
+              turnNum: 1,
+              startedAt: now - 2_000,
+              endedAt: now,
+              durationMs: 2_000,
+              messages: [
+                { idx: 0, type: "user", content: "check status", ts: now - 2_000 },
+                { idx: 1, type: "result", content: "all good", ts: now, success: true },
+              ],
+              stats: { tools: 0, messages: 2, subagents: 0 },
+              omittedMessageCount: 0,
+            },
+          }),
+        );
         return;
       }
 
@@ -375,11 +387,13 @@ describe("takode access control", () => {
       });
 
       expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual(expect.objectContaining({
-        sessionNum: 153,
-        sessionName: "Worker Peek",
-        mode: "default",
-      }));
+      expect(JSON.parse(result.stdout)).toEqual(
+        expect.objectContaining({
+          sessionNum: 153,
+          sessionName: "Worker Peek",
+          mode: "default",
+        }),
+      );
     } finally {
       server.close();
     }
@@ -399,22 +413,24 @@ describe("takode access control", () => {
       }
       if (method === "GET" && url === "/api/sessions/153/messages?count=2&until=4") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          sessionId: "session-153",
-          sessionNum: 153,
-          sessionName: "Worker Peek",
-          status: "idle",
-          quest: null,
-          mode: "range",
-          totalMessages: 5,
-          from: 3,
-          to: 4,
-          messages: [
-            { idx: 3, type: "assistant", content: "done", ts: 1_700_000_000_000 },
-            { idx: 4, type: "result", content: "ok", ts: 1_700_000_000_500, success: true },
-          ],
-          turnBoundaries: [{ turnNum: 1, startIdx: 2, endIdx: 4 }],
-        }));
+        res.end(
+          JSON.stringify({
+            sessionId: "session-153",
+            sessionNum: 153,
+            sessionName: "Worker Peek",
+            status: "idle",
+            quest: null,
+            mode: "range",
+            totalMessages: 5,
+            from: 3,
+            to: 4,
+            messages: [
+              { idx: 3, type: "assistant", content: "done", ts: 1_700_000_000_000 },
+              { idx: 4, type: "result", content: "ok", ts: 1_700_000_000_500, success: true },
+            ],
+            turnBoundaries: [{ turnNum: 1, startIdx: 2, endIdx: 4 }],
+          }),
+        );
         return;
       }
 
@@ -426,22 +442,24 @@ describe("takode access control", () => {
     const port = (server.address() as AddressInfo).port;
 
     try {
-      const result = await runTakode(["peek", "153", "--until", "4", "--count", "2", "--json", "--port", String(port)], {
-        ...process.env,
-        COMPANION_SESSION_ID: "worker-peek-until",
-        COMPANION_AUTH_TOKEN: "auth-worker-peek-until",
-      });
+      const result = await runTakode(
+        ["peek", "153", "--until", "4", "--count", "2", "--json", "--port", String(port)],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: "worker-peek-until",
+          COMPANION_AUTH_TOKEN: "auth-worker-peek-until",
+        },
+      );
 
       expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual(expect.objectContaining({
-        mode: "range",
-        from: 3,
-        to: 4,
-      }));
-      expect(requestUrls).toEqual([
-        "/api/takode/me",
-        "/api/sessions/153/messages?count=2&until=4",
-      ]);
+      expect(JSON.parse(result.stdout)).toEqual(
+        expect.objectContaining({
+          mode: "range",
+          from: 3,
+          to: 4,
+        }),
+      );
+      expect(requestUrls).toEqual(["/api/takode/me", "/api/sessions/153/messages?count=2&until=4"]);
     } finally {
       server.close();
     }
@@ -526,14 +544,11 @@ describe("takode send", () => {
     const port = (server.address() as AddressInfo).port;
 
     try {
-      const result = await runTakode(
-        ["send", "worker-send", "Please", "add", "tests", "--port", String(port)],
-        {
-          ...process.env,
-          COMPANION_SESSION_ID: "leader-send",
-          COMPANION_AUTH_TOKEN: "auth-send",
-        },
-      );
+      const result = await runTakode(["send", "worker-send", "Please", "add", "tests", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-send",
+        COMPANION_AUTH_TOKEN: "auth-send",
+      });
 
       expect(result.status).toBe(0);
       expect(messageCalls).toEqual([
@@ -563,7 +578,9 @@ describe("takode send", () => {
       }
       if (method === "GET" && url === "/api/sessions/worker-stdin") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId: "worker-stdin", sessionNum: 9, name: "Worker Stdin", isGenerating: false }));
+        res.end(
+          JSON.stringify({ sessionId: "worker-stdin", sessionNum: 9, name: "Worker Stdin", isGenerating: false }),
+        );
         return;
       }
       if (method === "GET" && url === "/api/sessions/leader-stdin/herd") {
@@ -707,10 +724,7 @@ describe("takode spawn", () => {
   it("inherits bypass permission mode and sends initial message to each spawned session", async () => {
     const createBodies: JsonObject[] = [];
     const messageCalls: Array<{ id: string; body: JsonObject }> = [];
-    const created = [
-      { sessionId: "worker-a" },
-      { sessionId: "worker-b" },
-    ];
+    const created = [{ sessionId: "worker-a" }, { sessionId: "worker-b" }];
     const sessionInfoById: Record<string, JsonObject> = {
       "worker-a": {
         sessionId: "worker-a",
@@ -887,23 +901,25 @@ describe("takode spawn", () => {
       }
       if (method === "GET" && url === "/api/sessions/worker-c/info") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          sessionId: "worker-c",
-          sessionNum: 41,
-          name: "Worker C",
-          state: "running",
-          backendType: "codex",
-          model: "gpt-5.4",
-          cwd: "/tmp/codex-worker",
-          createdAt: Date.now(),
-          cliConnected: true,
-          isGenerating: false,
-          askPermission: false,
-          permissionMode: "bypassPermissions",
-          isWorktree: false,
-          codexReasoningEffort: "medium",
-          codexInternetAccess: true,
-        }));
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-c",
+            sessionNum: 41,
+            name: "Worker C",
+            state: "running",
+            backendType: "codex",
+            model: "gpt-5.4",
+            cwd: "/tmp/codex-worker",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            askPermission: false,
+            permissionMode: "bypassPermissions",
+            isWorktree: false,
+            codexReasoningEffort: "medium",
+            codexInternetAccess: true,
+          }),
+        );
         return;
       }
 
@@ -955,7 +971,13 @@ describe("takode spawn", () => {
     ]);
 
     const parsed = JSON.parse(result.stdout) as {
-      sessions: Array<{ model: string; codexReasoningEffort: string; codexInternetAccess: boolean; askPermission: boolean; isWorktree: boolean }>;
+      sessions: Array<{
+        model: string;
+        codexReasoningEffort: string;
+        codexInternetAccess: boolean;
+        askPermission: boolean;
+        isWorktree: boolean;
+      }>;
       defaultModel: string | null;
     };
     expect(parsed.defaultModel).toBeNull();
@@ -972,14 +994,11 @@ describe("takode spawn", () => {
   });
 
   it("rejects unsupported spawn flags instead of ignoring them", async () => {
-    const result = await runTakode(
-      ["spawn", "--unsupported-flag"],
-      {
-        ...process.env,
-        COMPANION_SESSION_ID: "leader-4",
-        COMPANION_AUTH_TOKEN: "auth-4",
-      },
-    );
+    const result = await runTakode(["spawn", "--unsupported-flag"], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-4",
+      COMPANION_AUTH_TOKEN: "auth-4",
+    });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Unknown option(s): --unsupported-flag");
@@ -1000,26 +1019,28 @@ describe("takode info", () => {
 
       if (method === "GET" && url === "/api/sessions/worker-info/info") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          sessionId: "worker-info",
-          sessionNum: 52,
-          name: "Info Worker",
-          state: "running",
-          backendType: "codex",
-          model: "gpt-5.4",
-          cwd: "/tmp/info-worker",
-          createdAt: Date.now(),
-          cliConnected: true,
-          isGenerating: false,
-          permissionMode: "bypassPermissions",
-          askPermission: false,
-          isWorktree: true,
-          branch: "jiayi",
-          actualBranch: "jiayi-wt-7173",
-          codexReasoningEffort: "high",
-          codexInternetAccess: true,
-          codexSandbox: "danger-full-access",
-        }));
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-info",
+            sessionNum: 52,
+            name: "Info Worker",
+            state: "running",
+            backendType: "codex",
+            model: "gpt-5.4",
+            cwd: "/tmp/info-worker",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            permissionMode: "bypassPermissions",
+            askPermission: false,
+            isWorktree: true,
+            branch: "jiayi",
+            actualBranch: "jiayi-wt-7173",
+            codexReasoningEffort: "high",
+            codexInternetAccess: true,
+            codexSandbox: "danger-full-access",
+          }),
+        );
         return;
       }
 
@@ -1061,30 +1082,32 @@ describe("takode search", () => {
 
       if (method === "GET" && url === "/api/takode/sessions") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify([
-          {
-            sessionId: "worker-1",
-            sessionNum: 7,
-            name: "Auth worker",
-            state: "idle",
-            archived: false,
-            cwd: "/repo",
-            createdAt: Date.now() - 60_000,
-            lastActivityAt: Date.now() - 5_000,
-            cliConnected: true,
-          },
-          {
-            sessionId: "worker-exited",
-            sessionNum: 70,
-            name: "Exited worker",
-            state: "exited",
-            archived: false,
-            cwd: "/repo",
-            createdAt: Date.now() - 60_000,
-            lastActivityAt: Date.now() - 5_000,
-            cliConnected: false,
-          },
-        ]));
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-1",
+              sessionNum: 7,
+              name: "Auth worker",
+              state: "idle",
+              archived: false,
+              cwd: "/repo",
+              createdAt: Date.now() - 60_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: true,
+            },
+            {
+              sessionId: "worker-exited",
+              sessionNum: 70,
+              name: "Exited worker",
+              state: "exited",
+              archived: false,
+              cwd: "/repo",
+              createdAt: Date.now() - 60_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: false,
+            },
+          ]),
+        );
         return;
       }
       if (method === "GET" && url === "/api/takode/me") {
@@ -1096,32 +1119,34 @@ describe("takode search", () => {
         const parsed = new URL(`http://localhost${url}`);
         searchRequests.push(parsed);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          query: parsed.searchParams.get("q"),
-          tookMs: 2,
-          totalMatches: 1,
-          results: [
-            {
-              sessionId: "worker-1",
-              score: 500,
-              matchedField: "user_message",
-              matchContext: "message: auth token is missing in env",
-              matchedAt: Date.now() - 5000,
-              messageMatch: {
-                id: "m-42",
-                timestamp: Date.now() - 5000,
-                snippet: "auth token is missing in env",
+        res.end(
+          JSON.stringify({
+            query: parsed.searchParams.get("q"),
+            tookMs: 2,
+            totalMatches: 1,
+            results: [
+              {
+                sessionId: "worker-1",
+                score: 500,
+                matchedField: "user_message",
+                matchContext: "message: auth token is missing in env",
+                matchedAt: Date.now() - 5000,
+                messageMatch: {
+                  id: "m-42",
+                  timestamp: Date.now() - 5000,
+                  snippet: "auth token is missing in env",
+                },
               },
-            },
-            {
-              sessionId: "worker-exited",
-              score: 480,
-              matchedField: "name",
-              matchContext: "name: Exited worker",
-              matchedAt: Date.now() - 3000,
-            },
-          ],
-        }));
+              {
+                sessionId: "worker-exited",
+                score: 480,
+                matchedField: "name",
+                matchContext: "name: Exited worker",
+                matchedAt: Date.now() - 3000,
+              },
+            ],
+          }),
+        );
         return;
       }
 
@@ -1168,25 +1193,27 @@ describe("takode search", () => {
       }
       if (method === "GET" && url.startsWith("/api/sessions/search?")) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          query: "auth",
-          tookMs: 2,
-          totalMatches: 1,
-          results: [
-            {
-              sessionId: "deleted-worker",
-              score: 500,
-              matchedField: "user_message",
-              matchContext: "message: should not render",
-              matchedAt: Date.now() - 5000,
-              messageMatch: {
-                id: "m-stale-1",
-                timestamp: Date.now() - 5000,
-                snippet: "should not render",
+        res.end(
+          JSON.stringify({
+            query: "auth",
+            tookMs: 2,
+            totalMatches: 1,
+            results: [
+              {
+                sessionId: "deleted-worker",
+                score: 500,
+                matchedField: "user_message",
+                matchContext: "message: should not render",
+                matchedAt: Date.now() - 5000,
+                messageMatch: {
+                  id: "m-stale-1",
+                  timestamp: Date.now() - 5000,
+                  snippet: "should not render",
+                },
               },
-            },
-          ],
-        }));
+            ],
+          }),
+        );
         return;
       }
 
@@ -1217,19 +1244,21 @@ describe("takode search", () => {
 
       if (method === "GET" && url === "/api/takode/sessions") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify([
-          {
-            sessionId: "worker-2",
-            sessionNum: 8,
-            name: "Legacy auth run",
-            state: "exited",
-            archived: true,
-            cwd: "/repo",
-            createdAt: Date.now() - 120_000,
-            lastActivityAt: Date.now() - 120_000,
-            cliConnected: false,
-          },
-        ]));
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-2",
+              sessionNum: 8,
+              name: "Legacy auth run",
+              state: "exited",
+              archived: true,
+              cwd: "/repo",
+              createdAt: Date.now() - 120_000,
+              lastActivityAt: Date.now() - 120_000,
+              cliConnected: false,
+            },
+          ]),
+        );
         return;
       }
       if (method === "GET" && url === "/api/takode/me") {
@@ -1241,20 +1270,22 @@ describe("takode search", () => {
         const parsed = new URL(`http://localhost${url}`);
         searchRequests.push(parsed);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          query: parsed.searchParams.get("q"),
-          tookMs: 2,
-          totalMatches: 1,
-          results: [
-            {
-              sessionId: "worker-2",
-              score: 1000,
-              matchedField: "name",
-              matchContext: null,
-              matchedAt: Date.now() - 120000,
-            },
-          ],
-        }));
+        res.end(
+          JSON.stringify({
+            query: parsed.searchParams.get("q"),
+            tookMs: 2,
+            totalMatches: 1,
+            results: [
+              {
+                sessionId: "worker-2",
+                score: 1000,
+                matchedField: "name",
+                matchContext: null,
+                matchedAt: Date.now() - 120000,
+              },
+            ],
+          }),
+        );
         return;
       }
 
@@ -1307,20 +1338,22 @@ describe("takode output escaping", () => {
 
       if (method === "GET" && url === "/api/takode/sessions") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify([
-          {
-            sessionId: "worker-list",
-            sessionNum: 12,
-            name: "Worker\nName\tA",
-            state: "idle",
-            archived: false,
-            cwd: "/repo/project",
-            createdAt: Date.now() - 10_000,
-            lastActivityAt: Date.now() - 5_000,
-            cliConnected: true,
-            lastMessagePreview: "hello\nworld\t\x1b[31mred",
-          },
-        ]));
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-list",
+              sessionNum: 12,
+              name: "Worker\nName\tA",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/project",
+              createdAt: Date.now() - 10_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: true,
+              lastMessagePreview: "hello\nworld\t\x1b[31mred",
+            },
+          ]),
+        );
         return;
       }
 
@@ -1342,7 +1375,7 @@ describe("takode output escaping", () => {
       expect(result.status).toBe(0);
       // These fields used to leak raw newlines/tabs/escape bytes into the table output.
       expect(result.stdout).toContain("Worker\\nName\\tA");
-      expect(result.stdout).toContain("\"hello\\nworld\\t\\x1b[31mred\"");
+      expect(result.stdout).toContain('"hello\\nworld\\t\\x1b[31mred"');
       expect(result.stdout).not.toContain("Worker\nName\tA");
       expect(result.stdout).not.toContain("hello\nworld\t");
       expect(result.stdout).not.toContain("\x1b[31m");
@@ -1364,29 +1397,29 @@ describe("takode output escaping", () => {
 
       if (method === "GET" && url === "/api/sessions/worker-pending/pending") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          pending: [
-            {
-              request_id: "req-1",
-              tool_name: "AskUserQuestion",
-              timestamp: Date.now(),
-              questions: [
-                {
-                  question: "Pick\none\tplease",
-                  options: [
-                    { label: "A\t1", description: "first\noption" },
-                  ],
-                },
-              ],
-            },
-            {
-              request_id: "req-2",
-              tool_name: "ExitPlanMode",
-              timestamp: Date.now(),
-              plan: "Line 1\nLine 2\t\x1b[31mred",
-            },
-          ],
-        }));
+        res.end(
+          JSON.stringify({
+            pending: [
+              {
+                request_id: "req-1",
+                tool_name: "AskUserQuestion",
+                timestamp: Date.now(),
+                questions: [
+                  {
+                    question: "Pick\none\tplease",
+                    options: [{ label: "A\t1", description: "first\noption" }],
+                  },
+                ],
+              },
+              {
+                request_id: "req-2",
+                tool_name: "ExitPlanMode",
+                timestamp: Date.now(),
+                plan: "Line 1\nLine 2\t\x1b[31mred",
+              },
+            ],
+          }),
+        );
         return;
       }
 
@@ -1425,19 +1458,21 @@ describe("takode output escaping", () => {
 
       if (method === "GET" && url === "/api/takode/sessions") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify([
-          {
-            sessionId: "worker-search",
-            sessionNum: 14,
-            name: "Search\nWorker",
-            state: "idle",
-            archived: false,
-            cwd: "/repo",
-            createdAt: Date.now() - 60_000,
-            lastActivityAt: Date.now() - 5_000,
-            cliConnected: true,
-          },
-        ]));
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-search",
+              sessionNum: 14,
+              name: "Search\nWorker",
+              state: "idle",
+              archived: false,
+              cwd: "/repo",
+              createdAt: Date.now() - 60_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: true,
+            },
+          ]),
+        );
         return;
       }
       if (method === "GET" && url === "/api/takode/me") {
@@ -1447,25 +1482,27 @@ describe("takode output escaping", () => {
       }
       if (method === "GET" && url.startsWith("/api/sessions/search?")) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          query: "auth\nneedle",
-          tookMs: 2,
-          totalMatches: 1,
-          results: [
-            {
-              sessionId: "worker-search",
-              score: 500,
-              matchedField: "user_message",
-              matchContext: "message: reason\nwith\tcontrol",
-              matchedAt: Date.now() - 5000,
-              messageMatch: {
-                id: "m-42\nextra",
-                timestamp: Date.now() - 5000,
-                snippet: "snippet\tvalue",
+        res.end(
+          JSON.stringify({
+            query: "auth\nneedle",
+            tookMs: 2,
+            totalMatches: 1,
+            results: [
+              {
+                sessionId: "worker-search",
+                score: 500,
+                matchedField: "user_message",
+                matchContext: "message: reason\nwith\tcontrol",
+                matchedAt: Date.now() - 5000,
+                messageMatch: {
+                  id: "m-42\nextra",
+                  timestamp: Date.now() - 5000,
+                  snippet: "snippet\tvalue",
+                },
               },
-            },
-          ],
-        }));
+            ],
+          }),
+        );
         return;
       }
 
@@ -1486,7 +1523,7 @@ describe("takode output escaping", () => {
 
       expect(result.status).toBe(0);
       // Search output mixes query, session fields, and match metadata in one formatted block.
-      expect(result.stdout).toContain("matching \"auth\\nneedle\"");
+      expect(result.stdout).toContain('matching "auth\\nneedle"');
       expect(result.stdout).toContain("Search\\nWorker");
       expect(result.stdout).toContain("reason: message: reason\\nwith\\tcontrol");
       expect(result.stdout).toContain("message id: m-42\\nextra (takode peek 14 --from m-42\\nextra)");
@@ -1510,15 +1547,17 @@ describe("takode output escaping", () => {
 
       if (method === "GET" && url === "/api/sessions/worker-read/messages/msg-1") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          idx: 41,
-          type: "user_message\nraw",
-          ts: Date.now(),
-          totalLines: 2,
-          offset: 0,
-          limit: 200,
-          content: "first\tline\nsecond \x1b[31mline",
-        }));
+        res.end(
+          JSON.stringify({
+            idx: 41,
+            type: "user_message\nraw",
+            ts: Date.now(),
+            totalLines: 2,
+            offset: 0,
+            limit: 200,
+            content: "first\tline\nsecond \x1b[31mline",
+          }),
+        );
         return;
       }
 

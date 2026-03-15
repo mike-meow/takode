@@ -403,12 +403,14 @@ describe("edge cases", () => {
   });
 
   it("trims prompt and schedule whitespace on create", async () => {
-    const job = await cronStore.createJob(makeJobInput({
-      name: "Trim Test",
-      prompt: "  spaced prompt  ",
-      schedule: "  0 8 * * *  ",
-      cwd: "  /tmp/test  ",
-    }));
+    const job = await cronStore.createJob(
+      makeJobInput({
+        name: "Trim Test",
+        prompt: "  spaced prompt  ",
+        schedule: "  0 8 * * *  ",
+        cwd: "  /tmp/test  ",
+      }),
+    );
     expect(job.prompt).toBe("spaced prompt");
     expect(job.schedule).toBe("0 8 * * *");
     expect(job.cwd).toBe("/tmp/test");

@@ -35,10 +35,7 @@ export interface UseVoiceInputReturn {
 
 const DEFAULT_RECORDING_MIME_TYPE = "audio/webm";
 
-export function resolveRecordedMimeType(
-  recorderMimeType: string | null | undefined,
-  chunks: Blob[],
-): string {
+export function resolveRecordedMimeType(recorderMimeType: string | null | undefined, chunks: Blob[]): string {
   const candidates = [recorderMimeType, ...chunks.map((chunk) => chunk.type)];
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;

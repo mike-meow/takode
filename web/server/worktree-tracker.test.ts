@@ -1,10 +1,4 @@
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-  mkdirSync,
-  readFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { WorktreeMapping } from "./worktree-tracker.js";

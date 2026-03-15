@@ -22,7 +22,10 @@ const collapseListeners = new Set<() => void>();
 
 export function usePersistedCollapse(key: string): [boolean, () => void] {
   const value = useSyncExternalStore(
-    (cb) => { collapseListeners.add(cb); return () => collapseListeners.delete(cb); },
+    (cb) => {
+      collapseListeners.add(cb);
+      return () => collapseListeners.delete(cb);
+    },
     () => localStorage.getItem(key) === "1",
   );
   const toggle = useCallback(() => {
@@ -32,7 +35,12 @@ export function usePersistedCollapse(key: string): [boolean, () => void] {
   return [value, toggle];
 }
 
-function SectionHeader({ title, collapsed, onToggle, right }: {
+function SectionHeader({
+  title,
+  collapsed,
+  onToggle,
+  right,
+}: {
   title: string;
   collapsed: boolean;
   onToggle: () => void;
@@ -77,9 +85,7 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
       {limits.five_hour && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-cc-muted uppercase tracking-wider">
-              5h Limit
-            </span>
+            <span className="text-[11px] text-cc-muted uppercase tracking-wider">5h Limit</span>
             <span className="text-[11px] text-cc-muted tabular-nums">
               {limits.five_hour.utilization}%
               {limits.five_hour.resets_at && (
@@ -99,7 +105,10 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
             {(() => {
               const tp = cycleElapsedPct(limits.five_hour.resets_at, FIVE_HOURS_MS);
               return tp !== null ? (
-                <div className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]" style={{ left: `${Math.min(tp, 100)}%` }} />
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]"
+                  style={{ left: `${Math.min(tp, 100)}%` }}
+                />
               ) : null;
             })()}
           </div>
@@ -110,9 +119,7 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
       {limits.seven_day && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-cc-muted uppercase tracking-wider">
-              7d Limit
-            </span>
+            <span className="text-[11px] text-cc-muted uppercase tracking-wider">7d Limit</span>
             <span className="text-[11px] text-cc-muted tabular-nums">
               {limits.seven_day.utilization}%
               {limits.seven_day.resets_at && (
@@ -132,7 +139,10 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
             {(() => {
               const tp = cycleElapsedPct(limits.seven_day.resets_at, SEVEN_DAYS_MS);
               return tp !== null ? (
-                <div className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]" style={{ left: `${Math.min(tp, 100)}%` }} />
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-cc-fg/80 rounded-full shadow-[0_0_2px_rgba(0,0,0,0.5)]"
+                  style={{ left: `${Math.min(tp, 100)}%` }}
+                />
               ) : null;
             })()}
           </div>
@@ -143,12 +153,9 @@ function UsageLimitsSection({ sessionId }: { sessionId: string }) {
       {hasExtra && limits.extra_usage && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-cc-muted uppercase tracking-wider">
-              Extra
-            </span>
+            <span className="text-[11px] text-cc-muted uppercase tracking-wider">Extra</span>
             <span className="text-[11px] text-cc-muted tabular-nums">
-              ${limits.extra_usage.used_credits.toFixed(2)} / $
-              {limits.extra_usage.monthly_limit}
+              ${limits.extra_usage.used_credits.toFixed(2)} / ${limits.extra_usage.monthly_limit}
             </span>
           </div>
           {limits.extra_usage.utilization !== null && (
@@ -214,15 +221,11 @@ function CodexRateLimitsSection({ sessionId }: { sessionId: string }) {
             </span>
             <span className="text-[11px] text-cc-muted tabular-nums">
               {Math.round(primary.usedPercent)}%
-              {primary.resetsAt > 0 && (
-                <span className="ml-1">
-                  ({formatCodexResetTime(primary.resetsAt)})
-                </span>
-              )}
+              {primary.resetsAt > 0 && <span className="ml-1">({formatCodexResetTime(primary.resetsAt)})</span>}
             </span>
           </div>
           <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden">
-              <div
+            <div
               className={`h-full rounded-full transition-all duration-500 ${usageBarColor(primary.usedPercent)}`}
               style={{ width: `${Math.min(primary.usedPercent, 100)}%` }}
             />
@@ -237,11 +240,7 @@ function CodexRateLimitsSection({ sessionId }: { sessionId: string }) {
             </span>
             <span className="text-[11px] text-cc-muted tabular-nums">
               {Math.round(secondary.usedPercent)}%
-              {secondary.resetsAt > 0 && (
-                <span className="ml-1">
-                  ({formatCodexResetTime(secondary.resetsAt)})
-                </span>
-              )}
+              {secondary.resetsAt > 0 && <span className="ml-1">({formatCodexResetTime(secondary.resetsAt)})</span>}
             </span>
           </div>
           <div className="w-full h-1.5 rounded-full bg-cc-hover overflow-hidden">
@@ -292,22 +291,30 @@ function CodexTokenDetailsSection({ sessionId }: { sessionId: string }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-cc-muted">Input</span>
-          <span className="text-[11px] text-cc-fg tabular-nums font-medium">{formatTokenCount(details.inputTokens)}</span>
+          <span className="text-[11px] text-cc-fg tabular-nums font-medium">
+            {formatTokenCount(details.inputTokens)}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-cc-muted">Output</span>
-          <span className="text-[11px] text-cc-fg tabular-nums font-medium">{formatTokenCount(details.outputTokens)}</span>
+          <span className="text-[11px] text-cc-fg tabular-nums font-medium">
+            {formatTokenCount(details.outputTokens)}
+          </span>
         </div>
         {details.cachedInputTokens > 0 && (
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-cc-muted">Cached</span>
-            <span className="text-[11px] text-cc-fg tabular-nums font-medium">{formatTokenCount(details.cachedInputTokens)}</span>
+            <span className="text-[11px] text-cc-fg tabular-nums font-medium">
+              {formatTokenCount(details.cachedInputTokens)}
+            </span>
           </div>
         )}
         {reasoningOutputTokens > 0 && (
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-cc-muted">Reasoning</span>
-            <span className="text-[11px] text-cc-fg tabular-nums font-medium">{formatTokenCount(reasoningOutputTokens)}</span>
+            <span className="text-[11px] text-cc-fg tabular-nums font-medium">
+              {formatTokenCount(reasoningOutputTokens)}
+            </span>
           </div>
         )}
       </div>
@@ -334,9 +341,12 @@ function CodexTokenDetailsSection({ sessionId }: { sessionId: string }) {
 function prStatePill(state: GitHubPRInfo["state"], isDraft: boolean) {
   if (isDraft) return { label: "Draft", cls: "text-cc-muted bg-cc-hover" };
   switch (state) {
-    case "OPEN": return { label: "Open", cls: "text-cc-success bg-cc-success/10" };
-    case "MERGED": return { label: "Merged", cls: "text-purple-400 bg-purple-400/10" };
-    case "CLOSED": return { label: "Closed", cls: "text-cc-error bg-cc-error/10" };
+    case "OPEN":
+      return { label: "Open", cls: "text-cc-success bg-cc-success/10" };
+    case "MERGED":
+      return { label: "Merged", cls: "text-purple-400 bg-purple-400/10" };
+    case "CLOSED":
+      return { label: "Closed", cls: "text-cc-error bg-cc-error/10" };
   }
 }
 
@@ -356,9 +366,7 @@ export function GitHubPRDisplay({ pr }: { pr: GitHubPRInfo }) {
         >
           PR #{pr.number}
         </a>
-        <span className={`text-[9px] font-medium px-1.5 rounded-full leading-[16px] ${pill.cls}`}>
-          {pill.label}
-        </span>
+        <span className={`text-[9px] font-medium px-1.5 rounded-full leading-[16px] ${pill.cls}`}>{pill.label}</span>
       </div>
 
       {/* Row 2: Title */}
@@ -380,7 +388,11 @@ export function GitHubPRDisplay({ pr }: { pr: GitHubPRInfo }) {
               {cs.success > 0 && (
                 <span className="flex items-center gap-1 text-cc-success">
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                    <path fillRule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" clipRule="evenodd" />
+                    <path
+                      fillRule="evenodd"
+                      d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                   {cs.success} passed
                 </span>
@@ -393,14 +405,16 @@ export function GitHubPRDisplay({ pr }: { pr: GitHubPRInfo }) {
                 <path d="M8 0a8 8 0 018 8h-2A6 6 0 008 2V0z" />
               </svg>
               {cs.pending} pending
-              {cs.success > 0 && (
-                <span className="text-cc-success ml-1">{cs.success} passed</span>
-              )}
+              {cs.success > 0 && <span className="text-cc-success ml-1">{cs.success} passed</span>}
             </span>
           ) : (
             <span className="flex items-center gap-1 text-cc-success">
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                <path fillRule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"
+                  clipRule="evenodd"
+                />
               </svg>
               {cs.total}/{cs.total} checks passed
             </span>
@@ -413,7 +427,11 @@ export function GitHubPRDisplay({ pr }: { pr: GitHubPRInfo }) {
         {pr.reviewDecision === "APPROVED" && (
           <span className="flex items-center gap-1 text-cc-success">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-              <path fillRule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"
+                clipRule="evenodd"
+              />
             </svg>
             Approved
           </span>
@@ -421,7 +439,11 @@ export function GitHubPRDisplay({ pr }: { pr: GitHubPRInfo }) {
         {pr.reviewDecision === "CHANGES_REQUESTED" && (
           <span className="flex items-center gap-1 text-cc-error">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-              <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm9-3a1 1 0 11-2 0 1 1 0 012 0zM8 7a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 7z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm9-3a1 1 0 11-2 0 1 1 0 012 0zM8 7a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 7z"
+                clipRule="evenodd"
+              />
             </svg>
             Changes requested
           </span>
@@ -466,9 +488,12 @@ export function GitHubPRSection({ sessionId }: { sessionId: string }) {
   // One-time REST fallback on mount if no pushed data yet
   useEffect(() => {
     if (prStatus || !cwd || !branch) return;
-    api.getPRStatus(cwd, branch).then((data) => {
-      useStore.getState().setPRStatus(sessionId, data);
-    }).catch(() => {});
+    api
+      .getPRStatus(cwd, branch)
+      .then((data) => {
+        useStore.getState().setPRStatus(sessionId, data);
+      })
+      .catch(() => {});
   }, [sessionId, cwd, branch, prStatus]);
 
   if (!prStatus?.available || !prStatus.pr) return null;
@@ -483,8 +508,8 @@ function UsageCollapsible({ sessionId, isCodex }: { sessionId: string; isCodex: 
   return (
     <>
       <SectionHeader title="Usage" collapsed={collapsed} onToggle={toggle} />
-      {!collapsed && (
-        isCodex ? (
+      {!collapsed &&
+        (isCodex ? (
           <>
             <CodexRateLimitsSection sessionId={sessionId} />
             <CodexTokenDetailsSection sessionId={sessionId} />
@@ -494,8 +519,7 @@ function UsageCollapsible({ sessionId, isCodex }: { sessionId: string; isCodex: 
             <UsageLimitsSection sessionId={sessionId} />
             <CodexTokenDetailsSection sessionId={sessionId} />
           </>
-        )
-      )}
+        ))}
     </>
   );
 }
@@ -519,21 +543,23 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
     Promise.all([
       api.getClaudeMdFiles(cwd).catch(() => ({ files: [] })),
       api.getAutoApprovalConfigForPath(cwd, repoRoot).catch(() => ({ config: null })),
-    ]).then(([res, aaRes]) => {
-      if (cancelled) return;
-      setFiles(res.files);
-      setHasAutoApprovalConfig(!!aaRes.config);
-    }).catch(() => {
-      if (cancelled) return;
-      setFiles([]);
-      setHasAutoApprovalConfig(false);
-    });
+    ])
+      .then(([res, aaRes]) => {
+        if (cancelled) return;
+        setFiles(res.files);
+        setHasAutoApprovalConfig(!!aaRes.config);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFiles([]);
+        setHasAutoApprovalConfig(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [cwd, repoRoot, collapsed]);
 
-  const relPath = (p: string) => p.startsWith(cwd + "/") ? p.slice(cwd.length + 1) : p;
+  const relPath = (p: string) => (p.startsWith(cwd + "/") ? p.slice(cwd.length + 1) : p);
 
   return (
     <>
@@ -645,20 +671,24 @@ function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
   const sdkSessions = useStore((s) => s.sdkSessions);
   const sessionNames = useStore((s) => s.sessionNames);
 
-  const herded = sdkSessions.filter(
-    (s: SdkSessionInfo) => s.herdedBy === sessionId
-  );
+  const herded = sdkSessions.filter((s: SdkSessionInfo) => s.herdedBy === sessionId);
 
-  const handleUnherd = useCallback(async (workerId: string) => {
-    try {
-      await api.unherdSession(sessionId, workerId);
-      api.listSessions().then((sessions: SdkSessionInfo[]) => {
-        useStore.getState().setSdkSessions(sessions);
-      }).catch(() => {});
-    } catch (e) {
-      console.error("[TaskPanel] Failed to unherd:", e);
-    }
-  }, [sessionId]);
+  const handleUnherd = useCallback(
+    async (workerId: string) => {
+      try {
+        await api.unherdSession(sessionId, workerId);
+        api
+          .listSessions()
+          .then((sessions: SdkSessionInfo[]) => {
+            useStore.getState().setSdkSessions(sessions);
+          })
+          .catch(() => {});
+      } catch (e) {
+        console.error("[TaskPanel] Failed to unherd:", e);
+      }
+    },
+    [sessionId],
+  );
 
   return (
     <>
@@ -666,9 +696,11 @@ function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
         title="Herded Sessions"
         collapsed={collapsed}
         onToggle={toggle}
-        right={herded.length > 0 ? (
-          <span className="text-[10px] text-cc-muted tabular-nums">{herded.length}</span>
-        ) : undefined}
+        right={
+          herded.length > 0 ? (
+            <span className="text-[10px] text-cc-muted tabular-nums">{herded.length}</span>
+          ) : undefined
+        }
       />
       {!collapsed && (
         <div className="px-3 py-2 space-y-1">
@@ -678,9 +710,8 @@ function HerdedSessionsSection({ sessionId }: { sessionId: string }) {
             herded.map((s: SdkSessionInfo) => {
               const name = sessionNames.get(s.sessionId) || s.name || "(unnamed)";
               const isRunning = s.state === "running" || s.state === "connected";
-              const dotColor = s.state === "exited" ? "text-cc-muted/40"
-                : isRunning ? "text-cc-success"
-                : "text-cc-muted/60";
+              const dotColor =
+                s.state === "exited" ? "text-cc-muted/40" : isRunning ? "text-cc-success" : "text-cc-muted/60";
               return (
                 <div key={s.sessionId} className="flex items-center gap-2 py-1 group/herd">
                   <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${dotColor} bg-current`} />
@@ -723,24 +754,33 @@ export function HerdDiagnosticsSection({ sessionId }: { sessionId: string }) {
       try {
         const data = await api.getHerdDiagnostics(sessionId);
         if (active) setDiag(data);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     poll();
     const interval = setInterval(poll, 5000);
-    return () => { active = false; clearInterval(interval); };
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [sessionId]);
 
   if (!diag) return null;
 
   const dispatcher = diag.herdDispatcher as Record<string, unknown> | null;
-  const pendingCount = dispatcher?.pendingEventCount as number || 0;
+  const pendingCount = (dispatcher?.pendingEventCount as number) || 0;
   const isGen = diag.isGenerating as boolean;
   const cliConn = diag.cliConnected as boolean;
   const cliInitReceived = diag.cliInitReceived as boolean;
-  const pendingMsgs = diag.pendingMessagesCount as number || 0;
+  const pendingMsgs = (diag.pendingMessagesCount as number) || 0;
   const graceActive = diag.disconnectGraceActive as boolean;
   const eventHistory = (dispatcher?.eventHistory || []) as Array<{
-    event: string; sessionName: string; ts: number; deliveredAt: number | null; status: string;
+    event: string;
+    sessionName: string;
+    ts: number;
+    deliveredAt: number | null;
+    status: string;
   }>;
 
   // Compact status line
@@ -759,21 +799,23 @@ export function HerdDiagnosticsSection({ sessionId }: { sessionId: string }) {
         title="Herd Diagnostics"
         collapsed={collapsed}
         onToggle={toggle}
-        right={pendingCount > 0 ? (
-          <span className="text-[10px] text-amber-400 tabular-nums">{pendingCount} pending</span>
-        ) : undefined}
+        right={
+          pendingCount > 0 ? (
+            <span className="text-[10px] text-amber-400 tabular-nums">{pendingCount} pending</span>
+          ) : undefined
+        }
       />
       {!collapsed && (
         <div className="px-3 py-2 text-[10px] font-mono text-cc-muted space-y-0.5">
           <div>{statusLine}</div>
           {pendingCount > 0 && dispatcher != null && (
             <div className="text-amber-400/70">
-              Events: {String((dispatcher.pendingEventTypes as string[] || []).join(", "))}
+              Events: {String(((dispatcher.pendingEventTypes as string[]) || []).join(", "))}
             </div>
           )}
           <div className="opacity-50">
-            workers: {(diag.herdedWorkers as Array<Record<string, unknown>> || []).length}
-            {" · "}perms: {diag.pendingPermissionsCount as number || 0}
+            workers: {((diag.herdedWorkers as Array<Record<string, unknown>>) || []).length}
+            {" · "}perms: {(diag.pendingPermissionsCount as number) || 0}
           </div>
           {/* Persistent event history */}
           {eventHistory.length > 0 && (
@@ -781,14 +823,26 @@ export function HerdDiagnosticsSection({ sessionId }: { sessionId: string }) {
               <div className="text-[9px] text-cc-muted/50 mb-0.5">Recent events ({eventHistory.length})</div>
               <div className="max-h-24 overflow-y-auto space-y-px">
                 {eventHistory.slice(-15).map((h, i) => {
-                  const time = new Date(h.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                  const time = new Date(h.ts).toLocaleTimeString("en-US", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  });
                   const statusIcon = h.status === "delivered" ? "✓" : h.status === "dropped" ? "✗" : "⏳";
-                  const statusColor = h.status === "delivered" ? "text-green-500/60" : h.status === "dropped" ? "text-red-500/60" : "text-amber-400/60";
+                  const statusColor =
+                    h.status === "delivered"
+                      ? "text-green-500/60"
+                      : h.status === "dropped"
+                        ? "text-red-500/60"
+                        : "text-amber-400/60";
                   return (
                     <div key={i} className="flex items-center gap-1">
                       <span className={`${statusColor} shrink-0`}>{statusIcon}</span>
                       <span className="text-cc-muted/40">{time}</span>
-                      <span className="truncate">{h.event} · {h.sessionName}</span>
+                      <span className="truncate">
+                        {h.event} · {h.sessionName}
+                      </span>
                     </div>
                   );
                 })}
@@ -820,20 +874,12 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
     <aside className="w-[280px] h-full flex flex-col overflow-hidden bg-cc-card border-l border-cc-border">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-cc-border">
-        <span className="text-sm font-semibold text-cc-fg tracking-tight">
-          Session
-        </span>
+        <span className="text-sm font-semibold text-cc-fg tracking-tight">Session</span>
         <button
           onClick={() => setTaskPanelOpen(false)}
           className="flex items-center justify-center w-6 h-6 rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
         >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            className="w-3.5 h-3.5"
-          >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
             <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
@@ -886,14 +932,12 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
 }
 
 export function TaskRow({ task, sessionId }: { task: TaskItem; sessionId?: string }) {
-  const isRunning = useStore((s) => sessionId ? s.sessionStatus.get(sessionId) === "running" : false);
+  const isRunning = useStore((s) => (sessionId ? s.sessionStatus.get(sessionId) === "running" : false));
   const isCompleted = task.status === "completed";
   const isInProgress = task.status === "in_progress";
 
   return (
-    <div
-      className={`px-2.5 py-2 rounded-lg ${isCompleted ? "opacity-50" : ""}`}
-    >
+    <div className={`px-2.5 py-2 rounded-lg ${isCompleted ? "opacity-50" : ""}`}>
       <div className="flex items-start gap-2">
         {/* Status icon */}
         <span className="shrink-0 flex items-center justify-center w-4 h-4 mt-px">
@@ -915,11 +959,7 @@ export function TaskRow({ task, sessionId }: { task: TaskItem; sessionId?: strin
               />
             </svg>
           ) : isCompleted ? (
-            <svg
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              className="w-4 h-4 text-cc-success"
-            >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-cc-success">
               <path
                 fillRule="evenodd"
                 d="M8 15A7 7 0 108 1a7 7 0 000 14zm3.354-9.354a.5.5 0 00-.708-.708L7 8.586 5.354 6.94a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z"
@@ -927,27 +967,15 @@ export function TaskRow({ task, sessionId }: { task: TaskItem; sessionId?: strin
               />
             </svg>
           ) : (
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              className="w-4 h-4 text-cc-muted"
-            >
-              <circle
-                cx="8"
-                cy="8"
-                r="6"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
+            <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4 text-cc-muted">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
             </svg>
           )}
         </span>
 
         {/* Subject — allow wrapping */}
         <span
-          className={`text-[13px] leading-snug flex-1 ${
-            isCompleted ? "text-cc-muted line-through" : "text-cc-fg"
-          }`}
+          className={`text-[13px] leading-snug flex-1 ${isCompleted ? "text-cc-muted line-through" : "text-cc-fg"}`}
         >
           {task.subject}
         </span>
@@ -955,32 +983,17 @@ export function TaskRow({ task, sessionId }: { task: TaskItem; sessionId?: strin
 
       {/* Active form text (in_progress only) */}
       {isInProgress && task.activeForm && (
-        <p className="mt-1 ml-6 text-[11px] text-cc-muted italic truncate">
-          {task.activeForm}
-        </p>
+        <p className="mt-1 ml-6 text-[11px] text-cc-muted italic truncate">{task.activeForm}</p>
       )}
 
       {/* Blocked by */}
       {task.blockedBy && task.blockedBy.length > 0 && (
         <p className="mt-1 ml-6 text-[11px] text-cc-muted flex items-center gap-1">
           <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3 shrink-0">
-            <circle
-              cx="8"
-              cy="8"
-              r="6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M5 8h6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <span>
-            blocked by {task.blockedBy.map((b) => `#${b}`).join(", ")}
-          </span>
+          <span>blocked by {task.blockedBy.map((b) => `#${b}`).join(", ")}</span>
         </p>
       )}
     </div>

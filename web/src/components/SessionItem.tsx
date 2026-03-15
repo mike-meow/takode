@@ -5,14 +5,7 @@ import { useStore } from "../store.js";
 import { getHighlightParts } from "../utils/highlight.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
-type SearchMatchedField =
-  | "name"
-  | "task"
-  | "keyword"
-  | "branch"
-  | "path"
-  | "repo"
-  | "user_message";
+type SearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
 const SEARCH_MATCH_LABELS: Record<SearchMatchedField, string> = {
   name: "name",
@@ -140,32 +133,38 @@ export function SessionItem({
   const canSwipeToArchive = !archived && !reorderMode;
 
   // Long-press to open context menu on touch devices
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const touchTarget = e.target as HTMLElement | null;
-    const startedOnDragHandle = !!touchTarget?.closest("[data-session-drag-handle='true']");
-    touchStartedOnDragHandle.current = startedOnDragHandle;
-    if (startedOnDragHandle) {
-      suppressTap.current = true;
-      cancelLongPress();
-      swipeStart.current = null;
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      const touchTarget = e.target as HTMLElement | null;
+      const startedOnDragHandle = !!touchTarget?.closest("[data-session-drag-handle='true']");
+      touchStartedOnDragHandle.current = startedOnDragHandle;
+      if (startedOnDragHandle) {
+        suppressTap.current = true;
+        cancelLongPress();
+        swipeStart.current = null;
+        swipeActive.current = false;
+        setSwipeOffsetPx(0);
+        return;
+      }
+
+      const touch = e.touches[0];
+      swipeStart.current = { x: touch.clientX, y: touch.clientY };
       swipeActive.current = false;
       setSwipeOffsetPx(0);
-      return;
-    }
-
-    const touch = e.touches[0];
-    swipeStart.current = { x: touch.clientX, y: touch.clientY };
-    swipeActive.current = false;
-    setSwipeOffsetPx(0);
-    if (!onCtxMenu || reorderMode) return;
-    const cx = touch.clientX;
-    const cy = touch.clientY;
-    longPressTimer.current = setTimeout(() => {
-      longPressTimer.current = null;
-      suppressTap.current = true;
-      onCtxMenu({ preventDefault: () => {}, stopPropagation: () => {}, clientX: cx, clientY: cy } as React.MouseEvent, s.id);
-    }, 500);
-  }, [onCtxMenu, reorderMode, s.id]);
+      if (!onCtxMenu || reorderMode) return;
+      const cx = touch.clientX;
+      const cy = touch.clientY;
+      longPressTimer.current = setTimeout(() => {
+        longPressTimer.current = null;
+        suppressTap.current = true;
+        onCtxMenu(
+          { preventDefault: () => {}, stopPropagation: () => {}, clientX: cx, clientY: cy } as React.MouseEvent,
+          s.id,
+        );
+      }, 500);
+    },
+    [onCtxMenu, reorderMode, s.id],
+  );
 
   const cancelLongPress = useCallback(() => {
     if (longPressTimer.current) {
@@ -179,35 +178,38 @@ export function SessionItem({
     onArchive(synthetic, s.id);
   }, [onArchive, s.id]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (touchStartedOnDragHandle.current) {
-      cancelLongPress();
-      return;
-    }
-    const start = swipeStart.current;
-    if (!start) {
-      cancelLongPress();
-      return;
-    }
-    const touch = e.touches[0];
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (!swipeActive.current) {
-      const isHorizontalSwipe = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4;
-      if (isHorizontalSwipe && canSwipeToArchive) {
-        swipeActive.current = true;
-        suppressTap.current = true;
-      }
-      if (isHorizontalSwipe || Math.abs(dy) > 8) {
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartedOnDragHandle.current) {
         cancelLongPress();
+        return;
       }
-    }
-    if (swipeActive.current) {
-      const clampedDx = Math.max(-120, Math.min(120, dx));
-      setSwipeOffsetPx(clampedDx);
-      e.preventDefault();
-    }
-  }, [cancelLongPress, canSwipeToArchive]);
+      const start = swipeStart.current;
+      if (!start) {
+        cancelLongPress();
+        return;
+      }
+      const touch = e.touches[0];
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (!swipeActive.current) {
+        const isHorizontalSwipe = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4;
+        if (isHorizontalSwipe && canSwipeToArchive) {
+          swipeActive.current = true;
+          suppressTap.current = true;
+        }
+        if (isHorizontalSwipe || Math.abs(dy) > 8) {
+          cancelLongPress();
+        }
+      }
+      if (swipeActive.current) {
+        const clampedDx = Math.max(-120, Math.min(120, dx));
+        setSwipeOffsetPx(clampedDx);
+        e.preventDefault();
+      }
+    },
+    [cancelLongPress, canSwipeToArchive],
+  );
 
   const handleTouchEnd = useCallback(() => {
     cancelLongPress();
@@ -251,23 +253,24 @@ export function SessionItem({
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
   const showingSwipeBackdrop = canSwipeToArchive && Math.abs(swipeOffsetPx) > 0;
-  const herdHighlightClass = herdHoverHighlight === "leader"
-    ? "ring-1 ring-amber-400/70"
-    : herdHoverHighlight === "worker"
-      ? "ring-1 ring-amber-400/45"
-      : "";
+  const herdHighlightClass =
+    herdHoverHighlight === "leader"
+      ? "ring-1 ring-amber-400/70"
+      : herdHoverHighlight === "worker"
+        ? "ring-1 ring-amber-400/45"
+        : "";
   const displayMatch = !isEditing
     ? (() => {
-      const raw = (matchContext || "").trim();
-      const prefixMatch = raw.match(/^([a-z_]+):\s*(.*)$/i);
-      const snippet = (prefixMatch?.[2] ?? raw).trim();
-      const fieldLabel = matchedField ? SEARCH_MATCH_LABELS[matchedField] : null;
-      const finalFieldLabel = fieldLabel || (prefixMatch?.[1] ? prefixMatch[1].toLowerCase() : null);
-      const fallbackSnippet = matchedField === "name" ? label : "";
-      const finalSnippet = snippet || fallbackSnippet;
-      if (!finalFieldLabel || !finalSnippet) return null;
-      return { fieldLabel: `${finalFieldLabel}:`, snippet: finalSnippet };
-    })()
+        const raw = (matchContext || "").trim();
+        const prefixMatch = raw.match(/^([a-z_]+):\s*(.*)$/i);
+        const snippet = (prefixMatch?.[2] ?? raw).trim();
+        const fieldLabel = matchedField ? SEARCH_MATCH_LABELS[matchedField] : null;
+        const finalFieldLabel = fieldLabel || (prefixMatch?.[1] ? prefixMatch[1].toLowerCase() : null);
+        const fallbackSnippet = matchedField === "name" ? label : "";
+        const finalSnippet = snippet || fallbackSnippet;
+        if (!finalFieldLabel || !finalSnippet) return null;
+        return { fieldLabel: `${finalFieldLabel}:`, snippet: finalSnippet };
+      })()
     : null;
   const visualStatus = deriveSessionStatus({
     archived: !!archived,
@@ -279,11 +282,12 @@ export function SessionItem({
     idleKilled: s.idleKilled,
   });
   const stripeClass = STRIPE_COLOR_CLASS[visualStatus];
-  const stripeGlowColor = visualStatus === "permission"
-    ? "rgba(245, 158, 11, 0.7)"
-    : visualStatus === "running" || visualStatus === "compacting"
-      ? "rgba(34, 197, 94, 0.7)"
-      : "";
+  const stripeGlowColor =
+    visualStatus === "permission"
+      ? "rgba(245, 158, 11, 0.7)"
+      : visualStatus === "running" || visualStatus === "compacting"
+        ? "rgba(34, 197, 94, 0.7)"
+        : "";
   const stripeGlowStyle: React.CSSProperties | undefined = stripeGlowColor
     ? {
         ["--glow-color" as string]: stripeGlowColor,
@@ -309,10 +313,7 @@ export function SessionItem({
       <>
         {parts.map((part, index) =>
           part.matched ? (
-            <mark
-              key={`${part.text}-${index}`}
-              className="bg-amber-300/25 text-amber-100 rounded-[2px] px-0.5"
-            >
+            <mark key={`${part.text}-${index}`} className="bg-amber-300/25 text-amber-100 rounded-[2px] px-0.5">
               {part.text}
             </mark>
           ) : (
@@ -369,7 +370,9 @@ export function SessionItem({
         className={`w-full text-left rounded-xl sm:rounded-lg border sm:border-transparent ${
           archived ? "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-14 sm:py-2" : "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-3 sm:py-2"
         } transition-all duration-100 select-none ${
-          reorderMode ? "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing" : "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
+          reorderMode
+            ? "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
+            : "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
         } ${
           isActive
             ? "bg-cc-active border-cc-primary/25"
@@ -402,9 +405,12 @@ export function SessionItem({
               {...(dragHandleProps?.attributes ?? {})}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-                <circle cx="6" cy="4" r="1.2" /><circle cx="10" cy="4" r="1.2" />
-                <circle cx="6" cy="8" r="1.2" /><circle cx="10" cy="8" r="1.2" />
-                <circle cx="6" cy="12" r="1.2" /><circle cx="10" cy="12" r="1.2" />
+                <circle cx="6" cy="4" r="1.2" />
+                <circle cx="10" cy="4" r="1.2" />
+                <circle cx="6" cy="8" r="1.2" />
+                <circle cx="10" cy="8" r="1.2" />
+                <circle cx="6" cy="12" r="1.2" />
+                <circle cx="10" cy="12" r="1.2" />
               </svg>
             </span>
           )}
@@ -459,9 +465,7 @@ export function SessionItem({
                 <span
                   className={`text-[13px] truncate leading-snug ${
                     isQuestNamed && questStatus !== "needs_verification" ? "text-amber-400" : "text-cc-fg"
-                  } ${
-                    attention ? "font-semibold" : "font-medium"
-                  } ${isRecentlyRenamed ? "animate-name-appear" : ""}`}
+                  } ${attention ? "font-semibold" : "font-medium"} ${isRecentlyRenamed ? "animate-name-appear" : ""}`}
                   onAnimationEnd={() => onClearRecentlyRenamed(s.id)}
                 >
                   {isQuestNamed && questStatus === "needs_verification" ? `☑ ${label}` : label}
@@ -473,15 +477,15 @@ export function SessionItem({
             </div>
 
             {/* Row 2: Preview — match context during search, or active task / last message */}
-            {!isEditing && (displayMatch
-              ? (
+            {!isEditing &&
+              (displayMatch ? (
                 <div className="mt-0.5 text-[10.5px] text-cc-muted/80 leading-tight truncate">
                   <span className="text-cc-primary/70 mr-1">{displayMatch.fieldLabel}</span>
                   {renderHighlightedSnippet(displayMatch.snippet)}
                 </div>
-              )
-              : <SessionPreviewRow sessionId={s.id} userPreview={sessionPreview} />
-            )}
+              ) : (
+                <SessionPreviewRow sessionId={s.id} userPreview={sessionPreview} />
+              ))}
 
             {/* Row 3: Metadata — backend, permissions, badges, #N, wt, git stats (all compact, one line) */}
             {!isEditing && (
@@ -489,23 +493,32 @@ export function SessionItem({
                 {s.sessionNum != null && (
                   <span className="text-[9px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
                 )}
-                <img
-                  src={backendLogo}
-                  alt={backendAlt}
-                  className="w-3 h-3 shrink-0 object-contain opacity-60"
-                />
+                <img src={backendLogo} alt={backendAlt} className="w-3 h-3 shrink-0 object-contain opacity-60" />
                 {/* Shield icon: ask permission status (Claude only) */}
                 {s.backendType !== "codex" && s.askPermission === true && (
                   <span title="Permissions: asking before tool use">
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 text-cc-primary">
                       <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
-                      <path d="M6.5 8.5L7.5 9.5L10 7" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      <path
+                        d="M6.5 8.5L7.5 9.5L10 7"
+                        stroke="white"
+                        strokeWidth="1.5"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   </span>
                 )}
                 {s.backendType !== "codex" && s.askPermission === false && (
                   <span title="Permissions: auto-approving tool use">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-2.5 h-2.5 shrink-0 text-cc-muted/50">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      className="w-2.5 h-2.5 shrink-0 text-cc-muted/50"
+                    >
                       <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
                     </svg>
                   </span>
@@ -530,11 +543,15 @@ export function SessionItem({
                     title={
                       archived && s.worktreeExists !== undefined
                         ? s.worktreeExists
-                          ? s.worktreeDirty ? "Worktree preserved (uncommitted changes)" : "Worktree preserved"
+                          ? s.worktreeDirty
+                            ? "Worktree preserved (uncommitted changes)"
+                            : "Worktree preserved"
                           : "Worktree deleted"
                         : undefined
                     }
-                  >wt</span>
+                  >
+                    wt
+                  </span>
                 )}
                 {hasBranchDivergence && (
                   <span className="flex items-center gap-0.5 text-[10px] shrink-0">
@@ -563,20 +580,31 @@ export function SessionItem({
             </svg>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-cc-fg leading-snug">
-                {s.isWorktree
-                  ? <>Archiving will <strong>delete the worktree</strong> and any uncommitted changes.</>
-                  : <>Archiving will <strong>remove the container</strong> and any uncommitted changes.</>
-                }
+                {s.isWorktree ? (
+                  <>
+                    Archiving will <strong>delete the worktree</strong> and any uncommitted changes.
+                  </>
+                ) : (
+                  <>
+                    Archiving will <strong>remove the container</strong> and any uncommitted changes.
+                  </>
+                )}
               </p>
               <div className="flex gap-2 mt-1.5">
                 <button
-                  onClick={(e) => { e.stopPropagation(); onCancelArchive(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancelArchive();
+                  }}
                   className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-cc-hover text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); onConfirmArchive(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onConfirmArchive();
+                  }}
                   className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors cursor-pointer"
                 >
                   Archive
@@ -647,18 +675,12 @@ function SessionPreviewRow({ sessionId, userPreview }: { sessionId: string; user
 
   if (showTask) {
     return (
-      <div className="mt-0.5 text-[10.5px] text-cc-primary/60 leading-tight truncate italic">
-        {taskPreview.text}
-      </div>
+      <div className="mt-0.5 text-[10.5px] text-cc-primary/60 leading-tight truncate italic">{taskPreview.text}</div>
     );
   }
 
   if (userPreview) {
-    return (
-      <div className="mt-0.5 text-[10.5px] text-cc-muted/60 leading-tight truncate">
-        {userPreview}
-      </div>
-    );
+    return <div className="mt-0.5 text-[10.5px] text-cc-muted/60 leading-tight truncate">{userPreview}</div>;
   }
 
   return null;

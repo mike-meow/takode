@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { applyQuestListFilters } from "./quest-list-filters.js";
 import type { QuestmasterTask } from "./quest-types.js";
 
-function makeQuest(input: Partial<QuestmasterTask> & { questId: string; title: string; status: QuestmasterTask["status"] }): QuestmasterTask {
+function makeQuest(
+  input: Partial<QuestmasterTask> & { questId: string; title: string; status: QuestmasterTask["status"] },
+): QuestmasterTask {
   return {
     id: `${input.questId}-v1`,
     questId: input.questId,
@@ -24,11 +26,33 @@ function makeQuest(input: Partial<QuestmasterTask> & { questId: string; title: s
 
 describe("applyQuestListFilters", () => {
   const quests: QuestmasterTask[] = [
-    makeQuest({ questId: "q-1", title: "Fix chat lag", status: "in_progress", tags: ["ui", "bugfix"], sessionId: "s1" }),
+    makeQuest({
+      questId: "q-1",
+      title: "Fix chat lag",
+      status: "in_progress",
+      tags: ["ui", "bugfix"],
+      sessionId: "s1",
+    }),
     makeQuest({ questId: "q-2", title: "Improve quest CLI", status: "idea", tags: ["questmaster", "feature"] }),
-    makeQuest({ questId: "q-3", title: "Done performance cleanup", status: "done", tags: ["performance"], sessionId: "s2" }),
-    makeQuest({ questId: "q-4", title: "Submit worker fix", status: "needs_verification", verificationInboxUnread: true }),
-    makeQuest({ questId: "q-5", title: "Investigate backlog", status: "needs_verification", verificationInboxUnread: false }),
+    makeQuest({
+      questId: "q-3",
+      title: "Done performance cleanup",
+      status: "done",
+      tags: ["performance"],
+      sessionId: "s2",
+    }),
+    makeQuest({
+      questId: "q-4",
+      title: "Submit worker fix",
+      status: "needs_verification",
+      verificationInboxUnread: true,
+    }),
+    makeQuest({
+      questId: "q-5",
+      title: "Investigate backlog",
+      status: "needs_verification",
+      verificationInboxUnread: false,
+    }),
   ];
 
   it("filters by multiple statuses from comma-separated input", () => {

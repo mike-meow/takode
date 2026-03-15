@@ -83,7 +83,9 @@ export function buildHerdGroupBadgeThemes(sessions: HerdGroupSession[]): Map<str
     if (leaderId) leaderIds.add(leaderId);
   }
 
-  const orderedLeaderIds = Array.from(leaderIds).sort((a, b) => compareLeaderSessions(sessionsById.get(a), sessionsById.get(b), a, b));
+  const orderedLeaderIds = Array.from(leaderIds).sort((a, b) =>
+    compareLeaderSessions(sessionsById.get(a), sessionsById.get(b), a, b),
+  );
   const usedPaletteIndexes = new Set<number>();
   const themeMap = new Map<string, HerdGroupBadgeTheme>();
 

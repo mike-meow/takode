@@ -154,74 +154,92 @@ function forEachComparableHistoryEntry(
     const message = historyMessages[i];
     if (!message) continue;
     if (message.type === "user_message") {
-      visitor({
-        id: message.id || `hist-user-${historyIndex}`,
-        role: "user",
-        content: message.content,
-        images: message.images,
-        metadata: message.vscodeSelection ? { vscodeSelection: message.vscodeSelection } : undefined,
-        agentSource: message.agentSource,
-        timestamp: message.timestamp,
-      }, renderedIndex++);
+      visitor(
+        {
+          id: message.id || `hist-user-${historyIndex}`,
+          role: "user",
+          content: message.content,
+          images: message.images,
+          metadata: message.vscodeSelection ? { vscodeSelection: message.vscodeSelection } : undefined,
+          agentSource: message.agentSource,
+          timestamp: message.timestamp,
+        },
+        renderedIndex++,
+      );
       continue;
     }
     if (message.type === "assistant") {
-      visitor({
-        id: message.message.id,
-        role: "assistant",
-        content: extractTextFromBlocks(message.message.content),
-        contentBlocks: message.message.content,
-        parentToolUseId: message.parent_tool_use_id,
-        model: message.message.model,
-        stopReason: message.message.stop_reason ?? null,
-        turnDurationMs: typeof message.turn_duration_ms === "number" ? message.turn_duration_ms : undefined,
-        cliUuid: message.uuid,
-        leaderUserAddressed: message.leader_user_addressed === true,
-        timestamp: message.timestamp ?? null,
-      }, renderedIndex++);
+      visitor(
+        {
+          id: message.message.id,
+          role: "assistant",
+          content: extractTextFromBlocks(message.message.content),
+          contentBlocks: message.message.content,
+          parentToolUseId: message.parent_tool_use_id,
+          model: message.message.model,
+          stopReason: message.message.stop_reason ?? null,
+          turnDurationMs: typeof message.turn_duration_ms === "number" ? message.turn_duration_ms : undefined,
+          cliUuid: message.uuid,
+          leaderUserAddressed: message.leader_user_addressed === true,
+          timestamp: message.timestamp ?? null,
+        },
+        renderedIndex++,
+      );
       continue;
     }
     if (message.type === "compact_marker") {
-      visitor({
-        id: message.id || `compact-${historyIndex}`,
-        role: "system",
-        content: message.summary || "Conversation compacted",
-        variant: "info",
-        timestamp: null,
-      }, renderedIndex++);
+      visitor(
+        {
+          id: message.id || `compact-${historyIndex}`,
+          role: "system",
+          content: message.summary || "Conversation compacted",
+          variant: "info",
+          timestamp: null,
+        },
+        renderedIndex++,
+      );
       continue;
     }
     if (message.type === "permission_denied") {
-      visitor({
-        id: message.id,
-        role: "system",
-        content: message.summary,
-        variant: "denied",
-        timestamp: null,
-      }, renderedIndex++);
+      visitor(
+        {
+          id: message.id,
+          role: "system",
+          content: message.summary,
+          variant: "denied",
+          timestamp: null,
+        },
+        renderedIndex++,
+      );
       continue;
     }
     if (message.type === "permission_approved") {
-      visitor({
-        id: message.id,
-        role: "system",
-        content: message.summary,
-        variant: "approved",
-        metadata: message.answers?.length ? { answers: message.answers } : undefined,
-        timestamp: null,
-      }, renderedIndex++);
+      visitor(
+        {
+          id: message.id,
+          role: "system",
+          content: message.summary,
+          variant: "approved",
+          metadata: message.answers?.length ? { answers: message.answers } : undefined,
+          timestamp: null,
+        },
+        renderedIndex++,
+      );
       continue;
     }
     if (message.type === "result") {
       const errorText = normalizeErrorText(message.data);
       if (errorText) {
-        visitor({
-          id: `hist-error-${historyIndex}`,
-          role: "system",
-          content: `Error: ${errorText}`,
-          variant: "error",
-          timestamp: null,
-        }, renderedIndex++);
+        visitor(
+          {
+            id: `hist-error-${historyIndex}`,
+            role: "system",
+            content: `Error: ${errorText}`,
+            variant: "error",
+            timestamp: null,
+          },
+          renderedIndex++,
+        );
       }
     }
   }

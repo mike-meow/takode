@@ -34,11 +34,11 @@ function inferMimeTypeFromBuffer(audioBuffer: Buffer): string | null {
     return "audio/mp4";
   }
   if (
-    audioBuffer.length >= 4
-    && audioBuffer[0] === 0x1a
-    && audioBuffer[1] === 0x45
-    && audioBuffer[2] === 0xdf
-    && audioBuffer[3] === 0xa3
+    audioBuffer.length >= 4 &&
+    audioBuffer[0] === 0x1a &&
+    audioBuffer[1] === 0x45 &&
+    audioBuffer[2] === 0xdf &&
+    audioBuffer[3] === 0xa3
   ) {
     return "audio/webm";
   }
@@ -49,9 +49,9 @@ function inferMimeTypeFromBuffer(audioBuffer: Buffer): string | null {
     return "audio/flac";
   }
   if (
-    audioBuffer.length >= 12
-    && audioBuffer.subarray(0, 4).toString("ascii") === "RIFF"
-    && audioBuffer.subarray(8, 12).toString("ascii") === "WAVE"
+    audioBuffer.length >= 12 &&
+    audioBuffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    audioBuffer.subarray(8, 12).toString("ascii") === "WAVE"
   ) {
     return "audio/wav";
   }
@@ -123,11 +123,7 @@ export function resolveAudioUploadFormat(
  * Transcribe audio using Google Gemini API (inline base64 audio).
  * Uses gemini-2.0-flash for fast, cost-effective transcription.
  */
-export async function transcribeWithGemini(
-  audioBuffer: Buffer,
-  mimeType: string,
-  apiKey: string,
-): Promise<string> {
+export async function transcribeWithGemini(audioBuffer: Buffer, mimeType: string, apiKey: string): Promise<string> {
   const base64Audio = audioBuffer.toString("base64");
 
   const response = await fetch(
@@ -157,9 +153,7 @@ export async function transcribeWithGemini(
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
-    throw new Error(
-      `Gemini API error (${response.status}): ${errorBody || response.statusText}`,
-    );
+    throw new Error(`Gemini API error (${response.status}): ${errorBody || response.statusText}`);
   }
 
   const data = (await response.json()) as {
@@ -199,20 +193,15 @@ export async function transcribeWithOpenai(
     form.append("prompt", sttPrompt);
   }
 
-  const response = await fetch(
-    "https://api.openai.com/v1/audio/transcriptions",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-    },
-  );
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
-    throw new Error(
-      `OpenAI Whisper API error (${response.status}): ${errorBody || response.statusText}`,
-    );
+    throw new Error(`OpenAI Whisper API error (${response.status}): ${errorBody || response.statusText}`);
   }
 
   const data = (await response.json()) as { text?: string };

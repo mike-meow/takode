@@ -86,20 +86,14 @@ describe("rewritePathsInFile", () => {
   it("handles paths in arrays (e.g. changedFiles)", () => {
     const filePath = join(tempDir, "test.json");
     const original = JSON.stringify({
-      changedFiles: [
-        "/home/olduser/repo/src/foo.ts",
-        "/home/olduser/repo/src/bar.ts",
-      ],
+      changedFiles: ["/home/olduser/repo/src/foo.ts", "/home/olduser/repo/src/bar.ts"],
     });
     writeFileSync(filePath, original, "utf-8");
 
     rewritePathsInFile(filePath, "/home/olduser", "/Users/newuser");
 
     const result = JSON.parse(readFileSync(filePath, "utf-8"));
-    expect(result.changedFiles).toEqual([
-      "/Users/newuser/repo/src/foo.ts",
-      "/Users/newuser/repo/src/bar.ts",
-    ]);
+    expect(result.changedFiles).toEqual(["/Users/newuser/repo/src/foo.ts", "/Users/newuser/repo/src/bar.ts"]);
   });
 
   it("handles macOS to Linux migration", () => {
@@ -170,18 +164,17 @@ describe("cwdToProjectDir", () => {
   });
 
   it("handles dotfiles in paths (double dash from / + .)", () => {
-    expect(cwdToProjectDir("/home/jiayiwei/.companion/worktrees/companion/jiayi-9104"))
-      .toBe("-home-jiayiwei--companion-worktrees-companion-jiayi-9104");
+    expect(cwdToProjectDir("/home/jiayiwei/.companion/worktrees/companion/jiayi-9104")).toBe(
+      "-home-jiayiwei--companion-worktrees-companion-jiayi-9104",
+    );
   });
 
   it("handles macOS paths", () => {
-    expect(cwdToProjectDir("/Users/alice/projects/myapp"))
-      .toBe("-Users-alice-projects-myapp");
+    expect(cwdToProjectDir("/Users/alice/projects/myapp")).toBe("-Users-alice-projects-myapp");
   });
 
   it("preserves dashes in directory names", () => {
-    expect(cwdToProjectDir("/home/user/my-project"))
-      .toBe("-home-user-my-project");
+    expect(cwdToProjectDir("/home/user/my-project")).toBe("-home-user-my-project");
   });
 });
 

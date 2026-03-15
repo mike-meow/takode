@@ -99,12 +99,12 @@ describe("ensureQuestmasterIntegration", () => {
 
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.companion/bin/quest",
-      expect.stringContaining("if [ -x \"$HOME/.bun/bin/bun\" ]"),
+      expect.stringContaining('if [ -x "$HOME/.bun/bin/bun" ]'),
       "utf-8",
     );
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.companion/bin/quest",
-      expect.stringContaining("exec \"$HOME/.bun/bin/bun\""),
+      expect.stringContaining('exec "$HOME/.bun/bin/bun"'),
       "utf-8",
     );
   });
@@ -115,7 +115,7 @@ describe("ensureQuestmasterIntegration", () => {
     expect(fsMocks.mkdirSync).toHaveBeenCalledWith("/home/tester/.local/bin", { recursive: true });
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.local/bin/quest",
-      expect.stringContaining("exec \"$HOME/.companion/bin/quest\" \"$@\""),
+      expect.stringContaining('exec "$HOME/.companion/bin/quest" "$@"'),
       "utf-8",
     );
     expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/quest", 0o755);
@@ -131,7 +131,7 @@ describe("ensureQuestmasterIntegration", () => {
     );
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.local/bin/rg",
-      expect.stringContaining("if [ \"$1\" = \"--files\" ]; then"),
+      expect.stringContaining('if [ "$1" = "--files" ]; then'),
       "utf-8",
     );
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
@@ -141,7 +141,7 @@ describe("ensureQuestmasterIntegration", () => {
     );
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.local/bin/rg",
-      expect.stringContaining("exec grep \"${grep_args[@]}\" -- \"$pattern\" \"${positional[@]:1}\""),
+      expect.stringContaining('exec grep "${grep_args[@]}" -- "$pattern" "${positional[@]:1}"'),
       "utf-8",
     );
     expect(fsMocks.chmodSync).toHaveBeenCalledWith("/home/tester/.local/bin/rg", 0o755);

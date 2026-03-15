@@ -43,12 +43,16 @@ export function SessionNumChip({ sessionId, className }: SessionNumChipProps) {
     setTooltipPos(null);
   }, []);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigateToSession(sessionId);
-  }, [sessionId]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      navigateToSession(sessionId);
+    },
+    [sessionId],
+  );
 
-  const defaultClass = "text-[11px] font-mono px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors";
+  const defaultClass =
+    "text-[11px] font-mono px-1.5 py-0.5 rounded bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20 cursor-pointer transition-colors";
 
   return (
     <>
@@ -88,7 +92,19 @@ function SessionChipTooltip({
   onMouseLeave,
 }: {
   sessionId: string;
-  sdkSession: { sessionNum?: number | null; state: string; model?: string; backendType?: string; cliConnected?: boolean; isOrchestrator?: boolean; herdedBy?: string; gitBranch?: string; cwd: string } | undefined;
+  sdkSession:
+    | {
+        sessionNum?: number | null;
+        state: string;
+        model?: string;
+        backendType?: string;
+        cliConnected?: boolean;
+        isOrchestrator?: boolean;
+        herdedBy?: string;
+        gitBranch?: string;
+        cwd: string;
+      }
+    | undefined;
   sessionName: string | undefined;
   pos: { x: number; y: number };
   onMouseEnter: () => void;
@@ -114,9 +130,11 @@ function SessionChipTooltip({
   const model = sdkSession?.model?.replace(/-\d{8}$/, "") || "";
   const backend = sdkSession?.backendType === "codex" ? "Codex" : "Claude";
   const isConnected = sdkSession?.cliConnected;
-  const statusColor = !isConnected ? "bg-cc-muted/40"
-    : sdkSession?.state === "running" ? "bg-cc-success"
-    : "bg-cc-muted/60";
+  const statusColor = !isConnected
+    ? "bg-cc-muted/40"
+    : sdkSession?.state === "running"
+      ? "bg-cc-success"
+      : "bg-cc-muted/60";
   const branch = sdkSession?.gitBranch || "";
 
   return createPortal(
@@ -137,10 +155,14 @@ function SessionChipTooltip({
         <div className="mt-1 text-[9px] text-cc-muted/70 font-mono truncate">{sessionId}</div>
         {/* Meta: backend + model + branch */}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-cc-muted bg-cc-muted/10">{backend}</span>
+          <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-cc-muted bg-cc-muted/10">
+            {backend}
+          </span>
           {model && <span className="text-[9px] text-cc-muted truncate">{model}</span>}
           {sdkSession?.isOrchestrator && (
-            <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-amber-500 bg-amber-500/10">leader</span>
+            <span className="text-[9px] font-medium px-1 rounded-full leading-[14px] text-amber-500 bg-amber-500/10">
+              leader
+            </span>
           )}
         </div>
         {branch && (

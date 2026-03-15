@@ -75,10 +75,16 @@ vi.mock("./settings-manager.js", () => ({
   getSettings: vi.fn(() => ({
     serverName: "",
     serverId: "",
-    pushoverUserKey: "", pushoverApiToken: "", pushoverDelaySeconds: 30, pushoverEnabled: true, pushoverBaseUrl: "",
-    claudeBinary: "", codexBinary: "",
+    pushoverUserKey: "",
+    pushoverApiToken: "",
+    pushoverDelaySeconds: 30,
+    pushoverEnabled: true,
+    pushoverBaseUrl: "",
+    claudeBinary: "",
+    codexBinary: "",
     maxKeepAlive: 0,
-    autoApprovalEnabled: false, autoApprovalModel: "haiku",
+    autoApprovalEnabled: false,
+    autoApprovalModel: "haiku",
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -188,7 +194,12 @@ describe("skills routes backend targeting", () => {
     );
 
     const sessionStore = { setArchived: vi.fn(async () => true), flushAll: vi.fn(async () => {}) } as any;
-    const tracker = { addMapping: vi.fn(), getBySession: vi.fn(() => null), removeBySession: vi.fn(), isWorktreeInUse: vi.fn(() => false) } as any;
+    const tracker = {
+      addMapping: vi.fn(),
+      getBySession: vi.fn(() => null),
+      removeBySession: vi.fn(),
+      isWorktreeInUse: vi.fn(() => false),
+    } as any;
     const terminalManager = { getInfo: () => null, spawn: () => "", kill: () => {} } as any;
 
     app = new Hono();
@@ -199,7 +210,7 @@ describe("skills routes backend targeting", () => {
     // Validates default backend=both behavior for GET /api/skills.
     const res = await app.request("/api/skills");
     expect(res.status).toBe(200);
-    const json = await res.json() as Array<{ slug: string; backends: string[] }>;
+    const json = (await res.json()) as Array<{ slug: string; backends: string[] }>;
     expect(json).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ slug: "quest", backends: ["claude"] }),

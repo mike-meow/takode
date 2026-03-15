@@ -1,11 +1,5 @@
 import { mkdirSync } from "node:fs";
-import {
-  readdir,
-  readFile,
-  writeFile,
-  unlink,
-  mkdir,
-} from "node:fs/promises";
+import { readdir, readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { extname } from "node:path";
@@ -30,9 +24,7 @@ import { getName } from "./session-names.js";
 
 /** Normalize verification items: accept strings or {text,checked} objects.
  *  Rejects items with empty text. */
-function normalizeVerificationItems(
-  items: unknown[],
-): QuestVerificationItem[] {
+function normalizeVerificationItems(items: unknown[]): QuestVerificationItem[] {
   const result: QuestVerificationItem[] = [];
   for (const item of items) {
     if (typeof item === "string") {
@@ -45,16 +37,14 @@ function normalizeVerificationItems(
       "text" in item &&
       typeof (item as { text: unknown }).text === "string"
     ) {
-      const text = ((item as { text: string }).text).trim();
+      const text = (item as { text: string }).text.trim();
       if (!text) throw new Error("Verification item text must not be empty");
       result.push({
         text,
         checked: !!(item as { checked?: boolean }).checked,
       });
     } else {
-      throw new Error(
-        "Each verification item must be a string or { text: string, checked?: boolean }",
-      );
+      throw new Error("Each verification item must be a string or { text: string, checked?: boolean }");
     }
   }
   return result;
@@ -110,10 +100,7 @@ function shouldMarkVerificationInboxUnreadFromFeedbackPatch(
 ): boolean {
   if (current.status !== "needs_verification") return false;
   if (!nextFeedback || nextFeedback.length === 0) return false;
-  const previous =
-    "feedback" in current
-      ? (current as { feedback?: QuestFeedbackEntry[] }).feedback ?? []
-      : [];
+  const previous = "feedback" in current ? ((current as { feedback?: QuestFeedbackEntry[] }).feedback ?? []) : [];
   if (nextFeedback.length <= previous.length) return false;
   const appended = nextFeedback.slice(previous.length);
   return appended.some((entry) => entry.author === "agent");
@@ -207,9 +194,7 @@ async function readAllVersions(): Promise<Map<string, QuestmasterTask[]>> {
   await ensureDir();
   const groups = new Map<string, QuestmasterTask[]>();
   try {
-    const files = (await readdir(QUESTMASTER_DIR)).filter(
-      (f) => f.endsWith(".json") && !f.startsWith("_"),
-    );
+    const files = (await readdir(QUESTMASTER_DIR)).filter((f) => f.endsWith(".json") && !f.startsWith("_"));
     for (const file of files) {
       try {
         const raw = await readFile(join(QUESTMASTER_DIR, file), "utf-8");
@@ -323,17 +308,11 @@ export async function createQuest(input: QuestCreateInput): Promise<QuestmasterT
 }
 
 /** Same-stage edit. Mutates the latest version in place, no new version. */
-export async function patchQuest(
-  questId: string,
-  patch: QuestPatchInput,
-): Promise<QuestmasterTask | null> {
+export async function patchQuest(questId: string, patch: QuestPatchInput): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
 
-  const markVerificationInboxUnread = shouldMarkVerificationInboxUnreadFromFeedbackPatch(
-    current,
-    patch.feedback,
-  );
+  const markVerificationInboxUnread = shouldMarkVerificationInboxUnreadFromFeedbackPatch(current, patch.feedback);
   const updated = { ...current, updatedAt: Date.now() } as QuestmasterTask;
   if (patch.title !== undefined) (updated as { title: string }).title = patch.title.trim();
   if (patch.description !== undefined) {
@@ -371,17 +350,21 @@ export async function deleteQuest(questId: string): Promise<boolean> {
  * Generic status transition. Creates a new version linked to the previous.
  * Carries forward fields from the current version and adds new required fields.
  */
-export async function transitionQuest(
-  questId: string,
-  input: QuestTransitionInput,
-): Promise<QuestmasterTask | null> {
+export async function transitionQuest(questId: string, input: QuestTransitionInput): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
 
   const targetStatus = input.status;
 
   // Guard against no-op transitions (same status with no new fields)
-  if (targetStatus === current.status && !input.description && !input.sessionId && !input.verificationItems && !input.notes && !input.cancelled) {
+  if (
+    targetStatus === current.status &&
+    !input.description &&
+    !input.sessionId &&
+    !input.verificationItems &&
+    !input.notes &&
+    !input.cancelled
+  ) {
     return current;
   }
   const now = Date.now();
@@ -418,20 +401,14 @@ export async function transitionQuest(
         ...base,
         status: "idea",
         ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
-        ...("description" in current && current.description
-          ? { description: current.description }
-          : {}),
-        ...(input.description !== undefined
-          ? { description: input.description }
-          : {}),
+        ...("description" in current && current.description ? { description: current.description } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
       } as QuestIdea;
       break;
     }
 
     case "refined": {
-      const description =
-        input.description ??
-        ("description" in current ? current.description : undefined);
+      const description = input.description ?? ("description" in current ? current.description : undefined);
       if (!description?.trim()) {
         throw new Error("Description is required for refined status");
       }
@@ -448,19 +425,20 @@ export async function transitionQuest(
     }
 
     case "in_progress": {
-      const description =
-        input.description ??
-        ("description" in current ? current.description : undefined);
+      const description = input.description ?? ("description" in current ? current.description : undefined);
       if (!description?.trim()) {
         throw new Error("Description is required for in_progress status");
       }
       const sessionId =
-        input.sessionId ??
-        ("sessionId" in current ? (current as QuestInProgress).sessionId : undefined);
+        input.sessionId ?? ("sessionId" in current ? (current as QuestInProgress).sessionId : undefined);
       if (!sessionId) {
         throw new Error("sessionId is required for in_progress status");
       }
-      if (currentActiveSessionId && currentActiveSessionId !== sessionId && !previousOwners.includes(currentActiveSessionId)) {
+      if (
+        currentActiveSessionId &&
+        currentActiveSessionId !== sessionId &&
+        !previousOwners.includes(currentActiveSessionId)
+      ) {
         previousOwners.push(currentActiveSessionId);
       }
       const nextPreviousOwners = previousOwners.filter((sid) => sid !== sessionId);
@@ -477,40 +455,34 @@ export async function transitionQuest(
     }
 
     case "needs_verification": {
-      const description =
-        input.description ??
-        ("description" in current ? current.description : undefined);
+      const description = input.description ?? ("description" in current ? current.description : undefined);
       if (!description?.trim()) {
         throw new Error("Description is required for needs_verification status");
       }
       const sessionId =
-        input.sessionId ??
-        ("sessionId" in current ? (current as QuestInProgress).sessionId : undefined);
+        input.sessionId ?? ("sessionId" in current ? (current as QuestInProgress).sessionId : undefined);
       if (!sessionId) {
         throw new Error("sessionId is required for needs_verification status");
       }
-      if (currentActiveSessionId && currentActiveSessionId !== sessionId && !previousOwners.includes(currentActiveSessionId)) {
+      if (
+        currentActiveSessionId &&
+        currentActiveSessionId !== sessionId &&
+        !previousOwners.includes(currentActiveSessionId)
+      ) {
         previousOwners.push(currentActiveSessionId);
       }
       const nextPreviousOwners = previousOwners.filter((sid) => sid !== sessionId);
       const rawItems =
         input.verificationItems ??
-        ("verificationItems" in current
-          ? (current as QuestNeedsVerification).verificationItems
-          : undefined);
+        ("verificationItems" in current ? (current as QuestNeedsVerification).verificationItems : undefined);
       // Empty items is allowed — quest done will auto-pass with nothing to verify
-      const verificationItems = rawItems && rawItems.length > 0
-        ? normalizeVerificationItems(rawItems)
-        : [];
+      const verificationItems = rawItems && rawItems.length > 0 ? normalizeVerificationItems(rawItems) : [];
       quest = {
         ...base,
         status: "needs_verification",
         description,
         sessionId,
-        claimedAt:
-          "claimedAt" in current
-            ? (current as QuestInProgress).claimedAt
-            : now,
+        claimedAt: "claimedAt" in current ? (current as QuestInProgress).claimedAt : now,
         verificationItems,
         verificationInboxUnread: true,
         ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
@@ -520,9 +492,7 @@ export async function transitionQuest(
     }
 
     case "done": {
-      const description =
-        input.description ??
-        ("description" in current ? current.description : undefined);
+      const description = input.description ?? ("description" in current ? current.description : undefined);
       if (!description?.trim()) {
         throw new Error("Description is required for done status");
       }
@@ -531,21 +501,14 @@ export async function transitionQuest(
       }
       const rawItems =
         input.verificationItems ??
-        ("verificationItems" in current
-          ? (current as QuestNeedsVerification).verificationItems
-          : undefined);
-      const verificationItems = rawItems && rawItems.length > 0
-        ? normalizeVerificationItems(rawItems)
-        : [];
+        ("verificationItems" in current ? (current as QuestNeedsVerification).verificationItems : undefined);
+      const verificationItems = rawItems && rawItems.length > 0 ? normalizeVerificationItems(rawItems) : [];
       // Empty items = auto-pass (nothing to verify)
       quest = {
         ...base,
         status: "done",
         description,
-        claimedAt:
-          "claimedAt" in current
-            ? (current as QuestInProgress).claimedAt
-            : now,
+        claimedAt: "claimedAt" in current ? (current as QuestInProgress).claimedAt : now,
         verificationItems: verificationItems ?? [],
         ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
         completedAt: now,
@@ -570,9 +533,10 @@ export async function transitionQuest(
  */
 export async function getActiveQuestForSession(sessionId: string): Promise<QuestmasterTask | null> {
   const all = await listQuests();
-  return all.find(
-    (q) => q.status === "in_progress" && "sessionId" in q && (q as QuestInProgress).sessionId === sessionId,
-  ) ?? null;
+  return (
+    all.find((q) => q.status === "in_progress" && "sessionId" in q && (q as QuestInProgress).sessionId === sessionId) ??
+    null
+  );
 }
 
 /** Convenience: claim a quest (transition to in_progress). */
@@ -608,12 +572,8 @@ export async function claimQuest(
       // Archived active owner can be taken over by a live session.
     } else {
       const ownerName = getName(existingSessionId);
-      const ownerLabel = ownerName
-        ? `"${ownerName}" (${existingSessionId.slice(0, 8)})`
-        : existingSessionId;
-      throw new Error(
-        `Quest ${questId} is already claimed by session ${ownerLabel}`,
-      );
+      const ownerLabel = ownerName ? `"${ownerName}" (${existingSessionId.slice(0, 8)})` : existingSessionId;
+      throw new Error(`Quest ${questId} is already claimed by session ${ownerLabel}`);
     }
   }
 
@@ -623,7 +583,7 @@ export async function claimQuest(
   if (existing && existing.questId !== questId) {
     throw new Error(
       `Session already has an active quest: ${existing.questId} "${existing.title}". ` +
-      `Complete or transition it before claiming another.`,
+        `Complete or transition it before claiming another.`,
     );
   }
 
@@ -634,10 +594,7 @@ export async function claimQuest(
 }
 
 /** Convenience: complete a quest (transition to needs_verification). */
-export async function completeQuest(
-  questId: string,
-  items: QuestVerificationItem[],
-): Promise<QuestmasterTask | null> {
+export async function completeQuest(questId: string, items: QuestVerificationItem[]): Promise<QuestmasterTask | null> {
   return transitionQuest(questId, {
     status: "needs_verification",
     verificationItems: items,
@@ -660,10 +617,7 @@ export async function markDone(
  * Cancel a quest from any status. Transitions directly to done+cancelled
  * without requiring sessionId or verificationItems.
  */
-export async function cancelQuest(
-  questId: string,
-  notes?: string,
-): Promise<QuestmasterTask | null> {
+export async function cancelQuest(questId: string, notes?: string): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
 
@@ -671,8 +625,7 @@ export async function cancelQuest(
   const newVersion = current.version + 1;
   const newId = nextVersionId(questId, current.version);
 
-  const description =
-    "description" in current ? current.description : undefined;
+  const description = "description" in current ? current.description : undefined;
   const currentActiveSessionId = getActiveSessionId(current);
   const previousOwners = getPreviousOwnerSessionIds(current);
   if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
@@ -693,15 +646,9 @@ export async function cancelQuest(
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     status: "done",
     ...(description ? { description } : {}),
-    claimedAt:
-      "claimedAt" in current
-        ? (current as QuestInProgress).claimedAt
-        : now,
+    claimedAt: "claimedAt" in current ? (current as QuestInProgress).claimedAt : now,
     // Carry forward verificationItems if present, use empty array otherwise
-    verificationItems:
-      "verificationItems" in current
-        ? (current as QuestNeedsVerification).verificationItems
-        : [],
+    verificationItems: "verificationItems" in current ? (current as QuestNeedsVerification).verificationItems : [],
     completedAt: now,
     cancelled: true,
     ...(notes ? { notes } : {}),
@@ -737,9 +684,7 @@ export async function checkVerificationItem(
 }
 
 /** Mark a verification quest as read so it leaves the verification inbox. */
-export async function markQuestVerificationRead(
-  questId: string,
-): Promise<QuestmasterTask | null> {
+export async function markQuestVerificationRead(questId: string): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
   if (current.status !== "needs_verification") return current;
@@ -755,9 +700,7 @@ export async function markQuestVerificationRead(
 }
 
 /** Mark a verification quest as unread so it returns to the verification inbox. */
-export async function markQuestVerificationInboxUnread(
-  questId: string,
-): Promise<QuestmasterTask | null> {
+export async function markQuestVerificationInboxUnread(questId: string): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
   if (current.status !== "needs_verification") return current;
@@ -783,11 +726,7 @@ const MIME_TO_EXT: Record<string, string> = {
 };
 
 /** Save an image to disk and return image metadata. */
-export async function saveQuestImage(
-  filename: string,
-  data: Buffer,
-  mimeType: string,
-): Promise<QuestImage> {
+export async function saveQuestImage(filename: string, data: Buffer, mimeType: string): Promise<QuestImage> {
   await ensureImagesDir();
   const id = randomBytes(8).toString("hex");
   const ext = MIME_TO_EXT[mimeType] || extname(filename) || ".bin";
@@ -798,10 +737,7 @@ export async function saveQuestImage(
 }
 
 /** Add images to a quest (in-place patch, no new version). */
-export async function addQuestImages(
-  questId: string,
-  images: QuestImage[],
-): Promise<QuestmasterTask | null> {
+export async function addQuestImages(questId: string, images: QuestImage[]): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
 
@@ -813,18 +749,13 @@ export async function addQuestImages(
 }
 
 /** Remove an image from a quest and delete the file. */
-export async function removeQuestImage(
-  questId: string,
-  imageId: string,
-): Promise<QuestmasterTask | null> {
+export async function removeQuestImage(questId: string, imageId: string): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
   if (!current.images?.length) return current;
 
   const image = current.images.find((img) => img.id === imageId);
-  (current as { images: QuestImage[] }).images = current.images.filter(
-    (img) => img.id !== imageId,
-  );
+  (current as { images: QuestImage[] }).images = current.images.filter((img) => img.id !== imageId);
   (current as { updatedAt?: number }).updatedAt = Date.now();
   await writeQuest(current);
 
@@ -841,21 +772,17 @@ export async function removeQuestImage(
 }
 
 /** Read an image file from disk. Returns null if not found. */
-export async function readQuestImageFile(
-  imageId: string,
-): Promise<{ data: Buffer; mimeType: string } | null> {
+export async function readQuestImageFile(imageId: string): Promise<{ data: Buffer; mimeType: string } | null> {
   await ensureImagesDir();
   try {
     const files = await readdir(IMAGES_DIR);
     const file = files.find((f) => f.startsWith(imageId));
     if (!file) return null;
     const fullPath = join(IMAGES_DIR, file);
-    const data = await readFile(fullPath) as Buffer;
+    const data = (await readFile(fullPath)) as Buffer;
     // Derive MIME from extension
     const ext = extname(file).toLowerCase();
-    const mimeType =
-      Object.entries(MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ??
-      "application/octet-stream";
+    const mimeType = Object.entries(MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
     return { data, mimeType };
   } catch {
     return null;

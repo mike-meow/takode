@@ -9,12 +9,7 @@ import {
   type Modifier,
   type DraggableAttributes,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useStore, countUserPermissions, type PendingSession } from "../store.js";
 import { api, type SessionSearchResult } from "../api.js";
@@ -33,7 +28,11 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
-import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId, type HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
+import {
+  buildHerdGroupBadgeThemes,
+  getHerdGroupLeaderId,
+  type HerdGroupBadgeTheme,
+} from "../utils/herd-group-theme.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -64,14 +63,7 @@ function SortableProjectGroup({
     isDragging: boolean;
   }) => ReactNode;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -200,26 +192,31 @@ export function Sidebar() {
 
   // Fetch server settings (name + ID) on mount
   useEffect(() => {
-    api.getSettings().then((s) => {
-      if (s.serverName) setServerName(s.serverName);
-      if (s.serverId) {
-        const migrated = bootstrapServerId(s.serverId);
-        if (migrated) {
-          // First visit to this server — re-read store state from now-scoped keys
-          const store = useStore.getState();
-          const sessionId = scopedGetItem("cc-current-session");
-          store.setCurrentSession(sessionId);
-          const namesRaw = scopedGetItem("cc-session-names");
-          if (namesRaw) {
-            try {
-              for (const [id, name] of JSON.parse(namesRaw)) {
-                store.setSessionName(id, name);
+    api
+      .getSettings()
+      .then((s) => {
+        if (s.serverName) setServerName(s.serverName);
+        if (s.serverId) {
+          const migrated = bootstrapServerId(s.serverId);
+          if (migrated) {
+            // First visit to this server — re-read store state from now-scoped keys
+            const store = useStore.getState();
+            const sessionId = scopedGetItem("cc-current-session");
+            store.setCurrentSession(sessionId);
+            const namesRaw = scopedGetItem("cc-session-names");
+            if (namesRaw) {
+              try {
+                for (const [id, name] of JSON.parse(namesRaw)) {
+                  store.setSessionName(id, name);
+                }
+              } catch {
+                /* ignore parse errors */
               }
-            } catch { /* ignore parse errors */ }
+            }
           }
         }
-      }
-    }).catch(() => {});
+      })
+      .catch(() => {});
   }, []);
 
   // Update document.title when serverName, attention, or permission counts change.
@@ -376,33 +373,39 @@ export function Sidebar() {
     setHoveredSession(null);
   }
 
-  const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation();
-    try {
-      disconnectSession(sessionId);
-      await api.deleteSession(sessionId);
-    } catch {
-      // best-effort
-    }
-    if (useStore.getState().currentSessionId === sessionId) {
-      navigateToMostRecentSession({ excludeId: sessionId });
-    }
-    removeSession(sessionId);
-  }, [removeSession]);
+  const handleDeleteSession = useCallback(
+    async (e: React.MouseEvent, sessionId: string) => {
+      e.stopPropagation();
+      try {
+        disconnectSession(sessionId);
+        await api.deleteSession(sessionId);
+      } catch {
+        // best-effort
+      }
+      if (useStore.getState().currentSessionId === sessionId) {
+        navigateToMostRecentSession({ excludeId: sessionId });
+      }
+      removeSession(sessionId);
+    },
+    [removeSession],
+  );
 
-  const handleArchiveSession = useCallback((e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation();
-    // Check if session uses a container or worktree — if so, ask for confirmation
-    const sdkInfo = sdkSessions.find((s) => s.sessionId === sessionId);
-    const bridgeState = sessions.get(sessionId);
-    const isContainerized = bridgeState?.is_containerized || !!sdkInfo?.containerId || false;
-    const isWorktree = bridgeState?.is_worktree || sdkInfo?.isWorktree || false;
-    if (isContainerized || isWorktree) {
-      setConfirmArchiveId(sessionId);
-      return;
-    }
-    doArchive(sessionId);
-  }, [sdkSessions, sessions]);
+  const handleArchiveSession = useCallback(
+    (e: React.MouseEvent, sessionId: string) => {
+      e.stopPropagation();
+      // Check if session uses a container or worktree — if so, ask for confirmation
+      const sdkInfo = sdkSessions.find((s) => s.sessionId === sessionId);
+      const bridgeState = sessions.get(sessionId);
+      const isContainerized = bridgeState?.is_containerized || !!sdkInfo?.containerId || false;
+      const isWorktree = bridgeState?.is_worktree || sdkInfo?.isWorktree || false;
+      if (isContainerized || isWorktree) {
+        setConfirmArchiveId(sessionId);
+        return;
+      }
+      doArchive(sessionId);
+    },
+    [sdkSessions, sessions],
+  );
 
   const doArchive = useCallback(async (sessionId: string, force?: boolean) => {
     try {
@@ -454,58 +457,64 @@ export function Sidebar() {
   for (const id of sessions.keys()) allSessionIds.add(id);
   for (const s of sdkSessions) allSessionIds.add(s.sessionId);
 
-  const allSessionList: SessionItemType[] = Array.from(allSessionIds).map((id) => {
-    const bridgeState = sessions.get(id);
-    const sdkInfo = sdkSessions.find((s) => s.sessionId === id);
-    const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
-    const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
-    const gitAhead = bridgeState?.git_ahead === 0 && sdkGitAhead > 0
-      ? sdkGitAhead
-      : (bridgeState?.git_ahead ?? sdkGitAhead);
-    const gitBehind = bridgeState?.git_behind === 0 && sdkGitBehind > 0
-      ? sdkGitBehind
-      : (bridgeState?.git_behind ?? sdkGitBehind);
-    const serverLinesAdded = bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0;
-    const serverLinesRemoved = bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0;
-    const localLineStats = sumDiffFileStats(diffFileStats.get(id));
-    const linesAdded = serverLinesAdded === 0 && serverLinesRemoved === 0 && (localLineStats.additions > 0 || localLineStats.deletions > 0)
-      ? localLineStats.additions
-      : serverLinesAdded;
-    const linesRemoved = serverLinesAdded === 0 && serverLinesRemoved === 0 && (localLineStats.additions > 0 || localLineStats.deletions > 0)
-      ? localLineStats.deletions
-      : serverLinesRemoved;
-    return {
-      id,
-      model: bridgeState?.model || sdkInfo?.model || "",
-      cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
-      gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
-      isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
-      gitAhead,
-      gitBehind,
-      linesAdded,
-      linesRemoved,
-      isConnected: cliConnected.get(id) ?? sdkInfo?.cliConnected ?? false,
-      status: sessionStatus.get(id) ?? null,
-      sdkState: sdkInfo?.state ?? null,
-      createdAt: sdkInfo?.createdAt ?? 0,
-      archived: sdkInfo?.archived ?? false,
-      archivedAt: sdkInfo?.archivedAt,
-      backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
-      repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
-      permCount: countUserPermissions(pendingPermissions.get(id)),
-      cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
-      cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
-      isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
-      worktreeExists: sdkInfo?.worktreeExists,
-      worktreeDirty: sdkInfo?.worktreeDirty,
-      askPermission: askPermissionMap?.get(id),
-      idleKilled: cliDisconnectReason.get(id) === "idle_limit",
-      lastActivityAt: sdkInfo?.lastActivityAt,
-      isOrchestrator: sdkInfo?.isOrchestrator || false,
-      herdedBy: sdkInfo?.herdedBy,
-      sessionNum: sdkInfo?.sessionNum ?? null,
-    };
-  }).sort((a, b) => b.createdAt - a.createdAt);
+  const allSessionList: SessionItemType[] = Array.from(allSessionIds)
+    .map((id) => {
+      const bridgeState = sessions.get(id);
+      const sdkInfo = sdkSessions.find((s) => s.sessionId === id);
+      const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
+      const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
+      const gitAhead =
+        bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
+      const gitBehind =
+        bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
+      const serverLinesAdded = bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0;
+      const serverLinesRemoved = bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0;
+      const localLineStats = sumDiffFileStats(diffFileStats.get(id));
+      const linesAdded =
+        serverLinesAdded === 0 &&
+        serverLinesRemoved === 0 &&
+        (localLineStats.additions > 0 || localLineStats.deletions > 0)
+          ? localLineStats.additions
+          : serverLinesAdded;
+      const linesRemoved =
+        serverLinesAdded === 0 &&
+        serverLinesRemoved === 0 &&
+        (localLineStats.additions > 0 || localLineStats.deletions > 0)
+          ? localLineStats.deletions
+          : serverLinesRemoved;
+      return {
+        id,
+        model: bridgeState?.model || sdkInfo?.model || "",
+        cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
+        gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
+        isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
+        gitAhead,
+        gitBehind,
+        linesAdded,
+        linesRemoved,
+        isConnected: cliConnected.get(id) ?? sdkInfo?.cliConnected ?? false,
+        status: sessionStatus.get(id) ?? null,
+        sdkState: sdkInfo?.state ?? null,
+        createdAt: sdkInfo?.createdAt ?? 0,
+        archived: sdkInfo?.archived ?? false,
+        archivedAt: sdkInfo?.archivedAt,
+        backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
+        repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
+        permCount: countUserPermissions(pendingPermissions.get(id)),
+        cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
+        cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
+        isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
+        worktreeExists: sdkInfo?.worktreeExists,
+        worktreeDirty: sdkInfo?.worktreeDirty,
+        askPermission: askPermissionMap?.get(id),
+        idleKilled: cliDisconnectReason.get(id) === "idle_limit",
+        lastActivityAt: sdkInfo?.lastActivityAt,
+        isOrchestrator: sdkInfo?.isOrchestrator || false,
+        herdedBy: sdkInfo?.herdedBy,
+        sessionNum: sdkInfo?.sessionNum ?? null,
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   const activeSessions = allSessionList.filter((s) => !s.archived && !s.cronJobId);
   const cronSessions = allSessionList.filter((s) => !s.archived && !!s.cronJobId);
@@ -524,19 +533,22 @@ export function Sidebar() {
   const groupKeys = useMemo(() => projectGroups.map((group) => group.key), [projectGroups]);
   const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const groupSensors = useSensors(groupPointerSensor);
-  const handleGroupDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  const handleGroupDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
 
-    const oldIndex = groupKeys.indexOf(active.id as string);
-    const newIndex = groupKeys.indexOf(over.id as string);
-    if (oldIndex === -1 || newIndex === -1) return;
+      const oldIndex = groupKeys.indexOf(active.id as string);
+      const newIndex = groupKeys.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return;
 
-    const newOrder = arrayMove(groupKeys, oldIndex, newIndex);
-    api.updateGroupOrder(newOrder).catch((err) => {
-      console.warn("[sidebar] failed to update group order:", err);
-    });
-  }, [groupKeys]);
+      const newOrder = arrayMove(groupKeys, oldIndex, newIndex);
+      api.updateGroupOrder(newOrder).catch((err) => {
+        console.warn("[sidebar] failed to update group order:", err);
+      });
+    },
+    [groupKeys],
+  );
 
   // Server-side session search (debounced, abort on query change).
   useEffect(() => {
@@ -581,7 +593,7 @@ export function Sidebar() {
 
     const sessionsById = new Map(allSessionList.map((s) => [s.id, s]));
     const results: Array<{
-      session: typeof allSessionList[number];
+      session: (typeof allSessionList)[number];
       matchContext: string | null;
       matchedField: SessionSearchResult["matchedField"];
     }> = [];
@@ -722,7 +734,9 @@ export function Sidebar() {
             </svg>
           </button>
           {import.meta.env.DEV && (
-            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 leading-none">Dev</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 leading-none">
+              Dev
+            </span>
           )}
         </div>
 
@@ -735,16 +749,13 @@ export function Sidebar() {
           </svg>
           New Session
         </button>
-
       </div>
 
       {/* Session list */}
       <div
         data-testid="sidebar-session-scroller"
         className={`flex-1 px-2 pb-2 overflow-x-hidden ${
-          mobileReorderHandleActive
-            ? "overflow-y-hidden overscroll-none"
-            : "overflow-y-auto"
+          mobileReorderHandleActive ? "overflow-y-hidden overscroll-none" : "overflow-y-auto"
         }`}
         style={{
           touchAction: mobileReorderHandleActive ? "none" : "pan-y",
@@ -755,7 +766,13 @@ export function Sidebar() {
         {allSessionList.length > 0 && (
           <div className="px-2 pb-1.5 flex items-center gap-1">
             <div className="relative flex-1 transition-all duration-200 ease-in-out">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-cc-muted pointer-events-none">
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-cc-muted pointer-events-none"
+              >
                 <circle cx="6.5" cy="6.5" r="4.5" />
                 <path d="M10 10l3.5 3.5" strokeLinecap="round" />
               </svg>
@@ -766,13 +783,21 @@ export function Sidebar() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
-                onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); searchInputRef.current?.blur(); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchQuery("");
+                    searchInputRef.current?.blur();
+                  }
+                }}
                 placeholder="Search..."
                 className="w-full pl-6 pr-6 py-1.5 text-[11px] bg-cc-input-bg border border-cc-border rounded-md text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary/60 transition-colors"
               />
               {searchQuery && (
                 <button
-                  onClick={() => { setSearchQuery(""); searchInputRef.current?.focus(); }}
+                  onClick={() => {
+                    setSearchQuery("");
+                    searchInputRef.current?.focus();
+                  }}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-cc-muted hover:text-cc-fg cursor-pointer"
                 >
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
@@ -786,9 +811,7 @@ export function Sidebar() {
               <button
                 onClick={() => setReorderMode(!reorderMode)}
                 className={`sm:hidden text-[10px] font-medium px-2.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 ${
-                  reorderMode
-                    ? "bg-cc-primary/10 text-cc-primary"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                  reorderMode ? "bg-cc-primary/10 text-cc-primary" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
                 }`}
               >
                 {reorderMode ? "Done" : "Edit"}
@@ -826,9 +849,7 @@ export function Sidebar() {
             </div>
           )
         ) : activeSessions.length === 0 && cronSessions.length === 0 && archivedSessions.length === 0 ? (
-          <p className="px-3 py-8 text-xs text-cc-muted text-center leading-relaxed">
-            No sessions yet.
-          </p>
+          <p className="px-3 py-8 text-xs text-cc-muted text-center leading-relaxed">No sessions yet.</p>
         ) : (
           <>
             {/* Pending sessions — shown above project groups during creation */}
@@ -874,12 +895,14 @@ export function Sidebar() {
                           isFirst={i === 0}
                           groupDragging={isDragging}
                           onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
-                          groupDragHandleProps={projectGroups.length > 1
-                            ? {
-                                listeners: listeners as Record<string, unknown> | undefined,
-                                attributes: attributes as unknown as Record<string, unknown>,
-                              }
-                            : undefined}
+                          groupDragHandleProps={
+                            projectGroups.length > 1
+                              ? {
+                                  listeners: listeners as Record<string, unknown> | undefined,
+                                  attributes: attributes as unknown as Record<string, unknown>,
+                                }
+                              : undefined
+                          }
                           herdGroupBadgeThemes={herdGroupBadgeThemes}
                           {...sessionItemProps}
                         />
@@ -896,7 +919,11 @@ export function Sidebar() {
                   onClick={() => setShowCronSessions(!showCronSessions)}
                   className="w-full px-3 py-1.5 text-[11px] font-medium text-violet-400 uppercase tracking-wider flex items-center gap-1.5 hover:text-violet-300 transition-colors cursor-pointer"
                 >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 transition-transform ${showCronSessions ? "rotate-90" : ""}`}>
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className={`w-3 h-3 transition-transform ${showCronSessions ? "rotate-90" : ""}`}
+                  >
                     <path d="M6 4l4 4-4 4" />
                   </svg>
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 opacity-60">
@@ -930,7 +957,11 @@ export function Sidebar() {
                   onClick={() => setShowArchived(!showArchived)}
                   className="w-full px-3 py-1.5 text-[11px] font-medium text-cc-muted uppercase tracking-wider flex items-center gap-1.5 hover:text-cc-fg transition-colors cursor-pointer"
                 >
-                  <svg viewBox="0 0 16 16" fill="currentColor" className={`w-3 h-3 transition-transform ${showArchived ? "rotate-90" : ""}`}>
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className={`w-3 h-3 transition-transform ${showArchived ? "rotate-90" : ""}`}
+                  >
                     <path d="M6 4l4 4-4 4" />
                   </svg>
                   Archived ({archivedSessions.length})
@@ -982,9 +1013,7 @@ export function Sidebar() {
               }
             }}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
-              isTerminalPage
-                ? "bg-cc-active text-cc-fg"
-                : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              isTerminalPage ? "bg-cc-active text-cc-fg" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" className="w-4 h-4">
@@ -1011,9 +1040,7 @@ export function Sidebar() {
               }
             }}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
-              isScheduledPage
-                ? "bg-cc-active text-cc-fg"
-                : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              isScheduledPage ? "bg-cc-active text-cc-fg" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
@@ -1038,9 +1065,7 @@ export function Sidebar() {
               }
             }}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
-              isQuestmasterPage
-                ? "bg-cc-active text-cc-fg"
-                : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              isQuestmasterPage ? "bg-cc-active text-cc-fg" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
@@ -1065,13 +1090,15 @@ export function Sidebar() {
               }
             }}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${
-              isSettingsPage
-                ? "bg-cc-active text-cc-fg"
-                : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+              isSettingsPage ? "bg-cc-active text-cc-fg" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
             }`}
           >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.35-.8-2.92.77-2.12 2.12.54.9.07 2.04-.95 2.29-1.56.38-1.56 2.6 0 2.98 1.02.25 1.49 1.39.95 2.29-.8 1.35.77 2.92 2.12 2.12.9-.54 2.04-.07 2.29.95.38 1.56 2.6 1.56 2.98 0 .25-1.02 1.39-1.49 2.29-.95 1.35.8 2.92-.77 2.12-2.12-.54-.9-.07-2.04.95-2.29 1.56-.38 1.56-2.6 0-2.98-1.02-.25-1.49-1.39-.95-2.29.8-1.35-.77-2.92-2.12-2.12-.9.54-2.04.07-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+              <path
+                fillRule="evenodd"
+                d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.35-.8-2.92.77-2.12 2.12.54.9.07 2.04-.95 2.29-1.56.38-1.56 2.6 0 2.98 1.02.25 1.49 1.39.95 2.29-.8 1.35.77 2.92 2.12 2.12.9-.54 2.04-.07 2.29.95.38 1.56 2.6 1.56 2.98 0 .25-1.02 1.39-1.49 2.29-.95 1.35.8 2.92-.77 2.12-2.12-.54-.9-.07-2.04.95-2.29 1.56-.38 1.56-2.6 0-2.98-1.02-.25-1.49-1.39-.95-2.29.8-1.35-.77-2.92-2.12-2.12-.9.54-2.04.07-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                clipRule="evenodd"
+              />
             </svg>
           </button>
         </div>
@@ -1087,113 +1114,126 @@ export function Sidebar() {
         </div>
       </div>
       {/* Context menu */}
-      {contextMenu && (() => {
-        const sdk = sdkSessions.find((s) => s.sessionId === contextMenu.sessionId);
-        const sessionInfo = allSessionList.find((s) => s.id === contextMenu.sessionId);
-        const cliId = sdk?.cliSessionId || "";
-        const isArchived = sdk?.archived ?? sessionInfo?.archived ?? false;
-        const isExited = sdk?.state === "exited";
-        const attention = sessionAttention.get(contextMenu.sessionId);
+      {contextMenu &&
+        (() => {
+          const sdk = sdkSessions.find((s) => s.sessionId === contextMenu.sessionId);
+          const sessionInfo = allSessionList.find((s) => s.id === contextMenu.sessionId);
+          const cliId = sdk?.cliSessionId || "";
+          const isArchived = sdk?.archived ?? sessionInfo?.archived ?? false;
+          const isExited = sdk?.state === "exited";
+          const attention = sessionAttention.get(contextMenu.sessionId);
 
-        const sessionNum = sdk?.sessionNum;
-        const items: ContextMenuItem[] = [
-          ...(sessionNum != null ? [{
-            label: "Copy Session Number",
-            onClick: () => {
-              writeClipboardText(String(sessionNum)).catch(console.error);
+          const sessionNum = sdk?.sessionNum;
+          const items: ContextMenuItem[] = [
+            ...(sessionNum != null
+              ? [
+                  {
+                    label: "Copy Session Number",
+                    onClick: () => {
+                      writeClipboardText(String(sessionNum)).catch(console.error);
+                    },
+                  },
+                ]
+              : [
+                  {
+                    label: "Copy Session ID",
+                    onClick: () => {
+                      writeClipboardText(contextMenu.sessionId).catch(console.error);
+                    },
+                  },
+                ]),
+            ...(cliId
+              ? [
+                  {
+                    label: "Copy CLI Session ID",
+                    onClick: () => {
+                      writeClipboardText(cliId).catch(console.error);
+                    },
+                  },
+                ]
+              : []),
+            {
+              label: "Rename",
+              onClick: () => {
+                const name = sessionNames.get(contextMenu.sessionId) || "";
+                handleStartRename(contextMenu.sessionId, name);
+              },
             },
-          }] : [{
-            label: "Copy Session ID",
-            onClick: () => {
-              writeClipboardText(contextMenu.sessionId).catch(console.error);
+            ...(!isExited && !isArchived
+              ? [
+                  {
+                    label: "Relaunch",
+                    onClick: () => {
+                      api.relaunchSession(contextMenu.sessionId).catch(console.error);
+                    },
+                  },
+                ]
+              : []),
+            attention
+              ? {
+                  label: "Mark as read",
+                  onClick: () => {
+                    useStore.getState().markSessionViewed(contextMenu.sessionId);
+                    api.markSessionRead?.(contextMenu.sessionId).catch(() => {});
+                  },
+                }
+              : {
+                  label: "Mark as unread",
+                  onClick: () => {
+                    useStore.getState().markSessionUnread(contextMenu.sessionId);
+                  },
+                },
+            isArchived
+              ? {
+                  label: "Unarchive",
+                  onClick: () => {
+                    const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
+                    void handleUnarchiveSession(syntheticEvent, contextMenu.sessionId);
+                  },
+                }
+              : {
+                  label: "Archive",
+                  onClick: () => {
+                    const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
+                    handleArchiveSession(syntheticEvent, contextMenu.sessionId);
+                  },
+                },
+            {
+              label: "Delete Session",
+              onClick: () => {
+                const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
+                void handleDeleteSession(syntheticEvent, contextMenu.sessionId);
+              },
+              confirm: {
+                title: "Delete session permanently?",
+                description: "This cannot be undone. The session will be removed from history.",
+                confirmLabel: "Delete",
+                destructive: true,
+              },
             },
-          }]),
-          ...(cliId ? [{
-            label: "Copy CLI Session ID",
-            onClick: () => {
-              writeClipboardText(cliId).catch(console.error);
-            },
-          }] : []),
-          {
-            label: "Rename",
-            onClick: () => {
-              const name = sessionNames.get(contextMenu.sessionId) || "";
-              handleStartRename(contextMenu.sessionId, name);
-            },
-          },
-          ...(!isExited && !isArchived ? [{
-            label: "Relaunch",
-            onClick: () => {
-              api.relaunchSession(contextMenu.sessionId).catch(console.error);
-            },
-          }] : []),
-          attention ? {
-            label: "Mark as read",
-            onClick: () => {
-              useStore.getState().markSessionViewed(contextMenu.sessionId);
-              api.markSessionRead?.(contextMenu.sessionId).catch(() => {});
-            },
-          } : {
-            label: "Mark as unread",
-            onClick: () => {
-              useStore.getState().markSessionUnread(contextMenu.sessionId);
-            },
-          },
-          isArchived ? {
-            label: "Unarchive",
-            onClick: () => {
-              const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
-              void handleUnarchiveSession(syntheticEvent, contextMenu.sessionId);
-            },
-          } : {
-            label: "Archive",
-            onClick: () => {
-              const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
-              handleArchiveSession(syntheticEvent, contextMenu.sessionId);
-            },
-          },
-          {
-            label: "Delete Session",
-            onClick: () => {
-              const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
-              void handleDeleteSession(syntheticEvent, contextMenu.sessionId);
-            },
-            confirm: {
-              title: "Delete session permanently?",
-              description: "This cannot be undone. The session will be removed from history.",
-              confirmLabel: "Delete",
-              destructive: true,
-            },
-          },
-        ];
+          ];
 
-        return (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            items={items}
-            onClose={() => setContextMenu(null)}
-          />
-        );
-      })()}
+          return <ContextMenu x={contextMenu.x} y={contextMenu.y} items={items} onClose={() => setContextMenu(null)} />;
+        })()}
       {/* Session hover card */}
-      {hoveredSession && (() => {
-        const s = allSessionList.find((item) => item.id === hoveredSession.sessionId);
-        if (!s) return null;
-        return (
-          <SessionHoverCard
-            session={s}
-            sessionName={sessionNames.get(hoveredSession.sessionId)}
-            sessionPreview={sessionPreviews.get(hoveredSession.sessionId)}
-            taskHistory={sessionTaskHistory.get(hoveredSession.sessionId)}
-            sessionState={sessions.get(hoveredSession.sessionId)}
-            cliSessionId={sdkSessions.find((sdk) => sdk.sessionId === hoveredSession.sessionId)?.cliSessionId}
-            anchorRect={hoveredSession.rect}
-            onMouseEnter={handleHoverCardEnter}
-            onMouseLeave={handleHoverCardLeave}
-          />
-        );
-      })()}
+      {hoveredSession &&
+        (() => {
+          const s = allSessionList.find((item) => item.id === hoveredSession.sessionId);
+          if (!s) return null;
+          return (
+            <SessionHoverCard
+              session={s}
+              sessionName={sessionNames.get(hoveredSession.sessionId)}
+              sessionPreview={sessionPreviews.get(hoveredSession.sessionId)}
+              taskHistory={sessionTaskHistory.get(hoveredSession.sessionId)}
+              sessionState={sessions.get(hoveredSession.sessionId)}
+              cliSessionId={sdkSessions.find((sdk) => sdk.sessionId === hoveredSession.sessionId)?.cliSessionId}
+              anchorRect={hoveredSession.rect}
+              onMouseEnter={handleHoverCardEnter}
+              onMouseLeave={handleHoverCardLeave}
+            />
+          );
+        })()}
     </aside>
   );
 }
@@ -1217,9 +1257,7 @@ function PendingSessionItem({
   const isCreating = pending.status === "creating";
 
   // Accent color based on backend (matching SessionItem pattern)
-  const accentColor = pending.backend === "codex"
-    ? "border-blue-500"
-    : "border-[#c47a4e]";
+  const accentColor = pending.backend === "codex" ? "border-blue-500" : "border-[#c47a4e]";
 
   return (
     <div
@@ -1230,9 +1268,7 @@ function PendingSessionItem({
     >
       {/* Status indicator */}
       <div className="w-4 h-4 shrink-0 flex items-center justify-center">
-        {isCreating && (
-          <YarnBallSpinner className="w-3.5 h-3.5 text-cc-primary" />
-        )}
+        {isCreating && <YarnBallSpinner className="w-3.5 h-3.5 text-cc-primary" />}
         {hasError && (
           <div className="w-3 h-3 rounded-full bg-cc-error/20 flex items-center justify-center">
             <div className="w-1.5 h-1.5 rounded-full bg-cc-error" />
@@ -1240,7 +1276,13 @@ function PendingSessionItem({
         )}
         {pending.status === "succeeded" && (
           <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 text-cc-success">
-            <path d="M13.25 4.75L6 12 2.75 8.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M13.25 4.75L6 12 2.75 8.75"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
       </div>
@@ -1258,7 +1300,10 @@ function PendingSessionItem({
 
       {/* Cancel/delete button (visible on hover) */}
       <button
-        onClick={(e) => { e.stopPropagation(); onCancel(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCancel();
+        }}
         className="opacity-0 group-hover:opacity-100 p-0.5 text-cc-muted hover:text-cc-error transition-all cursor-pointer"
         title={hasError ? "Dismiss" : "Cancel creation"}
       >

@@ -1,11 +1,4 @@
-import {
-  mkdtempSync,
-  rmSync,
-  readFileSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -18,7 +11,9 @@ const mockHomedir = vi.hoisted(() => {
   let dir = "";
   return {
     get: () => dir,
-    set: (d: string) => { dir = d; },
+    set: (d: string) => {
+      dir = d;
+    },
   };
 });
 
@@ -30,7 +25,9 @@ const mockPlatform = vi.hoisted(() => {
   let platform = "darwin";
   return {
     get: () => platform,
-    set: (p: string) => { platform = p; },
+    set: (p: string) => {
+      platform = p;
+    },
   };
 });
 
@@ -337,7 +334,8 @@ describe("install", () => {
     });
 
     // Create a legacy plist to simulate pre-rename installs
-    const plist = service.generatePlist({ binPath: "/usr/local/bin/the-companion" })
+    const plist = service
+      .generatePlist({ binPath: "/usr/local/bin/the-companion" })
       .replaceAll("sh.thecompanion.app", "co.thevibecompany.companion");
     mkdirSync(launchAgentsDir, { recursive: true });
     writeFileSync(oldPath, plist, "utf-8");
@@ -394,9 +392,7 @@ describe("install (linux)", () => {
     );
     expect(daemonReload).toBeDefined();
 
-    const enableCall = mockExecSync.mock.calls.find(
-      ([cmd]) => typeof cmd === "string" && cmd.includes("enable --now"),
-    );
+    const enableCall = mockExecSync.mock.calls.find(([cmd]) => typeof cmd === "string" && cmd.includes("enable --now"));
     expect(enableCall).toBeDefined();
   });
 
@@ -671,9 +667,7 @@ describe("start (linux)", () => {
     expect(existsSync(unitPath())).toBe(true);
 
     // Verify systemctl enable --now was called (service started)
-    const enableCall = mockExecSync.mock.calls.find(
-      ([cmd]) => typeof cmd === "string" && cmd.includes("enable --now"),
-    );
+    const enableCall = mockExecSync.mock.calls.find(([cmd]) => typeof cmd === "string" && cmd.includes("enable --now"));
     expect(enableCall).toBeDefined();
   });
 
@@ -894,8 +888,7 @@ describe("restart (linux)", () => {
     await service.install();
 
     // Manually write a stale unit (no SuccessExitStatus)
-    const staleUnit = readFileSync(unitPath(), "utf-8")
-      .replace("SuccessExitStatus=42\n", "");
+    const staleUnit = readFileSync(unitPath(), "utf-8").replace("SuccessExitStatus=42\n", "");
     writeFileSync(unitPath(), staleUnit, "utf-8");
     expect(readFileSync(unitPath(), "utf-8")).not.toContain("SuccessExitStatus=42");
 

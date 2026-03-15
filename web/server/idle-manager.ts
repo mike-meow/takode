@@ -34,29 +34,21 @@ export class IdleManager {
     const { maxKeepAlive } = this.getSettings();
     if (maxKeepAlive <= 0) return 0;
 
-    const alive = this.launcher
-      .listSessions()
-      .filter((s) => s.state !== "exited" && !s.archived);
+    const alive = this.launcher.listSessions().filter((s) => s.state !== "exited" && !s.archived);
 
     if (alive.length <= maxKeepAlive) return 0;
 
     // Sort non-busy sessions by lastActivityAt ascending (oldest first)
     const killable = alive
       .filter((s) => !this.wsBridge.isSessionBusy(s.sessionId))
-      .sort(
-        (a, b) =>
-          (a.lastActivityAt ?? a.createdAt) -
-          (b.lastActivityAt ?? b.createdAt),
-      );
+      .sort((a, b) => (a.lastActivityAt ?? a.createdAt) - (b.lastActivityAt ?? b.createdAt));
 
     const toKill = alive.length - maxKeepAlive;
     let killed = 0;
 
     for (let i = 0; i < Math.min(toKill, killable.length); i++) {
       const s = killable[i];
-      const age = s.lastActivityAt
-        ? `${Math.round((Date.now() - s.lastActivityAt) / 1000)}s ago`
-        : "no activity";
+      const age = s.lastActivityAt ? `${Math.round((Date.now() - s.lastActivityAt) / 1000)}s ago` : "no activity";
       console.log(
         `[idle-manager] Killing session ${s.sessionId.slice(0, 8)} (lastActivity: ${age}, name: ${s.name ?? "unnamed"})`,
       );
@@ -68,9 +60,7 @@ export class IdleManager {
       if (success) {
         killed++;
       } else {
-        console.warn(
-          `[idle-manager] Failed to kill session ${s.sessionId.slice(0, 8)} — session may not exist`,
-        );
+        console.warn(`[idle-manager] Failed to kill session ${s.sessionId.slice(0, 8)} — session may not exist`);
       }
     }
 

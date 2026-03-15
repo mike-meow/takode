@@ -50,8 +50,12 @@ export function TranscriptionDebugPanel() {
   const fetchIndex = useCallback(() => {
     setLoading(true);
     setError("");
-    api.getTranscriptionLogs()
-      .then((data) => { setEntries(data); setFetched(true); })
+    api
+      .getTranscriptionLogs()
+      .then((data) => {
+        setEntries(data);
+        setFetched(true);
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -141,15 +145,18 @@ export function TranscriptionDebugPanel() {
                     <span className="text-cc-muted shrink-0 w-16">{timeAgo(entry.timestamp)}</span>
                     <span className="text-cc-fg shrink-0 font-mono text-[10px]">{entry.sttModel}</span>
                     <span className="text-cc-muted shrink-0">{formatDuration(entry.sttDurationMs)}</span>
-                    <span className={`flex-1 truncate ${enhancementColor(entry)}`}>
-                      {enhancementLabel(entry)}
-                    </span>
+                    <span className={`flex-1 truncate ${enhancementColor(entry)}`}>{enhancementLabel(entry)}</span>
                     {entry.enhancement && !entry.enhancement.skipReason && (
                       <span className="text-cc-muted shrink-0">{formatDuration(entry.enhancement.durationMs)}</span>
                     )}
-                    <span className="text-cc-muted shrink-0 font-mono text-[10px]">{formatBytes(entry.audioSizeBytes)}</span>
+                    <span className="text-cc-muted shrink-0 font-mono text-[10px]">
+                      {formatBytes(entry.audioSizeBytes)}
+                    </span>
                     {entry.sessionId && (
-                      <span className="text-cc-muted shrink-0 font-mono text-[10px] w-16 truncate" title={entry.sessionId}>
+                      <span
+                        className="text-cc-muted shrink-0 font-mono text-[10px] w-16 truncate"
+                        title={entry.sessionId}
+                      >
                         {entry.sessionId.slice(0, 8)}
                       </span>
                     )}
@@ -162,123 +169,153 @@ export function TranscriptionDebugPanel() {
       )}
 
       {/* Full-screen modal for entry detail */}
-      {expandedId !== null && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => { setExpandedId(null); setExpandedEntry(null); }}
-        >
+      {expandedId !== null &&
+        createPortal(
           <div
-            className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl flex flex-col"
-            style={{ width: "calc(100vw - 48px)", height: "calc(100vh - 48px)", maxWidth: "1400px" }}
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              setExpandedId(null);
+              setExpandedEntry(null);
+            }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-cc-border shrink-0">
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-semibold text-cc-fg">Transcription Detail</h3>
-                {selectedIndexEntry && (
-                  <>
-                    <span className={`text-xs ${enhancementColor(selectedIndexEntry)}`}>
-                      {enhancementLabel(selectedIndexEntry)}
-                    </span>
-                    <span className="text-xs text-cc-muted">
-                      {timeAgo(selectedIndexEntry.timestamp)} &middot; STT {formatDuration(selectedIndexEntry.sttDurationMs)}
-                      {selectedIndexEntry.enhancement && !selectedIndexEntry.enhancement.skipReason
-                        ? ` &middot; Enh ${formatDuration(selectedIndexEntry.enhancement.durationMs)}`
-                        : ""}
-                      {selectedIndexEntry.sessionId ? ` \u00b7 ${selectedIndexEntry.sessionId.slice(0, 8)}` : ""}
-                    </span>
-                  </>
-                )}
+            <div
+              className="bg-cc-bg border border-cc-border rounded-xl shadow-2xl flex flex-col"
+              style={{ width: "calc(100vw - 48px)", height: "calc(100vh - 48px)", maxWidth: "1400px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-cc-border shrink-0">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-cc-fg">Transcription Detail</h3>
+                  {selectedIndexEntry && (
+                    <>
+                      <span className={`text-xs ${enhancementColor(selectedIndexEntry)}`}>
+                        {enhancementLabel(selectedIndexEntry)}
+                      </span>
+                      <span className="text-xs text-cc-muted">
+                        {timeAgo(selectedIndexEntry.timestamp)} &middot; STT{" "}
+                        {formatDuration(selectedIndexEntry.sttDurationMs)}
+                        {selectedIndexEntry.enhancement && !selectedIndexEntry.enhancement.skipReason
+                          ? ` &middot; Enh ${formatDuration(selectedIndexEntry.enhancement.durationMs)}`
+                          : ""}
+                        {selectedIndexEntry.sessionId ? ` \u00b7 ${selectedIndexEntry.sessionId.slice(0, 8)}` : ""}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpandedId(null);
+                    setExpandedEntry(null);
+                  }}
+                  className="px-2 py-1 rounded text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                >
+                  Close (Esc)
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => { setExpandedId(null); setExpandedEntry(null); }}
-                className="px-2 py-1 rounded text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-              >
-                Close (Esc)
-              </button>
-            </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {detailLoading ? (
-                <p className="text-sm text-cc-muted">Loading...</p>
-              ) : expandedEntry ? (
-                <>
-                  {/* STT info */}
-                  <div className="text-xs text-cc-muted">
-                    STT Model: <span className="text-cc-fg font-medium font-mono">{expandedEntry.sttModel}</span>
-                    <span className="ml-3">Duration: <span className="text-cc-fg">{formatDuration(expandedEntry.sttDurationMs)}</span></span>
-                    <span className="ml-3">Audio: <span className="text-cc-fg">{formatBytes(expandedEntry.audioSizeBytes)}</span></span>
-                  </div>
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {detailLoading ? (
+                  <p className="text-sm text-cc-muted">Loading...</p>
+                ) : expandedEntry ? (
+                  <>
+                    {/* STT info */}
+                    <div className="text-xs text-cc-muted">
+                      STT Model: <span className="text-cc-fg font-medium font-mono">{expandedEntry.sttModel}</span>
+                      <span className="ml-3">
+                        Duration: <span className="text-cc-fg">{formatDuration(expandedEntry.sttDurationMs)}</span>
+                      </span>
+                      <span className="ml-3">
+                        Audio: <span className="text-cc-fg">{formatBytes(expandedEntry.audioSizeBytes)}</span>
+                      </span>
+                    </div>
 
-                  <div>
-                    <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">Raw Transcript (Whisper Output)</span>
-                    <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                      {expandedEntry.rawTranscript || "(empty)"}
-                    </pre>
-                  </div>
-
-                  {expandedEntry.sttPrompt && (
                     <div>
-                      <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">STT Prompt (sent to {expandedEntry.sttModel})</span>
+                      <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
+                        Raw Transcript (Whisper Output)
+                      </span>
                       <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                        {expandedEntry.sttPrompt}
+                        {expandedEntry.rawTranscript || "(empty)"}
                       </pre>
                     </div>
-                  )}
 
-                  {/* Enhancement section */}
-                  {expandedEntry.enhancement ? (
-                    <>
-                      <div className="text-xs text-cc-muted border-t border-cc-border pt-3">
-                        Enhancement Model: <span className="text-cc-fg font-medium font-mono">{expandedEntry.enhancement.model}</span>
-                        <span className="ml-3">Duration: <span className="text-cc-fg">{formatDuration(expandedEntry.enhancement.durationMs)}</span></span>
-                        {expandedEntry.enhancement.skipReason && (
-                          <span className="ml-3">Skip reason: <span className="text-cc-warning">{expandedEntry.enhancement.skipReason}</span></span>
-                        )}
-                      </div>
-
-                      {expandedEntry.enhancement.systemPrompt && (
-                        <div>
-                          <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">System Prompt</span>
-                          <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                            {expandedEntry.enhancement.systemPrompt}
-                          </pre>
-                        </div>
-                      )}
-
-                      {expandedEntry.enhancement.userMessage && (
-                        <div>
-                          <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">User Message (Context + Transcript)</span>
-                          <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                            {expandedEntry.enhancement.userMessage}
-                          </pre>
-                        </div>
-                      )}
-
+                    {expandedEntry.sttPrompt && (
                       <div>
-                        <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">Enhanced Result</span>
+                        <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
+                          STT Prompt (sent to {expandedEntry.sttModel})
+                        </span>
                         <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                          {expandedEntry.enhancement.enhancedText ?? "(null — skipped, failed, or hallucination guard)"}
+                          {expandedEntry.sttPrompt}
                         </pre>
                       </div>
-                    </>
-                  ) : (
-                    <div className="text-xs text-cc-muted border-t border-cc-border pt-3">
-                      Enhancement was not attempted for this transcription.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-cc-error">Failed to load details</p>
-              )}
+                    )}
+
+                    {/* Enhancement section */}
+                    {expandedEntry.enhancement ? (
+                      <>
+                        <div className="text-xs text-cc-muted border-t border-cc-border pt-3">
+                          Enhancement Model:{" "}
+                          <span className="text-cc-fg font-medium font-mono">{expandedEntry.enhancement.model}</span>
+                          <span className="ml-3">
+                            Duration:{" "}
+                            <span className="text-cc-fg">{formatDuration(expandedEntry.enhancement.durationMs)}</span>
+                          </span>
+                          {expandedEntry.enhancement.skipReason && (
+                            <span className="ml-3">
+                              Skip reason:{" "}
+                              <span className="text-cc-warning">{expandedEntry.enhancement.skipReason}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {expandedEntry.enhancement.systemPrompt && (
+                          <div>
+                            <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
+                              System Prompt
+                            </span>
+                            <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                              {expandedEntry.enhancement.systemPrompt}
+                            </pre>
+                          </div>
+                        )}
+
+                        {expandedEntry.enhancement.userMessage && (
+                          <div>
+                            <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
+                              User Message (Context + Transcript)
+                            </span>
+                            <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                              {expandedEntry.enhancement.userMessage}
+                            </pre>
+                          </div>
+                        )}
+
+                        <div>
+                          <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
+                            Enhanced Result
+                          </span>
+                          <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
+                            {expandedEntry.enhancement.enhancedText ??
+                              "(null — skipped, failed, or hallucination guard)"}
+                          </pre>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-cc-muted border-t border-cc-border pt-3">
+                        Enhancement was not attempted for this transcription.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-cc-error">Failed to load details</p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

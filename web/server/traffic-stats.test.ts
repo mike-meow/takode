@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  TrafficStatsCollector,
-  getTrafficMessageType,
-} from "./traffic-stats.js";
+import { TrafficStatsCollector, getTrafficMessageType } from "./traffic-stats.js";
 
 describe("getTrafficMessageType", () => {
   it("prefers type + subtype when both are present", () => {
@@ -10,7 +7,9 @@ describe("getTrafficMessageType", () => {
   });
 
   it("uses JSON-RPC methods when present", () => {
-    expect(getTrafficMessageType({ jsonrpc: "2.0", method: "turn/completed", params: {} })).toBe("method:turn/completed");
+    expect(getTrafficMessageType({ jsonrpc: "2.0", method: "turn/completed", params: {} })).toBe(
+      "method:turn/completed",
+    );
   });
 
   it("classifies JSON-RPC responses separately", () => {
@@ -56,9 +55,7 @@ describe("TrafficStatsCollector", () => {
 
     const historyBucket = snapshot.buckets.find(
       (bucket) =>
-        bucket.channel === "browser"
-        && bucket.direction === "out"
-        && bucket.messageType === "message_history",
+        bucket.channel === "browser" && bucket.direction === "out" && bucket.messageType === "message_history",
     );
     expect(historyBucket).toMatchObject({
       messages: 2,

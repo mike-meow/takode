@@ -265,9 +265,15 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1", { archived: false, createdAt: 1000 });
     const sdk2 = makeSdkSession("s2", { archived: true, createdAt: 900 });
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
-      sessionNames: new Map([["s1", "Alpha"], ["s2", "Archived beta"]]),
+      sessionNames: new Map([
+        ["s1", "Alpha"],
+        ["s2", "Archived beta"],
+      ]),
     });
     mockApi.searchSessions.mockResolvedValueOnce({
       query: "beta",
@@ -479,9 +485,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
       sessions: new Map([["s1", session]]),
       sdkSessions: [sdk],
       diffFileStats: new Map([
-        ["s1", new Map([
-          ["/repo/docs/codex-dropped-user-messages.md", { additions: 1527, deletions: 625 }],
-        ])],
+        ["s1", new Map([["/repo/docs/codex-dropped-user-messages.md", { additions: 1527, deletions: 625 }]])],
       ]),
     });
 
@@ -615,9 +619,9 @@ describe("Sidebar", { timeout: 10000 }, () => {
     });
 
     render(<Sidebar />);
-    const mobilePermissionBadge = screen.getAllByText("1").find((node) =>
-      node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"),
-    )!;
+    const mobilePermissionBadge = screen
+      .getAllByText("1")
+      .find((node) => node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"))!;
     expect(mobilePermissionBadge).toHaveClass("right-11");
     expect(mobilePermissionBadge).toHaveClass("sm:right-2");
     expect(mobilePermissionBadge).toHaveClass("sm:group-hover:opacity-0");
@@ -629,7 +633,10 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1");
     const sdk2 = makeSdkSession("s2");
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
     });
 
@@ -645,7 +652,10 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1");
     const sdk2 = makeSdkSession("s2");
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
       reorderMode: true,
     });
@@ -669,7 +679,10 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1");
     const sdk2 = makeSdkSession("s2");
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
       reorderMode: true,
     });
@@ -814,9 +827,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
     // JSDOM does not define AnimationEvent in all environments, which
     // causes fireEvent.animationEnd to silently fail. We traverse the
     // React fiber tree to invoke the onAnimationEnd handler directly.
-    const fiberKey = Object.keys(animatedSpan!).find((k) =>
-      k.startsWith("__reactFiber$"),
-    );
+    const fiberKey = Object.keys(animatedSpan!).find((k) => k.startsWith("__reactFiber$"));
     expect(fiberKey).toBeDefined();
     let fiber = (animatedSpan as unknown as Record<string, unknown>)[fiberKey!] as Record<string, unknown> | null;
     let called = false;
@@ -839,9 +850,15 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1");
     const sdk2 = makeSdkSession("s2");
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
-      sessionNames: new Map([["s1", "Renamed Session"], ["s2", "Other Session"]]),
+      sessionNames: new Map([
+        ["s1", "Renamed Session"],
+        ["s2", "Other Session"],
+      ]),
       recentlyRenamed: new Set(["s1"]), // only s1 was renamed
     });
 
@@ -939,7 +956,10 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1", { backendType: "claude" });
     const sdk2 = makeSdkSession("s2", { backendType: "codex" });
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
     });
 
@@ -959,7 +979,11 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk2 = makeSdkSession("s2", { cwd: "/home/user/project-a" });
     const sdk3 = makeSdkSession("s3", { cwd: "/home/user/project-b" });
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2], ["s3", session3]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+        ["s3", session3],
+      ]),
       sdkSessions: [sdk1, sdk2, sdk3],
     });
 
@@ -975,10 +999,19 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const sdk1 = makeSdkSession("s1", { cwd: "/home/user/myapp" });
     const sdk2 = makeSdkSession("s2", { cwd: "/home/user/myapp" });
     mockState = createMockState({
-      sessions: new Map([["s1", session1], ["s2", session2]]),
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
       sdkSessions: [sdk1, sdk2],
-      sessionStatus: new Map([["s1", "running"], ["s2", "running"]]),
-      cliConnected: new Map([["s1", true], ["s2", true]]),
+      sessionStatus: new Map([
+        ["s1", "running"],
+        ["s2", "running"],
+      ]),
+      cliConnected: new Map([
+        ["s1", true],
+        ["s2", true],
+      ]),
     });
 
     const { container } = render(<Sidebar />);
@@ -1062,11 +1095,14 @@ describe("Sidebar", { timeout: 10000 }, () => {
       sessions: new Map([["s1", session]]),
       sdkSessions: [sdk],
       sessionTaskHistory: new Map([
-        ["s1", Array.from({ length: 20 }, (_, i) => ({
-          title: ` Task ${i + 1} `,
-          action: "claim",
-          timestamp: Date.now() + i,
-        }))],
+        [
+          "s1",
+          Array.from({ length: 20 }, (_, i) => ({
+            title: ` Task ${i + 1} `,
+            action: "claim",
+            timestamp: Date.now() + i,
+          })),
+        ],
       ]),
     });
 
@@ -1150,10 +1186,26 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     render(<Sidebar />);
 
-    const alphaLeaderTone = screen.getByText("Leader Alpha").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
-    const alphaWorkerTone = screen.getByText("Worker Alpha").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
-    const betaLeaderTone = screen.getByText("Leader Beta").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
-    const betaWorkerTone = screen.getByText("Worker Beta").closest("button")?.querySelector("[data-herd-group-tone]")?.getAttribute("data-herd-group-tone");
+    const alphaLeaderTone = screen
+      .getByText("Leader Alpha")
+      .closest("button")
+      ?.querySelector("[data-herd-group-tone]")
+      ?.getAttribute("data-herd-group-tone");
+    const alphaWorkerTone = screen
+      .getByText("Worker Alpha")
+      .closest("button")
+      ?.querySelector("[data-herd-group-tone]")
+      ?.getAttribute("data-herd-group-tone");
+    const betaLeaderTone = screen
+      .getByText("Leader Beta")
+      .closest("button")
+      ?.querySelector("[data-herd-group-tone]")
+      ?.getAttribute("data-herd-group-tone");
+    const betaWorkerTone = screen
+      .getByText("Worker Beta")
+      .closest("button")
+      ?.querySelector("[data-herd-group-tone]")
+      ?.getAttribute("data-herd-group-tone");
 
     expect(alphaLeaderTone).toBeTruthy();
     expect(alphaLeaderTone).toBe(alphaWorkerTone);

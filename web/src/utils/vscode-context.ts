@@ -26,12 +26,12 @@ export function isVsCodeSelectionContextPayload(value: unknown): value is VsCode
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
-    typeof record.absolutePath === "string"
-    && typeof record.relativePath === "string"
-    && typeof record.displayPath === "string"
-    && typeof record.startLine === "number"
-    && typeof record.endLine === "number"
-    && typeof record.lineCount === "number"
+    typeof record.absolutePath === "string" &&
+    typeof record.relativePath === "string" &&
+    typeof record.displayPath === "string" &&
+    typeof record.startLine === "number" &&
+    typeof record.endLine === "number" &&
+    typeof record.lineCount === "number"
   );
 }
 
@@ -54,9 +54,10 @@ export function resolveVsCodeSelectionForSession(
 ): VsCodeSelectionContextPayload {
   const normalizedAbsolutePath = normalizePath(context.absolutePath);
   const normalizedSessionRoot = sessionRoot ? normalizePath(sessionRoot) : "";
-  const displayPath = "displayPath" in context && typeof context.displayPath === "string" && context.displayPath.trim().length > 0
-    ? context.displayPath
-    : normalizedAbsolutePath.split("/").filter(Boolean).pop() || normalizedAbsolutePath;
+  const displayPath =
+    "displayPath" in context && typeof context.displayPath === "string" && context.displayPath.trim().length > 0
+      ? context.displayPath
+      : normalizedAbsolutePath.split("/").filter(Boolean).pop() || normalizedAbsolutePath;
   const sharedFields = {
     absolutePath: normalizedAbsolutePath,
     startLine: context.startLine,
@@ -94,18 +95,14 @@ export function formatVsCodeSelectionAttachmentLabel(
   return `${context.displayPath}:${context.startLine}-${context.endLine}`;
 }
 
-export function buildVsCodeSelectionPrompt(
-  context: VsCodeSelectionContext | VsCodeSelectionContextPayload,
-): string {
+export function buildVsCodeSelectionPrompt(context: VsCodeSelectionContext | VsCodeSelectionContextPayload): string {
   if (context.startLine === context.endLine) {
     return `[user selection in VSCode: ${context.relativePath} line ${context.startLine}] (this may or may not be relevant)`;
   }
   return `[user selection in VSCode: ${context.relativePath} lines ${context.startLine}-${context.endLine}] (this may or may not be relevant)`;
 }
 
-export function maybeReadVsCodeSelectionContext(
-  value: unknown,
-): VsCodeSelectionContextPayload | null | undefined {
+export function maybeReadVsCodeSelectionContext(value: unknown): VsCodeSelectionContextPayload | null | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }

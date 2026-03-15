@@ -28,14 +28,42 @@ import type {
   QuestTransitionInput,
 } from "../server/quest-types.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, BackendType, McpServerDetail, McpServerConfig, CreationProgressEvent, ToolResultPreview, SessionTaskEntry, PendingCodexInput, PendingCodexInputImageDraft, ImageRef, VsCodeSelectionMetadata, VsCodeSelectionState };
+export type {
+  SessionState,
+  PermissionRequest,
+  ContentBlock,
+  BrowserIncomingMessage,
+  BrowserOutgoingMessage,
+  BackendType,
+  McpServerDetail,
+  McpServerConfig,
+  CreationProgressEvent,
+  ToolResultPreview,
+  SessionTaskEntry,
+  PendingCodexInput,
+  PendingCodexInputImageDraft,
+  ImageRef,
+  VsCodeSelectionMetadata,
+  VsCodeSelectionState,
+};
 export { assertNever, isClaudeFamily };
-export type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage, QuestCreateInput, QuestPatchInput, QuestTransitionInput };
+export type {
+  QuestmasterTask,
+  QuestStatus,
+  QuestVerificationItem,
+  QuestFeedbackEntry,
+  QuestImage,
+  QuestCreateInput,
+  QuestPatchInput,
+  QuestTransitionInput,
+};
 
 /** Tool names that spawn subagent sessions. Older CLI versions use "Task",
  *  newer ones use "Agent". Both must be recognized for grouping and filtering. */
 export const SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(["Task", "Agent"]);
-export function isSubagentToolName(name: string): boolean { return SUBAGENT_TOOL_NAMES.has(name); }
+export function isSubagentToolName(name: string): boolean {
+  return SUBAGENT_TOOL_NAMES.has(name);
+}
 
 export interface ChatMessage {
   id: string;
