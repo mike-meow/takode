@@ -224,8 +224,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const isOrchestrator = body.role === "orchestrator";
 
     if (body.resumeCliSessionId) {
-      if (backend !== "claude") {
-        throwPreparationError("Resuming CLI sessions is only supported for Claude backend", 400);
+      if (backend !== "claude" && backend !== "codex") {
+        throwPreparationError("Resuming CLI sessions is only supported for Claude and Codex backends", 400);
       }
 
       await emit("resolving_env", "Resolving environment...", "in_progress");
@@ -252,8 +252,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const launchOptions: LaunchOptions = {
         cwd: initialCwd,
         claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
+        codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
         env: envVars,
-        backendType: "claude",
+        backendType: backend,
         resumeCliSessionId: body.resumeCliSessionId,
         permissionMode: initialModeState.permissionMode,
         askPermission: initialModeState.askPermission,
@@ -704,11 +705,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
   api.get("/cli-sessions", async (c) => {
     try {
-      const claudeProjectsDir = join(homedir(), ".claude", "projects");
-      if (!existsSync(claudeProjectsDir)) {
-        // sync-ok: route handler, not called during message handling
-        return c.json({ sessions: [] });
-      }
+      const backendFilter = c.req.query("backend") as "claude" | "codex" | undefined;
 
       // Collect active CLI session IDs so we can filter them out
       const activeCliSessionIds = new Set<string>();
@@ -716,52 +713,112 @@ export function createSessionsRoutes(ctx: RouteContext) {
         if (s.cliSessionId) activeCliSessionIds.add(s.cliSessionId);
       }
 
-      // Scan all project directories for .jsonl files
       interface CliSessionFile {
         id: string;
-        projectDir: string;
         path: string;
         lastModified: number;
         sizeBytes: number;
+        backend: "claude" | "codex";
       }
       const allFiles: CliSessionFile[] = [];
 
-      let projectDirs: string[];
-      try {
-        projectDirs = await readdir(claudeProjectsDir);
-      } catch {
-        return c.json({ sessions: [] });
+      // ── Scan Claude Code sessions (~/.claude/projects/*/*.jsonl) ──
+      if (backendFilter !== "codex") {
+        const claudeProjectsDir = join(homedir(), ".claude", "projects");
+        try {
+          const projectDirs = await readdir(claudeProjectsDir);
+          for (const projectDir of projectDirs) {
+            const projectPath = join(claudeProjectsDir, projectDir);
+            let entries: string[];
+            try {
+              entries = await readdir(projectPath);
+            } catch {
+              continue;
+            }
+            for (const entry of entries) {
+              if (!entry.endsWith(".jsonl")) continue;
+              const sessionId = entry.slice(0, -6); // strip .jsonl
+              if (sessionId.startsWith("agent-")) continue;
+              if (activeCliSessionIds.has(sessionId)) continue;
+
+              const filePath = join(projectPath, entry);
+              try {
+                const st = await stat(filePath);
+                allFiles.push({
+                  id: sessionId,
+                  path: filePath,
+                  lastModified: st.mtimeMs,
+                  sizeBytes: st.size,
+                  backend: "claude",
+                });
+              } catch {
+                continue;
+              }
+            }
+          }
+        } catch {
+          // ~/.claude/projects may not exist — that's fine
+        }
       }
 
-      for (const projectDir of projectDirs) {
-        const projectPath = join(claudeProjectsDir, projectDir);
-        let entries: string[];
+      // ── Scan Codex sessions (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl) ──
+      if (backendFilter !== "claude") {
+        const codexSessionsDir = join(homedir(), ".codex", "sessions");
         try {
-          entries = await readdir(projectPath);
-        } catch {
-          continue;
-        }
-        for (const entry of entries) {
-          if (!entry.endsWith(".jsonl")) continue;
-          const sessionId = entry.slice(0, -6); // strip .jsonl
-          // Skip subagent sessions
-          if (sessionId.startsWith("agent-")) continue;
-          // Skip sessions already active in the Companion
-          if (activeCliSessionIds.has(sessionId)) continue;
+          // Walk YYYY/MM/DD directory structure
+          const years = await readdir(codexSessionsDir);
+          for (const year of years) {
+            const yearPath = join(codexSessionsDir, year);
+            let months: string[];
+            try {
+              months = await readdir(yearPath);
+            } catch {
+              continue;
+            }
+            for (const month of months) {
+              const monthPath = join(yearPath, month);
+              let days: string[];
+              try {
+                days = await readdir(monthPath);
+              } catch {
+                continue;
+              }
+              for (const day of days) {
+                const dayPath = join(monthPath, day);
+                let entries: string[];
+                try {
+                  entries = await readdir(dayPath);
+                } catch {
+                  continue;
+                }
+                for (const entry of entries) {
+                  if (!entry.endsWith(".jsonl")) continue;
+                  // Filename: rollout-{timestamp}-{threadId}.jsonl
+                  // Extract threadId: everything after the last occurrence of the timestamp pattern
+                  const match = entry.match(/^rollout-\d{4}-\d{2}-\d{2}T[\d-]+-(.+)\.jsonl$/);
+                  if (!match) continue;
+                  const threadId = match[1];
+                  if (activeCliSessionIds.has(threadId)) continue;
 
-          const filePath = join(projectPath, entry);
-          try {
-            const st = await stat(filePath);
-            allFiles.push({
-              id: sessionId,
-              projectDir,
-              path: filePath,
-              lastModified: st.mtimeMs,
-              sizeBytes: st.size,
-            });
-          } catch {
-            continue;
+                  const filePath = join(dayPath, entry);
+                  try {
+                    const st = await stat(filePath);
+                    allFiles.push({
+                      id: threadId,
+                      path: filePath,
+                      lastModified: st.mtimeMs,
+                      sizeBytes: st.size,
+                      backend: "codex",
+                    });
+                  } catch {
+                    continue;
+                  }
+                }
+              }
+            }
           }
+        } catch {
+          // ~/.codex/sessions may not exist — that's fine
         }
       }
 
@@ -785,9 +842,16 @@ export function createSessionsRoutes(ctx: RouteContext) {
               if (!line.trim()) continue;
               try {
                 const obj = JSON.parse(line);
+                // Claude Code metadata
                 if (obj.cwd && !cwd) cwd = obj.cwd;
                 if (obj.slug && !slug) slug = obj.slug;
                 if (obj.gitBranch && !gitBranch) gitBranch = obj.gitBranch;
+                // Codex metadata (inside session_meta payload)
+                if (obj.type === "session_meta" && obj.payload) {
+                  const p = obj.payload;
+                  if (p.cwd && !cwd) cwd = p.cwd;
+                  if (p.git?.branch && !gitBranch) gitBranch = p.git.branch;
+                }
                 if (cwd && slug && gitBranch) break;
               } catch {
                 continue;
@@ -804,6 +868,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
             gitBranch: gitBranch || null,
             lastModified: f.lastModified,
             sizeBytes: f.sizeBytes,
+            backend: f.backend,
           };
         }),
       );
@@ -1374,7 +1439,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const worktreeResult = cleanupWorktree(id, true);
     launcher.setArchived(id, true);
     await sessionStore.setArchived(id, true);
-    wsBridge.onSessionArchived(id);
     return c.json({ ok: true, worktree: worktreeResult });
   });
 
@@ -1386,7 +1450,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     launcher.setArchived(id, false);
     await sessionStore.setArchived(id, false);
-    wsBridge.onSessionUnarchived(id);
 
     // For worktree sessions: recreate the worktree if it was deleted during archiving
     let worktreeRecreated = false;
