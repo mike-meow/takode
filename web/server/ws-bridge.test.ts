@@ -1730,10 +1730,13 @@ describe("Browser handlers", () => {
     const historyMsg = calls.find((c: any) => c.type === "history_sync");
     expect(historyMsg).toBeDefined();
     expect(historyMsg.hot_messages.some((m: any) => m.type === "assistant")).toBe(true);
-    // Should also replay transient events (stream_event) that were missed
+    // Should also replay transient events (stream_event, status_change) that were missed.
+    // status_change appears because the assistant message triggers cli_initiated_turn
+    // detection (the CLI started outputting without a prior user message).
     const replayMsg = calls.find((c: any) => c.type === "event_replay");
     expect(replayMsg).toBeDefined();
-    expect(replayMsg.events.every((e: any) => e.message.type === "stream_event")).toBe(true);
+    const transientTypes = new Set(["stream_event", "status_change"]);
+    expect(replayMsg.events.every((e: any) => transientTypes.has(e.message.type))).toBe(true);
   });
 
   it("session_subscribe no-gap: skips message_history when only transient events were missed", () => {
@@ -13829,5 +13832,196 @@ describe("getHerdDiagnostics field name consistency", () => {
     expect(diag).not.toBeNull();
     expect(diag!.cliConnected).toBe(false);
     expect("backendConnected" in diag!).toBe(false);
+  });
+});
+
+describe("CLI-initiated turn tracking", () => {
+  // When the CLI spontaneously starts a turn (e.g. CronCreate wakeup,
+  // background task notification), the server must detect it and track
+  // the generation lifecycle so turn_end events are emitted. Without
+  // this, herded workers that wake up from cron jobs are invisible to
+  // the leader -- no turn_end means no herd event delivery.
+
+  it("sets isGenerating when SDK session emits assistant without prior user message", () => {
+    // Simulates a CLI-initiated turn (e.g. cron wakeup): the CLI sends
+    // an assistant message without any user_message from the browser.
+    const sid = "cli-initiated-sdk";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    // Emit system.init so cliInitReceived=true
+    adapter.emitBrowserMessage({
+      type: "system",
+      subtype: "init",
+      session_id: "cli-sdk-init",
+      model: "opus-4",
+      cwd: "/test",
+      tools: [],
+      permissionMode: "bypassPermissions",
+      mcp_servers: [],
+    });
+
+    const session = bridge.getSession(sid)!;
+    expect(session.isGenerating).toBe(false);
+
+    // CLI spontaneously emits an assistant message (cron wakeup)
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "cron-assistant-1",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "Cron check: investigating..." }],
+        model: "opus-4",
+      },
+      parent_tool_use_id: null,
+    });
+
+    // Server should detect this as a CLI-initiated turn
+    expect(session.isGenerating).toBe(true);
+  });
+
+  it("emits turn_end when CLI-initiated SDK turn completes with result", () => {
+    const sid = "cli-initiated-turn-end";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    adapter.emitBrowserMessage({
+      type: "system",
+      subtype: "init",
+      session_id: "cli-init-te",
+      model: "opus-4",
+      cwd: "/test",
+      tools: [],
+      permissionMode: "bypassPermissions",
+      mcp_servers: [],
+    });
+
+    const eventSpy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    // CLI-initiated turn: assistant then result
+    adapter.emitBrowserMessage({
+      type: "assistant",
+      message: {
+        id: "cron-assist-2",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "Cron: all checks passed." }],
+        model: "opus-4",
+      },
+      parent_tool_use_id: null,
+    });
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Cron check complete",
+        duration_ms: 3000,
+        duration_api_ms: 3000,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "cli-init-result-1",
+        session_id: sid,
+      },
+    });
+
+    // turn_end should have been emitted
+    const turnEndCalls = eventSpy.mock.calls.filter(
+      ([sessionId, eventType]) => sessionId === sid && eventType === "turn_end",
+    );
+    expect(turnEndCalls).toHaveLength(1);
+    // turn_source should be "unknown" since there's no user message in the turn
+    expect(turnEndCalls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        turn_source: "unknown",
+      }),
+    );
+
+    eventSpy.mockRestore();
+  });
+
+  it("does not false-detect CLI-initiated turn for subagent assistant messages", () => {
+    // Subagent messages have parent_tool_use_id set. They should NOT
+    // trigger a new cli_initiated_turn because they're part of an
+    // already-tracked turn.
+    const sid = "cli-init-subagent";
+    const cli = makeCliSocket(sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg({ session_id: "cli-subagent-1" }));
+
+    const session = bridge.getSession(sid)!;
+    expect(session.isGenerating).toBe(false);
+
+    // Subagent assistant message (has parent_tool_use_id)
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "subagent-msg-1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "Subagent working..." }],
+          model: "opus-4",
+        },
+        parent_tool_use_id: "tool-123",
+      }),
+    );
+
+    // Should NOT have triggered a new turn
+    expect(session.isGenerating).toBe(false);
+  });
+
+  it("does not false-detect CLI-initiated turn during resume replay", () => {
+    // During --resume, the CLI replays historical assistant messages.
+    // These should NOT trigger cli_initiated_turn detection.
+    const sid = "cli-init-resume";
+    const cli = makeCliSocket(sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg({ session_id: "cli-resume-1" }));
+
+    const session = bridge.getSession(sid)!;
+    // Simulate: session already has a historical assistant message
+    session.messageHistory.push({
+      type: "assistant",
+      message: {
+        id: "historical-msg-1",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "text", text: "Previously said" }],
+        model: "opus-4",
+      },
+      parent_tool_use_id: null,
+      timestamp: Date.now() - 60000,
+    } as any);
+
+    // Replay of the same message (same ID)
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "historical-msg-1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "Previously said" }],
+          model: "opus-4",
+        },
+        parent_tool_use_id: null,
+      }),
+    );
+
+    // Should NOT have triggered a turn (it's a replay)
+    expect(session.isGenerating).toBe(false);
   });
 });

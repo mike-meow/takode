@@ -5015,6 +5015,25 @@ export class WsBridge {
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
     const msgId = msg.message?.id;
 
+    // Detect CLI-initiated turns: if the CLI emits a top-level assistant
+    // message while isGenerating is false, the CLI started a new turn on
+    // its own (e.g. CronCreate wakeup, background task notification, or
+    // internal retry). Without this, reconcileTerminalResultState sees
+    // isGenerating=false and skips the turn_end event, leaving the herd
+    // leader blind to the worker's activity.
+    // Only trigger for top-level messages (no parent_tool_use_id) and
+    // non-replay messages (has msgId not yet seen, or no msgId at all).
+    // Skip during --resume replay (cliResuming) to avoid phantom turns.
+    if (
+      !session.isGenerating &&
+      !session.cliResuming &&
+      !msg.parent_tool_use_id &&
+      !(msgId && this.hasAssistantReplay(session, msgId))
+    ) {
+      this.setGenerating(session, true, "cli_initiated_turn");
+      this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
+    }
+
     // No ID — forward as-is (defensive)
     if (!msgId) {
       const addressing = this.classifyLeaderAssistantAddressing(session, msg.message.content);
