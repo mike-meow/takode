@@ -2393,8 +2393,45 @@ export class CliLauncher {
   }
 
   /**
-   * List all sessions (active + recently exited).
+   * Downgrade an SDK ("claude-sdk") session to WebSocket ("claude") transport.
+   *
+   * Disconnects the SDK adapter, changes backendType to "claude", and relaunches
+   * using the WebSocket CLI with --resume and the same cliSessionId. Symmetric
+   * to upgradeToSdk().
    */
+  async downgradeToWebSocket(
+    sessionId: string,
+  ): Promise<{ ok: boolean; error?: string; sessionId?: string; cliSessionId?: string; previousBackend?: string }> {
+    const info = this.sessions.get(sessionId);
+    if (!info) return { ok: false, error: "Session not found" };
+    if (info.backendType === "claude") return { ok: false, error: "Session is already using WebSocket transport" };
+    if (info.backendType === "codex") return { ok: false, error: "Cannot downgrade Codex sessions to WebSocket" };
+    if (!info.cliSessionId) return { ok: false, error: "Session has no cliSessionId — cannot resume via WebSocket" };
+
+    const previousBackend = info.backendType;
+    const cliSessionId = info.cliSessionId;
+    console.log(
+      `[cli-launcher] Downgrading session ${sessionTag(sessionId)} from ${previousBackend} to claude (cliSessionId: ${cliSessionId})`,
+    );
+
+    // Switch backend type and mark as exited so relaunch() will spawn WebSocket CLI.
+    // The SDK adapter will be disconnected by the bridge when it detects the state change.
+    info.backendType = "claude";
+    info.state = "exited";
+    this.persistState();
+
+    // Relaunch with WebSocket backend — relaunch() reads info.backendType and
+    // routes to spawnCLI(), which passes --resume with the cliSessionId.
+    const result = await this.relaunch(sessionId);
+    if (!result.ok) {
+      // Revert on failure
+      info.backendType = previousBackend as "claude-sdk";
+      this.persistState();
+      return { ok: false, error: result.error || "Relaunch failed after transport downgrade" };
+    }
+
+    return { ok: true, sessionId, cliSessionId, previousBackend };
+  }
   listSessions(): SdkSessionInfo[] {
     return Array.from(this.sessions.values());
   }

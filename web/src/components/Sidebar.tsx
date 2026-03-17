@@ -1122,6 +1122,7 @@ export function Sidebar() {
           const isArchived = sdk?.archived ?? sessionInfo?.archived ?? false;
           const isExited = sdk?.state === "exited";
           const attention = sessionAttention.get(contextMenu.sessionId);
+          const backendType = sessionInfo?.backendType || sdk?.backendType || "claude";
 
           const sessionNum = sdk?.sessionNum;
           const items: ContextMenuItem[] = [
@@ -1165,6 +1166,27 @@ export function Sidebar() {
                     label: "Relaunch",
                     onClick: () => {
                       api.relaunchSession(contextMenu.sessionId).catch(console.error);
+                    },
+                  },
+                ]
+              : []),
+            // Transport switch: only for Claude-family sessions that are alive
+            ...(backendType === "claude" && !isExited && !isArchived
+              ? [
+                  {
+                    label: "Switch to SDK",
+                    onClick: () => {
+                      api.upgradeTransport(contextMenu.sessionId).catch(console.error);
+                    },
+                  },
+                ]
+              : []),
+            ...(backendType === "claude-sdk" && !isExited && !isArchived
+              ? [
+                  {
+                    label: "Switch to WebSocket",
+                    onClick: () => {
+                      api.downgradeTransport(contextMenu.sessionId).catch(console.error);
                     },
                   },
                 ]
