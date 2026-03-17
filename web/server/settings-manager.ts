@@ -43,6 +43,10 @@ export interface CompanionSettings {
   transcriptionConfig: TranscriptionConfig;
   /** Preferred local editor for clickable file: links */
   editorConfig: EditorConfig;
+  /** Whether sleep inhibition via caffeinate is enabled (macOS only, default: false) */
+  sleepInhibitorEnabled: boolean;
+  /** Duration in minutes for each caffeinate engagement (default: 5, range: 1-30) */
+  sleepInhibitorDurationMinutes: number;
   updatedAt: number;
 }
 
@@ -126,6 +130,8 @@ let settings: CompanionSettings = {
     sttModel: "gpt-4o-mini-transcribe",
   },
   editorConfig: { editor: "none" },
+  sleepInhibitorEnabled: false,
+  sleepInhibitorDurationMinutes: 5,
   updatedAt: 0,
 };
 let secrets: CompanionSecrets = {
@@ -289,6 +295,13 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     autoNamerEnabled: typeof raw?.autoNamerEnabled === "boolean" ? raw.autoNamerEnabled : true,
     transcriptionConfig: normalizeTranscriptionConfig(raw),
     editorConfig: normalizeEditorConfig(raw),
+    sleepInhibitorEnabled: typeof raw?.sleepInhibitorEnabled === "boolean" ? raw.sleepInhibitorEnabled : false,
+    sleepInhibitorDurationMinutes:
+      typeof raw?.sleepInhibitorDurationMinutes === "number" &&
+      raw.sleepInhibitorDurationMinutes >= 1 &&
+      raw.sleepInhibitorDurationMinutes <= 30
+        ? Math.floor(raw.sleepInhibitorDurationMinutes)
+        : 5,
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -381,6 +394,8 @@ export function updateSettings(
       | "autoNamerEnabled"
       | "transcriptionConfig"
       | "editorConfig"
+      | "sleepInhibitorEnabled"
+      | "sleepInhibitorDurationMinutes"
     >
   >,
 ): CompanionSettings {

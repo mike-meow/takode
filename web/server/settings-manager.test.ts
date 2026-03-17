@@ -59,6 +59,8 @@ describe("settings-manager", () => {
       },
       editorConfig: { editor: "none" },
       defaultClaudeBackend: "claude",
+      sleepInhibitorEnabled: false,
+      sleepInhibitorDurationMinutes: 5,
       updatedAt: 0,
     });
   });
@@ -281,6 +283,8 @@ describe("settings-manager", () => {
       },
       editorConfig: { editor: "none" },
       defaultClaudeBackend: "claude",
+      sleepInhibitorEnabled: false,
+      sleepInhibitorDurationMinutes: 5,
       updatedAt: 0,
     });
   });

@@ -136,6 +136,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       transcriptionConfig: maskTranscriptionConfig(settings.transcriptionConfig),
       editorConfig: settings.editorConfig,
       defaultClaudeBackend: settings.defaultClaudeBackend,
+      sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
+      sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
       restartSupported: !!process.env.COMPANION_SUPERVISED,
       logFile: getLogPath(),
       claudeDefaultModel,
@@ -227,6 +229,18 @@ export function createSettingsRoutes(ctx: RouteContext) {
         );
       }
     }
+    if (body.sleepInhibitorEnabled !== undefined && typeof body.sleepInhibitorEnabled !== "boolean") {
+      return c.json({ error: "sleepInhibitorEnabled must be a boolean" }, 400);
+    }
+    if (
+      body.sleepInhibitorDurationMinutes !== undefined &&
+      (typeof body.sleepInhibitorDurationMinutes !== "number" ||
+        body.sleepInhibitorDurationMinutes < 1 ||
+        body.sleepInhibitorDurationMinutes > 30 ||
+        !Number.isInteger(body.sleepInhibitorDurationMinutes))
+    ) {
+      return c.json({ error: "sleepInhibitorDurationMinutes must be an integer between 1 and 30" }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
@@ -246,6 +260,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "transcriptionConfig",
       "editorConfig",
       "defaultClaudeBackend",
+      "sleepInhibitorEnabled",
+      "sleepInhibitorDurationMinutes",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -276,6 +292,10 @@ export function createSettingsRoutes(ctx: RouteContext) {
         body.defaultClaudeBackend === "claude" || body.defaultClaudeBackend === "claude-sdk"
           ? body.defaultClaudeBackend
           : undefined,
+      sleepInhibitorEnabled:
+        typeof body.sleepInhibitorEnabled === "boolean" ? body.sleepInhibitorEnabled : undefined,
+      sleepInhibitorDurationMinutes:
+        typeof body.sleepInhibitorDurationMinutes === "number" ? body.sleepInhibitorDurationMinutes : undefined,
     });
 
     return c.json({
@@ -295,6 +315,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       transcriptionConfig: maskTranscriptionConfig(settings.transcriptionConfig),
       editorConfig: settings.editorConfig,
       defaultClaudeBackend: settings.defaultClaudeBackend,
+      sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
+      sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
     });
   });
 

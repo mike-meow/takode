@@ -68,6 +68,12 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [maxKeepAlive, setMaxKeepAlive] = useState(0);
   const [lifecycleSaving, setLifecycleSaving] = useState(false);
   const [lifecycleError, setLifecycleError] = useState("");
+
+  // Sleep inhibitor state
+  const [sleepInhibitorEnabled, setSleepInhibitorEnabled] = useState(false);
+  const [sleepInhibitorDuration, setSleepInhibitorDuration] = useState(5);
+  const [sleepInhibitorSaving, setSleepInhibitorSaving] = useState(false);
+  const [sleepInhibitorError, setSleepInhibitorError] = useState("");
   const lifecycleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-namer toggle state
@@ -159,6 +165,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setCodexBin(s.codexBinary || "");
         setDefaultClaudeBackend(s.defaultClaudeBackend || "claude");
         setMaxKeepAlive(s.maxKeepAlive || 0);
+        setSleepInhibitorEnabled(s.sleepInhibitorEnabled ?? false);
+        setSleepInhibitorDuration(s.sleepInhibitorDurationMinutes ?? 5);
         setPoConfigured(s.pushoverConfigured);
         setPoEnabled(s.pushoverEnabled);
         setPoDelay(s.pushoverDelaySeconds);
@@ -332,6 +340,23 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setLifecycleSaving(false);
       }
     }, 800);
+  }
+
+  async function saveSleepInhibitor(enabled: boolean, duration: number) {
+    setSleepInhibitorSaving(true);
+    setSleepInhibitorError("");
+    try {
+      const res = await api.updateSettings({
+        sleepInhibitorEnabled: enabled,
+        sleepInhibitorDurationMinutes: duration,
+      });
+      setSleepInhibitorEnabled(res.sleepInhibitorEnabled ?? false);
+      setSleepInhibitorDuration(res.sleepInhibitorDurationMinutes ?? 5);
+    } catch (err: unknown) {
+      setSleepInhibitorError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSleepInhibitorSaving(false);
+    }
   }
 
   async function onRestartServer() {
@@ -741,6 +766,65 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             )}
 
             {lifecycleSaving && <p className="text-xs text-cc-muted">Saving...</p>}
+          </div>
+
+          {/* Sleep Inhibitor (macOS only) */}
+          <div className="border-t border-cc-border pt-3 space-y-3">
+            <div>
+              <span className="text-sm font-medium text-cc-fg">Prevent Sleep During Generation</span>
+              <p className="mt-0.5 text-xs text-cc-muted">
+                Keep your Mac awake while sessions are generating. Uses macOS caffeinate. No effect on other platforms.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={sleepInhibitorSaving}
+              onClick={() => {
+                const next = !sleepInhibitorEnabled;
+                setSleepInhibitorEnabled(next);
+                saveSleepInhibitor(next, sleepInhibitorDuration);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+            >
+              <span>Enabled</span>
+              <span className="text-xs text-cc-muted">
+                {sleepInhibitorSaving ? "..." : sleepInhibitorEnabled ? "On" : "Off"}
+              </span>
+            </button>
+
+            {sleepInhibitorEnabled && (
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="sleep-inhibitor-duration">
+                  Caffeinate Duration (minutes)
+                </label>
+                <input
+                  id="sleep-inhibitor-duration"
+                  type="number"
+                  min={1}
+                  max={30}
+                  step={1}
+                  value={sleepInhibitorDuration}
+                  onChange={(e) => {
+                    const v = Math.max(1, Math.min(30, Math.floor(Number(e.target.value) || 5)));
+                    setSleepInhibitorDuration(v);
+                    saveSleepInhibitor(sleepInhibitorEnabled, v);
+                  }}
+                  className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+                />
+                <p className="mt-1.5 text-xs text-cc-muted">
+                  How long to keep the machine awake after each check (1-30 min). Timer resets every 60s while
+                  generating.
+                </p>
+              </div>
+            )}
+
+            {sleepInhibitorError && (
+              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                {sleepInhibitorError}
+              </div>
+            )}
+
+            {sleepInhibitorSaving && <p className="text-xs text-cc-muted">Saving...</p>}
           </div>
 
           {/* Session Data — export/import */}

@@ -41,6 +41,7 @@ import { RecorderManager } from "./recorder.js";
 import { CronScheduler } from "./cron-scheduler.js";
 import { ImageStore } from "./image-store.js";
 import { IdleManager } from "./idle-manager.js";
+import { SleepInhibitor } from "./sleep-inhibitor.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
@@ -761,10 +762,15 @@ ensureGroomIntegration();
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
 idleManager.start();
 
+// ── Sleep inhibitor — prevent macOS sleep during generation ──────────────────
+const sleepInhibitor = new SleepInhibitor({ wsBridge, launcher, getSettings });
+sleepInhibitor.start();
+
 // ── Shutdown helpers ─────────────────────────────────────────────────────────
 async function performShutdown() {
   console.log("[server] Persisting state before shutdown...");
   idleManager.stop();
+  sleepInhibitor.stop();
   await sessionStore.flushAll();
   containerManager.persistState(CONTAINER_STATE_PATH);
   pushoverNotifier.destroy();

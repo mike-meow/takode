@@ -300,6 +300,8 @@ export interface AppSettings {
   transcriptionConfig: TranscriptionConfig;
   editorConfig: EditorConfig;
   defaultClaudeBackend: "claude" | "claude-sdk";
+  sleepInhibitorEnabled: boolean;
+  sleepInhibitorDurationMinutes: number;
   restartSupported: boolean;
   claudeDefaultModel?: string;
 }
@@ -731,6 +733,8 @@ export const api = {
     transcriptionConfig?: TranscriptionConfig;
     editorConfig?: EditorConfig;
     defaultClaudeBackend?: "claude" | "claude-sdk";
+    sleepInhibitorEnabled?: boolean;
+    sleepInhibitorDurationMinutes?: number;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),
