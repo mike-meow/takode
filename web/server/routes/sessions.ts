@@ -1253,19 +1253,26 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
 
+    console.log(`[transport] Upgrading session ${id.slice(0, 8)} from claude → claude-sdk`);
     const result = await launcher.upgradeToSdk(id);
     if (!result.ok) {
+      console.log(`[transport] Upgrade failed for ${id.slice(0, 8)}: ${result.error}`);
       const status = result.error && result.error.includes("not found") ? 404 : 400;
       return c.json({ error: result.error }, status);
     }
 
     // Update the ws-bridge session's backendType so it attaches the
     // SDK adapter (instead of expecting a WebSocket CLI connection).
+    // Broadcast the change so all connected browsers update their UI
+    // (e.g. context menu shows "Switch to WebSocket" instead of "Switch to SDK").
     const bridgeSession = wsBridge.getSession(id);
     if (bridgeSession) {
       bridgeSession.backendType = "claude-sdk";
+      bridgeSession.state.backend_type = "claude-sdk";
+      wsBridge.broadcastSessionUpdate(id, { backend_type: "claude-sdk" });
     }
 
+    console.log(`[transport] Upgrade complete for ${id.slice(0, 8)}`);
     return c.json(result);
   });
 
@@ -1274,19 +1281,25 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
 
+    console.log(`[transport] Downgrading session ${id.slice(0, 8)} from claude-sdk → claude`);
     const result = await launcher.downgradeToWebSocket(id);
     if (!result.ok) {
+      console.log(`[transport] Downgrade failed for ${id.slice(0, 8)}: ${result.error}`);
       const status = result.error && result.error.includes("not found") ? 404 : 400;
       return c.json({ error: result.error }, status);
     }
 
     // Update the ws-bridge session's backendType so it expects a WebSocket
     // CLI connection instead of an SDK adapter.
+    // Broadcast so all browsers see the transport change immediately.
     const bridgeSession = wsBridge.getSession(id);
     if (bridgeSession) {
       bridgeSession.backendType = "claude";
+      bridgeSession.state.backend_type = "claude";
+      wsBridge.broadcastSessionUpdate(id, { backend_type: "claude" });
     }
 
+    console.log(`[transport] Downgrade complete for ${id.slice(0, 8)}`);
     return c.json(result);
   });
 
