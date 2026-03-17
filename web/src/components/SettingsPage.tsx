@@ -773,7 +773,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             <div>
               <span className="text-sm font-medium text-cc-fg">Prevent Sleep During Generation</span>
               <p className="mt-0.5 text-xs text-cc-muted">
-                Keep your Mac awake while sessions are generating. Uses macOS caffeinate. No effect on other platforms.
+                Keep your Mac awake while sessions are actively generating. Applies to this server instance -- all
+                sessions managed by this Takode server share the same setting. Uses macOS caffeinate. No effect on
+                other platforms.
               </p>
             </div>
             <button
@@ -795,25 +797,23 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             {sleepInhibitorEnabled && (
               <div>
                 <label className="block text-sm font-medium mb-1.5" htmlFor="sleep-inhibitor-duration">
-                  Caffeinate Duration (minutes)
+                  Grace Period (minutes)
                 </label>
                 <input
                   id="sleep-inhibitor-duration"
                   type="number"
                   min={1}
-                  max={30}
                   step={1}
                   value={sleepInhibitorDuration}
                   onChange={(e) => {
-                    const v = Math.max(1, Math.min(30, Math.floor(Number(e.target.value) || 5)));
+                    const v = Math.max(1, Math.floor(Number(e.target.value) || 5));
                     setSleepInhibitorDuration(v);
                     saveSleepInhibitor(sleepInhibitorEnabled, v);
                   }}
                   className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
                 />
                 <p className="mt-1.5 text-xs text-cc-muted">
-                  How long to keep the machine awake after each check (1-30 min). Timer resets every 60s while
-                  generating.
+                  Grace period in minutes. Each poll (every 60s) resets the timer while any session is generating.
                 </p>
               </div>
             )}

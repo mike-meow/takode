@@ -45,7 +45,7 @@ export interface CompanionSettings {
   editorConfig: EditorConfig;
   /** Whether sleep inhibition via caffeinate is enabled (macOS only, default: false) */
   sleepInhibitorEnabled: boolean;
-  /** Duration in minutes for each caffeinate engagement (default: 5, range: 1-30) */
+  /** Duration in minutes for each caffeinate engagement (default: 5, minimum: 1) */
   sleepInhibitorDurationMinutes: number;
   updatedAt: number;
 }
@@ -297,9 +297,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
     editorConfig: normalizeEditorConfig(raw),
     sleepInhibitorEnabled: typeof raw?.sleepInhibitorEnabled === "boolean" ? raw.sleepInhibitorEnabled : false,
     sleepInhibitorDurationMinutes:
-      typeof raw?.sleepInhibitorDurationMinutes === "number" &&
-      raw.sleepInhibitorDurationMinutes >= 1 &&
-      raw.sleepInhibitorDurationMinutes <= 30
+      typeof raw?.sleepInhibitorDurationMinutes === "number" && raw.sleepInhibitorDurationMinutes >= 1
         ? Math.floor(raw.sleepInhibitorDurationMinutes)
         : 5,
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
