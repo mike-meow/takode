@@ -170,7 +170,7 @@ export async function transcribeWithGemini(audioBuffer: Buffer, mimeType: string
 
 /**
  * Transcribe audio using OpenAI's audio transcription API (multipart form upload).
- * @param sttPrompt Optional prompt to guide the STT model's vocabulary recognition (up to 1024 tokens).
+ * @param sttPrompt Optional prompt to guide the STT model's vocabulary recognition.
  */
 export async function transcribeWithOpenai(
   audioBuffer: Buffer,

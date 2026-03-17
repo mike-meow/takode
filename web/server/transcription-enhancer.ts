@@ -41,23 +41,22 @@ const HALLUCINATION_LENGTH_RATIO = 3;
 const MIN_CHARS_FOR_ENHANCEMENT = 100;
 
 /** Max total characters for the STT prompt.
- *  Conservative limit: gpt-4o-mini-transcribe accepts up to ~1024 tokens in the
- *  prompt parameter. 3000 chars ≈ 750 tokens, safely under the limit.
- *  If the prompt exceeds the model's limit, the API returns an error, so we must
- *  stay well under. */
-const STT_PROMPT_MAX_CHARS = 3000;
+ *  gpt-4o-mini-transcribe is a GPT-4o variant and accepts much longer prompts
+ *  than the old Whisper 1024-token limit. We match the enhancer's budget so both
+ *  pipelines benefit equally from available context. */
+const STT_PROMPT_MAX_CHARS = 10_000;
 
 /** Budget reserved for conversation context (the rest goes to metadata). */
 const STT_CONVO_BUDGET_RATIO = 0.55;
 
 /**
  * STT prompt: per-message char limit = max(STT_MSG_START - idx * STT_MSG_STEP, STT_MSG_FLOOR).
- * Start at 1000 for the most recent message, drop 100 per message, floor at 300.
+ * Start at 2500 for the most recent message, drop 200 per message, floor at 500.
  * Prefers showing more detail from fewer messages over thin slices of many messages.
  */
-const STT_MSG_START = 1000;
-const STT_MSG_STEP = 100;
-const STT_MSG_FLOOR = 300;
+const STT_MSG_START = 2500;
+const STT_MSG_STEP = 200;
+const STT_MSG_FLOOR = 500;
 
 /** Max characters per session name in the STT prompt. */
 const MAX_SESSION_NAME_CHARS = 100;
