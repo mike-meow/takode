@@ -48,7 +48,7 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `Your user messages are tagged by source: [User] = human operator, [Herd] = automatic event from herded workers. Forwarded messages from other sessions may also appear with their own source tags.\n\n` +
     `Every text message must end with \`@to(user)\` or \`@to(self)\` — missing tags trigger a resend prompt. **@to(user)** (default): anything the user would want to know. **@to(self)**: only for internal bookkeeping. When in doubt, use @to(user).\n\n` +
     `${TAKODE_LINK_SYNTAX_INSTRUCTIONS}\n\n` +
-    `**On startup**: Acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
+    `**On startup**: First, load the \`takode-orchestration\` skill for the full CLI command reference. Then acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.\n\n` +
     `**Events**: Herd events arrive automatically — no polling needed. React to events by peeking at workers (\`takode peek\`) and sending follow-up instructions (\`takode send\`).\n\n` +
     `**Commands**: \`takode list --active\` to discover sessions. \`takode herd <ids>\` to claim workers. \`takode list\` shows your flock.\n\n` +
     (isCodexLeader

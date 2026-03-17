@@ -3976,6 +3976,14 @@ describe("buildOrchestratorSystemPrompt", () => {
     expect(prompt).not.toContain("[Agent]");
   });
 
+  it("instructs the leader to load the takode-orchestration skill on startup", () => {
+    // Both backends should instruct skill loading on startup
+    const claudePrompt = buildOrchestratorSystemPrompt("claude");
+    const codexPrompt = buildOrchestratorSystemPrompt("codex");
+    expect(claudePrompt).toContain("takode-orchestration");
+    expect(codexPrompt).toContain("takode-orchestration");
+  });
+
   it("injects the Codex-specific startup prompt for connected leader sessions", async () => {
     launcher.getSession.mockReturnValue({ state: "connected" });
 

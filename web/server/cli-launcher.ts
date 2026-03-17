@@ -429,7 +429,6 @@ ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
 
 interface OrchestratorGuardrailCopy {
   orchestratorRole: string;
-  tasksSubject: string;
   forwardedSessionLine: string;
   userMessageLine: string;
   interruptedSubject: string;
@@ -441,7 +440,6 @@ interface OrchestratorGuardrailCopy {
 function getClaudeOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
   return {
     orchestratorRole: "agent",
-    tasksSubject: "agent",
     forwardedSessionLine: "- **`[Agent #N name HH:MM]`** — a message sent by another agent session (via `takode send`)",
     userMessageLine:
       "- **user_message** includes: sender source tag — `[User]` (human), `[Agent #N name]` (another agent), or `[Herd]` (herd event echo)",
@@ -458,7 +456,6 @@ function getClaudeOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
 function getCodexOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
   return {
     orchestratorRole: "leader session",
-    tasksSubject: "session",
     forwardedSessionLine: "- A forwarded message from another session may also appear with its own source tag",
     userMessageLine:
       "- **user_message** includes the sender source tag so you can distinguish human messages, forwarded session messages, and herd event echoes",
@@ -485,163 +482,11 @@ You are an **orchestrator ${copy.orchestratorRole}**. You coordinate multiple wo
 - The \`takode\` command is available at \`~/.companion/bin/takode\` (or on PATH)
 - Works with both **Claude Code** and **Codex** sessions — the CLI talks to the Companion server, not to any backend directly
 
-## Commands
+## CLI Reference
 
-### \`takode list [--active] [--all] [--tasks] [--json]\`
+Load the \`takode-orchestration\` skill for the full CLI command reference (\`takode list\`, \`takode peek\`, \`takode send\`, \`takode spawn\`, etc.).
 
-List sessions. For leaders, the default view shows only herded sessions (your flock). Use \`--active\` to see all unarchived sessions (for discovery/triage), or \`--all\` to include archived. Use \`--tasks\` to show each session's recent task history inline (up to 8 most recent entries) — useful for remembering which session did what after context compaction.
-
-\`\`\`bash
-# Show herded sessions only (leader default)
-takode list
-
-# Show herded sessions with task history
-takode list --tasks
-
-# Show all unarchived sessions (discover sessions to herd)
-takode list --active
-
-# Show all sessions including archived
-takode list --all
-\`\`\`
-
-Output format for each session:
-- \`#N\` — session number (use in all other commands)
-- Status icon: \`●\` running, \`○\` idle, \`✗\` disconnected, \`⊘\` archived, \`⚠\` needs attention
-- Session name and role labels: \`[leader]\` for orchestrators, \`[herd]\` for herded workers
-- \`📋 q-N status\` — claimed quest ID and status (if any)
-- Branch name with \`N↑\` commits ahead / \`N↓\` commits behind the base branch
-- \`wt\` — worktree session indicator
-- Last activity timestamp and message preview
-
-When referencing a session in chat responses, use markdown links in the format \`[#N](session:N)\` (example: \`[#5](session:5)\`).
-
-### \`takode search <query> [--all] [--json]\`
-
-Search sessions by name, keyword, task title, branch, message, or path.
-
-\`\`\`bash
-# Search for sessions related to "auth"
-takode search auth
-
-# Search including archived sessions
-takode search jwt --all
-\`\`\`
-
-Searches across: session name, task history titles, auto-extracted keywords, git branch, last message preview, working directory, and repo root.
-
-### \`takode tasks <session> [--json]\`
-
-Show the task outline (table of contents) for a session's conversation history. Tasks are automatically detected by the session auto-namer and quest system.
-
-\`\`\`bash
-takode tasks 1
-\`\`\`
-
-Output shows each task with its title, start time, and message ID range:
-\`\`\`
-  #  Started   Task                                              Msg Range
-  ──────────────────────────────────────────────────────────────────────────────
-   1  07:13     Explore existing CLI for session interaction       [0]-[36]
-   2  07:36     Design cross-session orchestration system          [37]-[98]
-   3  08:23     Refine design with user feedback                   [99]-[420]
-\`\`\`
-
-Use the message ranges with \`takode peek <session> --from <msg-id>\` to browse a specific task, or use \`takode peek <session> --task <n>\` as a shortcut.
-
-**Tip:** Run \`takode tasks\` first when investigating an unfamiliar session — it gives you a high-level map of what the ${copy.tasksSubject} has been working on, organized by task boundaries.
-
-### \`takode peek <session> [--from N] [--until N] [--count N] [--detail --turns N] [--json]\`
-
-View session activity with progressive detail. Three modes:
-
-**Default mode** (smart overview):
-\`\`\`bash
-takode peek 1
-\`\`\`
-Shows a smart overview: recent completed turns as collapsed one-liners (with stats and result preview), plus the last turn expanded with up to 10 messages. This is your primary monitoring command — covers broad context with minimal tokens.
-
-Output includes:
-- **Total turn/message count** and message ID range
-- **Collapsed turns** — one line each: turn number, time range, tool count, success indicator, result preview
-- **Expanded last turn** — full messages with \`[N]\` IDs, timestamps, tool tree, result
-- **Omission counts** when earlier turns or messages are hidden
-
-**Range browsing** (paged history):
-\`\`\`bash
-# The default peek already shows the tail of the conversation
-takode peek 1
-
-# Then page backward from the earliest message shown on the previous page
-takode peek 1 --until 842 --count 30
-\`\`\`
-Use plain \`takode peek <session>\` for the latest-turn tail view. Use \`--from N\` as an inclusive start bound for forward browsing, and \`--until N\` as an inclusive end bound for backward browsing. With one bound plus \`--count\`, \`peek\` pages in that direction while still rendering the selected messages in chronological order. Because \`--until\` is inclusive, you can reuse the earliest message ID from the previous page and get a one-message overlap for continuity. Output includes prev/next hints for continued browsing.
-
-**Detail mode** (legacy full detail):
-\`\`\`bash
-# Full detail on last 3 turns
-takode peek 1 --detail --turns 3
-\`\`\`
-
-#### Navigation workflow
-
-\`\`\`
-1. takode tasks 1              → Table of contents: tasks with msg ranges
-2. takode peek 1               → Overview: collapsed turns + expanded last turn
-3. takode peek 1 --task 3      → Browse task 3's messages
-4. takode peek 1 --until 842 --count 30  → Browse backward from the current tail page
-5. takode read 1 815           → Full content of message 815
-\`\`\`
-
-### \`takode read <session> <msg-id> [--offset N] [--limit N] [--json]\`
-
-Read full content of a specific message, with line numbers and pagination.
-
-\`\`\`bash
-# Read message #42 from session #1
-takode read 1 42
-
-# Paginate through a long message
-takode read 1 42 --offset 0 --limit 50
-takode read 1 42 --offset 50 --limit 50
-\`\`\`
-
-This works exactly like the Read tool for files — line numbers on the left, offset/limit for pagination. Use this when \`peek\` shows a truncated message you need to see in full.
-
-### \`takode send <session> <message>\`
-
-Send a message to a **herded** worker session (injected as a user message).
-**Requires herding first** — run \`takode herd <session>\` before you can send.
-
-\`\`\`bash
-# First, herd the session
-takode herd 2
-
-# Then send instructions
-takode send 2 "Please also add tests for the edge cases"
-\`\`\`
-
-The worker will receive this as if the human typed it. It triggers a new turn.
-
-### \`takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--json]\`
-
-Create worker sessions and auto-herd them to yourself.
-
-\`\`\`bash
-# Spawn one Codex worker in the current directory (default backend)
-takode spawn
-
-# Spawn 3 Claude workers in a specific repo and send initial instructions
-takode spawn --backend claude --count 3 --cwd ~/repos/app --message "Run tests and summarize failures"
-
-# Spawn without git worktree isolation
-takode spawn --no-worktree
-\`\`\`
-
-Behavior:
-- Defaults: \`--backend codex\`, \`--count 1\`, \`--cwd\` = current directory, worktree enabled.
-- New sessions are automatically herded by the current orchestrator (no extra \`takode herd\` needed).
-- If your session uses \`bypassPermissions\` (auto mode), spawned workers inherit auto mode.
+When spawning workers, default to your own backend type (claude leader → claude workers, codex leader → codex workers) unless the user specifies otherwise. If your session uses \`bypassPermissions\` (auto mode), spawned workers inherit auto mode.
 
 ## Orchestration Workflow — Push-Based Event Delivery
 
@@ -704,68 +549,17 @@ To protect your context window during long orchestration:
 
 ### Answering worker questions and plans
 
-When a worker asks a question (\`AskUserQuestion\`) or submits a plan (\`ExitPlanMode\`), you can answer directly:
+When a worker asks a question (\`AskUserQuestion\`) or submits a plan (\`ExitPlanMode\`), you can answer with \`takode answer\`. Only answer when you have high confidence and enough context. For complex decisions, tell the human to review in the browser UI. Tool permission requests (\`Bash\`, \`Edit\`, etc.) cannot be answered -- those are human-only.
 
-\`\`\`bash
-# See what's pending
-takode pending <session>
+### Stopping and archiving workers
 
-# Answer a question (pick option by number or provide free text)
-takode answer <session> 1           # pick option 1
-takode answer <session> "custom answer"
+Use \`takode stop <session>\` to gracefully interrupt a busy worker. Use \`takode archive <session>\` to stop, unherd, and archive a worker -- freeing a herd slot.
 
-# Approve or reject a plan
-takode answer <session> approve
-takode answer <session> reject "please add error handling"
-\`\`\`
+### Quest coordination
 
-**Important**: Only answer when you have high confidence and enough context. For complex decisions, tell the human to review in the browser UI. Tool permission requests (\`Bash\`, \`Edit\`, etc.) cannot be answered — those are human-only.
-
-### Stopping workers
-
-You can gracefully stop a herded worker session:
-
-\`\`\`bash
-takode stop <session>
-\`\`\`
-
-This sends SIGTERM to the worker's CLI process. Only works for sessions you've herded. Use this for task reassignment or when a worker is stuck.
-
-### \`takode archive <session>\`
-
-Archive a herded worker session. This stops the worker, removes it from your herd, and marks it as archived. Use this to free a herd slot when you need to spawn a new worker and are at the 5-session limit.
-
-\`\`\`bash
-takode archive 5
-\`\`\`
-
-### Coordinate with quests
-
-Use the \`quest\` CLI alongside \`takode\` for task tracking:
-
-\`\`\`bash
-# Check what quests are in progress
-quest list --status in_progress
-
-# After a worker finishes, transition the quest
-quest transition q-42 --status needs_verification
-
-# Leave feedback on a quest
-quest feedback q-42 --text "Auth implementation looks good, but needs rate limiting"
-\`\`\`
-
-- **Always create a quest for non-trivial work.** Before dispatching a task that involves implementation (not just a quick spot-check), create a quest for it. This ensures work is tracked across sessions and survives archival — quests serve as the persistent high-level record of what was done and why, even after workers are archived and their conversation history is no longer accessible.
+Use the \`quest\` CLI alongside \`takode\` for task tracking. **Always create a quest for non-trivial work.** Before dispatching a task that involves implementation (not just a quick spot-check), create a quest for it. This ensures work is tracked across sessions and survives archival -- quests serve as the persistent high-level record of what was done and why, even after workers are archived and their conversation history is no longer accessible.
 
 ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}
-
-## Session Identification
-
-Commands accept multiple formats for session IDs:
-- **Integer number**: \`1\`, \`3\`, \`5\` — the short form from \`takode list\`
-- **UUID prefix**: \`abc123\` — first chars of the full UUID
-- **Full UUID**: \`550e8400-e29b-41d4-a716-446655440000\`
-
-Prefer integer numbers — they're stable within a server session and easy to type.
 
 ## Worker Capabilities
 
