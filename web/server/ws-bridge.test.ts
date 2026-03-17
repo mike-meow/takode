@@ -887,6 +887,52 @@ describe("CLI handlers", () => {
     expect(bridge.setDiffBaseBranch("nonexistent", "main")).toBe(false);
   });
 
+  it("setDiffBaseBranch recomputes diff stats even without a CLI connection", async () => {
+    // Regression: changing diff base from the UI left stale line stats when
+    // no CLI was connected, because recomputeDiffIfDirty's guard skipped idle sessions.
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
+      if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
+      if (cmd.includes("--git-common-dir")) return "/home/user/companion/.git\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base")) return "abc123\n";
+      if (cmd.includes("diff --numstat")) return "42\t17\tfile.ts\n";
+      return "";
+    });
+
+    bridge.markWorktree("s1", "/home/user/companion", "/tmp/wt", "jiayi");
+    const session = bridge.getSession("s1")!;
+    // Intentionally NO backendSocket -- simulates a session without active CLI
+    // Seed stale stats that should be overwritten
+    session.state.total_lines_added = 219;
+    session.state.total_lines_removed = 126;
+
+    const browserWs = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browserWs, "s1");
+    browserWs.send.mockClear();
+
+    bridge.setDiffBaseBranch("s1", "jiayi");
+
+    // Wait for async diff computation to complete
+    await vi.waitFor(() => {
+      expect(session.state.total_lines_added).toBe(42);
+    });
+    expect(session.state.total_lines_removed).toBe(17);
+
+    // Verify the updated stats were broadcast to the browser
+    const calls = (browserWs.send as ReturnType<typeof vi.fn>).mock.calls;
+    const messages = calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({
+          total_lines_added: 42,
+          total_lines_removed: 17,
+        }),
+      }),
+    );
+  });
+
   it("handleCLIMessage: system.init resolves git info and sets diff_base_branch via async exec", async () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat/test-branch\n";

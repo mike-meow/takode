@@ -1020,10 +1020,22 @@ export class WsBridge {
       type: "session_update",
       session: { diff_base_branch: branch },
     });
-    // Recompute ahead/behind with new base, then recompute diff stats.
-    // Chained so git_default_branch is fresh when diff falls back to it (user selected "default").
-    session.diffStatsDirty = true;
-    this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true });
+    // Recompute ahead/behind with new base, then unconditionally recompute diff stats.
+    // Bypasses recomputeDiffIfDirty's guard (which skips idle sessions without a CLI)
+    // because this is an explicit user action -- the user is viewing the session.
+    void this.refreshGitInfo(session, { broadcastUpdate: true }).then(async () => {
+      const didRun = await this.computeDiffStatsAsync(session);
+      if (didRun) {
+        this.broadcastToBrowsers(session, {
+          type: "session_update",
+          session: {
+            total_lines_added: session.state.total_lines_added,
+            total_lines_removed: session.state.total_lines_removed,
+          },
+        });
+        this.persistSession(session);
+      }
+    });
     // Update the branch index since diff_base_branch changed
     this.updateBranchIndex(session);
     this.persistSession(session);
