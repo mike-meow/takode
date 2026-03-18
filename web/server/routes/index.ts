@@ -58,7 +58,9 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `- Point workers to the quest/task (e.g. "Work on q-30") and let them explore the codebase themselves.\n` +
     `- Only add context the worker can't discover on their own: user clarifications from this conversation, cross-worker coordination notes, or attached screenshots/images they won't have.\n` +
     `- Do NOT pre-explore code or write detailed implementation specs before dispatching. Over-specifying wastes your time and can mislead workers when your quick analysis is less thorough than what they'd do themselves.\n` +
-    `- Dispatch quickly, then steer as events come in.`
+    `- Dispatch quickly, then steer as events come in.\n\n` +
+    `**Quest refinement**: Before dispatching, check if the quest is clear enough for a worker to act on autonomously. If critical details are missing or ambiguous, ask the user for clarification first -- they're still here and can answer quickly. Don't guess at requirements the user could clarify in seconds. Once the quest is unambiguous, dispatch it. This does NOT mean adding implementation details -- just ensuring the *what* and *why* are clear, not the *how*.\n\n` +
+    `**Plan mode for non-trivial work**: For bug investigations, multi-file changes, or any work where the approach isn't obvious, instruct workers to return a plan for your approval before implementing. This lets you catch wrong directions early. For simple, well-scoped tasks (obvious fixes, single-file changes), workers can go straight to implementation.`
   );
 }
 
