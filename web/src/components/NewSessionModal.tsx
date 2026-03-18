@@ -28,6 +28,7 @@ import {
   getGlobalNewSessionDefaults,
   getGroupNewSessionDefaults,
   saveGroupNewSessionDefaults,
+  type NewSessionBackend,
 } from "../utils/new-session-defaults.js";
 import { EnvManager } from "./EnvManager.js";
 import { FolderPicker } from "./FolderPicker.js";
@@ -364,7 +365,7 @@ export function NewSessionModal({
     const defaultsGroupKey = (gitRepoInfo?.repoRoot || cwdSnapshot || "").trim();
     if (defaultsGroupKey) {
       saveGroupNewSessionDefaults(defaultsGroupKey, {
-        backend,
+        backend: backend as NewSessionBackend,
         model,
         mode,
         askPermission,

@@ -8,9 +8,9 @@ import {
   getModesForBackend,
 } from "./backends.js";
 
-export type NewSessionBackend = "claude" | "codex" | "claude-sdk";
+export type NewSessionBackend = "claude" | "codex";
 
-const VALID_BACKENDS = new Set<NewSessionBackend>(["claude", "codex", "claude-sdk"]);
+const VALID_BACKENDS = new Set<NewSessionBackend>(["claude", "codex"]);
 
 export interface NewSessionDefaults {
   backend: NewSessionBackend;
