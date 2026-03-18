@@ -130,16 +130,18 @@ describe("getPreview", () => {
     expect(getPreview("Bash", { command: exactCommand })).toBe(exactCommand);
   });
 
-  it("extracts last 2 path segments for Read", () => {
-    expect(getPreview("Read", { file_path: "/home/user/project/src/index.ts" })).toBe("src/index.ts");
+  it("returns full path for Read (CSS handles visual truncation)", () => {
+    expect(getPreview("Read", { file_path: "/home/user/project/src/index.ts" })).toBe(
+      "/home/user/project/src/index.ts",
+    );
   });
 
-  it("extracts last 2 path segments for Write", () => {
-    expect(getPreview("Write", { file_path: "/var/log/app.log" })).toBe("log/app.log");
+  it("returns full path for Write (CSS handles visual truncation)", () => {
+    expect(getPreview("Write", { file_path: "/var/log/app.log" })).toBe("/var/log/app.log");
   });
 
-  it("extracts last 2 path segments for Edit", () => {
-    expect(getPreview("Edit", { file_path: "/a/b/c/d.txt" })).toBe("c/d.txt");
+  it("returns full path for Edit (CSS handles visual truncation)", () => {
+    expect(getPreview("Edit", { file_path: "/a/b/c/d.txt" })).toBe("/a/b/c/d.txt");
   });
 
   it("handles short paths for file tools", () => {
@@ -409,7 +411,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Write Filesrc\/new-file\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Write File\/home\/user\/src\/new-file\.ts/ }));
     expect(screen.getByText("new-file.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
     expect(screen.queryByText("No changes")).toBeNull();
@@ -433,7 +435,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Fileplans\/design\.md/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/plans\/design\.md/ }));
     expect(screen.getByText("design.md")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
     expect(screen.queryByText("No changes")).toBeNull();
@@ -467,7 +469,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/src\/app\.ts/ }));
     fireEvent.click(screen.getByRole("button", { name: "Open File" }));
 
     await waitFor(() => {
@@ -523,7 +525,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/src\/app\.ts/ }));
     fireEvent.click(screen.getByRole("button", { name: "Open File" }));
 
     await waitFor(() => {
@@ -638,7 +640,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/src\/app\.ts/ }));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -662,7 +664,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/src\/app\.ts/ }));
     expect(screen.getByText("app.ts")).toBeTruthy();
     expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
@@ -681,7 +683,7 @@ describe("ToolBlock", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Edit Filesrc\/app\.ts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Edit File\/home\/user\/src\/app\.ts/ }));
     expect(screen.getByText(/modify.*app\.ts/)).toBeTruthy();
   });
 
@@ -689,7 +691,9 @@ describe("ToolBlock", () => {
     render(<ToolBlock name="Read" input={{ file_path: "/home/user/test.txt" }} toolUseId="tool-8" />);
 
     fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByText("/home/user/test.txt")).toBeTruthy();
+    // Full path appears in both header preview (RTL-truncated) and expanded detail
+    const matches = screen.getAllByText("/home/user/test.txt");
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows a 3-format copy menu for ExitPlanMode detail blocks", () => {

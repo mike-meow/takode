@@ -156,6 +156,8 @@ export const ToolBlock = memo(function ToolBlock({
   // Extract the most useful preview
   const preview = getPreview(name, input);
   const hideHeaderLabel = hideLabel || name === "Bash";
+  // File path previews use RTL truncation so the filename (rightmost) stays visible
+  const isFilePath = (name === "Read" || name === "Write" || name === "Edit") && !!input.file_path;
 
   // TodoWrite: flat inline view with status icon + active task + count
   if (name === "TodoWrite" && Array.isArray((input as Record<string, unknown>).todos)) {
@@ -181,6 +183,7 @@ export const ToolBlock = memo(function ToolBlock({
         {preview && (
           <span
             className={`text-xs truncate flex-1 font-mono-code ${hideHeaderLabel ? "text-cc-fg/90" : "text-cc-muted"}`}
+            style={isFilePath ? { direction: "rtl", textAlign: "left", unicodeBidi: "plaintext" } : undefined}
           >
             {preview}
           </span>
@@ -1065,8 +1068,7 @@ export function getPreview(name: string, input: Record<string, unknown>): string
     return input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
   }
   if ((name === "Read" || name === "Write" || name === "Edit") && input.file_path) {
-    const path = String(input.file_path);
-    return path.split("/").slice(-2).join("/");
+    return String(input.file_path);
   }
   if (name === "Glob" && input.pattern) return String(input.pattern);
   if (name === "Grep" && input.pattern) {
