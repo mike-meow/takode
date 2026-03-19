@@ -607,7 +607,7 @@ function AssistantMessage({
   const contentRef = useRef<HTMLDivElement>(null);
   const hidePaw = useContext(HidePawContext);
   const userAddressed = message.leaderUserAddressed === true;
-  const userAddressedBodyClass = userAddressed ? "border-l-2 border-cc-primary/20" : "";
+  const userAddressedBodyClass = userAddressed ? "border-l-2 border-cc-primary/20 bg-cc-primary/[0.03] rounded-r-md py-2 pr-2" : "";
   const displayMessage = useMemo(() => {
     const strippedContent = stripLeaderAddressSuffix(message.content);
     const originalBlocks = message.contentBlocks || [];
