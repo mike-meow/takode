@@ -114,32 +114,26 @@ If the input is a single short thought, a single sentence is fine. Do not pad.
 
 ${SHARED_CLEANING_RULES}`;
 
-/** "Bullet" mode — structured bullet points with sub-points. */
+/** "Bullet" mode — reorganize into logical groups without losing information. */
 const DICTATION_BULLET_SYSTEM_PROMPT = `You are a TRANSCRIPTION ENHANCER, not a conversational AI.
 
-Your ONLY job is to clean up a speech-to-text transcript into clean, readable text.
+Your ONLY job is to clean up a speech-to-text transcript and reorganize it for clarity.
 
 Output format:
 
-ALWAYS use structured format when the transcript contains 2+ sentences or distinct points.
-Top-level points are plain text lines with NO bullet marker and NO indentation.
-Sub-points use " - " (space + minus + space), indented under their parent.
-Keep top-level lines SHORT (one line). Move supporting details, context, and reasoning into sub-points.
+Keep ALL original sentences — do light polishing (filler removal, grammar fixes) but do NOT rewrite or compress them.
+Group sentences by topic: each group gets a short top-level heading line (NO bullet marker, NO indentation).
+Sentences that are supporting details go under their group as sub-points using " - " (space + minus + space).
+If a sentence IS the main point of its group, it can be the top-level line itself.
 Do NOT insert empty lines between lines — keep the output compact.
+For a single short thought, a plain sentence is fine — no structure needed.
 
-<example title="multiple points">
-Move settings files out of user's repo
-  - Currently pollutes git status
-  - Use ~/.companion/ as centralized location
-Fix session auth path
-</example>
-
-For a single short point, a plain sentence is acceptable — but if there are any supporting details, use sub-points:
-
-<example title="single point with details">
-Move the settings files to ~/.companion/
-  - Currently pollutes git status
-  - Centralized location is easier to manage
+<example title="reorganized speech">
+Disconnected sessions should be reusable
+ - A disconnected session just means the CLI was killed by the idle manager
+ - The session history, worktree, and quest claim are all still intact
+ - takode send already auto-relaunches, so no extra reconnect step is needed
+We should also update the orchestration skill to explain this
 </example>
 
 ${SHARED_CLEANING_RULES}`;
@@ -174,15 +168,14 @@ Use paragraph breaks where the speaker naturally shifts topics.
 
 ${VOICE_EDIT_RULES}`;
 
-/** Voice edit in bullet mode — structured bullet points. */
+/** Voice edit in bullet mode — reorganize into logical groups. */
 const VOICE_EDIT_BULLET_SYSTEM_PROMPT = `${VOICE_EDIT_PREAMBLE}
 
 Output format:
 
-When the draft contains 2+ sentences or distinct points, preserve or produce compact structured format.
-Top-level points are plain text lines with NO bullet marker and NO indentation.
-Sub-points use "  - " (two-space indent + minus), placed under their parent.
-Keep top-level lines SHORT (one line). Move supporting details into sub-points.
+Keep all original sentences from the draft — do light polishing but do NOT rewrite or compress.
+Group sentences by topic: each group gets a short top-level heading line (NO bullet marker, NO indentation).
+Supporting detail sentences use "  - " (two-space indent + minus) under their parent group.
 Do NOT insert empty lines between lines.
 
 ${VOICE_EDIT_RULES}`;
@@ -387,7 +380,7 @@ export function buildEnhancementPrompt(
   // 4. Mode-specific format reminder (last — recency bias)
   if (enhancementMode === "bullet") {
     parts.push(
-      '\nRemember: for 2+ sentences, use plain text lines for top-level points (no bullet marker) and indented "  - " for sub-points. Keep top-level lines short; put details in sub-points.',
+      '\nRemember: keep all original sentences with light polishing. Group them by topic — top-level heading lines (no bullet marker) with detail sentences as indented " - " sub-points.',
     );
   } else {
     parts.push("\nRemember: output clean prose paragraphs. Use paragraph breaks at natural topic shifts.");

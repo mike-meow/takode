@@ -349,7 +349,7 @@ describe("buildEnhancementPrompt", () => {
 
 describe("buildVoiceEditPrompt", () => {
   it("bullet mode voice-edit prompt contains structured format rules", () => {
-    expect(VOICE_EDIT_BULLET_SYSTEM_PROMPT).toContain("Top-level points are plain text lines");
+    expect(VOICE_EDIT_BULLET_SYSTEM_PROMPT).toContain("Group sentences by topic");
     expect(VOICE_EDIT_BULLET_SYSTEM_PROMPT).toContain("Do NOT insert empty lines between lines.");
     expect(VOICE_EDIT_BULLET_SYSTEM_PROMPT).toContain("Preserve the draft's existing formatting constraints");
   });
