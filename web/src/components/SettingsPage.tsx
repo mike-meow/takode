@@ -1588,30 +1588,14 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
             {transcriptionEnhancement && (
               <div>
                 <label className="block text-xs font-medium text-cc-muted mb-1.5">Enhancement Style</label>
-                <div className="flex rounded-lg border border-cc-border overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setEnhancementMode("default")}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                      enhancementMode === "default"
-                        ? "bg-cc-primary text-white"
-                        : "bg-cc-input-bg text-cc-muted hover:text-cc-fg"
-                    }`}
-                  >
-                    Prose
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEnhancementMode("bullet")}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors border-l border-cc-border cursor-pointer ${
-                      enhancementMode === "bullet"
-                        ? "bg-cc-primary text-white"
-                        : "bg-cc-input-bg text-cc-muted hover:text-cc-fg"
-                    }`}
-                  >
-                    Bullet Points
-                  </button>
-                </div>
+                <select
+                  value={enhancementMode}
+                  onChange={(e) => setEnhancementMode(e.target.value as "default" | "bullet")}
+                  className="w-full bg-cc-input-bg text-cc-fg border border-cc-border rounded-lg px-3 py-2 text-xs"
+                >
+                  <option value="default">Prose</option>
+                  <option value="bullet">Bullet Points</option>
+                </select>
                 <p className="mt-1 text-xs text-cc-muted">
                   Prose outputs clean paragraphs. Bullet Points structures dictation as organized lists.
                 </p>
