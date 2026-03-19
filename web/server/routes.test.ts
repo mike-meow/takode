@@ -278,6 +278,7 @@ function createMockBridge() {
     markSessionUnread: vi.fn(() => true),
     markAllSessionsRead: vi.fn(),
     injectUserMessage: vi.fn(() => "sent" as const),
+    emitTakodeEvent: vi.fn(),
     subscribeTakodeEvents: vi.fn(() => () => {}),
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),
@@ -1451,6 +1452,41 @@ describe("DELETE /api/sessions/:id", () => {
       force: false,
       branchToDelete: "feat-wt-1234",
     });
+  });
+
+  it("emits session_archived herd event when deleting a herded session", async () => {
+    // When a herded worker is deleted, the leader should be notified via
+    // session_archived (the same proven path used by explicit archiving).
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "connected",
+      cwd: "/test",
+      createdAt: Date.now(),
+      herdedBy: "leader-1",
+      archived: false,
+    });
+
+    const res = await app.request("/api/sessions/s1", { method: "DELETE" });
+
+    expect(res.status).toBe(200);
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("s1", "session_archived", {});
+  });
+
+  it("skips herd event when deleting an already-archived session", async () => {
+    // Avoid double-notifying the leader if the session was archived before deletion.
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "connected",
+      cwd: "/test",
+      createdAt: Date.now(),
+      herdedBy: "leader-1",
+      archived: true,
+    });
+
+    const res = await app.request("/api/sessions/s1", { method: "DELETE" });
+
+    expect(res.status).toBe(200);
+    expect(bridge.emitTakodeEvent).not.toHaveBeenCalled();
   });
 });
 

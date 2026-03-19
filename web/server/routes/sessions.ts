@@ -1433,11 +1433,12 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
 
-    // Emit herd event BEFORE killing — after removal the session info
-    // (including herdedBy) is no longer accessible.
-    const deletedSessionInfo = launcher.getSession(id);
-    if (deletedSessionInfo?.herdedBy) {
-      wsBridge.emitTakodeEvent(id, "session_deleted", {});
+    // If not already archived, emit session_archived so the leader gets a
+    // herd notification through the same proven path as explicit archiving.
+    // Must happen BEFORE kill — after removal the session info is gone.
+    const sessionInfo = launcher.getSession(id);
+    if (sessionInfo?.herdedBy && !sessionInfo.archived) {
+      wsBridge.emitTakodeEvent(id, "session_archived", {});
     }
 
     await launcher.kill(id);
