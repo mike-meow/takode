@@ -1690,6 +1690,29 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
     spawned.push(await fetchSessionInfo(base, created.sessionId));
   }
 
+  // Check herd size and warn if over the limit
+  const HERD_SIZE_LIMIT = 5;
+  let herdWarning: { herdSize: number; excess: number; limit: number } | null = null;
+  try {
+    const allSessions = (await apiGet(base, "/takode/sessions")) as Array<{
+      sessionId: string;
+      archived?: boolean;
+      herdedBy?: string;
+    }>;
+    const activeHerded = allSessions.filter(
+      (s) => !s.archived && s.herdedBy === leaderSessionId,
+    );
+    if (activeHerded.length > HERD_SIZE_LIMIT) {
+      herdWarning = {
+        herdSize: activeHerded.length,
+        excess: activeHerded.length - HERD_SIZE_LIMIT,
+        limit: HERD_SIZE_LIMIT,
+      };
+    }
+  } catch {
+    // Non-critical — skip warning if we can't fetch sessions
+  }
+
   if (jsonMode) {
     console.log(
       JSON.stringify(
@@ -1704,6 +1727,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
           defaultModel: backendRaw === "codex" && !model ? getDefaultModelForBackend("codex") : null,
           message: message || null,
           sessions: spawned,
+          ...(herdWarning ? { herdWarning } : {}),
         },
         null,
         2,
@@ -1714,6 +1738,11 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
 
   for (const session of spawned) {
     printSpawnedSession(session);
+  }
+  if (herdWarning) {
+    console.log(
+      `\n\u26a0 Herd size is now ${herdWarning.herdSize} (limit: ${herdWarning.limit}). Please archive ${herdWarning.excess} session(s) that are no longer needed.`,
+    );
   }
 }
 
