@@ -339,7 +339,8 @@ describe("MessageBubble - assistant messages", () => {
     expect(marker).toBeTruthy();
     expect(marker.textContent).toBe("@to(user)");
     const body = screen.getByTestId("leader-user-addressed-body");
-    expect(body.className).toContain("border-l-2");
+    expect(body.className).toContain("border-t-2");
+    expect(body.className).toContain("bg-cc-primary");
     expect(screen.getByTestId("markdown").textContent).toBe("here's the latest status");
   });
 

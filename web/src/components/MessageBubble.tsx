@@ -586,7 +586,7 @@ function LeaderUserAddressedMarker() {
   return (
     <div
       data-testid="leader-user-addressed-marker"
-      className="mb-1.5 flex items-center text-[10px] font-mono-code tracking-[0.08em] text-cc-primary/80"
+      className="mb-1 flex items-center text-[10px] font-mono-code tracking-[0.08em] text-cc-text-muted/60"
     >
       @to(user)
     </div>
@@ -607,7 +607,9 @@ function AssistantMessage({
   const contentRef = useRef<HTMLDivElement>(null);
   const hidePaw = useContext(HidePawContext);
   const userAddressed = message.leaderUserAddressed === true;
-  const userAddressedBodyClass = userAddressed ? "border-l-2 border-cc-primary/35 pl-3" : "";
+  const userAddressedBodyClass = userAddressed
+    ? "border-t-2 border-cc-primary/50 bg-cc-primary/[0.06] rounded-md px-3 py-2"
+    : "";
   const displayMessage = useMemo(() => {
     const strippedContent = stripLeaderAddressSuffix(message.content);
     const originalBlocks = message.contentBlocks || [];
