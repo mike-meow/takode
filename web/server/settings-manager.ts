@@ -191,6 +191,9 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
     const sttModel = (STT_MODELS as readonly string[]).includes(rawSttModel)
       ? (rawSttModel as SttModel)
       : "gpt-4o-mini-transcribe";
+    const rawEnhancementMode = typeof c.enhancementMode === "string" ? c.enhancementMode : "";
+    const enhancementMode: EnhancementMode =
+      rawEnhancementMode === "default" || rawEnhancementMode === "bullet" ? rawEnhancementMode : "default";
     return {
       apiKey: typeof c.apiKey === "string" ? c.apiKey : "",
       baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : "https://api.openai.com/v1",
@@ -198,6 +201,7 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
       enhancementModel: typeof c.enhancementModel === "string" ? c.enhancementModel : "gpt-5-mini",
       customVocabulary: typeof c.customVocabulary === "string" ? c.customVocabulary : "",
       sttModel,
+      enhancementMode,
     };
   }
   return {
@@ -207,6 +211,7 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
     enhancementModel: "gpt-5-mini",
     customVocabulary: "",
     sttModel: "gpt-4o-mini-transcribe",
+    enhancementMode: "default",
   };
 }
 

@@ -14,6 +14,7 @@ import {
   type TranscriptionConfig,
   type SttModel,
   type EditorConfig,
+  type EnhancementMode,
 } from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
 import type { RouteContext } from "./context.js";
@@ -104,6 +105,11 @@ export function createSettingsRoutes(ctx: RouteContext) {
         typeof tc.sttModel === "string" && (STT_MODELS as readonly string[]).includes(tc.sttModel)
           ? (tc.sttModel as SttModel)
           : current.sttModel,
+      enhancementMode:
+        typeof tc.enhancementMode === "string" &&
+        (tc.enhancementMode === "default" || tc.enhancementMode === "bullet")
+          ? (tc.enhancementMode as EnhancementMode)
+          : current.enhancementMode,
     };
   }
 
