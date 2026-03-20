@@ -3740,12 +3740,6 @@ describe("Browser message routing", () => {
         .fn()
         .mockResolvedValueOnce({ imageId: "img-1", media_type: "image/png" })
         .mockResolvedValueOnce({ imageId: "img-2", media_type: "image/jpeg" }),
-      convertForApi: vi.fn((data: string, mediaType: string) =>
-        Promise.resolve({
-          base64: `${data}-converted`,
-          mediaType,
-        }),
-      ),
     };
     bridge.setImageStore(mockImageStore as any);
 
@@ -3770,8 +3764,9 @@ describe("Browser message routing", () => {
     expect(sent.message.content[0].type).toBe("image");
     expect(sent.message.content[1].type).toBe("image");
     expect(sent.message.content[2].type).toBe("text");
-    expect(sent.message.content[0].source.data).toBe("img1-base64-converted");
-    expect(sent.message.content[1].source.data).toBe("img2-base64-converted");
+    // Images are sent as-is (no conversion) since resize happens at store time
+    expect(sent.message.content[0].source.data).toBe("img1-base64");
+    expect(sent.message.content[1].source.data).toBe("img2-base64");
 
     const expectedPath1 = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     const expectedPath2 = join(homedir(), ".companion", "images", "s1", "img-2.orig.jpeg");
@@ -3779,13 +3774,11 @@ describe("Browser message routing", () => {
     expect(sent.message.content[2].text).toContain(`Attachment 2: ${expectedPath2}`);
 
     expect(mockImageStore.store).toHaveBeenCalledTimes(2);
-    expect(mockImageStore.convertForApi).toHaveBeenCalledTimes(2);
   });
 
   it("user_message with images: emits error and does not send turn when upload to imageStore fails", async () => {
     const mockImageStore = {
       store: vi.fn().mockRejectedValue(new Error("ENOENT: image file not found")),
-      convertForApi: vi.fn(),
     };
     bridge.setImageStore(mockImageStore as any);
     browser.send.mockClear();
@@ -6542,7 +6535,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const adapter1 = makeCodexAdapterMock();
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      getTransportPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.transport.jpeg"),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter(sid, adapter1 as any);
@@ -6591,7 +6584,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
-      "/tmp/companion-images/img-1.transport.jpeg",
+      "/tmp/companion-images/img-1.orig.png",
     ]);
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
@@ -9486,7 +9479,7 @@ describe("Codex broken-session recovery regression", () => {
     const adapter1 = makeCodexAdapterMock();
     const imageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-140", media_type: "image/jpeg" }),
-      getTransportPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-140.transport.jpeg"),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-140.orig.jpeg"),
     };
     bridge.setImageStore(imageStore as any);
     bridge.attachCodexAdapter(sid, adapter1 as any);
@@ -9509,7 +9502,7 @@ describe("Codex broken-session recovery regression", () => {
     const session = bridge.getSession(sid)!;
     expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
       firstContentContaining: expectedAttachmentPath,
-      firstLocalImages: ["/tmp/companion-images/img-140.transport.jpeg"],
+      firstLocalImages: ["/tmp/companion-images/img-140.orig.jpeg"],
     });
 
     adapter1.emitTurnStarted("turn-image-140");
@@ -10296,7 +10289,7 @@ describe("Codex resumed-turn recovery", () => {
     const adapter1 = makeCodexAdapterMock();
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      getTransportPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.transport.jpeg"),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter(sid, adapter1 as any);
@@ -10365,7 +10358,7 @@ describe("Codex resumed-turn recovery", () => {
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
-      "/tmp/companion-images/img-1.transport.jpeg",
+      "/tmp/companion-images/img-1.orig.png",
     ]);
   });
 
@@ -12306,14 +12299,10 @@ describe("Codex image transport", () => {
   it("sends local image paths to Codex when stored originals are available", async () => {
     const adapter = makeCodexAdapterMock();
 
-    // Create a mock imageStore that can resolve normalized transport paths.
+    // Create a mock imageStore that can resolve original paths.
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      getTransportPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.transport.jpeg"),
-      compressForTransport: vi.fn().mockResolvedValue({
-        base64: "compressed-base64-data",
-        mediaType: "image/jpeg",
-      }),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter("s1", adapter as any);
@@ -12340,23 +12329,16 @@ describe("Codex image transport", () => {
     const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-1.transport.jpeg"]);
+    expect(sentMsg.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
     expect(sentMsg.images).toBeUndefined();
-    expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
 
-  it("falls back to original stored paths when transport path lookup fails", async () => {
+  it("sends error when original path lookup fails for Codex images", async () => {
     const adapter = makeCodexAdapterMock();
 
-    // Mock imageStore where transport path lookup fails.
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      getTransportPath: vi.fn().mockResolvedValue(null),
-      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
-      compressForTransport: vi.fn().mockResolvedValue({
-        base64: "compressed-fallback-data",
-        mediaType: "image/jpeg",
-      }),
+      getOriginalPath: vi.fn().mockResolvedValue(null),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter("s1", adapter as any);
@@ -12375,16 +12357,12 @@ describe("Codex image transport", () => {
     );
     await flush();
 
-    // Adapter receives local_images and no inline image payload.
-    const firstFallbackCall = adapter.sendBrowserMessage.mock.calls[0];
-    expect(firstFallbackCall).toBeDefined();
-    const sentMsg = (firstFallbackCall as unknown as [any])[0] as any;
-    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
-    expect(sentMsg.type).toBe("codex_start_pending");
-    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
-    expect(sentMsg.images).toBeUndefined();
-    expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
+    // When original path lookup fails, an error should be sent to the browser
+    // and no turn should be dispatched to the adapter.
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+    expect(browser.send).toHaveBeenCalledWith(
+      expect.stringContaining("Image failed to send"),
+    );
   });
 
   it("sends all Codex image attachments as ordered local paths for multi-image messages", async () => {
@@ -12395,14 +12373,10 @@ describe("Codex image transport", () => {
         .fn()
         .mockResolvedValueOnce({ imageId: "img-1", media_type: "image/png" })
         .mockResolvedValueOnce({ imageId: "img-2", media_type: "image/png" }),
-      getTransportPath: vi
+      getOriginalPath: vi
         .fn()
-        .mockResolvedValueOnce("/tmp/companion-images/img-1.transport.jpeg")
-        .mockResolvedValueOnce("/tmp/companion-images/img-2.transport.jpeg"),
-      compressForTransport: vi.fn().mockResolvedValue({
-        base64: "compressed-fallback-data",
-        mediaType: "image/jpeg",
-      }),
+        .mockResolvedValueOnce("/tmp/companion-images/img-1.orig.png")
+        .mockResolvedValueOnce("/tmp/companion-images/img-2.orig.png"),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter("s1", adapter as any);
@@ -12433,11 +12407,10 @@ describe("Codex image transport", () => {
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath1}`);
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 2: ${expectedPath2}`);
     expect(sentMsg.inputs[0]?.local_images).toEqual([
-      "/tmp/companion-images/img-1.transport.jpeg",
-      "/tmp/companion-images/img-2.transport.jpeg",
+      "/tmp/companion-images/img-1.orig.png",
+      "/tmp/companion-images/img-2.orig.png",
     ]);
     expect(sentMsg.images).toBeUndefined();
-    expect(mockImageStore.compressForTransport).not.toHaveBeenCalled();
   });
 
   it("emits an error and does not send Codex image turn when imageStore is not set", async () => {
@@ -12478,10 +12451,6 @@ describe("Claude SDK image transport", () => {
 
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      compressForTransport: vi.fn().mockResolvedValue({
-        base64: "compressed-sdk-base64",
-        mediaType: "image/jpeg",
-      }),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachClaudeSdkAdapter("s1", adapter as any);

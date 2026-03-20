@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { extname } from "node:path";
 import { randomBytes } from "node:crypto";
-import sharp from "sharp";
+import { resizeForStore } from "./image-store.js";
 import type {
   QuestmasterTask,
   QuestCreateInput,
@@ -718,7 +718,10 @@ export async function markQuestVerificationInboxUnread(questId: string): Promise
 
 // ─── Image management ────────────────────────────────────────────────────────
 
-const MIME_TO_EXT: Record<string, string> = {
+// Map quest MIME types to file extensions. Uses image-store's map for common
+// types but also supports .svg via a local lookup since IMAGE_MIME_TO_EXT
+// values don't include the leading dot that quest filenames use.
+const QUEST_MIME_TO_EXT: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
   "image/gif": ".gif",
@@ -726,36 +729,14 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
-/**
- * Max pixel dimension for quest images. Claude Code's Read tool rejects
- * images exceeding 2000×2000px, so we resize to 1920px to leave headroom.
- */
-const QUEST_IMAGE_MAX_DIM = 1920;
-
-/** Downscale raster images that would exceed the Read tool's 2000px limit. */
-async function resizeForReadTool(data: Buffer, mimeType: string): Promise<Buffer> {
-  if (mimeType === "image/svg+xml") return data;
-  try {
-    const meta = await sharp(data).metadata();
-    if (!meta.width || !meta.height) return data;
-    if (meta.width <= QUEST_IMAGE_MAX_DIM && meta.height <= QUEST_IMAGE_MAX_DIM) return data;
-    return await sharp(data)
-      .resize({ width: QUEST_IMAGE_MAX_DIM, height: QUEST_IMAGE_MAX_DIM, fit: "inside", withoutEnlargement: true })
-      .toBuffer();
-  } catch (err) {
-    console.warn("[quest-store] Failed to resize image, saving original:", err);
-    return data;
-  }
-}
-
 /** Save an image to disk and return image metadata. */
 export async function saveQuestImage(filename: string, data: Buffer, mimeType: string): Promise<QuestImage> {
   await ensureImagesDir();
   const id = randomBytes(8).toString("hex");
-  const ext = MIME_TO_EXT[mimeType] || extname(filename) || ".bin";
+  const ext = QUEST_MIME_TO_EXT[mimeType] || extname(filename) || ".bin";
   const diskName = `${id}${ext}`;
   const diskPath = join(IMAGES_DIR, diskName);
-  const finalData = await resizeForReadTool(data, mimeType);
+  const finalData = await resizeForStore(data, mimeType);
   await writeFile(diskPath, finalData);
   return { id, filename, mimeType, path: diskPath };
 }
@@ -806,7 +787,7 @@ export async function readQuestImageFile(imageId: string): Promise<{ data: Buffe
     const data = (await readFile(fullPath)) as Buffer;
     // Derive MIME from extension
     const ext = extname(file).toLowerCase();
-    const mimeType = Object.entries(MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
+    const mimeType = Object.entries(QUEST_MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
     return { data, mimeType };
   } catch {
     return null;

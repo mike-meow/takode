@@ -6829,21 +6829,8 @@ export class WsBridge {
         if (session.backendType === "codex") {
           if (this.imageStore && userImageRefs?.length === msg.images.length) {
             const paths: string[] = [];
-            const imageStoreForCodex = this.imageStore as ImageStore & {
-              getTransportPath?: (sessionId: string, imageId: string) => Promise<string | null>;
-              getOriginalPath?: (sessionId: string, imageId: string) => Promise<string | null>;
-            };
             for (const ref of userImageRefs) {
-              const transportPath = imageStoreForCodex.getTransportPath
-                ? await imageStoreForCodex.getTransportPath(session.id, ref.imageId)
-                : null;
-              if (transportPath) {
-                paths.push(transportPath);
-                continue;
-              }
-              const originalPath = imageStoreForCodex.getOriginalPath
-                ? await imageStoreForCodex.getOriginalPath(session.id, ref.imageId)
-                : null;
+              const originalPath = await this.imageStore.getOriginalPath(session.id, ref.imageId);
               if (originalPath) {
                 paths.push(originalPath);
                 continue;
@@ -7387,16 +7374,9 @@ export class WsBridge {
     if (msg.images?.length) {
       const blocks: unknown[] = [];
       for (const img of msg.images) {
-        let mediaType = img.media_type;
-        let data = img.data;
-        if (this.imageStore) {
-          const converted = await this.imageStore.convertForApi(data, mediaType);
-          mediaType = converted.mediaType;
-          data = converted.base64;
-        }
         blocks.push({
           type: "image",
-          source: { type: "base64", media_type: mediaType, data },
+          source: { type: "base64", media_type: img.media_type, data: img.data },
         });
       }
       // Append image file paths to the text block so the leader can see them

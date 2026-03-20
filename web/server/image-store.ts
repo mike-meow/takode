@@ -10,7 +10,7 @@ export interface ImageRef {
   media_type: string;
 }
 
-const MIME_TO_EXT: Record<string, string> = {
+export const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpeg",
   "image/jpg": "jpg",
@@ -24,23 +24,38 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/heif": "heif",
 };
 
-/** Formats supported by Claude/Codex vision APIs. */
-const API_SUPPORTED_FORMATS = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]);
-
 const DEFAULT_BASE_DIR = join(homedir(), ".companion", "images");
 
 const THUMB_MAX_DIM = 300;
 const THUMB_QUALITY = 80;
 
 /**
- * Maximum base64 characters before we compress for transport.
- * ~375KB of raw image data → ~500KB base64. Keeps the JSON-RPC
- * turn/start payload (including JSON wrapper and data: URL) well
- * under 1MB to prevent event loop blocks and Codex process crashes.
+ * Max pixel dimension for stored images. Claude Code's Read tool rejects
+ * images exceeding 2000x2000px, so we cap at 1920px to leave headroom.
+ * Applied once at storage time for both session images and quest images.
  */
-const TRANSPORT_MAX_BASE64_CHARS = 500_000;
-const TRANSPORT_MAX_DIM = 1536;
-const TRANSPORT_JPEG_QUALITY = 80;
+export const STORE_MAX_DIM = 1920;
+
+/**
+ * Downscale raster images that would exceed the Read tool's 2000px limit.
+ * SVG images pass through unchanged. Falls back to the original buffer
+ * if sharp can't process the input.
+ */
+export async function resizeForStore(data: Buffer, mimeType: string, maxDim = STORE_MAX_DIM): Promise<Buffer> {
+  if (mimeType === "image/svg+xml") return data;
+  try {
+    const meta = await sharp(data).metadata();
+    if (!meta.width || !meta.height) return data;
+    if (meta.width <= maxDim && meta.height <= maxDim) return data;
+    return await sharp(data)
+      .rotate()
+      .resize({ width: maxDim, height: maxDim, fit: "inside", withoutEnlargement: true })
+      .toBuffer();
+  } catch (err) {
+    console.warn("[image-store] Failed to resize image, saving original:", err);
+    return data;
+  }
+}
 
 export class ImageStore {
   private baseDir: string;
@@ -55,7 +70,7 @@ export class ImageStore {
     return join(this.baseDir, sessionId);
   }
 
-  /** Store a base64 image to disk and generate a JPEG thumbnail. */
+  /** Store a base64 image to disk (resized to 1920px max) and generate a JPEG thumbnail. */
   async store(sessionId: string, base64Data: string, mediaType: string): Promise<ImageRef> {
     const dir = this.sessionDir(sessionId);
     await mkdir(dir, { recursive: true });
@@ -64,12 +79,12 @@ export class ImageStore {
     const imageId = `${Date.now()}-${this.counter++}-${randomBytes(3).toString("hex")}`;
     const originalPath = join(dir, `${imageId}.orig.${ext}`);
     const thumbPath = join(dir, `${imageId}.thumb.jpeg`);
-    const transportPath = join(dir, `${imageId}.transport.jpeg`);
 
-    const buffer = Buffer.from(base64Data, "base64");
+    const raw = Buffer.from(base64Data, "base64");
+    const buffer = await resizeForStore(raw, mediaType);
     await writeFile(originalPath, buffer);
 
-    // Generate thumbnail — fall back gracefully if sharp can't process
+    // Generate thumbnail -- fall back gracefully if sharp can't process
     try {
       await sharp(buffer)
         .rotate()
@@ -78,20 +93,6 @@ export class ImageStore {
         .toFile(thumbPath);
     } catch (err) {
       console.warn(`[image-store] Failed to generate thumbnail for ${imageId}:`, err);
-    }
-
-    // Generate a normalized transport image for Codex localImage turns:
-    // JPEG + bounded dimensions to avoid decoder/runtime instability with
-    // high-resolution originals and varied source formats.
-    try {
-      await sharp(buffer)
-        .rotate()
-        .resize({ width: TRANSPORT_MAX_DIM, height: TRANSPORT_MAX_DIM, fit: "inside", withoutEnlargement: true })
-        .flatten({ background: "#ffffff" })
-        .jpeg({ quality: TRANSPORT_JPEG_QUALITY })
-        .toFile(transportPath);
-    } catch (err) {
-      console.warn(`[image-store] Failed to generate transport image for ${imageId}:`, err);
     }
 
     return { imageId, media_type: mediaType };
@@ -118,68 +119,6 @@ export class ImageStore {
       return path;
     } catch {
       return null;
-    }
-  }
-
-  /** Get the normalized transport image path, or null if unavailable. */
-  async getTransportPath(sessionId: string, imageId: string): Promise<string | null> {
-    const path = join(this.sessionDir(sessionId), `${imageId}.transport.jpeg`);
-    try {
-      await access(path);
-      return path;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Compress large images to a transport-safe size.
-   * Codex receives messages on stdin as single NDJSON lines — multi-MB
-   * base64 images block the event loop and can crash the Codex process.
-   * SDK sessions can handle larger payloads (~1MB) through stdio.
-   * Images below the threshold are returned unchanged.
-   */
-  async compressForTransport(
-    base64Data: string,
-    mediaType: string,
-    maxBase64Chars = TRANSPORT_MAX_BASE64_CHARS,
-  ): Promise<{ base64: string; mediaType: string }> {
-    if (base64Data.length <= maxBase64Chars) {
-      return { base64: base64Data, mediaType };
-    }
-    try {
-      const buffer = Buffer.from(base64Data, "base64");
-      const compressed = await sharp(buffer)
-        .rotate()
-        .resize({ width: TRANSPORT_MAX_DIM, height: TRANSPORT_MAX_DIM, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: TRANSPORT_JPEG_QUALITY })
-        .toBuffer();
-      const compressedBase64 = compressed.toString("base64");
-      const reduction = ((1 - compressedBase64.length / base64Data.length) * 100).toFixed(0);
-      console.log(
-        `[image-store] Compressed image for transport: ${(base64Data.length / 1024).toFixed(0)}KB → ${(compressedBase64.length / 1024).toFixed(0)}KB base64 (${reduction}% reduction)`,
-      );
-      return { base64: compressedBase64, mediaType: "image/jpeg" };
-    } catch (err) {
-      console.warn("[image-store] Failed to compress image for transport:", err);
-      return { base64: base64Data, mediaType };
-    }
-  }
-
-  /** Convert unsupported image formats to JPEG for the Claude/Codex API. */
-  async convertForApi(base64Data: string, mediaType: string): Promise<{ base64: string; mediaType: string }> {
-    if (API_SUPPORTED_FORMATS.has(mediaType)) return { base64: base64Data, mediaType };
-    try {
-      const buffer = Buffer.from(base64Data, "base64");
-      const converted = await sharp(buffer)
-        .rotate()
-        .flatten({ background: "#ffffff" })
-        .jpeg({ quality: 90 })
-        .toBuffer();
-      return { base64: converted.toString("base64"), mediaType: "image/jpeg" };
-    } catch (err) {
-      console.warn("[image-store] Failed to convert image:", err);
-      return { base64: base64Data, mediaType };
     }
   }
 

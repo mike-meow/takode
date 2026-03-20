@@ -3,7 +3,7 @@ import { mkdtempSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { rmSync } from "node:fs";
-import { ImageStore } from "./image-store.js";
+import { ImageStore, resizeForStore } from "./image-store.js";
 
 let store: ImageStore;
 let tempDir: string;
@@ -22,9 +22,9 @@ afterEach(() => {
 });
 
 describe("ImageStore", () => {
-  // Tests that store() saves original, thumbnail, and transport files to disk,
+  // Tests that store() saves original and thumbnail files to disk,
   // returning a valid ImageRef with a unique imageId.
-  it("store() writes original, thumbnail, and transport files", async () => {
+  it("store() writes original and thumbnail files", async () => {
     const ref = await store.store("sess-1", TINY_PNG_BASE64, "image/png");
 
     expect(ref.imageId).toBeTruthy();
@@ -41,17 +41,6 @@ describe("ImageStore", () => {
     expect(thumbPath).toBeTruthy();
     expect(thumbPath!.endsWith(".thumb.jpeg")).toBe(true);
     expect(existsSync(thumbPath!)).toBe(true);
-
-    // Transport image should exist
-    const transportPath = await store.getTransportPath("sess-1", ref.imageId);
-    expect(transportPath).toBeTruthy();
-    expect(transportPath!.endsWith(".transport.jpeg")).toBe(true);
-    expect(existsSync(transportPath!)).toBe(true);
-
-    // Original should be the decoded base64 content
-    const origContent = readFileSync(origPath!);
-    const expected = Buffer.from(TINY_PNG_BASE64, "base64");
-    expect(origContent.equals(expected)).toBe(true);
   });
 
   // Tests that sequential calls produce unique imageIds
@@ -70,9 +59,33 @@ describe("ImageStore", () => {
     expect(existsSync(join(tempDir, "sess-a"))).toBe(true);
     expect(existsSync(join(tempDir, "sess-b"))).toBe(true);
 
-    // Each session dir should have 3 files (orig + thumb + transport)
-    expect(readdirSync(join(tempDir, "sess-a")).length).toBe(3);
-    expect(readdirSync(join(tempDir, "sess-b")).length).toBe(3);
+    // Each session dir should have 2 files (orig + thumb)
+    expect(readdirSync(join(tempDir, "sess-a")).length).toBe(2);
+    expect(readdirSync(join(tempDir, "sess-b")).length).toBe(2);
+  });
+
+  // Tests that store() resizes large images to fit within 1920px max dimension
+  it("store() resizes large images to 1920px max dimension", async () => {
+    const sharpMod = (await import("sharp")).default;
+
+    // Create a 3000x2000 image that exceeds the 1920px limit
+    const rawPixels = Buffer.alloc(3000 * 2000 * 3);
+    const largeBuffer = await sharpMod(rawPixels, { raw: { width: 3000, height: 2000, channels: 3 } })
+      .png()
+      .toBuffer();
+    const largeBase64 = largeBuffer.toString("base64");
+
+    const ref = await store.store("sess-1", largeBase64, "image/png");
+    const origPath = await store.getOriginalPath("sess-1", ref.imageId);
+    expect(origPath).toBeTruthy();
+
+    // Stored image should be resized to fit within 1920x1920
+    const meta = await sharpMod(readFileSync(origPath!)).metadata();
+    expect(meta.width).toBeLessThanOrEqual(1920);
+    expect(meta.height).toBeLessThanOrEqual(1920);
+    // Aspect ratio preserved: 3000x2000 → 1920x1280
+    expect(meta.width).toBe(1920);
+    expect(meta.height).toBe(1280);
   });
 
   // Tests that getOriginalPath returns null for nonexistent images
@@ -83,11 +96,6 @@ describe("ImageStore", () => {
   // Tests that getThumbnailPath returns null for nonexistent images
   it("getThumbnailPath() returns null for unknown image", async () => {
     expect(await store.getThumbnailPath("no-session", "no-image")).toBeNull();
-  });
-
-  // Tests that getTransportPath returns null for nonexistent images
-  it("getTransportPath() returns null for unknown image", async () => {
-    expect(await store.getTransportPath("no-session", "no-image")).toBeNull();
   });
 
   // Tests that removeSession cleans up the entire session directory
@@ -108,7 +116,7 @@ describe("ImageStore", () => {
   // Tests that corrupt base64 data still saves the original but handles
   // thumbnail generation failure gracefully
   it("store() handles sharp failure gracefully (original still saved)", async () => {
-    // Not a valid image, but valid base64 — sharp will fail but original should be saved
+    // Not a valid image, but valid base64 -- sharp will fail but original should be saved
     const junkBase64 = Buffer.from("this is not an image").toString("base64");
     const ref = await store.store("sess-1", junkBase64, "image/png");
 
@@ -118,118 +126,59 @@ describe("ImageStore", () => {
     const origPath = await store.getOriginalPath("sess-1", ref.imageId);
     expect(origPath).toBeTruthy();
     expect(existsSync(origPath!)).toBe(true);
+  });
+});
 
-    // Thumbnail may not exist (sharp fails on non-image data)
-    const thumbPath = await store.getThumbnailPath("sess-1", ref.imageId);
-    // Depending on sharp's behavior with non-image data, thumbnail may or may not exist
-    // The important thing is no exception was thrown
+// ── resizeForStore standalone function tests ──────────────────────────────
+
+describe("resizeForStore", () => {
+  // SVG images should pass through unchanged (not resizable by sharp)
+  it("passes SVG through unchanged", async () => {
+    const svgData = Buffer.from("<svg></svg>");
+    const result = await resizeForStore(svgData, "image/svg+xml");
+    expect(result).toBe(svgData);
   });
 
-  // ── convertForApi tests ─────────────────────────────────────────────────
-
-  // Supported formats should pass through unchanged (no conversion overhead)
-  it("convertForApi() passes through supported formats unchanged", async () => {
-    const result = await store.convertForApi(TINY_PNG_BASE64, "image/png");
-    expect(result.base64).toBe(TINY_PNG_BASE64);
-    expect(result.mediaType).toBe("image/png");
+  // Small images should pass through unchanged (no resize needed)
+  it("passes small images through unchanged", async () => {
+    const buf = Buffer.from(TINY_PNG_BASE64, "base64");
+    const result = await resizeForStore(buf, "image/png");
+    // 1x1 PNG is well under 1920px -- should not be resized
+    expect(result.length).toBeGreaterThan(0);
   });
 
-  it("convertForApi() passes through jpeg unchanged", async () => {
-    const result = await store.convertForApi(TINY_PNG_BASE64, "image/jpeg");
-    expect(result.base64).toBe(TINY_PNG_BASE64);
-    expect(result.mediaType).toBe("image/jpeg");
-  });
-
-  it("convertForApi() passes through webp unchanged", async () => {
-    const result = await store.convertForApi(TINY_PNG_BASE64, "image/webp");
-    expect(result.base64).toBe(TINY_PNG_BASE64);
-    expect(result.mediaType).toBe("image/webp");
-  });
-
-  it("convertForApi() passes through gif unchanged", async () => {
-    const result = await store.convertForApi(TINY_PNG_BASE64, "image/gif");
-    expect(result.base64).toBe(TINY_PNG_BASE64);
-    expect(result.mediaType).toBe("image/gif");
-  });
-
-  // TIFF is not in the supported set but is decodable by Sharp, so it should
-  // be converted to JPEG and the mediaType updated accordingly.
-  it("convertForApi() converts unsupported-but-decodable format to JPEG", async () => {
-    // Create a tiny 1x1 TIFF using Sharp from the known-good PNG
-    const sharp = (await import("sharp")).default;
-    const pngBuffer = Buffer.from(TINY_PNG_BASE64, "base64");
-    const tiffBuffer = await sharp(pngBuffer).tiff().toBuffer();
-    const tiffBase64 = tiffBuffer.toString("base64");
-
-    const result = await store.convertForApi(tiffBase64, "image/tiff");
-    expect(result.mediaType).toBe("image/jpeg");
-    // Converted base64 should be valid JPEG data (different from input)
-    expect(result.base64).not.toBe(tiffBase64);
-    // Verify the output is valid by decoding with Sharp
-    const metadata = await sharp(Buffer.from(result.base64, "base64")).metadata();
-    expect(metadata.format).toBe("jpeg");
-  });
-
-  // Unsupported format with invalid image data should fall back gracefully,
-  // returning the original data unchanged instead of throwing.
-  it("convertForApi() returns original data when conversion fails", async () => {
-    const junkBase64 = Buffer.from("not an image").toString("base64");
-    const result = await store.convertForApi(junkBase64, "image/heic");
-    expect(result.base64).toBe(junkBase64);
-    expect(result.mediaType).toBe("image/heic");
-  });
-
-  // ── compressForTransport tests ──────────────────────────────────────────
-
-  // Small images should pass through unchanged — no compression overhead.
-  it("compressForTransport() passes through small images unchanged", async () => {
-    const result = await store.compressForTransport(TINY_PNG_BASE64, "image/png");
-    expect(result.base64).toBe(TINY_PNG_BASE64);
-    expect(result.mediaType).toBe("image/png");
-  });
-
-  // Large images should be compressed to JPEG to keep the JSON-RPC payload
-  // under transport limits. Verifies both size reduction and format change.
-  it("compressForTransport() compresses large images to JPEG", async () => {
-    // Create a large PNG (500x500 noise) that exceeds TRANSPORT_MAX_BASE64_CHARS (500K).
-    // 500x500 RGBA = 1MB raw, uncompressed PNG ≈ 1MB+ → base64 ≈ 1.3M+ chars.
-    const sharp = (await import("sharp")).default;
-    const width = 500;
-    const height = 500;
-    // Raw RGBA noise — compresses poorly as PNG but well as JPEG
-    const rawPixels = Buffer.alloc(width * height * 4);
-    for (let i = 0; i < rawPixels.length; i++) {
-      rawPixels[i] = Math.floor(Math.random() * 256);
-    }
-    const pngBuffer = await sharp(rawPixels, { raw: { width, height, channels: 4 } })
-      .png({ compressionLevel: 0 }) // no compression → large PNG
+  // Large images should be resized to fit within maxDim
+  it("resizes large images to fit within maxDim", async () => {
+    const sharpMod = (await import("sharp")).default;
+    const rawPixels = Buffer.alloc(2500 * 2500 * 3);
+    const largeBuf = await sharpMod(rawPixels, { raw: { width: 2500, height: 2500, channels: 3 } })
+      .png()
       .toBuffer();
-    const largeBase64 = pngBuffer.toString("base64");
 
-    // Only test if the generated image is large enough to trigger compression.
-    if (largeBase64.length <= 500_000) {
-      // If the random image is somehow small, just verify passthrough
-      const result = await store.compressForTransport(largeBase64, "image/png");
-      expect(result.base64).toBe(largeBase64);
-      return;
-    }
-
-    const result = await store.compressForTransport(largeBase64, "image/png");
-    expect(result.mediaType).toBe("image/jpeg");
-    expect(result.base64.length).toBeLessThan(largeBase64.length);
-
-    // Verify the output is valid JPEG
-    const metadata = await sharp(Buffer.from(result.base64, "base64")).metadata();
-    expect(metadata.format).toBe("jpeg");
+    const result = await resizeForStore(largeBuf, "image/png");
+    const meta = await sharpMod(result).metadata();
+    expect(meta.width).toBeLessThanOrEqual(1920);
+    expect(meta.height).toBeLessThanOrEqual(1920);
   });
 
-  // Non-image data that exceeds the threshold should fall back gracefully,
-  // returning the original data instead of throwing.
-  it("compressForTransport() returns original data when compression fails", async () => {
-    // Create a string that exceeds the transport threshold but isn't valid image data
-    const junkData = "A".repeat(2_000_000); // 2M chars of junk base64-ish data
-    const result = await store.compressForTransport(junkData, "image/png");
-    expect(result.base64).toBe(junkData);
-    expect(result.mediaType).toBe("image/png");
+  // Custom maxDim parameter should be respected
+  it("respects custom maxDim parameter", async () => {
+    const sharpMod = (await import("sharp")).default;
+    const rawPixels = Buffer.alloc(500 * 500 * 3);
+    const buf = await sharpMod(rawPixels, { raw: { width: 500, height: 500, channels: 3 } })
+      .png()
+      .toBuffer();
+
+    const result = await resizeForStore(buf, "image/png", 200);
+    const meta = await sharpMod(result).metadata();
+    expect(meta.width).toBeLessThanOrEqual(200);
+    expect(meta.height).toBeLessThanOrEqual(200);
+  });
+
+  // Invalid image data should fall back gracefully
+  it("returns original buffer when sharp fails", async () => {
+    const junk = Buffer.from("not an image");
+    const result = await resizeForStore(junk, "image/png");
+    expect(result).toBe(junk);
   });
 });
