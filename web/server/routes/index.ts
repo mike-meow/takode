@@ -64,7 +64,10 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `**Quest lifecycle**: When dispatching quest work, always instruct workers to manage quest state:\n` +
     `- \`quest claim <id>\` at the start of work\n` +
     `- \`quest complete <id> --items "..."\` when finished, with items listing what needs human verification (UI appearance, edge cases, etc.) -- not a summary of what was done\n` +
-    `Workers won't do this unless explicitly told. If they forget, quest states go stale.`
+    `Workers won't do this unless explicitly told. If they forget, quest states go stale.\n\n` +
+    `**Permission requests**: Workers may ask questions (\`AskUserQuestion\`) or request plan approval (\`ExitPlanMode\`). How you handle them depends on who initiated the conversation:\n` +
+    `- **You dispatched the work** (user → you → worker): You're the natural respondent. Use your judgment -- answer if you have sufficient context, or escalate to the user if you're unsure.\n` +
+    `- **User is talking to the worker directly**: Stay out of it. The user will handle questions themselves. Do not intercept with \`takode answer\`.`
   );
 }
 
