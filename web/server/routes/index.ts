@@ -165,6 +165,7 @@ export function createRoutes(
   pushoverNotifier?: import("../pushover.js").PushoverNotifier,
   options?: { requestRestart?: () => void },
   perfTracer?: PerfTracer,
+  sleepInhibitor?: import("../sleep-inhibitor.js").SleepInhibitor,
 ) {
   const api = new Hono();
 
@@ -210,6 +211,7 @@ export function createRoutes(
     cronScheduler,
     imageStore,
     pushoverNotifier,
+    sleepInhibitor,
     options,
     perfTracer,
     resolveId,

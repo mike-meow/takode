@@ -75,6 +75,12 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [sleepInhibitorDuration, setSleepInhibitorDuration] = useState(5);
   const [sleepInhibitorSaving, setSleepInhibitorSaving] = useState(false);
   const [sleepInhibitorError, setSleepInhibitorError] = useState("");
+  const [caffeinateStatus, setCaffeinateStatus] = useState<{
+    active: boolean;
+    engagedAt: number | null;
+    expiresAt: number | null;
+  }>({ active: false, engagedAt: null, expiresAt: null });
+  const [caffeinateTick, setCaffeinateTick] = useState(0);
   const lifecycleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-namer toggle state
@@ -201,6 +207,30 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       .finally(() => setLoading(false));
     loadAutoApprovalConfigs();
   }, []);
+
+  // Poll caffeinate status every 5s when sleep inhibitor is enabled
+  useEffect(() => {
+    if (!sleepInhibitorEnabled) {
+      setCaffeinateStatus({ active: false, engagedAt: null, expiresAt: null });
+      return;
+    }
+    let cancelled = false;
+    const poll = () => {
+      api.getCaffeinateStatus().then((s) => {
+        if (!cancelled) setCaffeinateStatus(s);
+      }).catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 5_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [sleepInhibitorEnabled]);
+
+  // Tick every second to update elapsed/countdown display
+  useEffect(() => {
+    if (!sleepInhibitorEnabled || !caffeinateStatus.active) return;
+    const id = setInterval(() => setCaffeinateTick((t) => t + 1), 1_000);
+    return () => clearInterval(id);
+  }, [sleepInhibitorEnabled, caffeinateStatus.active]);
 
   // Restore scroll position on mount, save on scroll (debounced) and unmount
   useEffect(() => {
@@ -794,6 +824,45 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                 {sleepInhibitorSaving ? "..." : sleepInhibitorEnabled ? "On" : "Off"}
               </span>
             </button>
+
+            {sleepInhibitorEnabled && (() => {
+              // Use caffeinateTick to keep the display alive (re-renders every second)
+              void caffeinateTick;
+              const now = Date.now();
+              const { active, engagedAt, expiresAt } = caffeinateStatus;
+              const fmtDuration = (ms: number) => {
+                const totalSec = Math.max(0, Math.floor(ms / 1000));
+                const m = Math.floor(totalSec / 60);
+                const s = totalSec % 60;
+                return m > 0 ? `${m}m ${s}s` : `${s}s`;
+              };
+              if (!active || !engagedAt || !expiresAt) {
+                return (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cc-hover text-xs text-cc-muted">
+                    <span className="w-2 h-2 rounded-full bg-cc-muted/40 shrink-0" />
+                    <span>Idle -- no sessions generating</span>
+                  </div>
+                );
+              }
+              const remaining = expiresAt - now;
+              if (remaining <= 0) {
+                return (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cc-hover text-xs text-cc-muted">
+                    <span className="w-2 h-2 rounded-full bg-cc-muted/40 shrink-0" />
+                    <span>Idle -- caffeinate expired</span>
+                  </div>
+                );
+              }
+              const elapsed = now - engagedAt;
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cc-hover text-xs text-cc-fg">
+                  <span className="w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse" />
+                  <span>
+                    Awake for {fmtDuration(elapsed)} · expires in {fmtDuration(remaining)}
+                  </span>
+                </div>
+              );
+            })()}
 
             {sleepInhibitorEnabled && (
               <div>

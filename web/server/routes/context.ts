@@ -30,6 +30,7 @@ export interface RouteContext {
   cronScheduler?: import("../cron-scheduler.js").CronScheduler;
   imageStore?: import("../image-store.js").ImageStore;
   pushoverNotifier?: import("../pushover.js").PushoverNotifier;
+  sleepInhibitor?: import("../sleep-inhibitor.js").SleepInhibitor;
   options?: { requestRestart?: () => void };
   perfTracer?: PerfTracer;
 

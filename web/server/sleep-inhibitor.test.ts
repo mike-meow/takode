@@ -272,4 +272,65 @@ describe("SleepInhibitor", () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     inhibitor.stop();
   });
+
+  // ── getStatus() ────────────────────────────────────────────────────
+
+  it("getStatus() returns inactive when no caffeinate is running", () => {
+    setPlatform("darwin");
+    const inhibitor = new SleepInhibitor({
+      wsBridge: mockWsBridge({}),
+      launcher: mockLauncher([]),
+      getSettings: () => defaultSettings({ sleepInhibitorEnabled: true }),
+    });
+
+    const status = inhibitor.getStatus();
+    expect(status.active).toBe(false);
+    expect(status.engagedAt).toBeNull();
+    expect(status.expiresAt).toBeNull();
+  });
+
+  // getStatus() should report active with correct timestamps after spawning
+  it("getStatus() returns active with timestamps after caffeinate spawns", () => {
+    setPlatform("darwin");
+    const proc = mockProc();
+    spawnMock.mockReturnValue(proc);
+    vi.setSystemTime(new Date("2026-01-15T10:00:00Z"));
+
+    const inhibitor = new SleepInhibitor({
+      wsBridge: mockWsBridge({ s1: { isGenerating: true } }),
+      launcher: mockLauncher([{ sessionId: "s1" }]),
+      getSettings: () => defaultSettings({ sleepInhibitorEnabled: true, sleepInhibitorDurationMinutes: 10 }),
+    });
+
+    inhibitor.start(60_000);
+
+    const status = inhibitor.getStatus();
+    expect(status.active).toBe(true);
+    expect(status.engagedAt).toBe(new Date("2026-01-15T10:00:00Z").getTime());
+    // 10 minutes * 60 seconds * 1000 ms = 600_000 ms after engagedAt
+    expect(status.expiresAt).toBe(new Date("2026-01-15T10:00:00Z").getTime() + 600_000);
+
+    inhibitor.stop();
+  });
+
+  // getStatus() should return inactive after stop() kills caffeinate
+  it("getStatus() returns inactive after stop() kills caffeinate", () => {
+    setPlatform("darwin");
+    const proc = mockProc();
+    spawnMock.mockReturnValue(proc);
+
+    const inhibitor = new SleepInhibitor({
+      wsBridge: mockWsBridge({ s1: { isGenerating: true } }),
+      launcher: mockLauncher([{ sessionId: "s1" }]),
+      getSettings: () => defaultSettings({ sleepInhibitorEnabled: true }),
+    });
+
+    inhibitor.start(60_000);
+    expect(inhibitor.getStatus().active).toBe(true);
+
+    inhibitor.stop();
+    expect(inhibitor.getStatus().active).toBe(false);
+    expect(inhibitor.getStatus().engagedAt).toBeNull();
+    expect(inhibitor.getStatus().expiresAt).toBeNull();
+  });
 });

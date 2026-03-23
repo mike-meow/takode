@@ -122,6 +122,15 @@ export function createSettingsRoutes(ctx: RouteContext) {
     return { editor: "none" };
   }
 
+  // ─── Caffeinate status ──────────────────────────────────────────
+
+  api.get("/caffeinate-status", (c) => {
+    if (!ctx.sleepInhibitor) {
+      return c.json({ active: false, engagedAt: null, expiresAt: null });
+    }
+    return c.json(ctx.sleepInhibitor.getStatus());
+  });
+
   api.get("/settings", async (c) => {
     const settings = getSettings();
     const claudeDefaultModel = await getClaudeUserDefaultModel();

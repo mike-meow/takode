@@ -739,6 +739,8 @@ export const api = {
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),
   testPushover: () => post<{ ok: boolean }>("/pushover/test"),
+  getCaffeinateStatus: () =>
+    get<{ active: boolean; engagedAt: number | null; expiresAt: number | null }>("/caffeinate-status"),
 
   // Git operations
   getRepoInfo: (path: string) => get<GitRepoInfo>(`/git/repo-info?path=${encodeURIComponent(path)}`),

@@ -2,6 +2,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { CliLauncher } from "./cli-launcher.js";
 import type { WsBridge } from "./ws-bridge.js";
 
+export interface CaffeinateStatus {
+  active: boolean;
+  engagedAt: number | null;
+  expiresAt: number | null;
+}
+
 /**
  * Prevents macOS from sleeping while any session is actively generating.
  *
@@ -23,6 +29,8 @@ export class SleepInhibitor {
 
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private caffeinateProc: ChildProcess | null = null;
+  private engagedAt: number | null = null;
+  private engagedDurationSeconds: number | null = null;
 
   constructor(deps: {
     wsBridge: WsBridge;
@@ -52,6 +60,18 @@ export class SleepInhibitor {
       this.intervalHandle = null;
     }
     this.killCaffeinate();
+  }
+
+  /** Current caffeinate process status with timing info. */
+  getStatus(): CaffeinateStatus {
+    if (!this.caffeinateProc || this.engagedAt === null || this.engagedDurationSeconds === null) {
+      return { active: false, engagedAt: null, expiresAt: null };
+    }
+    return {
+      active: true,
+      engagedAt: this.engagedAt,
+      expiresAt: this.engagedAt + this.engagedDurationSeconds * 1000,
+    };
   }
 
   /** Visible for testing. */
@@ -88,17 +108,27 @@ export class SleepInhibitor {
       });
 
       proc.on("exit", () => {
-        if (this.caffeinateProc === proc) this.caffeinateProc = null;
+        if (this.caffeinateProc === proc) {
+          this.caffeinateProc = null;
+          this.engagedAt = null;
+          this.engagedDurationSeconds = null;
+        }
       });
 
       proc.on("error", (err) => {
         console.warn(`[sleep-inhibitor] Failed to spawn caffeinate: ${err.message}`);
-        if (this.caffeinateProc === proc) this.caffeinateProc = null;
+        if (this.caffeinateProc === proc) {
+          this.caffeinateProc = null;
+          this.engagedAt = null;
+          this.engagedDurationSeconds = null;
+        }
       });
 
       // Don't let the caffeinate process keep the event loop alive on shutdown.
       proc.unref();
       this.caffeinateProc = proc;
+      this.engagedAt = Date.now();
+      this.engagedDurationSeconds = durationSeconds;
     } catch (err) {
       console.warn(
         `[sleep-inhibitor] caffeinate spawn error: ${err instanceof Error ? err.message : String(err)}`,
@@ -110,6 +140,8 @@ export class SleepInhibitor {
     if (!this.caffeinateProc) return;
     const proc = this.caffeinateProc;
     this.caffeinateProc = null;
+    this.engagedAt = null;
+    this.engagedDurationSeconds = null;
 
     try {
       if (proc.exitCode === null && proc.signalCode === null) {

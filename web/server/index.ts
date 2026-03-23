@@ -597,6 +597,9 @@ if (recorder.isGloballyEnabled()) {
   console.log(`[server] Recording enabled (dir: ${recorder.getRecordingsDir()}, max: ${recorder.getMaxLines()} lines)`);
 }
 
+// ── Sleep inhibitor — prevent macOS sleep during generation ──────────────────
+const sleepInhibitor = new SleepInhibitor({ wsBridge, launcher, getSettings });
+
 const app = new Hono();
 
 app.use("/api/*", cors());
@@ -615,6 +618,7 @@ app.route(
     pushoverNotifier,
     { requestRestart },
     perfTracer,
+    sleepInhibitor,
   ),
 );
 
@@ -762,8 +766,7 @@ ensureGroomIntegration();
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
 idleManager.start();
 
-// ── Sleep inhibitor — prevent macOS sleep during generation ──────────────────
-const sleepInhibitor = new SleepInhibitor({ wsBridge, launcher, getSettings });
+// ── Sleep inhibitor — start polling ──────────────────────────────────────────
 sleepInhibitor.start();
 
 // ── Shutdown helpers ─────────────────────────────────────────────────────────
