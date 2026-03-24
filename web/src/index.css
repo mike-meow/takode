@@ -35,6 +35,17 @@ html, body {
   }
 }
 
+@keyframes replyHighlightFlash {
+  0% { background-color: transparent; }
+  15% { background-color: rgba(99, 102, 241, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.reply-highlight-flash {
+  animation: replyHighlightFlash 1.5s ease-out;
+  border-radius: 8px;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

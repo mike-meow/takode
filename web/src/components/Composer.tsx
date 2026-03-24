@@ -53,7 +53,7 @@ export function ReplyChip({ previewText, onDismiss }: { previewText: string; onD
         <path d="M2 7h7a4 4 0 014 4v1" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <span className="truncate min-w-0">
-        <span className="text-cc-fg">{previewText}</span>
+        <span className="text-cc-muted">{previewText}</span>
       </span>
       <button
         onClick={onDismiss}
@@ -817,7 +817,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // Prepend reply context if the user is replying to a specific message
     const currentReplyContext = useStore.getState().replyContexts.get(sessionId);
     const finalContent = currentReplyContext
-      ? injectReplyContext(currentReplyContext.previewText, msg)
+      ? injectReplyContext(currentReplyContext.previewText, msg, currentReplyContext.messageId)
       : msg;
 
     const sent = sendToSession(sessionId, {
