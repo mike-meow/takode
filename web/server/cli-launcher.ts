@@ -420,6 +420,14 @@ If you are working on a quest from this worktree session, do **NOT** transition 
 
 ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
 
+  // Source tag explanation so models understand message prefixes from startup
+  parts.push(
+    "## Message Source Tags\n\n" +
+      "User messages are prefixed with a source tag: " +
+      "`[User <time>]` = human operator, " +
+      "`[Leader <time>]` = orchestrator session managing this worker.",
+  );
+
   if (opts?.extraInstructions) {
     parts.push(opts.extraInstructions);
   }
