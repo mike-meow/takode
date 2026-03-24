@@ -2127,8 +2127,8 @@ const TurnEntries = memo(function TurnEntries({
                             onOpenCodexTerminal={onOpenCodexTerminal}
                           />
                         )}
-                        {/* Collapsed: single paw outside, activity bar + promoted entries + response in shared card */}
-                        {(turn.agentEntries.length > 0 || turn.promotedEntries.length > 0 || turn.responseEntry) && (
+                        {/* Collapsed: activity bar (with optional response) in a card, @to(user) messages rendered outside */}
+                        {(turn.agentEntries.length > 0 || turn.responseEntry) && (
                           <div className="flex items-start gap-3">
                             <PawTrailAvatar />
                             <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
@@ -2139,14 +2139,11 @@ const TurnEntries = memo(function TurnEntries({
                                   onClick={() => toggleTurn(turn.id)}
                                 />
                               )}
-                              {(turn.promotedEntries.length > 0 || turn.responseEntry) && (
+                              {turn.responseEntry && (
                                 <div className="px-3 py-2.5">
                                   <HidePawContext.Provider value={true}>
                                     <FeedEntries
-                                      entries={[
-                                        ...turn.promotedEntries,
-                                        ...(turn.responseEntry ? [turn.responseEntry] : []),
-                                      ]}
+                                      entries={[turn.responseEntry]}
                                       sessionId={sessionId}
                                       minuteBoundaryLabels={minuteBoundaryLabels}
                                       isCodexSession={isCodexSession}
@@ -2158,6 +2155,17 @@ const TurnEntries = memo(function TurnEntries({
                               )}
                             </div>
                           </div>
+                        )}
+                        {/* @to(user) promoted messages — always visible outside the collapsed card */}
+                        {turn.promotedEntries.length > 0 && (
+                          <FeedEntries
+                            entries={turn.promotedEntries}
+                            sessionId={sessionId}
+                            minuteBoundaryLabels={minuteBoundaryLabels}
+                            isCodexSession={isCodexSession}
+                            activeCodexTerminalIds={activeCodexTerminalIds}
+                            onOpenCodexTerminal={onOpenCodexTerminal}
+                          />
                         )}
                       </>
                     )}

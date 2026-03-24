@@ -3274,37 +3274,37 @@ export function Playground() {
                 </button>
               </div>
             </Card>
-            <Card label="Collapsed leader turn — only @to(user) visible">
-              <div className="flex items-start gap-3">
-                <PawTrailAvatar />
-                <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                  <button className="w-full flex items-center gap-1.5 py-1.5 px-3 border-l-2 border-cc-border/40 bg-cc-hover/10 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
-                      <path d="M6 4l4 4-4 4" />
-                    </svg>
-                    <span>3 messages</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>6 tools</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>3 herd events</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>17m 33s</span>
-                  </button>
-                  <div className="px-3 py-2.5">
-                    <HidePawContext.Provider value={true}>
-                      <MessageBubble
-                        message={{
-                          id: "playground-collapsed-touser",
-                          role: "assistant",
-                          content:
-                            "Approved #70's plan for q-43. It's a clean unification: resize once at store time (1920px max). @to(user)",
-                          leaderUserAddressed: true,
-                          timestamp: Date.now() - 60000,
-                        }}
-                      />
-                    </HidePawContext.Provider>
+            <Card label="Collapsed leader turn — @to(user) rendered outside collapsed card">
+              <div className="space-y-3">
+                {/* Collapsed activity card */}
+                <div className="flex items-start gap-3">
+                  <PawTrailAvatar />
+                  <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
+                    <button className="w-full flex items-center gap-1.5 py-1.5 px-3 border-l-2 border-cc-border/40 bg-cc-hover/10 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
+                        <path d="M6 4l4 4-4 4" />
+                      </svg>
+                      <span>3 messages</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>6 tools</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>3 herd events</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>17m 33s</span>
+                    </button>
                   </div>
                 </div>
+                {/* @to(user) message rendered outside the collapsed card as a standalone bubble */}
+                <MessageBubble
+                  message={{
+                    id: "playground-collapsed-touser",
+                    role: "assistant",
+                    content:
+                      "Approved #70's plan for q-43. It's a clean unification: resize once at store time (1920px max). @to(user)",
+                    leaderUserAddressed: true,
+                    timestamp: Date.now() - 60000,
+                  }}
+                />
               </div>
             </Card>
           </div>
