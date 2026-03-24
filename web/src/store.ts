@@ -433,6 +433,10 @@ interface AppState {
   ) => void;
   clearComposerDraft: (sessionId: string) => void;
 
+  // Per-session reply context (which assistant message the user is replying to)
+  replyContexts: Map<string, { messageId: string; previewText: string }>;
+  setReplyContext: (sessionId: string, context: { messageId: string; previewText: string } | null) => void;
+
   // Turn activity collapse state.
   // Default: last turn expanded, all others collapsed. Overrides let the user
   // toggle individual turns away from the default (true = expanded, false = collapsed).
@@ -622,6 +626,7 @@ export const useStore = create<AppState>((set) => ({
   vscodeSelectionContext: null,
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
+  replyContexts: new Map(),
   turnActivityOverrides: new Map(),
   autoExpandedTurnIds: new Map(),
   collapsibleTurnIds: new Map(),
@@ -847,6 +852,8 @@ export const useStore = create<AppState>((set) => ({
       feedScrollPosition.delete(sessionId);
       const composerDrafts = new Map(s.composerDrafts);
       composerDrafts.delete(sessionId);
+      const replyContexts = new Map(s.replyContexts);
+      replyContexts.delete(sessionId);
       const turnActivityOverrides = new Map(s.turnActivityOverrides);
       turnActivityOverrides.delete(sessionId);
       const autoExpandedTurnIds = new Map(s.autoExpandedTurnIds);
@@ -902,6 +909,7 @@ export const useStore = create<AppState>((set) => ({
         prStatus,
         feedScrollPosition,
         composerDrafts,
+        replyContexts,
         turnActivityOverrides,
         autoExpandedTurnIds,
         collapsibleTurnIds,
@@ -1819,6 +1827,17 @@ export const useStore = create<AppState>((set) => ({
       return { composerDrafts };
     }),
 
+  setReplyContext: (sessionId, context) =>
+    set((s) => {
+      const replyContexts = new Map(s.replyContexts);
+      if (context) {
+        replyContexts.set(sessionId, context);
+      } else {
+        replyContexts.delete(sessionId);
+      }
+      return { replyContexts };
+    }),
+
   toggleTurnActivity: (sessionId, turnId, defaultExpanded) =>
     set((s) => {
       const overrides = new Map(s.turnActivityOverrides);
@@ -1948,6 +1967,7 @@ export const useStore = create<AppState>((set) => ({
       diffPanelSelectedFile: new Map(),
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
+      replyContexts: new Map(),
       turnActivityOverrides: new Map(),
       autoExpandedTurnIds: new Map(),
       collapsibleTurnIds: new Map(),

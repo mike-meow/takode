@@ -28,6 +28,7 @@ import { SessionItem } from "./SessionItem.js";
 import type { CreationProgressEvent } from "../types.js";
 import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { HighlightedText } from "./HighlightedText.js";
+import { ReplyChip } from "./Composer.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import type { SessionItem as SidebarSessionItem } from "../utils/project-grouping.js";
 import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-group-theme.js";
@@ -2600,6 +2601,33 @@ export function Playground() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Reply Chip ──────────────────────────────── */}
+        <Section
+          title="Reply Chip"
+          description="Shows which assistant message the user is replying to. Appears above the composer textarea."
+        >
+          <div className="max-w-3xl">
+            <Card label="Short preview text">
+              <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                <ReplyChip
+                  previewText="Here's the implementation plan for the reply feature..."
+                  onDismiss={() => {}}
+                />
+                <div className="px-4 py-3 text-cc-muted text-sm italic">(Composer textarea would be here)</div>
+              </div>
+            </Card>
+            <Card label="Long preview text (truncated)">
+              <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                <ReplyChip
+                  previewText="This is a much longer preview text that exceeds the typical display width and should be truncated with CSS so it doesn't wrap to multiple lines and break the layout"
+                  onDismiss={() => {}}
+                />
+                <div className="px-4 py-3 text-cc-muted text-sm italic">(Composer textarea would be here)</div>
               </div>
             </Card>
           </div>

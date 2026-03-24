@@ -213,6 +213,7 @@ function setupMockStore(
     previousPermissionMode: previousPermissionModeMap,
     askPermission: askPermissionMap,
     composerDrafts: draftText ? new Map([["s1", { text: draftText, images: [] }]]) : new Map(),
+    replyContexts: new Map(),
     appendMessage: mockAppendMessage,
     updateSession: mockUpdateSession,
     setPreviousPermissionMode: mockSetPreviousPermissionMode,
@@ -238,6 +239,7 @@ function setupMockStore(
       (mockStoreState.composerDrafts as Map<string, unknown>).delete(sessionId);
       notifyMockStore();
     }),
+    setReplyContext: vi.fn(),
     collapsibleTurnIds: new Map(),
     turnActivityOverrides: new Map(),
     collapseAllTurnActivity: vi.fn(),

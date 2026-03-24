@@ -13,6 +13,7 @@ import { api } from "../api.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { HighlightedText } from "./HighlightedText.js";
+import { generateReplyPreview } from "../utils/reply-preview.js";
 
 /**
  * Per-message search highlight info, derived from the session search state.
@@ -647,7 +648,7 @@ function AssistantMessage({
             <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
           )}
         </div>
-        <CopyMessageButton message={displayMessage} contentRef={contentRef} />
+        <MessageActionBar message={displayMessage} contentRef={contentRef} sessionId={sessionId} />
       </div>
     );
   }
@@ -687,8 +688,52 @@ function AssistantMessage({
           <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
         )}
       </div>
-      {hasTextContent && <CopyMessageButton message={displayMessage} contentRef={contentRef} />}
+      {hasTextContent && <MessageActionBar message={displayMessage} contentRef={contentRef} sessionId={sessionId} />}
     </div>
+  );
+}
+
+/** Action bar for assistant messages -- groups reply + copy buttons with shared hover visibility. */
+function MessageActionBar({
+  message,
+  contentRef,
+  sessionId,
+}: {
+  message: ChatMessage;
+  contentRef: React.RefObject<HTMLDivElement | null>;
+  sessionId?: string;
+}) {
+  return (
+    <div className="absolute top-0 right-0 shrink-0 flex items-center opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 transition-opacity">
+      {sessionId && <ReplyButton message={message} sessionId={sessionId} />}
+      <CopyMessageButton message={message} contentRef={contentRef} />
+    </div>
+  );
+}
+
+/** Reply button -- sets the reply context in the store so the Composer shows a reply chip. */
+function ReplyButton({ message, sessionId }: { message: ChatMessage; sessionId: string }) {
+  const handleClick = useCallback(() => {
+    const store = useStore.getState();
+    const allMessages = store.messages.get(sessionId) ?? [];
+    const otherContents = allMessages
+      .filter((m) => m.role === "assistant" && m.id !== message.id)
+      .map((m) => m.content);
+    const previewText = generateReplyPreview(message.content, otherContents);
+    store.setReplyContext(sessionId, { messageId: message.id, previewText });
+  }, [message, sessionId]);
+
+  return (
+    <button
+      onClick={handleClick}
+      className="p-1 rounded hover:bg-cc-hover transition-all cursor-pointer"
+      title="Reply to this message"
+    >
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3.5 h-3.5 text-cc-muted hover:text-cc-fg">
+        <path d="M6 3L2 7l4 4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 7h7a4 4 0 014 4v1" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
   );
 }
 
@@ -752,13 +797,11 @@ function CopyMessageButton({
   );
 
   return (
-    <div className="absolute top-0 right-0 shrink-0">
+    <>
       <button
         ref={btnRef}
         onClick={toggle}
-        className={`p-1 rounded hover:bg-cc-hover transition-all cursor-pointer ${
-          menuPos || copied ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
-        }`}
+        className="p-1 rounded hover:bg-cc-hover transition-all cursor-pointer"
         title="Copy message"
       >
         {copied ? (
@@ -785,7 +828,7 @@ function CopyMessageButton({
         )}
       </button>
       {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
-    </div>
+    </>
   );
 }
 

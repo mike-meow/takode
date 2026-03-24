@@ -43,6 +43,30 @@ interface ImageAttachment {
   mediaType: string;
 }
 
+/** Chip shown above the composer textarea when replying to a specific assistant message. */
+export function ReplyChip({ previewText, onDismiss }: { previewText: string; onDismiss: () => void }) {
+  return (
+    <div className="flex items-center gap-2 px-4 pt-2 pb-1 text-[12px] text-cc-muted">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-3 h-3 shrink-0 text-cc-primary">
+        <path d="M6 3L2 7l4 4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 7h7a4 4 0 014 4v1" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <span className="truncate min-w-0">
+        <span className="text-cc-fg">{previewText}</span>
+      </span>
+      <button
+        onClick={onDismiss}
+        className="shrink-0 p-0.5 rounded hover:bg-cc-hover text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
+        aria-label="Cancel reply"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+          <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 interface VoiceEditProposal {
   originalText: string;
   editedText: string;
@@ -189,6 +213,7 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
 
 export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
+  const replyContext = useStore((s) => s.replyContexts.get(sessionId));
   const text = draft?.text ?? "";
   const images = draft?.images ?? [];
   const setText = useCallback(
@@ -788,9 +813,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
     }
 
+    // Prepend reply context if the user is replying to a specific message
+    const currentReplyContext = useStore.getState().replyContexts.get(sessionId);
+    const finalContent = currentReplyContext
+      ? `[Replying to: "${currentReplyContext.previewText}"]\n\n${msg}`
+      : msg;
+
     const sent = sendToSession(sessionId, {
       type: "user_message",
-      content: msg,
+      content: finalContent,
       session_id: sessionId,
       ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
       images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
@@ -802,6 +833,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // (server-authoritative model — browsers never add user messages locally)
     useStore.getState().requestBottomAlignOnNextUserMessage(sessionId);
     useStore.getState().clearComposerDraft(sessionId);
+    useStore.getState().setReplyContext(sessionId, null);
     setSlashMenuOpen(false);
     setMentionMenuOpen(false);
     setMentionResults([]);
@@ -1515,6 +1547,13 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   </div>
                 </div>
               </div>
+            )}
+
+            {replyContext && (
+              <ReplyChip
+                previewText={replyContext.previewText}
+                onDismiss={() => useStore.getState().setReplyContext(sessionId, null)}
+              />
             )}
 
             <div className="relative">
