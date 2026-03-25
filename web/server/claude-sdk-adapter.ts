@@ -13,7 +13,13 @@
 
 import { randomUUID } from "node:crypto";
 import { getEnrichedPath } from "./path-resolver.js";
-import type { BrowserIncomingMessage, BrowserOutgoingMessage, PermissionRequest } from "./session-types.js";
+import {
+  formatVsCodeSelectionPrompt,
+  type BrowserIncomingMessage,
+  type BrowserOutgoingMessage,
+  type PermissionRequest,
+  type VsCodeSelectionMetadata,
+} from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { trafficStats } from "./traffic-stats.js";
 import type { BackendAdapter, PendingOutgoingAwareAdapter } from "./bridge/adapter-interface.js";
@@ -515,7 +521,10 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
       case "user_message": {
         const content = (msg as any).content;
         const images = (msg as any).images as { media_type: string; data: string }[] | undefined;
+        const vscodeSelection = (msg as any).vscodeSelection as VsCodeSelectionMetadata | undefined;
         if (!content && !images?.length) return true;
+
+        const selectionText = vscodeSelection ? formatVsCodeSelectionPrompt(vscodeSelection) : null;
 
         if (images?.length) {
           // Build content blocks: image blocks + text block (with annotation).
@@ -530,6 +539,9 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
           if (content) {
             blocks.push({ type: "text", text: content });
           }
+          if (selectionText) {
+            blocks.push({ type: "text", text: selectionText });
+          }
           const sdkMsg = {
             type: "user" as const,
             message: { role: "user" as const, content: blocks },
@@ -538,6 +550,25 @@ export class ClaudeSdkAdapter implements BackendAdapter<ClaudeSdkSessionMeta>, P
           };
           this.sdkSession.send(sdkMsg).catch((err: Error) => {
             console.error(`[claude-sdk-adapter] Send (with images) failed for session ${this.sessionId}:`, err);
+          });
+        } else if (selectionText) {
+          // No images but VSCode selection present: send as structured message
+          // with content block array so the model sees both the user text and
+          // the selection hint.
+          const sdkMsg = {
+            type: "user" as const,
+            message: {
+              role: "user" as const,
+              content: [
+                { type: "text", text: content },
+                { type: "text", text: selectionText },
+              ],
+            },
+            parent_tool_use_id: null,
+            session_id: this.sessionId,
+          };
+          this.sdkSession.send(sdkMsg).catch((err: Error) => {
+            console.error(`[claude-sdk-adapter] Send failed for session ${this.sessionId}:`, err);
           });
         } else {
           this.sdkSession.send(content).catch((err: Error) => {

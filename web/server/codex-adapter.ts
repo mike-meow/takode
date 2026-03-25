@@ -11,14 +11,15 @@
 
 import { randomUUID } from "node:crypto";
 import type { Subprocess } from "bun";
-import type {
-  BrowserIncomingMessage,
-  BrowserOutgoingMessage,
-  SessionState,
-  PermissionRequest,
-  CLIResultMessage,
-  McpServerDetail,
-  McpServerConfig,
+import {
+  formatVsCodeSelectionPrompt,
+  type BrowserIncomingMessage,
+  type BrowserOutgoingMessage,
+  type SessionState,
+  type PermissionRequest,
+  type CLIResultMessage,
+  type McpServerDetail,
+  type McpServerConfig,
 } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { getTrafficMessageType, trafficStats } from "./traffic-stats.js";
@@ -1214,12 +1215,7 @@ export class CodexAdapter
     // Add text
     input.push({ type: "text", text: msg.content, text_elements: [] });
     if (msg.vscodeSelection) {
-      const selection = msg.vscodeSelection;
-      const selectionText =
-        selection.startLine === selection.endLine
-          ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
-          : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
-      input.push({ type: "text", text: selectionText, text_elements: [] });
+      input.push({ type: "text", text: formatVsCodeSelectionPrompt(msg.vscodeSelection), text_elements: [] });
     }
 
     // Log when payload is large (images, long prompts) to help diagnose
@@ -1299,12 +1295,7 @@ export class CodexAdapter
       }
       input.push({ type: "text", text: entry.content, text_elements: [] });
       if (entry.vscodeSelection) {
-        const selection = entry.vscodeSelection;
-        const selectionText =
-          selection.startLine === selection.endLine
-            ? `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`
-            : `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
-        input.push({ type: "text", text: selectionText, text_elements: [] });
+        input.push({ type: "text", text: formatVsCodeSelectionPrompt(entry.vscodeSelection), text_elements: [] });
       }
     }
     return input;

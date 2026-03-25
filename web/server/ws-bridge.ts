@@ -57,7 +57,7 @@ import type {
   TakodeEventSubscriber,
   TakodeTurnEndEventData,
 } from "./session-types.js";
-import { TOOL_RESULT_PREVIEW_LIMIT, assertNever } from "./session-types.js";
+import { TOOL_RESULT_PREVIEW_LIMIT, assertNever, formatVsCodeSelectionPrompt } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
 import type { CodexResumeSnapshot, CodexResumeTurnSnapshot, CodexSessionMeta } from "./codex-adapter.js";
 import type { ClaudeSdkSessionMeta } from "./claude-sdk-adapter.js";
@@ -2604,10 +2604,7 @@ export class WsBridge {
   }
 
   private formatVsCodeSelectionPrompt(selection: import("./session-types.js").VsCodeSelectionMetadata): string {
-    if (selection.startLine === selection.endLine) {
-      return `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`;
-    }
-    return `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+    return formatVsCodeSelectionPrompt(selection);
   }
 
   private buildPendingCodexRecoveryUserText(msg: BrowserOutgoingMessage): string {

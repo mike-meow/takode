@@ -249,6 +249,18 @@ export interface VsCodeSelectionMetadata {
   lineCount: number;
 }
 
+/**
+ * Format a VSCode selection into a text prompt that tells the model which file
+ * and line range the user has selected. Used by ws-bridge (CLI path),
+ * claude-sdk-adapter, and codex-adapter when forwarding user messages.
+ */
+export function formatVsCodeSelectionPrompt(selection: VsCodeSelectionMetadata): string {
+  if (selection.startLine === selection.endLine) {
+    return `[user selection in VSCode: ${selection.relativePath} line ${selection.startLine}] (this may or may not be relevant)`;
+  }
+  return `[user selection in VSCode: ${selection.relativePath} lines ${selection.startLine}-${selection.endLine}] (this may or may not be relevant)`;
+}
+
 export interface VsCodeSelectionSnapshot {
   absolutePath: string;
   startLine: number;
