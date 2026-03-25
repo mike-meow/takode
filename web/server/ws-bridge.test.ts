@@ -1984,137 +1984,6 @@ describe("CLI message routing", () => {
     expect(contextUpdate).toBeDefined();
   });
 
-  it("assistant: tags leader @to(user) messages as leader_user_addressed", () => {
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      getSession: vi.fn(() => ({ isOrchestrator: true })),
-    } as any);
-
-    const msg = JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-user-1",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [{ type: "text", text: "Please review q-126 output. @to(user)" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "uuid-user-1",
-      session_id: "s1",
-    });
-
-    bridge.handleCLIMessage(cli, msg);
-
-    const session = bridge.getSession("s1")!;
-    const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
-    expect(histAssistant?.leader_user_addressed).toBe(true);
-
-    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const assistantBroadcast = calls.find((c: any) => c.type === "assistant");
-    expect(assistantBroadcast?.leader_user_addressed).toBe(true);
-  });
-
-  it("assistant: marks as user-addressed if ANY text block ends with @to(user)", () => {
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      getSession: vi.fn(() => ({ isOrchestrator: true })),
-    } as any);
-
-    const msg = JSON.stringify({
-      type: "assistant",
-      message: {
-        id: "msg-user-2",
-        type: "message",
-        role: "assistant",
-        model: "claude-sonnet-4-5-20250929",
-        content: [
-          { type: "text", text: "Internal notes for workers. @to(user)" },
-          { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "echo progress" } },
-          { type: "text", text: "Queueing follow-up worker checks. @to(self)" },
-        ],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      uuid: "uuid-user-2",
-      session_id: "s1",
-    });
-
-    bridge.handleCLIMessage(cli, msg);
-
-    const session = bridge.getSession("s1")!;
-    const histAssistant = session.messageHistory.find((m: any) => m.type === "assistant") as any;
-    // @to(user) in any text block makes the entire message user-addressed
-    expect(histAssistant?.leader_user_addressed).toBe(true);
-  });
-
-  it("assistant: injects a reminder when leader text message is missing suffix", () => {
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      getSession: vi.fn(() => ({ isOrchestrator: true })),
-    } as any);
-
-    bridge.handleCLIMessage(
-      cli,
-      JSON.stringify({
-        type: "assistant",
-        message: {
-          id: "msg-missing-tag",
-          type: "message",
-          role: "assistant",
-          model: "claude-sonnet-4-5-20250929",
-          content: [{ type: "text", text: "Forgot to add addressing tag this turn." }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
-        parent_tool_use_id: null,
-        session_id: "s1",
-      }),
-    );
-
-    // Reminder is NOT injected on the assistant message itself — it is
-    // deferred to handleResultMessage (turn end) to avoid false nudges
-    // during intermediate tool-call gaps.
-    let reminderSend = cli.send.mock.calls
-      .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find(
-        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
-      );
-    expect(reminderSend).toBeUndefined();
-
-    // Now send the result message to end the turn — this triggers enforcement.
-    bridge.handleCLIMessage(
-      cli,
-      JSON.stringify({
-        type: "result",
-        subtype: "success",
-        result: "",
-        is_error: false,
-        total_cost_usd: 0.01,
-        num_turns: 1,
-        session_id: "s1",
-      }),
-    );
-
-    reminderSend = cli.send.mock.calls
-      .map(([payload]: [string]) => JSON.parse(String(payload).trim()))
-      .find(
-        (payload: any) => payload.type === "user" && String(payload.message?.content).includes("As a leader session"),
-      );
-    expect(reminderSend).toBeDefined();
-    expect(String(reminderSend.message?.content)).toMatch(/^\[System \d{2}:\d{2}(?:\s?[AP]M)?\]/i);
-    expect(String(reminderSend.message?.content)).toContain(
-      "must end with @to(user) (if addressing the human) or @to(self)",
-    );
-
-    const session = bridge.getSession("s1")!;
-    const injectedUser = session.messageHistory.findLast((m: any) => m.type === "user_message") as any;
-    expect(injectedUser?.agentSource?.sessionId).toBe("system:leader-tag-enforcer");
-    expect(injectedUser?.agentSource?.sessionLabel).toBe("System");
-  });
 
   it("assistant: does not recursively re-inject reminder on system-triggered turns", () => {
     bridge.setLauncher({
@@ -2629,7 +2498,9 @@ describe("CLI message routing", () => {
     expect(persisted.messageHistory).toHaveLength(0);
   });
 
-  it("result: suppresses review attention for leader turns without @to(user) response", () => {
+  // Leaders no longer auto-set review attention on turn completion.
+  // They use `takode notify` explicitly instead of the old @to(user) tag system.
+  it("result: suppresses review attention for all leader turns (leaders use takode notify instead)", () => {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       getSession: vi.fn(() => ({ isOrchestrator: true })),
@@ -2644,7 +2515,7 @@ describe("CLI message routing", () => {
           type: "message",
           role: "assistant",
           model: "claude-sonnet-4-5-20250929",
-          content: [{ type: "text", text: "Internal herd coordination completed. @to(self)" }],
+          content: [{ type: "text", text: "Internal herd coordination completed." }],
           stop_reason: "end_turn",
           usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
         },
@@ -2673,49 +2544,6 @@ describe("CLI message routing", () => {
     expect(bridge.getSession("s1")!.attentionReason).toBeNull();
   });
 
-  it("result: marks review attention for leader turns with @to(user) response", () => {
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      getSession: vi.fn(() => ({ isOrchestrator: true })),
-    } as any);
-
-    bridge.handleCLIMessage(
-      cli,
-      JSON.stringify({
-        type: "assistant",
-        message: {
-          id: "msg-user-facing",
-          type: "message",
-          role: "assistant",
-          model: "claude-sonnet-4-5-20250929",
-          content: [{ type: "text", text: "Finished q-126. Please verify. @to(user)" }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
-        parent_tool_use_id: null,
-      }),
-    );
-
-    bridge.handleCLIMessage(
-      cli,
-      JSON.stringify({
-        type: "result",
-        subtype: "success",
-        is_error: false,
-        result: "done",
-        duration_ms: 1000,
-        duration_api_ms: 900,
-        num_turns: 1,
-        total_cost_usd: 0.01,
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        uuid: "uuid-user-result",
-        session_id: "s1",
-      }),
-    );
-
-    expect(bridge.getSession("s1")!.attentionReason).toBe("review");
-  });
 
   it("result: suppresses review attention for herded worker turns triggered by leader messages", async () => {
     bridge.setLauncher({
@@ -8518,40 +8346,6 @@ describe("Codex adapter result handling", () => {
     expect(session.toolResults.get("tool-1")?.content).toContain("Exit code: 2");
   });
 
-  it("tags codex leader assistant @to(user) messages as leader_user_addressed", () => {
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      getSession: vi.fn(() => ({ isOrchestrator: true })),
-    } as any);
-
-    const browser = makeBrowserSocket("s1");
-    const adapter = makeCodexAdapterMock();
-    bridge.attachCodexAdapter("s1", adapter as any);
-    bridge.handleBrowserOpen(browser, "s1");
-    browser.send.mockClear();
-
-    adapter.emitBrowserMessage({
-      type: "assistant",
-      message: {
-        id: "asst-leader-1",
-        type: "message",
-        role: "assistant",
-        model: "gpt-5-codex",
-        content: [{ type: "text", text: "I have queued tasks for workers. @to(user)" }],
-        stop_reason: null,
-        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      },
-      parent_tool_use_id: null,
-      timestamp: Date.now(),
-    });
-
-    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    const assistantBroadcast = calls.find((c: any) => c.type === "assistant");
-    expect(assistantBroadcast?.leader_user_addressed).toBe(true);
-
-    const histAssistant = bridge.getSession("s1")!.messageHistory.find((m: any) => m.type === "assistant") as any;
-    expect(histAssistant?.leader_user_addressed).toBe(true);
-  });
 
   it("deduplicates replayed Codex assistant messages with identical timestamp and content", () => {
     const browser = makeBrowserSocket("s1");

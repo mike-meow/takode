@@ -109,6 +109,17 @@ takode read 1 42
 takode read 1 42 --offset 0 --limit 50
 ```
 
+### `takode notify <category>`
+
+Alert the user when they need to take action. Available to all sessions (not orchestrator-only). The notification anchors to your most recent assistant message.
+
+Categories: `needs-input`, `review`
+
+```bash
+takode notify needs-input    # user needs to decide/answer something
+takode notify review         # something is ready for the user's eyes
+```
+
 ### `takode pending <session>`
 
 Show pending permission requests for a session (questions, plans awaiting approval).

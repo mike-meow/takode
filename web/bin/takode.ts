@@ -2137,6 +2137,26 @@ async function handleSetBase(base: string, args: string[]): Promise<void> {
   console.log(`Diff base set to: ${result.diff_base_branch || "(default)"}`);
 }
 
+async function handleNotify(base: string, args: string[]): Promise<void> {
+  const category = args[0];
+  if (!category || (category !== "needs-input" && category !== "review")) {
+    err('Usage: takode notify <category>\nCategories: needs-input, review');
+  }
+  const flags = parseFlags(args.slice(1));
+  const jsonMode = flags.json === true;
+  const selfId = getCallerSessionId();
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/notify`, { category })) as {
+    ok: boolean;
+    category: string;
+    anchoredMessageId: string | null;
+  };
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(`Notification sent (${category})`);
+}
+
 async function handleRefreshBranch(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
   if (!sessionRef) err("Usage: takode refresh-branch <session> [--json]");
@@ -2264,6 +2284,7 @@ Commands:
   set-base       Set the diff base branch for a session
   refresh-branch Refresh git branch info for a session after checkout/rebase
   branch         Branch info and management for the current session
+  notify         Alert the user (e.g. takode notify review, takode notify needs-input)
 
 Peek modes:
   takode peek 1                    Smart overview (collapsed turns + expanded last turn)
@@ -2329,6 +2350,7 @@ try {
     ["set-base", {}],
     ["refresh-branch", {}],
     ["branch", {}],
+    ["notify", {}],
   ]);
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
@@ -2389,6 +2411,9 @@ try {
       break;
     case "branch":
       await handleBranch(base, args);
+      break;
+    case "notify":
+      await handleNotify(base, args);
       break;
     case "help":
     case "-h":

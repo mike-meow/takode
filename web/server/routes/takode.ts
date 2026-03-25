@@ -625,5 +625,29 @@ export function createTakodeRoutes(ctx: RouteContext) {
     });
   });
 
+  // ─── User notifications ──────────────────────────────────────────────
+
+  api.post("/sessions/:id/notify", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    // The caller can only notify for their own session
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only notify from your own session" }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const category = body.category;
+    if (category !== "needs-input" && category !== "review") {
+      return c.json({ error: 'category must be "needs-input" or "review"' }, 400);
+    }
+
+    const result = wsBridge.notifyUser(id, category);
+    if (!result.ok) return c.json({ error: result.error }, 404);
+    return c.json({ ok: true, category, anchoredMessageId: result.anchoredMessageId });
+  });
+
   return api;
 }

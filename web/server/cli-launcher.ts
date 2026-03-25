@@ -428,6 +428,18 @@ ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
       "`[Leader <time>]` = orchestrator session managing this worker.",
   );
 
+  // User notification instructions
+  parts.push(
+    "## User notifications\n\n" +
+      "Use `takode notify` to alert the user when they should come look at your work.\n\n" +
+      "    takode notify <category>\n\n" +
+      "Categories:\n" +
+      "- **`needs-input`**: The user needs to provide information or make a decision, and no built-in tool covers it. " +
+      "Note: AskUserQuestion and ExitPlanMode already notify the user -- do not call `takode notify` in addition to those.\n" +
+      "- **`review`**: Something is ready for the user's eyes -- a quest reached verification, code is synced and testable, or a significant deliverable is complete.\n\n" +
+      "Do not notify for routine progress or intermediate steps.",
+  );
+
   if (opts?.extraInstructions) {
     parts.push(opts.extraInstructions);
   }
@@ -511,14 +523,22 @@ Every user message you receive has a source tag:
 - **\`[Herd HH:MM]\`** — an automatic event summary from your herded sessions
 ${copy.forwardedSessionLine}
 
-### Human-facing assistant replies
+### User notifications
 
-Every text message must end with \`@to(user)\` or \`@to(self)\`. Companion enforces this — missing tags trigger a resend prompt.
+Use \`takode notify\` to alert the user when they need to take action.
 
-- **\`@to(user)\`** (default): Use for anything the user would want to know — answers, results, status updates, decisions needed, errors, or confirmations of dispatched work.
-- **\`@to(self)\`**: Only for internal bookkeeping with little user relevance — reacting to intermediate herd events, updating your todo list, or noting next steps when nothing changed for the user.
-- **When in doubt, use \`@to(user)\`.** Showing too much is better than hiding something important.
-- Example: \`Worker #7 finished auth middleware. Please review the PR notes. @to(user)\`
+    takode notify <category>
+
+Categories:
+- **\`needs-input\`**: The user needs to make a decision or provide information before work can continue. Use this when a worker asks a question you can't answer, or when you need clarification on priorities or requirements. Do not use this for questions you can answer yourself on the user's behalf.
+- **\`review\`**: Something is ready for the user's eyes -- a quest reached verification, code is synced and testable, or a significant deliverable is complete.
+
+Do not notify for:
+- Acknowledging instructions or dispatching work
+- Workers finishing subtasks when more work remains
+- Routine status updates or herd event reactions
+
+The notification anchors to your most recent message. Write your update normally, then call \`takode notify\` afterward.
 
 ### Reacting to herd events
 

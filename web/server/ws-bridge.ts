@@ -263,7 +263,6 @@ interface PendingControlRequest {
   resolve: (response: unknown) => void;
 }
 
-type LeaderAssistantAddressing = "not_leader" | "user" | "self" | "missing";
 type TurnTriggerSource = "user" | "leader" | "system" | "unknown";
 type InterruptSource = GenerationInterruptSource;
 type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta> &
@@ -2553,14 +2552,6 @@ export class WsBridge {
   // ─── Attention state (server-authoritative read/unread) ───────────────────
 
   private static readonly ATTENTION_PRIORITY: Record<string, number> = { action: 3, error: 2, review: 1 };
-  private static readonly LEADER_TO_USER_SUFFIX = "@to(user)";
-  private static readonly LEADER_TO_SELF_SUFFIX = "@to(self)";
-  private static readonly LEADER_TAG_ENFORCEMENT_REMINDER =
-    "[System] As a leader session, every text message you send must end with @to(user) (if addressing the human) or @to(self) (if internal coordination). Your last message was missing this tag — please resend it with the appropriate suffix.";
-  private static readonly LEADER_TAG_SYSTEM_SOURCE = {
-    sessionId: "system:leader-tag-enforcer",
-    sessionLabel: "System",
-  } as const;
 
   /**
    * Codex can replay prior assistant messages after reconnect. Deduplicate only
@@ -2610,35 +2601,6 @@ export class WsBridge {
 
   private isHerdedWorkerSession(session: Session): boolean {
     return !!this.launcher?.getSession(session.id)?.herdedBy;
-  }
-
-  /**
-   * Leader assistant addressing is inferred from @to() suffixes on text blocks.
-   * If ANY non-empty text block ends with @to(user), the message is user-addressed.
-   * Otherwise, the last non-empty text block determines self/@to(self) or missing.
-   * - no text blocks => treated as self/internal (tool-only assistant message)
-   * - text present but no recognized suffix => missing tag (enforcement trigger)
-   */
-  private classifyLeaderAssistantAddressing(session: Session, content: ContentBlock[]): LeaderAssistantAddressing {
-    if (!this.isLeaderSession(session)) return "not_leader";
-
-    let hasText = false;
-    let lastClassification: LeaderAssistantAddressing = "self";
-    for (const block of content) {
-      if (block.type !== "text") continue;
-      if (block.text.trim().length === 0) continue;
-      hasText = true;
-      const trimmed = block.text.trimEnd();
-      // Any text block ending with @to(user) makes the whole message user-addressed
-      if (trimmed.endsWith(WsBridge.LEADER_TO_USER_SUFFIX)) return "user";
-      if (trimmed.endsWith(WsBridge.LEADER_TO_SELF_SUFFIX)) {
-        lastClassification = "self";
-      } else {
-        lastClassification = "missing";
-      }
-    }
-    if (!hasText) return "self";
-    return lastClassification;
   }
 
   private formatVsCodeSelectionPrompt(selection: import("./session-types.js").VsCodeSelectionMetadata): string {
@@ -2692,25 +2654,6 @@ export class WsBridge {
     };
   }
 
-  private maybeInjectLeaderAddressingReminder(
-    session: Session,
-    addressing: LeaderAssistantAddressing,
-    turnTriggerSource: TurnTriggerSource,
-    turnWasInterrupted: boolean,
-  ): boolean {
-    if (addressing !== "missing") return false;
-    // Never chain reminders off system-injected reminder turns; this avoids
-    // recursive nudge loops when the model keeps omitting @to() tags.
-    if (turnTriggerSource === "system") return false;
-    // Don't nudge when the turn was interrupted — the assistant didn't get a chance
-    // to finish its response (and add the @to() tag). Without this guard, the nudge
-    // injects a new user message that triggers another turn, making it impossible to
-    // actually stop a leader session.
-    if (turnWasInterrupted) return false;
-    this.injectUserMessage(session.id, WsBridge.LEADER_TAG_ENFORCEMENT_REMINDER, WsBridge.LEADER_TAG_SYSTEM_SOURCE);
-    return true;
-  }
-
   private getCurrentTurnTriggerSource(session: Session): TurnTriggerSource {
     for (const historyIndex of session.userMessageIdsThisTurn) {
       const entry = session.messageHistory[historyIndex] as
@@ -2729,12 +2672,8 @@ export class WsBridge {
     if (this.isHerdedWorkerSession(session)) {
       return turnTriggerSource === "user";
     }
-    if (!this.isLeaderSession(session)) return true;
-
-    const latestAssistant = session.messageHistory.findLast(
-      (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-    ) as (BrowserIncomingMessage & { type: "assistant"; leader_user_addressed?: boolean }) | undefined;
-    return latestAssistant?.leader_user_addressed === true;
+    if (this.isLeaderSession(session)) return false;
+    return true;
   }
 
   /** Upgrade attention (never downgrade). Broadcasts + persists. */
@@ -2765,6 +2704,53 @@ export class WsBridge {
       session: { attentionReason: null, lastReadAt: session.lastReadAt },
     });
     this.persistSession(session);
+  }
+
+  /** Notify the user by anchoring a notification to the most recent assistant message. */
+  notifyUser(sessionId: string, category: "needs-input" | "review"): { ok: true; anchoredMessageId: string | null } | { ok: false; error: string } {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+
+    // Find the last top-level assistant message
+    const lastAssistant = session.messageHistory.findLast(
+      (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
+    ) as (BrowserIncomingMessage & { type: "assistant"; id?: string }) | undefined;
+
+    const anchoredMessageId = lastAssistant?.id ?? null;
+
+    // Stamp notification onto the anchored message
+    if (lastAssistant) {
+      (lastAssistant as Record<string, unknown>).notification = { category, timestamp: Date.now() };
+    }
+
+    // Set attention
+    const reason = category === "needs-input" ? "action" as const : "review" as const;
+    this.setAttention(session, reason);
+
+    // Fire Pushover
+    if (this.pushoverNotifier) {
+      const eventType = category === "needs-input" ? "question" as const : "completed" as const;
+      const detail = category === "needs-input" ? "Needs user input" : "Ready for review";
+      this.pushoverNotifier.scheduleNotification(sessionId, eventType, detail);
+    }
+
+    // Broadcast notification to browsers
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { attentionReason: session.attentionReason },
+    });
+
+    // Also broadcast the notification stamp on the message so browsers can render the marker
+    if (lastAssistant) {
+      this.broadcastToBrowsers(session, {
+        type: "notification_anchored",
+        messageId: anchoredMessageId,
+        notification: { category, timestamp: Date.now() },
+      } as any);
+    }
+
+    this.persistSession(session);
+    return { ok: true, anchoredMessageId };
   }
 
   /** Downgrade "action" attention to null when all pending permissions are resolved. */
@@ -3199,12 +3185,9 @@ export class WsBridge {
       }
 
       if (outgoing?.type === "assistant") {
-        const addressing = this.classifyLeaderAssistantAddressing(session, outgoing.message.content);
-        const leaderUserAddressed = addressing === "user";
         const normalizedAssistant: Extract<BrowserIncomingMessage, { type: "assistant" }> = {
           ...outgoing,
           timestamp: outgoing.timestamp || Date.now(),
-          ...(leaderUserAddressed ? { leader_user_addressed: true } : {}),
         };
         // Dedup: Codex may replay assistant messages after reconnect. Keep this
         // strict (timestamp + content match) to avoid suppressing valid repeats.
@@ -5156,15 +5139,12 @@ export class WsBridge {
 
     // No ID — forward as-is (defensive)
     if (!msgId) {
-      const addressing = this.classifyLeaderAssistantAddressing(session, msg.message.content);
-      const leaderUserAddressed = addressing === "user";
       const browserMsg: BrowserIncomingMessage = {
         type: "assistant",
         message: msg.message,
         parent_tool_use_id: msg.parent_tool_use_id,
         timestamp: Date.now(),
         uuid: msg.uuid,
-        ...(leaderUserAddressed ? { leader_user_addressed: true } : {}),
       };
       session.messageHistory.push(browserMsg);
       this.broadcastToBrowsers(session, browserMsg);
@@ -5198,24 +5178,18 @@ export class WsBridge {
           }
         }
 
-        const addressing = this.classifyLeaderAssistantAddressing(session, msg.message.content);
         const browserMsg: BrowserIncomingMessage = {
           type: "assistant",
           message: { ...msg.message, content: [...msg.message.content] },
           parent_tool_use_id: msg.parent_tool_use_id,
           timestamp: Date.now(),
           uuid: msg.uuid,
-          ...(addressing === "user" ? { leader_user_addressed: true } : {}),
           ...(Object.keys(toolStartTimesMap).length > 0 ? { tool_start_times: toolStartTimesMap } : {}),
         };
         const accEntry = { contentBlockIds };
         session.assistantAccumulator.set(msgId, accEntry);
         session.messageHistory.push(browserMsg);
         this.broadcastToBrowsers(session, browserMsg);
-        // NOTE: Do NOT inject the leader addressing reminder here.
-        // This is an intermediate assistant message — the agent may add the
-        // @to(user)/@to(self) tag in a later text block after tool calls.
-        // The reminder is deferred to handleResultMessage (turn end).
       }
     } else {
       // Subsequent occurrence — merge new content blocks into the history entry
@@ -5226,7 +5200,6 @@ export class WsBridge {
             type: "assistant";
             message: CLIAssistantMessage["message"];
             timestamp?: number;
-            leader_user_addressed?: boolean;
           }
         | undefined;
 
@@ -5269,12 +5242,6 @@ export class WsBridge {
 
       // Treat the latest part as the completion timestamp for this assistant message.
       historyEntry.timestamp = Date.now();
-      const addressing = this.classifyLeaderAssistantAddressing(session, historyEntry.message.content);
-      if (addressing === "user") {
-        historyEntry.leader_user_addressed = true;
-      } else {
-        delete historyEntry.leader_user_addressed;
-      }
       // Re-broadcast the full accumulated message with tool start times
       const rebroadcast: BrowserIncomingMessage = {
         ...(historyEntry as BrowserIncomingMessage),
@@ -5491,19 +5458,6 @@ export class WsBridge {
     this.freezeHistoryThroughCurrentTail(session);
     this.broadcastToBrowsers(session, browserMsg);
     this.persistSession(session);
-
-    // ── Leader addressing enforcement (deferred from assistant messages) ──
-    // Now that the turn is complete, check the latest top-level assistant
-    // message for the @to(user)/@to(self) tag. Previously this ran on every
-    // intermediate assistant message, causing false nudges during tool-call
-    // gaps before the agent's final text response.
-    const latestTopLevelAssistant = session.messageHistory.findLast(
-      (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-    ) as (BrowserIncomingMessage & { type: "assistant"; message: { content: ContentBlock[] } }) | undefined;
-    if (latestTopLevelAssistant) {
-      const addressing = this.classifyLeaderAssistantAddressing(session, latestTopLevelAssistant.message.content);
-      this.maybeInjectLeaderAddressingReminder(session, addressing, turnTriggerSource, turnWasInterrupted);
-    }
 
     // Set attention only when this turn should surface to the human.
     if (shouldNotifyHuman) {
@@ -8703,9 +8657,6 @@ export class WsBridge {
         },
         parent_tool_use_id: null,
         timestamp: baseTs + i + 1,
-        ...(this.classifyLeaderAssistantAddressing(session, [{ type: "text", text }]) === "user"
-          ? { leader_user_addressed: true }
-          : {}),
       };
       session.messageHistory.push(assistant);
       this.broadcastToBrowsers(session, assistant);
