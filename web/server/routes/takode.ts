@@ -400,10 +400,20 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const pending = [];
     for (const [, perm] of session.pendingPermissions) {
       if (!ANSWERABLE_TOOLS.has(perm.tool_name)) continue;
+      // Find the message index in history so the leader can `takode read <session> <idx>`
+      let msg_index: number | undefined;
+      for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+        const entry = session.messageHistory[i] as { type?: string; request?: { request_id?: string } };
+        if (entry.type === "permission_request" && entry.request?.request_id === perm.request_id) {
+          msg_index = i;
+          break;
+        }
+      }
       pending.push({
         request_id: perm.request_id,
         tool_name: perm.tool_name,
         timestamp: perm.timestamp,
+        ...(msg_index !== undefined ? { msg_index } : {}),
         ...(perm.tool_name === "AskUserQuestion" ? { questions: perm.input.questions } : {}),
         ...(perm.tool_name === "ExitPlanMode"
           ? { plan: perm.input.plan, allowedPrompts: perm.input.allowedPrompts }

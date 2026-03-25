@@ -1876,6 +1876,7 @@ async function handlePending(base: string, args: string[]): Promise<void> {
       request_id: string;
       tool_name: string;
       timestamp: number;
+      msg_index?: number;
       questions?: Array<{
         header?: string;
         question: string;
@@ -1914,7 +1915,12 @@ async function handlePending(base: string, args: string[]): Promise<void> {
       const planPreview = typeof p.plan === "string" ? p.plan.slice(0, 500) : "(no plan text)";
       console.log(`\n[ExitPlanMode] Plan approval requested`);
       console.log(formatInlineText(planPreview));
-      if (typeof p.plan === "string" && p.plan.length > 500) console.log("  ...(truncated)");
+      if (typeof p.plan === "string" && p.plan.length > 500) {
+        console.log("  ...(truncated)");
+        if (typeof p.msg_index === "number") {
+          console.log(`\nFull plan: takode read ${safeSessionRef} ${p.msg_index}`);
+        }
+      }
       console.log(`\nApprove: takode answer ${safeSessionRef} approve`);
       console.log(`Reject:  takode answer ${safeSessionRef} reject 'feedback here'`);
     }
