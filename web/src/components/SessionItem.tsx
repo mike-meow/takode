@@ -622,7 +622,12 @@ export function SessionItem({
         </span>
       )}
 
-      {/* Attention badge (shown when session needs review and no permission badge is displayed) */}
+      {/* Action attention badge (needs-input via takode notify, no pending permissions) */}
+      {!archived && attention === "action" && permCount === 0 && (
+        <span className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[8px] h-[8px] rounded-full bg-amber-400 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
+      )}
+
+      {/* Review attention badge (shown when session needs review and no higher-priority badge) */}
       {!archived && attention === "review" && permCount === 0 && (
         <span className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[6px] h-[6px] rounded-full bg-blue-500 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
       )}
