@@ -2714,9 +2714,9 @@ export class WsBridge {
     // Find the last top-level assistant message
     const lastAssistant = session.messageHistory.findLast(
       (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-    ) as (BrowserIncomingMessage & { type: "assistant"; id?: string }) | undefined;
+    ) as (BrowserIncomingMessage & { type: "assistant"; message: { id: string } }) | undefined;
 
-    const anchoredMessageId = lastAssistant?.id ?? null;
+    const anchoredMessageId = lastAssistant?.message.id ?? null;
 
     // Stamp notification onto the anchored message
     if (lastAssistant) {
