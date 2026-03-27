@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Compute a 5-field cron expression for a time delta from now (local timezone).
+
+Usage:
+    cronafter 30m        # 30 minutes from now
+    cronafter 2h         # 2 hours from now
+    cronafter 1d         # 1 day from now
+    cronafter 1h30m      # 1 hour and 30 minutes from now
+    cronafter 90m        # 90 minutes from now (handles rollover)
+
+Output: a single line with a 5-field cron expression (minute hour day month weekday)
+suitable for one-shot scheduling, e.g.:  48 23 26 3 *
+"""
+
+import re
+import sys
+from datetime import datetime, timedelta
+
+
+def parse_delta(spec: str) -> timedelta:
+    """Parse a human delta like '30m', '2h', '1d', '1h30m' into a timedelta."""
+    pattern = re.compile(r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$", re.IGNORECASE)
+    m = pattern.match(spec)
+    if not m or not any(m.groups()):
+        print(f"cronafter: invalid delta '{spec}' (use e.g. 30m, 2h, 1d, 1h30m)", file=sys.stderr)
+        sys.exit(1)
+    days = int(m.group(1) or 0)
+    hours = int(m.group(2) or 0)
+    minutes = int(m.group(3) or 0)
+    return timedelta(days=days, hours=hours, minutes=minutes)
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__.strip())
+        sys.exit(0 if sys.argv[-1] in ("-h", "--help") else 1)
+
+    delta = parse_delta(sys.argv[1])
+    target = datetime.now() + delta
+    # 5-field cron: minute hour day-of-month month day-of-week
+    print(f"{target.minute} {target.hour} {target.day} {target.month} *")
+
+
+if __name__ == "__main__":
+    main()

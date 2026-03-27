@@ -47,6 +47,7 @@ import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
 import { ensureGroomIntegration } from "./groom-integration.js";
+import { ensureCronIntegration } from "./cron-integration.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
 import { existsSync } from "node:fs";
 import { RelaunchQueue } from "./relaunch-queue.js";
@@ -761,6 +762,7 @@ await cronScheduler.startAll();
 await ensureQuestmasterIntegration(port, packageRoot);
 await ensureTakodeIntegration(packageRoot);
 ensureGroomIntegration();
+ensureCronIntegration();
 
 // ── Idle session manager — enforce maxKeepAlive ─────────────────────────────
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
