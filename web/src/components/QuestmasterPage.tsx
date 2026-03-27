@@ -16,6 +16,7 @@ import { SessionStatusDot } from "./SessionStatusDot.js";
 import { buildQuestAssignDraft } from "./quest-assign.js";
 import { buildQuestReworkDraft } from "./quest-rework.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
+import { MarkdownContent } from "./MarkdownContent.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
 import type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage } from "../types.js";
@@ -2153,9 +2154,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                           <>
                                             {/* Description */}
                                             {description && (
-                                              <p className="text-sm text-cc-fg whitespace-pre-wrap">
-                                                {renderSearchHighlight(description)}
-                                              </p>
+                                              <MarkdownContent
+                                                text={description}
+                                                size="sm"
+                                                searchHighlight={searchText ? { query: searchText, mode: "fuzzy", isCurrent: false } : null}
+                                              />
                                             )}
 
                                             {/* Images (read-only thumbnails, only if images exist) */}
@@ -2410,9 +2413,10 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                                                 </div>
                                                               ) : (
                                                                 <>
-                                                                  <div className="whitespace-pre-wrap">
-                                                                    {entry.text}
-                                                                  </div>
+                                                                  <MarkdownContent
+                                                                    text={entry.text}
+                                                                    size="sm"
+                                                                  />
                                                                   {entry.images && entry.images.length > 0 && (
                                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                                       {entry.images.map((img) => (
@@ -2520,8 +2524,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
                                             {/* Notes */}
                                             {questNotes && (
-                                              <div className="px-3 py-2 text-xs text-cc-fg bg-cc-input-bg border border-cc-border rounded-lg whitespace-pre-wrap">
-                                                {questNotes}
+                                              <div className="px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg">
+                                                <MarkdownContent text={questNotes} size="sm" />
                                               </div>
                                             )}
 
@@ -3041,7 +3045,7 @@ function QuestVersionHistory({ questId }: { questId: string }) {
               <span className="text-[10px] text-cc-muted/50 ml-auto">{timeAgo(ver.createdAt)}</span>
             </div>
             <div className="mt-1 text-cc-fg">{ver.title}</div>
-            {description && <div className="mt-0.5 text-cc-muted whitespace-pre-wrap">{description}</div>}
+            {description && <div className="mt-0.5"><MarkdownContent text={description} size="sm" /></div>}
           </div>
         );
       })}
