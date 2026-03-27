@@ -1512,7 +1512,7 @@ describe("takode output escaping", () => {
       expect(result.status).toBe(0);
       // Pending output should stay readable and single-line per entry even with hostile content.
       expect(result.stdout).toContain("[AskUserQuestion] Pick\\none\\tplease");
-      expect(result.stdout).toContain("1. A\\t1 — first\\noption");
+      expect(result.stdout).toContain("1. A\\t1 -- first\\noption");
       expect(result.stdout).toContain("Line 1\\nLine 2\\t\\x1b[31mred");
       expect(result.stdout).not.toContain("Pick\none\tplease");
       expect(result.stdout).not.toContain("first\noption");

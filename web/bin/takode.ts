@@ -1042,11 +1042,14 @@ function printExpandedMessages(messages: PeekMessage[]): void {
         const text = msg.content.trim();
         if (text) {
           console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 100)}`);
+        } else if (msg.tools && msg.tools.length > 0) {
+          // No text content -- print idx header so the msg ID is always visible
+          console.log(`  ${idx.padEnd(7)} ${time}  asst`);
         }
         if (msg.tools && msg.tools.length > 0) {
           for (let ti = 0; ti < msg.tools.length; ti++) {
             const tool = msg.tools[ti];
-            const isLastTool = ti === msg.tools.length - 1 && !text;
+            const isLastTool = ti === msg.tools.length - 1;
             const connector = isLastTool && isLast ? "└─" : "├─";
             console.log(
               `  ${pipe}       ${connector} ${formatInlineText(tool.name).padEnd(6)} ${truncate(tool.summary, 80)}`,
@@ -1274,7 +1277,9 @@ function printPeekDetail(d: PeekDetailResponse): void {
 async function handlePeek(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
   if (!sessionRef)
-    err("Usage: takode peek <session> [--from N] [--until N] [--count N] [--task N] [--turn N] [--detail] [--turns N] [--json]");
+    err(
+      "Usage: takode peek <session> [--from N] [--until N] [--count N] [--task N] [--turn N] [--detail] [--turns N] [--json]",
+    );
   const safeSessionRef = formatInlineText(sessionRef);
 
   const flags = parseFlags(args.slice(1));
@@ -1639,7 +1644,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   };
 
   // Inherit backend from leader when --backend is not explicitly provided.
-  const backendRaw = typeof flags.backend === "string" ? flags.backend : (leader.backendType || "claude");
+  const backendRaw = typeof flags.backend === "string" ? flags.backend : leader.backendType || "claude";
   if (backendRaw !== "claude" && backendRaw !== "codex" && backendRaw !== "claude-sdk") {
     err(`Invalid backend: ${backendRaw}. Expected "claude", "codex", or "claude-sdk".`);
   }
@@ -1716,9 +1721,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       archived?: boolean;
       herdedBy?: string;
     }>;
-    const activeHerded = allSessions.filter(
-      (s) => !s.archived && s.herdedBy === leaderSessionId,
-    );
+    const activeHerded = allSessions.filter((s) => !s.archived && s.herdedBy === leaderSessionId);
     if (activeHerded.length > HERD_SIZE_LIMIT) {
       herdWarning = {
         herdSize: activeHerded.length,
@@ -1915,30 +1918,35 @@ async function handlePending(base: string, args: string[]): Promise<void> {
   }
 
   for (const p of result.pending) {
+    const msgRef = typeof p.msg_index === "number" ? ` [msg ${p.msg_index}]` : "";
+
     if (p.tool_name === "AskUserQuestion" && p.questions) {
       for (const q of p.questions) {
-        console.log(`\n[AskUserQuestion] ${formatInlineText(q.question)}`);
+        console.log(`\n[AskUserQuestion]${msgRef} ${formatInlineText(q.question)}`);
         if (q.options) {
           for (let i = 0; i < q.options.length; i++) {
             const opt = q.options[i];
             console.log(
-              `  ${i + 1}. ${formatInlineText(opt.label)}${opt.description ? ` — ${formatInlineText(opt.description)}` : ""}`,
+              `  ${i + 1}. ${formatInlineText(opt.label)}${opt.description ? ` -- ${formatInlineText(opt.description)}` : ""}`,
             );
           }
         }
-        console.log(`\nAnswer: takode answer ${safeSessionRef} <option-number-or-text>`);
+        if (msgRef) {
+          console.log(`\nFull message: takode read ${safeSessionRef} ${p.msg_index}`);
+        }
+        console.log(`Answer: takode answer ${safeSessionRef} <option-number-or-text>`);
       }
     } else if (p.tool_name === "ExitPlanMode") {
       const planPreview = typeof p.plan === "string" ? p.plan.slice(0, 500) : "(no plan text)";
-      console.log(`\n[ExitPlanMode] Plan approval requested`);
+      console.log(`\n[ExitPlanMode]${msgRef} Plan approval requested`);
       console.log(formatInlineText(planPreview));
       if (typeof p.plan === "string" && p.plan.length > 500) {
         console.log("  ...(truncated)");
-        if (typeof p.msg_index === "number") {
-          console.log(`\nFull plan: takode read ${safeSessionRef} ${p.msg_index}`);
-        }
       }
-      console.log(`\nApprove: takode answer ${safeSessionRef} approve`);
+      if (msgRef) {
+        console.log(`\nFull plan: takode read ${safeSessionRef} ${p.msg_index}`);
+      }
+      console.log(`Approve: takode answer ${safeSessionRef} approve`);
       console.log(`Reject:  takode answer ${safeSessionRef} reject 'feedback here'`);
     }
   }
@@ -2157,7 +2165,7 @@ async function handleSetBase(base: string, args: string[]): Promise<void> {
 async function handleNotify(base: string, args: string[]): Promise<void> {
   const category = args[0];
   if (!category || (category !== "needs-input" && category !== "review")) {
-    err('Usage: takode notify <category>\nCategories: needs-input, review');
+    err("Usage: takode notify <category>\nCategories: needs-input, review");
   }
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
