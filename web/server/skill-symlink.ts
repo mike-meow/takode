@@ -43,6 +43,10 @@ export function ensureSkillSymlinks(slugs: string[]): void {
   console.log(`[skill-symlink] ${slugs.join(", ")} symlinked for Claude and Codex`);
 }
 
+/**
+ * Idempotent symlink: points targetDir → sourceDir, replacing whatever
+ * was there before (stale symlink, real directory from old copy-based install, etc.).
+ */
 function ensureSymlink(sourceDir: string, targetDir: string): void {
   mkdirSync(dirname(targetDir), { recursive: true }); // sync-ok: startup cold path
 
