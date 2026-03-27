@@ -140,6 +140,84 @@ describe("leader mode promotion", () => {
   });
 });
 
+describe("leader mode collapsed preview without @to tags", () => {
+  // When leader sessions use `takode notify` instead of @to(user) tags,
+  // messages won't have leaderUserAddressed set. The collapsed view should
+  // still show the last assistant text as responseEntry.
+  it("shows last assistant message as responseEntry even without leaderUserAddressed", () => {
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "work on task q-42", timestamp: 1 }),
+      makeMessage({ id: "a1", role: "assistant", content: "Starting work on task q-42...", timestamp: 2 }),
+      makeMessage({ id: "a2", role: "assistant", content: "I've completed the implementation.", timestamp: 3 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    expect(model.turns).toHaveLength(1);
+    const turn = model.turns[0];
+
+    // Last assistant message should be the response (collapsed preview)
+    expect(turn.responseEntry?.kind).toBe("message");
+    expect((turn.responseEntry as { msg: ChatMessage }).msg.id).toBe("a2");
+
+    // Earlier assistant message stays in agentEntries
+    expect(entryIds(turn.agentEntries)).toContain("a1");
+
+    // No promoted entries since no @to(user) flags
+    expect(turn.promotedEntries).toHaveLength(0);
+  });
+
+  it("still hides @to(self) even without any @to(user) messages", () => {
+    // Backward compat: old sessions may still have @to(self) tags without
+    // any corresponding @to(user) messages.
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "go", timestamp: 1 }),
+      makeMessage({
+        id: "a-self",
+        role: "assistant",
+        content: "Internal coordination @to(self)",
+        timestamp: 2,
+      }),
+      makeMessage({ id: "a-normal", role: "assistant", content: "Done with the task.", timestamp: 3 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    // Normal message is the response
+    expect(turn.responseEntry?.kind).toBe("message");
+    expect((turn.responseEntry as { msg: ChatMessage }).msg.id).toBe("a-normal");
+
+    // @to(self) is hidden from all entry lists
+    expect(entryIds(turn.agentEntries)).not.toContain("a-self");
+    expect(entryIds(turn.allEntries)).not.toContain("a-self");
+  });
+
+  it("prefers last assistant text over earlier @to(user) for responseEntry", () => {
+    // Mixed scenario: some old @to(user) messages plus newer unmarked messages.
+    // responseEntry should be the last assistant text regardless of @to(user) flag.
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "go", timestamp: 1 }),
+      makeMessage({
+        id: "a-touser",
+        role: "assistant",
+        content: "Status update @to(user)",
+        leaderUserAddressed: true,
+        timestamp: 2,
+      }),
+      makeMessage({ id: "a-final", role: "assistant", content: "All done, synced to main.", timestamp: 3 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    // Last assistant text becomes responseEntry (regardless of @to flag)
+    expect((turn.responseEntry as { msg: ChatMessage }).msg.id).toBe("a-final");
+
+    // Earlier @to(user) is promoted
+    expect(entryIds(turn.promotedEntries)).toEqual(["a-touser"]);
+  });
+});
+
 describe("useFeedModel", () => {
   it("matches the full feed model when given a frozen prefix and active tail", () => {
     const messages: ChatMessage[] = [

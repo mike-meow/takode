@@ -429,31 +429,33 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   // Count stats on ALL agent entries before extracting the response
   const s = countEntryStats(agentEntries);
 
-  // Extract the default-visible response entry.
-  // Normal sessions: final assistant text.
-  // Leader sessions: fallback final user-addressed response.
+  // Extract the default-visible response entry (last assistant text message).
+  // This is the preview shown when a turn is collapsed. Both normal and leader
+  // sessions use the same rule: pick the last assistant message with text content,
+  // skipping @to(self) messages in leader mode (those are always hidden).
+  // Leader sessions previously required leaderUserAddressed === true here, which
+  // caused blank collapsed previews once @to(user) tags were replaced by
+  // `takode notify`. The @to(user) promotion logic below still handles surfacing
+  // user-addressed messages in collapsed view for backward compatibility.
   let responseEntry: FeedEntry | null = null;
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
-    if (
-      e.kind === "message" &&
-      e.msg.role === "assistant" &&
-      e.msg.content?.trim() &&
-      (!leaderMode || e.msg.leaderUserAddressed === true)
-    ) {
+    if (e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trim()) {
+      // Skip @to(self) messages -- they should never be the collapsed preview
+      if (leaderMode && e.msg.content.trimEnd().endsWith("@to(self)")) continue;
       responseEntry = e;
       agentEntries.splice(i, 1);
       break;
     }
   }
 
-  // Leader mode: promote only @to(user) entries so they're visible when collapsed.
-  // Hide @to(self) entries entirely. Non-addressed assistant text stays in agentEntries
-  // (visible expanded, hidden collapsed).
+  // Leader mode backward compat: promote @to(user) entries so they're visible
+  // when collapsed. Hide @to(self) entries entirely. Non-addressed assistant
+  // text stays in agentEntries (visible expanded, hidden collapsed).
   let promotedEntries: FeedEntry[] = [];
   let selfAddressedCount = 0;
   let allEntries: FeedEntry[] = entries;
-  if (leaderMode && responseEntry) {
+  if (leaderMode) {
     const isSelfAddressed = (e: FeedEntry) =>
       e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trimEnd().endsWith("@to(self)");
 

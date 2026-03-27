@@ -3136,15 +3136,20 @@ describe("MessageFeed - turn grouping", () => {
 
 describe("MessageFeed - collapsed turns", () => {
   it("passes defaultExpanded=true when collapsing the latest leader activity row", () => {
+    // Leader turns now always show the last assistant text as the collapsed
+    // response preview. This test needs additional agent activity (internal
+    // messages) so the CollapsedActivityBar still renders with a message count.
     const sid = "test-leader-latest-toggle";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "status" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-400 to #9" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Checking workers..." }),
+      makeMessage({ id: "a2", role: "assistant", content: "Assigned q-400 to #9" }),
     ]);
 
     render(<MessageFeed sessionId={sid} />);
 
+    // a2 becomes responseEntry (shown as collapsed preview), a1 stays as 1 internal message
     fireEvent.click(screen.getByText("1 message"));
     expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", true);
   });
