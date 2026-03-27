@@ -1,28 +1,15 @@
-import { writeFileSync, mkdirSync, chmodSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { writeFileSync, mkdirSync, chmodSync } from "node:fs";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 
 const COMPANION_BIN_DIR = join(homedir(), ".companion", "bin");
-const REPO_SKILL_DIR = join(dirname(dirname(fileURLToPath(import.meta.url))), ".claude", "skills", "takode-orchestration");
-const CLAUDE_SKILL_DIR = join(homedir(), ".claude", "skills", "takode-orchestration");
-const CODEX_SKILL_DIR = join(homedir(), ".codex", "skills", "takode-orchestration");
 
 /**
- * Set up Takode CLI integration on server startup.
- * 1. Write a wrapper script at ~/.companion/bin/takode
- * 2. Symlink the skill into ~/.claude/skills/ and ~/.codex/skills/
- *    so all sessions discover it regardless of working directory
+ * Set up the Takode CLI wrapper script at ~/.companion/bin/takode.
+ * Skill symlinking is handled centrally by ensureSkillSymlinks().
  */
-export async function ensureTakodeIntegration(packageRoot: string): Promise<void> {
-  writeWrapperScript(packageRoot);
-  ensureSkillSymlink(CLAUDE_SKILL_DIR);
-  ensureSkillSymlink(CODEX_SKILL_DIR);
-  console.log("[takode-integration] CLI wrapper and skill symlinked for Claude and Codex");
-}
-
-function writeWrapperScript(packageRoot: string): void {
-  mkdirSync(COMPANION_BIN_DIR, { recursive: true });
+export function ensureTakodeIntegration(packageRoot: string): void {
+  mkdirSync(COMPANION_BIN_DIR, { recursive: true }); // sync-ok: startup cold path
   const takodeScript = join(packageRoot, "bin", "takode.ts");
   const wrapperPath = join(COMPANION_BIN_DIR, "takode");
 
@@ -41,29 +28,7 @@ echo "takode: bun not found (looked in PATH and \\$HOME/.bun/bin/bun)" >&2
 exit 127
 `;
 
-  writeFileSync(wrapperPath, wrapper, "utf-8"); // sync-ok: takode setup, not called during message handling
-  chmodSync(wrapperPath, 0o755); // sync-ok: takode setup, not called during message handling
-}
-
-function ensureSkillSymlink(targetDir: string): void {
-  mkdirSync(dirname(targetDir), { recursive: true }); // sync-ok: startup cold path
-
-  // If it already exists, check if it's the correct symlink
-  try {
-    const stat = lstatSync(targetDir); // sync-ok: startup cold path
-    if (stat.isSymbolicLink()) {
-      const existing = readlinkSync(targetDir); // sync-ok: startup cold path
-      if (existing === REPO_SKILL_DIR) return; // Already correct
-      // Wrong target -- remove and re-create
-      unlinkSync(targetDir); // sync-ok: startup cold path
-    } else {
-      // Real directory (e.g. from a previous copy-based install) -- remove
-      // so we can replace with a symlink to the repo copy
-      rmSync(targetDir, { recursive: true }); // sync-ok: startup cold path
-    }
-  } catch {
-    // Doesn't exist -- fine, we'll create it
-  }
-
-  symlinkSync(REPO_SKILL_DIR, targetDir); // sync-ok: startup cold path
+  writeFileSync(wrapperPath, wrapper, "utf-8"); // sync-ok: startup cold path
+  chmodSync(wrapperPath, 0o755); // sync-ok: startup cold path
+  console.log("[takode-integration] CLI wrapper installed");
 }

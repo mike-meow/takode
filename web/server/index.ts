@@ -46,8 +46,7 @@ import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
-import { ensureGroomIntegration } from "./groom-integration.js";
-import { ensureCronIntegration } from "./cron-integration.js";
+import { ensureSkillSymlinks } from "./skill-symlink.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
 import { existsSync } from "node:fs";
 import { RelaunchQueue } from "./relaunch-queue.js";
@@ -760,9 +759,8 @@ await cronScheduler.startAll();
 
 // ── Questmaster CLI integration ─────────────────────────────────────────────
 await ensureQuestmasterIntegration(port, packageRoot);
-await ensureTakodeIntegration(packageRoot);
-ensureGroomIntegration();
-ensureCronIntegration();
+ensureTakodeIntegration(packageRoot);
+ensureSkillSymlinks(["takode-orchestration", "groom", "cron-scheduling"]);
 
 // ── Idle session manager — enforce maxKeepAlive ─────────────────────────────
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
