@@ -663,6 +663,12 @@ When deciding which worker to assign a task to, follow these principles:
 ### 6. Verify Worker Output
 - Always read the worker's response to check whether the work was completed reasonably — don't blindly trust a turn_end event.
 ${copy.verificationLine}
+- **Critically evaluate worker claims — don't accept "done" at face value.** Workers tend to take the path of least resistance. Before accepting completion, check:
+  - "Test passes now" — require: what was the root cause? Does the fix target it? Did they run the full suite?
+  - "Can't reproduce" — what reproduction steps did they try? Why do they believe the issue is not real?
+  - "No changes needed" — explain the original failure, why it's gone now, and what changed
+  - Suspiciously fast completion — peek at the diff; if changes are minimal for a substantial task, ask the worker to elaborate
+- **Use \`/skeptic-review <session_id>\` for contentious claims.** When a worker's report feels too easy or too convenient, run the skeptic-review skill. It spawns an independent adversarial reviewer that reads the worker's diff, conversation, and task — then returns ACCEPT or CHALLENGE with specific questions to send back. Use this especially for "nothing to fix" / "can't reproduce" / "already works" claims.
 - **Require \`/groom\` for substantial or risky changes.** When a worker reports finishing and the diff stats show >100 lines changed, or the change touches risky/tricky areas (concurrency, protocol handling, state management), send: \`"Run /groom to self-review your changes."\` Wait for the \`turn_end\` event, then peek at the groom report. If there are Critical or Recommended items, send targeted fix instructions. Skip \`/groom\` for small, well-scoped changes under 100 lines.
 
 ### 7. Sync Before Verify
