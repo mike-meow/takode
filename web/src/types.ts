@@ -104,6 +104,8 @@ export interface ChatMessage {
   leaderUserAddressed?: boolean;
   /** Notification anchored to this message (set by takode notify). */
   notification?: { category: "needs-input" | "review"; timestamp: number };
+  /** Browser-only message not present in server messageHistory; excluded from sync hash verification. */
+  ephemeral?: boolean;
 }
 
 export interface TaskItem {

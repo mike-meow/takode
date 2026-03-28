@@ -116,6 +116,10 @@ function getComparableEntryIdentity(entry: ComparableHistoryEntry): string | nul
   if (!entry.id) return null;
   if (entry.id.startsWith("hist-error-")) return null;
   if (entry.id.startsWith("compact-")) return null;
+  // Browser live handlers generate "msg-{ts}-{counter}" IDs for messages that
+  // the server stores without an id (e.g. result errors). Fall back to content-based
+  // hashing so the fingerprint matches the server's hist-error-/compact- entries.
+  if (entry.id.startsWith("msg-")) return null;
   return entry.id;
 }
 
@@ -124,7 +128,10 @@ function fingerprintComparableEntry(entry: ComparableHistoryEntry): string {
   if (identity) {
     return `id:${identity}`;
   }
-  return hashString(stableStringify(entry));
+  // Content-based hash: exclude synthetic `id` since live and history paths
+  // generate different IDs for the same logical message (e.g. "msg-..." vs "hist-error-N").
+  const { id: _id, ...rest } = entry;
+  return hashString(stableStringify(rest));
 }
 
 function fingerprintChatMessage(message: ChatMessage): string {
@@ -264,7 +271,9 @@ function forEachComparableHistoryEntry(
 }
 
 export function computeChatMessagesSyncHash(messages: readonly ChatMessage[]): string {
-  return foldFingerprints(messages.map((message) => fingerprintChatMessage(message)));
+  return foldFingerprints(
+    messages.filter((m) => !m.ephemeral).map((message) => fingerprintChatMessage(message)),
+  );
 }
 
 export function computeHistoryMessagesSyncHash(
@@ -279,6 +288,21 @@ export function computeHistoryMessagesSyncHash(
     hash: foldFingerprints(fingerprints),
     renderedCount,
   };
+}
+
+export function debugChatMessageFingerprints(messages: readonly ChatMessage[]): string[] {
+  return messages.filter((m) => !m.ephemeral).map((m) => fingerprintChatMessage(m));
+}
+
+export function debugHistoryMessageFingerprints(
+  historyMessages: readonly BrowserIncomingMessage[],
+  startIndex = 0,
+): string[] {
+  const fingerprints: string[] = [];
+  forEachComparableHistoryEntry(historyMessages, startIndex, (entry) => {
+    fingerprints.push(fingerprintComparableEntry(entry));
+  });
+  return fingerprints;
 }
 
 export function computeHistoryPrefixSyncHash(

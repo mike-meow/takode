@@ -217,4 +217,100 @@ describe("history-sync-hash", () => {
       computeHistoryMessagesSyncHash(withoutNotif).hash,
     );
   });
+
+  it("excludes ephemeral ChatMessages from hash computation", () => {
+    // Browser-only messages (tool_use_summary, permission_auto_approved, etc.)
+    // are marked ephemeral and must not affect the sync hash.
+    const base: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hello", timestamp: 1000 },
+      { id: "a1", role: "assistant", content: "reply", timestamp: 2000 },
+    ];
+
+    const withEphemeral: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hello", timestamp: 1000 },
+      { id: "msg-123-1", role: "system", content: "tool summary", timestamp: 1500, ephemeral: true },
+      { id: "a1", role: "assistant", content: "reply", timestamp: 2000 },
+      { id: "msg-123-2", role: "system", content: "Auto-approved: Bash", timestamp: 2500, variant: "approved", ephemeral: true },
+    ];
+
+    expect(computeChatMessagesSyncHash(withEphemeral)).toBe(computeChatMessagesSyncHash(base));
+  });
+
+  it("matches result errors regardless of synthesized id (live vs history)", () => {
+    // During live streaming, the browser creates result error ChatMessages with
+    // nextId() (e.g. "msg-123-1"). During history replay, the id is "hist-error-N".
+    // Both must produce the same content-based fingerprint since id is excluded
+    // from content-based hashing.
+    const history: BrowserIncomingMessage[] = [
+      {
+        type: "result",
+        data: {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: ["something broke"],
+          duration_ms: 1,
+          duration_api_ms: 1,
+          num_turns: 1,
+          total_cost_usd: 0,
+          session_id: "s1",
+          uuid: "r1",
+          stop_reason: "end_turn",
+        },
+      },
+    ];
+
+    // Live-created ChatMessage with browser-generated id
+    const liveChat: ChatMessage[] = [
+      {
+        id: "msg-1774683137238-1",
+        role: "system",
+        content: "Error: something broke",
+        timestamp: Date.now(),
+        variant: "error",
+      },
+    ];
+
+    // History-normalized ChatMessage with synthesized id
+    const historyChat: ChatMessage[] = [
+      {
+        id: "hist-error-0",
+        role: "system",
+        content: "Error: something broke",
+        timestamp: 9999,
+        variant: "error",
+      },
+    ];
+
+    const serverHash = computeHistoryMessagesSyncHash(history).hash;
+    expect(computeChatMessagesSyncHash(liveChat)).toBe(serverHash);
+    expect(computeChatMessagesSyncHash(historyChat)).toBe(serverHash);
+  });
+
+  it("matches compact markers with different ids across live and history", () => {
+    // Both live-created and history-replayed compact markers use content-based
+    // hashing (id starts with "compact-"). The id is excluded from the content
+    // hash, so markers with different ids but same content match.
+    const marker1: ChatMessage[] = [
+      {
+        id: "compact-boundary-1234",
+        role: "system",
+        content: "Summary of compaction",
+        timestamp: 1234,
+        variant: "info",
+      },
+    ];
+
+    const marker2: ChatMessage[] = [
+      {
+        id: "compact-5",
+        role: "system",
+        content: "Summary of compaction",
+        timestamp: 5678,
+        variant: "info",
+      },
+    ];
+
+    expect(computeChatMessagesSyncHash(marker1)).toBe(computeChatMessagesSyncHash(marker2));
+  });
 });
