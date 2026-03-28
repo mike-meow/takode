@@ -51,7 +51,7 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
         `Use the orchestration instructions already loaded in this session as your source of truth. Do not assume Claude-specific tools or files exist.\n\n`
       : `**Role**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions. ` +
         `Read your project's instruction files for full orchestration documentation and workflow guidelines.\n\n`) +
-    `**On startup**: First, load the \`takode-orchestration\` skill for the full CLI command reference. Then acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.`
+    `**On startup**: Load the \`takode-orchestration\` and \`quest\` skills for full CLI references. Then acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.`
   );
 }
 

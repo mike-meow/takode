@@ -4015,6 +4015,7 @@ describe("buildOrchestratorSystemPrompt", () => {
     const prompt = buildOrchestratorSystemPrompt("claude");
     expect(prompt).toContain("[System] You are a leader session");
     expect(prompt).toContain("takode-orchestration");
+    expect(prompt).toContain("quest");
     expect(prompt).toContain("wait for the user's instructions");
     // These were moved to system prompt and should NOT appear in user message
     expect(prompt).not.toContain("Delegation principle");

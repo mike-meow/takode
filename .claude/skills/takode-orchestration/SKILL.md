@@ -251,11 +251,15 @@ A `✗ disconnected` session just means its CLI process was killed (usually by t
 
 ## Tips
 
-- **Use `peek` over `read`** to protect your context window -- peek gives truncated summaries.
+- **Use `peek` over `read`** to protect your context window -- peek gives truncated summaries. Drill into specific messages with `read` only when the summary isn't enough. Paginate long messages with `--offset`/`--limit`.
 - **Use `--json` for programmatic decisions.** Parse JSON output when you need to branch on event data.
-- **Mixed backends work seamlessly.** The `takode` CLI talks to the Companion server, not to any backend directly.
-- **Coordinate with quests.** Use the `quest` CLI alongside `takode` for task tracking.
+- **Mixed backends work seamlessly.** The `takode` CLI talks to the Companion server, not to any backend directly. You can orchestrate both Claude Code and Codex sessions from either backend.
+- **Coordinate with quests.** Use the `quest` CLI alongside `takode` for task tracking. Always create a quest for non-trivial work before dispatching.
+- **Batch related messages.** If you need to send context + instructions to a worker, send it as one message rather than multiple.
+- **Don't stop idle workers.** `takode stop` interrupts the worker's current turn. Only use it to redirect active work. Workers that finished a quest are already idle -- don't stop them unnecessarily.
+- **Events are push-based.** Herd events arrive automatically as user messages when you go idle. No polling needed.
+- **One task at a time per worker.** Don't send an unrelated new task to a busy worker. Mid-task steering (scope refinement, corrections, urgent interventions) is fine.
 
 ## Archiving Sessions
 
-When your herd exceeds 5 sessions, archive the ones **least likely to be reused**. Archiving doesn't lose anything -- archived sessions' full conversation history remains readable via `takode peek` and `takode read`, and the Takode UI. If you later discover an archived session's context would be valuable, you can have a new worker read that history for context.
+Maintain at most **5 sessions in your herd**. Before spawning a new worker, check `takode list`. If you already have 5, archive the one least likely to be reused -- typically the one whose work is most complete, least related to upcoming tasks, or oldest. Archiving doesn't lose anything -- archived sessions' full conversation history remains readable via `takode peek` and `takode read`, and the Takode UI. If you later discover an archived session's context would be valuable, you can have a new worker read that history for context.

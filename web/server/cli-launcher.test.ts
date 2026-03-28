@@ -1955,38 +1955,36 @@ describe("getOrchestratorGuardrails", () => {
   it("returns Claude-family guardrails with skill loading instruction and workflow docs", () => {
     // getOrchestratorGuardrails now returns a string instead of writing to a file.
     // Orchestrator instructions are injected via system prompt (extraInstructions).
-    // CLI command reference is deferred to the takode-orchestration skill.
+    // CLI command reference and operational tips are deferred to the takode-orchestration skill.
     const guardrails = launcher.getOrchestratorGuardrails(3456, "claude");
-    expect(guardrails).toContain("Takode — Cross-Session Orchestration");
-    // CLI reference is now delegated to the skill
+    expect(guardrails).toContain("Takode -- Cross-Session Orchestration");
+    // CLI and quest references point to skills loaded on startup
     expect(guardrails).toContain("takode-orchestration");
+    expect(guardrails).toContain("quest");
     expect(guardrails).toContain("sub-agent");
-    expect(guardrails).toContain("After your own context compaction, refresh worker state before dispatching.");
-    // Updated worker reuse policy: prefer fresh workers, only reuse if highly related
-    expect(guardrails).toContain("Only reuse an existing worker if the new work is highly related");
-    expect(guardrails).toContain("When in doubt, spawn a new worker.");
-    // Quest requirement, herd size limit, plan-before-execute, /groom, archive
-    expect(guardrails).toContain("Always create a quest for non-trivial work.");
-    expect(guardrails).toContain("Maintain at most 5 sessions in your herd.");
-    expect(guardrails).toContain("Always require a plan before implementation.");
-    expect(guardrails).toContain("Require `/groom` for substantial or risky changes.");
-    expect(guardrails).toContain("takode archive");
+    // Core leader behaviors: context refresh, worker reuse, plan requirement, /groom
+    expect(guardrails).toContain("After context compaction, refresh state.");
+    expect(guardrails).toContain("Only reuse a worker if the new task is highly related");
+    expect(guardrails).toContain("When in doubt, spawn fresh.");
+    expect(guardrails).toContain("Always create a quest for non-trivial work");
+    expect(guardrails).toContain("Always require a plan before non-trivial implementation.");
+    expect(guardrails).toContain("Require `/groom`");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
-    // Should NOT contain verbose CLI command docs (those are in the skill)
+    // Should NOT contain verbose CLI command docs or operational tips (those are in skills)
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("takode peek <session> [--from N]");
+    expect(guardrails).not.toContain("Maintain at most 5 sessions"); // moved to skill
   });
 
   it("returns Codex guardrails without Claude-only or sub-agent guidance", () => {
     const guardrails = launcher.getOrchestratorGuardrails(3456, "codex");
     expect(guardrails).toContain("leader session");
-    expect(guardrails).toContain("Delegate larger work to a herded worker session");
+    expect(guardrails).toContain("Delegate all major work");
     expect(guardrails).toContain("override any conflicting generic markdown-link or file-reference instructions");
     expect(guardrails).toContain("never write plain");
-    expect(guardrails).toContain("After your own context compaction, refresh worker state before dispatching.");
-    expect(guardrails).toContain("Only reuse an existing worker if the new work is highly related");
-    expect(guardrails).toContain("When in doubt, spawn a new worker.");
+    expect(guardrails).toContain("Only reuse a worker if the new task is highly related");
+    expect(guardrails).toContain("When in doubt, spawn fresh.");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");
