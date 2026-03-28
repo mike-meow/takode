@@ -1298,3 +1298,95 @@ describe("Edit/Write blocks expanded preference", () => {
     expect(container.querySelector(".diff-viewer")).toBeTruthy();
   });
 });
+
+// ─── React error #185 regression ──────────────────────────────────────────────
+
+describe("Edit block rendering does not trigger React error #185", () => {
+  // Regression: DiffOpenFileButton subscribed to the Zustand store via useStore(),
+  // but it was rendered during DiffViewer's render phase (via renderHeaderActions
+  // callback). When the store had pending updates (common during active sessions),
+  // the subscription notification could trigger a cascading re-render loop that
+  // hit React's maximum update depth (error #185). The fix lifts the store
+  // subscription out of DiffOpenFileButton to the parent EditToolDetail component.
+
+  it("renders Edit block with sessionId and cwd without max-update-depth error", () => {
+    // Set up a session with cwd so DiffOpenFileButton has a cwd to resolve paths
+    const store = useStore.getState();
+    store.addSession({
+      session_id: "session-185-test",
+      cwd: "/home/user/project",
+      status: "active",
+    } as unknown as Parameters<typeof store.addSession>[0]);
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/project/.claude/skills/takode/SKILL.md",
+          old_string: "## Navigation\n\n```\n1. info → metadata\n2. scan → summaries\n```\n",
+          new_string: "## Navigation\n\n```\n1. info → metadata\n2. scan → summaries (most recent first)\n3. peek → expanded last turn\n```\n",
+        }}
+        toolUseId="tool-185-regression"
+        sessionId="session-185-test"
+      />,
+    );
+
+    // Edit blocks default to expanded -- the diff should render without error
+    expect(container.querySelector(".diff-viewer")).toBeTruthy();
+
+    // Verify no React error #185 was logged
+    const error185Calls = consoleSpy.mock.calls.filter((args) =>
+      args.some((arg) => typeof arg === "string" && (arg.includes("185") || arg.includes("Maximum update depth"))),
+    );
+    expect(error185Calls).toHaveLength(0);
+
+    consoleSpy.mockRestore();
+    // Clean up the session from the store
+    useStore.getState().removeSession("session-185-test");
+  });
+
+  it("renders Edit block with unifiedDiff path and sessionId without error", () => {
+    const store = useStore.getState();
+    store.addSession({
+      session_id: "session-185-unified",
+      cwd: "/home/user/project",
+      status: "active",
+    } as unknown as Parameters<typeof store.addSession>[0]);
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/project/src/main.ts",
+          changes: [{
+            path: "src/main.ts",
+            diff: `--- a/src/main.ts
++++ b/src/main.ts
+@@ -1,3 +1,3 @@
+ const x = 1;
+-const y = 2;
++const y = 3;
+ export { x, y };`,
+          }],
+        }}
+        toolUseId="tool-185-unified-regression"
+        sessionId="session-185-unified"
+      />,
+    );
+
+    // The diff should render via the unifiedDiff path
+    expect(container.querySelector(".diff-viewer")).toBeTruthy();
+
+    const error185Calls = consoleSpy.mock.calls.filter((args) =>
+      args.some((arg) => typeof arg === "string" && (arg.includes("185") || arg.includes("Maximum update depth"))),
+    );
+    expect(error185Calls).toHaveLength(0);
+
+    consoleSpy.mockRestore();
+    useStore.getState().removeSession("session-185-unified");
+  });
+});

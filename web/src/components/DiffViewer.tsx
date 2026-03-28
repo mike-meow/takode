@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import * as Diff from "diff";
 import { buildHighlightedLines, inferLanguageFromPath, splitSourceToLines } from "../utils/syntax-highlighting.js";
@@ -560,7 +560,7 @@ function FileHeader({
   );
 }
 
-export function DiffViewer({
+export const DiffViewer = memo(function DiffViewer({
   oldText,
   newText,
   unifiedDiff,
@@ -779,4 +779,4 @@ export function DiffViewer({
         )}
     </>
   );
-}
+});

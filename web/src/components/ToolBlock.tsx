@@ -669,15 +669,14 @@ function getOpenFilePathForEditFile(parsed: ReturnType<typeof parseEditToolInput
   return filePath || parsed.filePath;
 }
 
-/** Memoized to prevent re-render cascades when used as headerActions in DiffViewer.
- *  The store selector returns a primitive (string | null) so Zustand's default
- *  shallow equality check keeps it referentially stable. */
-const DiffOpenFileButton = memo(function DiffOpenFileButton({ filePath, sessionId, line }: { filePath: string; sessionId?: string; line: number }) {
-  const sessionCwd = useStore((s) => {
-    if (!sessionId) return null;
-    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
-  });
-  const absolutePath = resolveEmbeddedVsCodePath(filePath, sessionCwd);
+/** Memoized pure component for "Open File" buttons in diff headers.
+ *  Accepts `cwd` as a prop instead of reading it from the Zustand store.
+ *  This is critical: DiffViewer calls `renderHeaderActions` during its render
+ *  phase, so any component returned by that callback must NOT subscribe to the
+ *  store -- otherwise Zustand notifications during render create an infinite
+ *  re-render cascade (React error #185, maximum update depth exceeded). */
+const DiffOpenFileButton = memo(function DiffOpenFileButton({ filePath, cwd, line }: { filePath: string; cwd?: string | null; line: number }) {
+  const absolutePath = resolveEmbeddedVsCodePath(filePath, cwd);
   if (!absolutePath) return null;
 
   return (
@@ -729,6 +728,15 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
   const parsed = useMemo(() => parseEditToolInput(input), [input]);
   const { filePath, oldText: oldStr, newText: newStr, changes, unifiedDiff } = parsed;
 
+  // Read sessionCwd at the component level so DiffOpenFileButton doesn't need
+  // to subscribe to the store. This is the key fix for React error #185:
+  // DiffViewer calls renderHeaderActions during its render phase, so any
+  // component it returns must be store-subscription-free.
+  const sessionCwd = useStore((s) => {
+    if (!sessionId) return null;
+    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
+  });
+
   // Stable callback for rendering "Open File" buttons in DiffViewer headers.
   // Without useCallback, a new function reference is created every render, which
   // causes DiffViewer to re-render (since renderHeaderActions is a prop), which
@@ -738,11 +746,11 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
     (diffFilePath: string) => (
       <DiffOpenFileButton
         filePath={getOpenFilePathForEditFile(parsed, diffFilePath)}
-        sessionId={sessionId}
+        cwd={sessionCwd}
         line={getFirstChangedLineForEditFile(parsed, diffFilePath)}
       />
     ),
-    [parsed, sessionId],
+    [parsed, sessionCwd],
   );
 
   if (!oldStr && !newStr && unifiedDiff) {
@@ -773,7 +781,7 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
               {typeof change.path === "string" && (
                 <DiffOpenFileButton
                   filePath={change.path}
-                  sessionId={sessionId}
+                  cwd={sessionCwd}
                   line={getFirstChangedLineForEditFile(parsed, change.path)}
                 />
               )}
@@ -805,11 +813,17 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
 function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const { filePath, content, changes, unifiedDiff } = useMemo(() => parseWriteToolInput(input), [input]);
 
+  // Lift store subscription out of the render-phase callback path (same fix as EditToolDetail).
+  const sessionCwd = useStore((s) => {
+    if (!sessionId) return null;
+    return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
+  });
+
   const renderHeaderActions = useCallback(
     (diffFilePath: string) => (
-      <DiffOpenFileButton filePath={diffFilePath} sessionId={sessionId} line={1} />
+      <DiffOpenFileButton filePath={diffFilePath} cwd={sessionCwd} line={1} />
     ),
-    [sessionId],
+    [sessionCwd],
   );
 
   if (!content && unifiedDiff) {
@@ -838,7 +852,7 @@ function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>;
                 {typeof change.path === "string" ? change.path : filePath || "(unknown file)"}
               </span>
               {typeof change.path === "string" && (
-                <DiffOpenFileButton filePath={change.path} sessionId={sessionId} line={1} />
+                <DiffOpenFileButton filePath={change.path} cwd={sessionCwd} line={1} />
               )}
             </div>
           ))}
