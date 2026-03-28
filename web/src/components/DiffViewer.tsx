@@ -595,21 +595,30 @@ export function DiffViewer({
     if (!language || !hasSource) {
       return { oldLines: null, newLines: null };
     }
-    return {
-      oldLines: buildHighlightedLines(normalizedOldText, language),
-      newLines: buildHighlightedLines(normalizedNewText, language),
-    };
+    try {
+      return {
+        oldLines: buildHighlightedLines(normalizedOldText, language),
+        newLines: buildHighlightedLines(normalizedNewText, language),
+      };
+    } catch (err) {
+      console.error("[DiffViewer] Syntax highlighting failed:", err);
+      return { oldLines: null, newLines: null };
+    }
   }, [hasSource, language, normalizedNewText, normalizedOldText]);
 
   const data = useMemo<ParsedFileDiff[]>(() => {
-    if (hasSource) {
-      if (!normalizedOldText && !normalizedNewText) return [];
-      const hunks = parsePatchToHunks(normalizedOldText, normalizedNewText);
-      return [{ fileName: fileName || "", hunks }];
-    }
+    try {
+      if (hasSource) {
+        if (!normalizedOldText && !normalizedNewText) return [];
+        const hunks = parsePatchToHunks(normalizedOldText, normalizedNewText);
+        return [{ fileName: fileName || "", hunks }];
+      }
 
-    if (unifiedDiff) {
-      return parseUnifiedDiffToFiles(unifiedDiff, fileName || "");
+      if (unifiedDiff) {
+        return parseUnifiedDiffToFiles(unifiedDiff, fileName || "");
+      }
+    } catch (err) {
+      console.error("[DiffViewer] Failed to compute diff:", err);
     }
 
     return [];

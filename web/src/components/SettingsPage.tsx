@@ -15,6 +15,7 @@ import { TranscriptionDebugPanel } from "./TranscriptionDebugPanel.js";
 import { EnhancementTester } from "./EnhancementTester.js";
 import { CollapsibleSection } from "./CollapsibleSection.js";
 import { FolderPicker } from "./FolderPicker.js";
+import { EDIT_BLOCKS_EXPANDED_KEY } from "./ToolBlock.js";
 
 import { navigateToSession, navigateToMostRecentSession } from "../utils/routing.js";
 
@@ -39,6 +40,21 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const showUsageBars = useStore((s) => s.showUsageBars);
   const toggleShowUsageBars = useStore((s) => s.toggleShowUsageBars);
   const notificationApiAvailable = typeof Notification !== "undefined";
+
+  // Edit/Write blocks default-expanded preference (localStorage, global)
+  const [editBlocksExpanded, setEditBlocksExpanded] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(EDIT_BLOCKS_EXPANDED_KEY);
+    if (stored !== null) return stored !== "false";
+    return true;
+  });
+  const toggleEditBlocksExpanded = () => {
+    setEditBlocksExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem(EDIT_BLOCKS_EXPANDED_KEY, String(next));
+      return next;
+    });
+  };
 
   // CLI binary state
   const [claudeBin, setClaudeBin] = useState("");
@@ -564,6 +580,14 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           >
             <span>Usage Bars in Sidebar</span>
             <span className="text-xs text-cc-muted">{showUsageBars ? "On" : "Off"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={toggleEditBlocksExpanded}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+          >
+            <span>Expand Edit/Write Blocks</span>
+            <span className="text-xs text-cc-muted">{editBlocksExpanded ? "On" : "Off"}</span>
           </button>
         </CollapsibleSection>
 

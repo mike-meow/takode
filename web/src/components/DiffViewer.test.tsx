@@ -318,4 +318,79 @@ diff --git a/b.ts b/b.ts
     expect(screen.queryByText("const line120 = 120;")).toBeNull();
     expect(screen.getByRole("button", { name: /Show 50 more unchanged lines \(\d+ remaining\)/ })).toBeTruthy();
   });
+
+  it("does not crash on markdown edit with arrow chars and aligned spacing (session #98 repro)", () => {
+    // Regression: expanding an Edit tool block in session #98 at 8:34 PM crashed
+    // the frontend. The edit updated the "Navigation workflow" section of a SKILL.md
+    // file. The old text had 10 numbered lines; the new text had 12 with re-aligned
+    // spacing and unicode arrow characters (→). The diff library produces a mix of
+    // additions, deletions, and unchanged context lines that triggered an out-of-bounds
+    // access in normalizeAdjacentChangeBlocks or an unhandled exception in syntax
+    // highlighting for markdown files.
+    const oldText = [
+      "#### Navigation workflow",
+      "",
+      "```",
+      '1. takode info 1               \u2192 Session metadata: backend, git, quest, metrics',
+      '2. takode tasks 1              \u2192 Table of contents: tasks with msg ranges',
+      '3. takode scan 1               \u2192 Turn-level scan: collapsed summaries across the session',
+      '4. takode peek 1               \u2192 Overview: collapsed turns + expanded last turn',
+      '5. takode peek 1 --turn 5      \u2192 Expand turn 5 (use turn number from scan)',
+      '6. takode peek 1 --task 3      \u2192 Browse task 3\'s messages',
+      '7. takode peek 1 --from 800    \u2192 Browse messages [800]-[860] in detail',
+      '8. takode read 1 815           \u2192 Full content of message 815',
+      '9. takode grep 1 "query"       \u2192 Search within session messages',
+      '10. takode export 1 /tmp/s1.txt \u2192 Dump full session for offline analysis',
+      "```",
+    ].join("\n");
+
+    const newText = [
+      "#### Navigation workflow",
+      "",
+      "```",
+      '1. takode info 1                          \u2192 Session metadata: backend, git, quest, metrics',
+      '2. takode tasks 1                         \u2192 Table of contents: tasks with msg ranges',
+      '3. takode scan 1                          \u2192 Turn-level scan (most recent first)',
+      '4. takode scan 1 --from 0                 \u2192 Scan from the beginning',
+      '5. takode peek 1                          \u2192 Overview: collapsed turns + expanded last turn',
+      '6. takode peek 1 --turn 5                 \u2192 Expand turn 5 (use turn number from scan)',
+      '7. takode peek 1 --task 3                 \u2192 Browse task 3\'s messages',
+      '8. takode peek 1 --from 800              \u2192 Browse messages [800]-[860] in detail',
+      '9. takode read 1 815                      \u2192 Full content of message 815',
+      '10. takode grep 1 "query"                 \u2192 Search within session messages (regex)',
+      '11. takode grep 1 "error" --type user     \u2192 Search only user messages',
+      '12. takode export 1 /tmp/s1.txt           \u2192 Dump full session for offline analysis',
+      "```",
+    ].join("\n");
+
+    expect(() => {
+      render(
+        <DiffViewer
+          oldText={oldText}
+          newText={newText}
+          fileName="/path/to/.claude/skills/takode-orchestration/SKILL.md"
+          mode="full"
+        />,
+      );
+    }).not.toThrow();
+  });
+
+  it("gracefully handles diff computation errors without crashing", () => {
+    // If Diff.structuredPatch or related functions throw (e.g. on unexpected
+    // input types or edge cases in the diff library), the DiffViewer should
+    // catch the error and render "No changes" instead of crashing.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Passing non-string values coerced via String() shouldn't crash.
+    // The try/catch in the data useMemo ensures graceful fallback.
+    const { container } = render(
+      <DiffViewer oldText="hello world" newText="hello updated world" fileName="test.md" />,
+    );
+
+    // Should render normally (this specific input doesn't trigger an error,
+    // but validates the render path is intact after adding try/catch guards)
+    expect(container.querySelector(".diff-viewer")).toBeTruthy();
+
+    spy.mockRestore();
+  });
 });

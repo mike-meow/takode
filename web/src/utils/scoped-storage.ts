@@ -20,6 +20,7 @@ const GLOBAL_KEYS = new Set([
   "cc-notification-sound",
   "cc-notification-desktop",
   "cc-diff-line-numbers",
+  "cc-edit-blocks-expanded",
 
   "cc-collapse-usage",
   "cc-collapse-mcp",

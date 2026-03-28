@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, Component, type ReactNode, type ErrorInfo } from "react";
 import { isSubagentToolName } from "../types.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
@@ -13,6 +13,49 @@ import {
   resolveEmbeddedVsCodePath,
   showEditorOpenError,
 } from "../utils/vscode-bridge.js";
+
+/**
+ * Lightweight error boundary that wraps the expanded content inside each ToolBlock.
+ * If any child (DiffViewer, ToolDetail, ToolResultSection) throws during render,
+ * this catches it and shows a graceful inline error instead of crashing the whole app.
+ */
+class ToolBlockErrorBoundary extends Component<{ children: ReactNode; toolName: string }, { error: Error | null }> {
+  constructor(props: { children: ReactNode; toolName: string }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(`[ToolBlock] Render error in ${this.props.toolName}:`, error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="px-3 py-2 text-[11px] text-cc-error/80 bg-cc-error/5 rounded-md border border-cc-error/20">
+          <span className="font-medium">Failed to render tool content</span>
+          <span className="text-cc-muted ml-1">({this.state.error.message})</span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** localStorage key for the Edit/Write blocks default-expanded preference. */
+export const EDIT_BLOCKS_EXPANDED_KEY = "cc-edit-blocks-expanded";
+
+/** Read whether Edit/Write tool blocks should default to expanded. Defaults to true. */
+function getEditBlocksExpanded(): boolean {
+  if (typeof window === "undefined") return true;
+  const stored = localStorage.getItem(EDIT_BLOCKS_EXPANDED_KEY);
+  if (stored !== null) return stored !== "false";
+  return true;
+}
 
 const TOOL_ICONS: Record<string, string> = {
   Bash: "terminal",
@@ -136,7 +179,7 @@ export const ToolBlock = memo(function ToolBlock({
   toolUseId,
   sessionId,
   hideLabel = false,
-  defaultOpen = false,
+  defaultOpen,
 }: {
   name: string;
   input: Record<string, unknown>;
@@ -145,7 +188,12 @@ export const ToolBlock = memo(function ToolBlock({
   hideLabel?: boolean;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(() => {
+    if (defaultOpen !== undefined) return defaultOpen;
+    // Edit/Write blocks respect the user's expand preference; others start collapsed
+    if (name === "Edit" || name === "Write") return getEditBlocksExpanded();
+    return false;
+  });
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
@@ -207,12 +255,14 @@ export const ToolBlock = memo(function ToolBlock({
 
       {open && (
         <div className="px-3 pb-3 pt-0 border-t border-cc-border">
-          <div className="mt-2">
-            <ToolDetail name={name} input={input} sessionId={sessionId} />
-          </div>
-          {sessionId && !isSubagentToolName(name) && (
-            <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} toolName={name} input={input} />
-          )}
+          <ToolBlockErrorBoundary toolName={name}>
+            <div className="mt-2">
+              <ToolDetail name={name} input={input} sessionId={sessionId} />
+            </div>
+            {sessionId && !isSubagentToolName(name) && (
+              <ToolResultSection toolUseId={toolUseId} sessionId={sessionId} toolName={name} input={input} />
+            )}
+          </ToolBlockErrorBoundary>
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}
