@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import { api, type GitHubPRInfo } from "../api.js";
 import type { TaskItem, SessionTaskEntry, SdkSessionInfo } from "../types.js";
@@ -627,11 +628,13 @@ export function ClaudeMdCollapsible({ cwd, repoRoot }: { cwd: string; repoRoot?:
   );
 }
 
-/** Collapsible section showing the Companion-injected system prompt for a session. */
+/** Section showing the Companion-injected system prompt for a session.
+ *  Renders as a clickable row that opens a read-only modal (same UX as Claude.md files). */
 export function SystemPromptCollapsible({ sessionId }: { sessionId: string }) {
   const [collapsed, toggle] = usePersistedCollapse("cc-collapse-sysprompt");
   const [prompt, setPrompt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (collapsed) return;
@@ -657,19 +660,84 @@ export function SystemPromptCollapsible({ sessionId }: { sessionId: string }) {
     <>
       <SectionHeader title="System Prompt" collapsed={collapsed} onToggle={toggle} />
       {!collapsed && (
-        <div className="px-3 py-2">
+        <div className="px-3 py-2 space-y-1">
           {loading ? (
             <span className="text-[11px] text-cc-muted">Loading…</span>
           ) : prompt ? (
-            <pre className="text-[10px] leading-relaxed text-cc-fg/80 font-mono-code whitespace-pre-wrap break-words max-h-64 overflow-y-auto bg-cc-bg/50 rounded-md p-2 border border-cc-border/30">
-              {prompt}
-            </pre>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 w-full px-2 py-1.5 text-[11px] text-cc-fg/80 hover:bg-cc-hover rounded-md transition-colors cursor-pointer"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-muted shrink-0">
+                <path d="M4 1.5a.5.5 0 01.5-.5h7a.5.5 0 01.354.146l2 2A.5.5 0 0114 3.5v11a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-13z" />
+              </svg>
+              <span className="truncate font-mono-code">Injected system prompt</span>
+            </button>
           ) : (
-            <span className="text-[11px] text-cc-muted italic">No system prompt recorded</span>
+            <span className="text-[11px] text-cc-muted italic px-2">No system prompt recorded</span>
           )}
         </div>
       )}
+      {modalOpen && prompt && (
+        <SystemPromptModal prompt={prompt} onClose={() => setModalOpen(false)} />
+      )}
     </>
+  );
+}
+
+/** Full-screen read-only modal for viewing the injected system prompt. */
+function SystemPromptModal({ prompt, onClose }: { prompt: string; onClose: () => void }) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return createPortal(
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
+
+      {/* Modal */}
+      <div
+        className="fixed inset-4 sm:inset-8 md:inset-x-[10%] md:inset-y-[5%] z-50 flex flex-col bg-cc-bg border border-cc-border rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 bg-cc-card border-b border-cc-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-cc-muted/10 flex items-center justify-center">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-muted">
+                <path d="M4 1.5a.5.5 0 01.5-.5h7a.5.5 0 01.354.146l2 2A.5.5 0 0114 3.5v11a.5.5 0 01-.5.5h-11a.5.5 0 01-.5-.5v-13zm1 .5v12h8V4h-1.5a.5.5 0 01-.5-.5V2H5zm6 0v1h1l-1-1z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-cc-fg">System Prompt</h2>
+              <p className="text-[11px] text-cc-muted">Companion-injected instructions (read-only)</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6">
+          <pre className="text-[12px] leading-relaxed text-cc-fg/90 font-mono-code whitespace-pre-wrap break-words">
+            {prompt}
+          </pre>
+        </div>
+      </div>
+    </>,
+    document.body,
   );
 }
 
