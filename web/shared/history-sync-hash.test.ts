@@ -166,4 +166,55 @@ describe("history-sync-hash", () => {
 
     expect(computeHistoryMessagesSyncHash(history).hash).toBe(computeChatMessagesSyncHash(chatMessages));
   });
+
+  it("matches task_notification messages across history and normalized chat messages", () => {
+    // task_notification with summary produces a system ChatMessage;
+    // forEachComparableHistoryEntry must mirror this so hashes agree.
+    const history: BrowserIncomingMessage[] = [
+      { type: "user_message", id: "u1", content: "hello", timestamp: 1000 },
+      {
+        type: "task_notification",
+        task_id: "task-abc",
+        tool_use_id: "tu-1",
+        status: "completed",
+        summary: "Background agent finished",
+      },
+    ];
+
+    const chatMessages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hello", timestamp: 1000 },
+      {
+        id: "task-notif-task-abc",
+        role: "system",
+        content: "Background agent finished",
+        timestamp: 9999, // doesn't matter -- system role always uses null in comparable entry
+        variant: "task_completed",
+      },
+    ];
+
+    expect(computeHistoryMessagesSyncHash(history).hash).toBe(computeChatMessagesSyncHash(chatMessages));
+  });
+
+  it("skips task_notification without summary to match browser normalization", () => {
+    // task_notification without summary does not produce a ChatMessage on the
+    // browser side, so the hash function must also skip it.
+    const withNotif: BrowserIncomingMessage[] = [
+      { type: "user_message", id: "u1", content: "hello", timestamp: 1000 },
+      {
+        type: "task_notification",
+        task_id: "task-abc",
+        tool_use_id: "tu-1",
+        status: "running",
+        // no summary
+      },
+    ];
+
+    const withoutNotif: BrowserIncomingMessage[] = [
+      { type: "user_message", id: "u1", content: "hello", timestamp: 1000 },
+    ];
+
+    expect(computeHistoryMessagesSyncHash(withNotif).hash).toBe(
+      computeHistoryMessagesSyncHash(withoutNotif).hash,
+    );
+  });
 });

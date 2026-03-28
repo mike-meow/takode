@@ -227,6 +227,23 @@ function forEachComparableHistoryEntry(
       );
       continue;
     }
+    if (message.type === "task_notification") {
+      // Match normalizeHistoryMessages: only produce a ChatMessage when summary exists
+      const taskMsg = message as { task_id?: string; summary?: string };
+      if (taskMsg.summary) {
+        visitor(
+          {
+            id: `task-notif-${taskMsg.task_id || historyIndex}`,
+            role: "system",
+            content: taskMsg.summary,
+            variant: "task_completed",
+            timestamp: null,
+          },
+          renderedIndex++,
+        );
+      }
+      continue;
+    }
     if (message.type === "result") {
       const errorText = normalizeErrorText(message.data);
       if (errorText) {
