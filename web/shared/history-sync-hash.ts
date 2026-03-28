@@ -1,5 +1,4 @@
 import type { BrowserIncomingMessage, ContentBlock } from "../server/session-types.js";
-import type { ChatMessage } from "../src/types.js";
 
 type ComparableHistoryEntry = {
   id?: string;
@@ -18,8 +17,6 @@ type ComparableHistoryEntry = {
   leaderUserAddressed?: boolean;
   timestamp?: number | null;
 };
-
-const chatMessageFingerprintCache = new WeakMap<ChatMessage, string>();
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
@@ -73,73 +70,11 @@ function normalizeErrorText(msg: Extract<BrowserIncomingMessage, { type: "result
   return "An error occurred";
 }
 
-function comparableEntryFromChatMessage(message: ChatMessage): ComparableHistoryEntry {
-  if (message.role === "system") {
-    return {
-      id: message.id,
-      role: "system",
-      content: message.content,
-      ...(message.variant ? { variant: message.variant } : {}),
-      ...(message.metadata ? { metadata: message.metadata } : {}),
-      timestamp: null,
-    };
-  }
-
-  if (message.role === "user") {
-    return {
-      id: message.id,
-      role: "user",
-      content: message.content,
-      ...(message.images ? { images: message.images } : {}),
-      ...(message.metadata ? { metadata: message.metadata } : {}),
-      ...(message.agentSource ? { agentSource: message.agentSource } : {}),
-      timestamp: message.timestamp,
-    };
-  }
-
-  return {
-    id: message.id,
-    role: "assistant",
-    content: message.content,
-    contentBlocks: message.contentBlocks,
-    parentToolUseId: message.parentToolUseId ?? null,
-    model: message.model,
-    stopReason: message.stopReason ?? null,
-    turnDurationMs: message.turnDurationMs,
-    cliUuid: message.cliUuid,
-    leaderUserAddressed: message.leaderUserAddressed,
-    timestamp: message.timestamp,
-  };
-}
-
-function getComparableEntryIdentity(entry: ComparableHistoryEntry): string | null {
-  if (!entry.id) return null;
-  if (entry.id.startsWith("hist-error-")) return null;
-  if (entry.id.startsWith("compact-")) return null;
-  // Browser live handlers generate "msg-{ts}-{counter}" IDs for messages that
-  // the server stores without an id (e.g. result errors). Fall back to content-based
-  // hashing so the fingerprint matches the server's hist-error-/compact- entries.
-  if (entry.id.startsWith("msg-")) return null;
-  return entry.id;
-}
-
 function fingerprintComparableEntry(entry: ComparableHistoryEntry): string {
-  const identity = getComparableEntryIdentity(entry);
-  if (identity) {
-    return `id:${identity}`;
+  if (entry.id) {
+    return `id:${entry.id}`;
   }
-  // Content-based hash: exclude synthetic `id` since live and history paths
-  // generate different IDs for the same logical message (e.g. "msg-..." vs "hist-error-N").
-  const { id: _id, ...rest } = entry;
-  return hashString(stableStringify(rest));
-}
-
-function fingerprintChatMessage(message: ChatMessage): string {
-  const cached = chatMessageFingerprintCache.get(message);
-  if (cached) return cached;
-  const fingerprint = fingerprintComparableEntry(comparableEntryFromChatMessage(message));
-  chatMessageFingerprintCache.set(message, fingerprint);
-  return fingerprint;
+  return hashString(stableStringify(entry));
 }
 
 function foldFingerprints(fingerprints: Iterable<string>): string {
@@ -270,12 +205,6 @@ function forEachComparableHistoryEntry(
   return renderedIndex;
 }
 
-export function computeChatMessagesSyncHash(messages: readonly ChatMessage[]): string {
-  return foldFingerprints(
-    messages.filter((m) => !m.ephemeral).map((message) => fingerprintChatMessage(message)),
-  );
-}
-
 export function computeHistoryMessagesSyncHash(
   historyMessages: readonly BrowserIncomingMessage[],
   startIndex = 0,
@@ -288,21 +217,6 @@ export function computeHistoryMessagesSyncHash(
     hash: foldFingerprints(fingerprints),
     renderedCount,
   };
-}
-
-export function debugChatMessageFingerprints(messages: readonly ChatMessage[]): string[] {
-  return messages.filter((m) => !m.ephemeral).map((m) => fingerprintChatMessage(m));
-}
-
-export function debugHistoryMessageFingerprints(
-  historyMessages: readonly BrowserIncomingMessage[],
-  startIndex = 0,
-): string[] {
-  const fingerprints: string[] = [];
-  forEachComparableHistoryEntry(historyMessages, startIndex, (entry) => {
-    fingerprints.push(fingerprintComparableEntry(entry));
-  });
-  return fingerprints;
 }
 
 export function computeHistoryPrefixSyncHash(

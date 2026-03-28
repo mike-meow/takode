@@ -86,6 +86,8 @@ interface AppState {
   messages: Map<string, ChatMessage[]>;
   /** Number of messages at the start of each session feed that belong to frozen, completed turns. */
   messageFrozenCounts: Map<string, number>;
+  /** Server-authoritative hash of the frozen prefix. Stored on history_sync, returned on reconnect. */
+  messageFrozenHashes: Map<string, string>;
   /** Incremented when a frozen message is edited in place so feed-model caches can invalidate safely. */
   messageFrozenRevisions: Map<string, number>;
   /** True while the browser is waiting for the first authoritative history payload for a session. */
@@ -281,7 +283,7 @@ interface AppState {
 
   // Message actions
   appendMessage: (sessionId: string, msg: ChatMessage) => void;
-  setMessages: (sessionId: string, msgs: ChatMessage[], options?: { frozenCount?: number }) => void;
+  setMessages: (sessionId: string, msgs: ChatMessage[], options?: { frozenCount?: number; frozenHash?: string }) => void;
   setHistoryLoading: (sessionId: string, loading: boolean) => void;
   setPendingCodexInputs: (sessionId: string, inputs: PendingCodexInput[]) => void;
   updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
@@ -545,6 +547,7 @@ export const useStore = create<AppState>((set) => ({
   currentSessionId: getInitialSessionId(),
   messages: new Map(),
   messageFrozenCounts: new Map(),
+  messageFrozenHashes: new Map(),
   messageFrozenRevisions: new Map(),
   historyLoading: new Map(),
   streaming: new Map(),
@@ -755,9 +758,10 @@ export const useStore = create<AppState>((set) => ({
       if (!messages.has(session.session_id)) messages.set(session.session_id, []);
       const messageFrozenCounts = new Map(s.messageFrozenCounts);
       if (!messageFrozenCounts.has(session.session_id)) messageFrozenCounts.set(session.session_id, 0);
+      const messageFrozenHashes = new Map(s.messageFrozenHashes);
       const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
       if (!messageFrozenRevisions.has(session.session_id)) messageFrozenRevisions.set(session.session_id, 0);
-      return { sessions, messages, messageFrozenCounts, messageFrozenRevisions };
+      return { sessions, messages, messageFrozenCounts, messageFrozenHashes, messageFrozenRevisions };
     }),
 
   updateSession: (sessionId, updates) =>
@@ -776,6 +780,8 @@ export const useStore = create<AppState>((set) => ({
       messages.delete(sessionId);
       const messageFrozenCounts = new Map(s.messageFrozenCounts);
       messageFrozenCounts.delete(sessionId);
+      const messageFrozenHashes = new Map(s.messageFrozenHashes);
+      messageFrozenHashes.delete(sessionId);
       const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
       messageFrozenRevisions.delete(sessionId);
       const historyLoading = new Map(s.historyLoading);
@@ -871,6 +877,7 @@ export const useStore = create<AppState>((set) => ({
         sessions,
         messages,
         messageFrozenCounts,
+        messageFrozenHashes,
         messageFrozenRevisions,
         historyLoading,
         streaming,
@@ -1007,9 +1014,15 @@ export const useStore = create<AppState>((set) => ({
       const messageFrozenCounts = new Map(s.messageFrozenCounts);
       const frozenCount = Math.max(0, Math.min(options?.frozenCount ?? 0, deduped.length));
       messageFrozenCounts.set(sessionId, frozenCount);
+      const messageFrozenHashes = new Map(s.messageFrozenHashes);
+      if (options?.frozenHash) {
+        messageFrozenHashes.set(sessionId, options.frozenHash);
+      } else {
+        messageFrozenHashes.delete(sessionId);
+      }
       const messageFrozenRevisions = new Map(s.messageFrozenRevisions);
       messageFrozenRevisions.set(sessionId, 0);
-      return { messages, messageFrozenCounts, messageFrozenRevisions };
+      return { messages, messageFrozenCounts, messageFrozenHashes, messageFrozenRevisions };
     }),
 
   setHistoryLoading: (sessionId, loading) =>

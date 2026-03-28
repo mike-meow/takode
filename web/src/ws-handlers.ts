@@ -3,11 +3,6 @@ import { api } from "./api.js";
 import type { BrowserIncomingMessage, ContentBlock, ChatMessage, TaskItem } from "./types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound } from "./utils/notification-sound.js";
-import {
-  computeChatMessagesSyncHash,
-  debugChatMessageFingerprints,
-  debugHistoryMessageFingerprints,
-} from "../shared/history-sync-hash.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -18,16 +13,6 @@ const CLI_DISCONNECT_DEBOUNCE_MS = 250;
 
 export interface WsMessageHandlerDeps {
   disconnectSession: (sessionId: string) => void;
-  reportHistorySyncMismatch: (
-    sessionId: string,
-    details: {
-      frozenCount: number;
-      expectedFrozenHash: string;
-      actualFrozenHash: string;
-      expectedFullHash: string;
-      actualFullHash: string;
-    },
-  ) => void;
 }
 
 function clearPendingCliDisconnect(sessionId: string): void {
@@ -388,93 +373,6 @@ function resetAuthoritativeHistoryState(sessionId: string): void {
   store.clearAutoExpandedTurns(sessionId);
   store.setTasks(sessionId, []);
   store.setSessionTaskPreview(sessionId, null);
-}
-
-function verifyHistorySync(
-  sessionId: string,
-  messages: ChatMessage[],
-  frozenCount: number,
-  data: Extract<BrowserIncomingMessage, { type: "history_sync" }>,
-  deps: WsMessageHandlerDeps,
-): void {
-  const normalizedFrozenCount = Math.max(0, Math.min(frozenCount, messages.length));
-  const actualFrozenHash = computeChatMessagesSyncHash(messages.slice(0, normalizedFrozenCount));
-  const actualFullHash = computeChatMessagesSyncHash(messages);
-  if (actualFrozenHash === data.expected_frozen_hash && actualFullHash === data.expected_full_hash) {
-    return;
-  }
-  console.error(
-    `[history-sync] hash mismatch for ${sessionId.slice(0, 8)}: ` +
-      `frozen expected=${data.expected_frozen_hash} actual=${actualFrozenHash}; ` +
-      `full expected=${data.expected_full_hash} actual=${actualFullHash}`,
-  );
-
-  // Diagnostic: compare per-entry fingerprints to find the first divergence
-  const browserFingerprints = debugChatMessageFingerprints(messages);
-  const rawDeltaFingerprints = debugHistoryMessageFingerprints(data.frozen_delta, data.frozen_base_count);
-  const rawHotFingerprints = debugHistoryMessageFingerprints(data.hot_messages, data.frozen_count);
-  const frozenPrefixFingerprints = browserFingerprints.slice(0, data.frozen_base_count);
-  const browserDeltaFingerprints = browserFingerprints.slice(
-    data.frozen_base_count,
-    data.frozen_base_count + rawDeltaFingerprints.length,
-  );
-  const browserHotFingerprints = browserFingerprints.slice(
-    data.frozen_base_count + rawDeltaFingerprints.length,
-  );
-
-  console.error(
-    `[history-sync] diagnostics for ${sessionId.slice(0, 8)}: ` +
-      `total messages=${messages.length} frozenCount=${normalizedFrozenCount} ` +
-      `frozenBaseCount=${data.frozen_base_count} ` +
-      `frozenDelta=${data.frozen_delta.length} hotMessages=${data.hot_messages.length} ` +
-      `browserFingerprints=${browserFingerprints.length} ` +
-      `rawDelta=${rawDeltaFingerprints.length} rawHot=${rawHotFingerprints.length}`,
-  );
-
-  // Check delta fingerprints
-  const maxDelta = Math.max(rawDeltaFingerprints.length, browserDeltaFingerprints.length);
-  for (let i = 0; i < maxDelta; i++) {
-    const raw = rawDeltaFingerprints[i] ?? "(missing)";
-    const browser = browserDeltaFingerprints[i] ?? "(missing)";
-    if (raw !== browser) {
-      const rawMsg = data.frozen_delta[i];
-      console.error(
-        `[history-sync] DELTA divergence at index ${i}: raw=${raw} browser=${browser} ` +
-          `rawType=${rawMsg?.type ?? "??"} rawId=${"id" in (rawMsg ?? {}) ? (rawMsg as any).id : "??"}`,
-      );
-    }
-  }
-
-  // Check hot fingerprints
-  const maxHot = Math.max(rawHotFingerprints.length, browserHotFingerprints.length);
-  for (let i = 0; i < maxHot; i++) {
-    const raw = rawHotFingerprints[i] ?? "(missing)";
-    const browser = browserHotFingerprints[i] ?? "(missing)";
-    if (raw !== browser) {
-      const rawMsg = data.hot_messages[i];
-      console.error(
-        `[history-sync] HOT divergence at index ${i}: raw=${raw} browser=${browser} ` +
-          `rawType=${rawMsg?.type ?? "??"} rawId=${"id" in (rawMsg ?? {}) ? (rawMsg as any).id : "??"}`,
-      );
-    }
-  }
-
-  // If counts mismatch, that's the root cause
-  if (browserFingerprints.length !== frozenPrefixFingerprints.length + rawDeltaFingerprints.length + rawHotFingerprints.length) {
-    console.error(
-      `[history-sync] COUNT MISMATCH: browser=${browserFingerprints.length} ` +
-        `expected=${frozenPrefixFingerprints.length}+${rawDeltaFingerprints.length}+${rawHotFingerprints.length}` +
-        `=${frozenPrefixFingerprints.length + rawDeltaFingerprints.length + rawHotFingerprints.length}`,
-    );
-  }
-
-  deps.reportHistorySyncMismatch(sessionId, {
-    frozenCount: normalizedFrozenCount,
-    expectedFrozenHash: data.expected_frozen_hash,
-    actualFrozenHash,
-    expectedFullHash: data.expected_full_hash,
-    actualFullHash,
-  });
 }
 
 function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, deps: WsMessageHandlerDeps) {
@@ -1355,7 +1253,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         frozenPrefix.length,
         Math.min(data.frozen_count, frozenPrefix.length + frozenDeltaMessages.length),
       );
-      store.setMessages(sessionId, mergedMessages, { frozenCount: nextFrozenCount });
+      store.setMessages(sessionId, mergedMessages, {
+        frozenCount: nextFrozenCount,
+        frozenHash: data.expected_frozen_hash,
+      });
       store.setHistoryLoading(sessionId, false);
       if (mergedMessages.length > 0) {
         store.setCliEverConnected(sessionId);
@@ -1363,7 +1264,6 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       processedToolUseIds.delete(sessionId);
       taskCounters.delete(sessionId);
       updateSessionPreviewFromHistory(sessionId, [...data.frozen_delta, ...data.hot_messages]);
-      verifyHistorySync(sessionId, mergedMessages, nextFrozenCount, data, deps);
       break;
     }
   }

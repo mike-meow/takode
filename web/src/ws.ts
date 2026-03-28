@@ -2,7 +2,6 @@ import { useStore } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, McpServerConfig, SdkSessionInfo } from "./types.js";
 import { createWsTransport } from "./ws-transport.js";
 import { createWsMessageHandler, resolveSessionFilePath } from "./ws-handlers.js";
-import { computeChatMessagesSyncHash } from "../shared/history-sync-hash.js";
 
 let handleIncomingMessage: ((sessionId: string, data: BrowserIncomingMessage) => void) | null = null;
 
@@ -15,11 +14,7 @@ const transport = createWsTransport({
     return useStore.getState().messageFrozenCounts.get(sessionId) ?? 0;
   },
   getKnownFrozenHash: (sessionId) => {
-    const store = useStore.getState();
-    const messages = store.messages.get(sessionId) ?? [];
-    const frozenCount = Math.max(0, Math.min(store.messageFrozenCounts.get(sessionId) ?? 0, messages.length));
-    if (frozenCount <= 0) return undefined;
-    return computeChatMessagesSyncHash(messages.slice(0, frozenCount));
+    return useStore.getState().messageFrozenHashes.get(sessionId);
   },
   onConnecting: (sessionId) => {
     useStore.getState().setConnectionStatus(sessionId, "connecting");
@@ -43,16 +38,6 @@ const transport = createWsTransport({
 handleIncomingMessage = createWsMessageHandler({
   disconnectSession: (sessionId) => {
     transport.disconnectSession(sessionId);
-  },
-  reportHistorySyncMismatch: (sessionId, details) => {
-    transport.sendToSession(sessionId, {
-      type: "history_sync_mismatch",
-      frozen_count: details.frozenCount,
-      expected_frozen_hash: details.expectedFrozenHash,
-      actual_frozen_hash: details.actualFrozenHash,
-      expected_full_hash: details.expectedFullHash,
-      actual_full_hash: details.actualFullHash,
-    });
   },
 });
 
