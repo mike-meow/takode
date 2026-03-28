@@ -40,7 +40,7 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const targetEl = e.target instanceof Element ? e.target : null;
-      if (targetEl?.closest("[data-claude-md-editor-root='true']")) {
+      if (targetEl?.closest("[data-claude-md-editor-root='true']") || targetEl?.closest("[data-session-info-modal='true']")) {
         return;
       }
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {

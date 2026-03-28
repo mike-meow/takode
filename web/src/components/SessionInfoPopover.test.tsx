@@ -152,6 +152,29 @@ describe("SessionInfoPopover", () => {
     }
   });
 
+  it("does not close when clicking inside SystemPromptModal portal content", () => {
+    // System prompt modal is portaled to document.body, so clicks inside it
+    // would normally trigger the popover's outside-click handler. The guard
+    // for data-session-info-modal prevents this.
+    resetStore([]);
+    const onClose = vi.fn();
+    vi.useFakeTimers();
+    try {
+      render(<SessionInfoPopover sessionId="s1" onClose={onClose} />);
+      vi.runAllTimers();
+
+      const modalNode = document.createElement("div");
+      modalNode.setAttribute("data-session-info-modal", "true");
+      document.body.appendChild(modalNode);
+      fireEvent.mouseDown(modalNode);
+
+      expect(onClose).not.toHaveBeenCalled();
+      modalNode.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders git branch and diff stats near the top below the path", () => {
     resetStore([{ title: "Task one" }]);
     const session = storeState.sessions.get("s1");
