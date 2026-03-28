@@ -294,6 +294,8 @@ export interface SdkSessionInfo {
   herdedBy?: string;
   /** Env profile slug used at creation, for re-resolving env vars on relaunch */
   envSlug?: string;
+  /** When true, the session auto-namer is suppressed (e.g. temporary reviewer sessions) */
+  noAutoName?: boolean;
   /** Server-issued secret used to authenticate privileged REST calls from this session. */
   sessionAuthToken?: string;
   /** One-shot: resume-session-at UUID for revert (cleared after use) */
@@ -670,7 +672,7 @@ ${copy.verificationLine}
   - "Can't reproduce" — what reproduction steps did they try? Why do they believe the issue is not real?
   - "No changes needed" — explain the original failure, why it's gone now, and what changed
   - Suspiciously fast completion — peek at the diff; if changes are minimal for a substantial task, ask the worker to elaborate
-- **Use \`/skeptic-review <session_id>\` for contentious claims.** When a worker's report feels too easy or too convenient, run the skeptic-review skill. It spawns an independent adversarial reviewer that reads the worker's diff, conversation, and task — then returns ACCEPT or CHALLENGE with specific questions to send back. Use this especially for "nothing to fix" / "can't reproduce" / "already works" claims.
+- **Use \`/skeptic-review <session_id>\` for contentious claims.** When a worker's report feels too easy or too convenient, run the skeptic-review skill. It spawns a temporary reviewer session (not a subagent) that independently evaluates the worker's diff, conversation, and task — then sends back ACCEPT or CHALLENGE with specific questions. Reviewer sessions are named "Skeptic review of #XX" and don't count toward the 5-worker herd limit. After receiving the verdict, archive the reviewer session. Don't block waiting — react to the herd event when the reviewer finishes.
 - **Require \`/groom\` for substantial or risky changes.** When a worker reports finishing and the diff stats show >100 lines changed, or the change touches risky/tricky areas (concurrency, protocol handling, state management), send: \`"Run /groom to self-review your changes."\` Wait for the \`turn_end\` event, then peek at the groom report. If there are Critical or Recommended items, send targeted fix instructions. Skip \`/groom\` for small, well-scoped changes under 100 lines.
 
 ### 7. Sync Before Verify

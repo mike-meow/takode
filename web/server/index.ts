@@ -477,6 +477,8 @@ wsBridge.onSessionNamedByQuestCallback((sessionId, title) => {
 wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) => {
   // Suppress auto-namer when disabled in settings
   if (!getSettings().autoNamerEnabled) return;
+  // Suppress auto-namer for sessions with noAutoName flag (e.g. temporary reviewer sessions)
+  if (launcher.getSession(sessionId)?.noAutoName) return;
   // Suppress auto-namer while a quest owns the session name
   if (await isQuestOwningSessionName(sessionId)) {
     console.log(`[session-namer] Skipping user-message namer for ${sessionId} (quest owns session name)`);
@@ -548,6 +550,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
 // rich context for naming — and it's a natural breakpoint before execution.
 wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
   if (!getSettings().autoNamerEnabled) return;
+  if (launcher.getSession(sessionId)?.noAutoName) return;
   if (await isQuestOwningSessionName(sessionId)) {
     console.log(`[session-namer] Skipping agent-paused namer for ${sessionId} (quest owns session name)`);
     return;
@@ -573,6 +576,7 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
 // User-message outcomes are preferred when both produce competing revisions.
 wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
   if (!getSettings().autoNamerEnabled) return;
+  if (launcher.getSession(sessionId)?.noAutoName) return;
   if (await isQuestOwningSessionName(sessionId)) {
     console.log(`[session-namer] Skipping turn-completed namer for ${sessionId} (quest owns session name)`);
     return;

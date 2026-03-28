@@ -1546,6 +1546,7 @@ Options:
   --internet / --no-internet   Codex-only: enable or disable internet access
   --reasoning-effort <level>   Codex-only: low, medium, or high
   --no-worktree                Disable worktree creation
+  --no-autoname                Disable auto session naming (keep initial name)
   --json                       Output in JSON format
 
 Examples:
@@ -1566,6 +1567,7 @@ const SPAWN_ALLOWED_FLAGS = new Set([
   "reasoning",
   "reasoning-effort",
   "no-worktree",
+  "no-autoname",
   "json",
   "help",
   "h",
@@ -1651,6 +1653,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
 
   const cwd = typeof flags.cwd === "string" ? flags.cwd : process.cwd();
   const useWorktree = flags["no-worktree"] === true ? false : true;
+  const noAutoName = flags["no-autoname"] === true;
   const message = typeof flags.message === "string" ? flags.message.trim() : "";
   const model = resolveStringFlag(flags, "model", "model");
   const askOverride = resolveBooleanToggleFlag(flags, "ask", "no-ask");
@@ -1679,6 +1682,9 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       useWorktree,
       createdBy: leaderSessionId,
     };
+    if (noAutoName) {
+      createPayload.noAutoName = true;
+    }
     if (model) {
       createPayload.model = model;
     }

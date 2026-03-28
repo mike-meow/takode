@@ -104,6 +104,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     isOrchestrator: boolean;
     envSlug?: string;
     createdBy?: unknown;
+    noAutoName?: boolean;
     worktreeInfo?: WorktreeSessionInfo;
     containerInfo?: ContainerInfo;
     resumeCliSessionId?: string;
@@ -199,6 +200,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       markOrchestratorSession(session.sessionId, sessionConfig.launchOptions.backendType || "claude");
     }
     if (sessionConfig.envSlug) session.envSlug = sessionConfig.envSlug;
+    if (sessionConfig.noAutoName) session.noAutoName = true;
 
     if (sessionConfig.isAssistantMode) {
       sessionNames.setName(session.sessionId, "Takode");
@@ -605,6 +607,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       isOrchestrator,
       envSlug: body.envSlug,
       createdBy: body.createdBy,
+      noAutoName: body.noAutoName === true,
       worktreeInfo,
       containerInfo,
     };

@@ -1,9 +1,9 @@
 ---
 name: skeptic-review
 description: >-
-  Adversarial review of a worker's completed task. Spawns a skeptical subagent
-  that independently evaluates whether the worker actually did thorough work or
-  took shortcuts. Returns ACCEPT or CHALLENGE with specific questions.
+  Adversarial review of a worker's completed task. Spawns a temporary reviewer
+  session that independently evaluates whether the worker actually did thorough
+  work or took shortcuts. Returns ACCEPT or CHALLENGE with specific questions.
   Use when a worker's claim seems too easy, too fast, or contentious
   ("nothing to fix", "can't reproduce", "already works").
 argument-hint: "<session_id>"
@@ -53,35 +53,39 @@ Collect three pieces of information:
    git -C <worktree_path> diff <base_branch>      # full diff
    ```
 
-### Step 2: Spawn Skeptical Reviewer
+### Step 2: Spawn Temporary Reviewer Session
 
-Launch a single Explore subagent with `subagent_type: "Explore"` and
-`thoroughness: "very thorough"`. Pass it ALL the context gathered in Step 1.
+Spawn a temporary session using `takode spawn` with `--no-autoname` and
+`--no-worktree`. The reviewer runs in its own session with its own context
+window, so it doesn't burn leader tokens or block the leader's turn.
 
-Use this prompt template (fill in the bracketed sections):
+Compose the review prompt with all context from Step 1, then spawn:
 
-```
-You are a skeptical code reviewer. Your job is to independently evaluate
-whether a worker session did thorough, honest work -- or took shortcuts.
+```bash
+takode spawn --no-autoname --no-worktree --message 'You are a skeptic reviewer. Your name is Skeptic review of #<worker_session_num>.
+
+You are reviewing a worker session'\''s completed task for work integrity.
+This is NOT a code quality review. Your job is to independently evaluate
+whether the worker did thorough, honest work -- or took shortcuts.
 
 Assume the worker may have:
 - Run a test once, seen it pass, and declared victory without investigating
 - Made the minimal change to make a symptom disappear without fixing root cause
-- Claimed "can't reproduce" after a superficial attempt
+- Claimed "can'\''t reproduce" after a superficial attempt
 - Copied existing code instead of understanding and improving it
 - Addressed the letter of the task but missed the spirit
 
 ## Task Given to Worker
-[paste the original dispatch message / quest description]
+<paste the original dispatch message / quest description>
 
-## Worker's Completion Report
-[paste the worker's final summary message]
+## Worker'\''s Completion Report
+<paste the worker'\''s final summary message>
 
 ## Actual Code Changes
-[paste git diff --stat and relevant portions of the full diff]
+<paste git diff --stat and relevant portions of the full diff>
 
-## Worker's Investigation Process
-[paste key messages showing what the worker tried, from takode peek]
+## Worker'\''s Investigation Process
+<paste key messages showing what the worker tried, from takode peek>
 
 ## Your Review
 
@@ -94,7 +98,7 @@ Evaluate:
    to the first conclusion? Look at their tool usage -- did they read
    enough code, run enough tests, consider edge cases?
 4. **Correctness**: Could the change introduce new bugs or regressions?
-5. **Honesty**: Does the worker's report accurately describe what they did?
+5. **Honesty**: Does the worker'\''s report accurately describe what they did?
    Any exaggerations or omissions?
 
 ## Verdict
@@ -107,21 +111,42 @@ Respond with exactly one of:
 **CHALLENGE**: The work has gaps or the claims are questionable.
 [List specific questions the leader should send back to the worker, e.g.:
 - "You said the test passes, but did you run it under load / in the full suite?"
-- "Your diff doesn't touch X, but the task asked for X -- why?"
-- "You investigated for 2 minutes on a complex task -- what did you check?"]
+- "Your diff doesn'\''t touch X, but the task asked for X -- why?"
+- "You investigated for 2 minutes on a complex task -- what did you check?"]'
 ```
 
-### Step 3: Act on Verdict
+The reviewer session:
+- Is named "Skeptic review of #XX" (set in the message, auto-namer disabled)
+- Does NOT count toward the 5-worker herd limit
+- Runs independently -- do NOT block waiting for it
 
-- **ACCEPT**: Report to the user that the work passed adversarial review.
-- **CHALLENGE**: Send the specific questions to the worker via
-  `takode send <session_id> "<questions>"`. Wait for their response,
-  then re-evaluate (optionally run `/skeptic-review` again).
+### Step 3: React to Reviewer Verdict
+
+When the reviewer session finishes, you'll receive a `turn_end` herd event.
+React to it:
+
+1. **Peek at the verdict**:
+   ```bash
+   takode peek <reviewer_session_id>
+   ```
+
+2. **Act on the verdict**:
+   - **ACCEPT**: Report to the user that the work passed adversarial review.
+   - **CHALLENGE**: Send the specific questions to the original worker via
+     `takode send <worker_session_id> "<questions>"`. Wait for their response,
+     then re-evaluate if needed.
+
+3. **Archive the reviewer session**:
+   ```bash
+   takode archive <reviewer_session_id>
+   ```
 
 ## Important Notes
 
-- This skill uses a read-only Explore subagent. It cannot run tests or
-  modify code -- it only reads and evaluates.
+- This skill spawns a **temporary session**, not a subagent. The reviewer
+  runs in its own context window and doesn't consume leader tokens.
+- Reviewer sessions don't need worktrees -- they only read and evaluate.
+- The `--no-autoname` flag keeps the "Skeptic review of #XX" name stable.
 - Keep the review focused on work integrity, not code style. `/groom`
   handles code quality.
 - Don't use this for every worker completion -- only when something
