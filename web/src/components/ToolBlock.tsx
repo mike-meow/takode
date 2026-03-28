@@ -18,9 +18,16 @@ import {
  * Lightweight error boundary that wraps the expanded content inside each ToolBlock.
  * If any child (DiffViewer, ToolDetail, ToolResultSection) throws during render,
  * this catches it and shows a graceful inline error instead of crashing the whole app.
+ *
+ * Also used as an outer wrapper around the entire ToolBlock component to catch
+ * errors that occur outside the expanded section (e.g. infinite re-render loops
+ * in store selectors or hooks that React detects at the component level).
  */
-class ToolBlockErrorBoundary extends Component<{ children: ReactNode; toolName: string }, { error: Error | null }> {
-  constructor(props: { children: ReactNode; toolName: string }) {
+class ToolBlockErrorBoundary extends Component<
+  { children: ReactNode; toolName: string; variant?: "inner" | "outer" },
+  { error: Error | null }
+> {
+  constructor(props: { children: ReactNode; toolName: string; variant?: "inner" | "outer" }) {
     super(props);
     this.state = { error: null };
   }
@@ -35,9 +42,14 @@ class ToolBlockErrorBoundary extends Component<{ children: ReactNode; toolName: 
 
   render() {
     if (this.state.error) {
+      const isOuter = this.props.variant === "outer";
       return (
-        <div className="px-3 py-2 text-[11px] text-cc-error/80 bg-cc-error/5 rounded-md border border-cc-error/20">
-          <span className="font-medium">Failed to render tool content</span>
+        <div
+          className={`text-[11px] text-cc-error/80 bg-cc-error/5 border border-cc-error/20 ${
+            isOuter ? "rounded-[10px] px-3 py-2.5" : "rounded-md px-3 py-2"
+          }`}
+        >
+          <span className="font-medium">Failed to render {isOuter ? "tool block" : "tool content"}</span>
           <span className="text-cc-muted ml-1">({this.state.error.message})</span>
         </div>
       );
@@ -173,21 +185,34 @@ function ToolDurationBadge({ toolUseId, sessionId }: { toolUseId: string; sessio
   );
 }
 
-export const ToolBlock = memo(function ToolBlock({
-  name,
-  input,
-  toolUseId,
-  sessionId,
-  hideLabel = false,
-  defaultOpen,
-}: {
+interface ToolBlockProps {
   name: string;
   input: Record<string, unknown>;
   toolUseId: string;
   sessionId?: string;
   hideLabel?: boolean;
   defaultOpen?: boolean;
-}) {
+}
+
+/** Public ToolBlock: wraps the inner implementation in an error boundary so that
+ *  any crash (including infinite re-render loops detected by React) shows an
+ *  inline error message instead of taking down the entire page. */
+export const ToolBlock = memo(function ToolBlock(props: ToolBlockProps) {
+  return (
+    <ToolBlockErrorBoundary toolName={props.name} variant="outer">
+      <ToolBlockInner {...props} />
+    </ToolBlockErrorBoundary>
+  );
+});
+
+const ToolBlockInner = memo(function ToolBlockInner({
+  name,
+  input,
+  toolUseId,
+  sessionId,
+  hideLabel = false,
+  defaultOpen,
+}: ToolBlockProps) {
   const [open, setOpen] = useState(() => {
     if (defaultOpen !== undefined) return defaultOpen;
     // Edit/Write blocks respect the user's expand preference; others start collapsed
