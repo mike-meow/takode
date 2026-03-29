@@ -73,6 +73,8 @@ export interface TranscriptionConfig {
   enhancementMode?: EnhancementMode;
   /** OpenAI STT model to use for speech-to-text. */
   sttModel?: SttModel;
+  /** Preferred voice capture mode when composer has text: "edit" (interpret as instructions) or "append" (add text). */
+  voiceCaptureMode?: "edit" | "append";
 }
 
 export type EditorKind = "vscode-local" | "vscode-remote" | "cursor" | "none";
@@ -194,6 +196,9 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
     const rawEnhancementMode = typeof c.enhancementMode === "string" ? c.enhancementMode : "";
     const enhancementMode: EnhancementMode =
       rawEnhancementMode === "default" || rawEnhancementMode === "bullet" ? rawEnhancementMode : "default";
+    const rawVoiceCaptureMode = typeof c.voiceCaptureMode === "string" ? c.voiceCaptureMode : "";
+    const voiceCaptureMode: "edit" | "append" | undefined =
+      rawVoiceCaptureMode === "edit" || rawVoiceCaptureMode === "append" ? rawVoiceCaptureMode : undefined;
     return {
       apiKey: typeof c.apiKey === "string" ? c.apiKey : "",
       baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : "https://api.openai.com/v1",
@@ -202,6 +207,7 @@ function normalizeTranscriptionConfig(raw: Record<string, unknown> | null | unde
       customVocabulary: typeof c.customVocabulary === "string" ? c.customVocabulary : "",
       sttModel,
       enhancementMode,
+      voiceCaptureMode,
     };
   }
   return {

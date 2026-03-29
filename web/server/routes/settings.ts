@@ -110,6 +110,11 @@ export function createSettingsRoutes(ctx: RouteContext) {
         (tc.enhancementMode === "default" || tc.enhancementMode === "bullet")
           ? (tc.enhancementMode as EnhancementMode)
           : current.enhancementMode,
+      voiceCaptureMode:
+        typeof tc.voiceCaptureMode === "string" &&
+        (tc.voiceCaptureMode === "edit" || tc.voiceCaptureMode === "append")
+          ? (tc.voiceCaptureMode as "edit" | "append")
+          : current.voiceCaptureMode,
     };
   }
 

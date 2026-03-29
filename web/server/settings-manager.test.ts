@@ -160,6 +160,29 @@ describe("settings-manager", () => {
     });
   });
 
+  it("persists voiceCaptureMode preference across reloads", async () => {
+    // Save a voice capture mode preference (e.g. user switched to "append" during recording)
+    updateSettings({
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+        voiceCaptureMode: "append",
+      },
+    });
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.transcriptionConfig.voiceCaptureMode).toBe("append");
+
+    // Reload from disk and verify the preference survived
+    _resetForTest(settingsPath);
+
+    expect(getSettings().transcriptionConfig.voiceCaptureMode).toBe("append");
+  });
+
   it("loads existing settings from disk", () => {
     writeFileSync(
       settingsPath,

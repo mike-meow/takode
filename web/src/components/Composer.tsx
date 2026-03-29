@@ -274,6 +274,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const requestedCodexSkillRefreshSessionRef = useRef<string | null>(null);
   const voiceCaptureModeRef = useRef<"dictation" | "edit" | "append">("dictation");
   const voiceEditBaseTextRef = useRef("");
+  // Persisted preference for voice capture mode when composer has text (loaded from server settings)
+  const preferredVoiceModeRef = useRef<"edit" | "append">("edit");
   // UI state mirror of voiceCaptureModeRef -- drives re-renders for the mode toggle
   const [voiceCaptureMode, setVoiceCaptureMode] = useState<"dictation" | "edit" | "append">("dictation");
 
@@ -363,8 +365,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
         after: text.slice(cursorPos),
       };
       if (text.trim().length > 0) {
-        voiceCaptureModeRef.current = "edit";
-        setVoiceCaptureMode("edit");
+        const mode = preferredVoiceModeRef.current;
+        voiceCaptureModeRef.current = mode;
+        setVoiceCaptureMode(mode);
         voiceEditBaseTextRef.current = text;
         setVoiceEditProposal(null);
       } else {
@@ -481,6 +484,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     ]).then(([models, settings]) => {
       if (cancelled) return;
       const options = models.length > 0 ? toModelOptions(models) : [];
+      // Load persisted voice capture mode preference
+      const savedVoiceMode = settings?.transcriptionConfig?.voiceCaptureMode;
+      if (savedVoiceMode === "edit" || savedVoiceMode === "append") {
+        preferredVoiceModeRef.current = savedVoiceMode;
+      }
       // If the user has a default model configured in ~/.claude/settings.json,
       // prepend a "Default (model)" option that sends the actual model ID
       // instead of an empty string (which would hide the model selector).
@@ -1499,6 +1507,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       onClick={() => {
                         voiceCaptureModeRef.current = "edit";
                         setVoiceCaptureMode("edit");
+                        preferredVoiceModeRef.current = "edit";
+                        api.updateSettings({ transcriptionConfig: { voiceCaptureMode: "edit" } }).catch(() => {});
                       }}
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
                         voiceCaptureMode === "edit"
@@ -1514,6 +1524,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       onClick={() => {
                         voiceCaptureModeRef.current = "append";
                         setVoiceCaptureMode("append");
+                        preferredVoiceModeRef.current = "append";
+                        api.updateSettings({ transcriptionConfig: { voiceCaptureMode: "append" } }).catch(() => {});
                       }}
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
                         voiceCaptureMode === "append"

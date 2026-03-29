@@ -320,6 +320,8 @@ export interface TranscriptionConfig {
   customVocabulary?: string;
   enhancementMode?: "default" | "bullet";
   sttModel?: string;
+  /** Preferred voice capture mode when composer has text: "edit" or "append". */
+  voiceCaptureMode?: "edit" | "append";
 }
 
 export type EditorKind = "vscode-local" | "vscode-remote" | "cursor" | "none";
@@ -733,7 +735,7 @@ export const api = {
     autoApprovalTimeoutSeconds?: number;
     namerConfig?: NamerConfig;
     autoNamerEnabled?: boolean;
-    transcriptionConfig?: TranscriptionConfig;
+    transcriptionConfig?: Partial<TranscriptionConfig>;
     editorConfig?: EditorConfig;
     defaultClaudeBackend?: "claude" | "claude-sdk";
     sleepInhibitorEnabled?: boolean;
