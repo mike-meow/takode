@@ -933,6 +933,19 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       break;
     }
 
+    case "board_updated": {
+      // Known limitation: board cards are rendered inline via ToolBlock
+      // detection of CLI output (parsing `__takode_board__` from results).
+      // The server broadcasts board_updated on mutations (including quest
+      // auto-removal), but the frontend does not store board state in
+      // Zustand. Already-rendered board cards won't live-update when a
+      // quest auto-completes -- the user sees the updated board on the
+      // next `takode board` command.
+      // TODO: store board state in Zustand keyed by session ID so
+      // board_updated can refresh displayed BoardBlock instances.
+      break;
+    }
+
     case "permissions_cleared": {
       store.clearPermissions(sessionId);
       break;

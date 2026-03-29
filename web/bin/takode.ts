@@ -2229,6 +2229,117 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
   console.log(`Notification sent (${category})`);
 }
 
+// ─── Board ─────────────────────────────────────────────────────────────────
+
+interface BoardRow {
+  questId: string;
+  title?: string;
+  worker?: string;
+  workerNum?: number;
+  status?: string;
+  updatedAt: number;
+}
+
+/** Format board output as JSON with a marker for frontend detection. */
+function formatBoardOutput(board: BoardRow[]): string {
+  return JSON.stringify({ __takode_board__: true, board }, null, 2);
+}
+
+/** Print board in a human-readable table (fallback for non-JSON mode). */
+function printBoardText(board: BoardRow[]): void {
+  if (board.length === 0) {
+    console.log("Board is empty.");
+    return;
+  }
+
+  // Header
+  console.log("");
+  const qCol = 8;
+  const tCol = 30;
+  const wCol = 12;
+  console.log(
+    `${"QUEST".padEnd(qCol)} ${"TITLE".padEnd(tCol)} ${"WORKER".padEnd(wCol)} STATUS`,
+  );
+  console.log("-".repeat(qCol + tCol + wCol + 20));
+
+  for (const row of board) {
+    const quest = row.questId.padEnd(qCol);
+    const title = (row.title || "").slice(0, tCol - 1).padEnd(tCol);
+    const worker = row.worker ? `#${row.workerNum ?? "?"}`.padEnd(wCol) : "—".padEnd(wCol);
+    const status = row.status || "";
+    console.log(`${quest} ${title} ${worker} ${status}`);
+  }
+  console.log("");
+}
+
+/** Output board as JSON (with frontend marker) or human-readable table. */
+function outputBoard(board: BoardRow[], jsonMode: boolean): void {
+  if (jsonMode) {
+    console.log(formatBoardOutput(board));
+  } else {
+    printBoardText(board);
+  }
+}
+
+async function handleBoard(base: string, args: string[]): Promise<void> {
+  const selfId = getCallerSessionId();
+  const sub = args[0];
+
+  // No subcommand: display board
+  if (!sub || sub.startsWith("--")) {
+    const flags = parseFlags(args);
+    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/board`)) as { board: BoardRow[] };
+    outputBoard(result.board, flags.json === true);
+    return;
+  }
+
+  if (sub === "add" || sub === "set") {
+    const questId = args[1];
+    if (!questId) err(`Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--json]`);
+    const flags = parseFlags(args.slice(2));
+
+    const body: Record<string, unknown> = { questId };
+    if (typeof flags.status === "string") body.status = flags.status;
+    if (typeof flags.title === "string") body.title = flags.title;
+    if (typeof flags.worker === "string") {
+      // Resolve worker ref -- use the info endpoint to get session ID and num
+      const workerRef = flags.worker;
+      try {
+        const info = (await apiGet(base, `/sessions/${encodeURIComponent(workerRef)}/info`)) as {
+          sessionId: string;
+          sessionNum: number;
+        };
+        body.worker = info.sessionId;
+        body.workerNum = info.sessionNum;
+      } catch {
+        // Fallback: store the ref as-is
+        body.worker = workerRef;
+      }
+    }
+
+    const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/board`, body)) as {
+      board: BoardRow[];
+    };
+    outputBoard(result.board, flags.json === true);
+    return;
+  }
+
+  if (sub === "rm") {
+    const questIds = args.slice(1).filter((a) => !a.startsWith("--"));
+    if (questIds.length === 0) err("Usage: takode board rm <quest-id> [<quest-id> ...] [--json]");
+    const flags = parseFlags(args.slice(1));
+
+    const result = (await apiDelete(
+      base,
+      `/sessions/${encodeURIComponent(selfId)}/board/${questIds.join(",")}`,
+    )) as { board: BoardRow[] };
+    outputBoard(result.board, flags.json === true);
+    return;
+  }
+
+  err(`Unknown board subcommand: ${sub}\nUsage: takode board [add|set|rm] ...`);
+}
+
 async function handleRefreshBranch(base: string, args: string[]): Promise<void> {
   const sessionRef = args[0];
   if (!sessionRef) err("Usage: takode refresh-branch <session> [--json]");
@@ -2569,6 +2680,7 @@ Commands:
   refresh-branch Refresh git branch info for a session after checkout/rebase
   branch         Branch info and management for the current session
   notify         Alert the user (e.g. takode notify review, takode notify needs-input)
+  board          Manage the work board (e.g. takode board, takode board add q-12 --status "implementing")
 
 Peek modes:
   takode peek 1                    Smart overview (collapsed turns + expanded last turn)
@@ -2643,6 +2755,7 @@ try {
     ["refresh-branch", {}],
     ["branch", {}],
     ["notify", {}],
+    ["board", {}],
   ]);
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
@@ -2718,6 +2831,9 @@ try {
       break;
     case "notify":
       await handleNotify(base, args);
+      break;
+    case "board":
+      await handleBoard(base, args);
       break;
     case "help":
     case "-h":

@@ -10,6 +10,7 @@ import type {
   SessionTaskEntry,
   CodexOutboundTurn,
   PendingCodexInput,
+  BoardRow,
 } from "./session-types.js";
 
 // ─── Two-Tier Persistence Design ────────────────────────────────────────────
@@ -87,6 +88,8 @@ export interface PersistedSession {
   taskHistory?: SessionTaskEntry[];
   /** Accumulated search keywords from the session auto-namer */
   keywords?: string[];
+  /** Leader work board rows, keyed by quest ID */
+  board?: BoardRow[];
 
   // ── Append-only history bookkeeping (managed by SessionStore) ───────────
   /**

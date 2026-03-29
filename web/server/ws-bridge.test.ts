@@ -14111,3 +14111,148 @@ describe("CLI-initiated turn tracking", () => {
     expect(session.isGenerating).toBe(false);
   });
 });
+
+// ─── Work Board ────────────────────────────────────────────────────────────
+
+describe("work board", () => {
+  it("getBoard returns empty array for unknown session", () => {
+    expect(bridge.getBoard("nonexistent")).toEqual([]);
+  });
+
+  it("upsertBoardRow adds a row and broadcasts", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const board = bridge.upsertBoardRow("s1", {
+      questId: "q-42",
+      title: "Fix sidebar",
+      status: "implementing",
+    });
+
+    expect(board).not.toBeNull();
+    expect(board).toHaveLength(1);
+    expect(board![0].questId).toBe("q-42");
+    expect(board![0].title).toBe("Fix sidebar");
+    expect(board![0].status).toBe("implementing");
+    expect(board![0].updatedAt).toBeGreaterThan(0);
+
+    // Verify broadcast to browser
+    const sent = browser.send.mock.calls.find(
+      (call: any[]) => {
+        try { return JSON.parse(call[0]).type === "board_updated"; } catch { return false; }
+      },
+    );
+    expect(sent).toBeTruthy();
+    const msg = JSON.parse(sent![0] as string);
+    expect(msg.board).toHaveLength(1);
+    expect(msg.board[0].questId).toBe("q-42");
+  });
+
+  it("upsertBoardRow merges with existing row", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", {
+      questId: "q-42",
+      title: "Fix sidebar",
+      worker: "worker-1",
+      workerNum: 5,
+      status: "implementing",
+    });
+
+    // Update only the status -- other fields should be preserved
+    const board = bridge.upsertBoardRow("s1", {
+      questId: "q-42",
+      status: "waiting for review",
+    });
+
+    expect(board).toHaveLength(1);
+    expect(board![0].questId).toBe("q-42");
+    expect(board![0].title).toBe("Fix sidebar"); // preserved
+    expect(board![0].worker).toBe("worker-1"); // preserved
+    expect(board![0].workerNum).toBe(5); // preserved
+    expect(board![0].status).toBe("waiting for review"); // updated
+  });
+
+  it("removeBoardRows removes specified rows", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Quest 2" });
+    bridge.upsertBoardRow("s1", { questId: "q-3", title: "Quest 3" });
+
+    const board = bridge.removeBoardRows("s1", ["q-1", "q-3"]);
+
+    expect(board).toHaveLength(1);
+    expect(board![0].questId).toBe("q-2");
+  });
+
+  it("removeBoardRowFromAll removes quest from all sessions", () => {
+    const browser1 = makeBrowserSocket("s1");
+    const browser2 = makeBrowserSocket("s2");
+    bridge.handleBrowserOpen(browser1, "s1");
+    bridge.handleBrowserOpen(browser2, "s2");
+
+    bridge.upsertBoardRow("s1", { questId: "q-42", title: "Shared quest" });
+    bridge.upsertBoardRow("s2", { questId: "q-42", title: "Shared quest" });
+    bridge.upsertBoardRow("s2", { questId: "q-99", title: "Other quest" });
+
+    bridge.removeBoardRowFromAll("q-42");
+
+    expect(bridge.getBoard("s1")).toHaveLength(0);
+    const s2Board = bridge.getBoard("s2");
+    expect(s2Board).toHaveLength(1);
+    expect(s2Board[0].questId).toBe("q-99");
+  });
+
+  it("board survives persistence round-trip", async () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", {
+      questId: "q-42",
+      title: "Fix sidebar",
+      worker: "w1",
+      workerNum: 5,
+      status: "implementing",
+    });
+
+    // Wait for debounced write
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Restore from disk
+    const restored = new WsBridge();
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const board = restored.getBoard("s1");
+    expect(board).toHaveLength(1);
+    expect(board[0].questId).toBe("q-42");
+    expect(board[0].title).toBe("Fix sidebar");
+    expect(board[0].worker).toBe("w1");
+    expect(board[0].workerNum).toBe(5);
+    expect(board[0].status).toBe("implementing");
+  });
+
+  it("upsertBoardRow returns null for unknown session", () => {
+    expect(bridge.upsertBoardRow("nonexistent", { questId: "q-1" })).toBeNull();
+  });
+
+  it("removeBoardRows returns null for unknown session", () => {
+    expect(bridge.removeBoardRows("nonexistent", ["q-1"])).toBeNull();
+  });
+
+  it("getBoard returns rows sorted by updatedAt", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Add with explicit timestamps to control order
+    bridge.upsertBoardRow("s1", { questId: "q-3", title: "Third", updatedAt: 3000 });
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "First", updatedAt: 1000 });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Second", updatedAt: 2000 });
+
+    const board = bridge.getBoard("s1");
+    expect(board.map((r) => r.questId)).toEqual(["q-1", "q-2", "q-3"]);
+  });
+});

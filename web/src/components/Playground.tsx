@@ -9,6 +9,7 @@ import {
 import { CodexThinkingInline, MessageBubble, UserReplyChip, NotificationMarker } from "./MessageBubble.js";
 import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "./ToolBlock.js";
+import { BoardBlock } from "./BoardBlock.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { useStore, COLOR_THEMES, isDarkTheme, type ColorTheme } from "../store.js";
@@ -2703,6 +2704,25 @@ export function Playground() {
                 <p>All changes have been committed and tests pass. The PR is ready for your review.</p>
                 <NotificationMarker category="review" />
               </div>
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Work Board ──────────────────────────────────────────── */}
+        <Section
+          title="Work Board"
+          description="Collapsible card rendered when a takode board command outputs board data. Shows quest/worker assignments and freeform status."
+        >
+          <div className="max-w-3xl space-y-4">
+            <Card label="Board with items">
+              <BoardBlock board={[
+                { questId: "q-42", title: "Fix mobile sidebar overflow", worker: "abc123", workerNum: 5, status: "implementing: fixing CSS flex-wrap", updatedAt: Date.now() - 60000 },
+                { questId: "q-55", title: "Add dark mode toggle", worker: "def456", workerNum: 8, status: "waiting for #5 to port", updatedAt: Date.now() - 30000 },
+                { questId: "q-61", title: "Optimize DB queries", status: "queued -- blocked on user decision", updatedAt: Date.now() },
+              ]} />
+            </Card>
+            <Card label="Empty board">
+              <BoardBlock board={[]} />
             </Card>
           </div>
         </Section>

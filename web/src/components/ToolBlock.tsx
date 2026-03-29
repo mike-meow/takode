@@ -5,6 +5,7 @@ import { MarkdownContent } from "./MarkdownContent.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
 import { CollapseFooter } from "./CollapseFooter.js";
 import { CopyFormatButton } from "./CopyFormatButton.js";
+import { BoardBlock, type BoardRowData } from "./BoardBlock.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
@@ -248,6 +249,17 @@ const ToolBlockInner = memo(function ToolBlockInner({
     return <TakodeNotifyPill category={notifyCategory} />;
   }
 
+  // takode board: render board card instead of terminal block
+  const isBoardCommand = name === "Bash" && isTakodeBoardCommand(String(input.command || ""));
+  const boardData = useStore((s) =>
+    isBoardCommand && sessionId
+      ? parseBoardFromResult(s.toolResults.get(sessionId)?.get(toolUseId)?.content)
+      : null,
+  );
+  if (isBoardCommand && boardData) {
+    return <BoardBlock board={boardData} />;
+  }
+
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
       <button
@@ -345,6 +357,25 @@ function TodoWriteInline({ input }: { input: Record<string, unknown> }) {
 function parseTakodeNotify(command: string): "needs-input" | "review" | null {
   const match = command.match(/\btakode\s+notify\s+(needs-input|review)\b/);
   return match ? (match[1] as "needs-input" | "review") : null;
+}
+
+/** Detect `takode board` commands (display, add, set, rm). */
+function isTakodeBoardCommand(command: string): boolean {
+  return /\btakode\s+board\b/.test(command);
+}
+
+/** Parse board JSON from a tool result string. Returns the board rows or null. */
+function parseBoardFromResult(resultContent: string | undefined): BoardRowData[] | null {
+  if (!resultContent) return null;
+  try {
+    const parsed = JSON.parse(resultContent);
+    if (parsed?.__takode_board__ === true && Array.isArray(parsed.board)) {
+      return parsed.board;
+    }
+  } catch {
+    // Not JSON or not a board result
+  }
+  return null;
 }
 
 /** Compact inline pill for takode notify calls -- mirrors NotificationMarker styling from MessageBubble. */

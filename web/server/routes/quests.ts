@@ -68,6 +68,11 @@ export function createQuestRoutes(ctx: RouteContext) {
       });
     }
 
+    // Auto-remove from work boards when quest exits active work
+    if (quest.status === "needs_verification" || quest.status === "done") {
+      wsBridge.removeBoardRowFromAll(quest.questId);
+    }
+
     broadcastQuestUpdate(wsBridge);
     return quest;
   };
@@ -237,6 +242,8 @@ export function createQuestRoutes(ctx: RouteContext) {
         const sid = (quest as { sessionId: string }).sessionId;
         wsBridge.setSessionClaimedQuest(sid, { id: quest.questId, title: quest.title, status: quest.status });
       }
+      // Auto-remove from work boards when quest enters verification
+      wsBridge.removeBoardRowFromAll(quest.questId);
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

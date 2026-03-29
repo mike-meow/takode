@@ -714,5 +714,64 @@ export function createTakodeRoutes(ctx: RouteContext) {
     return c.json({ ok: true, category, anchoredMessageId: result.anchoredMessageId });
   });
 
+  // ─── Work Board ──────────────────────────────────────────────────────
+
+  api.get("/sessions/:id/board", (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    // Only the session owner can read their own board
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only read your own board" }, 403);
+    }
+
+    return c.json({ board: wsBridge.getBoard(id) });
+  });
+
+  api.post("/sessions/:id/board", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only modify your own board" }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const questId = typeof body.questId === "string" ? body.questId.trim() : "";
+    if (!questId) return c.json({ error: "questId is required" }, 400);
+
+    const board = wsBridge.upsertBoardRow(id, {
+      questId,
+      title: typeof body.title === "string" ? body.title : undefined,
+      worker: typeof body.worker === "string" ? body.worker : undefined,
+      workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
+      status: typeof body.status === "string" ? body.status : undefined,
+    });
+    if (!board) return c.json({ error: "Session not found in bridge" }, 404);
+    return c.json({ board });
+  });
+
+  api.delete("/sessions/:id/board/:questId", (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only modify your own board" }, 403);
+    }
+
+    const questIds = c.req.param("questId").split(",").map((s) => s.trim()).filter(Boolean);
+    if (questIds.length === 0) return c.json({ error: "questId is required" }, 400);
+
+    const board = wsBridge.removeBoardRows(id, questIds);
+    if (!board) return c.json({ error: "Session not found in bridge" }, 404);
+    return c.json({ board });
+  });
+
   return api;
 }

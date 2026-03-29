@@ -395,6 +395,21 @@ export type BrowserOutgoingMessage =
   | { type: "set_ask_permission"; askPermission: boolean; client_msg_id?: string }
   | { type: "permission_user_viewing"; request_id: string };
 
+/** A single row on the leader's work board. */
+export interface BoardRow {
+  questId: string;
+  /** Short title of the quest (cached for display). */
+  title?: string;
+  /** Session ID of the assigned worker (optional). */
+  worker?: string;
+  /** Session number of the assigned worker (optional, cached for display). */
+  workerNum?: number;
+  /** Freeform status text -- the leader writes whatever is most useful. */
+  status?: string;
+  /** Epoch ms when this row was last updated. */
+  updatedAt: number;
+}
+
 /** High-level task recognized by the session auto-namer. */
 export interface SessionTaskEntry {
   title: string;
@@ -557,7 +572,8 @@ export type BrowserIncomingMessageBase =
     }
   | { type: "session_deleted"; session_id: string }
   | { type: "session_created"; session_id: string }
-  | { type: "notification_anchored"; messageId: string | null; notification: { category: "needs-input" | "review"; timestamp: number } };
+  | { type: "notification_anchored"; messageId: string | null; notification: { category: "needs-input" | "review"; timestamp: number } }
+  | { type: "board_updated"; board: BoardRow[] };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 

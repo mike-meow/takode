@@ -268,6 +268,7 @@ function createMockBridge() {
     setSessionClaimedQuest: vi.fn(),
     addTaskEntry: vi.fn(),
     updateQuestTaskEntries: vi.fn(),
+    removeBoardRowFromAll: vi.fn(),
     persistSessionSync: vi.fn(),
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),

@@ -56,6 +56,7 @@ import type {
   TakodePermissionRequestEventData,
   TakodeEventSubscriber,
   TakodeTurnEndEventData,
+  BoardRow,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT, assertNever, formatVsCodeSelectionPrompt } from "./session-types.js";
 import type { SessionStore } from "./session-store.js";
@@ -399,6 +400,8 @@ interface Session {
   taskHistory: SessionTaskEntry[];
   /** Accumulated search keywords from the session auto-namer */
   keywords: string[];
+  /** Leader work board: quest ID → row. Ephemeral per leader session, persisted across restarts. */
+  board: Map<string, BoardRow>;
   /** Whether agent activity has occurred since the last diff computation */
   diffStatsDirty: boolean;
   /** Whether this session was created by resuming an external CLI session (VS Code/terminal) */
@@ -1862,6 +1865,9 @@ export class WsBridge {
         relaunchPending: false,
         taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
         keywords: Array.isArray(p.keywords) ? p.keywords : [],
+        board: new Map(
+          Array.isArray(p.board) ? p.board.map((row: BoardRow) => [row.questId, row]) : [],
+        ),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliResuming: false,
@@ -1926,6 +1932,7 @@ export class WsBridge {
       attentionReason: session.attentionReason,
       taskHistory: session.taskHistory,
       keywords: session.keywords,
+      board: Array.from(session.board.values()),
     });
   }
 
@@ -1951,6 +1958,7 @@ export class WsBridge {
       attentionReason: session.attentionReason,
       taskHistory: session.taskHistory,
       keywords: session.keywords,
+      board: Array.from(session.board.values()),
     });
   }
 
@@ -2446,6 +2454,7 @@ export class WsBridge {
         relaunchPending: false,
         taskHistory: [],
         keywords: [],
+        board: new Map(),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliResuming: false,
@@ -2748,6 +2757,60 @@ export class WsBridge {
 
     this.persistSession(session);
     return { ok: true, anchoredMessageId };
+  }
+
+  // ─── Work Board ──────────────────────────────────────────────────────────
+
+  /** Get the board rows for a session as a sorted array. */
+  getBoard(sessionId: string): BoardRow[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+    return Array.from(session.board.values()).sort((a, b) => a.updatedAt - b.updatedAt);
+  }
+
+  /** Add or update a board row. Returns the full board. */
+  upsertBoardRow(sessionId: string, row: Omit<BoardRow, "updatedAt"> & { updatedAt?: number }): BoardRow[] | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const existing = session.board.get(row.questId);
+    const merged: BoardRow = {
+      questId: row.questId,
+      title: row.title ?? existing?.title,
+      worker: row.worker ?? existing?.worker,
+      workerNum: row.workerNum ?? existing?.workerNum,
+      status: row.status ?? existing?.status,
+      updatedAt: row.updatedAt ?? Date.now(),
+    };
+    session.board.set(row.questId, merged);
+    const board = this.getBoard(sessionId);
+    this.broadcastToBrowsers(session, { type: "board_updated", board });
+    this.persistSession(session);
+    return board;
+  }
+
+  /** Remove one or more rows from the board by quest ID. Returns the full board. */
+  removeBoardRows(sessionId: string, questIds: string[]): BoardRow[] | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    for (const qid of questIds) {
+      session.board.delete(qid);
+    }
+    const board = this.getBoard(sessionId);
+    this.broadcastToBrowsers(session, { type: "board_updated", board });
+    this.persistSession(session);
+    return board;
+  }
+
+  /** Remove a quest from ALL session boards (used for auto-cleanup on quest completion). */
+  removeBoardRowFromAll(questId: string): void {
+    for (const session of this.sessions.values()) {
+      if (session.board.has(questId)) {
+        session.board.delete(questId);
+        const board = this.getBoard(session.id);
+        this.broadcastToBrowsers(session, { type: "board_updated", board });
+        this.persistSession(session);
+      }
+    }
   }
 
   /** Downgrade "action" attention to null when all pending permissions are resolved. */
@@ -7999,10 +8062,18 @@ export class WsBridge {
       if (session.state.claimedQuestId === questId) {
         this.setSessionClaimedQuest(session.id, null);
       }
+      // Auto-remove from all work boards when quest is done
+      this.removeBoardRowFromAll(questId);
       return;
     }
 
     this.setSessionClaimedQuest(session.id, { id: questId, title, status });
+
+    // Auto-remove from all work boards when quest enters verification
+    if (status === "needs_verification") {
+      this.removeBoardRowFromAll(questId);
+    }
+
     if (status !== "in_progress") return;
 
     const alreadyTracked = session.taskHistory.some((entry) => entry.source === "quest" && entry.questId === questId);
