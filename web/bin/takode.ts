@@ -2406,11 +2406,11 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
   console.log("");
 }
 
-/** Output board as JSON (with frontend marker) or human-readable table. */
+/** Output board with frontend-detectable JSON marker, plus a human-readable table when not in --json mode. */
 function outputBoard(board: BoardRow[], jsonMode: boolean): void {
-  if (jsonMode) {
-    console.log(formatBoardOutput(board));
-  } else {
+  // Always emit the JSON marker so the Companion frontend can detect and render BoardBlock.
+  console.log(formatBoardOutput(board));
+  if (!jsonMode) {
     printBoardText(board, board);
   }
 }

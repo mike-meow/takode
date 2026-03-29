@@ -249,13 +249,11 @@ const ToolBlockInner = memo(function ToolBlockInner({
     return <TakodeNotifyPill category={notifyCategory} />;
   }
 
-  // takode board: render board card instead of terminal block
+  // takode board: render board card instead of terminal block.
+  // Tool result previews are truncated to 300 chars by the server, which breaks
+  // JSON parsing for boards with several rows. We fetch the full result if needed.
   const isBoardCommand = name === "Bash" && isTakodeBoardCommand(String(input.command || ""));
-  const boardData = useStore((s) =>
-    isBoardCommand && sessionId
-      ? parseBoardFromResult(s.toolResults.get(sessionId)?.get(toolUseId)?.content)
-      : null,
-  );
+  const boardData = useBoardData(isBoardCommand, sessionId, toolUseId);
   if (isBoardCommand && boardData) {
     return <BoardBlock board={boardData} />;
   }
@@ -364,16 +362,88 @@ function isTakodeBoardCommand(command: string): boolean {
   return /\btakode\s+board\b/.test(command);
 }
 
-/** Parse board JSON from a tool result string. Returns the board rows or null. */
-function parseBoardFromResult(resultContent: string | undefined): BoardRowData[] | null {
+/**
+ * Hook: parse board data from a tool result preview, fetching the full result
+ * from the server when the preview is truncated (>300 chars).
+ *
+ * Uses two primitive selectors (content string, truncated boolean) to avoid
+ * creating a new object on every render, which would defeat Zustand's
+ * Object.is equality check and cause infinite re-renders.
+ */
+function useBoardData(
+  isBoardCommand: boolean,
+  sessionId: string | null,
+  toolUseId: string,
+): BoardRowData[] | null {
+  const previewContent = useStore((s) => {
+    if (!isBoardCommand || !sessionId) return undefined;
+    return s.toolResults.get(sessionId)?.get(toolUseId)?.content;
+  });
+  const isTruncated = useStore((s) => {
+    if (!isBoardCommand || !sessionId) return false;
+    return s.toolResults.get(sessionId)?.get(toolUseId)?.is_truncated ?? false;
+  });
+
+  const [boardData, setBoardData] = useState<BoardRowData[] | null>(null);
+  useEffect(() => {
+    if (!isBoardCommand || !sessionId || previewContent === undefined) {
+      setBoardData(null);
+      return;
+    }
+    if (!isTruncated) {
+      setBoardData(parseBoardFromResult(previewContent));
+      return;
+    }
+    // Server truncated the preview -- fetch full result to get complete JSON
+    let cancelled = false;
+    api.getToolResult(sessionId, toolUseId).then((full) => {
+      if (!cancelled) setBoardData(parseBoardFromResult(full?.content));
+    }).catch(() => {
+      if (!cancelled) setBoardData(null);
+    });
+    return () => { cancelled = true; };
+  }, [isBoardCommand, sessionId, toolUseId, previewContent, isTruncated]);
+
+  return boardData;
+}
+
+/**
+ * Parse board JSON from a tool result string. Returns the board rows or null.
+ *
+ * The CLI always emits the JSON marker first, but may append a human-readable
+ * text table after it (when not in --json mode). We extract the first top-level
+ * JSON object via brace counting so the trailing text doesn't break parsing.
+ */
+export function parseBoardFromResult(resultContent: string | undefined): BoardRowData[] | null {
   if (!resultContent) return null;
+  const jsonStr = extractFirstJsonObject(resultContent);
+  if (!jsonStr) return null;
   try {
-    const parsed = JSON.parse(resultContent);
+    const parsed = JSON.parse(jsonStr);
     if (parsed?.__takode_board__ === true && Array.isArray(parsed.board)) {
       return parsed.board;
     }
   } catch {
-    // Not JSON or not a board result
+    // Malformed JSON
+  }
+  return null;
+}
+
+/** Extract the first balanced `{ ... }` block from a string, skipping strings. */
+export function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
   }
   return null;
 }

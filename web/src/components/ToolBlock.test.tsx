@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ToolBlock, ToolIcon, getToolIcon, getToolLabel, getPreview, formatDuration, EDIT_BLOCKS_EXPANDED_KEY } from "./ToolBlock.js";
+import { ToolBlock, ToolIcon, getToolIcon, getToolLabel, getPreview, formatDuration, EDIT_BLOCKS_EXPANDED_KEY, extractFirstJsonObject, parseBoardFromResult } from "./ToolBlock.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 
@@ -1388,5 +1388,109 @@ describe("Edit block rendering does not trigger React error #185", () => {
 
     consoleSpy.mockRestore();
     useStore.getState().removeSession("session-185-unified");
+  });
+});
+
+// ─── extractFirstJsonObject ──────────────────────────────────────────────────
+// Brace-counting JSON extractor used by board detection. Must handle JSON
+// produced by JSON.stringify (with possible trailing text from the CLI).
+
+describe("extractFirstJsonObject", () => {
+  it("returns null for empty or non-JSON input", () => {
+    expect(extractFirstJsonObject("")).toBeNull();
+    expect(extractFirstJsonObject("no braces here")).toBeNull();
+  });
+
+  it("extracts a simple JSON object", () => {
+    expect(extractFirstJsonObject('{"a":1}')).toBe('{"a":1}');
+  });
+
+  it("extracts JSON with nested objects", () => {
+    const json = '{"outer":{"inner":{"deep":true}}}';
+    expect(extractFirstJsonObject(json)).toBe(json);
+  });
+
+  it("extracts JSON followed by trailing text (the board use case)", () => {
+    const json = '{"__takode_board__":true,"board":[]}';
+    const mixed = json + "\n\nQuest    Worker  State\nq-42     #5      DISPATCHED\n";
+    expect(extractFirstJsonObject(mixed)).toBe(json);
+  });
+
+  it("handles braces inside string values", () => {
+    const json = '{"text":"has { and } inside"}';
+    expect(extractFirstJsonObject(json)).toBe(json);
+  });
+
+  it("handles escaped quotes inside strings", () => {
+    const json = '{"key":"value with \\"escaped\\" quotes"}';
+    expect(extractFirstJsonObject(json)).toBe(json);
+  });
+
+  it("handles escaped backslashes (\\\\) before closing quote", () => {
+    // JSON: {"path":"C:\\Users"} -- the \\\\ is an escaped backslash, not an escape of the quote
+    const json = '{"path":"C:\\\\Users"}';
+    expect(extractFirstJsonObject(json)).toBe(json);
+  });
+
+  it("handles empty object", () => {
+    expect(extractFirstJsonObject("{}")).toBe("{}");
+  });
+
+  it("skips text before the first opening brace", () => {
+    expect(extractFirstJsonObject('text before {"a":1} text after')).toBe('{"a":1}');
+  });
+
+  it("returns null for unbalanced braces (missing closing)", () => {
+    expect(extractFirstJsonObject('{"a":1')).toBeNull();
+  });
+
+  it("extracts a pretty-printed JSON object with trailing table", () => {
+    // Simulates actual board CLI output: pretty JSON followed by text table
+    const board = [{ questId: "q-1", title: "Fix bug", updatedAt: 1234 }];
+    const json = JSON.stringify({ __takode_board__: true, board }, null, 2);
+    const fullOutput = json + "\n\nQuest   Title    Worker  State\nq-1     Fix bug  --      PLANNED\n";
+    const extracted = extractFirstJsonObject(fullOutput);
+    expect(JSON.parse(extracted!)).toEqual({ __takode_board__: true, board });
+  });
+});
+
+// ─── parseBoardFromResult ────────────────────────────────────────────────────
+// Parses __takode_board__ marker JSON from CLI output, handling mixed
+// JSON+text output and truncated previews.
+
+describe("parseBoardFromResult", () => {
+  it("returns null for undefined/empty input", () => {
+    expect(parseBoardFromResult(undefined)).toBeNull();
+    expect(parseBoardFromResult("")).toBeNull();
+  });
+
+  it("parses clean board JSON (--json mode)", () => {
+    const board = [{ questId: "q-42", title: "Test", updatedAt: 100 }];
+    const json = JSON.stringify({ __takode_board__: true, board });
+    expect(parseBoardFromResult(json)).toEqual(board);
+  });
+
+  it("parses board JSON followed by text table (non --json mode)", () => {
+    const board = [{ questId: "q-42", title: "Test", worker: "abc", workerNum: 5, status: "DISPATCHED", updatedAt: 100 }];
+    const json = JSON.stringify({ __takode_board__: true, board }, null, 2);
+    const mixed = json + "\n\nQuest   Title  Worker  State\nq-42    Test   #5      DISPATCHED\n";
+    expect(parseBoardFromResult(mixed)).toEqual(board);
+  });
+
+  it("returns null if __takode_board__ marker is missing", () => {
+    expect(parseBoardFromResult('{"other":true}')).toBeNull();
+  });
+
+  it("returns null if board is not an array", () => {
+    expect(parseBoardFromResult('{"__takode_board__":true,"board":"not-array"}')).toBeNull();
+  });
+
+  it("returns null for plain text (no JSON at all)", () => {
+    expect(parseBoardFromResult("Quest   Title  Worker  State\nq-42    Test   #5")).toBeNull();
+  });
+
+  it("handles empty board array", () => {
+    const json = JSON.stringify({ __takode_board__: true, board: [] });
+    expect(parseBoardFromResult(json)).toEqual([]);
   });
 });
