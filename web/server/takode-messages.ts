@@ -681,7 +681,7 @@ export function buildPeekResponse(
   sessionId?: string,
 ): TakodePeekTurn[] {
   const { turns: turnCount = 1, since = 0, full = false } = options;
-  const contentLimit = 120;
+  const contentLimit = 500;
   const { subagentToolUseIds, toolResultPreviews } = buildSubagentIndexes(messageHistory);
 
   const allTurns = findTurnBoundaries(messageHistory);
@@ -735,7 +735,7 @@ export function buildPeekDefault(
   sessionId?: string,
 ): PeekDefaultResponse {
   const { collapsedCount = 5, expandLimit = 10 } = options;
-  const contentLimit = 120;
+  const contentLimit = 500;
   const { subagentToolUseIds, toolResultPreviews } = buildSubagentIndexes(messageHistory);
 
   const allTurns = findTurnBoundaries(messageHistory);
@@ -860,7 +860,7 @@ export function buildPeekRange(
 
   const count = Number.isFinite(options.count) ? Math.max(1, Math.trunc(options.count as number)) : 60;
 
-  const contentLimit = 120;
+  const contentLimit = 500;
   const allTurns = findTurnBoundaries(messageHistory);
   const { subagentToolUseIds, toolResultPreviews } = buildSubagentIndexes(messageHistory);
 
@@ -1084,7 +1084,7 @@ export function buildPeekTurnScan(
   sessionId?: string,
 ): PeekTurnScanResponse {
   const { fromTurn = 0, turnCount = 50 } = options;
-  const contentLimit = 120;
+  const contentLimit = 500;
   const { subagentToolUseIds, toolResultPreviews } = buildSubagentIndexes(messageHistory);
 
   const allTurns = findTurnBoundaries(messageHistory);

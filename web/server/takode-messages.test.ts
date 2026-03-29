@@ -238,12 +238,12 @@ describe("buildPeekResponse", () => {
   });
 
   it("truncates long content in peek mode (full=false)", () => {
-    const longText = "x".repeat(200);
+    const longText = "x".repeat(600);
     const history: BrowserIncomingMessage[] = [userMsg(longText, 1000), assistantMsg(longText, 2000), resultMsg(1000)];
 
     const result = buildPeekResponse(history, { turns: 1, full: false });
-    // User messages are short but this one is long — should be truncated
-    expect(result[0].messages[0].content.length).toBeLessThan(200);
+    // User messages are short but this one is long — should be truncated at 500 chars
+    expect(result[0].messages[0].content.length).toBeLessThan(600);
     expect(result[0].messages[0].content).toContain("... [+");
   });
 
