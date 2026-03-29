@@ -272,10 +272,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
   const requestedCodexSkillRefreshSessionRef = useRef<string | null>(null);
-  const voiceCaptureModeRef = useRef<"dictation" | "edit">("dictation");
+  const voiceCaptureModeRef = useRef<"dictation" | "edit" | "append">("dictation");
   const voiceEditBaseTextRef = useRef("");
+  // UI state mirror of voiceCaptureModeRef -- drives re-renders for the mode toggle
+  const [voiceCaptureMode, setVoiceCaptureMode] = useState<"dictation" | "edit" | "append">("dictation");
 
-  // Voice input — records audio via MediaRecorder, transcribes server-side
+  // Voice input -- records audio via MediaRecorder, transcribes server-side
   const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
     isRecording,
@@ -312,6 +314,22 @@ export function Composer({ sessionId }: { sessionId: string }) {
             editedText,
             instructionText: instructionText || rawText || "",
           });
+        } else if (voiceCaptureModeRef.current === "append") {
+          // Append mode: transcribe and clean speech, then insert at cursor position
+          const { text: appendText } = await api.transcribe(blob, {
+            mode: "append",
+            sessionId,
+            composerText: voiceEditBaseTextRef.current,
+            onPhase: (phase) => setTranscriptionPhase(phase),
+          });
+          // Insert cleaned text at the cursor position saved before recording started
+          const before = preRecordingTextRef.current.before;
+          const after = preRecordingTextRef.current.after;
+          // Add a space separator if the text before cursor doesn't end with whitespace
+          const needsSpace = before.length > 0 && !/\s$/.test(before);
+          const separator = needsSpace ? " " : "";
+          setText(before + separator + appendText + after);
+          setVoiceEditProposal(null);
         } else {
           const { text: transcript } = await api.transcribe(blob, {
             mode: "dictation",
@@ -337,18 +355,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
     if (!isRecording) {
+      // Always capture cursor position for potential append mode
+      const el = textareaRef.current;
+      const cursorPos = el?.selectionStart ?? text.length;
+      preRecordingTextRef.current = {
+        before: text.slice(0, cursorPos),
+        after: text.slice(cursorPos),
+      };
       if (text.trim().length > 0) {
         voiceCaptureModeRef.current = "edit";
+        setVoiceCaptureMode("edit");
         voiceEditBaseTextRef.current = text;
         setVoiceEditProposal(null);
       } else {
         voiceCaptureModeRef.current = "dictation";
-        const el = textareaRef.current;
-        const cursorPos = el?.selectionStart ?? text.length;
-        preRecordingTextRef.current = {
-          before: text.slice(0, cursorPos),
-          after: text.slice(cursorPos),
-        };
+        setVoiceCaptureMode("dictation");
       }
     }
     toggleRecording();
@@ -394,6 +415,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     setVoiceEditProposal(null);
     voiceCaptureModeRef.current = "dictation";
+    setVoiceCaptureMode("dictation");
     voiceEditBaseTextRef.current = "";
   }, [sessionId]);
 
@@ -1184,9 +1206,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     (isTranscribing
       ? transcriptionPhase === "editing"
         ? "Editing..."
-        : transcriptionPhase === "enhancing"
-          ? "Enhancing..."
-          : "Transcribing..."
+        : transcriptionPhase === "appending"
+          ? "Appending..."
+          : transcriptionPhase === "enhancing"
+            ? "Enhancing..."
+            : "Transcribing..."
       : isRecording
         ? "Stop recording"
         : voiceEditProposal
@@ -1467,6 +1491,41 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     />
                   ))}
                 </div>
+                {/* Voice mode toggle (only shown when recording with existing text) */}
+                {voiceCaptureMode !== "dictation" && (
+                  <div className="ml-auto flex items-center gap-0.5 rounded-full bg-cc-bg-secondary p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        voiceCaptureModeRef.current = "edit";
+                        setVoiceCaptureMode("edit");
+                      }}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                        voiceCaptureMode === "edit"
+                          ? "bg-cc-primary text-white"
+                          : "text-cc-muted hover:text-cc-fg"
+                      }`}
+                      title="Voice will be interpreted as editing instructions for the existing text"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        voiceCaptureModeRef.current = "append";
+                        setVoiceCaptureMode("append");
+                      }}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                        voiceCaptureMode === "append"
+                          ? "bg-cc-primary text-white"
+                          : "text-cc-muted hover:text-cc-fg"
+                      }`}
+                      title="Voice will be appended as additional text at the cursor position"
+                    >
+                      Append
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {isTranscribing && !isRecording && (
@@ -1475,9 +1534,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 <span>
                   {transcriptionPhase === "editing"
                     ? "Editing..."
-                    : transcriptionPhase === "enhancing"
-                      ? "Enhancing..."
-                      : "Transcribing..."}
+                    : transcriptionPhase === "appending"
+                      ? "Appending..."
+                      : transcriptionPhase === "enhancing"
+                        ? "Enhancing..."
+                        : "Transcribing..."}
                 </span>
               </div>
             )}

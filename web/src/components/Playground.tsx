@@ -2925,6 +2925,155 @@ export function Playground() {
               </div>
             </Card>
             <div className="mt-4" />
+            <Card label="Recording with mode toggle (edit/append)">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  {/* Recording indicator with mode toggle */}
+                  <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span className="shrink-0">Recording</span>
+                    {/* Volume bars mock */}
+                    <div className="flex items-center gap-[2px] h-3">
+                      {[0, 0.15, 0.3, 0.45, 0.6].map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-[3px] rounded-full"
+                          style={{
+                            height: `${4 + i * 2}px`,
+                            backgroundColor: i < 3 ? "rgb(239 68 68)" : "rgb(239 68 68 / 0.3)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {/* Mode toggle */}
+                    <div className="ml-auto flex items-center gap-0.5 rounded-full bg-cc-bg-secondary p-0.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-cc-primary text-white">
+                        Edit
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium text-cc-muted">Append</span>
+                    </div>
+                  </div>
+                  <textarea
+                    readOnly
+                    value="Some existing text in the composer..."
+                    rows={1}
+                    className="w-full px-4 pt-2 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-red-500 bg-red-500/10">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 animate-pulse">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
+            <Card label="Recording with mode toggle (append selected)">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  {/* Recording indicator with append mode active */}
+                  <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-red-500">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    <span className="shrink-0">Recording</span>
+                    <div className="flex items-center gap-[2px] h-3">
+                      {[0, 0.15, 0.3, 0.45, 0.6].map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-[3px] rounded-full"
+                          style={{
+                            height: `${4 + i * 2}px`,
+                            backgroundColor: i < 4 ? "rgb(239 68 68)" : "rgb(239 68 68 / 0.3)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {/* Mode toggle — append selected */}
+                    <div className="ml-auto flex items-center gap-0.5 rounded-full bg-cc-bg-secondary p-0.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium text-cc-muted">Edit</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-cc-primary text-white">
+                        Append
+                      </span>
+                    </div>
+                  </div>
+                  <textarea
+                    readOnly
+                    value="Some existing text in the composer..."
+                    rows={1}
+                    className="w-full px-4 pt-2 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>code</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-lg text-red-500 bg-red-500/10">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 animate-pulse">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
             <Card label="Transcribing — STT in progress">
               <div className="border-t border-cc-border bg-cc-card px-4 py-3">
                 <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">

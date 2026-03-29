@@ -184,6 +184,53 @@ function getVoiceEditSystemPrompt(mode: "default" | "bullet" | undefined): strin
   return mode === "bullet" ? VOICE_EDIT_BULLET_SYSTEM_PROMPT : VOICE_EDIT_DEFAULT_SYSTEM_PROMPT;
 }
 
+// ─── Voice append mode prompts ──────────────────────────────────────────────
+
+/**
+ * Voice append mode: transcribed speech is treated as additional text to be
+ * inserted at the cursor position in the composer. The enhancer cleans up the
+ * transcription and outputs ONLY the new text to append -- never the existing
+ * draft. The existing draft is provided purely for context (tone, style, topic).
+ */
+const VOICE_APPEND_RULES = `Rules:
+- Output ONLY the new text to append -- NEVER include the existing draft
+- Clean the transcription: fix grammar, remove filler, correct technical terms
+- Match the tone and style of the existing draft when reasonable
+- Do NOT summarize, restructure, or modify the existing draft in any way
+- Preserve the speaker's meaning, questions, and uncertainty`;
+
+const VOICE_APPEND_PREAMBLE = `You are a TRANSCRIPTION ENHANCER for voice-appended text.
+
+You will receive the user's existing composer draft (for context) and new speech to append.
+
+Your only job is to clean up the new speech and output ONLY the cleaned new text. The existing draft is shown so you can match its style and understand context -- do NOT include it in your output.`;
+
+/** Voice append in prose mode. */
+const VOICE_APPEND_DEFAULT_SYSTEM_PROMPT = `${VOICE_APPEND_PREAMBLE}
+
+Output format:
+
+Output clean prose. Use paragraph breaks at natural topic shifts.
+If the new speech is a single short thought, a single sentence is fine.
+
+${VOICE_APPEND_RULES}`;
+
+/** Voice append in bullet mode. */
+const VOICE_APPEND_BULLET_SYSTEM_PROMPT = `${VOICE_APPEND_PREAMBLE}
+
+Output format:
+
+Keep all original sentences from the new speech with light polishing.
+Group by topic if there are multiple thoughts. Use " - " for sub-points.
+Do NOT insert empty lines between lines.
+
+${VOICE_APPEND_RULES}`;
+
+/** Pick the right voice-append system prompt based on config mode. */
+function getVoiceAppendSystemPrompt(mode: "default" | "bullet" | undefined): string {
+  return mode === "bullet" ? VOICE_APPEND_BULLET_SYSTEM_PROMPT : VOICE_APPEND_DEFAULT_SYSTEM_PROMPT;
+}
+
 // ─── Context extraction ─────────────────────────────────────────────────────
 
 /** Truncate a string with "..." if it exceeds maxLen. */
@@ -326,8 +373,8 @@ export function buildTranscriptionContext(history: BrowserIncomingMessage[]): st
 
 export interface EnhancementContextInput {
   /** Which voice flow is being processed. */
-  mode?: "dictation" | "edit";
-  /** Full current composer text (used by voice-edit mode). */
+  mode?: "dictation" | "edit" | "append";
+  /** Full current composer text (used by voice-edit and voice-append modes). */
   composerText?: string;
   /** Task titles from the session auto-namer. */
   taskTitles?: string[];
@@ -424,8 +471,52 @@ export function buildVoiceEditPrompt(
   parts.push(`<CURRENT_COMPOSER_TEXT>\n${currentComposerText}\n</CURRENT_COMPOSER_TEXT>`);
   parts.push("");
 
-  // 4. Edit instruction (narrowest — the spoken command to apply)
+  // 4. Edit instruction (narrowest -- the spoken command to apply)
   parts.push(`<EDIT_INSTRUCTION>\n${instructionText}\n</EDIT_INSTRUCTION>`);
+
+  return parts.join("\n");
+}
+
+export function buildVoiceAppendPrompt(
+  newSpeechText: string,
+  existingDraftText: string,
+  conversationContext: string,
+  extra?: EnhancementContextInput,
+): string {
+  const parts: string[] = [];
+
+  // 1. Session metadata (broadest context)
+  const supplementary: string[] = [];
+  if (extra?.taskTitles && extra.taskTitles.length > 0) {
+    supplementary.push(`Session tasks: ${extra.taskTitles.join("; ")}`);
+  }
+  if (extra?.sessionName) {
+    supplementary.push(`Current session: ${extra.sessionName}`);
+  }
+  if (extra?.activeSessionNames && extra.activeSessionNames.length > 0) {
+    supplementary.push(`Other active sessions: ${extra.activeSessionNames.join("; ")}`);
+  }
+  if (supplementary.length > 0) {
+    parts.push(`<SESSION_CONTEXT>\n${supplementary.join("\n")}\n</SESSION_CONTEXT>`);
+    parts.push("");
+  }
+
+  // 2. Conversation context
+  if (conversationContext) {
+    parts.push(
+      `<CONVERSATION_CONTEXT>\nRecent conversation in this coding session:\n\n${conversationContext}\n</CONVERSATION_CONTEXT>`,
+    );
+    parts.push("");
+  }
+
+  // 3. Existing draft (context only -- enhancer must NOT include this in output)
+  parts.push(`<EXISTING_DRAFT>\n${existingDraftText}\n</EXISTING_DRAFT>`);
+  parts.push("");
+
+  // 4. New speech to clean and append
+  parts.push(`<NEW_SPEECH>\n${newSpeechText}\n</NEW_SPEECH>`);
+  parts.push("");
+  parts.push("Output ONLY the cleaned new text to append. Do NOT include any of the existing draft.");
 
   return parts.join("\n");
 }
@@ -434,7 +525,7 @@ export function buildVoiceEditPrompt(
 
 export interface SttPromptInput {
   /** Which voice flow is being processed. */
-  mode?: "dictation" | "edit";
+  mode?: "dictation" | "edit" | "append";
   /** Task titles from the session auto-namer (highest priority context). */
   taskHistory?: SessionTaskEntry[];
   /** Full current composer text when the user is voice-editing existing text. */
@@ -521,8 +612,8 @@ export function buildSttPrompt(input: SttPromptInput): string {
     addMeta("Sessions: " + truncated.join(", "));
   }
 
-  // 4. Composer text (voice-edit mode only — provides vocabulary from the draft)
-  if (input.mode === "edit" && input.composerText && metaRemaining > 0) {
+  // 4. Composer text (voice-edit and voice-append modes -- provides vocabulary from the draft)
+  if ((input.mode === "edit" || input.mode === "append") && input.composerText && metaRemaining > 0) {
     addDraftSection(input.composerText);
   }
 
@@ -647,10 +738,12 @@ export function buildSttPrompt(input: SttPromptInput): string {
     sections.push("");
   }
 
-  // Closing instruction — recency bias ensures the model sees this last
+  // Closing instruction -- recency bias ensures the model sees this last
   sections.push(
     input.mode === "edit"
       ? "The audio is a spoken edit instruction for the current draft. TRANSCRIBE THE INSTRUCTION EXACTLY AS SPOKEN. Output ONLY the transcribed instruction text."
+      : input.mode === "append"
+        ? "The audio is new text to append to the current draft. TRANSCRIBE THE SPEECH EXACTLY AS SPOKEN. Output ONLY the transcribed words."
       : "TRANSCRIBE THE FOLLOWING AUDIO EXACTLY AS SPOKEN. Output ONLY the transcribed words.",
   );
 
@@ -903,13 +996,61 @@ export async function applyVoiceEdit(
   };
 }
 
+/** Voice append result shares the same shape as voice edit. */
+export type VoiceAppendResult = VoiceEditResult;
+
+/**
+ * Clean up transcribed speech for appending to existing composer text.
+ * Returns only the new text to insert -- never the existing draft.
+ */
+export async function applyVoiceAppend(
+  rawSpeechText: string,
+  existingDraftText: string,
+  history: BrowserIncomingMessage[] | null,
+  config: TranscriptionConfig,
+  apiKey: string,
+  extra?: EnhancementContextInput,
+): Promise<VoiceAppendResult> {
+  const model = config.enhancementModel || "gpt-5-mini";
+  const conversationContext = history ? buildTranscriptionContext(history) : "";
+  const prompt = buildVoiceAppendPrompt(rawSpeechText, existingDraftText, conversationContext, extra);
+  const systemPrompt = getVoiceAppendSystemPrompt(config.enhancementMode);
+  const t0 = Date.now();
+  const llmResult = await callEnhancementLLM(prompt, config, apiKey, systemPrompt);
+  const durationMs = Date.now() - t0;
+
+  if (!llmResult.ok) {
+    throw Object.assign(new Error(llmResult.error), {
+      _debug: {
+        model,
+        systemPrompt,
+        userMessage: prompt,
+        enhancedText: null,
+        durationMs,
+        skipReason: llmResult.error,
+      },
+    });
+  }
+
+  return {
+    text: llmResult.text,
+    _debug: {
+      model,
+      systemPrompt,
+      userMessage: prompt,
+      enhancedText: llmResult.text,
+      durationMs,
+    },
+  };
+}
+
 // ─── Debug log (in-memory, for Settings debug panel) ─────────────────────────
 
 export interface TranscriptionLogEntry {
   id: number;
   timestamp: number;
   sessionId: string | null;
-  mode?: "dictation" | "edit";
+  mode?: "dictation" | "edit" | "append";
   /** STT phase */
   sttModel: string;
   sttDurationMs: number;
@@ -1018,6 +1159,9 @@ export const _testHelpers = {
   VOICE_EDIT_DEFAULT_SYSTEM_PROMPT,
   VOICE_EDIT_BULLET_SYSTEM_PROMPT,
   getVoiceEditSystemPrompt,
+  VOICE_APPEND_DEFAULT_SYSTEM_PROMPT,
+  VOICE_APPEND_BULLET_SYSTEM_PROMPT,
+  getVoiceAppendSystemPrompt,
   MAX_TURNS,
   ENHANCER_MSG_START,
   ENHANCER_MSG_STEP,
@@ -1037,5 +1181,6 @@ export const _testHelpers = {
   buildTranscriptionContext,
   buildEnhancementPrompt,
   buildVoiceEditPrompt,
+  buildVoiceAppendPrompt,
   buildSttPrompt,
 };

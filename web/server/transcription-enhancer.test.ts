@@ -6,6 +6,7 @@ import {
   buildTranscriptionContext,
   buildEnhancementPrompt,
   buildVoiceEditPrompt,
+  buildVoiceAppendPrompt,
   buildSttPrompt,
   enhanceTranscript,
 } from "./transcription-enhancer.js";
@@ -14,6 +15,9 @@ const {
   VOICE_EDIT_BULLET_SYSTEM_PROMPT,
   VOICE_EDIT_DEFAULT_SYSTEM_PROMPT,
   getVoiceEditSystemPrompt,
+  VOICE_APPEND_BULLET_SYSTEM_PROMPT,
+  VOICE_APPEND_DEFAULT_SYSTEM_PROMPT,
+  getVoiceAppendSystemPrompt,
   trunc,
   extractAssistantText,
   isSystemNoise,
@@ -388,6 +392,116 @@ describe("buildVoiceEditPrompt", () => {
     expect(prompt).toContain("Fix reconnect bug");
     expect(prompt).toContain("Current session: Voice edit debug");
     expect(prompt).toContain("Other active sessions: Docs follow-up");
+  });
+});
+
+// ─── buildVoiceAppendPrompt ─────────────────────────────────────────────────
+
+describe("buildVoiceAppendPrompt", () => {
+  it("bullet mode voice-append prompt contains structured format rules", () => {
+    expect(VOICE_APPEND_BULLET_SYSTEM_PROMPT).toContain("Group by topic");
+    expect(VOICE_APPEND_BULLET_SYSTEM_PROMPT).toContain("ONLY the new text to append");
+    expect(VOICE_APPEND_BULLET_SYSTEM_PROMPT).toContain("NEVER include the existing draft");
+  });
+
+  it("default mode voice-append prompt contains prose format rules", () => {
+    expect(VOICE_APPEND_DEFAULT_SYSTEM_PROMPT).toContain("clean prose");
+    expect(VOICE_APPEND_DEFAULT_SYSTEM_PROMPT).toContain("ONLY the new text to append");
+    expect(VOICE_APPEND_DEFAULT_SYSTEM_PROMPT).toContain("NEVER include the existing draft");
+  });
+
+  it("getVoiceAppendSystemPrompt selects the correct prompt", () => {
+    expect(getVoiceAppendSystemPrompt("bullet")).toBe(VOICE_APPEND_BULLET_SYSTEM_PROMPT);
+    expect(getVoiceAppendSystemPrompt("default")).toBe(VOICE_APPEND_DEFAULT_SYSTEM_PROMPT);
+    expect(getVoiceAppendSystemPrompt(undefined)).toBe(VOICE_APPEND_DEFAULT_SYSTEM_PROMPT);
+  });
+
+  it("includes existing draft and new speech in dedicated XML blocks", () => {
+    const prompt = buildVoiceAppendPrompt(
+      "and also fix the sidebar overflow",
+      "Fix the auth bug in middleware.",
+      "",
+    );
+    expect(prompt).toContain("<EXISTING_DRAFT>");
+    expect(prompt).toContain("Fix the auth bug in middleware.");
+    expect(prompt).toContain("</EXISTING_DRAFT>");
+    expect(prompt).toContain("<NEW_SPEECH>");
+    expect(prompt).toContain("and also fix the sidebar overflow");
+    expect(prompt).toContain("</NEW_SPEECH>");
+  });
+
+  it("includes the output-only instruction at the end", () => {
+    const prompt = buildVoiceAppendPrompt("add a test", "Draft text here", "");
+    expect(prompt).toContain("Output ONLY the cleaned new text to append");
+    expect(prompt).toContain("Do NOT include any of the existing draft");
+  });
+
+  it("includes conversation and session context when available", () => {
+    const prompt = buildVoiceAppendPrompt(
+      "plus add error handling",
+      "Refactor the auth middleware to use async/await.",
+      "[user]\n    Refactor auth middleware",
+      {
+        taskTitles: ["Refactor auth"],
+        sessionName: "Voice append debug",
+        activeSessionNames: ["Sidebar fix"],
+      },
+    );
+    expect(prompt).toContain("<SESSION_CONTEXT>");
+    expect(prompt).toContain("Refactor auth");
+    expect(prompt).toContain("Current session: Voice append debug");
+    expect(prompt).toContain("Other active sessions: Sidebar fix");
+    expect(prompt).toContain("<CONVERSATION_CONTEXT>");
+  });
+
+  it("omits context sections when not provided", () => {
+    const prompt = buildVoiceAppendPrompt("new speech", "existing draft", "");
+    expect(prompt).not.toContain("<SESSION_CONTEXT>");
+    expect(prompt).not.toContain("<CONVERSATION_CONTEXT>");
+    expect(prompt).toContain("<EXISTING_DRAFT>");
+    expect(prompt).toContain("<NEW_SPEECH>");
+  });
+
+  it("places blocks in correct order: session > conversation > draft > speech", () => {
+    const prompt = buildVoiceAppendPrompt(
+      "new content",
+      "existing content",
+      "[user]\n    context",
+      { sessionName: "Test session" },
+    );
+    const sessIdx = prompt.indexOf("<SESSION_CONTEXT>");
+    const convIdx = prompt.indexOf("<CONVERSATION_CONTEXT>");
+    const draftIdx = prompt.indexOf("<EXISTING_DRAFT>");
+    const speechIdx = prompt.indexOf("<NEW_SPEECH>");
+    expect(sessIdx).toBeLessThan(convIdx);
+    expect(convIdx).toBeLessThan(draftIdx);
+    expect(draftIdx).toBeLessThan(speechIdx);
+  });
+});
+
+// ─── buildSttPrompt — append mode ─────────────────────────────────────────────
+
+describe("buildSttPrompt — append mode", () => {
+  it("includes composer text as draft context in append mode", () => {
+    const prompt = buildSttPrompt({
+      mode: "append",
+      composerText: "Fix the auth middleware to validate tokens.",
+      sessionName: "Voice append session",
+    });
+    expect(prompt).toContain("<DRAFT>");
+    expect(prompt).toContain("Fix the auth middleware to validate tokens.");
+    expect(prompt).toContain("</DRAFT>");
+  });
+
+  it("uses the standard dictation closing instruction (not edit instruction)", () => {
+    const prompt = buildSttPrompt({
+      mode: "append",
+      composerText: "Some existing text",
+      sessionName: "test",
+    });
+    // Append mode uses a distinct instruction about appending, not editing
+    expect(prompt).toContain("new text to append");
+    expect(prompt).not.toContain("spoken edit instruction");
   });
 });
 

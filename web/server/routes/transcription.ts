@@ -13,6 +13,7 @@ import {
   buildSttPrompt,
   addTranscriptionLogEntry,
   applyVoiceEdit,
+  applyVoiceAppend,
 } from "../transcription-enhancer.js";
 import * as sessionNames from "../session-names.js";
 import { getSettings } from "../settings-manager.js";
@@ -116,7 +117,8 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     }
 
     const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"] : undefined;
-    const mode = body["mode"] === "edit" ? "edit" : "dictation";
+    const rawMode = typeof body["mode"] === "string" ? body["mode"] : "dictation";
+    const mode = rawMode === "edit" ? "edit" : rawMode === "append" ? "append" : "dictation";
     const composerText = typeof body["composerText"] === "string" ? body["composerText"] : undefined;
     const requestedBackend = typeof body["backend"] === "string" ? body["backend"] : undefined;
     const { default: defaultBackend } = getAvailableBackends();
@@ -136,7 +138,11 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
       return c.json({ error: "composerText is required for voice edit mode." }, 400);
     }
 
-    if (mode === "edit" && !resolveOpenAIKey()) {
+    if (mode === "append" && composerText === undefined) {
+      return c.json({ error: "composerText is required for voice append mode." }, 400);
+    }
+
+    if ((mode === "edit" || mode === "append") && !resolveOpenAIKey()) {
       return c.json(
         {
           error:
@@ -166,7 +172,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             taskHistory: wsBridge.getSessionTaskHistory(sessionId),
             sessionName: sessionNames.getName(sessionId),
             activeSessionNames: recentOtherNames.length > 0 ? recentOtherNames : undefined,
-            composerText: mode === "edit" ? composerText : undefined,
+            composerText: (mode === "edit" || mode === "append") ? composerText : undefined,
             messageHistory: wsBridge.getMessageHistory(sessionId),
             customVocabulary: getSettings().transcriptionConfig.customVocabulary || undefined,
           });
@@ -223,13 +229,14 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           enhancementKey
         );
         const willRunVoiceEdit = mode === "edit";
+        const willRunVoiceAppend = mode === "append";
         await stream.writeSSE({
           event: "stt_complete",
           data: JSON.stringify({
             rawText,
             backend: usedBackend,
             willEnhance: willEnhanceDictation,
-            nextPhase: willRunVoiceEdit ? "editing" : willEnhanceDictation ? "enhancing" : null,
+            nextPhase: willRunVoiceEdit ? "editing" : willRunVoiceAppend ? "appending" : willEnhanceDictation ? "enhancing" : null,
             mode,
           }),
         });
@@ -278,6 +285,57 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               text: result.text,
               rawText,
               instructionText: rawText,
+              backend: usedBackend,
+              enhanced: true,
+            }),
+          });
+          return;
+        }
+
+        // Voice append: clean transcribed speech for insertion at cursor position
+        if (willRunVoiceAppend) {
+          const history = sessionId ? wsBridge.getMessageHistory(sessionId) : null;
+          const taskHistory = sessionId ? wsBridge.getSessionTaskHistory(sessionId) : [];
+          const enhOtherNames = sessionId ? getRecentSessionNames(sessionId, 20) : [];
+          const result = await applyVoiceAppend(
+            rawText,
+            composerText!,
+            history,
+            settings.transcriptionConfig,
+            enhancementKey!,
+            {
+              mode,
+              composerText,
+              taskTitles: taskHistory.map((t) => t.title),
+              sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
+              activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+            },
+          );
+
+          addTranscriptionLogEntry({
+            sessionId: sessionId ?? null,
+            mode,
+            sttModel,
+            sttDurationMs,
+            sttPrompt,
+            rawTranscript: rawText,
+            audioSizeBytes: buf.length,
+            enhancement: {
+              model: result._debug.model,
+              systemPrompt: result._debug.systemPrompt,
+              userMessage: result._debug.userMessage,
+              enhancedText: result._debug.enhancedText,
+              durationMs: result._debug.durationMs,
+              skipReason: result._debug.skipReason,
+            },
+          });
+
+          await stream.writeSSE({
+            event: "result",
+            data: JSON.stringify({
+              mode,
+              text: result.text,
+              rawText,
               backend: usedBackend,
               enhanced: true,
             }),

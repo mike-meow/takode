@@ -5,7 +5,7 @@ export interface UseVoiceInputOptions {
   onAudioReady?: (blob: Blob) => void;
 }
 
-export type TranscriptionPhase = "transcribing" | "enhancing" | "editing" | null;
+export type TranscriptionPhase = "transcribing" | "enhancing" | "editing" | "appending" | null;
 export type VoiceInputUnsupportedReason =
   | "insecure-context"
   | "missing-media-devices"

@@ -461,8 +461,8 @@ export interface TranscriptionLogEntry extends TranscriptionLogIndexEntry {
   } | null;
 }
 
-export type VoiceTranscriptionMode = "dictation" | "edit";
-export type VoiceTranscriptionPhase = "transcribing" | "enhancing" | "editing";
+export type VoiceTranscriptionMode = "dictation" | "edit" | "append";
+export type VoiceTranscriptionPhase = "transcribing" | "enhancing" | "editing" | "appending";
 
 export interface VoiceTranscriptionResult {
   mode?: VoiceTranscriptionMode;
