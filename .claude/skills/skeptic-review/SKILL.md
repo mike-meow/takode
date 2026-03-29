@@ -131,24 +131,46 @@ React to it:
    ```
 
 2. **Act on the verdict**:
-   - **ACCEPT**: Report to the user that the work passed adversarial review.
+   - **ACCEPT**: The work passed adversarial review. Proceed to the next step
+     in the dispatch lifecycle (e.g., instruct worker to run `/groom`).
    - **CHALLENGE**: Send the specific questions to the original worker via
-     `takode send <worker_session_id> "<questions>"`. Wait for their response,
-     then re-evaluate if needed.
+     `takode send <worker_session_id> "<questions>"`. After the worker
+     addresses them, ask the **same reviewer** to re-review. Iterate until
+     the reviewer returns ACCEPT.
 
-3. **Archive the reviewer session**:
-   ```bash
-   takode archive <reviewer_session_id>
-   ```
+### Step 4: Groom Compliance Review (optional)
+
+After the worker runs `/groom` and addresses findings, reuse the same
+reviewer session to verify groom compliance:
+
+```bash
+takode send <reviewer_session_id> "The worker ran /groom. Review:
+1. Read the full groom output (what was recommended)
+2. Read what the worker actually addressed vs skipped
+3. Judge whether all reasonable recommendations were properly addressed
+4. Return ACCEPT or CHALLENGE"
+```
+
+Only after the reviewer ACCEPTs both implementation quality AND groom
+compliance should the worker be allowed to port.
+
+## Reviewer Session Lifecycle
+
+- **Persistent**: Reviewer sessions persist as long as their parent worker
+  is alive. Reuse the same reviewer for follow-up work on the same worker,
+  including groom compliance checks.
+- **Auto-cleanup**: When the parent worker session is archived, delete
+  (not archive) its associated reviewer session.
+- **No herd limit impact**: Reviewer sessions do NOT count toward the
+  5-worker herd limit.
 
 ## Important Notes
 
-- This skill spawns a **temporary session**, not a subagent. The reviewer
+- This skill spawns a **persistent session**, not a subagent. The reviewer
   runs in its own context window and doesn't consume leader tokens.
 - Reviewer sessions don't need worktrees -- they only read and evaluate.
 - The `--fixed-name` flag sets the "Skeptic review of #XX" name and disables auto-naming.
 - Keep the review focused on work integrity, not code style. `/groom`
   handles code quality.
-- Don't use this for every worker completion -- only when something
-  feels off or the stakes are high. Overuse wastes time and erodes
-  trust with workers who consistently do good work.
+- Use skeptic review for most tasks. Skip only for trivial fixes where
+  misimplementation risk is clearly very low.

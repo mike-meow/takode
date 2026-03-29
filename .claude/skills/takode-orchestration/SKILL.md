@@ -245,6 +245,19 @@ takode answer 2 approve                    # approve a plan
 takode answer 2 reject "add error handling" # reject with feedback
 ```
 
+### `takode board [add|set|rm]`
+
+Manage a work board showing active and queued work. Only available to orchestrator sessions.
+
+```bash
+takode board                                               # Display current board
+takode board add <quest-id> [--worker N] [--status "..."]  # Add a row
+takode board set <quest-id> [--worker N] [--status "..."]  # Update a row
+takode board rm <quest-id> [<quest-id> ...]                # Remove row(s)
+```
+
+Every command outputs the full board after the operation. The board is stored server-side per leader session and persists across server restarts. Rows are auto-removed when a quest transitions to `needs_verification` or `done`.
+
 ## Session Identification
 
 Commands accept multiple formats:

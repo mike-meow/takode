@@ -1964,11 +1964,17 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("sub-agent");
     // Core leader behaviors: context refresh, worker reuse, plan requirement, /groom
     expect(guardrails).toContain("After context compaction, refresh state.");
-    expect(guardrails).toContain("Only reuse a worker if the new task is highly related");
-    expect(guardrails).toContain("When in doubt, spawn fresh.");
-    expect(guardrails).toContain("Always create a quest for non-trivial work");
+    // Worker selection: reuse for related work, spawn fresh for unrelated
+    expect(guardrails).toContain("Reuse");
+    expect(guardrails).toContain("Spawn fresh");
+    expect(guardrails).toContain("Create a quest for any non-trivial work");
     expect(guardrails).toContain("Always require a plan before non-trivial implementation.");
-    expect(guardrails).toContain("Require `/groom`");
+    expect(guardrails).toContain("/groom");
+    // Task Dispatch Lifecycle sections
+    expect(guardrails).toContain("Task Dispatch Lifecycle");
+    expect(guardrails).toContain("Skeptic Review Workflow");
+    expect(guardrails).toContain("Work Board");
+    expect(guardrails).toContain("Session Naming Behavior");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
     // Should NOT contain verbose CLI command docs or operational tips (those are in skills)
@@ -1981,10 +1987,12 @@ describe("getOrchestratorGuardrails", () => {
     const guardrails = launcher.getOrchestratorGuardrails(3456, "codex");
     expect(guardrails).toContain("leader session");
     expect(guardrails).toContain("Delegate all major work");
-    expect(guardrails).toContain("override any conflicting generic markdown-link or file-reference instructions");
-    expect(guardrails).toContain("never write plain");
-    expect(guardrails).toContain("Only reuse a worker if the new task is highly related");
-    expect(guardrails).toContain("When in doubt, spawn fresh.");
+    // Worker selection: reuse for related, spawn fresh for unrelated
+    expect(guardrails).toContain("Reuse");
+    expect(guardrails).toContain("Spawn fresh");
+    // Task Dispatch Lifecycle sections present
+    expect(guardrails).toContain("Task Dispatch Lifecycle");
+    expect(guardrails).toContain("Skeptic Review Workflow");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");
