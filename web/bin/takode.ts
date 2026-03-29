@@ -1562,7 +1562,7 @@ Options:
   --internet / --no-internet   Codex-only: enable or disable internet access
   --reasoning-effort <level>   Codex-only: low, medium, or high
   --no-worktree                Disable worktree creation
-  --no-autoname                Disable auto session naming (keep initial name)
+  --fixed-name <name>          Set a fixed session name (disables auto-naming)
   --json                       Output in JSON format
 
 Examples:
@@ -1583,7 +1583,7 @@ const SPAWN_ALLOWED_FLAGS = new Set([
   "reasoning",
   "reasoning-effort",
   "no-worktree",
-  "no-autoname",
+  "fixed-name",
   "json",
   "help",
   "h",
@@ -1669,7 +1669,10 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
 
   const cwd = typeof flags.cwd === "string" ? flags.cwd : process.cwd();
   const useWorktree = flags["no-worktree"] === true ? false : true;
-  const noAutoName = flags["no-autoname"] === true;
+  const fixedName = typeof flags["fixed-name"] === "string" ? flags["fixed-name"].trim() : "";
+  if (flags["fixed-name"] !== undefined && !fixedName) {
+    err("--fixed-name requires a non-empty name value.");
+  }
   const message = typeof flags.message === "string" ? flags.message.trim() : "";
   const model = resolveStringFlag(flags, "model", "model");
   const askOverride = resolveBooleanToggleFlag(flags, "ask", "no-ask");
@@ -1698,8 +1701,9 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       useWorktree,
       createdBy: leaderSessionId,
     };
-    if (noAutoName) {
+    if (fixedName) {
       createPayload.noAutoName = true;
+      createPayload.fixedName = fixedName;
     }
     if (model) {
       createPayload.model = model;
@@ -1786,6 +1790,27 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       `\n\u26a0 Herd size is now ${herdWarning.herdSize} (limit: ${herdWarning.limit}). Please archive ${herdWarning.excess} session(s) least likely to be reused. Archived sessions' history remains readable via takode peek/read.`,
     );
   }
+}
+
+// ─── Rename handler ─────────────────────────────────────────────────────────
+
+async function handleRename(base: string, args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const sessionRef = positional[0];
+  const name = positional.slice(1).join(" ");
+  const jsonMode = args.includes("--json");
+  if (!sessionRef || !name.trim()) err("Usage: takode rename <session> <name>");
+
+  const result = (await apiPatch(base, `/sessions/${encodeURIComponent(sessionRef)}/name`, {
+    name: name.trim(),
+  })) as { ok: boolean; name?: string; error?: string };
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`[${formatTime(Date.now())}] ✓ Renamed session ${formatInlineText(sessionRef)} → "${formatInlineText(result.name || name.trim())}"`);
 }
 
 // ─── Stop handler ───────────────────────────────────────────────────────────
@@ -2533,6 +2558,7 @@ Commands:
   grep     Search within a session's messages (case-insensitive)
   export   Export full session history to a text file
   send     Send a message to a herded session
+  rename   Rename a session (e.g. takode rename 5 My Session Name)
   herd     Herd sessions (e.g. takode herd 5,6,7)
   unherd   Release a session from your herd (e.g. takode unherd 5)
   stop     Gracefully stop a herded session (e.g. takode stop 5)
@@ -2606,6 +2632,7 @@ try {
     ["grep", {}],
     ["export", {}],
     ["send", { requireOrchestrator: true }],
+    ["rename", { requireOrchestrator: true }],
     ["herd", { requireOrchestrator: true }],
     ["unherd", { requireOrchestrator: true }],
     ["stop", { requireOrchestrator: true }],
@@ -2664,6 +2691,9 @@ try {
       break;
     case "send":
       await handleSend(base, args);
+      break;
+    case "rename":
+      await handleRename(base, args);
       break;
     case "herd":
       await handleHerd(base, args);

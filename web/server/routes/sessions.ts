@@ -105,6 +105,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     envSlug?: string;
     createdBy?: unknown;
     noAutoName?: boolean;
+    fixedName?: string;
     worktreeInfo?: WorktreeSessionInfo;
     containerInfo?: ContainerInfo;
     resumeCliSessionId?: string;
@@ -204,6 +205,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     if (sessionConfig.isAssistantMode) {
       sessionNames.setName(session.sessionId, "Takode");
+    } else if (sessionConfig.fixedName) {
+      sessionNames.setName(session.sessionId, sessionConfig.fixedName);
     } else {
       const existingNames = new Set(Object.values(sessionNames.getAllNames()));
       sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
@@ -608,6 +611,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       envSlug: body.envSlug,
       createdBy: body.createdBy,
       noAutoName: body.noAutoName === true,
+      fixedName: typeof body.fixedName === "string" ? body.fixedName.trim() : undefined,
       worktreeInfo,
       containerInfo,
     };

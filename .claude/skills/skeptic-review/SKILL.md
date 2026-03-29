@@ -55,14 +55,14 @@ Collect three pieces of information:
 
 ### Step 2: Spawn Temporary Reviewer Session
 
-Spawn a temporary session using `takode spawn` with `--no-autoname` and
+Spawn a temporary session using `takode spawn` with `--fixed-name` and
 `--no-worktree`. The reviewer runs in its own session with its own context
 window, so it doesn't burn leader tokens or block the leader's turn.
 
 Compose the review prompt with all context from Step 1, then spawn:
 
 ```bash
-takode spawn --no-autoname --no-worktree --message 'You are a skeptic reviewer. Your name is Skeptic review of #<worker_session_num>.
+takode spawn --fixed-name 'Skeptic review of #<worker_session_num>' --no-worktree --message 'You are a skeptic reviewer.
 
 You are reviewing a worker session'\''s completed task for work integrity.
 This is NOT a code quality review. Your job is to independently evaluate
@@ -116,7 +116,7 @@ Respond with exactly one of:
 ```
 
 The reviewer session:
-- Is named "Skeptic review of #XX" (set in the message, auto-namer disabled)
+- Is named "Skeptic review of #XX" (set via `--fixed-name`, auto-namer disabled)
 - Does NOT count toward the 5-worker herd limit
 - Runs independently -- do NOT block waiting for it
 
@@ -146,7 +146,7 @@ React to it:
 - This skill spawns a **temporary session**, not a subagent. The reviewer
   runs in its own context window and doesn't consume leader tokens.
 - Reviewer sessions don't need worktrees -- they only read and evaluate.
-- The `--no-autoname` flag keeps the "Skeptic review of #XX" name stable.
+- The `--fixed-name` flag sets the "Skeptic review of #XX" name and disables auto-naming.
 - Keep the review focused on work integrity, not code style. `/groom`
   handles code quality.
 - Don't use this for every worker completion -- only when something
