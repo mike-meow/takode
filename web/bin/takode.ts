@@ -6,6 +6,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
+import { TAKODE_CONTENT_LIMIT } from "../shared/takode-constants.js";
 import {
   getSessionAuthDir,
   getSessionAuthFilePrefixes,
@@ -1029,15 +1030,15 @@ function formatCollapsedTurn(turn: CollapsedTurn): string {
 
   // Single-message turn or only one side exists: compact format
   if (!hasUser && !hasResult) return header;
-  if (!hasUser) return `${header}\n  "${truncate(turn.resultPreview, 500)}"`;
-  if (!hasResult) return `${header}\n  ${sourceLabel}: "${truncate(turn.userPreview, 500)}"`;
+  if (!hasUser) return `${header}\n  "${truncate(turn.resultPreview, TAKODE_CONTENT_LIMIT)}"`;
+  if (!hasResult) return `${header}\n  ${sourceLabel}: "${truncate(turn.userPreview, TAKODE_CONTENT_LIMIT)}"`;
 
   // Multi-message turn: show source prompt, ellipsis, and assistant response
   return [
     header,
-    `  ${sourceLabel}: "${truncate(turn.userPreview, 500)}"`,
+    `  ${sourceLabel}: "${truncate(turn.userPreview, TAKODE_CONTENT_LIMIT)}"`,
     `  ...`,
-    `  asst: "${truncate(turn.resultPreview, 500)}"`,
+    `  asst: "${truncate(turn.resultPreview, TAKODE_CONTENT_LIMIT)}"`,
   ].join("\n");
 }
 
@@ -1052,12 +1053,12 @@ function printExpandedMessages(messages: PeekMessage[]): void {
 
     switch (msg.type) {
       case "user":
-        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, 500)}"`);
+        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, TAKODE_CONTENT_LIMIT)}"`);
         break;
       case "assistant": {
         const text = msg.content.trim();
         if (text) {
-          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 500)}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, TAKODE_CONTENT_LIMIT)}`);
         } else if (msg.tools && msg.tools.length > 0) {
           // No text content -- print idx header so the msg ID is always visible
           console.log(`  ${idx.padEnd(7)} ${time}  asst`);
@@ -1078,14 +1079,14 @@ function printExpandedMessages(messages: PeekMessage[]): void {
         const icon = msg.success ? "✓" : "✗";
         const resultText = msg.content.trim();
         if (resultText) {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, 500)}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, TAKODE_CONTENT_LIMIT)}`);
         } else {
           console.log(`  ${idx.padEnd(7)} ${time}  ${icon} done`);
         }
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, 500)}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, TAKODE_CONTENT_LIMIT)}`);
         break;
     }
   }
@@ -1216,7 +1217,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
 
     switch (msg.type) {
       case "user":
-        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, 500)}"`);
+        console.log(`  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, TAKODE_CONTENT_LIMIT)}"`);
         break;
       case "assistant": {
         const text = msg.content.trim();
@@ -1228,7 +1229,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
             ")"
           : "";
         if (text) {
-          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, 500)}${toolStr}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  asst  ${truncate(text, TAKODE_CONTENT_LIMIT)}${toolStr}`);
         } else if (toolStr) {
           console.log(`  ${idx.padEnd(7)} ${time}  asst ${toolStr}`);
         }
@@ -1238,14 +1239,14 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
         const icon = msg.success ? "✓" : "✗";
         const resultText = msg.content.trim();
         if (resultText) {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, 500)}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, TAKODE_CONTENT_LIMIT)}`);
         } else {
           console.log(`  ${idx.padEnd(7)} ${time}  ${icon} done`);
         }
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, 500)}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, TAKODE_CONTENT_LIMIT)}`);
         break;
     }
   }
@@ -1984,7 +1985,7 @@ async function handlePending(base: string, args: string[]): Promise<void> {
         console.log(`Answer: takode answer ${safeSessionRef} <option-number-or-text>`);
       }
     } else if (p.tool_name === "ExitPlanMode") {
-      const planPreview = typeof p.plan === "string" ? p.plan.slice(0, 500) : "(no plan text)";
+      const planPreview = typeof p.plan === "string" ? p.plan.slice(0, TAKODE_CONTENT_LIMIT) : "(no plan text)";
       console.log(`\n[ExitPlanMode]${msgRef} Plan approval requested`);
       console.log(formatInlineText(planPreview));
       if (typeof p.plan === "string" && p.plan.length > 500) {
@@ -2173,7 +2174,7 @@ async function handleSearch(base: string, args: string[]): Promise<void> {
       `        field: ${formatInlineText(row.matchedFieldLabel)}  reason: ${formatInlineText(row.matchReason)}`,
     );
     if (row.snippet) {
-      console.log(`        snippet: ${truncate(row.snippet, 500)}`);
+      console.log(`        snippet: ${truncate(row.snippet, TAKODE_CONTENT_LIMIT)}`);
     }
     if (row.messageId) {
       const messageId = formatInlineText(row.messageId);
