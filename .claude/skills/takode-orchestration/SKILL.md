@@ -5,7 +5,7 @@ description: "Cross-session orchestration for Takode. Use when you need to inter
 
 # Takode — Cross-Session CLI Reference
 
-The `takode` CLI lets you interact with other sessions managed by the Companion server. Read-only commands work for all sessions. Mutation commands (send, herd, spawn, stop) require the orchestrator role (`TAKODE_ROLE=orchestrator` env var).
+The `takode` CLI lets you interact with other sessions managed by the Companion server. Read-only commands work for all sessions. Mutation commands (send, rename, herd, spawn, stop) require the orchestrator role (`TAKODE_ROLE=orchestrator` env var).
 
 ## Environment
 
@@ -207,14 +207,23 @@ Claim worker sessions under your orchestrator. Each session can only have one le
 takode herd 2 3 5
 ```
 
-### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--json]`
+### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--fixed-name "..."] [--json]`
 
-Create worker sessions and auto-herd them to yourself.
+Create worker sessions and auto-herd them to yourself. Use `--fixed-name` to set a stable session name and disable auto-naming.
 
 ```bash
 takode spawn
 takode spawn --backend claude --count 3 --cwd ~/repos/app --message "Run tests"
 takode spawn --no-worktree
+takode spawn --fixed-name "Skeptic review of #5" --no-worktree --message "Review this PR"
+```
+
+### `takode rename <session> <name>`
+
+Rename a session.
+
+```bash
+takode rename 5 "Auth refactor worker"
 ```
 
 ### `takode stop <session>`
