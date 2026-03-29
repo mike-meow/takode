@@ -914,6 +914,35 @@ describe("POST /api/sessions/create", () => {
     // CLI should NOT have been launched
     expect(launcher.launch).not.toHaveBeenCalled();
   });
+
+  it("stores reviewerOf on the session when provided in request body", async () => {
+    // When the CLI sends reviewerOf in the create payload, the server should
+    // store it on the session object so it's visible in API responses.
+    const launchedSession = {
+      sessionId: "reviewer-session",
+      state: "starting",
+      cwd: "/test",
+      createdAt: Date.now(),
+    };
+    launcher.launch.mockReturnValue(launchedSession);
+
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cwd: "/test",
+        reviewerOf: 42,
+        noAutoName: true,
+        fixedName: "Reviewer of #42",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    // applySessionPostLaunch mutates the session object in-place,
+    // so reviewerOf should be on the returned JSON
+    const json = await res.json();
+    expect(json.reviewerOf).toBe(42);
+  });
 });
 
 describe("GET /api/sessions", () => {
@@ -1505,6 +1534,75 @@ describe("POST /api/sessions/:id/archive", () => {
     expect(launcher.kill).toHaveBeenCalledWith("s1");
     expect(launcher.setArchived).toHaveBeenCalledWith("s1", true);
     expect(sessionStore.setArchived).toHaveBeenCalledWith("s1", true);
+  });
+
+  it("auto-stops and archives reviewer sessions when parent is archived", async () => {
+    // Parent session #42 has a reviewer session linked via reviewerOf
+    launcher.getSessionNum.mockReturnValue(42);
+    launcher.listSessions.mockReturnValue([
+      {
+        sessionId: "reviewer-1",
+        state: "connected",
+        cwd: "/test",
+        createdAt: Date.now(),
+        reviewerOf: 42,
+        herdedBy: "leader-1",
+        archived: false,
+      },
+      {
+        sessionId: "unrelated-worker",
+        state: "connected",
+        cwd: "/test",
+        createdAt: Date.now(),
+        archived: false,
+      },
+    ]);
+
+    const res = await app.request("/api/sessions/s1/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    // Parent session should be killed and archived
+    expect(launcher.kill).toHaveBeenCalledWith("s1");
+    expect(launcher.setArchived).toHaveBeenCalledWith("s1", true);
+    // Reviewer session should also be killed and archived
+    expect(launcher.kill).toHaveBeenCalledWith("reviewer-1");
+    expect(launcher.setArchived).toHaveBeenCalledWith("reviewer-1", true);
+    expect(sessionStore.setArchived).toHaveBeenCalledWith("reviewer-1", true);
+    // Reviewer should emit session_archived (not session_deleted) since it's herded
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("reviewer-1", "session_archived", {});
+    // Unrelated worker should NOT be touched
+    expect(launcher.kill).not.toHaveBeenCalledWith("unrelated-worker");
+  });
+
+  it("skips already-archived reviewer sessions during cascade", async () => {
+    // Reviewer is already archived -- should not be killed again
+    launcher.getSessionNum.mockReturnValue(42);
+    launcher.listSessions.mockReturnValue([
+      {
+        sessionId: "reviewer-1",
+        state: "exited",
+        cwd: "/test",
+        createdAt: Date.now(),
+        reviewerOf: 42,
+        herdedBy: "leader-1",
+        archived: true, // already archived
+      },
+    ]);
+
+    const res = await app.request("/api/sessions/s1/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    // Only the parent should be killed, not the already-archived reviewer
+    expect(launcher.kill).toHaveBeenCalledTimes(1);
+    expect(launcher.kill).toHaveBeenCalledWith("s1");
   });
 });
 

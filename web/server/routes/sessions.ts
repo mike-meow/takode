@@ -1517,13 +1517,15 @@ export function createSessionsRoutes(ctx: RouteContext) {
           console.log(
             `[routes] Auto-stopping reviewer session ${s.sessionId} (reviewerOf=#${archivedNum})`,
           );
+          // Emit herd event so the leader knows the reviewer was archived
+          if (s.herdedBy) {
+            wsBridge.emitTakodeEvent(s.sessionId, "session_archived", {});
+          }
           await launcher.kill(s.sessionId);
           containerManager.removeContainer(s.sessionId);
           cleanupWorktree(s.sessionId, true);
           launcher.setArchived(s.sessionId, true);
           await sessionStore.setArchived(s.sessionId, true);
-          wsBridge.broadcastGlobal({ type: "session_deleted", session_id: s.sessionId });
-          wsBridge.closeSession(s.sessionId);
         }
       }
     }
