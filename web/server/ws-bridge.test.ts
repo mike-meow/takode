@@ -14318,7 +14318,8 @@ describe("work board", () => {
       ["PLANNED", "DISPATCHED"],
       ["DISPATCHED", "PLAN_APPROVED"],
       ["PLAN_APPROVED", "SKEPTIC_REVIEWED"],
-      ["SKEPTIC_REVIEWED", "GROOMED"],
+      ["SKEPTIC_REVIEWED", "GROOM_SENT"],
+      ["GROOM_SENT", "GROOMED"],
       ["GROOMED", "PORT_REQUESTED"],
     ];
 

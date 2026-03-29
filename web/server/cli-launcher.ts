@@ -497,7 +497,8 @@ Each state represents a leader action that just happened. Use \`takode board adv
 | \`DISPATCHED\` | Sent quest to worker | Wait for \`permission_request\` (ExitPlanMode), then review plan |
 | \`PLAN_APPROVED\` | Approved the worker's plan | Wait for \`turn_end\`, then spawn skeptic reviewer |
 | \`SKEPTIC_REVIEWED\` | Skeptic review passed | Tell worker to run \`/groom\` |
-| \`GROOMED\` | Groom compliance confirmed | Tell worker to port (\`/port-changes\`) |
+| \`GROOM_SENT\` | Told worker to run /groom | Wait for report, then send findings to reviewer |
+| \`GROOMED\` | Reviewer confirmed groom compliance | Tell worker to port (\`/port-changes\`) |
 | \`PORT_REQUESTED\` | Told worker to port | Wait for port confirmation, then advance (removes from board) |
 
 ### Refine (before PLANNED)
@@ -531,9 +532,13 @@ Each state represents a leader action that just happened. Use \`takode board adv
   - If the reviewer finds major issues: send findings to the worker for rework, iterate
   - On pass: \`takode board advance <quest-id>\`
 
-### SKEPTIC_REVIEWED -> GROOMED
+### SKEPTIC_REVIEWED -> GROOM_SENT
 - Tell the worker to run \`/groom\` for self-review and incorporate suggestions
-- After the worker reports back, send the groom findings to the skeptic reviewer and ask it to judge whether all reasonable recommendations were properly addressed (ACCEPT or CHALLENGE)
+- \`takode board advance <quest-id>\`
+
+### GROOM_SENT -> GROOMED
+- Wait for the worker to report back from groom
+- Send the groom findings to the skeptic reviewer and ask it to judge whether all reasonable recommendations were properly addressed (ACCEPT or CHALLENGE)
 - If CHALLENGE: send findings back to the worker, iterate
 - On ACCEPT: \`takode board advance <quest-id>\`
 

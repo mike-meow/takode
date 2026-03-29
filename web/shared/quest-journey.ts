@@ -9,6 +9,7 @@ export const QUEST_JOURNEY_STATES = [
   "DISPATCHED",
   "PLAN_APPROVED",
   "SKEPTIC_REVIEWED",
+  "GROOM_SENT",
   "GROOMED",
   "PORT_REQUESTED",
 ] as const;
@@ -21,6 +22,7 @@ export const QUEST_JOURNEY_HINTS: Record<QuestJourneyState, string> = {
   DISPATCHED: "wait for ExitPlanMode, then review plan",
   PLAN_APPROVED: "wait for turn_end, then spawn skeptic reviewer",
   SKEPTIC_REVIEWED: "tell worker to run /groom",
-  GROOMED: "request port",
+  GROOM_SENT: "wait for report, then send findings to reviewer",
+  GROOMED: "tell worker to port",
   PORT_REQUESTED: "wait for port confirmation, then remove from board",
 };

@@ -247,7 +247,7 @@ takode answer 2 reject "add error handling" # reject with feedback
 
 ### `takode board [show|set|advance|rm]`
 
-Quest Journey work board. Tracks quests through the lifecycle: PLANNED -> DISPATCHED -> PLAN_APPROVED -> SKEPTIC_REVIEWED -> GROOMED -> PORT_REQUESTED -> (removed). Only available to orchestrator sessions.
+Quest Journey work board. Tracks quests through the lifecycle: PLANNED -> DISPATCHED -> PLAN_APPROVED -> SKEPTIC_REVIEWED -> GROOM_SENT -> GROOMED -> PORT_REQUESTED -> (removed). Only available to orchestrator sessions.
 
 ```bash
 takode board show                                                         # Display board with states and next-action hints
@@ -261,7 +261,8 @@ takode board rm <quest-id> [<quest-id> ...]                               # Remo
 - `DISPATCHED` -- leader dispatched to worker. Next: wait for ExitPlanMode, then review plan
 - `PLAN_APPROVED` -- leader approved the plan. Next: wait for turn_end, then spawn skeptic reviewer
 - `SKEPTIC_REVIEWED` -- skeptic review passed. Next: tell worker to run /groom
-- `GROOMED` -- groom compliance confirmed. Next: request port
+- `GROOM_SENT` -- leader told worker to run /groom. Next: wait for report, then send findings to reviewer
+- `GROOMED` -- reviewer confirmed groom compliance. Next: tell worker to port
 - `PORT_REQUESTED` -- leader told worker to port. Next: wait for confirmation, then remove
 
 **advance** transitions to the next state automatically. At the final state (PORT_REQUESTED), advance removes the row from the board.
