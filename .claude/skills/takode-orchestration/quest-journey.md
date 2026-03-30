@@ -9,7 +9,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 | `QUEUED` | Quest is ready, waiting for dispatch | Dispatch to a worker |
 | `PLANNING` | Worker is planning | Wait for `permission_request` (ExitPlanMode), then review plan |
 | `IMPLEMENTING` | Worker is implementing | Wait for `turn_end`, then spawn skeptic reviewer |
-| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then groom (if needed) or port |
+| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run /groom |
 | `GROOM_REVIEWING` | Reviewer is checking groom compliance | Wait for reviewer ACCEPT, then tell worker to port |
 | `PORTING` | Worker is porting to main repo | Wait for port confirmation, then remove from board |
 
@@ -70,13 +70,11 @@ The `--reviewer` flag automatically:
 - **Auto-cleanup**: reviewer is archived when its parent worker is archived
 - **Herd limit exempt**: reviewer sessions do NOT count toward the 5-session herd limit
 
-## SKEPTIC_REVIEWING -> GROOM_REVIEWING or PORTING
+## SKEPTIC_REVIEWING -> GROOM_REVIEWING
 
 - **This stage is iterative.** Do not advance until the reviewer issues ACCEPT.
 - If the reviewer CHALLENGEs: send findings to the worker for rework, then send the reworked result back to the reviewer. Repeat until ACCEPT.
-- On ACCEPT, decide whether groom review is needed:
-  - **Groom required** when: (a) the change involves tricky logic, OR (b) total lines changed > 100. Tell the worker to run `/groom` for self-review and incorporate suggestions, then `takode board advance <quest-id>` (-> GROOM_REVIEWING).
-  - **Skip groom** for straightforward, small changes (<=100 lines, no tricky logic). Tell the worker to port directly using `/port-changes`, then `takode board advance <quest-id>` twice (-> skip GROOM_REVIEWING -> PORTING).
+- On ACCEPT: tell the worker to run `/groom` for self-review and incorporate suggestions, then `takode board advance <quest-id>`.
 
 ## GROOM_REVIEWING -> PORTING
 

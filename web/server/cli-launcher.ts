@@ -484,7 +484,7 @@ Every dispatched task follows the **Quest Journey** lifecycle. The work board (\
 | \`QUEUED\` | Waiting for dispatch | Dispatch to a worker |
 | \`PLANNING\` | Worker is planning | Review plan, approve/reject |
 | \`IMPLEMENTING\` | Worker is implementing | Spawn skeptic reviewer on turn_end |
-| \`SKEPTIC_REVIEWING\` | Reviewer evaluating | Wait for ACCEPT, then groom or port |
+| \`SKEPTIC_REVIEWING\` | Reviewer evaluating | Wait for ACCEPT, then tell worker to run /groom |
 | \`GROOM_REVIEWING\` | Reviewer checking groom | Wait for ACCEPT, then port |
 | \`PORTING\` | Worker porting to main | Wait for confirmation, then remove |
 

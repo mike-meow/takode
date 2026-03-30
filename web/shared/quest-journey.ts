@@ -23,7 +23,7 @@ export const QUEST_JOURNEY_HINTS: Record<QuestJourneyState, string> = {
   QUEUED: "dispatch to a worker",
   PLANNING: "wait for ExitPlanMode, then review plan",
   IMPLEMENTING: "wait for turn_end, then spawn skeptic reviewer",
-  SKEPTIC_REVIEWING: "wait for reviewer ACCEPT, then groom (if needed) or port",
+  SKEPTIC_REVIEWING: "wait for reviewer ACCEPT, then tell worker to run /groom",
   GROOM_REVIEWING: "wait for reviewer ACCEPT, then tell worker to port",
   PORTING: "wait for port confirmation, then remove from board",
 };
