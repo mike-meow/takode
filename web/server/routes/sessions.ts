@@ -580,7 +580,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         : undefined;
     // Orchestrator guardrails are injected via system prompt, not file writes
     const orchestratorGuardrails = isOrchestrator
-      ? launcher.getOrchestratorGuardrails(launcher.getPort(), backend)
+      ? launcher.getOrchestratorGuardrails(backend)
       : undefined;
 
     const initialCwd = cwd || process.cwd();

@@ -1952,47 +1952,53 @@ describe("symlinkProjectSettings", () => {
 });
 
 describe("getOrchestratorGuardrails", () => {
-  it("returns Claude-family guardrails with skill loading instruction and workflow docs", () => {
-    // getOrchestratorGuardrails now returns a string instead of writing to a file.
-    // Orchestrator instructions are injected via system prompt (extraInstructions).
-    // CLI command reference and operational tips are deferred to the takode-orchestration skill.
-    const guardrails = launcher.getOrchestratorGuardrails(3456, "claude");
+  it("returns Claude-family guardrails with skill loading and sub-skill references", () => {
+    // getOrchestratorGuardrails returns a trimmed system prompt that references
+    // sub-skill files for detailed workflows. Detailed content (worker selection
+    // rules, full quest journey transitions, CLI docs) lives in sub-skill .md files.
+    const guardrails = launcher.getOrchestratorGuardrails("claude");
     expect(guardrails).toContain("Takode -- Cross-Session Orchestration");
     // CLI and quest references point to skills loaded on startup
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("quest");
     expect(guardrails).toContain("sub-agent");
-    // Core leader behaviors: context refresh, worker reuse, plan requirement, /groom
-    expect(guardrails).toContain("After context compaction, refresh state.");
-    // Worker selection: reuse for related work, spawn fresh for unrelated
-    expect(guardrails).toContain("Reuse");
-    expect(guardrails).toContain("Spawn fresh");
+    expect(guardrails).toContain("sub-skill files");
+    // Core leader behaviors remain inline
     expect(guardrails).toContain("Create a quest for any non-trivial work");
-    expect(guardrails).toContain("Always require a plan before non-trivial implementation.");
-    expect(guardrails).toContain("/groom");
-    // Quest Journey lifecycle sections (renamed from Task Dispatch Lifecycle)
+    expect(guardrails).toContain("Never implement non-trivial changes yourself");
+    // Quest Journey stage table kept inline as quick reference
     expect(guardrails).toContain("Quest Journey");
-    expect(guardrails).toContain("Skeptic Review Workflow");
+    expect(guardrails).toContain("QUEUED");
+    expect(guardrails).toContain("IMPLEMENTING");
+    expect(guardrails).toContain("Skeptic Review");
     expect(guardrails).toContain("Work Board");
-    expect(guardrails).toContain("Session Naming Behavior");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
-    // Should NOT contain verbose CLI command docs or operational tips (those are in skills)
+    // Sub-skill references present (4 files: dispatch-workflow, quest-journey, leader-operations, board-usage)
+    expect(guardrails).toContain("dispatch-workflow.md");
+    expect(guardrails).toContain("quest-journey.md");
+    expect(guardrails).toContain("leader-operations.md");
+    expect(guardrails).toContain("board-usage.md");
+    // Detailed content moved to sub-skill files, not inline
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("takode peek <session> [--from N]");
-    expect(guardrails).not.toContain("Maintain at most 5 sessions"); // moved to skill
+    expect(guardrails).not.toContain("Maintain at most 5 sessions");
+    // Worker selection details now in dispatch-workflow.md
+    expect(guardrails).not.toContain("Queue if the best worker is busy");
+    // Full stage transitions now in quest-journey.md
+    expect(guardrails).not.toContain("QUEUED -> PLANNING");
   });
 
   it("returns Codex guardrails without Claude-only or sub-agent guidance", () => {
-    const guardrails = launcher.getOrchestratorGuardrails(3456, "codex");
+    const guardrails = launcher.getOrchestratorGuardrails("codex");
     expect(guardrails).toContain("leader session");
     expect(guardrails).toContain("Delegate all major work");
-    // Worker selection: reuse for related, spawn fresh for unrelated
-    expect(guardrails).toContain("Reuse");
-    expect(guardrails).toContain("Spawn fresh");
-    // Quest Journey lifecycle sections present (renamed from Task Dispatch Lifecycle)
+    // Sub-skill references for detailed workflows
+    expect(guardrails).toContain("dispatch-workflow.md");
+    expect(guardrails).toContain("quest-journey.md");
+    // Quest Journey stage table inline as quick reference
     expect(guardrails).toContain("Quest Journey");
-    expect(guardrails).toContain("Skeptic Review Workflow");
+    expect(guardrails).toContain("Skeptic Review");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");

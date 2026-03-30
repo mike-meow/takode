@@ -4148,7 +4148,7 @@ describe("POST /api/sessions/create with backend", () => {
         }),
       }),
     );
-    expect(launcher.getOrchestratorGuardrails).toHaveBeenCalledWith(3456, "codex");
+    expect(launcher.getOrchestratorGuardrails).toHaveBeenCalledWith("codex");
   });
 
   it("defaults to claude backend when not specified", async () => {

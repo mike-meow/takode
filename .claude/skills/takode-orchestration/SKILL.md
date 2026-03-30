@@ -3,16 +3,36 @@ name: takode-orchestration
 description: "Cross-session orchestration for Takode. Use when you need to interact with other sessions: listing active sessions, peeking at session activity, reading messages, sending instructions to workers, or spawning new sessions. Triggers: 'check on workers', 'send to session', 'orchestrate', 'coordinate agents', 'list sessions', 'peek at session', 'what are my sessions doing', 'check session status'."
 ---
 
-# Takode — Cross-Session CLI Reference
+# Takode -- Cross-Session CLI Reference
 
 The `takode` CLI lets you interact with other sessions managed by the Companion server. Read-only commands work for all sessions. Mutation commands (send, rename, herd, spawn, stop) require the orchestrator role (`TAKODE_ROLE=orchestrator` env var).
 
 ## Environment
 
-- `TAKODE_API_PORT` — the Companion server port (used automatically by the CLI)
-- `COMPANION_SESSION_ID` — your own session ID
+- `TAKODE_API_PORT` -- the Companion server port (used automatically by the CLI)
+- `COMPANION_SESSION_ID` -- your own session ID
 - The `takode` command is available at `~/.companion/bin/takode` (or on PATH)
 - Works with both **Claude Code** and **Codex** sessions
+
+## Sub-Skill Workflows
+
+Read these files when performing the corresponding operation:
+
+| Workflow | When to read | File |
+|----------|-------------|------|
+| **Dispatching work** | Before choosing a worker and sending a quest | [dispatch-workflow.md](dispatch-workflow.md) |
+| **Quest Journey** | Advancing a quest through its lifecycle | [quest-journey.md](quest-journey.md) |
+| **Leader operations** | Discipline rules, herd event reactions, delegation | [leader-operations.md](leader-operations.md) |
+| **Work board** | Managing the quest board | [board-usage.md](board-usage.md) |
+
+## Key Principles
+
+- **Quests are the unit of work.** Create a quest for any non-trivial task before dispatching.
+- **Workers have the same tools you do.** Give them the quest ID; they run `quest show` themselves.
+- **Events are push-based.** Herd events arrive as `[Herd]` user messages when idle. No polling.
+- **Reference, don't relay.** Point to source messages instead of paraphrasing.
+- **One task at a time per worker.** Mid-task steering is fine; unrelated new tasks queue.
+- **Before dispatching any quest, read and follow [dispatch-workflow.md](dispatch-workflow.md).**
 
 ## Read-Only Commands
 
@@ -118,7 +138,7 @@ takode peek 1 --task 3
 takode peek 1 --detail --turns 3
 ```
 
-#### Navigation workflow
+#### Navigation Workflow
 
 ```
 1. takode info 1                          → Session metadata: backend, git, quest, metrics
@@ -207,15 +227,16 @@ Claim worker sessions under your orchestrator. Each session can only have one le
 takode herd 2 3 5
 ```
 
-### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--fixed-name "..."] [--json]`
+### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--fixed-name "..."] [--reviewer <session>] [--json]`
 
-Create worker sessions and auto-herd them to yourself. Use `--fixed-name` to set a stable session name and disable auto-naming.
+Create worker sessions and auto-herd them to yourself. Use `--fixed-name` to set a stable session name and disable auto-naming. Use `--reviewer <session>` to create a reviewer session linked to a parent worker.
 
 ```bash
 takode spawn
 takode spawn --backend claude --count 3 --cwd ~/repos/app --message "Run tests"
 takode spawn --no-worktree
 takode spawn --fixed-name "Skeptic review of #5" --no-worktree --message "Review this PR"
+takode spawn --reviewer 5 --message "Skeptic review session #5 / quest q-42."
 ```
 
 ### `takode rename <session> <name>`
@@ -247,41 +268,37 @@ takode answer 2 reject "add error handling" # reject with feedback
 
 ### `takode board [show|set|advance|rm]`
 
-Quest Journey work board. Tracks quests through the lifecycle: QUEUED -> PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING -> (removed). Only available to orchestrator sessions.
+Quest Journey work board. See [board-usage.md](board-usage.md) for full usage and coordination patterns.
 
 ```bash
-takode board show                                                         # Display board with stages and next-action hints
-takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,q-Y]  # Add or update a row
-takode board advance <quest-id>                                           # Transition to next Quest Journey stage
-takode board rm <quest-id> [<quest-id> ...]                               # Remove row(s) manually
+takode board show
+takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,q-Y]
+takode board advance <quest-id>
+takode board rm <quest-id> [<quest-id> ...]
 ```
-
-**Stages** (each = present-participle describing what's happening now):
-- `QUEUED` -- quest is ready, waiting for dispatch. Next: dispatch to a worker
-- `PLANNING` -- worker is planning. Next: wait for ExitPlanMode, then review plan
-- `IMPLEMENTING` -- worker is implementing. Next: wait for turn_end, then spawn skeptic reviewer
-- `SKEPTIC_REVIEWING` -- skeptic reviewer is evaluating. Next: wait for reviewer ACCEPT, then tell worker to run /groom
-- `GROOM_REVIEWING` -- reviewer is checking groom compliance. Next: wait for reviewer ACCEPT, then tell worker to port
-- `PORTING` -- worker is porting to main repo. Next: wait for port confirmation, then remove
-
-**advance** transitions to the next stage automatically. At the final stage (PORTING), advance removes the row from the board.
-
-**wait-for** column: list of quest IDs this quest is blocked on. When all entries are resolved (no longer on the board), the actual next action shows instead of "blocked".
-
-Every command outputs the full board after the operation. The board is stored server-side per leader session and persists across server restarts. Rows are also auto-removed when a quest transitions to `needs_verification` or `done`.
 
 ## Session Identification
 
 Commands accept multiple formats:
-- **Integer number**: `1`, `3`, `5` — the short form from `takode list`
-- **UUID prefix**: `abc123` — first chars of the full UUID
+- **Integer number**: `1`, `3`, `5` -- the short form from `takode list`
+- **UUID prefix**: `abc123` -- first chars of the full UUID
 - **Full UUID**: `550e8400-e29b-41d4-a716-446655440000`
 
-Prefer integer numbers — they're stable within a server session and easy to type.
+Prefer integer numbers -- they're stable within a server session and easy to type.
+
+## Session Naming
+
+Sessions start with random names. Use `--fixed-name` when spawning to set a permanent name (e.g., reviewer sessions). Auto-rename happens on first message and on turn completion. Quest claiming changes the session name to the quest title and pauses auto-naming while the quest is active.
+
+When referencing sessions, use session numbers (`#107`) which are stable -- names can change.
 
 ## Disconnected Sessions
 
 A `✗ disconnected` session just means its CLI process was killed (usually by the idle manager). The session history, worktree, and quest claim are fully intact. **Do not avoid disconnected sessions** -- if one is the right fit for a task, use it. `takode send` auto-relaunches the CLI before delivering the message, so no extra reconnect step is needed.
+
+## Archiving Sessions
+
+Maintain at most **5 sessions in your herd**. Before spawning a new worker, check `takode list`. If you already have 5, archive the one least likely to be reused -- typically the one whose work is most complete, least related to upcoming tasks, or oldest. Archiving doesn't lose anything -- archived sessions' full conversation history remains readable via `takode peek` and `takode read`, and the Takode UI.
 
 ## Tips
 
@@ -297,7 +314,3 @@ A `✗ disconnected` session just means its CLI process was killed (usually by t
 - **One task at a time per worker.** Don't send an unrelated new task to a busy worker. Mid-task steering (scope refinement, corrections, urgent interventions) is fine.
 - **Don't repeat corrections.** Before sending a correction to a busy worker, check if you already sent one in the current turn. If yes, wait for the turn to end and evaluate whether the worker incorporated it.
 - **For urgent mid-turn redirections:** interrupt the worker first (`takode stop`), wait for the interruption herd event, check its conversation to understand where it stopped, then send the corrected instructions as a fresh message.
-
-## Archiving Sessions
-
-Maintain at most **5 sessions in your herd**. Before spawning a new worker, check `takode list`. If you already have 5, archive the one least likely to be reused -- typically the one whose work is most complete, least related to upcoming tasks, or oldest. Archiving doesn't lose anything -- archived sessions' full conversation history remains readable via `takode peek` and `takode read`, and the Takode UI. If you later discover an archived session's context would be valuable, you can have a new worker read that history for context.
