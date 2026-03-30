@@ -5246,6 +5246,30 @@ describe("POST /api/quests/:questId/claim", () => {
     expect(questStore.claimQuest).not.toHaveBeenCalled();
   });
 
+  it("returns 403 when the claiming session is an orchestrator (q-87)", async () => {
+    // Orchestrator/leader sessions must never claim quests -- they dispatch to workers.
+    // The server enforces this even if the CLI-side TAKODE_ROLE check is bypassed.
+    launcher.getSession.mockReturnValue({
+      sessionId: "session-1",
+      state: "running",
+      cwd: "/test",
+      archived: false,
+      isOrchestrator: true,
+    } as any);
+    const claimSpy = vi.spyOn(questStore, "claimQuest");
+
+    const res = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "session-1" }),
+    });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("Leader sessions cannot claim quests");
+    expect(claimSpy).not.toHaveBeenCalled();
+  });
+
   it("passes archived-owner takeover policy to questStore.claimQuest", async () => {
     vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
       id: "q-1-v3",

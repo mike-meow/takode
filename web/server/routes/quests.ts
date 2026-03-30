@@ -191,6 +191,10 @@ export function createQuestRoutes(ctx: RouteContext) {
         400,
       );
     }
+    // Hard enforcement: leader/orchestrator sessions cannot claim quests (q-87)
+    if (knownSession.isOrchestrator) {
+      return c.json({ error: "Leader sessions cannot claim quests. Dispatch to a worker instead." }, 403);
+    }
     try {
       const quest = await questStore.claimQuest(c.req.param("questId"), sessionId, {
         allowArchivedOwnerTakeover: true,

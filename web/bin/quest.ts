@@ -675,6 +675,10 @@ async function cmdCreate(): Promise<void> {
 
 async function cmdClaim(): Promise<void> {
   validateFlags(["session", "json"]);
+  // Hard enforcement: leader sessions cannot claim quests (q-87)
+  if (process.env.TAKODE_ROLE === "orchestrator") {
+    die("Leader sessions cannot claim quests. Dispatch to a worker instead.");
+  }
   const id = positional(0);
   if (!id) die("Usage: quest claim <questId> [--session <sid>]");
 
