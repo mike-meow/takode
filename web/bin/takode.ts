@@ -2404,15 +2404,23 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
     const worker = row.worker ? `#${row.workerNum ?? "?"}`.padEnd(wCol) : "--".padEnd(wCol);
     const state = (row.status || "--").padEnd(sCol);
 
-    // Wait-for column: show blocked deps that are still on the board
-    const waitForEntries = row.waitFor?.filter((wf) => activeQuestIds.has(wf)) || [];
-    const waitForStr = waitForEntries.length > 0 ? waitForEntries.join(", ") : "--";
+    // Wait-for column: distinguish "no deps", "blocked", and "all resolved"
+    const allDeps = row.waitFor || [];
+    const blockedDeps = allDeps.filter((wf) => activeQuestIds.has(wf));
+    let waitForStr: string;
+    if (blockedDeps.length > 0) {
+      waitForStr = blockedDeps.join(", ");
+    } else if (allDeps.length > 0) {
+      waitForStr = "✓ " + allDeps.join(", ");
+    } else {
+      waitForStr = "--";
+    }
     const waitForDisplay = waitForStr.slice(0, waitCol - 1).padEnd(waitCol);
 
     // Next action hint: if blocked, show "blocked"; otherwise show state hint
     let nextAction: string;
-    if (waitForEntries.length > 0) {
-      nextAction = `blocked (wait for ${waitForEntries.join(", ")})`;
+    if (blockedDeps.length > 0) {
+      nextAction = `blocked (wait for ${blockedDeps.join(", ")})`;
     } else {
       nextAction = QUEST_JOURNEY_HINTS[row.status || ""] || "--";
       if (nextAction !== "--") nextAction = `-> ${nextAction}`;

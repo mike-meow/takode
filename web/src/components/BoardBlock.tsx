@@ -14,6 +14,7 @@ export interface BoardRowData {
   worker?: string;
   workerNum?: number;
   status?: string;
+  waitFor?: string[];
   updatedAt: number;
 }
 
@@ -258,6 +259,7 @@ export const BoardBlock = memo(function BoardBlock({ board }: { board: BoardRowD
                     <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Quest</th>
                     <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Title</th>
                     <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Worker</th>
+                    <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Wait For</th>
                     <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
@@ -273,6 +275,17 @@ export const BoardBlock = memo(function BoardBlock({ board }: { board: BoardRowD
                       <td className="px-3 py-1.5 whitespace-nowrap">
                         {row.worker ? (
                           <WorkerLink sessionId={row.worker} sessionNum={row.workerNum} />
+                        ) : (
+                          <span className="text-cc-muted">{"\u2014"}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        {row.waitFor && row.waitFor.length > 0 ? (
+                          <span className="flex gap-1.5 flex-wrap">
+                            {row.waitFor.map((qId) => (
+                              <QuestLink key={qId} questId={qId} />
+                            ))}
+                          </span>
                         ) : (
                           <span className="text-cc-muted">{"\u2014"}</span>
                         )}

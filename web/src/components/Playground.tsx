@@ -2742,9 +2742,9 @@ export function Playground() {
           <div className="max-w-3xl space-y-4">
             <Card label="Board with items">
               <BoardBlock board={[
-                { questId: "q-42", title: "Fix mobile sidebar overflow", worker: "abc123", workerNum: 5, status: "implementing: fixing CSS flex-wrap", updatedAt: Date.now() - 60000 },
-                { questId: "q-55", title: "Add dark mode toggle", worker: "def456", workerNum: 8, status: "waiting for #5 to port", updatedAt: Date.now() - 30000 },
-                { questId: "q-61", title: "Optimize DB queries", status: "queued -- blocked on user decision", updatedAt: Date.now() },
+                { questId: "q-42", title: "Fix mobile sidebar overflow", worker: "abc123", workerNum: 5, status: "IMPLEMENTING", updatedAt: Date.now() - 60000 },
+                { questId: "q-55", title: "Add dark mode toggle", worker: "def456", workerNum: 8, status: "QUEUED", waitFor: ["q-42"], updatedAt: Date.now() - 30000 },
+                { questId: "q-61", title: "Optimize DB queries", status: "QUEUED", waitFor: ["q-50", "q-51"], updatedAt: Date.now() },
               ]} />
             </Card>
             <Card label="Empty board">
