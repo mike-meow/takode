@@ -579,9 +579,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         ? body.codexReasoningEffort.trim() || undefined
         : undefined;
     // Orchestrator guardrails are injected via system prompt, not file writes
-    const orchestratorGuardrails = isOrchestrator
-      ? launcher.getOrchestratorGuardrails(backend)
-      : undefined;
+    const orchestratorGuardrails = isOrchestrator ? launcher.getOrchestratorGuardrails(backend) : undefined;
 
     const initialCwd = cwd || process.cwd();
     const binarySettings = getSettings();
@@ -1406,11 +1404,25 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const session = wsBridge.getOrCreateSession(id);
 
+    console.log(
+      `[revert] === REVERT START === session=${id.slice(0, 8)} messageId=${body.messageId} cliSessionId=${info.cliSessionId} historyLen=${session.messageHistory.length}`,
+    );
+
     // Find the target user message in history
     const targetIdx = session.messageHistory.findIndex(
       (m) => m.type === "user_message" && (m as { id?: string }).id === body.messageId,
     );
-    if (targetIdx < 0) return c.json({ error: "Message not found in history" }, 404);
+    if (targetIdx < 0) {
+      console.log(
+        `[revert] Message not found. Available user messages: ${JSON.stringify(
+          session.messageHistory
+            .map((m, i) => (m.type === "user_message" ? { idx: i, id: (m as { id?: string }).id } : null))
+            .filter(Boolean),
+        )}`,
+      );
+      return c.json({ error: "Message not found in history" }, 404);
+    }
+    console.log(`[revert] Found target user message at index ${targetIdx} of ${session.messageHistory.length}`);
 
     // Find the preceding assistant message with a UUID for --resume-session-at
     let assistantUuid: string | undefined;
@@ -1418,12 +1430,25 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const m = session.messageHistory[i];
       if (m.type === "assistant" && (m as { uuid?: string }).uuid) {
         assistantUuid = (m as { uuid?: string }).uuid;
+        console.log(`[revert] Found preceding assistant UUID=${assistantUuid} at index ${i}`);
         break;
       }
+    }
+    if (!assistantUuid) {
+      console.log(
+        `[revert] No preceding assistant UUID found. Message types before target: ${session.messageHistory
+          .slice(0, targetIdx)
+          .map(
+            (m, i) =>
+              `${i}:${m.type}${m.type === "assistant" ? `(uuid=${(m as { uuid?: string }).uuid ?? "NONE"})` : ""}`,
+          )
+          .join(", ")}`,
+      );
     }
 
     // Truncate server-side message history
     session.messageHistory = session.messageHistory.slice(0, targetIdx);
+    console.log(`[revert] Truncated server messageHistory to ${session.messageHistory.length} entries`);
 
     // Truncate task history: keep only entries whose trigger message survived truncation
     if (session.taskHistory?.length) {
@@ -1453,20 +1478,25 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // Kill CLI and relaunch with --resume-session-at to truncate CLI's history
     let result: { ok: boolean; error?: string };
     if (assistantUuid) {
+      console.log(`[revert] Relaunching with --resume-session-at ${assistantUuid}`);
       result = await launcher.relaunchWithResumeAt(id, assistantUuid);
     } else {
       // Reverting the first user message — start fresh
+      console.log(`[revert] No assistant UUID: clearing cliSessionId and relaunching fresh`);
       info.cliSessionId = undefined;
       result = await launcher.relaunch(id);
     }
 
     if (!result.ok) {
+      console.log(`[revert] Relaunch FAILED: ${result.error}`);
       return c.json({ error: result.error || "Relaunch failed" }, 503);
     }
+    console.log(`[revert] Relaunch succeeded. Broadcasting truncated history (${session.messageHistory.length} msgs)`);
 
     // Broadcast updated (truncated) history to all browsers
     wsBridge.broadcastToSession(id, { type: "message_history", messages: session.messageHistory });
 
+    console.log(`[revert] === REVERT COMPLETE === session=${id.slice(0, 8)}`);
     return c.json({ ok: true });
   });
 

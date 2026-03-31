@@ -1155,8 +1155,14 @@ export class CliLauncher {
   async relaunchWithResumeAt(sessionId: string, resumeAt: string): Promise<{ ok: boolean; error?: string }> {
     const info = this.sessions.get(sessionId);
     if (!info) return { ok: false, error: "Session not found" };
+    console.log(
+      `[revert] relaunchWithResumeAt: session=${sessionId.slice(0, 8)} resumeAt=${resumeAt} cliSessionId=${info.cliSessionId}`,
+    );
     info.resumeAt = resumeAt;
     const result = await this.relaunch(sessionId);
+    console.log(
+      `[revert] relaunchWithResumeAt result: ok=${result.ok}${result.error ? ` error=${result.error}` : ""} (resumeAt was ${info.resumeAt ? "still set" : "already cleared"})`,
+    );
     delete info.resumeAt;
     return result;
   }
@@ -1252,6 +1258,9 @@ export class CliLauncher {
     }
     if (info.resumeAt) {
       args.push("--resume-session-at", info.resumeAt);
+      console.log(
+        `[revert] spawnCLI: passing --resume-session-at ${info.resumeAt} (with --resume ${options.resumeSessionId})`,
+      );
     }
     args.push("-p", "");
 

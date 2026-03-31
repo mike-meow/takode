@@ -2777,13 +2777,16 @@ export class WsBridge {
 
   /** Add or update a board row. Returns the full board.
    *  Empty-string values for worker/title/status signal "clear this field". */
-  upsertBoardRow(sessionId: string, row: Omit<BoardRow, "updatedAt" | "createdAt"> & { updatedAt?: number }): BoardRow[] | null {
+  upsertBoardRow(
+    sessionId: string,
+    row: Omit<BoardRow, "updatedAt" | "createdAt"> & { updatedAt?: number },
+  ): BoardRow[] | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
     const existing = session.board.get(row.questId);
     /** If incoming is explicitly set, use it (empty string → undefined to clear). Else keep existing. */
     const mergeStr = (incoming: string | undefined, existing: string | undefined): string | undefined =>
-      incoming !== undefined ? (incoming || undefined) : existing;
+      incoming !== undefined ? incoming || undefined : existing;
     const clearingWorker = row.worker !== undefined && !row.worker;
     const now = Date.now();
     const merged: BoardRow = {
@@ -5015,6 +5018,9 @@ export class WsBridge {
         session.cliResumingClearTimer = setTimeout(() => {
           session.cliResumingClearTimer = null;
           session.cliResuming = false;
+          console.log(
+            `[revert] cliResuming cleared for session ${session.id.slice(0, 8)} — replay done. Final historyLen=${session.messageHistory.length}`,
+          );
           // Reset stale compaction state now that replay is truly done.
           session.state.is_compacting = false;
         }, 2000);
@@ -5248,6 +5254,11 @@ export class WsBridge {
 
     // No ID — forward as-is (defensive)
     if (!msgId) {
+      if (session.cliResuming) {
+        console.log(
+          `[revert] Replay assistant msg with NO ID — appending to history (uuid=${msg.uuid ?? "none"}, cliResuming=${session.cliResuming})`,
+        );
+      }
       const browserMsg: BrowserIncomingMessage = {
         type: "assistant",
         message: msg.message,
@@ -5269,8 +5280,20 @@ export class WsBridge {
     if (!acc) {
       // No accumulator — either first time seeing this message, or a replay
       // after server restart (accumulators are in-memory only).
-      if (this.hasAssistantReplay(session, msgId)) return;
+      if (this.hasAssistantReplay(session, msgId)) {
+        if (session.cliResuming) {
+          console.log(
+            `[revert] Replay assistant msg DEDUPED (msgId=${msgId}, uuid=${msg.uuid ?? "none"}, historyLen=${session.messageHistory.length})`,
+          );
+        }
+        return;
+      }
 
+      if (session.cliResuming) {
+        console.log(
+          `[revert] Replay assistant msg APPENDING (new, msgId=${msgId}, uuid=${msg.uuid ?? "none"}, historyLen=${session.messageHistory.length})`,
+        );
+      }
       {
         // Truly first occurrence — store and broadcast
         const contentBlockIds = new Set<string>();
@@ -5447,6 +5470,11 @@ export class WsBridge {
     // stale running/stuck state after reconnect.
     if (msg.uuid) {
       if (this.hasResultReplay(session, msg.uuid)) {
+        if (session.cliResuming) {
+          console.log(
+            `[revert] Replay result msg DEDUPED (uuid=${msg.uuid}, historyLen=${session.messageHistory.length})`,
+          );
+        }
         const reconciled = reconcileTerminalResultStateLifecycle(
           this.getGenerationLifecycleDeps(),
           session,
@@ -6092,7 +6120,20 @@ export class WsBridge {
     // Dedup: skip if a user_message with this CLI uuid already exists
     const cliUuid = msg.uuid;
     if (cliUuid) {
-      if (this.hasUserPromptReplay(session, cliUuid)) return;
+      if (this.hasUserPromptReplay(session, cliUuid)) {
+        if (session.cliResuming) {
+          console.log(
+            `[revert] Replay user msg DEDUPED (cliUuid=${cliUuid}, historyLen=${session.messageHistory.length})`,
+          );
+        }
+        return;
+      }
+    }
+
+    if (session.cliResuming) {
+      console.log(
+        `[revert] Replay user msg APPENDING (new, cliUuid=${cliUuid ?? "NONE"}, text=${textParts[0]?.slice(0, 60) ?? ""}, historyLen=${session.messageHistory.length})`,
+      );
     }
 
     const ts = Date.now();
@@ -7051,9 +7092,10 @@ export class WsBridge {
 
       // Timestamp-tag user messages in the adapter path (SDK/Codex sessions).
       // Same logic as handleUserMessage but applied to adapterMsg before send.
-      if (msg.type === "user_message" && typeof adapterMsg.content === "string") {
+      if (msg.type === "user_message" && typeof (adapterMsg as { content?: unknown }).content === "string") {
         const tag = this.buildTimestampTag(session.id, ingested?.timestamp ?? Date.now(), msg.agentSource);
-        adapterMsg = { ...adapterMsg, content: tag + adapterMsg.content };
+        const typed = adapterMsg as { content: string };
+        adapterMsg = { ...adapterMsg, content: tag + typed.content } as BrowserOutgoingMessage;
       }
 
       const adapter = session.codexAdapter || session.claudeSdkAdapter;
