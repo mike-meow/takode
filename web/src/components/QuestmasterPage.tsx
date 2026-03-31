@@ -19,31 +19,13 @@ import { writeClipboardText } from "../utils/copy-utils.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
+import {
+  timeAgo,
+  verificationProgress,
+  getQuestOwnerSessionId,
+  CopyableQuestId,
+} from "../utils/quest-helpers.js";
 import type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage } from "../types.js";
-
-// ─── Copyable quest ID label ──────────────────────────────────────────────
-
-/** Click-to-copy quest ID with brief visual confirmation. */
-function CopyableQuestId({ questId, className }: { questId: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      className={`cursor-pointer hover:text-cc-fg transition-colors ${className || "text-[10px] text-cc-muted/60"}`}
-      title="Click to copy quest ID"
-      onClick={(e) => {
-        e.stopPropagation();
-        writeClipboardText(questId)
-          .then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          })
-          .catch(console.error);
-      }}
-    >
-      {copied ? "Copied!" : questId}
-    </button>
-  );
-}
 
 // ─── Image paste/upload helpers ────────────────────────────────────────────
 
@@ -80,24 +62,6 @@ const FILTER_TABS: Array<{ value: QuestStatus | "all"; label: string }> = [
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function verificationProgress(items: QuestVerificationItem[]): { checked: number; total: number } {
-  return {
-    checked: items.filter((i) => i.checked).length,
-    total: items.length,
-  };
-}
-
 function questRecencyTs(quest: QuestmasterTask): number {
   return (quest as { updatedAt?: number }).updatedAt ?? quest.createdAt;
 }
@@ -106,22 +70,6 @@ function isVerificationInboxUnread(quest: QuestmasterTask): boolean {
   return (
     quest.status === "needs_verification" && !!(quest as { verificationInboxUnread?: boolean }).verificationInboxUnread
   );
-}
-
-function getQuestOwnerSessionId(quest: QuestmasterTask): string | null {
-  if ("sessionId" in quest && typeof quest.sessionId === "string") {
-    const active = quest.sessionId.trim();
-    if (active) return active;
-  }
-  const previous = (quest as { previousOwnerSessionIds?: unknown }).previousOwnerSessionIds;
-  if (!Array.isArray(previous) || previous.length === 0) return null;
-  for (let i = previous.length - 1; i >= 0; i--) {
-    const sid = previous[i];
-    if (typeof sid !== "string") continue;
-    const trimmed = sid.trim();
-    if (trimmed) return trimmed;
-  }
-  return null;
 }
 
 const DEFAULT_DONE_VERIFICATION_ITEM: QuestVerificationItem = {

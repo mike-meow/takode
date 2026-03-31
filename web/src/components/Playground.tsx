@@ -2774,6 +2774,59 @@ export function Playground() {
           </div>
         </Section>
 
+        {/* ─── Quest Detail Modal ──────────────────────────────────── */}
+        <Section
+          title="Quest Detail Modal"
+          description="Global read-only quest detail overlay triggered from quest links in boards or markdown."
+        >
+          <div className="max-w-3xl space-y-4">
+            <Card label="Open quest detail modal">
+              <div className="p-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Seed store with mock quests then open the overlay
+                    useStore.setState({
+                      quests: [
+                        {
+                          id: "q-42-v3",
+                          questId: "q-42",
+                          version: 3,
+                          title: "Fix mobile sidebar overflow on small screens",
+                          status: "needs_verification" as const,
+                          description: "The sidebar overflows on screens narrower than 375px. Need to add `overflow-hidden` and a scrollable wrapper.\n\n## Steps\n1. Add wrapper div\n2. Set max-height\n3. Test on iPhone SE",
+                          createdAt: Date.now() - 86400000,
+                          updatedAt: Date.now() - 3600000,
+                          sessionId: "abc-123",
+                          claimedAt: Date.now() - 43200000,
+                          tags: ["ui", "mobile", "bug"],
+                          verificationItems: [
+                            { text: "Sidebar does not overflow on iPhone SE", checked: true },
+                            { text: "Scroll works on sidebar content", checked: false },
+                            { text: "Desktop layout unaffected", checked: true },
+                          ],
+                          feedback: [
+                            { author: "human" as const, text: "Please also check iPad mini", ts: Date.now() - 7200000, addressed: true },
+                            { author: "agent" as const, text: "Checked on iPad mini -- works correctly with the new wrapper.", ts: Date.now() - 3600000, authorSessionId: "abc-123" },
+                            { author: "human" as const, text: "Looks good! One more: the close button is hard to tap.", ts: Date.now() - 1800000, addressed: false },
+                          ],
+                        },
+                      ],
+                    });
+                    useStore.getState().openQuestOverlay("q-42");
+                  }}
+                  className="px-4 py-2 text-sm font-medium bg-cc-primary hover:bg-cc-primary-hover text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  Open Quest Detail Modal (q-42)
+                </button>
+                <p className="text-xs text-cc-muted mt-2">
+                  Click to open a mock quest detail overlay. Press Escape or click the backdrop to close.
+                </p>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Composer — Voice Recording ──────────────────────────────── */}
         <Section
           title="Composer — Voice Recording"

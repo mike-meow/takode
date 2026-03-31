@@ -28,9 +28,13 @@ describe("MarkdownContent quest links", () => {
     render(<MarkdownContent text="[q-42](quest:q-42)" />);
 
     const link = screen.getByRole("link", { name: "q-42" });
+    // href is still set for right-click "open in new tab"
     expect(link.getAttribute("href")).toBe("#/session/s1?quest=q-42");
     fireEvent.click(link);
-    expect(window.location.hash).toBe("#/session/s1?quest=q-42");
+    // Click opens the quest overlay instead of changing the hash
+    expect(useStore.getState().questOverlayId).toBe("q-42");
+    // Hash should NOT have changed (stays on current session)
+    expect(window.location.hash).toBe("#/session/s1");
   });
 
   it("supports bare quest-id hrefs as a short schema", () => {
@@ -39,7 +43,9 @@ describe("MarkdownContent quest links", () => {
     const link = screen.getByRole("link", { name: "open" });
     expect(link.getAttribute("href")).toBe("#/session/s1?quest=q-77");
     fireEvent.click(link);
-    expect(window.location.hash).toBe("#/session/s1?quest=q-77");
+    // Click opens the quest overlay instead of changing the hash
+    expect(useStore.getState().questOverlayId).toBe("q-77");
+    expect(window.location.hash).toBe("#/session/s1");
   });
 
   it("shows QuestHoverCard content when hovering a quest link", async () => {

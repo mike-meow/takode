@@ -379,8 +379,7 @@ function QuestMarkdownLink({ questId, children }: { questId: string; children: R
         href={questHash}
         onClick={(e) => {
           e.preventDefault();
-          const nextHash = withQuestIdInHash(window.location.hash, questId);
-          window.location.hash = nextHash.startsWith("#") ? nextHash.slice(1) : nextHash;
+          useStore.getState().openQuestOverlay(questId);
         }}
         onMouseEnter={handleLinkMouseEnter}
         onMouseLeave={handleLinkMouseLeave}

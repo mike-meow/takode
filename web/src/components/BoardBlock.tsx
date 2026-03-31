@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo, type MouseEvent } from "react";
 import { CollapseFooter } from "./CollapseFooter.js";
-import { navigateTo } from "../utils/navigation.js";
 import { navigateToSession } from "../utils/routing.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
@@ -40,7 +39,7 @@ function QuestLink({ questId }: { questId: string }) {
   const handleClick = useCallback(
     (e: MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation();
-      navigateTo(`/questmaster?quest=${encodeURIComponent(questId)}`);
+      useStore.getState().openQuestOverlay(questId);
     },
     [questId],
   );
