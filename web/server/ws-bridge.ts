@@ -2818,7 +2818,7 @@ export class WsBridge {
     return this.commitBoard(session);
   }
 
-  /** Remove a quest from ALL session boards (used for auto-cleanup on quest completion). */
+  /** Remove a quest from ALL session boards (e.g. on quest deletion or cancellation). */
   removeBoardRowFromAll(questId: string): void {
     for (const session of this.sessions.values()) {
       if (session.board.has(questId)) {

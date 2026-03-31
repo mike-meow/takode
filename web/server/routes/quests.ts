@@ -155,8 +155,10 @@ export function createQuestRoutes(ctx: RouteContext) {
   });
 
   api.delete("/quests/:questId", async (c) => {
-    const deleted = await questStore.deleteQuest(c.req.param("questId"));
+    const questId = c.req.param("questId");
+    const deleted = await questStore.deleteQuest(questId);
     if (!deleted) return c.json({ error: "Quest not found" }, 404);
+    wsBridge.removeBoardRowFromAll(questId);
     broadcastQuestUpdate(wsBridge);
     return c.json({ ok: true });
   });
@@ -274,6 +276,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       if (current && "sessionId" in current && typeof current.sessionId === "string") {
         wsBridge.setSessionClaimedQuest(current.sessionId, null);
       }
+      wsBridge.removeBoardRowFromAll(c.req.param("questId"));
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
