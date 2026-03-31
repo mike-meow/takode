@@ -15,6 +15,8 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 
 **Board advances only after completed actions.** Do not advance the board anticipating what will happen next. Only advance after the action for that stage is actually done.
 
+**Mandatory stages:** Skeptic review is always mandatory. Groom review is mandatory for all code changes. Groom may only be skipped when the task produced zero code changes (e.g., analysis-only work).
+
 ## Refine (before QUEUED)
 
 - If no quest exists or it's in `idea` state, work with the user first to gather requirements
