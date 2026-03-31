@@ -1,5 +1,5 @@
 import { mkdirSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
@@ -18,7 +18,7 @@ function resolveMainRepoRoot(): string {
       cwd: localRoot,
       encoding: "utf-8",
     }).trim();
-    return gitCommonDir === ".git" ? localRoot : dirname(gitCommonDir);
+    return gitCommonDir === ".git" ? localRoot : dirname(resolve(localRoot, gitCommonDir));
   } catch {
     return localRoot;
   }

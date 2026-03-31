@@ -764,7 +764,7 @@ await cronScheduler.startAll();
 // ── Questmaster CLI integration ─────────────────────────────────────────────
 await ensureQuestmasterIntegration(port, packageRoot);
 ensureTakodeIntegration(packageRoot);
-ensureSkillSymlinks(["takode-orchestration", "groom", "cron-scheduling", "skeptic-review", "worktree-rules"]);
+ensureSkillSymlinks(["takode-orchestration", "groom", "cron-scheduling", "skeptic-review", "worktree-rules", "playwright-e2e-tester"]);
 
 // ── Idle session manager — enforce maxKeepAlive ─────────────────────────────
 const idleManager = new IdleManager(launcher, wsBridge, getSettings);
