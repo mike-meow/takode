@@ -577,7 +577,7 @@ export function SessionItem({
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                     title={`Reviewer${reviewerSession.sessionNum != null ? ` #${reviewerSession.sessionNum}` : ""} — click to open`}
-                    className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 transition-colors cursor-pointer border border-blue-500/15"
+                    className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-cc-muted bg-cc-muted/10 hover:bg-cc-muted/20 transition-colors cursor-pointer border border-cc-muted/15"
                     data-testid="session-reviewer-badge"
                   >
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
