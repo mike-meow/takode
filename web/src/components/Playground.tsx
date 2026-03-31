@@ -3509,6 +3509,75 @@ export function Playground() {
               </div>
             </Card>
             <div className="mt-4" />
+            <Card label="Transcription failed — retry banner">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                  <textarea
+                    readOnly
+                    value=""
+                    rows={2}
+                    className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "54px" }}
+                    placeholder="Type a message..."
+                  />
+                  <div className="px-4 pb-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning">
+                      <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                      <span className="flex-1 min-w-0 truncate">
+                        Transcription timed out — the server took too long to respond.
+                      </span>
+                      <button className="shrink-0 rounded-md bg-cc-primary px-2.5 py-1 text-[10px] font-medium text-white hover:bg-cc-primary-hover transition-colors cursor-pointer">
+                        Retry
+                      </button>
+                      <button
+                        className="shrink-0 text-cc-warning/70 hover:text-cc-warning transition-colors cursor-pointer"
+                        aria-label="Dismiss transcription error"
+                        title="Dismiss"
+                      >
+                        <svg
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          className="w-3 h-3"
+                        >
+                          <path d="M4 4l8 8M12 4l-8 8" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span>plan</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full text-cc-muted hover:bg-cc-hover transition-colors">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 opacity-60">
+                          <path d="M8 1a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 8 1z" />
+                          <path d="M3.5 7a.5.5 0 0 1 .5.5v.5a4 4 0 0 0 8 0v-.5a.5.5 0 0 1 1 0v.5a5 5 0 0 1-4.5 4.975V14.5h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.525A5 5 0 0 1 3 8v-.5a.5.5 0 0 1 .5-.5z" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
             <Card label="Idle — mic button ready">
               <div className="border-t border-cc-border bg-cc-card px-4 py-3">
                 <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">

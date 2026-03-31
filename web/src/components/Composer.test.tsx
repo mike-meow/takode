@@ -64,38 +64,46 @@ const mockVoiceState = {
   onAudioReady: null as ((blob: Blob) => void | Promise<void>) | null,
 };
 
-vi.mock("../hooks/useVoiceInput.js", () => ({
-  useVoiceInput: (options: { onAudioReady?: (blob: Blob) => void | Promise<void> } = {}) => {
-    mockVoiceState.onAudioReady = options.onAudioReady ?? null;
-    const isSupported = mockVoiceState.isSupportedOverride ?? window.isSecureContext !== false;
-    const unsupportedReason = isSupported
-      ? null
-      : (mockVoiceState.unsupportedReasonOverride ??
-        (window.isSecureContext === false ? "insecure-context" : "unsupported-environment"));
-    const unsupportedMessage = isSupported
-      ? null
-      : (mockVoiceState.unsupportedMessageOverride ??
-        (unsupportedReason === "insecure-context"
-          ? "Voice input requires HTTPS or localhost in this browser."
-          : "Voice input is unavailable."));
-    return {
-      isRecording: false,
-      isSupported,
-      unsupportedReason,
-      unsupportedMessage,
-      isTranscribing: false,
-      transcriptionPhase: null,
-      error: null,
-      volumeLevel: 0,
-      setIsTranscribing: vi.fn(),
-      setTranscriptionPhase: vi.fn(),
-      setError: vi.fn(),
-      startRecording: vi.fn(),
-      stopRecording: vi.fn(),
-      toggleRecording: vi.fn(() => options.onAudioReady?.(new Blob(["voice"], { type: "audio/webm" }))),
-    };
-  },
-}));
+vi.mock("../hooks/useVoiceInput.js", async () => {
+  const React = await import("react");
+  return {
+    useVoiceInput: (options: { onAudioReady?: (blob: Blob) => void | Promise<void> } = {}) => {
+      mockVoiceState.onAudioReady = options.onAudioReady ?? null;
+      const isSupported = mockVoiceState.isSupportedOverride ?? window.isSecureContext !== false;
+      const unsupportedReason = isSupported
+        ? null
+        : (mockVoiceState.unsupportedReasonOverride ??
+          (window.isSecureContext === false ? "insecure-context" : "unsupported-environment"));
+      const unsupportedMessage = isSupported
+        ? null
+        : (mockVoiceState.unsupportedMessageOverride ??
+          (unsupportedReason === "insecure-context"
+            ? "Voice input requires HTTPS or localhost in this browser."
+            : "Voice input is unavailable."));
+      // Use real React state so onAudioReady can drive re-renders for error/isTranscribing
+      const [error, setError] = React.useState<string | null>(null);
+      const [isTranscribing, setIsTranscribing] = React.useState(false);
+      const [transcriptionPhase, setTranscriptionPhase] = React.useState<string | null>(null);
+      return {
+        isRecording: false,
+        isSupported,
+        unsupportedReason,
+        unsupportedMessage,
+        isTranscribing,
+        transcriptionPhase,
+        error,
+        volumeLevel: 0,
+        setIsTranscribing,
+        setTranscriptionPhase,
+        setError,
+        startRecording: vi.fn(),
+        stopRecording: vi.fn(),
+        toggleRecording: vi.fn(() => options.onAudioReady?.(new Blob(["voice"], { type: "audio/webm" }))),
+        cancelRecording: vi.fn(),
+      };
+    },
+  };
+});
 
 // Mock useStore as a function that takes a selector
 const mockAppendMessage = vi.fn();
@@ -1145,5 +1153,261 @@ describe("Composer disabled state", () => {
 
     // Textarea is enabled for drafting; placeholder is the same as connected state
     expect(textarea.placeholder).toContain("Type a message");
+  });
+});
+
+// ─── Transcription retry ────────────────────────────────────────────────────
+
+describe("Composer transcription retry", () => {
+  it("shows retry banner with error message when dictation transcription fails", async () => {
+    // Simulate a transcription failure by rejecting the mock
+    mockTranscribe.mockRejectedValueOnce(new Error("stream ended without transcription"));
+
+    render(<Composer sessionId="s1" />);
+
+    // Trigger voice recording -- toggleRecording calls onAudioReady with a blob
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    // Wait for the retry banner to appear with the error message
+    await waitFor(() => {
+      expect(screen.getByText("stream ended without transcription")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByLabelText("Dismiss transcription error")).toBeTruthy();
+  });
+
+  it("retries transcription with the same audio blob on Retry click (dictation mode)", async () => {
+    // First call fails, second succeeds
+    mockTranscribe
+      .mockRejectedValueOnce(new Error("server error"))
+      .mockResolvedValueOnce({ mode: "dictation", text: "hello world", backend: "openai", enhanced: false });
+
+    render(<Composer sessionId="s1" />);
+
+    // Trigger recording (empty composer -> dictation mode)
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    // Wait for retry banner
+    await waitFor(() => {
+      expect(screen.getByText("server error")).toBeTruthy();
+    });
+
+    // Click Retry
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    // The second transcribe call should succeed and fill the textarea
+    await waitFor(() => {
+      expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("hello world");
+    });
+
+    // Retry banner should be gone
+    expect(screen.queryByText("server error")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    // Both calls should have used the same audio blob
+    expect(mockTranscribe).toHaveBeenCalledTimes(2);
+    const blob1 = mockTranscribe.mock.calls[0][0] as Blob;
+    const blob2 = mockTranscribe.mock.calls[1][0] as Blob;
+    expect(blob1).toBe(blob2);
+  });
+
+  it("re-saves the blob for another retry when retry also fails", async () => {
+    // Both calls fail
+    mockTranscribe
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("still broken"));
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByText("timeout")).toBeTruthy();
+    });
+
+    // First retry -- also fails
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("still broken")).toBeTruthy();
+    });
+
+    // Retry button is still available for another attempt
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("clears the retry banner when Dismiss is clicked", async () => {
+    mockTranscribe.mockRejectedValueOnce(new Error("transcription failed"));
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByText("transcription failed")).toBeTruthy();
+    });
+
+    // Click the dismiss X button
+    fireEvent.click(screen.getByLabelText("Dismiss transcription error"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("transcription failed")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+  });
+
+  it("retries with the saved mode and composer context for edit mode", async () => {
+    // Set up a non-empty composer to trigger edit mode
+    setupMockStore({ draftText: "Fix the login bug" });
+
+    mockTranscribe
+      .mockRejectedValueOnce(new Error("backend error"))
+      .mockResolvedValueOnce({
+        mode: "edit",
+        text: "Fix the authentication bug in the login flow",
+        rawText: "fix the authentication bug",
+        instructionText: "fix the authentication bug",
+        backend: "openai",
+        enhanced: true,
+      });
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByText("backend error")).toBeTruthy();
+    });
+
+    // Retry should re-send with edit mode
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    // Should show the voice edit preview after successful retry
+    await waitFor(() => {
+      expect(screen.getByText("Voice edit preview")).toBeTruthy();
+    });
+
+    // Verify the retry used edit mode with the original composerText
+    const retryCall = mockTranscribe.mock.calls[1];
+    expect(retryCall[1]).toEqual(
+      expect.objectContaining({
+        mode: "edit",
+        composerText: "Fix the login bug",
+      }),
+    );
+  });
+
+  it("clears failed transcription when a new recording starts", async () => {
+    mockTranscribe.mockRejectedValueOnce(new Error("first failure"));
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    // Start a new recording -- this should clear the retry banner
+    // The toggleRecording mock triggers onAudioReady immediately, which will also call transcribe
+    mockTranscribe.mockResolvedValueOnce({
+      mode: "dictation",
+      text: "new recording",
+      backend: "openai",
+      enhanced: false,
+    });
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    });
+  });
+
+  it("retries with append mode and preserves cursor context with spacing", async () => {
+    // Non-empty composer triggers edit mode by default (preferredVoiceModeRef = "edit").
+    // Verify the saved composerText survives failure and is re-sent on retry.
+    setupMockStore({ draftText: "" });
+    mockTranscribe
+      .mockRejectedValueOnce(new Error("append error"))
+      .mockResolvedValueOnce({
+        mode: "edit",
+        text: "fixed text",
+        rawText: "fix this",
+        instructionText: "fix this",
+        backend: "openai",
+        enhanced: true,
+      });
+
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+
+    // Type text so handleMicClick enters edit mode and captures composerText
+    fireEvent.change(textarea, { target: { value: "before after" } });
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByText("append error")).toBeTruthy();
+    });
+
+    // Retry -- verify the original composerText is preserved through failure
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      const retryCall = mockTranscribe.mock.calls[1];
+      expect(retryCall[1]).toEqual(
+        expect.objectContaining({
+          composerText: "before after",
+        }),
+      );
+    });
+  });
+
+  it("does not auto-clear voice error when retry is available", async () => {
+    vi.useFakeTimers();
+    try {
+      mockTranscribe.mockRejectedValueOnce(new Error("server unreachable"));
+
+      render(<Composer sessionId="s1" />);
+      fireEvent.click(screen.getByLabelText("Voice input"));
+
+      // Wait for retry banner to appear (transcription is async)
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(screen.getByText("server unreachable")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+
+      // Advance well past the 4-second auto-clear window
+      await vi.advanceTimersByTimeAsync(10000);
+
+      // Error should still be visible (failedTranscription suppresses auto-clear)
+      expect(screen.getByText("server unreachable")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears retry state when switching to a different session", async () => {
+    mockTranscribe.mockRejectedValueOnce(new Error("session error"));
+
+    const { rerender } = render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    // Switch session -- retry banner should disappear
+    // Need to set up mock store for s2 so the component can render
+    const sessionsMap = mockStoreState.sessions as Map<string, unknown>;
+    sessionsMap.set("s2", makeSession({ session_id: "s2" }));
+    const cliMap = mockStoreState.cliConnected as Map<string, boolean>;
+    cliMap.set("s2", true);
+    const statusMap = mockStoreState.sessionStatus as Map<string, string | null>;
+    statusMap.set("s2", "idle");
+    notifyMockStore();
+
+    rerender(<Composer sessionId="s2" />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+      expect(screen.queryByText("session error")).toBeNull();
+    });
   });
 });

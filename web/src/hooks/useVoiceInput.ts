@@ -268,13 +268,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     }
   }, [isRecording, startRecording, stopRecording]);
 
-  // Auto-clear errors after 4 seconds
-  useEffect(() => {
-    if (!error) return;
-    const timer = setTimeout(() => setError(null), 4000);
-    return () => clearTimeout(timer);
-  }, [error]);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {

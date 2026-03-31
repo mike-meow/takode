@@ -80,6 +80,14 @@ interface VoiceEditProposal {
   instructionText: string;
 }
 
+/** Audio blob + context preserved on transcription failure, enabling retry without re-recording. */
+interface FailedTranscription {
+  blob: Blob;
+  mode: "dictation" | "edit" | "append";
+  composerText: string;
+  cursorContext: { before: string; after: string };
+}
+
 function getImageFiles(files: ArrayLike<File> | Iterable<File> | null | undefined): File[] {
   if (!files) return [];
   return Array.from(files).filter((file) => file.type.startsWith("image/"));
@@ -286,6 +294,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [voiceCaptureMode, setVoiceCaptureMode] = useState<"dictation" | "edit" | "append">("dictation");
 
   // Voice input -- records audio via MediaRecorder, transcribes server-side
+  const [failedTranscription, setFailedTranscription] = useState<FailedTranscription | null>(null);
   const preRecordingTextRef = useRef({ before: "", after: "" });
   const {
     isRecording,
@@ -302,57 +311,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
     toggleRecording,
     cancelRecording,
   } = useVoiceInput({
-    onAudioReady: async (blob) => {
-      setIsTranscribing(true);
-      setTranscriptionPhase("transcribing");
-      try {
-        if (voiceCaptureModeRef.current === "edit") {
-          const {
-            text: editedText,
-            instructionText,
-            rawText,
-          } = await api.transcribe(blob, {
-            mode: "edit",
-            sessionId,
-            composerText: voiceEditBaseTextRef.current,
-            onPhase: (phase) => setTranscriptionPhase(phase),
-          });
-          setVoiceEditProposal({
-            originalText: voiceEditBaseTextRef.current,
-            editedText,
-            instructionText: instructionText || rawText || "",
-          });
-        } else if (voiceCaptureModeRef.current === "append") {
-          // Append mode: transcribe and clean speech, then insert at cursor position
-          const { text: appendText } = await api.transcribe(blob, {
-            mode: "append",
-            sessionId,
-            composerText: voiceEditBaseTextRef.current,
-            onPhase: (phase) => setTranscriptionPhase(phase),
-          });
-          // Insert cleaned text at the cursor position saved before recording started
-          const before = preRecordingTextRef.current.before;
-          const after = preRecordingTextRef.current.after;
-          // Add a space separator if the text before cursor doesn't end with whitespace
-          const needsSpace = before.length > 0 && !/\s$/.test(before);
-          const separator = needsSpace ? " " : "";
-          setText(before + separator + appendText + after);
-          setVoiceEditProposal(null);
-        } else {
-          const { text: transcript } = await api.transcribe(blob, {
-            mode: "dictation",
-            sessionId,
-            onPhase: (phase) => setTranscriptionPhase(phase),
-          });
-          setText(transcript);
-          setVoiceEditProposal(null);
-        }
-      } catch (err) {
-        setVoiceError(err instanceof Error ? err.message : "Transcription failed");
-      } finally {
-        setIsTranscribing(false);
-        setTranscriptionPhase(null);
-      }
+    onAudioReady: (blob) => {
+      performTranscription(blob, voiceCaptureModeRef.current, voiceEditBaseTextRef.current, {
+        ...preRecordingTextRef.current,
+      });
     },
   });
   const [voiceUnsupportedInfoOpen, setVoiceUnsupportedInfoOpen] = useState(false);
@@ -363,6 +325,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
     if (!isRecording) {
+      // Clear any saved failed transcription -- new recording supersedes old
+      setFailedTranscription(null);
       // Always capture cursor position for potential append mode
       const el = textareaRef.current;
       const cursorPos = el?.selectionStart ?? text.length;
@@ -383,6 +347,67 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }
     toggleRecording();
   }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
+
+  /** Transcribe an audio blob and apply the result based on mode. Used by both initial recording and retry. */
+  async function performTranscription(
+    blob: Blob,
+    mode: "dictation" | "edit" | "append",
+    composerText: string,
+    cursorContext: { before: string; after: string },
+  ) {
+    setIsTranscribing(true);
+    setTranscriptionPhase("transcribing");
+    try {
+      if (mode === "edit") {
+        const { text: editedText, instructionText, rawText } = await api.transcribe(blob, {
+          mode: "edit",
+          sessionId,
+          composerText,
+          onPhase: (phase) => setTranscriptionPhase(phase),
+        });
+        setVoiceEditProposal({
+          originalText: composerText,
+          editedText,
+          instructionText: instructionText || rawText || "",
+        });
+      } else if (mode === "append") {
+        const { text: appendText } = await api.transcribe(blob, {
+          mode: "append",
+          sessionId,
+          composerText,
+          onPhase: (phase) => setTranscriptionPhase(phase),
+        });
+        const { before, after } = cursorContext;
+        const needsSpace = before.length > 0 && !/\s$/.test(before);
+        const separator = needsSpace ? " " : "";
+        setText(before + separator + appendText + after);
+        setVoiceEditProposal(null);
+      } else {
+        const { text: transcript } = await api.transcribe(blob, {
+          mode: "dictation",
+          sessionId,
+          onPhase: (phase) => setTranscriptionPhase(phase),
+        });
+        setText(transcript);
+        setVoiceEditProposal(null);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Transcription failed";
+      setVoiceError(message);
+      setFailedTranscription({ blob, mode, composerText, cursorContext });
+    } finally {
+      setIsTranscribing(false);
+      setTranscriptionPhase(null);
+    }
+  }
+
+  const retryTranscription = useCallback(async () => {
+    if (!failedTranscription) return;
+    const { blob, mode, composerText, cursorContext } = failedTranscription;
+    setFailedTranscription(null);
+    setVoiceError(null);
+    await performTranscription(blob, mode, composerText, cursorContext);
+  }, [failedTranscription, sessionId, setVoiceError]);
 
   const toggleVoiceUnsupportedInfo = useCallback(
     (expandComposerOnReveal = false) => {
@@ -423,10 +448,19 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     setVoiceEditProposal(null);
+    setFailedTranscription(null);
+    setVoiceError(null);
     voiceCaptureModeRef.current = "dictation";
     setVoiceCaptureMode("dictation");
     voiceEditBaseTextRef.current = "";
-  }, [sessionId]);
+  }, [sessionId, setVoiceError]);
+
+  // Auto-clear voice errors after 4 seconds, unless a retry is available
+  useEffect(() => {
+    if (!voiceError || failedTranscription) return;
+    const timer = setTimeout(() => setVoiceError(null), 4000);
+    return () => clearTimeout(timer);
+  }, [voiceError, failedTranscription, setVoiceError]);
 
   const cliConnected = useStore((s) => s.cliConnected);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
@@ -1580,7 +1614,41 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </div>
             )}
             {voiceError && !isRecording && !isTranscribing && (
-              <div className="px-4 pt-2 text-[11px] text-cc-warning">{voiceError}</div>
+              <div className="px-4 pt-2">
+                {failedTranscription ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning"
+                  >
+                    <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                    <span className="flex-1 min-w-0 truncate">{voiceError}</span>
+                    <button
+                      type="button"
+                      onClick={retryTranscription}
+                      className="shrink-0 rounded-md bg-cc-primary px-2.5 py-1 text-[10px] font-medium text-white hover:bg-cc-primary-hover transition-colors cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFailedTranscription(null);
+                        setVoiceError(null);
+                      }}
+                      className="shrink-0 text-cc-warning/70 hover:text-cc-warning transition-colors cursor-pointer"
+                      aria-label="Dismiss transcription error"
+                      title="Dismiss"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-cc-warning">{voiceError}</div>
+                )}
+              </div>
             )}
             {voiceEditProposal && !isRecording && !isTranscribing && (
               <div className="px-4 pt-2">
