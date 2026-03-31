@@ -1,19 +1,18 @@
 ---
 name: skeptic-review
 description: >-
-  Adversarial review of a worker's completed task. Spawns a temporary reviewer
-  session that independently evaluates whether the worker actually did thorough
-  work or took shortcuts. Returns ACCEPT or CHALLENGE with specific questions.
-  Use when a worker's claim seems too easy, too fast, or contentious
-  ("nothing to fix", "can't reproduce", "already works").
+  Adversarial review of a worker's completed task. Independently evaluates
+  whether the worker did thorough, honest work or took shortcuts. Returns
+  ACCEPT or CHALLENGE with specific questions. Invoked by the reviewer
+  session after being spawned by the leader.
 argument-hint: "<session_id>"
 ---
 
 # /skeptic-review -- Adversarial Worker Output Review
 
-You are running a skeptical review of a worker session's completed task.
-This is NOT a code quality review (that's `/groom`). This is a work integrity
-review: did the worker actually do the work properly, or did they take shortcuts?
+You are a skeptic reviewer. Your job is to independently evaluate whether a
+worker actually did thorough, honest work -- or took shortcuts. This is NOT
+a code quality review (that's `/groom`). This is a **work integrity** review.
 
 ## When to Use
 
@@ -25,25 +24,27 @@ review: did the worker actually do the work properly, or did they take shortcuts
 
 ## Input
 
-The skill takes a session ID as an argument: `/skeptic-review 93`
+The skill takes a session number as an argument: `/skeptic-review 93`
+
+Your spawn message contains context pointers -- a quest ID and session
+reference. Use these to gather the evidence you need.
 
 ## Workflow
 
-### Step 1: Gather Context
+### Step 1: Gather Evidence
 
-Collect three pieces of information:
+Use the context pointers from your spawn message to collect:
 
-1. **The task**: What was the worker asked to do? Read the dispatch message
-   and/or quest description.
+1. **The task**: What was the worker asked to do?
    ```bash
-   takode peek <session_id> --from 0 --count 5   # see the initial task
-   quest show <quest_id>                          # if quest-linked
+   quest show <quest_id>
+   takode peek <session_id> --from 0 --count 5   # initial dispatch
    ```
 
 2. **The worker's report**: What did the worker claim they did?
    ```bash
-   takode peek <session_id>                       # see recent activity
-   takode read <session_id> <last_msg_index>      # read completion report
+   takode peek <session_id>                       # recent activity
+   takode peek <session_id> --from <N> --show-tools  # detailed view
    ```
 
 3. **The actual diff**: What code actually changed?
@@ -53,43 +54,17 @@ Collect three pieces of information:
    git -C <worktree_path> diff <base_branch>      # full diff
    ```
 
-### Step 2: Spawn Temporary Reviewer Session
-
-Spawn a temporary session using `takode spawn` with `--fixed-name` and
-`--no-worktree`. The reviewer runs in its own session with its own context
-window, so it doesn't burn leader tokens or block the leader's turn.
-
-Compose the review prompt with all context from Step 1, then spawn:
-
-```bash
-takode spawn --fixed-name 'Skeptic review of #<worker_session_num>' --no-worktree --message 'You are a skeptic reviewer.
-
-You are reviewing a worker session'\''s completed task for work integrity.
-This is NOT a code quality review. Your job is to independently evaluate
-whether the worker did thorough, honest work -- or took shortcuts.
+### Step 2: Evaluate
 
 Assume the worker may have:
 - Run a test once, seen it pass, and declared victory without investigating
 - Made the minimal change to make a symptom disappear without fixing root cause
-- Claimed "can'\''t reproduce" after a superficial attempt
+- Claimed "can't reproduce" after a superficial attempt
 - Copied existing code instead of understanding and improving it
 - Addressed the letter of the task but missed the spirit
 
-## Task Given to Worker
-<paste the original dispatch message / quest description>
+Evaluate against these criteria:
 
-## Worker'\''s Completion Report
-<paste the worker'\''s final summary message>
-
-## Actual Code Changes
-<paste git diff --stat and relevant portions of the full diff>
-
-## Worker'\''s Investigation Process
-<paste key messages showing what the worker tried, from takode peek>
-
-## Your Review
-
-Evaluate:
 1. **Completeness**: Does the diff fully address the task? Are there gaps
    or aspects the worker ignored?
 2. **Root cause**: Did the worker identify and fix the actual root cause,
@@ -98,10 +73,10 @@ Evaluate:
    to the first conclusion? Look at their tool usage -- did they read
    enough code, run enough tests, consider edge cases?
 4. **Correctness**: Could the change introduce new bugs or regressions?
-5. **Honesty**: Does the worker'\''s report accurately describe what they did?
+5. **Honesty**: Does the worker's report accurately describe what they did?
    Any exaggerations or omissions?
 
-## Verdict
+### Step 3: Deliver Verdict
 
 Respond with exactly one of:
 
@@ -110,67 +85,14 @@ Respond with exactly one of:
 
 **CHALLENGE**: The work has gaps or the claims are questionable.
 [List specific questions the leader should send back to the worker, e.g.:
-- "You said the test passes, but did you run it under load / in the full suite?"
-- "Your diff doesn'\''t touch X, but the task asked for X -- why?"
-- "You investigated for 2 minutes on a complex task -- what did you check?"]'
-```
-
-The reviewer session:
-- Is named "Skeptic review of #XX" (set via `--fixed-name`, auto-namer disabled)
-- Does NOT count toward the 5-worker herd limit
-- Runs independently -- do NOT block waiting for it
-
-### Step 3: React to Reviewer Verdict
-
-When the reviewer session finishes, you'll receive a `turn_end` herd event.
-React to it:
-
-1. **Peek at the verdict**:
-   ```bash
-   takode peek <reviewer_session_id>
-   ```
-
-2. **Act on the verdict**:
-   - **ACCEPT**: The work passed adversarial review. Proceed to the next step
-     in the dispatch lifecycle (e.g., instruct worker to run `/groom`).
-   - **CHALLENGE**: Send the specific questions to the original worker via
-     `takode send <worker_session_id> "<questions>"`. After the worker
-     addresses them, ask the **same reviewer** to re-review. Iterate until
-     the reviewer returns ACCEPT.
-
-### Step 4: Groom Compliance Review (optional)
-
-After the worker runs `/groom` and addresses findings, reuse the same
-reviewer session to verify groom compliance:
-
-```bash
-takode send <reviewer_session_id> "The worker ran /groom. Review:
-1. Read the full groom output (what was recommended)
-2. Read what the worker actually addressed vs skipped
-3. Judge whether all reasonable recommendations were properly addressed
-4. Return ACCEPT or CHALLENGE"
-```
-
-Only after the reviewer ACCEPTs both implementation quality AND groom
-compliance should the worker be allowed to port.
-
-## Reviewer Session Lifecycle
-
-- **Persistent**: Reviewer sessions persist as long as their parent worker
-  is alive. Reuse the same reviewer for follow-up work on the same worker,
-  including groom compliance checks.
-- **Auto-cleanup**: When the parent worker session is archived, delete
-  (not archive) its associated reviewer session.
-- **No herd limit impact**: Reviewer sessions do NOT count toward the
-  5-worker herd limit.
+- "You said the test passes, but did you run it in the full suite?"
+- "Your diff doesn't touch X, but the task asked for X -- why?"
+- "You investigated for 2 minutes on a complex task -- what did you check?"]
 
 ## Important Notes
 
-- This skill spawns a **persistent session**, not a subagent. The reviewer
-  runs in its own context window and doesn't consume leader tokens.
-- Reviewer sessions don't need worktrees -- they only read and evaluate.
-- The `--fixed-name` flag sets the "Skeptic review of #XX" name and disables auto-naming.
-- Keep the review focused on work integrity, not code style. `/groom`
-  handles code quality.
-- Use skeptic review for most tasks. Skip only for trivial fixes where
-  misimplementation risk is clearly very low.
+- Focus on **work integrity**, not code style. `/groom` handles code quality.
+- Be specific in CHALLENGE questions -- vague challenges waste everyone's time.
+- Look at the worker's process (tool calls, exploration), not just the final diff.
+- The leader manages your lifecycle. You may be asked to re-review after the
+  worker addresses your challenges, or to check groom compliance later.
