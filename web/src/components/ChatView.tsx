@@ -11,6 +11,7 @@ import {
 } from "./PermissionBanner.js";
 import { TaskOutlineBar } from "./TaskOutlineBar.js";
 import { TodoStatusLine } from "./TodoStatusLine.js";
+import { WorkBoardBar } from "./WorkBoardBar.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { SearchBar } from "./SearchBar.js";
 import { useSessionSearch } from "../hooks/useSessionSearch.js";
@@ -249,6 +250,9 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 
       {/* Active todo status — shows current in-progress task */}
       <TodoStatusLine sessionId={sessionId} />
+
+      {/* Persistent work board for orchestrator sessions */}
+      <WorkBoardBar sessionId={sessionId} />
 
       {/* Composer */}
       <Composer sessionId={sessionId} />

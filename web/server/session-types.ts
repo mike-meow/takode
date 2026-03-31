@@ -565,6 +565,7 @@ export type BrowserIncomingMessageBase =
       lastReadAt?: number;
       attentionReason?: "action" | "error" | "review" | null;
       generationStartedAt?: number | null;
+      board?: BoardRow[];
     }
   | { type: "session_stuck" }
   | { type: "session_unstuck" }

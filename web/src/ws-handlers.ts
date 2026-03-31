@@ -934,15 +934,9 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "board_updated": {
-      // Known limitation: board cards are rendered inline via ToolBlock
-      // detection of CLI output (parsing `__takode_board__` from results).
-      // The server broadcasts board_updated on mutations (including quest
-      // auto-removal), but the frontend does not store board state in
-      // Zustand. Already-rendered board cards won't live-update when a
-      // quest auto-completes -- the user sees the updated board on the
-      // next `takode board` command.
-      // TODO: store board state in Zustand keyed by session ID so
-      // board_updated can refresh displayed BoardBlock instances.
+      // Update Zustand board state so the persistent WorkBoardBar widget
+      // and any future live-updating inline boards stay current.
+      store.setSessionBoard(sessionId, data.board ?? []);
       break;
     }
 
@@ -991,6 +985,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           sessionAttention.set(sessionId, data.attentionReason ?? null);
           useStore.setState({ sessionAttention });
         }
+      }
+      // Sync board state from server on connect/reconnect
+      if (data.board) {
+        store.setSessionBoard(sessionId, data.board);
       }
       break;
     }

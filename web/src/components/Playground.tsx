@@ -10,6 +10,7 @@ import { CodexThinkingInline, MessageBubble, UserReplyChip, NotificationMarker }
 import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "./ToolBlock.js";
 import { BoardBlock } from "./BoardBlock.js";
+import { WorkBoardBar } from "./WorkBoardBar.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { useStore, COLOR_THEMES, isDarkTheme, type ColorTheme } from "../store.js";
@@ -2784,6 +2785,77 @@ export function Playground() {
             </Card>
             <Card label="Empty board">
               <BoardBlock board={[]} />
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Work Board Bar (Persistent Widget) ────────────────────── */}
+        <Section
+          title="Work Board Bar"
+          description="Persistent bottom bar for orchestrator sessions. Shows summary (collapsed) and full board table (expanded). Click the bar to toggle."
+        >
+          <div className="max-w-3xl space-y-4">
+            <Card label="Work Board Bar (click to seed store, then interact)">
+              <div className="p-3 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const boardSessionId = "playground-board-bar";
+                    // Seed Zustand store with mock board and orchestrator session
+                    const state = useStore.getState();
+                    const boardData = [
+                      {
+                        questId: "q-42",
+                        title: "Fix mobile sidebar overflow",
+                        worker: "abc123",
+                        workerNum: 5,
+                        status: "IMPLEMENTING",
+                        updatedAt: Date.now() - 60000,
+                      },
+                      {
+                        questId: "q-55",
+                        title: "Add dark mode toggle",
+                        worker: "def456",
+                        workerNum: 8,
+                        status: "SKEPTIC_REVIEWING",
+                        waitFor: ["q-42"],
+                        updatedAt: Date.now() - 30000,
+                      },
+                      {
+                        questId: "q-61",
+                        title: "Optimize DB queries",
+                        status: "PORTING",
+                        waitFor: ["q-50", "q-51"],
+                        updatedAt: Date.now(),
+                      },
+                    ];
+                    state.setSessionBoard(boardSessionId, boardData);
+                    // Ensure sdkSessions includes an orchestrator entry
+                    const existing = state.sdkSessions.filter((s) => s.sessionId !== boardSessionId);
+                    useStore.setState({
+                      sdkSessions: [
+                        ...existing,
+                        {
+                          sessionId: boardSessionId,
+                          state: "connected",
+                          cwd: "/mock/playground",
+                          createdAt: Date.now(),
+                          isOrchestrator: true,
+                        } as any,
+                      ],
+                    });
+                  }}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors cursor-pointer"
+                >
+                  Seed board data
+                </button>
+                <div className="border border-cc-border rounded-lg overflow-hidden">
+                  <WorkBoardBar sessionId="playground-board-bar" />
+                </div>
+                <p className="text-[10px] text-cc-muted">
+                  Click "Seed board data" first, then click the bar to toggle between collapsed summary and expanded table view.
+                </p>
+              </div>
             </Card>
           </div>
         </Section>

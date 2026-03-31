@@ -8990,6 +8990,7 @@ export class WsBridge {
       lastReadAt: session.lastReadAt,
       attentionReason: session.attentionReason,
       generationStartedAt: session.generationStartedAt ?? null,
+      board: this.getBoard(session.id),
     });
   }
 

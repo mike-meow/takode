@@ -13,6 +13,7 @@ import type {
   VsCodeSelectionState,
 } from "./types.js";
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
+import type { BoardRowData } from "./components/BoardTable.js";
 import { isEmbeddedInVsCode } from "./utils/embed-context.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
 
@@ -191,6 +192,10 @@ interface AppState {
   // Latest board tool-use ID per session (for auto-collapsing stale board cards)
   latestBoardToolUseId: Map<string, string>;
   setLatestBoardToolUseId: (sessionId: string, toolUseId: string) => void;
+
+  // Board state per session (server-authoritative, from board_updated messages)
+  sessionBoards: Map<string, BoardRowData[]>;
+  setSessionBoard: (sessionId: string, board: BoardRowData[]) => void;
 
   // Background agent notifications (task_notification from CLI)
   backgroundAgentNotifs: Map<string, Map<string, { status: string; outputFile?: string; summary?: string }>>;
@@ -606,6 +611,13 @@ export const useStore = create<AppState>((set) => ({
       const next = new Map(s.latestBoardToolUseId);
       next.set(sessionId, toolUseId);
       return { latestBoardToolUseId: next };
+    }),
+  sessionBoards: new Map(),
+  setSessionBoard: (sessionId, board) =>
+    set((s) => {
+      const next = new Map(s.sessionBoards);
+      next.set(sessionId, board);
+      return { sessionBoards: next };
     }),
   backgroundAgentNotifs: new Map(),
   toolStartTimestamps: new Map(),
@@ -1992,6 +2004,7 @@ export const useStore = create<AppState>((set) => ({
       toolProgress: new Map(),
       toolResults: new Map(),
       latestBoardToolUseId: new Map(),
+      sessionBoards: new Map(),
       backgroundAgentNotifs: new Map(),
       toolStartTimestamps: new Map(),
       prStatus: new Map(),

@@ -16,7 +16,8 @@ interface MockStoreState {
   cliEverConnected: Map<string, boolean>;
   cliDisconnectReason: Map<string, "idle_limit" | "broken" | null>;
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
-  sdkSessions: Array<{ sessionId: string; archived?: boolean }>;
+  sdkSessions: Array<{ sessionId: string; archived?: boolean; isOrchestrator?: boolean }>;
+  sessionBoards: Map<string, unknown[]>;
 }
 
 let mockState: MockStoreState;
@@ -32,6 +33,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     cliDisconnectReason: new Map([["s1", null]]),
     sessionStatus: new Map([["s1", "idle"]]),
     sdkSessions: [{ sessionId: "s1", archived: false }],
+    sessionBoards: new Map(),
     ...overrides,
   };
 }
