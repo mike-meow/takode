@@ -207,6 +207,12 @@ html, body {
   50% { filter: drop-shadow(0 0 4px var(--glow-color, transparent)); }
 }
 
+/* Reviewer badge glow — box-shadow ring for pill-shaped badges */
+@keyframes reviewer-badge-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 6px 0 var(--glow-color, transparent); }
+}
+
 /* Yarn ball rolling — rocks ±10° with synchronized horizontal translation
    to simulate a ball rolling back and forth on a surface. */
 @keyframes yarn-ball-roll {

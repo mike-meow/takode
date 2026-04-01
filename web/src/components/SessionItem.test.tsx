@@ -10,6 +10,7 @@ const mockStoreState = {
   sessions: new Map<string, { claimedQuestStatus?: string }>(),
   sessionTaskPreview: new Map<string, { text: string; updatedAt: number }>(),
   sessionPreviewUpdatedAt: new Map<string, number>(),
+  sessionAttention: new Map<string, "action" | "error" | "review" | null>(),
 };
 
 vi.mock("../store.js", () => ({
@@ -309,5 +310,110 @@ describe("SessionItem reviewer badge", () => {
 
     const badge = screen.getByTestId("session-reviewer-badge");
     expect(badge).toHaveAttribute("title", "Reviewer — click to open");
+  });
+
+  it("shows running status glow when reviewer is actively working", () => {
+    // A running reviewer should have a green-themed badge with breathing glow
+    // animation so the user can see at a glance that the review is in progress.
+    const reviewer = makeSession({
+      id: "reviewer-1",
+      reviewerOf: 8,
+      status: "running",
+      sdkState: "running",
+      isConnected: true,
+    });
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    expect(badge).toHaveAttribute("data-reviewer-status", "running");
+    expect(badge).toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
+  });
+
+  it("shows permission status glow when reviewer needs approval", () => {
+    // A reviewer waiting for tool permission should have an amber-themed badge
+    // with breathing glow, mirroring how the main status stripe signals permission.
+    const reviewer = makeSession({
+      id: "reviewer-1",
+      reviewerOf: 8,
+      permCount: 2,
+      status: "idle",
+      sdkState: "connected",
+      isConnected: true,
+    });
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    expect(badge).toHaveAttribute("data-reviewer-status", "permission");
+    expect(badge).toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
+  });
+
+  it("shows no glow animation when reviewer is idle", () => {
+    // An idle reviewer should display as a plain muted badge with no glow,
+    // so it doesn't draw attention when nothing is happening.
+    const reviewer = makeSession({
+      id: "reviewer-1",
+      reviewerOf: 8,
+      status: "idle",
+      sdkState: "connected",
+      isConnected: true,
+      permCount: 0,
+    });
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    expect(badge).toHaveAttribute("data-reviewer-status", "idle");
+    expect(badge).not.toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
+  });
+
+  it("shows no glow animation when reviewer is disconnected", () => {
+    // A disconnected reviewer (CLI process dropped) should fall back to the
+    // gray/muted theme with no glow, same as idle -- no user action needed.
+    const reviewer = makeSession({
+      id: "reviewer-1",
+      reviewerOf: 8,
+      status: "idle",
+      sdkState: "connected",
+      isConnected: false,
+      permCount: 0,
+    });
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    expect(badge).toHaveAttribute("data-reviewer-status", "disconnected");
+    expect(badge).not.toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
+  });
+
+  it("shows archived status when reviewer session is archived", () => {
+    // An archived reviewer should show the archived visual status (gray, no glow).
+    // This verifies that the `archived` field is correctly passed to deriveSessionStatus.
+    const reviewer = makeSession({
+      id: "reviewer-1",
+      reviewerOf: 8,
+      archived: true,
+      status: "idle",
+      sdkState: "connected",
+      isConnected: true,
+      permCount: 0,
+    });
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    expect(badge).toHaveAttribute("data-reviewer-status", "archived");
+    expect(badge).not.toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
   });
 });

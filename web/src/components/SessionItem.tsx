@@ -28,6 +28,21 @@ const STRIPE_COLOR_CLASS: Record<SessionVisualStatus, string> = {
   idle: "bg-cc-muted/50",
 };
 
+/** Maps reviewer session status to badge border/text/glow colors */
+const REVIEWER_BADGE_THEME: Record<SessionVisualStatus, {
+  border: string;
+  text: string;
+  glow: string; // CSS rgba for box-shadow glow (empty = no glow)
+}> = {
+  running:          { border: "border-emerald-500/50", text: "text-emerald-400", glow: "rgba(34, 197, 94, 0.35)" },
+  compacting:       { border: "border-emerald-500/50", text: "text-emerald-400", glow: "rgba(34, 197, 94, 0.35)" },
+  permission:       { border: "border-amber-400/50",   text: "text-amber-400",   glow: "rgba(245, 158, 11, 0.35)" },
+  completed_unread: { border: "border-blue-500/40",    text: "text-blue-400",     glow: "" },
+  idle:             { border: "border-cc-muted/15",    text: "text-cc-muted",     glow: "" },
+  disconnected:     { border: "border-cc-muted/15",    text: "text-cc-muted",     glow: "" },
+  archived:         { border: "border-cc-muted/15",    text: "text-cc-muted",     glow: "" },
+};
+
 function timeAgo(epochMs: number): string {
   const diffMs = Date.now() - epochMs;
   if (diffMs < 60_000) return "just now";
@@ -134,6 +149,9 @@ export function SessionItem({
   const isEditing = editingSessionId === s.id;
   const isQuestNamed = useStore((st) => st.questNamedSessions.has(s.id));
   const questStatus = useStore((st) => st.sessions.get(s.id)?.claimedQuestStatus);
+  const reviewerAttention = useStore((st) =>
+    reviewerSession ? st.sessionAttention.get(reviewerSession.id) : undefined,
+  );
   const canSwipeToArchive = !archived && !reorderMode;
 
   // Long-press to open context menu on touch devices
@@ -568,24 +586,41 @@ export function SessionItem({
                     wt
                   </span>
                 )}
-                {reviewerSession && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigateToSession(reviewerSession.id);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title={`Reviewer${reviewerSession.sessionNum != null ? ` #${reviewerSession.sessionNum}` : ""} — click to open`}
-                    className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 text-cc-muted bg-cc-muted/10 hover:bg-cc-muted/20 transition-colors cursor-pointer border border-cc-muted/15"
-                    data-testid="session-reviewer-badge"
-                  >
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
-                      <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
-                    </svg>
-                    review
-                  </button>
-                )}
+                {reviewerSession && (() => {
+                  const rvStatus = deriveSessionStatus({
+                    archived: reviewerSession.archived,
+                    permCount: reviewerSession.permCount,
+                    isConnected: reviewerSession.isConnected,
+                    sdkState: reviewerSession.sdkState,
+                    status: reviewerSession.status,
+                    hasUnread: !!reviewerAttention,
+                    idleKilled: reviewerSession.idleKilled,
+                  });
+                  const rvTheme = REVIEWER_BADGE_THEME[rvStatus];
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigateToSession(reviewerSession.id);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      title={`Reviewer${reviewerSession.sessionNum != null ? ` #${reviewerSession.sessionNum}` : ""} — click to open`}
+                      className={`inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 ${rvTheme.text} bg-cc-muted/10 hover:bg-cc-muted/20 transition-colors cursor-pointer border ${rvTheme.border}`}
+                      style={rvTheme.glow ? {
+                        ["--glow-color" as string]: rvTheme.glow,
+                        animation: "reviewer-badge-glow 2s ease-in-out infinite",
+                      } : undefined}
+                      data-testid="session-reviewer-badge"
+                      data-reviewer-status={rvStatus}
+                    >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+                        <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
+                      </svg>
+                      review
+                    </button>
+                  );
+                })()}
                 {hasBranchDivergence && (
                   <span className="flex items-center gap-0.5 text-[10px] shrink-0">
                     {s.gitAhead > 0 && <span className="text-green-500">{s.gitAhead}&#8593;</span>}
