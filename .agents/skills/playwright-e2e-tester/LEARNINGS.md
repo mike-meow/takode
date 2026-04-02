@@ -23,6 +23,9 @@
   - visible `time` nodes may appear only for user rows in grouped feed views
   - `[data-testid="message-timestamp"]` can be empty in those contexts even when assistant text rendered
   - if duration is absent beside assistant timestamp after a fresh turn, record as unresolved with screenshot + DOM probe result
+- In this Codex sandbox, `npx mcp-cmd call playwright browser_* ...` can hang because direct access to the MCP Unix socket is blocked (`EPERM`) and Playwright browser tool RPCs may never return. If that happens, a reliable fallback is a one-off Node script importing the downloaded `playwright` package from `~/.npm/_npx/.../node_modules/playwright/index.mjs` and launching the known-installed Chromium binary under `~/Library/Caches/ms-playwright/chromium-1212/.../Google Chrome for Testing`.
+- On narrow desktop-size verification runs (`430x932`), the DOM may contain two Composer textareas; select the visible one by placeholder (for example `textarea[placeholder*='Type a message']`) instead of `locator("textarea").first()`.
+- `npx -y mcp-cmd stop playwright` can fail in this sandbox if npm tries to resolve `registry.npmjs.org`; manual fallback cleanup is `kill` the daemon/browser PIDs and remove `.mcp-cmd.json`.
 
 ## Quest outcomes in this run
 - Verified + checked: `q-70` (3/3), `q-38` (2/2), `q-20` (2/2), `q-53` (2/2).
