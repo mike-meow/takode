@@ -29,6 +29,7 @@ import {
 } from "../utils/vscode-context.js";
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
+import type { CodexAppReference, CodexSkillReference } from "../types.js";
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -157,7 +158,32 @@ async function ensureSupportedFormat(
 
 interface CommandItem {
   name: string;
-  type: "command" | "skill";
+  type: "command" | "skill" | "app";
+  trigger: "/" | "$";
+  insertText: string;
+  description?: string;
+}
+
+const DOLLAR_QUERY_PATTERN = /^[A-Za-z][A-Za-z0-9._:-]*$/;
+
+function toAppMentionSlug(name: string): string {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "app";
+}
+
+function toSkillMentionInsertText(skill: CodexSkillReference): string {
+  if (skill.path?.trim()) {
+    const escapedPath = skill.path.replace(/\\/g, "\\\\").replace(/\)/g, "\\)");
+    return `[$${skill.name}](${escapedPath})`;
+  }
+  return `$${skill.name}`;
+}
+
+function toAppMentionInsertText(app: CodexAppReference): string {
+  return `[$${toAppMentionSlug(app.name)}](app://${app.id})`;
 }
 
 function parseCodexModeSlashCommand(text: string): { uiMode: "plan" | "agent"; askPermission?: boolean } | null {
@@ -254,6 +280,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
+  const [dollarMenuOpen, setDollarMenuOpen] = useState(false);
+  const [dollarMenuIndex, setDollarMenuIndex] = useState(0);
+  const [dollarQuery, setDollarQuery] = useState("");
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showCodexReasoningDropdown, setShowCodexReasoningDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
@@ -282,6 +311,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageDragDepthRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
+  const dollarMenuRef = useRef<HTMLDivElement>(null);
+  const dollarAnchorRef = useRef<number>(-1);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
@@ -554,7 +585,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     };
   }, [isCodex]);
 
-  // Build command list from session data
+  // Build slash-command menu items from session data
   const allCommands = useMemo<CommandItem[]>(() => {
     const cmds: CommandItem[] = [];
     const seen = new Set<string>();
@@ -562,7 +593,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
       const normalized = name.trim();
       if (!normalized || seen.has(normalized)) return;
       seen.add(normalized);
-      cmds.push({ name: normalized, type });
+      cmds.push({
+        name: normalized,
+        type,
+        trigger: "/",
+        insertText: `/${normalized}`,
+      });
     };
     if (isCodex) {
       for (const cmd of CODEX_LOCAL_SLASH_COMMANDS) {
@@ -582,13 +618,67 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return cmds;
   }, [isCodex, sessionData?.slash_commands, sessionData?.skills]);
 
+  const dollarCommands = useMemo<CommandItem[]>(() => {
+    if (!isCodex) return [];
+    const cmds: CommandItem[] = [];
+    const seen = new Set<string>();
+    const skillMetadataByName = new Map<string, CodexSkillReference>();
+    for (const skill of sessionData?.skill_metadata ?? []) {
+      const name = skill.name.trim();
+      if (name && !skillMetadataByName.has(name)) skillMetadataByName.set(name, skill);
+    }
+
+    const pushSkill = (name: string, skill?: CodexSkillReference) => {
+      const normalized = name.trim();
+      if (!normalized || seen.has(`skill:${normalized}`)) return;
+      seen.add(`skill:${normalized}`);
+      cmds.push({
+        name: normalized,
+        type: "skill",
+        trigger: "$",
+        insertText: toSkillMentionInsertText(
+          skill ?? {
+            name: normalized,
+            path: "",
+          },
+        ),
+        ...(skill?.description ? { description: skill.description } : {}),
+      });
+    };
+
+    const pushApp = (app: CodexAppReference) => {
+      const id = app.id.trim();
+      const name = app.name.trim();
+      if (!id || !name || seen.has(`app:${id}`)) return;
+      seen.add(`app:${id}`);
+      cmds.push({
+        name,
+        type: "app",
+        trigger: "$",
+        insertText: toAppMentionInsertText(app),
+        ...(app.description ? { description: app.description } : {}),
+      });
+    };
+
+    for (const skill of sessionData?.skills ?? []) {
+      pushSkill(skill, skillMetadataByName.get(skill.trim()));
+    }
+    for (const skill of skillMetadataByName.values()) {
+      pushSkill(skill.name, skill);
+    }
+    for (const app of sessionData?.apps ?? []) {
+      pushApp(app);
+    }
+    return cmds;
+  }, [isCodex, sessionData?.apps, sessionData?.skill_metadata, sessionData?.skills]);
+
   useEffect(() => {
     if (!isCodex || !isConnected) return;
-    if ((sessionData?.skills?.length ?? 0) > 0) return;
+    if ((sessionData?.skill_metadata?.length ?? 0) > 0 || (sessionData?.apps?.length ?? 0) > 0) return;
     if (requestedCodexSkillRefreshSessionRef.current === sessionId) return;
     requestedCodexSkillRefreshSessionRef.current = sessionId;
     api.refreshSessionSkills(sessionId).catch(() => {});
-  }, [isCodex, isConnected, sessionData?.skills, sessionId]);
+  }, [isCodex, isConnected, sessionData?.apps, sessionData?.skill_metadata, sessionId]);
 
   // Filter commands based on what the user typed after /
   const filteredCommands = useMemo(() => {
@@ -628,6 +718,84 @@ export function Composer({ sessionId }: { sessionId: string }) {
       selected.scrollIntoView({ block: "nearest" });
     }
   }, [slashMenuIndex, slashMenuOpen]);
+
+  const filteredDollarCommands = useMemo(() => {
+    if (!dollarMenuOpen) return [];
+    const query = dollarQuery.toLowerCase();
+    if (query === "") return dollarCommands;
+    return dollarCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
+  }, [dollarCommands, dollarMenuOpen, dollarQuery]);
+
+  const detectDollarQuery = useCallback(
+    (inputText: string, cursorPos: number) => {
+      if (!isCodex || dollarCommands.length === 0) {
+        setDollarMenuOpen(false);
+        setDollarQuery("");
+        dollarAnchorRef.current = -1;
+        return;
+      }
+
+      let dollarPos = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        const ch = inputText[i];
+        if (ch === " " || ch === "\n" || ch === "\t") break;
+        if (ch === "$") {
+          if (i === 0 || /[\s({]/.test(inputText[i - 1])) {
+            dollarPos = i;
+          }
+          break;
+        }
+      }
+
+      const query = dollarPos === -1 ? "" : inputText.slice(dollarPos + 1, cursorPos);
+      const shouldOpen = dollarPos !== -1 && (query === "" || DOLLAR_QUERY_PATTERN.test(query));
+      if (!shouldOpen) {
+        setDollarMenuOpen(false);
+        dollarAnchorRef.current = -1;
+        setDollarQuery("");
+        return;
+      }
+
+      dollarAnchorRef.current = dollarPos;
+      setDollarMenuIndex(0);
+      setDollarQuery(query);
+      setDollarMenuOpen(true);
+    },
+    [dollarCommands.length, isCodex],
+  );
+
+  useEffect(() => {
+    const cursorPos = textareaRef.current?.selectionStart ?? text.length;
+    detectDollarQuery(text, cursorPos);
+  }, [detectDollarQuery, text]);
+
+  useEffect(() => {
+    if (dollarMenuIndex >= filteredDollarCommands.length) {
+      setDollarMenuIndex(Math.max(0, filteredDollarCommands.length - 1));
+    }
+  }, [dollarMenuIndex, filteredDollarCommands.length]);
+
+  useEffect(() => {
+    if (!dollarMenuRef.current || !dollarMenuOpen) return;
+    const items = dollarMenuRef.current.querySelectorAll("[data-dollar-index]");
+    const selected = items[dollarMenuIndex];
+    if (selected) {
+      selected.scrollIntoView({ block: "nearest" });
+    }
+  }, [dollarMenuIndex, dollarMenuOpen]);
+
+  useEffect(() => {
+    if (!dollarMenuOpen) return;
+    function handlePointerDown(e: PointerEvent) {
+      if (dollarMenuRef.current && !dollarMenuRef.current.contains(e.target as Node)) {
+        setDollarMenuOpen(false);
+        setDollarQuery("");
+        dollarAnchorRef.current = -1;
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [dollarMenuOpen]);
 
   // ─── @ mention file search ─────────────────────────────────────
 
@@ -802,11 +970,33 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [showAskConfirm]);
 
-  const selectCommand = useCallback((cmd: CommandItem) => {
-    setText(`/${cmd.name} `);
-    setSlashMenuOpen(false);
-    textareaRef.current?.focus();
-  }, []);
+  const selectCommand = useCallback(
+    (cmd: CommandItem) => {
+      if (cmd.trigger === "$") {
+        const anchor = dollarAnchorRef.current;
+        if (anchor === -1) return;
+        const cursorPos = textareaRef.current?.selectionStart ?? text.length;
+        const before = text.slice(0, anchor);
+        const after = text.slice(cursorPos);
+        const inserted = `${cmd.insertText} `;
+        setText(before + inserted + after);
+        setDollarMenuOpen(false);
+        setDollarQuery("");
+        dollarAnchorRef.current = -1;
+        requestAnimationFrame(() => {
+          const newPos = before.length + inserted.length;
+          textareaRef.current?.setSelectionRange(newPos, newPos);
+          textareaRef.current?.focus();
+        });
+        return;
+      }
+
+      setText(`${cmd.insertText} `);
+      setSlashMenuOpen(false);
+      textareaRef.current?.focus();
+    },
+    [setText, text],
+  );
 
   const acceptVoiceEdit = useCallback(() => {
     if (!voiceEditProposal) return;
@@ -846,6 +1036,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
       useStore.getState().removePermission(sessionId, pendingAskUserPerm.request_id);
       useStore.getState().clearComposerDraft(sessionId);
       setSlashMenuOpen(false);
+      setDollarMenuOpen(false);
+      setDollarQuery("");
+      dollarAnchorRef.current = -1;
       if (textareaRef.current) textareaRef.current.style.height = "auto";
       if (isTouchDevice()) textareaRef.current?.blur();
       else textareaRef.current?.focus();
@@ -877,6 +1070,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
         if (!switched) return;
         useStore.getState().clearComposerDraft(sessionId);
         setSlashMenuOpen(false);
+        setDollarMenuOpen(false);
+        setDollarQuery("");
+        dollarAnchorRef.current = -1;
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         if (isTouchDevice()) textareaRef.current?.blur();
         else textareaRef.current?.focus();
@@ -906,6 +1102,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
     useStore.getState().clearComposerDraft(sessionId);
     useStore.getState().setReplyContext(sessionId, null);
     setSlashMenuOpen(false);
+    setDollarMenuOpen(false);
+    setDollarQuery("");
+    dollarAnchorRef.current = -1;
     setMentionMenuOpen(false);
     setMentionResults([]);
 
@@ -1002,6 +1201,37 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
     }
 
+    // `$` skill/app mention menu navigation
+    if (dollarMenuOpen && filteredDollarCommands.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setDollarMenuIndex((i) => (i + 1) % filteredDollarCommands.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setDollarMenuIndex((i) => (i - 1 + filteredDollarCommands.length) % filteredDollarCommands.length);
+        return;
+      }
+      if (e.key === "Tab" && !e.shiftKey) {
+        e.preventDefault();
+        selectCommand(filteredDollarCommands[dollarMenuIndex]);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        selectCommand(filteredDollarCommands[dollarMenuIndex]);
+        return;
+      }
+    }
+    if (dollarMenuOpen && e.key === "Escape") {
+      e.preventDefault();
+      setDollarMenuOpen(false);
+      setDollarQuery("");
+      dollarAnchorRef.current = -1;
+      return;
+    }
+
     // @ mention menu navigation
     if (mentionMenuOpen && mentionResults.length > 0) {
       if (e.key === "ArrowDown") {
@@ -1066,6 +1296,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
     // Trigger @ mention detection at current cursor position
     detectMentionQuery(newText, cursorPos);
+    detectDollarQuery(newText, cursorPos);
   }
 
   function handleInterrupt() {
@@ -1468,8 +1699,61 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </div>
             )}
 
+            {/* `$` skill/app mention menu (Codex only) */}
+            {dollarMenuOpen && !slashMenuOpen && (
+              <div
+                ref={dollarMenuRef}
+                className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
+              >
+                {filteredDollarCommands.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[12px] text-cc-muted">No skills or apps found</div>
+                ) : (
+                  filteredDollarCommands.map((cmd, i) => (
+                    <button
+                      key={`${cmd.type}-${cmd.name}-${cmd.insertText}`}
+                      data-dollar-index={i}
+                      onClick={() => selectCommand(cmd)}
+                      className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                        i === dollarMenuIndex ? "bg-cc-hover" : "hover:bg-cc-hover/50"
+                      }`}
+                    >
+                      <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
+                        {cmd.type === "app" ? (
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            className="w-3.5 h-3.5"
+                          >
+                            <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+                            <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+                            <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+                            <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                            <path d="M8 1l1.796 3.64L14 5.255l-3 2.924.708 4.126L8 10.5l-3.708 1.805L5 8.18 2 5.255l4.204-.615L8 1z" />
+                          </svg>
+                        )}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[13px] font-medium text-cc-fg truncate">${cmd.name}</span>
+                          <span className="text-[11px] text-cc-muted shrink-0">{cmd.type}</span>
+                        </div>
+                        {cmd.description && (
+                          <div className="mt-0.5 text-[11px] text-cc-muted truncate">{cmd.description}</div>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
             {/* @ mention file search menu */}
-            {mentionMenuOpen && !slashMenuOpen && (
+            {mentionMenuOpen && !slashMenuOpen && !dollarMenuOpen && (
               <div
                 ref={mentionMenuRef}
                 className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
@@ -1713,7 +1997,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     ? "Type your answer..."
                     : pendingPlanPerm
                       ? "Type to reject plan and send new instructions..."
-                      : "Type a message... (/ for commands, @ for files)"
+                      : isCodex
+                        ? "Type a message... (/ for commands, $ for skills/apps, @ for files)"
+                        : "Type a message... (/ for commands, @ for files)"
                 }
                 rows={1}
                 className={`w-full px-4 pt-3 pb-1 text-base sm:text-sm bg-transparent resize-none focus:outline-none font-sans-ui placeholder:text-cc-muted disabled:opacity-50 overflow-y-auto ${

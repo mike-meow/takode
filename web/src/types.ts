@@ -1,5 +1,7 @@
 import type {
   SessionState,
+  CodexAppReference,
+  CodexSkillReference,
   PermissionRequest,
   ContentBlock,
   BrowserIncomingMessage,
@@ -30,6 +32,8 @@ import type {
 
 export type {
   SessionState,
+  CodexAppReference,
+  CodexSkillReference,
   PermissionRequest,
   ContentBlock,
   BrowserIncomingMessage,

@@ -91,6 +91,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     !cliConnected &&
     backendState !== "broken" &&
     (backendState === "initializing" || backendState === "resuming" || !cliEverConnected);
+  const isResumeMissingRolloutError =
+    backendError?.includes("could not be resumed because its local rollout is missing or unreadable") ?? false;
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Within-session message search bar */}
@@ -124,7 +126,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
             onClick={() => api.relaunchSession(sessionId).catch(console.error)}
             className="text-xs font-medium px-3 py-1 rounded-md bg-cc-warning/20 hover:bg-cc-warning/30 text-cc-warning transition-colors cursor-pointer"
           >
-            Relaunch
+            {isResumeMissingRolloutError ? "Start Fresh" : "Relaunch"}
           </button>
         </div>
       )}

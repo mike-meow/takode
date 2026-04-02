@@ -1115,6 +1115,30 @@ export function Playground() {
       model: "gpt-5.3-codex",
       cwd: "/Users/stan/Dev/project/codex-live-terminal",
       is_containerized: false,
+      skill_metadata: [
+        {
+          name: "doc-coauthoring",
+          path: "/Users/stan/.codex/skills/doc-coauthoring/SKILL.md",
+          description: "Draft and edit design docs",
+        },
+        {
+          name: "frontend-design",
+          path: "/Users/stan/.codex/skills/frontend-design/SKILL.md",
+          description: "Polish React UI states",
+        },
+      ],
+      apps: [
+        {
+          id: "connector_google_drive",
+          name: "Google Drive",
+          description: "Search and edit Drive files",
+        },
+        {
+          id: "connector_slack",
+          name: "Slack",
+          description: "Read and draft Slack updates",
+        },
+      ],
     };
     store.addSession(codexTerminalSession);
     store.setConnectionStatus(PLAYGROUND_CODEX_TERMINAL_SESSION_ID, "connected");
@@ -2518,6 +2542,99 @@ export function Playground() {
                           <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                          <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <div className="mt-4" />
+            <Card label="Codex `$` skill/app picker">
+              <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+                <div className="relative bg-cc-input-bg border border-cc-border rounded-[14px] overflow-visible">
+                  <div className="absolute left-2 right-2 bottom-full mb-1 rounded-[10px] border border-cc-border bg-cc-card shadow-lg py-1">
+                    {[
+                      {
+                        label: "$doc-coauthoring",
+                        kind: "skill",
+                        description: "Draft and edit design docs",
+                      },
+                      {
+                        label: "$google-drive",
+                        kind: "app",
+                        description: "Search and edit Drive files",
+                      },
+                    ].map((entry, index) => (
+                      <div
+                        key={entry.label}
+                        className={`w-full px-3 py-2 flex items-center gap-2.5 ${
+                          index === 0 ? "bg-cc-hover" : ""
+                        }`}
+                      >
+                        <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
+                          {entry.kind === "app" ? (
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              className="w-3.5 h-3.5"
+                            >
+                              <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+                              <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+                              <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+                              <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                              <path d="M8 1l1.796 3.64L14 5.255l-3 2.924.708 4.126L8 10.5l-3.708 1.805L5 8.18 2 5.255l4.204-.615L8 1z" />
+                            </svg>
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-[13px] font-medium text-cc-fg">{entry.label}</span>
+                            <span className="shrink-0 text-[11px] text-cc-muted">{entry.kind}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-cc-muted">{entry.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <textarea
+                    readOnly
+                    value="Use $doc"
+                    rows={1}
+                    className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                    style={{ minHeight: "36px" }}
+                  />
+                  <div className="flex items-center justify-between px-2.5 pb-2.5">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>agent</span>
+                    </div>
+                    <div className="flex items-center gap-1">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-primary text-white">
                         <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
                           <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />

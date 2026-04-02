@@ -936,6 +936,27 @@ describe("Composer mode toggle", () => {
       effort: "high",
     });
   });
+
+  it("codex reasoning dropdown includes XHigh and sends xhigh", async () => {
+    // Verifies the extra-high reasoning level is available in the composer menu.
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        model: "gpt-5.4",
+        permissionMode: "plan",
+      },
+    });
+    render(<Composer sessionId="s1" />);
+
+    const trigger = screen.getByTitle("Reasoning effort (relaunch required)");
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByText("XHigh"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "set_codex_reasoning_effort",
+      effort: "xhigh",
+    });
+  });
 });
 
 // ─── Ask Permission toggle ──────────────────────────────────────────────────
@@ -1124,6 +1145,115 @@ describe("Composer slash menu", () => {
     // Each command should display its type
     expect(screen.getByText("command")).toBeTruthy();
     expect(screen.getByText("skill")).toBeTruthy();
+  });
+});
+
+// ─── Dollar mention menu ─────────────────────────────────────────────────────
+
+describe("Composer dollar mention menu", () => {
+  it("opens with Codex skills and apps when typing $", () => {
+    // Validates the Codex-style `$` mention picker combines skills and enabled apps.
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        skills: ["review"],
+        skill_metadata: [
+          {
+            name: "review",
+            path: "/Users/test/.codex/skills/review/SKILL.md",
+            description: "Review code changes",
+          },
+        ],
+        apps: [
+          {
+            id: "connector_google_drive",
+            name: "Google Drive",
+            description: "Search and edit Drive files",
+          },
+        ],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "$", selectionStart: 1 } });
+
+    expect(screen.getByText("$review")).toBeTruthy();
+    expect(screen.getByText("$Google Drive")).toBeTruthy();
+    expect(screen.getByText("Review code changes")).toBeTruthy();
+    expect(screen.getByText("Search and edit Drive files")).toBeTruthy();
+  });
+
+  it("filters app and skill mentions by the token after $", () => {
+    // Validates `$` filtering works inside prose, not just at the start of the prompt.
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        skills: ["review"],
+        apps: [
+          {
+            id: "connector_google_drive",
+            name: "Google Drive",
+            description: "Search and edit Drive files",
+          },
+        ],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "Use $goo", selectionStart: "Use $goo".length } });
+
+    expect(screen.getByText("$Google Drive")).toBeTruthy();
+    expect(screen.queryByText("$review")).toBeNull();
+  });
+
+  it("inserts a skill mention link when a metadata path is available", () => {
+    // Codex can resolve `$skill` text itself, but inserting a `[$skill](path)` link
+    // lets the backend attach a structured skill input item and avoid extra lookup.
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        skills: ["review"],
+        skill_metadata: [
+          {
+            name: "review",
+            path: "/Users/test/.codex/skills/review/SKILL.md",
+            description: "Review code changes",
+          },
+        ],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Run $rev", selectionStart: "Run $rev".length } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("Run [$review](/Users/test/.codex/skills/review/SKILL.md) ");
+  });
+
+  it("inserts an app mention link when selecting an app", () => {
+    // Validates app mentions serialize to the `app://` markdown form understood by Codex.
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        apps: [
+          {
+            id: "connector_google_drive",
+            name: "Google Drive",
+            description: "Search and edit Drive files",
+          },
+        ],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Use $goo", selectionStart: "Use $goo".length } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("Use [$google-drive](app://connector_google_drive) ");
   });
 });
 

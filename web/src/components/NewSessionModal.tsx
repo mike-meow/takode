@@ -473,6 +473,43 @@ export function NewSessionModal({
             /* ── Resume Mode UI ─────────────────────────────────── */
             <>
               <div className="px-5 py-4 space-y-3">
+                {backends.length > 1 && (
+                  <div>
+                    <label className="text-[11px] text-cc-muted uppercase tracking-wider mb-1 block">Backend</label>
+                    <div className="flex items-center bg-cc-hover/50 rounded-lg p-0.5">
+                      {backends.map((b) => (
+                        <button
+                          key={b.id}
+                          onClick={() => b.available && switchBackend(b.id as BackendType)}
+                          disabled={!b.available}
+                          title={b.available ? b.name : `${b.name} CLI not found in PATH`}
+                          className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            !b.available
+                              ? "text-cc-muted/40 cursor-not-allowed"
+                              : backend === b.id
+                                ? "bg-cc-primary/15 text-cc-primary font-medium cursor-pointer"
+                                : "text-cc-muted hover:text-cc-fg cursor-pointer"
+                          }`}
+                        >
+                          {b.name}
+                          {!b.available && (
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              className="w-3 h-3 text-cc-error/60"
+                            >
+                              <circle cx="8" cy="8" r="6" />
+                              <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Manual session ID input */}
                 <div>
                   <label className="text-[11px] text-cc-muted uppercase tracking-wider mb-1 block">Session ID</label>

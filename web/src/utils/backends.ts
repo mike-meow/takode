@@ -66,6 +66,7 @@ export const CODEX_REASONING_EFFORTS: ModeOption[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
 ];
 
 // ─── Getters ─────────────────────────────────────────────────────────────────
