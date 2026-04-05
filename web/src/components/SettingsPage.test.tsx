@@ -122,6 +122,7 @@ beforeEach(() => {
     claudeBinary: "",
     codexBinary: "",
     maxKeepAlive: 0,
+    heavyRepoModeEnabled: false,
     editorConfig: { editor: "none" },
   });
   mockApi.updateSettings.mockResolvedValue({
@@ -134,6 +135,7 @@ beforeEach(() => {
     claudeBinary: "",
     codexBinary: "",
     maxKeepAlive: 0,
+    heavyRepoModeEnabled: false,
     editorConfig: { editor: "none" },
   });
   mockApi.getNamerLogs.mockResolvedValue([]);
@@ -159,6 +161,7 @@ describe("SettingsPage", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       namerConfig: { backend: "claude" },
       autoNamerEnabled: true,
       editorConfig: { editor: "none" },
@@ -237,6 +240,7 @@ describe("SettingsPage", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       editorConfig: { editor: "vscode-local" },
     });
     mockApi.updateSettings.mockResolvedValue({
@@ -249,6 +253,7 @@ describe("SettingsPage", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       editorConfig: { editor: "cursor" },
     });
 
@@ -259,6 +264,30 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(mockApi.updateSettings).toHaveBeenCalledWith({ editorConfig: { editor: "cursor" } });
     });
+  });
+
+  it("updates heavy repo mode from the Sessions settings section", async () => {
+    mockApi.updateSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: true,
+      editorConfig: { editor: "none" },
+    });
+
+    render(<SettingsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /Heavy Repo Mode Off/ }));
+
+    await waitFor(() => {
+      expect(mockApi.updateSettings).toHaveBeenCalledWith({ heavyRepoModeEnabled: true });
+    });
+    expect(screen.getByRole("button", { name: /Heavy Repo Mode On/ })).toBeInTheDocument();
   });
 
   it("requests desktop permission before enabling desktop alerts", async () => {

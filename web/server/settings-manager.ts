@@ -27,6 +27,8 @@ export interface CompanionSettings {
   defaultClaudeBackend: "claude" | "claude-sdk";
   /** Max number of live CLI processes to keep alive (0 = unlimited) */
   maxKeepAlive: number;
+  /** Whether session list git refreshes should run in the background for large/slow repos */
+  heavyRepoModeEnabled: boolean;
   /** Whether LLM auto-approval is enabled globally (default: false) */
   autoApprovalEnabled: boolean;
   /** Model to use for auto-approval LLM calls (empty = use session model, falls back to "haiku") */
@@ -116,6 +118,7 @@ let settings: CompanionSettings = {
   codexBinary: "",
   defaultClaudeBackend: "claude",
   maxKeepAlive: 0,
+  heavyRepoModeEnabled: false,
   autoApprovalEnabled: false,
   autoApprovalModel: "",
   autoApprovalMaxConcurrency: 4,
@@ -292,6 +295,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
         ? raw.defaultClaudeBackend
         : "claude",
     maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
+    heavyRepoModeEnabled: typeof raw?.heavyRepoModeEnabled === "boolean" ? raw.heavyRepoModeEnabled : false,
     autoApprovalEnabled: typeof raw?.autoApprovalEnabled === "boolean" ? raw.autoApprovalEnabled : false,
     autoApprovalModel: typeof raw?.autoApprovalModel === "string" ? raw.autoApprovalModel : "",
     autoApprovalMaxConcurrency:
@@ -395,6 +399,7 @@ export function updateSettings(
       | "codexBinary"
       | "defaultClaudeBackend"
       | "maxKeepAlive"
+      | "heavyRepoModeEnabled"
       | "autoApprovalEnabled"
       | "autoApprovalModel"
       | "autoApprovalMaxConcurrency"

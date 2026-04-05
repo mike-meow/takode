@@ -85,6 +85,9 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [maxKeepAlive, setMaxKeepAlive] = useState(0);
   const [lifecycleSaving, setLifecycleSaving] = useState(false);
   const [lifecycleError, setLifecycleError] = useState("");
+  const [heavyRepoModeEnabled, setHeavyRepoModeEnabled] = useState(false);
+  const [heavyRepoSaving, setHeavyRepoSaving] = useState(false);
+  const [heavyRepoError, setHeavyRepoError] = useState("");
 
   // Sleep inhibitor state
   const [sleepInhibitorEnabled, setSleepInhibitorEnabled] = useState(false);
@@ -188,6 +191,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setCodexBin(s.codexBinary || "");
         setDefaultClaudeBackend(s.defaultClaudeBackend || "claude");
         setMaxKeepAlive(s.maxKeepAlive || 0);
+        setHeavyRepoModeEnabled(s.heavyRepoModeEnabled ?? false);
         setSleepInhibitorEnabled(s.sleepInhibitorEnabled ?? false);
         setSleepInhibitorDuration(s.sleepInhibitorDurationMinutes ?? 5);
         setPoConfigured(s.pushoverConfigured);
@@ -393,6 +397,20 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setLifecycleSaving(false);
       }
     }, 800);
+  }
+
+  async function saveHeavyRepoMode(enabled: boolean) {
+    setHeavyRepoSaving(true);
+    setHeavyRepoError("");
+    try {
+      const res = await api.updateSettings({ heavyRepoModeEnabled: enabled });
+      setHeavyRepoModeEnabled(res.heavyRepoModeEnabled ?? false);
+    } catch (err: unknown) {
+      setHeavyRepoModeEnabled(!enabled);
+      setHeavyRepoError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHeavyRepoSaving(false);
+    }
   }
 
   async function saveSleepInhibitor(enabled: boolean, duration: number) {
@@ -820,13 +838,45 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               </p>
             </div>
 
+            <div className="border-t border-cc-border pt-3 space-y-2">
+              <div>
+                <span className="text-sm font-medium text-cc-fg">Heavy Repo Mode</span>
+                <p className="mt-0.5 text-xs text-cc-muted">
+                  Return cached session rows immediately and refresh worktree git metadata in the background. Useful for
+                  large repos or slow filesystems; diff and branch badges may update shortly after the session list
+                  renders.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={heavyRepoSaving}
+                aria-label={`Heavy Repo Mode ${heavyRepoModeEnabled ? "On" : "Off"}`}
+                onClick={() => {
+                  const next = !heavyRepoModeEnabled;
+                  setHeavyRepoModeEnabled(next);
+                  saveHeavyRepoMode(next);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+              >
+                <span>Enabled</span>
+                <span className="text-xs text-cc-muted">
+                  {heavyRepoSaving ? "..." : heavyRepoModeEnabled ? "On" : "Off"}
+                </span>
+              </button>
+            </div>
+
             {lifecycleError && (
               <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
                 {lifecycleError}
               </div>
             )}
+            {heavyRepoError && (
+              <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                {heavyRepoError}
+              </div>
+            )}
 
-            {lifecycleSaving && <p className="text-xs text-cc-muted">Saving...</p>}
+            {(lifecycleSaving || heavyRepoSaving) && <p className="text-xs text-cc-muted">Saving...</p>}
           </div>
 
           {/* Sleep Inhibitor (macOS only) */}

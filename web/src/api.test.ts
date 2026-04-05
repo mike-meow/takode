@@ -281,6 +281,18 @@ describe("settings", () => {
     expect(opts.method).toBe("PUT");
     expect(JSON.parse(opts.body)).toEqual({ serverName: "test" });
   });
+
+  it("sends heavy repo mode through PUT /api/settings", async () => {
+    const settings = { serverName: "", serverId: "test-id", heavyRepoModeEnabled: true };
+    mockFetch.mockResolvedValueOnce(mockResponse(settings));
+
+    await api.updateSettings({ heavyRepoModeEnabled: true });
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/settings");
+    expect(opts.method).toBe("PUT");
+    expect(JSON.parse(opts.body)).toEqual({ heavyRepoModeEnabled: true });
+  });
 });
 
 // ===========================================================================

@@ -25,7 +25,8 @@ beforeEach(() => {
   secretsPath = _getSecretsPathForTest(settingsPath);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await _flushForTest();
   rmSync(tempDir, { recursive: true, force: true });
   _resetForTest();
 });
@@ -43,6 +44,7 @@ describe("settings-manager", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "",
       autoApprovalMaxConcurrency: 4,
@@ -293,6 +295,7 @@ describe("settings-manager", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "",
       autoApprovalMaxConcurrency: 4,
@@ -489,6 +492,23 @@ describe("maxKeepAlive settings", () => {
     writeFileSync(settingsPath, JSON.stringify({ maxKeepAlive: 3.7, updatedAt: 0 }), "utf-8");
     _resetForTest(settingsPath);
     expect(getSettings().maxKeepAlive).toBe(3);
+  });
+});
+
+describe("heavyRepoModeEnabled settings", () => {
+  it("updates and persists heavyRepoModeEnabled", async () => {
+    const updated = updateSettings({ heavyRepoModeEnabled: true });
+    expect(updated.heavyRepoModeEnabled).toBe(true);
+
+    await _flushForTest();
+    const saved = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    expect(saved.heavyRepoModeEnabled).toBe(true);
+  });
+
+  it("normalizes missing and non-boolean heavyRepoModeEnabled to false", () => {
+    writeFileSync(settingsPath, JSON.stringify({ heavyRepoModeEnabled: "true", updatedAt: 0 }), "utf-8");
+    _resetForTest(settingsPath);
+    expect(getSettings().heavyRepoModeEnabled).toBe(false);
   });
 });
 

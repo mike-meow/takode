@@ -108,6 +108,7 @@ vi.mock("./settings-manager.js", () => ({
     claudeBinary: "",
     codexBinary: "",
     maxKeepAlive: 0,
+    heavyRepoModeEnabled: false,
     autoApprovalEnabled: false,
     autoApprovalModel: "haiku",
     autoApprovalMaxConcurrency: 4,
@@ -137,6 +138,7 @@ vi.mock("./settings-manager.js", () => ({
     claudeBinary: patch.claudeBinary ?? "",
     codexBinary: patch.codexBinary ?? "",
     maxKeepAlive: patch.maxKeepAlive ?? 0,
+    heavyRepoModeEnabled: patch.heavyRepoModeEnabled ?? false,
     autoApprovalEnabled: patch.autoApprovalEnabled ?? false,
     autoApprovalModel: patch.autoApprovalModel ?? "haiku",
     autoApprovalMaxConcurrency: patch.autoApprovalMaxConcurrency ?? 4,
@@ -1260,6 +1262,54 @@ describe("GET /api/sessions", () => {
       sessionId: "s1",
       totalLinesAdded: 0,
       totalLinesRemoved: 0,
+    });
+  });
+
+  it("returns cached worktree diff totals immediately in heavy repo mode and refreshes in the background", async () => {
+    const defaultSettings = vi.mocked(settingsManager.getSettings).getMockImplementation()?.() as ReturnType<
+      typeof settingsManager.getSettings
+    >;
+    vi.mocked(settingsManager.getSettings).mockReturnValueOnce({
+      ...defaultSettings,
+      heavyRepoModeEnabled: true,
+    });
+    const sessions = [{ sessionId: "s1", state: "running", cwd: "/wt/repo", isWorktree: true, archived: false }];
+    const bridgeSession = {
+      state: {
+        session_id: "s1",
+        is_worktree: true,
+        git_branch: "jiayi-wt-9869",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 777,
+        total_lines_removed: 55,
+      },
+      isGenerating: false,
+    };
+    launcher.listSessions.mockReturnValue(sessions);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    bridge.getSession.mockReturnValue(bridgeSession as any);
+    bridge.refreshWorktreeGitStateForSnapshot.mockImplementation(async () => {
+      await Promise.resolve();
+      bridgeSession.state.total_lines_added = 0;
+      bridgeSession.state.total_lines_removed = 0;
+      return bridgeSession.state as any;
+    });
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // Heavy repo mode keeps the list endpoint fast by returning cached values.
+    expect(json[0]).toMatchObject({
+      sessionId: "s1",
+      totalLinesAdded: 777,
+      totalLinesRemoved: 55,
+    });
+    await Promise.resolve();
+    expect(bridge.refreshWorktreeGitStateForSnapshot).toHaveBeenCalledWith("s1", {
+      broadcastUpdate: true,
+      notifyPoller: true,
     });
   });
 
@@ -2388,6 +2438,7 @@ describe("POST /api/transcribe", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2450,6 +2501,7 @@ describe("POST /api/transcribe", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2543,6 +2595,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2576,6 +2629,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
@@ -2608,6 +2662,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2641,6 +2696,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
@@ -2674,6 +2730,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2713,6 +2770,7 @@ describe("GET /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2771,6 +2829,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2806,12 +2865,14 @@ describe("PUT /api/settings", () => {
       claudeBinary: undefined,
       codexBinary: undefined,
       maxKeepAlive: undefined,
+      heavyRepoModeEnabled: undefined,
       autoApprovalEnabled: undefined,
       autoApprovalModel: undefined,
       namerConfig: undefined,
       autoNamerEnabled: undefined,
       transcriptionConfig: undefined,
       editorConfig: undefined,
+      defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
     });
@@ -2826,6 +2887,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       namerConfig: { backend: "claude" },
@@ -2855,6 +2917,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -2890,12 +2953,14 @@ describe("PUT /api/settings", () => {
       claudeBinary: undefined,
       codexBinary: undefined,
       maxKeepAlive: undefined,
+      heavyRepoModeEnabled: undefined,
       autoApprovalEnabled: undefined,
       autoApprovalModel: undefined,
       namerConfig: undefined,
       autoNamerEnabled: undefined,
       transcriptionConfig: undefined,
       editorConfig: undefined,
+      defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
     });
@@ -2913,6 +2978,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3013,12 +3079,14 @@ describe("PUT /api/settings", () => {
       claudeBinary: undefined,
       codexBinary: undefined,
       maxKeepAlive: undefined,
+      heavyRepoModeEnabled: undefined,
       autoApprovalEnabled: undefined,
       autoApprovalModel: undefined,
       namerConfig: undefined,
       autoNamerEnabled: undefined,
       transcriptionConfig: undefined,
       editorConfig: undefined,
+      defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
     });
@@ -3036,6 +3104,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "/usr/local/bin/claude",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3117,6 +3186,18 @@ describe("PUT /api/settings", () => {
     expect(json).toEqual({ error: "maxKeepAlive must be a non-negative integer" });
   });
 
+  it("returns 400 for non-boolean heavyRepoModeEnabled", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ heavyRepoModeEnabled: "true" }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "heavyRepoModeEnabled must be a boolean" });
+  });
+
   it("updates maxKeepAlive setting", async () => {
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
       serverName: "",
@@ -3129,6 +3210,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 5,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3160,6 +3242,52 @@ describe("PUT /api/settings", () => {
     expect(json.maxKeepAlive).toBe(5);
   });
 
+  it("updates heavyRepoModeEnabled setting", async () => {
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: true,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: true,
+        enhancementModel: "gpt-5-mini",
+      },
+      editorConfig: { editor: "none" },
+      defaultClaudeBackend: "claude",
+      sleepInhibitorEnabled: false,
+      sleepInhibitorDurationMinutes: 5,
+      updatedAt: Date.now(),
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ heavyRepoModeEnabled: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ heavyRepoModeEnabled: true }),
+    );
+    const json = await res.json();
+    expect(json.heavyRepoModeEnabled).toBe(true);
+  });
+
   it("preserves custom transcription vocabulary when saving settings", async () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "",
@@ -3172,6 +3300,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3202,6 +3331,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3272,6 +3402,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3317,6 +3448,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -3351,6 +3483,7 @@ describe("PUT /api/settings", () => {
       claudeBinary: "",
       codexBinary: "",
       maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
       autoApprovalEnabled: false,
       autoApprovalModel: "haiku",
       autoApprovalMaxConcurrency: 4,
@@ -5718,6 +5851,93 @@ describe("Takode server-authoritative auth", () => {
     const workerJson = await workerAllowed.json();
     expect(Array.isArray(workerJson)).toBe(true);
     expect(workerJson).toHaveLength(3);
+  });
+
+  it("returns cached takode worktree rows in heavy repo mode and refreshes in the background", async () => {
+    const defaultSettings = vi.mocked(settingsManager.getSettings).getMockImplementation()?.() as ReturnType<
+      typeof settingsManager.getSettings
+    >;
+    vi.mocked(settingsManager.getSettings).mockReturnValueOnce({
+      ...defaultSettings,
+      heavyRepoModeEnabled: true,
+    });
+    const sessions = setupTakodeSessions();
+    sessions["worker-1"].isWorktree = true;
+    sessions["worker-1"].archived = false;
+    const bridgeSession = {
+      state: {
+        session_id: "worker-1",
+        is_worktree: true,
+        git_branch: "jiayi-wt-9869",
+        total_lines_added: 777,
+        total_lines_removed: 55,
+      },
+      isGenerating: false,
+    };
+    bridge.getSession.mockImplementation((id: string) => (id === "worker-1" ? bridgeSession : null));
+    bridge.refreshWorktreeGitStateForSnapshot.mockImplementation(async () => {
+      await Promise.resolve();
+      bridgeSession.state.total_lines_added = 0;
+      bridgeSession.state.total_lines_removed = 0;
+      return bridgeSession.state as any;
+    });
+
+    const res = await app.request("/api/takode/sessions", {
+      method: "GET",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.find((s: any) => s.sessionId === "worker-1")).toMatchObject({
+      sessionId: "worker-1",
+      totalLinesAdded: 777,
+      totalLinesRemoved: 55,
+    });
+    await Promise.resolve();
+    expect(bridge.refreshWorktreeGitStateForSnapshot).toHaveBeenCalledWith("worker-1", {
+      broadcastUpdate: true,
+      notifyPoller: true,
+    });
+  });
+
+  it("refreshes takode worktree rows before returning when heavy repo mode is disabled", async () => {
+    const sessions = setupTakodeSessions();
+    sessions["worker-1"].isWorktree = true;
+    sessions["worker-1"].archived = false;
+    const bridgeSession = {
+      state: {
+        session_id: "worker-1",
+        is_worktree: true,
+        git_branch: "jiayi-wt-9869",
+        total_lines_added: 777,
+        total_lines_removed: 55,
+      },
+      isGenerating: false,
+    };
+    bridge.getSession.mockImplementation((id: string) => (id === "worker-1" ? bridgeSession : null));
+    bridge.refreshWorktreeGitStateForSnapshot.mockImplementation(async () => {
+      bridgeSession.state.total_lines_added = 0;
+      bridgeSession.state.total_lines_removed = 0;
+      return bridgeSession.state as any;
+    });
+
+    const res = await app.request("/api/takode/sessions", {
+      method: "GET",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.find((s: any) => s.sessionId === "worker-1")).toMatchObject({
+      sessionId: "worker-1",
+      totalLinesAdded: 0,
+      totalLinesRemoved: 0,
+    });
+    expect(bridge.refreshWorktreeGitStateForSnapshot).toHaveBeenCalledWith("worker-1", {
+      broadcastUpdate: true,
+      notifyPoller: true,
+    });
   });
 
   it("enforces authenticated orchestrator identity for herd and unherd", async () => {

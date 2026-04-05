@@ -147,6 +147,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
       maxKeepAlive: settings.maxKeepAlive,
+      heavyRepoModeEnabled: settings.heavyRepoModeEnabled,
       autoApprovalEnabled: settings.autoApprovalEnabled,
       autoApprovalModel: settings.autoApprovalModel,
       namerConfig: maskNamerConfig(settings.namerConfig),
@@ -198,6 +199,9 @@ export function createSettingsRoutes(ctx: RouteContext) {
       (typeof body.maxKeepAlive !== "number" || body.maxKeepAlive < 0 || !Number.isInteger(body.maxKeepAlive))
     ) {
       return c.json({ error: "maxKeepAlive must be a non-negative integer" }, 400);
+    }
+    if (body.heavyRepoModeEnabled !== undefined && typeof body.heavyRepoModeEnabled !== "boolean") {
+      return c.json({ error: "heavyRepoModeEnabled must be a boolean" }, 400);
     }
     if (body.autoApprovalEnabled !== undefined && typeof body.autoApprovalEnabled !== "boolean") {
       return c.json({ error: "autoApprovalEnabled must be a boolean" }, 400);
@@ -271,6 +275,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "claudeBinary",
       "codexBinary",
       "maxKeepAlive",
+      "heavyRepoModeEnabled",
       "autoApprovalEnabled",
       "autoApprovalModel",
       "namerConfig",
@@ -298,6 +303,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       claudeBinary: typeof body.claudeBinary === "string" ? body.claudeBinary.trim() : undefined,
       codexBinary: typeof body.codexBinary === "string" ? body.codexBinary.trim() : undefined,
       maxKeepAlive: typeof body.maxKeepAlive === "number" ? body.maxKeepAlive : undefined,
+      heavyRepoModeEnabled: typeof body.heavyRepoModeEnabled === "boolean" ? body.heavyRepoModeEnabled : undefined,
       autoApprovalEnabled: typeof body.autoApprovalEnabled === "boolean" ? body.autoApprovalEnabled : undefined,
       autoApprovalModel: typeof body.autoApprovalModel === "string" ? body.autoApprovalModel.trim() : undefined,
       namerConfig: body.namerConfig ? parseNamerConfigFromBody(body.namerConfig) : undefined,
@@ -325,6 +331,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
       maxKeepAlive: settings.maxKeepAlive,
+      heavyRepoModeEnabled: settings.heavyRepoModeEnabled,
       autoApprovalEnabled: settings.autoApprovalEnabled,
       autoApprovalModel: settings.autoApprovalModel,
       namerConfig: maskNamerConfig(settings.namerConfig),

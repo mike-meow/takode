@@ -893,6 +893,9 @@ export class WsBridge {
   // 30s prevents cascading when an agent pushes multiple commits in rapid
   // succession -- each push would otherwise trigger O(sessions) refreshes.
   private lastCrossSessionRefreshAt = new Map<string, number>();
+  // Coalesce worktree snapshot refreshes so heavy-repo sidebar polls cannot
+  // stack slow git refresh/diff jobs for the same session.
+  private worktreeSnapshotRefreshes = new Map<string, Promise<SessionState | null>>();
   private static readonly CROSS_SESSION_THROTTLE_MS = 30_000;
 
   private static readonly GIT_SESSION_KEYS: GitSessionKey[] = [
@@ -2073,6 +2076,22 @@ export class WsBridge {
    * back but should still clear stale +/- badges in session snapshots.
    */
   async refreshWorktreeGitStateForSnapshot(
+    sessionId: string,
+    options: { broadcastUpdate?: boolean; notifyPoller?: boolean } = {},
+  ): Promise<SessionState | null> {
+    const existing = this.worktreeSnapshotRefreshes.get(sessionId);
+    if (existing) return existing;
+
+    const refresh = this.runWorktreeGitStateRefreshForSnapshot(sessionId, options).finally(() => {
+      if (this.worktreeSnapshotRefreshes.get(sessionId) === refresh) {
+        this.worktreeSnapshotRefreshes.delete(sessionId);
+      }
+    });
+    this.worktreeSnapshotRefreshes.set(sessionId, refresh);
+    return refresh;
+  }
+
+  private async runWorktreeGitStateRefreshForSnapshot(
     sessionId: string,
     options: { broadcastUpdate?: boolean; notifyPoller?: boolean } = {},
   ): Promise<SessionState | null> {

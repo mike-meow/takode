@@ -8132,6 +8132,50 @@ describe("Diff stats computation", () => {
     expect(session.state.total_lines_removed).toBe(3);
   });
 
+  it("refreshWorktreeGitStateForSnapshot coalesces concurrent refreshes for the same session", async () => {
+    const worktreeCwd = join(tempDir, "wt");
+    const worktreeGitDir = join(tempDir, "repo.git", "worktrees", "wt-1");
+    mkdirSync(worktreeCwd, { recursive: true });
+    mkdirSync(worktreeGitDir, { recursive: true });
+    writeFileSync(join(worktreeCwd, ".git"), `gitdir: ${worktreeGitDir}\n`);
+    writeFileSync(join(worktreeGitDir, "HEAD"), "ref: refs/heads/jiayi-wt-1\n");
+    writeFileSync(join(worktreeGitDir, "index"), "index");
+
+    const diffCallbacks: Array<(err: Error | null, result: { stdout: string; stderr: string }) => void> = [];
+    const commands: string[] = [];
+    mockExec.mockImplementation((cmd: string, opts: any, cb?: Function) => {
+      commands.push(cmd);
+      const callback = typeof opts === "function" ? opts : cb;
+      if (cmd.includes("diff --numstat")) {
+        if (callback) diffCallbacks.push(callback);
+        return;
+      }
+      let stdout = "";
+      if (cmd.includes("--abbrev-ref HEAD")) stdout = "jiayi-wt-1\n";
+      else if (cmd.includes("--git-dir")) stdout = `${worktreeGitDir}\n`;
+      else if (cmd.includes("--git-common-dir")) stdout = `${join(tempDir, "repo.git")}\n`;
+      else if (cmd.includes("rev-parse HEAD")) stdout = "same-head-sha\n";
+      else if (cmd.includes("--left-right --count")) stdout = "0\t0\n";
+      else if (cmd.includes("merge-base")) stdout = "same-head-sha\n";
+      callback?.(null, { stdout, stderr: "" });
+    });
+
+    bridge.markWorktree("s1", join(tempDir, "repo"), worktreeCwd, "jiayi");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = worktreeCwd;
+
+    const first = bridge.refreshWorktreeGitStateForSnapshot("s1");
+    const second = bridge.refreshWorktreeGitStateForSnapshot("s1");
+
+    await vi.waitFor(() => expect(diffCallbacks).toHaveLength(1));
+    diffCallbacks[0]!(null, { stdout: "10\t3\tfile.ts\n", stderr: "" });
+    await Promise.all([first, second]);
+
+    expect(commands.filter((cmd) => cmd.includes("diff --numstat"))).toHaveLength(1);
+    expect(session.state.total_lines_added).toBe(10);
+    expect(session.state.total_lines_removed).toBe(3);
+  });
+
   it("non-read-only tool marks diffStatsDirty; read-only tool does not", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("for-each-ref")) return "";

@@ -12,6 +12,7 @@ import {
   grepMessageHistory,
   exportSessionAsText,
 } from "../takode-messages.js";
+import { getSettings } from "../settings-manager.js";
 import type { RouteContext } from "./context.js";
 
 export function createTakodeRoutes(ctx: RouteContext) {
@@ -37,16 +38,28 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const bridgeStates = wsBridge.getAllSessions();
     const bridgeMap = new Map(bridgeStates.map((state) => [state.session_id, state]));
     const pool = filterFn ? sessions.filter(filterFn) : sessions;
+    const heavyRepoModeEnabled = getSettings().heavyRepoModeEnabled;
     return Promise.all(
       pool.map(async (s) => {
         try {
           const { sessionAuthToken: _token, ...safeSession } = s;
           const bridgeSession = wsBridge.getSession(s.sessionId);
           if (bridgeSession?.state?.is_worktree && !safeSession.archived) {
-            await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
-              broadcastUpdate: true,
-              notifyPoller: true,
-            });
+            if (heavyRepoModeEnabled) {
+              void wsBridge
+                .refreshWorktreeGitStateForSnapshot(s.sessionId, {
+                  broadcastUpdate: true,
+                  notifyPoller: true,
+                })
+                .catch((err) => {
+                  console.warn(`[routes] Failed to refresh worktree git state for ${s.sessionId}:`, err);
+                });
+            } else {
+              await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
+                broadcastUpdate: true,
+                notifyPoller: true,
+              });
+            }
           }
           const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
           const cliConnected = wsBridge.isBackendConnected(s.sessionId);
