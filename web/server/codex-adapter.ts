@@ -509,7 +509,7 @@ export interface CodexAdapterOptions {
   threadId?: string;
   /** Optional recorder for raw message capture. */
   recorder?: RecorderManager;
-  /** Companion instructions injected via developer_instructions in turn/start. */
+  /** Companion instructions injected via session-scoped Codex config before thread start/resume. */
   instructions?: string;
   /** Optional stderr/context captured by the launcher for early startup failures. */
   failureContextProvider?: () => string | null;
@@ -1163,6 +1163,8 @@ export class CodexAdapter
       await this.transport.notify("initialized", {});
 
       this.initialized = true;
+
+      await this.configureDeveloperInstructions();
 
       // Step 3: Start or resume a thread
       if (this.options.threadId) {
@@ -3209,7 +3211,7 @@ export class CodexAdapter
 
   private buildCollaborationModeOverride(): {
     mode: "default" | "plan";
-    settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null };
+    settings: { model: string; reasoning_effort: string | null };
   } | null {
     const mode = this.options.approvalMode === "plan" ? "plan" : "default";
     return {
@@ -3217,9 +3219,21 @@ export class CodexAdapter
       settings: {
         model: this.options.model?.trim() || getDefaultModelForBackend("codex"),
         reasoning_effort: this.normalizeReasoningEffort(this.options.reasoningEffort),
-        developer_instructions: this.options.instructions ?? null,
       },
     };
+  }
+
+  private async configureDeveloperInstructions(): Promise<void> {
+    const instructions = this.options.instructions;
+    if (!instructions?.trim()) return;
+
+    // CliLauncher runs Codex with a per-session CODEX_HOME, so this config
+    // write scopes guardrails to the Takode session rather than global Codex.
+    await this.transport.call("config/value/write", {
+      keyPath: "developer_instructions",
+      value: instructions,
+      mergeStrategy: "replace",
+    });
   }
 
   private normalizeReasoningEffort(effort?: string): string | null {

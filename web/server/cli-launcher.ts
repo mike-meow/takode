@@ -2058,7 +2058,7 @@ export class CliLauncher {
         console.warn(`[cli-launcher] Failed to symlink project settings for worktree:`, e);
       }
     }
-    // Codex: no file setup needed — instructions go via developer_instructions in turn/start
+    // Codex: no file setup needed — instructions go through session-scoped developer_instructions config.
   }
 
   /**

@@ -72,6 +72,14 @@ async function initializeAdapter(stdout: MockReadableStream) {
   await tick();
 }
 
+function parseWrittenJsonLines(chunks: string[]): any[] {
+  return chunks
+    .join("")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("CodexAdapter", () => {
@@ -946,6 +954,36 @@ describe("CodexAdapter", () => {
     expect(lines.find((line) => line.method === "thread/compact/start")).toBeUndefined();
   });
 
+  it("configures developer instructions before starting a new thread", async () => {
+    // Regression: leader guardrails must be configured before Codex creates a
+    // fresh thread, otherwise the first turn can run without orchestration rules.
+    new CodexAdapter(proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      instructions: "leader guardrails",
+    });
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    let lines = parseWrittenJsonLines(stdin.chunks);
+    const configWrite = lines.find((line) => line.method === "config/value/write");
+    expect(configWrite).toBeDefined();
+    expect(configWrite.params).toEqual({
+      keyPath: "developer_instructions",
+      value: "leader guardrails",
+      mergeStrategy: "replace",
+    });
+    expect(lines.find((line) => line.method === "thread/start")).toBeUndefined();
+
+    stdout.push(JSON.stringify({ id: 2, result: {} }) + "\n");
+    await tick();
+
+    lines = parseWrittenJsonLines(stdin.chunks);
+    expect(lines.find((line) => line.method === "thread/start")).toBeDefined();
+  });
+
   it("sets collaborationMode=plan on turn/start when approvalMode is plan", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", {
       model: "gpt-5.3-codex",
@@ -1024,41 +1062,59 @@ describe("CodexAdapter", () => {
     expect(turnStart.params.collaborationMode.mode).toBe("default");
   });
 
-  it("retries turn/start without collaborationMode when server rejects the field", async () => {
+  it("retries turn/start without collaborationMode while preserving configured instructions", async () => {
+    // Regression: legacy Codex builds can reject collaborationMode; the retry
+    // must not be the only place leader guardrails are carried.
     const adapter = new CodexAdapter(proc as never, "test-session", {
       model: "gpt-5.3-codex",
       approvalMode: "plan",
+      instructions: "leader guardrails",
     });
 
     await tick();
     stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
     await tick();
-    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    stdout.push(JSON.stringify({ id: 2, result: {} }) + "\n");
     await tick();
+    stdout.push(JSON.stringify({ id: 3, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    const initLines = parseWrittenJsonLines(stdin.chunks);
+    expect(initLines.find((line) => line.method === "config/value/write")?.params).toEqual(
+      expect.objectContaining({
+        keyPath: "developer_instructions",
+        value: "leader guardrails",
+      }),
+    );
 
     stdin.chunks = [];
     adapter.sendBrowserMessage({ type: "user_message", content: "fallback test" });
     await tick();
 
-    // id=4 is turn/start here (initialize=1, thread/start=2, rateLimits/read=3)
+    let lines = parseWrittenJsonLines(stdin.chunks);
+    let turnStarts = lines.filter((line) => line.method === "turn/start");
+    expect(turnStarts).toHaveLength(1);
+
     stdout.push(
       JSON.stringify({
-        id: 4,
+        id: turnStarts[0].id,
         error: { code: -32602, message: "invalid params: unknown field `collaborationMode`" },
       }) + "\n",
     );
     await tick();
-    stdout.push(JSON.stringify({ id: 5, result: { turn: { id: "turn_1" } } }) + "\n");
+
+    lines = parseWrittenJsonLines(stdin.chunks);
+    turnStarts = lines.filter((line) => line.method === "turn/start");
+    expect(turnStarts).toHaveLength(2);
+
+    stdout.push(JSON.stringify({ id: turnStarts[1].id, result: { turn: { id: "turn_1" } } }) + "\n");
     await tick();
 
-    const lines = stdin.chunks
-      .join("")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-    const turnStarts = lines.filter((line) => line.method === "turn/start");
+    lines = parseWrittenJsonLines(stdin.chunks);
+    turnStarts = lines.filter((line) => line.method === "turn/start");
     expect(turnStarts).toHaveLength(2);
     expect(turnStarts[0].params.collaborationMode.mode).toBe("plan");
+    expect(turnStarts[0].params.collaborationMode.settings.developer_instructions).toBeUndefined();
     expect(turnStarts[1].params.collaborationMode).toBeUndefined();
   });
 
@@ -2363,6 +2419,42 @@ describe("CodexAdapter", () => {
     expect(allWritten).toContain('"method":"thread/resume"');
     expect(allWritten).toContain('"threadId":"thr_existing_456"');
     expect(allWritten).not.toContain('"method":"thread/start"');
+  });
+
+  it("configures developer instructions before resuming a thread", async () => {
+    // Regression: relaunched leader sessions resume an existing thread, so they
+    // need the same guardrails configured before thread/resume.
+    const mock = createMockProcess();
+
+    new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      threadId: "thr_existing_leader",
+      instructions: "leader guardrails",
+    });
+
+    await tick();
+
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    let lines = parseWrittenJsonLines(mock.stdin.chunks);
+    const configWrite = lines.find((line) => line.method === "config/value/write");
+    expect(configWrite?.params).toEqual({
+      keyPath: "developer_instructions",
+      value: "leader guardrails",
+      mergeStrategy: "replace",
+    });
+    expect(lines.find((line) => line.method === "thread/resume")).toBeUndefined();
+
+    mock.stdout.push(JSON.stringify({ id: 2, result: {} }) + "\n");
+    await tick();
+
+    lines = parseWrittenJsonLines(mock.stdin.chunks);
+    const resume = lines.find((line) => line.method === "thread/resume");
+    expect(resume).toBeDefined();
+    expect(resume.params.threadId).toBe("thr_existing_leader");
+    expect(lines.find((line) => line.method === "thread/start")).toBeUndefined();
   });
 
   it("restores currentTurnId when thread/resume returns an in-progress turn", async () => {
