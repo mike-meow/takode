@@ -124,6 +124,8 @@ export interface CLIResultMessage {
   >;
   total_lines_added?: number;
   total_lines_removed?: number;
+  /** Codex turn id when this result was synthesized from a Codex turn/completed event. */
+  codex_turn_id?: string;
   uuid: string;
   session_id: string;
 }

@@ -3091,6 +3091,31 @@ export class WsBridge {
     return this.removeCompletedCodexTurns(session);
   }
 
+  private completeCodexTurnsForResult(session: Session, msg: CLIResultMessage, updatedAt = Date.now()): boolean {
+    const codexTurnId = typeof msg.codex_turn_id === "string" ? msg.codex_turn_id : null;
+    if (codexTurnId) {
+      let matched = false;
+      for (const turn of session.pendingCodexTurns) {
+        if (turn.turnId !== codexTurnId) continue;
+        turn.status = "completed";
+        turn.updatedAt = updatedAt;
+        matched = true;
+      }
+      if (matched) {
+        this.removeCompletedCodexTurns(session);
+        this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_result_turn_id_completed");
+        return true;
+      }
+      console.warn(
+        `[ws-bridge] Ignoring Codex result for untracked turn ${codexTurnId} in session ${sessionTag(session.id)}`,
+      );
+      return false;
+    }
+
+    this.completeCodexTurn(session, this.getCodexHeadTurn(session), updatedAt);
+    return true;
+  }
+
   private dispatchQueuedCodexTurns(session: Session, reason: string): void {
     const adapter = session.codexAdapter;
     if (!adapter) return;
@@ -3380,7 +3405,7 @@ export class WsBridge {
       } else if (outgoing?.type === "result") {
         session.consecutiveAdapterFailures = 0;
         session.lastAdapterFailureAt = null;
-        this.completeCodexTurn(session, this.getCodexHeadTurn(session), Date.now());
+        if (!this.completeCodexTurnsForResult(session, outgoing.data, Date.now())) return;
         // Route through the unified result handler so Codex gets the same
         // post-turn state refresh (git + diff stats + attention) as Claude.
         this.handleResultMessage(session, outgoing.data);
@@ -8844,6 +8869,21 @@ export class WsBridge {
       this.persistSession(session);
     }
     return hydrated;
+  }
+
+  private classifyLeaderAssistantAddressing(
+    session: Session,
+    blocks: Array<{ type?: string; text?: string }>,
+  ): "user" | "self" | null {
+    if (!this.launcher?.getSession?.(session.id)?.isOrchestrator) return null;
+    const text = blocks
+      .filter((block) => block.type === "text" && typeof block.text === "string")
+      .map((block) => block.text)
+      .join("\n")
+      .trimEnd();
+    if (text.endsWith("@to(user)")) return "user";
+    if (text.endsWith("@to(self)")) return "self";
+    return null;
   }
 
   private reconcileRecoveredQueuedTurnLifecycle(

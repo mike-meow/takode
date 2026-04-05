@@ -12340,6 +12340,215 @@ describe("Codex active-turn steering", () => {
     );
   });
 
+  it("clears a steered follow-up when Codex reports the same turn completed", async () => {
+    // Codex can accept a steer into the currently running turn and return that
+    // same turn id. In that case the follow-up was already consumed by the
+    // completed backend turn and must not be promoted into a phantom queued turn.
+    const sid = "codex-steer-same-turn-complete";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-same-turn" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "initial turn",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-initial");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "follow-up handled in same turn",
+      }),
+    );
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    const pendingId = session.pendingCodexInputs.find(
+      (input: any) => input.content === "follow-up handled in same turn",
+    )?.id;
+    expect(pendingId).toBeTruthy();
+    if (!pendingId) throw new Error("missing pending Codex input id");
+    adapter.emitTurnSteered("turn-initial", [pendingId]);
+    expect(session.pendingCodexTurns).toHaveLength(2);
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "completed same turn",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "codex-result-same-turn-steer",
+        session_id: sid,
+        codex_turn_id: "turn-initial",
+      },
+    });
+    await Promise.resolve();
+
+    expect(session.pendingCodexTurns).toHaveLength(0);
+    expect(session.pendingCodexInputs).toHaveLength(0);
+    expect(session.queuedTurnStarts).toBe(0);
+    expect(session.queuedTurnReasons).toEqual([]);
+    expect(session.queuedTurnUserMessageIds).toEqual([]);
+    expect(session.isGenerating).toBe(false);
+  });
+
+  it("preserves a steered future turn when only the current turn completed", async () => {
+    // If turn/steer returns a different turn id, the follow-up belongs to a
+    // future backend turn. Completing the current turn should still promote
+    // that queued follow-up instead of dropping it.
+    const sid = "codex-steer-future-turn-complete";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-steer-future-turn" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "initial turn",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-initial");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "follow-up in future turn",
+      }),
+    );
+    await Promise.resolve();
+
+    const session = bridge.getSession(sid)!;
+    const pendingId = session.pendingCodexInputs.find((input: any) => input.content === "follow-up in future turn")
+      ?.id;
+    expect(pendingId).toBeTruthy();
+    if (!pendingId) throw new Error("missing pending Codex input id");
+    adapter.emitTurnSteered("turn-follow-up", [pendingId]);
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "completed current turn",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "codex-result-future-turn-current",
+        session_id: sid,
+        codex_turn_id: "turn-initial",
+      },
+    });
+    await Promise.resolve();
+
+    expect(session.pendingCodexTurns).toHaveLength(1);
+    expect(getPendingCodexTurn(session)).toMatchObject({
+      userContent: "follow-up in future turn",
+      status: "backend_acknowledged",
+      turnId: "turn-follow-up",
+      turnTarget: "queued",
+    });
+    expect(session.isGenerating).toBe(true);
+  });
+
+  it("ignores a stale Codex result id instead of completing the current head turn", async () => {
+    // A duplicate or delayed turn/completed for an already-cleared Codex turn
+    // must not fall back to completing whatever turn is currently at the queue
+    // head. That would recreate the q-25 stuck/lost-turn class in reverse.
+    const sid = "codex-stale-result-id";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stale-result-id" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "current turn",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-current");
+
+    const session = bridge.getSession(sid)!;
+    expect(getPendingCodexTurn(session)).toMatchObject({
+      userContent: "current turn",
+      turnId: "turn-current",
+    });
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "duplicate stale completion",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "codex-result-stale-id",
+        session_id: sid,
+        codex_turn_id: "turn-already-cleared",
+      },
+    });
+    await Promise.resolve();
+
+    expect(session.pendingCodexTurns).toHaveLength(1);
+    expect(getPendingCodexTurn(session)).toMatchObject({
+      userContent: "current turn",
+      status: "backend_acknowledged",
+      turnId: "turn-current",
+    });
+    expect(session.isGenerating).toBe(true);
+    const staleResultPersisted = session.messageHistory.some(
+      (msg: any) => msg.type === "result" && msg.data?.uuid === "codex-result-stale-id",
+    );
+    expect(staleResultPersisted).toBe(false);
+  });
+
   it("restores pending Codex input to cancelable state when steer delivery fails", async () => {
     const sid = "codex-steer-failure";
     const browser = makeBrowserSocket(sid);

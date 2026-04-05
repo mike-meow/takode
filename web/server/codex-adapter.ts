@@ -2842,6 +2842,7 @@ export class CodexAdapter
       total_cost_usd: 0,
       stop_reason: turn?.status || "end_turn",
       usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      ...(typeof turn?.id === "string" ? { codex_turn_id: turn.id } : {}),
       uuid: randomUUID(),
       session_id: this.sessionId,
     };

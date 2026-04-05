@@ -273,9 +273,10 @@ describe("CodexAdapter", () => {
     const results = messages.filter((m) => m.type === "result");
     expect(results.length).toBe(1);
 
-    const result = results[0] as { data: { is_error: boolean; subtype: string } };
+    const result = results[0] as { data: { is_error: boolean; subtype: string; codex_turn_id?: string } };
     expect(result.data.is_error).toBe(false);
     expect(result.data.subtype).toBe("success");
+    expect(result.data.codex_turn_id).toBe("turn_1");
   });
 
   it("emits a synthetic Agent tool_use for Codex spawnAgent calls and parents child tool activity under it", async () => {
