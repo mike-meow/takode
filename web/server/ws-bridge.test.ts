@@ -13668,11 +13668,13 @@ describe("stuck session watchdog", () => {
 
     const session = bridge.getSession(sid)!;
 
-    const fiveMinAgo = Date.now() - 300_000;
+    // Use 3 minutes (below the 5-min auto-recovery threshold) so the session
+    // gets flagged as stuck without being auto-recovered on the first tick.
+    const threeMinAgo = Date.now() - 180_000;
     session.isGenerating = true;
-    session.generationStartedAt = fiveMinAgo;
-    session.lastCliMessageAt = fiveMinAgo;
-    session.lastCliPingAt = fiveMinAgo;
+    session.generationStartedAt = threeMinAgo;
+    session.lastCliMessageAt = threeMinAgo;
+    session.lastCliPingAt = threeMinAgo;
     session.lastToolProgressAt = 0;
     session.stuckNotifiedAt = null;
 
@@ -13692,6 +13694,123 @@ describe("stuck session watchdog", () => {
     const unstuckMessages = sentMessages.filter((m: any) => m.type === "session_unstuck");
     expect(unstuckMessages).toHaveLength(1);
     expect(session.stuckNotifiedAt).toBeNull();
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("auto-recovers a stuck session after 5 minutes by clearing isGenerating", () => {
+    // When a session has been stuck for 5+ minutes with the CLI still connected
+    // (e.g., missed result message), the watchdog should force-clear isGenerating
+    // to recover the session. This is the last-resort safety net, especially for
+    // herded workers which skip the optimistic 30s running timer.
+    vi.useFakeTimers();
+    const sid = "s-stuck-auto-recover";
+    const cli = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const session = bridge.getSession(sid)!;
+
+    // Generation started 6 minutes ago, no CLI activity since
+    const sixMinAgo = Date.now() - 360_000;
+    session.isGenerating = true;
+    session.generationStartedAt = sixMinAgo;
+    session.lastCliMessageAt = sixMinAgo;
+    session.lastCliPingAt = sixMinAgo;
+    session.lastToolProgressAt = 0;
+    session.stuckNotifiedAt = null;
+
+    bridge.startStuckSessionWatchdog();
+    browser.send.mockClear();
+
+    vi.advanceTimersByTime(31_000);
+
+    // Should have auto-recovered: isGenerating cleared
+    expect(session.isGenerating).toBe(false);
+    expect(session.generationStartedAt).toBeNull();
+
+    // Should have received both session_stuck (first detection) and status_change idle + session_unstuck (recovery)
+    const sentMessages = browser.send.mock.calls.map((c: any) => JSON.parse(c[0]));
+    const stuckMessages = sentMessages.filter((m: any) => m.type === "session_stuck");
+    const idleMessages = sentMessages.filter((m: any) => m.type === "status_change" && m.status === "idle");
+    const unstuckMessages = sentMessages.filter((m: any) => m.type === "session_unstuck");
+    expect(stuckMessages).toHaveLength(1);
+    expect(idleMessages.length).toBeGreaterThanOrEqual(1);
+    expect(unstuckMessages).toHaveLength(1);
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not auto-recover a stuck session before 5 minutes", () => {
+    // Sessions stuck for less than 5 minutes should only get the notification,
+    // not auto-recovery. The CLI may genuinely be processing a long turn.
+    vi.useFakeTimers();
+    const sid = "s-stuck-no-recover";
+    const cli = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const session = bridge.getSession(sid)!;
+
+    // Generation started 3 minutes ago (below 5-min threshold)
+    const threeMinAgo = Date.now() - 180_000;
+    session.isGenerating = true;
+    session.generationStartedAt = threeMinAgo;
+    session.lastCliMessageAt = threeMinAgo;
+    session.lastCliPingAt = threeMinAgo;
+    session.lastToolProgressAt = 0;
+    session.stuckNotifiedAt = null;
+
+    bridge.startStuckSessionWatchdog();
+
+    vi.advanceTimersByTime(31_000);
+
+    // Should have flagged as stuck but NOT auto-recovered
+    expect(session.stuckNotifiedAt).not.toBeNull();
+    expect(session.isGenerating).toBe(true); // still generating
+    expect(session.generationStartedAt).not.toBeNull();
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not auto-recover a stuck session when CLI is disconnected", () => {
+    // Auto-recovery should only fire when the CLI is connected. If the CLI is
+    // disconnected, the disconnect grace period / relaunch flow handles recovery.
+    vi.useFakeTimers();
+    const sid = "s-stuck-cli-disconnected";
+    const cli = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const session = bridge.getSession(sid)!;
+
+    // Generation started 6 minutes ago, no CLI activity since
+    const sixMinAgo = Date.now() - 360_000;
+    session.isGenerating = true;
+    session.generationStartedAt = sixMinAgo;
+    session.lastCliMessageAt = sixMinAgo;
+    session.lastCliPingAt = sixMinAgo;
+    session.lastToolProgressAt = 0;
+    session.stuckNotifiedAt = null;
+
+    // Simulate CLI disconnect (backendSocket cleared)
+    session.backendSocket = null;
+
+    bridge.startStuckSessionWatchdog();
+
+    vi.advanceTimersByTime(31_000);
+
+    // Should NOT auto-recover because CLI is disconnected
+    expect(session.isGenerating).toBe(true);
 
     vi.clearAllTimers();
     vi.useRealTimers();

@@ -1302,6 +1302,7 @@ export class WsBridge {
   startStuckSessionWatchdog(): void {
     const STUCK_THRESHOLD_MS = 120_000; // 2 minutes without any CLI activity
     const CHECK_INTERVAL_MS = 30_000; // check every 30s
+    const AUTO_RECOVER_MS = 300_000; // 5 minutes — force-clear isGenerating
 
     const timer = setInterval(() => {
       const now = Date.now();
@@ -1343,37 +1344,72 @@ export class WsBridge {
           continue;
         }
 
-        if (session.stuckNotifiedAt) continue; // already notified, still stuck
-
-        session.stuckNotifiedAt = now;
         const elapsed = now - session.generationStartedAt;
-        console.warn(
-          `[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s generation, ${Math.round(sinceLastActivity / 1000)}s since last CLI activity)`,
-        );
-        this.recorder?.recordServerEvent(
-          session.id,
-          "stuck_detected",
-          { elapsed, sinceLastActivity },
-          session.backendType,
-          session.state.cwd,
-        );
-        this.broadcastToBrowsers(session, { type: "session_stuck" } as BrowserIncomingMessage);
 
-        // Force-deliver pending herd events for orchestrator (leader) sessions.
-        // A stuck leader blocks ALL herd event delivery because
-        // isSessionIdle() requires !isGenerating. Rather than clearing the
-        // generation state (which could break invariants if the CLI is
-        // genuinely still processing), we bypass the idle gate and deliver
-        // events directly. The leader's CLI will handle the injected message
-        // — for SDK sessions, send() interrupts the current turn naturally.
-        const launcherInfo = this.launcher?.getSession(session.id);
-        if (launcherInfo?.isOrchestrator && this.herdEventDispatcher?.forceFlushPendingEvents) {
-          const flushed = this.herdEventDispatcher.forceFlushPendingEvents(session.id);
-          if (flushed > 0) {
-            console.warn(
-              `[ws-bridge] Force-delivered ${flushed} pending herd event(s) to stuck orchestrator session ${session.id}`,
-            );
+        if (!session.stuckNotifiedAt) {
+          // First detection: notify browser and force-flush herd events
+          session.stuckNotifiedAt = now;
+          console.warn(
+            `[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s generation, ${Math.round(sinceLastActivity / 1000)}s since last CLI activity)`,
+          );
+          this.recorder?.recordServerEvent(
+            session.id,
+            "stuck_detected",
+            { elapsed, sinceLastActivity },
+            session.backendType,
+            session.state.cwd,
+          );
+          this.broadcastToBrowsers(session, { type: "session_stuck" } as BrowserIncomingMessage);
+
+          // Force-deliver pending herd events for orchestrator (leader) sessions.
+          // A stuck leader blocks ALL herd event delivery because
+          // isSessionIdle() requires !isGenerating. Rather than clearing the
+          // generation state (which could break invariants if the CLI is
+          // genuinely still processing), we bypass the idle gate and deliver
+          // events directly. The leader's CLI will handle the injected message
+          // -- for SDK sessions, send() interrupts the current turn naturally.
+          const launcherInfo = this.launcher?.getSession(session.id);
+          if (launcherInfo?.isOrchestrator && this.herdEventDispatcher?.forceFlushPendingEvents) {
+            const flushed = this.herdEventDispatcher.forceFlushPendingEvents(session.id);
+            if (flushed > 0) {
+              console.warn(
+                `[ws-bridge] Force-delivered ${flushed} pending herd event(s) to stuck orchestrator session ${session.id}`,
+              );
+            }
           }
+        }
+
+        // Auto-recover: if the session has been stuck for 5+ minutes AND the
+        // CLI backend is connected (meaning the CLI is alive and sending
+        // keep-alives but the server never received a result message),
+        // force-clear isGenerating. This is the last-resort safety net for
+        // missed result messages -- especially important for herded workers
+        // which skip the optimistic 30s running timer.
+        if (elapsed >= AUTO_RECOVER_MS && this.backendConnected(session)) {
+          console.warn(
+            `[ws-bridge] Auto-recovering stuck session ${sessionTag(session.id)} ` +
+              `(${Math.round(elapsed / 1000)}s stuck, CLI connected, force-clearing isGenerating)`,
+          );
+          this.recorder?.recordServerEvent(
+            session.id,
+            "stuck_auto_recovered",
+            { elapsed, sinceLastActivity },
+            session.backendType,
+            session.state.cwd,
+          );
+          this.markTurnInterrupted(session, "system");
+          this.setGenerating(session, false, "stuck_auto_recovery");
+          // Drain stale queued turns -- they reference user messages from the
+          // stuck turn that will never produce output.
+          const staleEntries = getQueuedTurnLifecycleEntriesLifecycle(session);
+          if (staleEntries.length > 0) {
+            console.warn(
+              `[ws-bridge] Draining ${staleEntries.length} stale queued turn(s) on stuck auto-recovery for session ${sessionTag(session.id)}`,
+            );
+            replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
+          }
+          this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+          this.broadcastToBrowsers(session, { type: "session_unstuck" } as BrowserIncomingMessage);
         }
       }
     }, CHECK_INTERVAL_MS);
