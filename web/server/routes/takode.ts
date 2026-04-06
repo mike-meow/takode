@@ -772,10 +772,24 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const body = await c.req.json().catch(() => ({}));
     const questId = typeof body.questId === "string" ? body.questId.trim() : "";
     if (!questId) return c.json({ error: "questId is required" }, 400);
+    if (!/^q-\d+$/i.test(questId)) {
+      return c.json({ error: "questId must match q-NNN format (e.g., q-1, q-42)" }, 400);
+    }
+
+    // Auto-populate title from quest store if not explicitly provided
+    let title: string | undefined = typeof body.title === "string" ? body.title : undefined;
+    if (title === undefined) {
+      try {
+        const quest = await questStore.getQuest(questId);
+        if (quest) title = quest.title;
+      } catch {
+        // Best-effort: if quest store lookup fails, leave title undefined
+      }
+    }
 
     const board = wsBridge.upsertBoardRow(id, {
       questId,
-      title: typeof body.title === "string" ? body.title : undefined,
+      title,
       worker: typeof body.worker === "string" ? body.worker : undefined,
       workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
       status: typeof body.status === "string" ? body.status : undefined,

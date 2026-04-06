@@ -2412,16 +2412,19 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
 
   console.log("");
   const qCol = 8;
+  const tCol = 26;
   const wCol = 8;
   const sCol = 18;
   const waitCol = 16;
   console.log(
-    `${"QUEST".padEnd(qCol)} ${"WORKER".padEnd(wCol)} ${"STATE".padEnd(sCol)} ${"WAIT-FOR".padEnd(waitCol)} NEXT ACTION`,
+    `${"QUEST".padEnd(qCol)} ${"TITLE".padEnd(tCol)} ${"WORKER".padEnd(wCol)} ${"STATE".padEnd(sCol)} ${"WAIT-FOR".padEnd(waitCol)} NEXT ACTION`,
   );
-  console.log("-".repeat(qCol + wCol + sCol + waitCol + 30));
+  console.log("-".repeat(qCol + tCol + wCol + sCol + waitCol + 30));
 
   for (const row of board) {
     const quest = row.questId.padEnd(qCol);
+    const titleStr = row.title ? (row.title.length > tCol - 2 ? row.title.slice(0, tCol - 3) + "…" : row.title) : "--";
+    const title = titleStr.padEnd(tCol);
     const worker = row.worker ? `#${row.workerNum ?? "?"}`.padEnd(wCol) : "--".padEnd(wCol);
     const state = (row.status || "--").padEnd(sCol);
 
@@ -2447,7 +2450,7 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
       if (nextAction !== "--") nextAction = `-> ${nextAction}`;
     }
 
-    console.log(`${quest} ${worker} ${state} ${waitForDisplay} ${nextAction}`);
+    console.log(`${quest} ${title} ${worker} ${state} ${waitForDisplay} ${nextAction}`);
   }
   console.log("");
 }
@@ -2479,6 +2482,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       err(
         `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,q-Y] [--json]`,
       );
+    if (!/^q-\d+$/i.test(questId))
+      err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
 
     const body: Record<string, unknown> = { questId };
@@ -2523,6 +2528,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   if (sub === "advance") {
     const questId = args[1];
     if (!questId) err("Usage: takode board advance <quest-id> [--json]");
+    if (!/^q-\d+$/i.test(questId))
+      err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
 
     const result = (await apiPost(
@@ -2547,6 +2554,9 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   if (sub === "rm") {
     const questIds = args.slice(1).filter((a) => !a.startsWith("--"));
     if (questIds.length === 0) err("Usage: takode board rm <quest-id> [<quest-id> ...] [--json]");
+    const invalid = questIds.filter((id) => !/^q-\d+$/i.test(id));
+    if (invalid.length > 0)
+      err(`Invalid quest ID(s): ${invalid.join(", ")} -- must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(1));
 
     const result = (await apiDelete(base, `/sessions/${encodeURIComponent(selfId)}/board/${questIds.join(",")}`)) as {

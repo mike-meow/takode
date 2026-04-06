@@ -1682,3 +1682,85 @@ describe("takode watch deprecation", () => {
     expect(result.stdout).toContain("Usage: takode <command>");
   });
 });
+
+describe("takode board quest ID validation", () => {
+  // CLI-side validation rejects invalid quest IDs before making any board API call.
+  // A mock server is needed because the CLI calls /api/takode/me for auth before
+  // reaching board-specific validation in handleBoard().
+
+  let server: ReturnType<typeof createServer>;
+  let port: number;
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      if (req.method === "GET" && req.url === "/api/takode/me") {
+        // Auth check: return a minimal valid response so the CLI proceeds to handleBoard
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-1", isOrchestrator: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  it.each(["foo", "123", "q-", "q-abc", "set"])(
+    "board set rejects invalid quest ID: %j",
+    async (badId) => {
+      const result = await runTakode(["board", "set", badId, "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("q-NNN");
+    },
+  );
+
+  it("board set rejects missing quest ID with usage hint", async () => {
+    const result = await runTakode(["board", "set", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Usage");
+  });
+
+  it.each(["foo", "123", "q-"])(
+    "board advance rejects invalid quest ID: %j",
+    async (badId) => {
+      const result = await runTakode(["board", "advance", badId, "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("q-NNN");
+    },
+  );
+
+  it.each(["foo", "q-abc"])(
+    "board rm rejects invalid quest ID: %j",
+    async (badId) => {
+      const result = await runTakode(["board", "rm", badId, "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("q-NNN");
+    },
+  );
+});
