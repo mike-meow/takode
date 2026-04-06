@@ -167,20 +167,6 @@ function formatStreamTailForError(lines: string[]): string | null {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 }
 
-function hasFatalCodexAuthFailure(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return normalized.includes("tokenrefreshfailed") && normalized.includes("invalid_grant");
-}
-
-// Limit proactive auth-failure termination to the initial startup window of
-// the current Codex subprocess. Outside this window, ws-bridge's ordinary
-// disconnect/relaunch handling is less disruptive than killing a long-lived
-// session based on stderr alone.
-export const CODEX_FATAL_AUTH_FAILURE_STARTUP_WINDOW_MS = 30_000;
-
-export function isWithinCodexAuthFailureStartupWindow(spawnedAt: number, now: number): boolean {
-  return now - spawnedAt <= CODEX_FATAL_AUTH_FAILURE_STARTUP_WINDOW_MS;
-}
 function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: string[]): string {
   if (requiredVars.length === 0) return configToml;
   const normalizedRequired = Array.from(new Set(requiredVars)).sort();
@@ -1939,25 +1925,8 @@ export class CliLauncher {
     // Pipe stderr for debugging (stdout is used for JSON-RPC)
     const stderr = proc.stderr;
     const stderrTail: string[] = [];
-    const authFailureStartedAt = this.getCurrentTimeMs();
-    let authFailureTerminationRequested = false;
     if (stderr && typeof stderr !== "number") {
-      this.pipeStream(sessionId, stderr, "stderr", stderrTail, (text) => {
-        if (authFailureTerminationRequested) return;
-        if (!hasFatalCodexAuthFailure(text)) return;
-        if (!isWithinCodexAuthFailureStartupWindow(authFailureStartedAt, this.getCurrentTimeMs())) return;
-        if (this.processes.get(sessionId) !== proc) return;
-        authFailureTerminationRequested = true;
-        console.error(
-          `[cli-launcher] Fatal Codex auth failure detected for session ${sessionTag(sessionId)}; terminating process to trigger recovery`,
-        );
-        void this.terminateKnownProcess(sessionId, proc.pid, proc, "codex_auth_failure").catch((err) => {
-          console.error(
-            `[cli-launcher] Failed to terminate Codex process after auth failure for session ${sessionTag(sessionId)}:`,
-            err,
-          );
-        });
-      });
+      this.pipeStream(sessionId, stderr, "stderr", stderrTail);
     }
 
     // Create the CodexAdapter which handles JSON-RPC and message translation
@@ -2020,6 +1989,7 @@ export class CliLauncher {
     info.state = "connected";
 
     // Monitor process exit
+    const spawnedAt = Date.now();
     proc.exited.then((exitCode) => {
       console.log(`[cli-launcher] Codex session ${sessionTag(sessionId)} exited (code=${exitCode})`);
 
@@ -2594,7 +2564,6 @@ export class CliLauncher {
     stream: ReadableStream<Uint8Array> | null,
     label: "stdout" | "stderr",
     tailLines?: string[],
-    onChunk?: (text: string) => void,
   ): Promise<void> {
     if (!stream) return;
     const reader = stream.getReader();
@@ -2606,7 +2575,6 @@ export class CliLauncher {
         if (done) break;
         const text = decoder.decode(value);
         if (tailLines) appendStreamTail(tailLines, text);
-        onChunk?.(text);
         if (text.trim()) {
           log(`[session:${sessionId}:${label}] ${text.trimEnd()}`);
         }
@@ -2614,10 +2582,6 @@ export class CliLauncher {
     } catch {
       // stream closed
     }
-  }
-
-  private getCurrentTimeMs(): number {
-    return Date.now();
   }
 
   private pipeOutput(sessionId: string, proc: Subprocess): void {

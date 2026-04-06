@@ -243,17 +243,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 
 import { SessionStore } from "./session-store.js";
-import {
-  CliLauncher,
-  CODEX_FATAL_AUTH_FAILURE_STARTUP_WINDOW_MS,
-  isWithinCodexAuthFailureStartupWindow,
-} from "./cli-launcher.js";
+import { CliLauncher } from "./cli-launcher.js";
 
 // ─── Bun.spawn mock ─────────────────────────────────────────────────────────
 
 let exitResolve: (code: number) => void;
-const FATAL_CODEX_AUTH_FAILURE_LINE =
-  'worker quit with fatal: Transport channel closed, when Auth(TokenRefreshFailed("Server returned error response: invalid_grant: Invalid refresh token"))\n';
 
 function createMockProc(pid = 12345) {
   let resolve: (code: number) => void;
@@ -283,31 +277,6 @@ function createMockCodexProc(pid = 12345) {
     stdin: new WritableStream<Uint8Array>(),
     stdout: new ReadableStream<Uint8Array>(),
     stderr: new ReadableStream<Uint8Array>(),
-  };
-}
-
-function createMockCodexProcWithWritableStderr(pid = 12345) {
-  let resolve: (code: number) => void;
-  const exitedPromise = new Promise<number>((r) => {
-    resolve = r;
-  });
-  const stderrStream = new TransformStream<Uint8Array, Uint8Array>();
-  return {
-    proc: {
-      pid,
-      kill: vi.fn((signal?: string) => {
-        if (signal === "SIGTERM") resolve(143);
-      }),
-      exited: exitedPromise,
-      stdin: new WritableStream<Uint8Array>(),
-      stdout: new ReadableStream<Uint8Array>(),
-      stderr: stderrStream.readable,
-    },
-    writeFatalAuthFailure: async () => {
-      const writer = stderrStream.writable.getWriter();
-      await writer.write(new TextEncoder().encode(FATAL_CODEX_AUTH_FAILURE_LINE));
-      writer.releaseLock();
-    },
   };
 }
 
@@ -1653,148 +1622,6 @@ describe("relaunch", () => {
     killSpy.mockRestore();
   });
 
-  it("terminates a Codex process when stderr reports fatal token refresh failure", async () => {
-    const { proc, writeFatalAuthFailure } = createMockCodexProcWithWritableStderr(24680);
-    mockSpawn.mockReturnValueOnce(proc);
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-
-    await writeFatalAuthFailure();
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-    expect(launcher.getSession("test-session-id")?.state).toBe("exited");
-  });
-
-  it("terminates a fresh reviewer Codex session on startup auth failure", async () => {
-    const { proc, writeFatalAuthFailure } = createMockCodexProcWithWritableStderr(24679);
-    mockSpawn.mockReturnValueOnce(proc);
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    const session = launcher.getSession("test-session-id");
-    if (!session) throw new Error("missing launched session");
-    session.reviewerOf = 95;
-
-    await writeFatalAuthFailure();
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-    expect(launcher.getSession("test-session-id")?.state).toBe("exited");
-  });
-
-  it("terminates a fresh non-reviewer Codex session on startup auth failure", async () => {
-    const { proc, writeFatalAuthFailure } = createMockCodexProcWithWritableStderr(24681);
-    mockSpawn.mockReturnValueOnce(proc);
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-
-    await writeFatalAuthFailure();
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
-    expect(launcher.getSession("test-session-id")?.state).toBe("exited");
-  });
-
-  it("does not terminate a Codex session when the auth failure arrives after the startup window", async () => {
-    const spawnedAt = 10_000;
-    const afterWindow = spawnedAt + CODEX_FATAL_AUTH_FAILURE_STARTUP_WINDOW_MS + 1;
-    expect(isWithinCodexAuthFailureStartupWindow(spawnedAt, afterWindow)).toBe(false);
-  });
-
-  it("terminates a fresh relaunch process for an old reviewer session", async () => {
-    let resolveFirstExit: (code: number) => void;
-    const firstProc = {
-      pid: 24683,
-      kill: vi.fn((signal?: string) => {
-        if (signal === "SIGTERM") resolveFirstExit(143);
-      }),
-      exited: new Promise<number>((resolve) => {
-        resolveFirstExit = resolve;
-      }),
-      stdin: new WritableStream<Uint8Array>(),
-      stdout: new ReadableStream<Uint8Array>(),
-      stderr: new ReadableStream<Uint8Array>(),
-    };
-    mockSpawn.mockReturnValueOnce(firstProc);
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    const session = launcher.getSession("test-session-id");
-    if (!session) throw new Error("missing launched session");
-    session.reviewerOf = 95;
-    session.createdAt = Date.now() - 86_400_000;
-
-    const { proc: secondProc, writeFatalAuthFailure } = createMockCodexProcWithWritableStderr(24684);
-    mockSpawn.mockReturnValueOnce(secondProc);
-    firstProc.kill.mockImplementation(() => {
-      resolveFirstExit(143);
-    });
-
-    const relaunchPromise = launcher.relaunch("test-session-id");
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await writeFatalAuthFailure();
-    await relaunchPromise;
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    expect(secondProc.kill).toHaveBeenCalledWith("SIGTERM");
-    expect(launcher.getSession("test-session-id")?.state).toBe("exited");
-  });
-
-  it("terminates a fresh relaunch process for an old non-reviewer session", async () => {
-    let resolveFirstExit: (code: number) => void;
-    const firstProc = {
-      pid: 24685,
-      kill: vi.fn((signal?: string) => {
-        if (signal === "SIGTERM") resolveFirstExit(143);
-      }),
-      exited: new Promise<number>((resolve) => {
-        resolveFirstExit = resolve;
-      }),
-      stdin: new WritableStream<Uint8Array>(),
-      stdout: new ReadableStream<Uint8Array>(),
-      stderr: new ReadableStream<Uint8Array>(),
-    };
-    mockSpawn.mockReturnValueOnce(firstProc);
-
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    const session = launcher.getSession("test-session-id");
-    if (!session) throw new Error("missing launched session");
-    session.createdAt = Date.now() - 86_400_000;
-
-    const { proc: secondProc, writeFatalAuthFailure } = createMockCodexProcWithWritableStderr(24686);
-    mockSpawn.mockReturnValueOnce(secondProc);
-    firstProc.kill.mockImplementation(() => {
-      resolveFirstExit(143);
-    });
-
-    const relaunchPromise = launcher.relaunch("test-session-id");
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await writeFatalAuthFailure();
-    await relaunchPromise;
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
-    expect(secondProc.kill).toHaveBeenCalledWith("SIGTERM");
-    expect(launcher.getSession("test-session-id")?.state).toBe("exited");
-  });
   // Regression: q-16 — old Codex process exit handler stomps new process state.
   // When relaunch kills the old process and spawns a new one, the old process's
   // proc.exited handler must not overwrite the new session state to "exited" or
