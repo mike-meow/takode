@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { access as accessAsync } from "node:fs/promises";
 import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
+import { isValidQuestId } from "../../shared/quest-journey.js";
 import {
   buildPeekResponse,
   buildPeekDefault,
@@ -772,8 +773,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const body = await c.req.json().catch(() => ({}));
     const questId = typeof body.questId === "string" ? body.questId.trim() : "";
     if (!questId) return c.json({ error: "questId is required" }, 400);
-    if (!/^q-\d+$/i.test(questId)) {
-      return c.json({ error: "questId must match q-NNN format (e.g., q-1, q-42)" }, 400);
+    if (!isValidQuestId(questId)) {
+      return c.json({ error: `Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)` }, 400);
     }
 
     // Auto-populate title from quest store if not explicitly provided
@@ -817,7 +818,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       .map((s) => s.trim())
       .filter(Boolean);
     if (questIds.length === 0) return c.json({ error: "questId is required" }, 400);
-    const invalid = questIds.filter((qid) => !/^q-\d+$/i.test(qid));
+    const invalid = questIds.filter((qid) => !isValidQuestId(qid));
     if (invalid.length > 0) {
       return c.json({ error: `Invalid quest ID(s): ${invalid.join(", ")} -- must match q-NNN format (e.g., q-1, q-42)` }, 400);
     }
@@ -839,8 +840,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const questId = c.req.param("questId").trim();
     if (!questId) return c.json({ error: "questId is required" }, 400);
-    if (!/^q-\d+$/i.test(questId)) {
-      return c.json({ error: "questId must match q-NNN format (e.g., q-1, q-42)" }, 400);
+    if (!isValidQuestId(questId)) {
+      return c.json({ error: `Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)` }, 400);
     }
 
     const result = wsBridge.advanceBoardRow(id, questId);

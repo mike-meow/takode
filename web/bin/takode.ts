@@ -2382,7 +2382,7 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
 
 // ─── Board ─────────────────────────────────────────────────────────────────
 
-import { QUEST_JOURNEY_STATES, QUEST_JOURNEY_HINTS } from "../shared/quest-journey.js";
+import { QUEST_JOURNEY_STATES, QUEST_JOURNEY_HINTS, isValidQuestId } from "../shared/quest-journey.js";
 
 interface BoardRow {
   questId: string;
@@ -2423,6 +2423,7 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
 
   for (const row of board) {
     const quest = row.questId.padEnd(qCol);
+    // Truncate to (tCol - 3) to leave room for the "…" character and column padding
     const titleStr = row.title ? (row.title.length > tCol - 2 ? row.title.slice(0, tCol - 3) + "…" : row.title) : "--";
     const title = titleStr.padEnd(tCol);
     const worker = row.worker ? `#${row.workerNum ?? "?"}`.padEnd(wCol) : "--".padEnd(wCol);
@@ -2482,7 +2483,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       err(
         `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,q-Y] [--json]`,
       );
-    if (!/^q-\d+$/i.test(questId))
+    if (!isValidQuestId(questId))
       err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
 
@@ -2528,7 +2529,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   if (sub === "advance") {
     const questId = args[1];
     if (!questId) err("Usage: takode board advance <quest-id> [--json]");
-    if (!/^q-\d+$/i.test(questId))
+    if (!isValidQuestId(questId))
       err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
 
@@ -2554,7 +2555,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   if (sub === "rm") {
     const questIds = args.slice(1).filter((a) => !a.startsWith("--"));
     if (questIds.length === 0) err("Usage: takode board rm <quest-id> [<quest-id> ...] [--json]");
-    const invalid = questIds.filter((id) => !/^q-\d+$/i.test(id));
+    const invalid = questIds.filter((id) => !isValidQuestId(id));
     if (invalid.length > 0)
       err(`Invalid quest ID(s): ${invalid.join(", ")} -- must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(1));
