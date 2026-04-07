@@ -222,6 +222,19 @@ const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
 const CODEX_RETRY_SAFE_RESUME_ITEM_TYPES: ReadonlySet<string> = new Set(["reasoning", "contextCompaction"]);
 const CODEX_TOOL_RESULT_WATCHDOG_MS = 120_000;
 
+// Injected into leader sessions after context compaction so they reload
+// orchestration skills and refresh herd state before making decisions.
+const LEADER_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, reload your orchestration state:
+
+1. Load skills: /takode-orchestration and /quest
+2. Run: takode board show && takode list --tasks
+3. Key rules:
+   - Use \`takode spawn\` to create workers (never Agent tool)
+   - Follow dispatch-workflow.md template for every dispatch
+   - Follow quest-journey.md for lifecycle transitions
+   - Update the board (\`takode board set/advance\`) at every stage transition
+   - Never implement non-trivial changes yourself -- delegate to workers`;
+
 /** Extract structured Q&A pairs from an AskUserQuestion approval. */
 function extractAskUserAnswers(
   originalInput: Record<string, unknown>,
@@ -2695,6 +2708,17 @@ export class WsBridge {
     return this.launcher?.getSession(session.id)?.isOrchestrator === true;
   }
 
+  /** After compaction, re-inject orchestration context for leader sessions
+   *  so they reload skills and refresh herd state before continuing. */
+  private injectLeaderCompactionRecovery(session: Session): void {
+    if (!this.isLeaderSession(session)) return;
+    console.log(`[ws-bridge] Injecting leader compaction recovery for session ${sessionTag(session.id)}`);
+    this.injectUserMessage(session.id, LEADER_COMPACTION_RECOVERY_PROMPT, {
+      sessionId: "system",
+      sessionLabel: "System",
+    });
+  }
+
   private isHerdedWorkerSession(session: Session): boolean {
     return !!this.launcher?.getSession(session.id)?.herdedBy;
   }
@@ -3384,6 +3408,7 @@ export class WsBridge {
               ? { context_used_percent: session.state.context_used_percent }
               : {}),
           });
+          this.injectLeaderCompactionRecovery(session);
         }
         this.persistSession(session);
       } else if (msg.type === "assistant") {
@@ -4110,6 +4135,7 @@ export class WsBridge {
               ? { context_used_percent: session.state.context_used_percent }
               : {}),
           });
+          this.injectLeaderCompactionRecovery(session);
         }
         this.persistSession(session);
         // Fall through to broadcastToBrowsers — the browser uses status_change
@@ -5379,6 +5405,7 @@ export class WsBridge {
             ? { context_used_percent: session.state.context_used_percent }
             : {}),
         });
+        this.injectLeaderCompactionRecovery(session);
       }
 
       if (msg.permissionMode) {

@@ -6718,6 +6718,98 @@ describe("Claude SDK compaction handling", () => {
   });
 });
 
+// ─── Leader compaction recovery ─────────────────────────────────────────────
+
+describe("Leader compaction recovery", () => {
+  // After compaction finishes, leader sessions receive a [System] user message
+  // instructing them to reload orchestration skills and refresh herd state.
+  // This prevents post-compaction mistakes (wrong dispatch format, using
+  // subagents instead of takode spawn, skipping board updates, etc.).
+
+  it("injects recovery message for leader sessions after SDK compaction finishes", () => {
+    // Leader sessions lose skill context after compaction. The recovery
+    // message reminds them to reload /takode-orchestration and /quest.
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: { session_id: "cli-s1", model: "claude-sonnet-4-5-20250929", cwd: "/tmp/test", tools: [], permissionMode: "default" },
+    });
+
+    // Mark session as orchestrator
+    bridge.setLauncher({
+      touchActivity: vi.fn(), touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    // Compaction cycle: start → finish
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    // Recovery message should have been injected with system source tag
+    const recoveryCalls = spy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(1);
+    expect(recoveryCalls[0][1]).toContain("/takode-orchestration");
+    expect(recoveryCalls[0][1]).toContain("takode board show");
+  });
+
+  it("does not inject recovery message for non-leader sessions", () => {
+    // Regular (standalone) sessions don't have orchestration skills to reload.
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: { session_id: "cli-s1", model: "claude-sonnet-4-5-20250929", cwd: "/tmp/test", tools: [], permissionMode: "default" },
+    });
+
+    // Not an orchestrator
+    bridge.setLauncher({
+      touchActivity: vi.fn(), touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: false })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    const recoveryCalls = spy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(0);
+  });
+
+  it("does not inject recovery for herded worker sessions", () => {
+    // Workers are not leaders -- they don't need orchestration recovery.
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: { session_id: "cli-s1", model: "claude-sonnet-4-5-20250929", cwd: "/tmp/test", tools: [], permissionMode: "default" },
+    });
+
+    // Herded worker (not orchestrator)
+    bridge.setLauncher({
+      touchActivity: vi.fn(), touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: false, herdedBy: "leader-uuid" })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    const recoveryCalls = spy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(0);
+  });
+});
+
 // ─── Codex stale turn retry after compaction + disconnect ────────────────────
 
 describe("Codex retries user message when turn is stale after disconnect", () => {
