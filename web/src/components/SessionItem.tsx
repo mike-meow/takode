@@ -86,6 +86,8 @@ interface SessionItemProps {
   attention?: "action" | "error" | "review" | null;
   hasUnread?: boolean;
   reorderMode?: boolean;
+  /** Whether drag-to-reorder is enabled (false in activity sort mode). */
+  isDraggable?: boolean;
   onMobileReorderHandleActiveChange?: (active: boolean) => void;
   dragHandleProps?: {
     listeners?: Record<string, unknown>;
@@ -131,6 +133,7 @@ export function SessionItem({
   attention,
   hasUnread,
   reorderMode,
+  isDraggable = true,
   onMobileReorderHandleActiveChange,
   dragHandleProps,
   herdGroupBadgeTheme,
@@ -395,9 +398,9 @@ export function SessionItem({
         className={`w-full text-left rounded-xl sm:rounded-lg border sm:border-transparent ${
           archived ? "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-14 sm:py-2" : "pl-3.5 pr-12 py-2.5 sm:pl-3.5 sm:pr-3 sm:py-2"
         } transition-all duration-100 select-none ${
-          reorderMode
+          isDraggable
             ? "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
-            : "cursor-pointer sm:cursor-grab sm:active:cursor-grabbing"
+            : "cursor-pointer"
         } ${
           isActive
             ? "bg-cc-active border-cc-primary/25"

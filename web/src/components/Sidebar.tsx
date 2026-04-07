@@ -913,7 +913,7 @@ export function Sidebar() {
             )}
 
             <DndContext
-              sensors={sessionSortMode === "activity" ? undefined : groupSensors}
+              sensors={sessionSortMode === "activity" ? [] : groupSensors}
               collisionDetection={closestCenter}
               onDragEnd={sessionSortMode === "activity" ? undefined : handleGroupDragEnd}
               modifiers={[restrictToVerticalAxis]}
@@ -937,7 +937,7 @@ export function Sidebar() {
                           groupDragging={isDragging}
                           onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
                           groupDragHandleProps={
-                            projectGroups.length > 1
+                            projectGroups.length > 1 && sessionSortMode !== "activity"
                               ? {
                                   listeners: listeners as Record<string, unknown> | undefined,
                                   attributes: attributes as unknown as Record<string, unknown>,

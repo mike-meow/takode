@@ -136,12 +136,16 @@ export function ProjectGroup({
   const sessionSortMode = useStore((s) => s.sessionSortMode);
   const touchDevice = isTouchDevice();
 
-  // Drag-and-drop: always register the sensor so the useMemo dependency array
-  // inside useSensors keeps a constant length across renders (React requirement).
-  // On desktop, items remain drag-anywhere. On mobile, drag attaches to the
-  // explicit handle shown in Edit mode.
+  // Drag-and-drop: register the sensor so useSensors keeps a constant hook
+  // count across renders. On desktop, items are drag-anywhere; on mobile, drag
+  // attaches to the explicit handle shown in Edit mode.
+  // Activity sort mode disables drag because the server controls ordering --
+  // manual reorder would conflict. We pass sensors=[] (not undefined) because
+  // dnd-kit falls back to default sensors on undefined, which intercept pointer
+  // events and break click-to-select.
   const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const sensors = useSensors(pointerSensor);
+  const isDraggable = sessionSortMode !== "activity";
 
   const sessionIds = group.sessions.map((s) => s.id);
 
@@ -238,9 +242,9 @@ export function ProjectGroup({
       {/* Session list — drag-sortable */}
       {!isCollapsed && (
         <DndContext
-          sensors={sessionSortMode === "activity" ? undefined : sensors}
+          sensors={isDraggable ? sensors : []}
           collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
+          onDragEnd={isDraggable ? handleDragEnd : undefined}
           modifiers={[restrictToVerticalAxis]}
         >
           <SortableContext items={sessionIds} strategy={verticalListSortingStrategy}>
@@ -252,7 +256,7 @@ export function ProjectGroup({
                 return (
                   <SortableSessionItem key={s.id} id={s.id}>
                     {({ setNodeRef, style, listeners, attributes, isDragging }) => (
-                      <div ref={setNodeRef} style={style} {...(!touchDevice ? { ...listeners, ...attributes } : {})}>
+                      <div ref={setNodeRef} style={style} {...(!touchDevice && isDraggable ? { ...listeners, ...attributes } : {})}>
                         <SessionItem
                           session={s}
                           isActive={currentSessionId === s.id}
@@ -284,6 +288,7 @@ export function ProjectGroup({
                           herdGroupBadgeTheme={herdGroupBadgeThemes?.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights?.get(s.id)}
                           reorderMode={reorderMode}
+                          isDraggable={isDraggable}
                           onMobileReorderHandleActiveChange={onMobileReorderHandleActiveChange}
                           dragHandleProps={
                             reorderMode && touchDevice
