@@ -3,77 +3,143 @@
 </p>
 
 <h1 align="center">Takode</h1>
-<p align="center"><strong>Web orchestration UI for Claude Code and Codex sessions.</strong></p>
-<p align="center">Run multiple agents, inspect every tool call, and coordinate work across sessions.</p>
+<p align="center"><strong>A web workspace for running and coordinating Claude Code and Codex sessions.</strong></p>
+<p align="center">See every tool call. Run agents in parallel. Let a leader session orchestrate the whole team.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
 </p>
 
-Takode started as a fork of The-Vibe-Company/companion but has since heavily diverged with its own feature set.
+---
 
-## What makes Takode different
-- **Cross-session orchestration**: leader/worker workflows powered by the Takode CLI, herd events, and injected coordination messages.
-- **Questmaster workflow**: persistent quest/task tracking across sessions, with lifecycle transitions and verification inbox flows.
-- **Git worktree isolation**: lightweight per-session isolation via git worktrees (preferred over upstream's Docker-first model).
-- **Multi-backend support**: first-class support for both Claude Code and Codex via adapter-based protocol normalization.
-- **Protocol recordings**: raw NDJSON/JSON-RPC recording and replay tooling for debugging protocol drift.
-- **Voice + STT integration**: built-in voice input and speech-to-text endpoints for prompt creation.
-- **Landing page + product surface**: includes the takode.sh-facing landing app alongside the main session UI.
+## Quick Start
 
-## Quick start
-Requirements:
-- Bun
-- Claude Code and/or Codex CLI available on your machine
+**Requirements:** [Bun](https://bun.sh) and either [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) CLI installed.
 
-Run:
 ```bash
 bunx the-companion
 ```
-Open `http://localhost:3456`.
 
-Alternative foreground command:
+Open <http://localhost:3456>. Create a session, point it at your project, and start chatting.
+
+---
+
+## What You Can Do
+
+### Run multiple sessions at once
+
+Each session is a full Claude Code or Codex instance with its own conversation, working directory, and git branch. Organize them into sidebar groups by project. Switch between sessions instantly -- multiple browser tabs work too.
+
+### See everything the agent does
+
+Every tool call is visible in the chat: file edits, bash commands, grep searches, file reads. Tool calls are grouped and collapsible, so you can skim the high-level flow or expand any tool block to see exactly what happened. Results stream in real time.
+
+### Control permissions per session
+
+Choose how much autonomy each session gets:
+
+- **Auto-approve** -- the agent runs freely
+- **Ask first** -- each tool call needs your OK
+- **Plan mode** -- the agent proposes a plan before making any changes
+
+Permission requests show up as banners. Approve, reject, or add feedback with a click.
+
+### Talk to your agents
+
+Click the microphone to dictate a prompt. Takode transcribes and sends it. If transcription fails, your recording is saved so you can retry.
+
+### Let a leader coordinate workers
+
+This is Takode's signature workflow. One session acts as a **leader** that spawns and manages **worker** sessions:
+
+1. The leader creates worker sessions, each in an isolated **git worktree**
+2. Workers get dispatched to quests (persistent tasks) and work independently
+3. The leader receives **herd events** whenever a worker finishes, needs permission, or hits an issue
+4. The leader reviews work, sends follow-up instructions, and coordinates porting changes to the main branch
+
+Workers can't interfere with each other -- each worktree is its own branch. No Docker needed.
+
+### Track work with quests
+
+Quests are persistent tasks that survive server restarts and span across sessions:
+
+- Create from the UI or CLI: `quest create "Fix mobile sidebar"`
+- Quests have a lifecycle: **idea** → **refined** → **in progress** → **needs verification** → **done**
+- A verification inbox collects completed work for your review, with checklists and a feedback loop
+
+The leader can run a full **Quest Journey** -- dispatching, reviewing with a skeptic, grooming for quality, porting, and verifying -- all through coordinated sessions.
+
+### Get notified when you're needed
+
+- **In-app badges** with summary text on sessions that need your attention
+- **Pushover notifications** for mobile alerts when you're away from the screen
+
+---
+
+## The Typical Workflow
+
+**Solo use:** Create a session, point it at your repo, chat with it. You get the full Claude Code / Codex experience with better visibility into tool calls and a persistent conversation that survives server restarts.
+
+**Team of agents:** Start a leader session. Tell it what you want built. It creates quests, spawns workers, reviews their output, and ports clean commits to your main branch. You approve plans, verify results, and give feedback -- the leader handles the rest.
+
+```
+You
+ └─ Leader session
+      ├─ Worker #1 (feat/auth)     → worktree, own branch
+      ├─ Worker #2 (fix/sidebar)   → worktree, own branch
+      ├─ Worker #3 (refactor/api)  → worktree, own branch
+      └─ Reviewer sessions         → skeptic + groom passes
+```
+
+---
+
+## Works with Both Backends
+
+Takode supports **Claude Code** and **Codex** side by side. Each session can use a different backend. The UI works identically regardless of which CLI is behind it.
+
+---
+
+## CLI
+
+Takode includes a CLI for server and session management:
+
 ```bash
-the-companion serve
+takode install        # Install as a background service (launchd / systemd)
+takode start / stop   # Start or stop the background service
+takode status         # Show service status
+takode logs           # Tail service logs
 ```
 
-## Architecture (simple)
-```text
-Browser (React)
-  <-> ws://localhost:3456/ws/browser/:session
-Takode server (Bun + Hono)
-  <-> ws://localhost:3456/ws/cli/:session
-Claude Code / Codex backends
+```bash
+takode sessions list  # List all sessions
+takode export         # Export session data to an archive
+takode import         # Import session data from an archive
 ```
+
+---
 
 ## Development
+
 ```bash
+# Dev server (backend :3456 + Vite HMR :5174)
 make dev
+
+# Type checking and tests
+cd web && bun run typecheck && bun run test
+
+# Production build
+cd web && bun run build && bun run start
 ```
 
-Tailscale HTTPS helper:
-```bash
-./scripts/tailscale-serve.sh both
-```
+## Documentation
 
-Manual:
-```bash
-cd web
-bun install
-bun run dev
-```
+- [WebSocket Protocol Reference](WEBSOCKET_PROTOCOL_REVERSED.md)
+- [Architecture & Contributor Guide](CLAUDE.md)
 
-Checks:
-```bash
-cd web
-bun run typecheck
-bun run test
-```
+## Origin
 
-## Docs
-- Protocol reverse engineering: [`WEBSOCKET_PROTOCOL_REVERSED.md`](WEBSOCKET_PROTOCOL_REVERSED.md)
-- Contributor and architecture guide: [`CLAUDE.md`](CLAUDE.md)
-- Tailscale HTTPS prod/dev setup: [`docs/tailscale-serve.md`](docs/tailscale-serve.md)
+Takode started as a fork of [The-Vibe-Company/companion](https://github.com/The-Vibe-Company/companion) and has since heavily diverged with its own architecture and feature set.
 
 ## License
+
 MIT
