@@ -45,11 +45,13 @@ Workers can't interfere with each other -- each worktree is its own branch. No D
 
 Quests are persistent tasks that survive server restarts and span across sessions:
 
-- Create from the UI or CLI: `quest create "Fix mobile sidebar"`
+- Create quests from the built-in UI, or ask any agent to create one for you
 - Quests have a lifecycle: **idea** → **refined** → **in progress** → **needs verification** → **done**
 - A verification inbox collects completed work for your review, with checklists and a feedback loop
 
 The leader can run a full **Quest Journey** -- dispatching, reviewing with a skeptic, grooming for quality, porting, and verifying -- all through coordinated sessions.
+
+> Most Takode features -- quests, orchestration, session management, notifications -- are accessible to agents via built-in CLI tools. This is how leader sessions coordinate workers autonomously.
 
 ### Run multiple sessions at once
 
