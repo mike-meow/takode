@@ -373,6 +373,9 @@ function resetAuthoritativeHistoryState(sessionId: string): void {
   store.clearAutoExpandedTurns(sessionId);
   store.setTasks(sessionId, []);
   store.setSessionTaskPreview(sessionId, null);
+  // Authoritative history supersedes any pending Codex inputs — they've either
+  // been committed (appear in hot messages) or were dropped by the server.
+  store.setPendingCodexInputs(sessionId, []);
 }
 
 function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, deps: WsMessageHandlerDeps) {
