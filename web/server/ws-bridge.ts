@@ -4063,6 +4063,36 @@ export class WsBridge {
         return;
       }
 
+      // Intercept status_change from SDK adapter so is_compacting state,
+      // takode events, and deriveSessionStatus() work correctly. The SDK
+      // adapter translates system.status into {type:"status_change"} — mirrors
+      // the WebSocket path in handleSystemMessage(system.status) and the Codex
+      // path in handleCodexMessage(status_change).
+      if (msg.type === "status_change") {
+        const newStatus = (msg as any).status;
+        const wasCompacting = session.state.is_compacting;
+        session.state.is_compacting = newStatus === "compacting";
+
+        if (newStatus === "compacting" && !wasCompacting) {
+          session.compactedDuringTurn = true;
+          this.emitTakodeEvent(session.id, "compaction_started", {
+            ...(typeof session.state.context_used_percent === "number"
+              ? { context_used_percent: session.state.context_used_percent }
+              : {}),
+          });
+        }
+        if (wasCompacting && newStatus !== "compacting") {
+          this.emitTakodeEvent(session.id, "compaction_finished", {
+            ...(typeof session.state.context_used_percent === "number"
+              ? { context_used_percent: session.state.context_used_percent }
+              : {}),
+          });
+        }
+        this.persistSession(session);
+        // Fall through to broadcastToBrowsers — the browser uses status_change
+        // to update the session status indicator.
+      }
+
       // Intercept compact_boundary from SDK adapter — the adapter forwards the
       // raw CLI system message (type:"system", subtype:"compact_boundary").
       // Route through the same logic as the WebSocket path in handleSystemMessage

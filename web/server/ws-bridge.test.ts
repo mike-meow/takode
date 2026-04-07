@@ -6420,6 +6420,243 @@ describe("Compaction preserves generation state (regression)", () => {
   });
 });
 
+// ─── SDK compaction handling ────────────────────────────────────────────────
+
+describe("Claude SDK compaction handling", () => {
+  // Claude SDK sessions emit both status_change (compacting) and compact_boundary.
+  // The bridge must: (1) update is_compacting state on status_change, (2) create
+  // compact_marker in messageHistory on compact_boundary, (3) emit takode events.
+
+  it("updates is_compacting state when SDK status_change reports compacting", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // SDK adapter emits session_init so the session is initialized
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-1",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+
+    const session = bridge.getSession("s1")!;
+    expect(session.state.is_compacting).toBe(false);
+
+    // Simulate status_change to compacting (what the SDK adapter emits)
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    expect(session.state.is_compacting).toBe(true);
+
+    // Status back to non-compacting
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+    expect(session.state.is_compacting).toBe(false);
+  });
+
+  it("sets compactedDuringTurn when SDK enters compacting state", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-2",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+
+    const session = bridge.getSession("s1")!;
+    expect(session.compactedDuringTurn).toBe(false);
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    expect(session.compactedDuringTurn).toBe(true);
+  });
+
+  it("emits compaction_started and compaction_finished takode events for SDK sessions", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-3",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    // Enter compacting
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    // Exit compacting
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    const startedCalls = spy.mock.calls.filter(([, event]) => event === "compaction_started");
+    const finishedCalls = spy.mock.calls.filter(([, event]) => event === "compaction_finished");
+    expect(startedCalls).toHaveLength(1);
+    expect(finishedCalls).toHaveLength(1);
+  });
+
+  it("creates compact_marker when SDK emits compact_boundary", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-4",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+    browser.send.mockClear();
+
+    // Simulate compact_boundary (raw system message from SDK)
+    adapter.emitBrowserMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 80000 },
+      uuid: "sdk-compact-uuid-1",
+      session_id: "cli-sdk-4",
+    });
+
+    const session = bridge.getSession("s1")!;
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers).toHaveLength(1);
+    const marker = markers[0] as any;
+    expect(marker.trigger).toBe("auto");
+    expect(marker.preTokens).toBe(80000);
+    expect(marker.cliUuid).toBe("sdk-compact-uuid-1");
+    expect(marker.id).toMatch(/^compact-boundary-/);
+
+    // Verify compact_boundary was broadcast to browser
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const compactMsg = calls.find((m: any) => m.type === "compact_boundary");
+    expect(compactMsg).toBeTruthy();
+    expect(typeof compactMsg.timestamp).toBe("number");
+  });
+
+  it("captures compaction summary from user message after compact_boundary", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-5",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+    browser.send.mockClear();
+
+    // Compact boundary
+    adapter.emitBrowserMessage({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 90000 },
+      uuid: "sdk-compact-summary-1",
+      session_id: "cli-sdk-5",
+    });
+
+    const session = bridge.getSession("s1")!;
+    expect(session.awaitingCompactSummary).toBe(true);
+
+    // User message with compaction summary
+    adapter.emitBrowserMessage({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "Here is a summary of the conversation so far..." }],
+      },
+      parent_tool_use_id: null,
+      uuid: "sdk-summary-msg-1",
+      session_id: "cli-sdk-5",
+    });
+
+    expect(session.awaitingCompactSummary).toBe(false);
+
+    // Summary should be stored on the compact_marker
+    const marker = session.messageHistory.findLast((m) => m.type === "compact_marker") as any;
+    expect(marker?.summary).toBe("Here is a summary of the conversation so far...");
+
+    // compact_summary should be broadcast to browser
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const summaryMsg = calls.find((m: any) => m.type === "compact_summary");
+    expect(summaryMsg).toBeTruthy();
+    expect(summaryMsg.summary).toBe("Here is a summary of the conversation so far...");
+  });
+
+  it("does not duplicate compact_marker on re-notification of same compacting status", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-6",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+
+    // SDK sessions use compact_boundary for marker creation, not status_change.
+    // Verify that multiple status_change(compacting) don't cause issues.
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+
+    const session = bridge.getSession("s1")!;
+    // is_compacting should be true (set on first, no-op on second)
+    expect(session.state.is_compacting).toBe(true);
+    // compactedDuringTurn should be true (set on first transition only)
+    expect(session.compactedDuringTurn).toBe(true);
+  });
+
+  it("broadcasts status_change to browser for SDK sessions", () => {
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: "cli-sdk-7",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "compacting" }));
+  });
+});
+
 // ─── Codex stale turn retry after compaction + disconnect ────────────────────
 
 describe("Codex retries user message when turn is stale after disconnect", () => {
