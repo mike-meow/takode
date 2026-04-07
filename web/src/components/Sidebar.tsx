@@ -511,6 +511,7 @@ export function Sidebar() {
         askPermission: askPermissionMap?.get(id),
         idleKilled: cliDisconnectReason.get(id) === "idle_limit",
         lastActivityAt: sdkInfo?.lastActivityAt,
+        lastUserMessageAt: sdkInfo?.lastUserMessageAt,
         isOrchestrator: sdkInfo?.isOrchestrator || false,
         herdedBy: sdkInfo?.herdedBy,
         sessionNum: sdkInfo?.sessionNum ?? null,

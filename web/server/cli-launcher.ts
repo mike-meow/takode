@@ -275,6 +275,8 @@ export interface SdkSessionInfo {
   createdAt: number;
   /** Epoch ms of last user or CLI activity (used by idle manager) */
   lastActivityAt?: number;
+  /** Epoch ms of last user message (used for sidebar activity sort) */
+  lastUserMessageAt?: number;
   /** The CLI's internal session ID (from system.init), used for --resume */
   cliSessionId?: string;
   archived?: boolean;
@@ -2406,6 +2408,18 @@ export class CliLauncher {
     const info = this.sessions.get(sessionId);
     if (info) {
       info.lastActivityAt = Date.now();
+      this.persistState();
+    }
+  }
+
+  /**
+   * Update the last user message timestamp for a session.
+   * Only called when a real user message is committed, not on assistant/tool activity.
+   */
+  touchUserMessage(sessionId: string): void {
+    const info = this.sessions.get(sessionId);
+    if (info) {
+      info.lastUserMessageAt = Date.now();
       this.persistState();
     }
   }

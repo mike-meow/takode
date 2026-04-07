@@ -107,7 +107,7 @@ export interface ChatMessage {
   /** Leader session assistant message explicitly addressed to the human via @to(user) suffix. */
   leaderUserAddressed?: boolean;
   /** Notification anchored to this message (set by takode notify). */
-  notification?: { category: "needs-input" | "review"; timestamp: number };
+  notification?: { category: "needs-input" | "review"; timestamp: number; summary?: string };
   /** Browser-only message not present in server messageHistory; excluded from sync hash verification. */
   ephemeral?: boolean;
 }
@@ -182,6 +182,8 @@ export interface SdkSessionInfo {
   keywords?: string[];
   /** Epoch ms of last real activity (user/assistant message, not keep_alive) */
   lastActivityAt?: number;
+  /** Epoch ms of last user message (for sidebar activity sort -- not updated by assistant/tool activity) */
+  lastUserMessageAt?: number;
   /** Last server-reported context usage percent for this session. */
   contextUsedPercent?: number;
   /** Number of completed turns in this session. */

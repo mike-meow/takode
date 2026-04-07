@@ -391,63 +391,68 @@ describe("groupSessionsByProject", () => {
 });
 
 describe("groupSessionsByProject — activity sort mode", () => {
-  it("sorts sessions by lastActivityAt desc when sortMode is 'activity'", () => {
+  it("sorts sessions by lastUserMessageAt desc when sortMode is 'activity'", () => {
+    // Activity sort uses lastUserMessageAt (not lastActivityAt) to avoid
+    // order flipping when sessions have concurrent assistant activity.
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/app", createdAt: 300, lastActivityAt: 100 }),
-      makeItem({ id: "s2", cwd: "/a/app", createdAt: 100, lastActivityAt: 500 }),
-      makeItem({ id: "s3", cwd: "/a/app", createdAt: 200, lastActivityAt: 300 }),
+      makeItem({ id: "s1", cwd: "/a/app", createdAt: 300, lastUserMessageAt: 100 }),
+      makeItem({ id: "s2", cwd: "/a/app", createdAt: 100, lastUserMessageAt: 500 }),
+      makeItem({ id: "s3", cwd: "/a/app", createdAt: 200, lastUserMessageAt: 300 }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["s2", "s3", "s1"]);
   });
 
-  it("falls back to createdAt when lastActivityAt is missing in activity mode", () => {
+  it("falls back to createdAt when lastUserMessageAt is missing in activity mode", () => {
     const sessions = [
       makeItem({ id: "s1", cwd: "/a/app", createdAt: 100 }),
       makeItem({ id: "s2", cwd: "/a/app", createdAt: 300 }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
-    // s2 (createdAt 300) before s1 (createdAt 100) since neither has lastActivityAt
+    // s2 (createdAt 300) before s1 (createdAt 100) since neither has lastUserMessageAt
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["s2", "s1"]);
   });
 
-  it("sorts correctly with a mix of sessions with and without lastActivityAt", () => {
+  it("sorts correctly with a mix of sessions with and without lastUserMessageAt", () => {
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastActivityAt: 500 }),
-      makeItem({ id: "s2", cwd: "/a/app", createdAt: 600 }), // no lastActivityAt, falls back to createdAt
-      makeItem({ id: "s3", cwd: "/a/app", createdAt: 400, lastActivityAt: 300 }),
+      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastUserMessageAt: 500 }),
+      makeItem({ id: "s2", cwd: "/a/app", createdAt: 600 }), // no lastUserMessageAt, falls back to createdAt
+      makeItem({ id: "s3", cwd: "/a/app", createdAt: 400, lastUserMessageAt: 300 }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
-    // s2 uses createdAt 600 as fallback, s1 has activity 500, s3 has activity 300
+    // s2 uses createdAt 600 as fallback, s1 has user msg 500, s3 has user msg 300
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["s2", "s1", "s3"]);
   });
 
   it("ignores custom session order when sortMode is 'activity'", () => {
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastActivityAt: 500 }),
-      makeItem({ id: "s2", cwd: "/a/app", createdAt: 200, lastActivityAt: 100 }),
+      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastUserMessageAt: 500 }),
+      makeItem({ id: "s2", cwd: "/a/app", createdAt: 200, lastUserMessageAt: 100 }),
     ];
     const customOrder = new Map([["/a/app", ["s2", "s1"]]]);
     const groups = groupSessionsByProject(sessions, undefined, customOrder, undefined, "activity");
-    // Activity mode ignores custom order: s1 (activity 500) before s2 (activity 100)
+    // Activity mode ignores custom order: s1 (user msg 500) before s2 (user msg 100)
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["s1", "s2"]);
   });
 
-  it("sorts groups by mostRecentActivity desc when sortMode is 'activity'", () => {
+  it("does NOT reorder groups in activity mode — keeps manual/alphabetical order", () => {
+    // q-136 fix: activity sort only applies WITHIN groups, not between them.
+    // Groups stay in custom or alphabetical order regardless of session activity.
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/alpha", createdAt: 100, lastActivityAt: 100 }),
-      makeItem({ id: "s2", cwd: "/a/zebra", createdAt: 50, lastActivityAt: 500 }),
+      makeItem({ id: "s1", cwd: "/a/alpha", createdAt: 100, lastActivityAt: 100, lastUserMessageAt: 100 }),
+      makeItem({ id: "s2", cwd: "/a/zebra", createdAt: 50, lastActivityAt: 500, lastUserMessageAt: 500 }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
-    // zebra group has more recent activity (500) so comes first
-    expect(groups[0].label).toBe("zebra");
-    expect(groups[1].label).toBe("alpha");
+    // Groups stay alphabetical even though zebra has more recent activity
+    expect(groups[0].label).toBe("alpha");
+    expect(groups[1].label).toBe("zebra");
   });
 
-  it("ignores custom group order when sortMode is 'activity'", () => {
+  it("preserves custom group order in activity mode", () => {
+    // Even with activity sort, custom group order is preserved.
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/alpha", createdAt: 100, lastActivityAt: 500 }),
-      makeItem({ id: "s2", cwd: "/a/zebra", createdAt: 200, lastActivityAt: 100 }),
+      makeItem({ id: "s1", cwd: "/a/alpha", createdAt: 100, lastUserMessageAt: 500 }),
+      makeItem({ id: "s2", cwd: "/a/zebra", createdAt: 200, lastUserMessageAt: 100 }),
     ];
     const groups = groupSessionsByProject(
       sessions,
@@ -456,17 +461,51 @@ describe("groupSessionsByProject — activity sort mode", () => {
       ["/a/zebra", "/a/alpha"], // custom group order puts zebra first
       "activity",
     );
-    // Activity mode ignores custom group order: alpha (activity 500) first
-    expect(groups[0].label).toBe("alpha");
+    // Custom group order is preserved in activity mode
+    expect(groups[0].label).toBe("zebra");
+    expect(groups[1].label).toBe("alpha");
+  });
+
+  it("ignores lastActivityAt for sort order (uses lastUserMessageAt only)", () => {
+    // Two sessions working concurrently: assistant activity flips rapidly,
+    // but user messages have a clear order. Sort must be stable.
+    const sessions = [
+      makeItem({
+        id: "worker-1",
+        cwd: "/a/app",
+        createdAt: 1000,
+        lastActivityAt: 10000, // assistant very active right now
+        lastUserMessageAt: 5000, // user sent message at t=5000
+      }),
+      makeItem({
+        id: "worker-2",
+        cwd: "/a/app",
+        createdAt: 2000,
+        lastActivityAt: 9500, // assistant was active 0.5s ago
+        lastUserMessageAt: 7000, // user sent message at t=7000 (more recent)
+      }),
+    ];
+
+    const result = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
+    // worker-2 has more recent lastUserMessageAt, so it comes first
+    expect(result[0].sessions.map((s) => s.id)).toEqual(["worker-2", "worker-1"]);
+
+    // Simulate assistant activity flip: worker-1 becomes more active, worker-2 less
+    sessions[0].lastActivityAt = 11000;
+    sessions[1].lastActivityAt = 9500;
+
+    const result2 = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
+    // Order should NOT change because lastUserMessageAt didn't change
+    expect(result2[0].sessions.map((s) => s.id)).toEqual(["worker-2", "worker-1"]);
   });
 
   it("still nests reviewers after parent in activity mode", () => {
     const sessions = [
-      makeItem({ id: "reviewer", cwd: "/a/app", createdAt: 200, lastActivityAt: 500, sessionNum: 20, reviewerOf: 10 }),
-      makeItem({ id: "worker", cwd: "/a/app", createdAt: 100, lastActivityAt: 100, sessionNum: 10 }),
+      makeItem({ id: "reviewer", cwd: "/a/app", createdAt: 200, lastUserMessageAt: 500, sessionNum: 20, reviewerOf: 10 }),
+      makeItem({ id: "worker", cwd: "/a/app", createdAt: 100, lastUserMessageAt: 100, sessionNum: 10 }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
-    // Reviewer should nest after its parent regardless of higher activity time
+    // Reviewer should nest after its parent regardless of higher user message time
     expect(groups[0].sessions.map((s) => s.id)).toEqual(["worker", "reviewer"]);
   });
 
@@ -479,7 +518,7 @@ describe("groupSessionsByProject — activity sort mode", () => {
         cwd: "/home/user/wt",
         repoRoot: "/home/user/wt",
         createdAt: 100,
-        lastActivityAt: 200,
+        lastUserMessageAt: 200,
         sessionNum: 10,
       }),
       makeItem({
@@ -487,20 +526,20 @@ describe("groupSessionsByProject — activity sort mode", () => {
         cwd: "/home/user/repo",
         repoRoot: "/home/user/repo",
         createdAt: 500,
-        lastActivityAt: 100,
+        lastUserMessageAt: 100,
       }),
       makeItem({
         id: "reviewer",
         cwd: "/home/user/repo",
         repoRoot: "/home/user/repo",
         createdAt: 300,
-        lastActivityAt: 600,
+        lastUserMessageAt: 600,
         sessionNum: 11,
         reviewerOf: 10,
       }),
     ];
     const groups = groupSessionsByProject(sessions, undefined, undefined, undefined, "activity");
-    // Reviewer (activity 600) reassigned to worker's group, nesting overrides activity sort
+    // Reviewer reassigned to worker's group, nesting overrides activity sort
     const worktreeGroup = groups.find((g) => g.sessions.some((s) => s.id === "worker"))!;
     expect(worktreeGroup.sessions.map((s) => s.id)).toEqual(["worker", "reviewer"]);
   });
@@ -508,8 +547,8 @@ describe("groupSessionsByProject — activity sort mode", () => {
   it("does not affect default mode when sortMode is omitted", () => {
     // Verify backward compatibility: omitting sortMode uses createdAt desc
     const sessions = [
-      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastActivityAt: 500 }),
-      makeItem({ id: "s2", cwd: "/a/app", createdAt: 300, lastActivityAt: 100 }),
+      makeItem({ id: "s1", cwd: "/a/app", createdAt: 100, lastUserMessageAt: 500 }),
+      makeItem({ id: "s2", cwd: "/a/app", createdAt: 300, lastUserMessageAt: 100 }),
     ];
     const groups = groupSessionsByProject(sessions);
     // Default mode sorts by createdAt desc: s2 (300) before s1 (100)

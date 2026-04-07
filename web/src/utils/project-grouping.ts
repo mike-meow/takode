@@ -28,6 +28,7 @@ export interface SessionItem {
   askPermission?: boolean;
   idleKilled?: boolean;
   lastActivityAt?: number;
+  lastUserMessageAt?: number;
   isOrchestrator?: boolean;
   herdedBy?: string;
   sessionNum?: number | null;
@@ -148,11 +149,11 @@ export function groupSessionsByProject(
     }
   }
 
-  // Sort groups: by activity when in activity mode, otherwise by custom order or alphabetically.
+  // Sort groups: always by custom order or alphabetically.
+  // Activity sort mode only affects session ordering WITHIN groups --
+  // group order stays under manual user control.
   const sorted = Array.from(groups.values());
-  if (sortMode === "activity") {
-    sorted.sort((a, b) => b.mostRecentActivity - a.mostRecentActivity);
-  } else {
+  {
     const customGroupOrder = Array.isArray(groupOrder) ? groupOrder : [];
     if (customGroupOrder.length > 0) {
       const orderMap = new Map(customGroupOrder.map((groupKey, idx) => [groupKey, idx]));
@@ -171,10 +172,16 @@ export function groupSessionsByProject(
     }
   }
 
-  // Sort sessions within each group: by activity or by custom/created order.
+  // Sort sessions within each group: by last user message time or by custom/created order.
   for (const group of sorted) {
     if (sortMode === "activity") {
-      group.sessions.sort((a, b) => (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt));
+      // Sort strictly by last USER message time -- not by assistant activity or
+      // tool progress, which would cause sessions to flip order constantly while
+      // concurrently working.  Fall back to createdAt for sessions with no user
+      // messages yet.
+      group.sessions.sort((a, b) =>
+        (b.lastUserMessageAt ?? b.createdAt) - (a.lastUserMessageAt ?? a.createdAt),
+      );
     } else {
       const customOrder = sessionOrder?.get(group.key);
       if (customOrder && customOrder.length > 0) {

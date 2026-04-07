@@ -68,9 +68,11 @@ interface ProjectGroupProps {
 /** Wrapper that makes a SessionItem draggable via @dnd-kit/sortable */
 function SortableSessionItem({
   id,
+  disabled,
   children,
 }: {
   id: string;
+  disabled?: boolean;
   children: (props: {
     setNodeRef: (node: HTMLElement | null) => void;
     style: React.CSSProperties;
@@ -79,7 +81,10 @@ function SortableSessionItem({
     isDragging: boolean;
   }) => React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -254,7 +259,7 @@ export function ProjectGroup({
                 const attention = sessionAttention?.get(s.id) ?? null;
                 const reviewerSession = s.sessionNum != null ? reviewerByParent?.get(s.sessionNum) : undefined;
                 return (
-                  <SortableSessionItem key={s.id} id={s.id}>
+                  <SortableSessionItem key={s.id} id={s.id} disabled={!isDraggable}>
                     {({ setNodeRef, style, listeners, attributes, isDragging }) => (
                       <div ref={setNodeRef} style={style} {...(!touchDevice && isDraggable ? { ...listeners, ...attributes } : {})}>
                         <SessionItem

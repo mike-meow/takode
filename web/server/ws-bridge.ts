@@ -2828,11 +2828,15 @@ export class WsBridge {
     const reason = category === "needs-input" ? ("action" as const) : ("review" as const);
     this.setAttention(session, reason);
 
-    // Fire Pushover
+    // Fire Pushover -- explicit user notification, so bypass the read-check.
+    // Without skipReadCheck, the browser's auto-read (triggered by the setAttention
+    // broadcast above when the user is viewing this session) would set lastReadAt
+    // to now, causing the Pushover fire() to see lastRead >= createdAt and silently
+    // skip the notification.
     if (this.pushoverNotifier) {
       const eventType = category === "needs-input" ? ("question" as const) : ("completed" as const);
       const detail = summary || (category === "needs-input" ? "Needs user input" : "Ready for review");
-      this.pushoverNotifier.scheduleNotification(sessionId, eventType, detail);
+      this.pushoverNotifier.scheduleNotification(sessionId, eventType, detail, undefined, { skipReadCheck: true });
     }
 
     // Broadcast notification to browsers
@@ -7683,6 +7687,7 @@ export class WsBridge {
         session.messageHistory.push(userHistoryEntry);
         userMsgHistoryIdx = session.messageHistory.length - 1;
         session.lastUserMessage = (msg.content || "").slice(0, 80);
+        this.launcher?.touchUserMessage(session.id);
 
         // Server-authoritative user message fan-out: browsers render only what ws-bridge broadcasts.
         this.broadcastToBrowsers(session, userHistoryEntry);
@@ -8483,6 +8488,7 @@ export class WsBridge {
   private addPendingCodexInput(session: Session, input: PendingCodexInput): void {
     session.pendingCodexInputs.push(input);
     session.lastUserMessage = (input.content || "").slice(0, 80);
+    this.launcher?.touchUserMessage(session.id);
     this.broadcastPendingCodexInputs(session);
   }
 
@@ -8679,6 +8685,7 @@ export class WsBridge {
     session.messageHistory.push(userHistoryEntry);
     const userMsgHistoryIdx = session.messageHistory.length - 1;
     session.lastUserMessage = (pending.content || "").slice(0, 80);
+    this.launcher?.touchUserMessage(session.id);
     this.broadcastToBrowsers(session, userHistoryEntry);
     this.broadcastPendingCodexInputs(session);
     if (this.onUserMessage) {
