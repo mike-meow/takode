@@ -369,9 +369,6 @@ interface Session {
   intentionalCodexRelaunchReason: string | null;
   /** Whether context compaction occurred during the current turn (for turn_end herd events) */
   compactedDuringTurn: boolean;
-  /** Cumulative input_tokens from the last result.usage -- used to detect silent
-   *  auto-compaction in SDK sessions by comparing successive turn token counts. */
-  lastResultInputTokens?: number;
   /** Message history indices of user messages received during the current turn (for turn_end herd events) */
   userMessageIdsThisTurn: number[];
   /** Number of follow-up turns queued while a current turn is still running. */
@@ -5829,8 +5826,6 @@ export class WsBridge {
     const turnWasInterrupted = session.interruptedDuringTurn || resultInterrupted;
 
     const turnTriggerSource = this.getCurrentTurnTriggerSource(session);
-    // Snapshot before reconcile resets per-turn flags (compactedDuringTurn, etc.)
-    const hadExplicitCompaction = session.compactedDuringTurn;
     reconcileTerminalResultStateLifecycle(this.getGenerationLifecycleDeps(), session, "result");
     this.finalizeOrphanedTerminalToolsOnResult(session, msg);
     // Broadcast idle status for backends that don't send a separate
@@ -5877,72 +5872,6 @@ export class WsBridge {
       );
       session.pendingPermissions.clear();
       this.onSessionActivityStateChanged(session.id, "result_cleared_permissions");
-    }
-
-    // ── Silent compaction detection ──────────────────────────────────────────
-    // SDK sessions auto-compact without emitting system.status:compacting or
-    // compact_boundary. The only signal is a large drop in result.usage.input_tokens
-    // between successive turns (e.g., 5M → 500K). When detected, synthesize a
-    // compact_marker so the UI shows the compaction divider.
-    const resultUsage = (msg as unknown as Record<string, unknown>).usage as
-      | { input_tokens?: number }
-      | undefined;
-    if (resultUsage?.input_tokens != null) {
-      const currentTokens = resultUsage.input_tokens;
-      const prevTokens = session.lastResultInputTokens;
-
-      if (
-        prevTokens != null &&
-        prevTokens > 50_000 &&
-        currentTokens < prevTokens * 0.5 &&
-        !hadExplicitCompaction // skip if explicit compaction already handled this turn
-      ) {
-        console.log(
-          `[ws-bridge] Silent compaction detected for session ${sessionTag(session.id)}: ` +
-            `${prevTokens} → ${currentTokens} tokens (${Math.round((1 - currentTokens / prevTokens) * 100)}% drop)`,
-        );
-        const compactTs = Date.now();
-        const compactMarkerId = `compact-boundary-${compactTs}`;
-        session.messageHistory.push({
-          type: "compact_marker" as const,
-          timestamp: compactTs,
-          id: compactMarkerId,
-          trigger: "auto",
-          preTokens: prevTokens,
-        });
-        this.freezeHistoryThroughCurrentTail(session);
-        session.compactedDuringTurn = true;
-
-        const compactContextPct = computePreTokenContextUsedPercent(session.state.model, prevTokens);
-        if (typeof compactContextPct === "number" && compactContextPct !== session.state.context_used_percent) {
-          session.state.context_used_percent = compactContextPct;
-          this.broadcastToBrowsers(session, {
-            type: "session_update",
-            session: { context_used_percent: compactContextPct },
-          });
-        }
-
-        this.broadcastToBrowsers(session, {
-          type: "compact_boundary",
-          id: compactMarkerId,
-          timestamp: compactTs,
-          trigger: "auto",
-          preTokens: prevTokens,
-        });
-        this.emitTakodeEvent(session.id, "compaction_started", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-        this.emitTakodeEvent(session.id, "compaction_finished", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-        this.injectLeaderCompactionRecovery(session);
-      }
-
-      session.lastResultInputTokens = currentTokens;
     }
 
     const resultBrowserMsg: BrowserIncomingMessage = {
