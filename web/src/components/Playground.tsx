@@ -2452,6 +2452,7 @@ export function Playground() {
                       onCancelRename={() => {}}
                       editInputRef={{ current: null }}
                       herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(session.id)}
+                      useStatusBar
                     />
                   ),
                 )}

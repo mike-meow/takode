@@ -270,6 +270,7 @@ export function ProjectGroup({
                           permCount={permCount}
                           isRecentlyRenamed={recentlyRenamed.has(s.id)}
                           reviewerSession={reviewerSession}
+                          useStatusBar
                           onSelect={onSelect}
                           onStartRename={onStartRename}
                           onArchive={onArchive}

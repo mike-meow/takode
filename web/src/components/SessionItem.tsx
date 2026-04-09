@@ -60,6 +60,9 @@ const STATUS_DOT_CLASS: Record<SessionVisualStatus, string> = {
   idle: "bg-cc-muted/50",
 };
 
+/** Same colors as dots, used for the left-edge status stripe in linear view. */
+const STRIPE_COLOR_CLASS = STATUS_DOT_CLASS;
+
 /** Maps reviewer session status to badge border/text/glow colors */
 const REVIEWER_BADGE_THEME: Record<
   SessionVisualStatus,
@@ -138,6 +141,8 @@ interface SessionItemProps {
   indentLevel?: number;
   /** When true, renders a compact chip (no preview, no herd badge, no shield). Tree view workers only. */
   compact?: boolean;
+  /** When true, renders a left-edge status stripe instead of an inline dot. Used in linear view. */
+  useStatusBar?: boolean;
   /** Worker status counts displayed on leader chips in tree view. */
   workerStatusSummary?: StatusCounts;
 }
@@ -182,6 +187,7 @@ export function SessionItem({
   matchQuery,
   indentLevel = 0,
   compact,
+  useStatusBar,
   workerStatusSummary,
 }: SessionItemProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -351,15 +357,16 @@ export function SessionItem({
     idleKilled: s.idleKilled,
   });
   const dotClass = STATUS_DOT_CLASS[visualStatus];
-  const dotGlowColor =
+  const stripeClass = STRIPE_COLOR_CLASS[visualStatus];
+  const glowColor =
     visualStatus === "permission"
-      ? "rgba(245, 158, 11, 0.6)"
+      ? "rgba(245, 158, 11, 0.7)"
       : visualStatus === "running" || visualStatus === "compacting"
-        ? "rgba(34, 197, 94, 0.6)"
+        ? "rgba(34, 197, 94, 0.7)"
         : "";
-  const dotGlowStyle: React.CSSProperties | undefined = dotGlowColor
+  const glowStyle: React.CSSProperties | undefined = glowColor
     ? {
-        ["--glow-color" as string]: dotGlowColor,
+        ["--glow-color" as string]: glowColor,
         animation: "yarn-glow-breathe 2s ease-in-out infinite",
       }
     : undefined;
@@ -452,6 +459,18 @@ export function SessionItem({
               : "bg-cc-hover/20 border-cc-border/80 hover:bg-cc-hover/35 sm:bg-transparent sm:hover:bg-cc-hover"
         } ${herdHighlightClass}`}
       >
+        {/* Left-edge status stripe (linear view only) */}
+        {useStatusBar && (
+          <span
+            className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full block ${stripeClass} ${
+              isActive ? "opacity-100" : "opacity-60 group-hover:opacity-85"
+            } transition-opacity`}
+            data-testid="session-status-stripe"
+            data-status={visualStatus}
+            style={glowStyle}
+          />
+        )}
+
         <div className="flex items-start gap-2">
           {/* Drag handle -- mobile reorder mode only (iOS Edit pattern) */}
           {reorderMode && (
@@ -480,15 +499,17 @@ export function SessionItem({
           <div className="flex-1 min-w-0">
             {/* Row 1: Leader/herd/reviewer tag (inline) + title */}
             <div className="flex items-center gap-1.5">
-              {/* Status dot indicator */}
-              <span
-                className={`shrink-0 w-1.5 h-1.5 rounded-full ${dotClass} ${
-                  isActive ? "opacity-100" : "opacity-60 group-hover:opacity-85"
-                } transition-opacity`}
-                data-testid="session-status-dot"
-                data-status={visualStatus}
-                style={dotGlowStyle}
-              />
+              {/* Status dot indicator (tree view only -- linear view uses left-edge stripe) */}
+              {!useStatusBar && (
+                <span
+                  className={`shrink-0 w-1.5 h-1.5 rounded-full ${dotClass} ${
+                    isActive ? "opacity-100" : "opacity-60 group-hover:opacity-85"
+                  } transition-opacity`}
+                  data-testid="session-status-dot"
+                  data-status={visualStatus}
+                  style={glowStyle}
+                />
+              )}
               {!isEditing && s.isOrchestrator && (
                 <span
                   className="text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 border"
@@ -577,8 +598,8 @@ export function SessionItem({
                   <span className="text-[9px] font-mono text-cc-muted/60 shrink-0">#{s.sessionNum}</span>
                 )}
                 <img src={backendLogo} alt={backendAlt} className="w-3 h-3 shrink-0 object-contain opacity-60" />
-                {/* Shield icon: ask permission status (Claude only, hidden in compact mode) */}
-                {!compact && s.backendType !== "codex" && s.askPermission === true && (
+                {/* Shield icon: ask permission status (Claude only, hidden in compact/linear modes) */}
+                {!compact && !useStatusBar && s.backendType !== "codex" && s.askPermission === true && (
                   <span title="Permissions: asking before tool use">
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 text-cc-primary">
                       <path d="M8 1L2 4v4c0 3.5 2.6 6.4 6 7 3.4-.6 6-3.5 6-7V4L8 1z" />
@@ -593,7 +614,7 @@ export function SessionItem({
                     </svg>
                   </span>
                 )}
-                {!compact && s.backendType !== "codex" && s.askPermission === false && (
+                {!compact && !useStatusBar && s.backendType !== "codex" && s.askPermission === false && (
                   <span title="Permissions: auto-approving tool use">
                     <svg
                       viewBox="0 0 16 16"

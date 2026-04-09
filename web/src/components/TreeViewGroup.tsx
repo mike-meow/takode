@@ -286,26 +286,26 @@ export function TreeViewGroup({
                 e.stopPropagation();
                 onToggleNodeCollapse(node.leader.id);
               }}
-              className="shrink-0 w-4 h-7 flex items-center justify-center text-cc-muted hover:text-cc-fg cursor-pointer"
+              className="shrink-0 w-5 h-7 flex items-center justify-center text-cc-muted hover:text-cc-fg cursor-pointer"
               title={isNodeCollapsed ? "Expand workers" : "Collapse workers"}
             >
               <svg
                 viewBox="0 0 16 16"
                 fill="currentColor"
-                className={`w-2.5 h-2.5 transition-transform ${isNodeCollapsed ? "" : "rotate-90"}`}
+                className={`w-3.5 h-3.5 transition-transform ${isNodeCollapsed ? "" : "rotate-90"}`}
               >
                 <path d="M6 4l4 4-4 4" />
               </svg>
             </button>
           )}
-          <div className={`flex-1 min-w-0 ${!hasWorkers ? "pl-4" : ""}`}>
+          <div className={`flex-1 min-w-0 ${!hasWorkers ? "pl-5" : ""}`}>
             {renderSessionItem(node.leader, { workerStatusSummary: workerSummary })}
           </div>
         </div>
 
         {/* Workers -- indented under leader with VSCode-style indent guide */}
         {hasWorkers && !isNodeCollapsed && (
-          <div className="ml-[7px] pl-[9px] border-l border-cc-border/20">
+          <div className="ml-2 pl-4 border-l border-cc-border/30">
             {node.workers.map((w) => renderSessionItem(w, { compact: true }))}
           </div>
         )}
@@ -328,6 +328,13 @@ export function TreeViewGroup({
             }
           }}
           className="min-w-0 flex-1 flex items-center gap-1.5 cursor-pointer"
+          onDoubleClick={(e) => {
+            if (group.id !== "default") {
+              e.preventDefault();
+              e.stopPropagation();
+              startGroupRename();
+            }
+          }}
         >
           <svg
             viewBox="0 0 16 16"

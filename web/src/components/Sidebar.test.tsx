@@ -1309,11 +1309,16 @@ describe("Sidebar", { timeout: 10000 }, () => {
   });
 
   it("toggles server-persisted leader-first herd ordering", async () => {
+    // The leader-first toggle button was removed from the sidebar UI (q-165),
+    // but the ordering logic still works via the herdLeaderFirstEnabled setting.
+    // This test verifies that when the setting is enabled (via getSettings on mount),
+    // leaders sort above their workers.
     const leaderSessionId = "leader-first";
     const workerSessionId = "worker-first";
     const leaderSession = makeSession(leaderSessionId, { model: "leader-first-model" });
     const workerSession = makeSession(workerSessionId, { model: "worker-first-model" });
-    mockApi.updateSettings.mockResolvedValueOnce({ herdLeaderFirstEnabled: true });
+    // Mock getSettings to return herdLeaderFirstEnabled: true on mount
+    mockApi.getSettings.mockResolvedValueOnce({ serverName: "", herdLeaderFirstEnabled: true });
     mockState = createMockState({
       sessions: new Map([
         [leaderSessionId, leaderSession],
@@ -1339,30 +1344,26 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     render(<Sidebar />);
 
-    const leaderBefore = screen.getByText("Leader First").closest("button")!;
-    const workerBefore = screen.getByText("Worker First").closest("button")!;
-    expect(workerBefore.compareDocumentPosition(leaderBefore) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle leader-first herd order" }));
-
+    // Wait for the settings fetch to complete and re-render with leader-first enabled
     await waitFor(() => {
-      expect(mockApi.updateSettings).toHaveBeenCalledWith({ herdLeaderFirstEnabled: true });
+      const leaderAfter = screen.getByText("Leader First").closest("button")!;
+      const workerAfter = screen.getByText("Worker First").closest("button")!;
+      expect(leaderAfter.compareDocumentPosition(workerAfter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
-    const leaderAfter = screen.getByText("Leader First").closest("button")!;
-    const workerAfter = screen.getByText("Worker First").closest("button")!;
-    expect(leaderAfter.compareDocumentPosition(workerAfter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("leader-first ordering keeps leaders inside their existing project group", async () => {
     // Regression: enabling leader-first should reorder rows inside the leader's header,
     // not move the leader under the worker's project header.
+    // The toggle button was removed (q-165) -- test now seeds via getSettings mock.
     const leaderSessionId = "leader-cross-project";
     const leaderPeerSessionId = "leader-peer";
     const workerSessionId = "worker-cross-project";
     const leaderSession = makeSession(leaderSessionId, { cwd: "/home/user/project-leader" });
     const leaderPeerSession = makeSession(leaderPeerSessionId, { cwd: "/home/user/project-leader" });
     const workerSession = makeSession(workerSessionId, { cwd: "/home/user/project-worker" });
-    mockApi.updateSettings.mockResolvedValueOnce({ herdLeaderFirstEnabled: true });
+    // Mock getSettings to return herdLeaderFirstEnabled: true on mount
+    mockApi.getSettings.mockResolvedValueOnce({ serverName: "", herdLeaderFirstEnabled: true });
     mockState = createMockState({
       sessions: new Map([
         [leaderSessionId, leaderSession],
@@ -1397,26 +1398,15 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     render(<Sidebar />);
 
-    expectDocumentOrder([
-      screen.getByText("project-leader"),
-      screen.getByText("Newer Leader-Project Peer").closest("button")!,
-      screen.getByText("Cross Project Leader").closest("button")!,
-      screen.getByText("project-worker"),
-      screen.getByText("Cross Project Worker").closest("button")!,
-    ]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Toggle leader-first herd order" }));
-
+    // Wait for settings fetch to enable leader-first, then verify ordering
     await waitFor(() => {
-      expect(mockApi.updateSettings).toHaveBeenCalledWith({ herdLeaderFirstEnabled: true });
+      expectDocumentOrder([
+        screen.getByText("project-leader"),
+        screen.getByText("Cross Project Leader").closest("button")!,
+        screen.getByText("Newer Leader-Project Peer").closest("button")!,
+        screen.getByText("project-worker"),
+        screen.getByText("Cross Project Worker").closest("button")!,
+      ]);
     });
-
-    expectDocumentOrder([
-      screen.getByText("project-leader"),
-      screen.getByText("Cross Project Leader").closest("button")!,
-      screen.getByText("Newer Leader-Project Peer").closest("button")!,
-      screen.getByText("project-worker"),
-      screen.getByText("Cross Project Worker").closest("button")!,
-    ]);
   });
 });

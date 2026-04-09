@@ -368,6 +368,12 @@ export function Sidebar() {
     }
   }
 
+  function handleCreateTreeGroup() {
+    const name = prompt("New group name:");
+    if (!name?.trim()) return;
+    api.createTreeGroup(name.trim()).catch(console.error);
+  }
+
   // Focus edit input when entering edit mode
   useEffect(() => {
     if (editingSessionId && editInputRef.current) {
@@ -968,24 +974,6 @@ export function Sidebar() {
                 )}
               </button>
             )}
-            {showSortControls && sidebarViewMode === "linear" && (
-              <button
-                onClick={handleToggleHerdLeaderFirst}
-                title={herdLeaderFirstEnabled ? "Herd leaders stay above their workers" : "Keep manual/session order"}
-                aria-label="Toggle leader-first herd order"
-                aria-pressed={herdLeaderFirstEnabled}
-                className={`text-[10px] font-medium px-1.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 ${
-                  herdLeaderFirstEnabled
-                    ? "bg-cc-primary/10 text-cc-primary"
-                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
-                }`}
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
-                  <path d="M8 3v10M5 6l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M4 12h8" strokeLinecap="round" />
-                </svg>
-              </button>
-            )}
           </div>
         )}
 
@@ -1012,6 +1000,7 @@ export function Sidebar() {
                   matchContext={matchContext}
                   matchedField={matchedField}
                   matchQuery={searchQuery}
+                  useStatusBar
                   {...sessionItemProps}
                 />
               ))}
@@ -1041,7 +1030,8 @@ export function Sidebar() {
             )}
 
             {sidebarViewMode === "tree" ? (
-              /* Tree view — herd-centric groups */
+              /* Tree view -- herd-centric groups */
+              <>
               <DndContext
                 sensors={sessionSortMode === "activity" ? [] : groupSensors}
                 collisionDetection={closestCenter}
@@ -1085,6 +1075,17 @@ export function Sidebar() {
                   ))}
                 </SortableContext>
               </DndContext>
+              {/* Create new group button */}
+              <button
+                onClick={handleCreateTreeGroup}
+                className="w-full mt-1 px-2 py-1.5 flex items-center gap-1.5 rounded-md text-[10px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
+                  <path d="M8 3.5v9M3.5 8h9" strokeLinecap="round" />
+                </svg>
+                <span className="font-medium">New Group</span>
+              </button>
+              </>
             ) : (
               /* Linear view — CWD-based groups */
               <DndContext
@@ -1162,6 +1163,7 @@ export function Sidebar() {
                         herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
                         reviewerSession={s.sessionNum != null ? activeReviewerByParent.get(s.sessionNum) : undefined}
+                        useStatusBar
                         {...sessionItemProps}
                       />
                     ))}
@@ -1200,6 +1202,7 @@ export function Sidebar() {
                           herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights.get(s.id)}
                           reviewerSession={s.sessionNum != null ? activeReviewerByParent.get(s.sessionNum) : undefined}
+                          useStatusBar
                           {...sessionItemProps}
                         />
                       </div>
