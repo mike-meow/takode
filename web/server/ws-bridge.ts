@@ -1227,6 +1227,21 @@ export class WsBridge {
     }
   }
 
+  /** Broadcast tree group state to every connected browser socket. */
+  broadcastTreeGroupsUpdate(treeGroups: import("./tree-group-store.js").TreeGroup[], treeAssignments: Record<string, string>, treeNodeOrder: Record<string, string[]> = {}): void {
+    const payload: BrowserIncomingMessage = {
+      type: "tree_groups_update",
+      treeGroups,
+      treeAssignments,
+      treeNodeOrder,
+    };
+    for (const session of this.sessions.values()) {
+      for (const ws of session.browserSockets) {
+        this.sendToBrowser(ws, payload);
+      }
+    }
+  }
+
   /** Fill slash_commands/skills/apps from the per-project cache if not yet populated. */
   private prefillSlashCommands(session: Session): void {
     const projectKey = session.state.repo_root || session.state.cwd;
@@ -4676,6 +4691,17 @@ export class WsBridge {
       type: "group_order_update",
       groupOrder: this.getGroupOrderState(),
     });
+    // Send tree group state (async store, fire-and-forget for the open handler)
+    import("./tree-group-store.js").then((treeGroupStore) =>
+      treeGroupStore.getState().then((tgs) => {
+        this.sendToBrowser(ws, {
+          type: "tree_groups_update",
+          treeGroups: tgs.groups,
+          treeAssignments: tgs.assignments,
+          treeNodeOrder: tgs.nodeOrder,
+        });
+      }),
+    ).catch((err) => { console.warn("[ws-bridge] failed to send tree group state on connect:", err); });
     this.sendVsCodeSelectionState(ws);
 
     // History replay and pending permissions are sent by handleSessionSubscribe

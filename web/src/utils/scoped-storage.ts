@@ -27,6 +27,7 @@ const GLOBAL_KEYS = new Set([
   "cc-settings-collapsed",
   "cc-settings-scroll",
   "cc-session-sort-mode",
+  "cc-sidebar-view-mode",
 ]);
 
 /** Server-scoped key names (without dynamic suffixes) for migration */
@@ -47,6 +48,8 @@ const SCOPED_KEYS = [
   "cc-diff-base",
   "cc-recent-dirs",
   "cc-questmaster-view",
+  "cc-collapsed-tree-groups",
+  "cc-collapsed-tree-nodes",
 ];
 
 function getServerIdPrefix(): string {

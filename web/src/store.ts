@@ -223,6 +223,14 @@ interface AppState {
   // Sidebar project grouping
   collapsedProjects: Set<string>;
 
+  // Tree view mode (herd-centric grouping)
+  sidebarViewMode: "linear" | "tree";
+  treeGroups: import("./types.js").TreeGroup[];
+  treeAssignments: Map<string, string>; // sessionId -> groupId
+  treeNodeOrder: Map<string, string[]>; // groupId -> ordered root session IDs
+  collapsedTreeGroups: Set<string>;
+  collapsedTreeNodes: Set<string>; // collapsed leader sessions (hides workers)
+
   // Questmaster
   quests: QuestmasterTask[];
   questsLoading: boolean;
@@ -412,6 +420,12 @@ interface AppState {
   // Sidebar project grouping actions
   toggleProjectCollapse: (projectKey: string) => void;
 
+  // Tree view mode actions
+  setSidebarViewMode: (mode: "linear" | "tree") => void;
+  setTreeGroups: (groups: import("./types.js").TreeGroup[], assignments: Record<string, string>, nodeOrder: Record<string, string[]>) => void;
+  toggleTreeGroupCollapse: (groupId: string) => void;
+  toggleTreeNodeCollapse: (sessionId: string) => void;
+
   // Plan mode actions
   setPreviousPermissionMode: (sessionId: string, mode: string) => void;
 
@@ -564,6 +578,20 @@ function getInitialCollapsedProjects(): Set<string> {
   }
 }
 
+function getInitialSidebarViewMode(): "linear" | "tree" {
+  if (typeof window === "undefined") return "linear";
+  return localStorage.getItem("cc-sidebar-view-mode") === "tree" ? "tree" : "linear";
+}
+
+function getInitialCollapsedSet(key: string): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    return new Set(JSON.parse(scopedGetItem(key) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
 export const useStore = create<AppState>((set) => ({
   sessions: new Map(),
   sdkSessions: [],
@@ -639,6 +667,12 @@ export const useStore = create<AppState>((set) => ({
   sessionOrder: new Map(),
   groupOrder: [],
   collapsedProjects: getInitialCollapsedProjects(),
+  sidebarViewMode: getInitialSidebarViewMode(),
+  treeGroups: [],
+  treeAssignments: new Map(),
+  treeNodeOrder: new Map(),
+  collapsedTreeGroups: getInitialCollapsedSet("cc-collapsed-tree-groups"),
+  collapsedTreeNodes: getInitialCollapsedSet("cc-collapsed-tree-nodes"),
   quests: [],
   questsLoading: false,
   setQuests: (quests) => set({ quests }),
@@ -1797,6 +1831,42 @@ export const useStore = create<AppState>((set) => ({
       return { collapsedProjects };
     }),
 
+  setSidebarViewMode: (mode) => {
+    localStorage.setItem("cc-sidebar-view-mode", mode);
+    set({ sidebarViewMode: mode });
+  },
+
+  setTreeGroups: (groups, assignments, nodeOrder) =>
+    set(() => ({
+      treeGroups: groups,
+      treeAssignments: new Map(Object.entries(assignments)),
+      treeNodeOrder: new Map(Object.entries(nodeOrder)),
+    })),
+
+  toggleTreeGroupCollapse: (groupId) =>
+    set((s) => {
+      const collapsedTreeGroups = new Set(s.collapsedTreeGroups);
+      if (collapsedTreeGroups.has(groupId)) {
+        collapsedTreeGroups.delete(groupId);
+      } else {
+        collapsedTreeGroups.add(groupId);
+      }
+      scopedSetItem("cc-collapsed-tree-groups", JSON.stringify(Array.from(collapsedTreeGroups)));
+      return { collapsedTreeGroups };
+    }),
+
+  toggleTreeNodeCollapse: (sessionId) =>
+    set((s) => {
+      const collapsedTreeNodes = new Set(s.collapsedTreeNodes);
+      if (collapsedTreeNodes.has(sessionId)) {
+        collapsedTreeNodes.delete(sessionId);
+      } else {
+        collapsedTreeNodes.add(sessionId);
+      }
+      scopedSetItem("cc-collapsed-tree-nodes", JSON.stringify(Array.from(collapsedTreeNodes)));
+      return { collapsedTreeNodes };
+    }),
+
   setPreviousPermissionMode: (sessionId, mode) =>
     set((s) => {
       const previousPermissionMode = new Map(s.previousPermissionMode);
@@ -2036,6 +2106,9 @@ export const useStore = create<AppState>((set) => ({
       sessionAttention: new Map(),
       sessionOrder: new Map(),
       groupOrder: [],
+      treeGroups: [],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map(),
       sessionInfoOpenSessionId: null,
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),

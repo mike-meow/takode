@@ -19,6 +19,7 @@ import { navigateToSession, navigateToMostRecentSession, parseHash } from "../ut
 import { cancelPendingCreation } from "../utils/pending-creation.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { ProjectGroup } from "./ProjectGroup.js";
+import { TreeViewGroup } from "./TreeViewGroup.js";
 import { SessionItem } from "./SessionItem.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
@@ -27,6 +28,7 @@ import { YarnBallSpinner } from "./CatIcons.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 
 import { groupSessionsByProject, type SessionItem as SessionItemType } from "../utils/project-grouping.js";
+import { buildTreeViewGroups } from "../utils/tree-grouping.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import {
   buildHerdGroupBadgeThemes,
@@ -112,6 +114,15 @@ export function Sidebar() {
   const setReorderMode = useStore((s) => s.setReorderMode);
   const sessionSortMode = useStore((s) => s.sessionSortMode);
   const setSessionSortMode = useStore((s) => s.setSessionSortMode);
+  const sidebarViewMode = useStore((s) => s.sidebarViewMode);
+  const setSidebarViewMode = useStore((s) => s.setSidebarViewMode);
+  const treeGroups = useStore((s) => s.treeGroups);
+  const treeAssignments = useStore((s) => s.treeAssignments);
+  const collapsedTreeGroups = useStore((s) => s.collapsedTreeGroups);
+  const toggleTreeGroupCollapse = useStore((s) => s.toggleTreeGroupCollapse);
+  const collapsedTreeNodes = useStore((s) => s.collapsedTreeNodes);
+  const toggleTreeNodeCollapse = useStore((s) => s.toggleTreeNodeCollapse);
+  const treeNodeOrder = useStore((s) => s.treeNodeOrder);
   const pendingSessions = useStore((s) => s.pendingSessions);
   const diffFileStats = useStore((s) => s.diffFileStats);
   const serverName = useStore((s) => s.serverName);
@@ -546,6 +557,12 @@ export function Sidebar() {
     () => groupSessionsByProject(activeSessions, sessionAttention, sessionOrder, groupOrder, sessionSortMode),
     [activeSessions, sessionAttention, sessionOrder, groupOrder, sessionSortMode],
   );
+  // Build tree view groups (herd-centric grouping)
+  const treeViewGroups = useMemo(
+    () => buildTreeViewGroups(activeSessions, treeGroups, treeAssignments, sessionAttention, sessionSortMode, treeNodeOrder),
+    [activeSessions, treeGroups, treeAssignments, sessionAttention, sessionSortMode, treeNodeOrder],
+  );
+  const treeGroupIds = useMemo(() => treeViewGroups.map((g) => g.id), [treeViewGroups]);
   const groupKeys = useMemo(() => projectGroups.map((group) => group.key), [projectGroups]);
   const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const groupSensors = useSensors(groupPointerSensor);
@@ -564,6 +581,27 @@ export function Sidebar() {
       });
     },
     [groupKeys],
+  );
+  const handleTreeGroupDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIndex = treeGroupIds.indexOf(active.id as string);
+      const newIndex = treeGroupIds.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = arrayMove(treeViewGroups, oldIndex, newIndex);
+      // Full state replace for group reorder
+      const state = {
+        groups: reordered.map((g) => ({ id: g.id, name: g.name })),
+        assignments: Object.fromEntries(treeAssignments),
+      };
+      api.updateTreeGroups(state).catch((err) => {
+        console.warn("[sidebar] failed to update tree group order:", err);
+      });
+    },
+    [treeGroupIds, treeViewGroups, treeAssignments],
   );
 
   // Server-side session search (debounced, abort on query change).
@@ -859,6 +897,33 @@ export function Sidebar() {
                 )}
               </button>
             )}
+            {/* View mode toggle — switches between linear (CWD groups) and tree (herd groups) */}
+            {showSortControls && (
+              <button
+                onClick={() => setSidebarViewMode(sidebarViewMode === "linear" ? "tree" : "linear")}
+                title={sidebarViewMode === "tree" ? "Tree view (herd groups)" : "Linear view (project groups)"}
+                className={`text-[10px] font-medium px-1.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 ${
+                  sidebarViewMode === "tree"
+                    ? "bg-cc-primary/10 text-cc-primary"
+                    : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
+                }`}
+              >
+                {sidebarViewMode === "tree" ? (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                    {/* Tree/hierarchy icon */}
+                    <circle cx="8" cy="3" r="1.5" />
+                    <circle cx="4" cy="10" r="1.5" />
+                    <circle cx="12" cy="10" r="1.5" />
+                    <path d="M8 4.5V7M4 8.5V7H12V8.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                    {/* List/linear icon */}
+                    <path d="M3 4h10M3 8h10M3 12h10" strokeLinecap="round" />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
         )}
 
@@ -913,48 +978,96 @@ export function Sidebar() {
               </div>
             )}
 
-            <DndContext
-              sensors={sessionSortMode === "activity" ? [] : groupSensors}
-              collisionDetection={closestCenter}
-              onDragEnd={sessionSortMode === "activity" ? undefined : handleGroupDragEnd}
-              modifiers={[restrictToVerticalAxis]}
-            >
-              <SortableContext items={groupKeys} strategy={verticalListSortingStrategy}>
-                {projectGroups.map((group, i) => (
-                  <SortableProjectGroup key={group.key} id={group.key}>
-                    {({ setNodeRef, style, listeners, attributes, isDragging }) => (
-                      <div ref={setNodeRef} style={style}>
-                        <ProjectGroup
-                          group={group}
-                          isCollapsed={collapsedProjects.has(group.key)}
-                          onToggleCollapse={toggleProjectCollapse}
-                          onCreateSession={handleCreateSessionInGroup}
-                          currentSessionId={currentSessionId}
-                          sessionNames={sessionNames}
-                          sessionPreviews={sessionPreviews}
-                          pendingPermissions={pendingPermissions}
-                          recentlyRenamed={recentlyRenamed}
-                          isFirst={i === 0}
-                          groupDragging={isDragging}
-                          onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
-                          groupDragHandleProps={
-                            projectGroups.length > 1 && sessionSortMode !== "activity"
-                              ? {
-                                  listeners: listeners as Record<string, unknown> | undefined,
-                                  attributes: attributes as unknown as Record<string, unknown>,
-                                }
-                              : undefined
-                          }
-                          herdGroupBadgeThemes={herdGroupBadgeThemes}
-                          reviewerByParent={activeReviewerByParent}
-                          {...sessionItemProps}
-                        />
-                      </div>
-                    )}
-                  </SortableProjectGroup>
-                ))}
-              </SortableContext>
-            </DndContext>
+            {sidebarViewMode === "tree" ? (
+              /* Tree view — herd-centric groups */
+              <DndContext
+                sensors={sessionSortMode === "activity" ? [] : groupSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={sessionSortMode === "activity" ? undefined : handleTreeGroupDragEnd}
+                modifiers={[restrictToVerticalAxis]}
+              >
+                <SortableContext items={treeGroupIds} strategy={verticalListSortingStrategy}>
+                  {treeViewGroups.map((group, i) => (
+                    <SortableProjectGroup key={group.id} id={group.id}>
+                      {({ setNodeRef, style, listeners, attributes, isDragging }) => (
+                        <div ref={setNodeRef} style={style}>
+                          <TreeViewGroup
+                            group={group}
+                            isGroupCollapsed={collapsedTreeGroups.has(group.id)}
+                            collapsedTreeNodes={collapsedTreeNodes}
+                            onToggleGroupCollapse={toggleTreeGroupCollapse}
+                            onToggleNodeCollapse={toggleTreeNodeCollapse}
+                            onCreateSession={handleCreateSessionInGroup}
+                            currentSessionId={currentSessionId}
+                            sessionNames={sessionNames}
+                            sessionPreviews={sessionPreviews}
+                            pendingPermissions={pendingPermissions}
+                            recentlyRenamed={recentlyRenamed}
+                            isFirst={i === 0}
+                            groupDragging={isDragging}
+                            onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
+                            groupDragHandleProps={
+                              treeViewGroups.length > 1 && sessionSortMode !== "activity"
+                                ? {
+                                    listeners: listeners as Record<string, unknown> | undefined,
+                                    attributes: attributes as unknown as Record<string, unknown>,
+                                  }
+                                : undefined
+                            }
+                            herdGroupBadgeThemes={herdGroupBadgeThemes}
+                            {...sessionItemProps}
+                          />
+                        </div>
+                      )}
+                    </SortableProjectGroup>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              /* Linear view — CWD-based groups */
+              <DndContext
+                sensors={sessionSortMode === "activity" ? [] : groupSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={sessionSortMode === "activity" ? undefined : handleGroupDragEnd}
+                modifiers={[restrictToVerticalAxis]}
+              >
+                <SortableContext items={groupKeys} strategy={verticalListSortingStrategy}>
+                  {projectGroups.map((group, i) => (
+                    <SortableProjectGroup key={group.key} id={group.key}>
+                      {({ setNodeRef, style, listeners, attributes, isDragging }) => (
+                        <div ref={setNodeRef} style={style}>
+                          <ProjectGroup
+                            group={group}
+                            isCollapsed={collapsedProjects.has(group.key)}
+                            onToggleCollapse={toggleProjectCollapse}
+                            onCreateSession={handleCreateSessionInGroup}
+                            currentSessionId={currentSessionId}
+                            sessionNames={sessionNames}
+                            sessionPreviews={sessionPreviews}
+                            pendingPermissions={pendingPermissions}
+                            recentlyRenamed={recentlyRenamed}
+                            isFirst={i === 0}
+                            groupDragging={isDragging}
+                            onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
+                            groupDragHandleProps={
+                              projectGroups.length > 1 && sessionSortMode !== "activity"
+                                ? {
+                                    listeners: listeners as Record<string, unknown> | undefined,
+                                    attributes: attributes as unknown as Record<string, unknown>,
+                                  }
+                                : undefined
+                            }
+                            herdGroupBadgeThemes={herdGroupBadgeThemes}
+                            reviewerByParent={activeReviewerByParent}
+                            {...sessionItemProps}
+                          />
+                        </div>
+                      )}
+                    </SortableProjectGroup>
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
 
             {cronSessions.length > 0 && (
               <div className="mt-2 pt-2 border-t border-cc-border">
@@ -1251,6 +1364,21 @@ export function Sidebar() {
                     useStore.getState().markSessionUnread(contextMenu.sessionId);
                   },
                 },
+            // "Move to" group items (tree view only)
+            ...(sidebarViewMode === "tree" && treeGroups.length > 0
+              ? treeGroups
+                  .filter((g) => {
+                    // Don't show the group this session is already in
+                    const currentGroup = treeAssignments.get(contextMenu.sessionId) || "default";
+                    return g.id !== currentGroup;
+                  })
+                  .map((g) => ({
+                    label: `Move to ${g.name}`,
+                    onClick: () => {
+                      api.assignSessionToTreeGroup(contextMenu.sessionId, g.id).catch(console.error);
+                    },
+                  }))
+              : []),
             isArchived
               ? {
                   label: "Unarchive",

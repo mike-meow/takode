@@ -74,6 +74,16 @@ interface MockStoreState {
   setReorderMode: ReturnType<typeof vi.fn>;
   pendingSessions: Map<string, unknown>;
   serverName: string;
+  // Tree view mode
+  sidebarViewMode: "linear" | "tree";
+  treeGroups: Array<{ id: string; name: string }>;
+  treeAssignments: Map<string, string>;
+  treeNodeOrder: Map<string, string[]>;
+  collapsedTreeGroups: Set<string>;
+  collapsedTreeNodes: Set<string>;
+  setSidebarViewMode: ReturnType<typeof vi.fn>;
+  toggleTreeGroupCollapse: ReturnType<typeof vi.fn>;
+  toggleTreeNodeCollapse: ReturnType<typeof vi.fn>;
   setServerName: ReturnType<typeof vi.fn>;
   setCurrentSession: ReturnType<typeof vi.fn>;
   toggleProjectCollapse: ReturnType<typeof vi.fn>;
@@ -161,6 +171,16 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     setReorderMode: vi.fn(),
     pendingSessions: new Map(),
     serverName: "",
+    // Tree view mode defaults
+    sidebarViewMode: "linear" as const,
+    treeGroups: [],
+    treeAssignments: new Map(),
+    treeNodeOrder: new Map(),
+    collapsedTreeGroups: new Set(),
+    collapsedTreeNodes: new Set(),
+    setSidebarViewMode: vi.fn(),
+    toggleTreeGroupCollapse: vi.fn(),
+    toggleTreeNodeCollapse: vi.fn(),
     setServerName: vi.fn(),
     setCurrentSession: vi.fn(),
     toggleProjectCollapse: vi.fn(),

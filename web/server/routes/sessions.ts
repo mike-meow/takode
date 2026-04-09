@@ -11,6 +11,7 @@ import * as gitUtils from "../git-utils.js";
 import * as sessionNames from "../session-names.js";
 import * as sessionOrderStore from "../session-order.js";
 import * as groupOrderStore from "../group-order.js";
+import * as treeGroupStore from "../tree-group-store.js";
 import { recreateWorktreeIfMissing } from "../migration.js";
 import { containerManager, ContainerManager, type ContainerConfig, type ContainerInfo } from "../container-manager.js";
 import type { CreationStepId } from "../session-types.js";
@@ -220,6 +221,14 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const creator = creatorId ? launcher.getSession(creatorId) : null;
       if (creator?.isOrchestrator) {
         launcher.herdSessions(creator.sessionId, [session.sessionId]);
+        // Auto-assign new worker to leader's tree group
+        treeGroupStore.getGroupForSession(creator.sessionId).then((leaderGroup) => {
+          if (leaderGroup) {
+            treeGroupStore.assignSession(session.sessionId, leaderGroup).then(() => broadcastTreeGroups()).catch((err) => {
+              console.warn("[tree-group] failed to assign worker to leader group:", err);
+            });
+          }
+        }).catch((err) => { console.warn("[tree-group] failed to lookup leader group:", err); });
       }
     }
 
@@ -1140,6 +1149,85 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return c.json({ ok: true, groupOrder });
   });
 
+  // ─── Tree Groups (herd-centric grouping) ─────────────────────────────
+
+  /** Helper: broadcast current tree group state to all browsers. */
+  async function broadcastTreeGroups() {
+    const tgs = await treeGroupStore.getState();
+    wsBridge.broadcastTreeGroupsUpdate(tgs.groups, tgs.assignments, tgs.nodeOrder);
+  }
+
+  api.get("/tree-groups", async (c) => {
+    const state = await treeGroupStore.getState();
+    return c.json(state);
+  });
+
+  api.put("/tree-groups", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    await treeGroupStore.setState(body);
+    await broadcastTreeGroups();
+    return c.json({ ok: true });
+  });
+
+  api.post("/tree-groups/groups", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 200) {
+      return c.json({ error: "Group name must be 1-200 characters" }, 400);
+    }
+    const group = await treeGroupStore.createGroup(name);
+    await broadcastTreeGroups();
+    return c.json({ ok: true, group });
+  });
+
+  api.patch("/tree-groups/groups/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 200) {
+      return c.json({ error: "Group name must be 1-200 characters" }, 400);
+    }
+    const ok = await treeGroupStore.renameGroup(id, name);
+    if (!ok) return c.json({ error: "Group not found or is default" }, 404);
+    await broadcastTreeGroups();
+    return c.json({ ok: true });
+  });
+
+  api.delete("/tree-groups/groups/:id", async (c) => {
+    const id = c.req.param("id");
+    const ok = await treeGroupStore.deleteGroup(id);
+    if (!ok) return c.json({ error: "Cannot delete default group" }, 400);
+    await broadcastTreeGroups();
+    return c.json({ ok: true });
+  });
+
+  api.patch("/tree-groups/assign", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    const groupId = typeof body.groupId === "string" ? body.groupId : "";
+    if (!sessionId || !groupId) {
+      return c.json({ error: "sessionId and groupId are required" }, 400);
+    }
+    await treeGroupStore.assignSession(sessionId, groupId);
+    await broadcastTreeGroups();
+    return c.json({ ok: true });
+  });
+
+  api.patch("/tree-groups/node-order", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const groupId = typeof body.groupId === "string" ? body.groupId : "";
+    const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds : [];
+    if (!groupId) {
+      return c.json({ error: "groupId is required" }, 400);
+    }
+    await treeGroupStore.setNodeOrder(groupId, orderedIds);
+    await broadcastTreeGroups();
+    return c.json({ ok: true });
+  });
+
   api.patch("/sessions/:id/diff-base", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1524,6 +1612,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
     wsBridge.broadcastGlobal({ type: "session_deleted", session_id: id });
     wsBridge.closeSession(id);
     await imageStore?.removeSession(id);
+    // Clean up tree group assignment (fire-and-forget)
+    treeGroupStore.removeSession(id).catch((err) => { console.warn("[tree-group] cleanup failed for session:", id, err); });
     return c.json({ ok: true, worktree: worktreeResult });
   });
 

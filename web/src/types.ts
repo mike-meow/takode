@@ -52,6 +52,7 @@ export type {
   VsCodeSelectionState,
   SessionTimer,
 };
+export type { TreeGroup, TreeGroupState } from "../server/tree-group-store.js";
 export { assertNever, isClaudeFamily };
 export type {
   QuestmasterTask,

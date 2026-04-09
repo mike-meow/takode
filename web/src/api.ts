@@ -1,4 +1,4 @@
-import type { SdkSessionInfo } from "./types.js";
+import type { SdkSessionInfo, TreeGroup } from "./types.js";
 
 const BASE = "/api";
 
@@ -670,6 +670,26 @@ export const api = {
     ),
 
   getHerdedSessions: (orchId: string) => get<SdkSessionInfo[]>(`/sessions/${encodeURIComponent(orchId)}/herd`),
+
+  // Tree groups (herd-centric sidebar grouping)
+  getTreeGroups: () => get<{ groups: TreeGroup[]; assignments: Record<string, string> }>("/tree-groups"),
+
+  updateTreeGroups: (state: { groups: TreeGroup[]; assignments: Record<string, string> }) =>
+    put<{ ok: boolean }>("/tree-groups", state),
+
+  createTreeGroup: (name: string) =>
+    post<{ ok: boolean; group: TreeGroup }>("/tree-groups/groups", { name }),
+
+  renameTreeGroup: (id: string, name: string) =>
+    patch<{ ok: boolean }>(`/tree-groups/groups/${encodeURIComponent(id)}`, { name }),
+
+  deleteTreeGroup: (id: string) => del<{ ok: boolean }>(`/tree-groups/groups/${encodeURIComponent(id)}`),
+
+  assignSessionToTreeGroup: (sessionId: string, groupId: string) =>
+    patch<{ ok: boolean }>("/tree-groups/assign", { sessionId, groupId }),
+
+  updateTreeNodeOrder: (groupId: string, orderedIds: string[]) =>
+    patch<{ ok: boolean }>("/tree-groups/node-order", { groupId, orderedIds }),
 
   getHerdDiagnostics: (sessionId: string) =>
     get<Record<string, unknown>>(`/sessions/${encodeURIComponent(sessionId)}/herd-diagnostics`),

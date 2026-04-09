@@ -102,6 +102,8 @@ interface SessionItemProps {
   matchContext?: string | null;
   matchedField?: SearchMatchedField;
   matchQuery?: string;
+  /** Indentation level for tree view (0 = root, 1 = worker under leader). */
+  indentLevel?: number;
 }
 
 export function SessionItem({
@@ -142,6 +144,7 @@ export function SessionItem({
   matchContext,
   matchedField,
   matchQuery,
+  indentLevel = 0,
 }: SessionItemProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -353,7 +356,7 @@ export function SessionItem({
   };
 
   return (
-    <div className={`relative group ${archived ? "opacity-50" : ""}`}>
+    <div className={`relative group ${archived ? "opacity-50" : ""}`} style={indentLevel > 0 ? { paddingLeft: `${indentLevel * 16}px` } : undefined}>
       {canSwipeToArchive && (
         <div
           className={`absolute inset-0 sm:hidden rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 pointer-events-none transition-opacity ${

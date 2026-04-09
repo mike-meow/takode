@@ -1066,6 +1066,20 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       break;
     }
 
+    case "tree_groups_update": {
+      const groups = Array.isArray(data.treeGroups) ? data.treeGroups : [];
+      const assignments =
+        data.treeAssignments && typeof data.treeAssignments === "object"
+          ? (data.treeAssignments as Record<string, string>)
+          : {};
+      const nodeOrder =
+        data.treeNodeOrder && typeof data.treeNodeOrder === "object"
+          ? (data.treeNodeOrder as Record<string, string[]>)
+          : {};
+      store.setTreeGroups(groups, assignments, nodeOrder);
+      break;
+    }
+
     case "session_name_update": {
       // Server is authoritative for all name updates (auto-naming, manual rename, etc.)
       const prevName = store.sessionNames.get(sessionId);

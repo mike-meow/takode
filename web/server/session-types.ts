@@ -601,7 +601,13 @@ export type BrowserIncomingMessageBase =
       notification: { category: "needs-input" | "review"; timestamp: number; summary?: string };
     }
   | { type: "board_updated"; board: BoardRow[] }
-  | { type: "timer_update"; timers: import("./timer-types.js").SessionTimer[] };
+  | { type: "timer_update"; timers: import("./timer-types.js").SessionTimer[] }
+  | {
+      type: "tree_groups_update";
+      treeGroups: import("./tree-group-store.js").TreeGroup[];
+      treeAssignments: Record<string, string>;
+      treeNodeOrder: Record<string, string[]>;
+    };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
 
