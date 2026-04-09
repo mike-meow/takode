@@ -612,9 +612,17 @@ async function handleList(base: string, args: string[]): Promise<void> {
   let total = 0;
   for (const [projectKey, projectSessions] of sortedGroups) {
     const label = formatInlineText(projectKey.split("/").pop() || projectKey);
-    const running = projectSessions.filter((s) => s.cliConnected && s.state === "running").length;
-    const countLabel = running > 0 ? `  (${running} running)` : "";
-    console.log(`▸ ${label}  ${projectSessions.length}${countLabel}`);
+    // Single pass to count top-level (non-reviewer) sessions and running sessions
+    let topLevelCount = 0;
+    let runningCount = 0;
+    for (const s of projectSessions) {
+      if (s.reviewerOf === undefined) {
+        topLevelCount++;
+        if (s.cliConnected && s.state === "running") runningCount++;
+      }
+    }
+    const countLabel = runningCount > 0 ? `  (${runningCount} running)` : "";
+    console.log(`▸ ${label}  ${topLevelCount}${countLabel}`);
 
     // Sort: running first, then by most recent activity
     projectSessions.sort((a, b) => {
@@ -746,7 +754,9 @@ function printNestedSessions(
       reviewersByParent.delete(s.sessionNum!);
     }
   }
-  // Orphaned reviewers (parent not in this list)
+  // Orphaned reviewers (parent filtered out or archived). Shown with ↳ indent
+  // for visual consistency -- the [reviewer] tag clarifies they're reviewer sessions
+  // even though their parent isn't visible in the current listing.
   for (const [, orphans] of reviewersByParent) {
     for (const r of orphans) {
       printSessionLine(r, { indent: true });

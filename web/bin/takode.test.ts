@@ -1755,3 +1755,167 @@ describe("takode board quest ID validation", () => {
     expect(result.stderr).toContain("q-NNN");
   });
 });
+
+describe("takode list reviewer nesting", () => {
+  // Verifies that reviewer sessions are nested under their parent worker
+  // in the CWD group, the group header count excludes reviewers, and
+  // orphaned reviewers (parent not visible) fall back to their own CWD group.
+
+  it("nests reviewer under parent and excludes reviewer from group count", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-nest", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "worker-a",
+              sessionNum: 10,
+              name: "Fix tree view",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 20_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: true,
+            },
+            {
+              sessionId: "reviewer-a",
+              sessionNum: 11,
+              name: "Reviewer of #10",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 10_000,
+              lastActivityAt: Date.now() - 3_000,
+              cliConnected: true,
+              reviewerOf: 10,
+            },
+            {
+              sessionId: "worker-b",
+              sessionNum: 12,
+              name: "Fix quest styling",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 15_000,
+              lastActivityAt: Date.now() - 8_000,
+              cliConnected: true,
+            },
+          ]),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["list", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-nest",
+        COMPANION_AUTH_TOKEN: "auth-nest",
+      });
+
+      expect(result.status).toBe(0);
+
+      // Group header should show 2 (two workers), not 3 (which would include the reviewer)
+      expect(result.stdout).toMatch(/▸\s+companion\s+2/);
+      expect(result.stdout).not.toMatch(/▸\s+companion\s+3/);
+
+      // Reviewer should be visually nested with ↳ prefix on the same line as its name
+      expect(result.stdout).toMatch(/↳.*#11.*Reviewer of #10/);
+
+      // Reviewer has [reviewer] role tag
+      expect(result.stdout).toContain("[reviewer]");
+
+      // Both workers should appear as top-level entries
+      expect(result.stdout).toContain("#10");
+      expect(result.stdout).toContain("#12");
+
+      // Reviewer appears after its parent in output (nesting order)
+      const lines = result.stdout.split("\n");
+      const parentIdx = lines.findIndex((l) => l.includes("#10") && !l.includes("↳"));
+      const reviewerIdx = lines.findIndex((l) => l.includes("#11") && l.includes("↳"));
+      expect(parentIdx).toBeGreaterThanOrEqual(0);
+      expect(reviewerIdx).toBeGreaterThan(parentIdx);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("falls back orphaned reviewer to its own CWD group", async () => {
+    // When the reviewer's parent is not in the session list (e.g. archived
+    // or filtered out), the reviewer should fall back to its own CWD key
+    // rather than disappearing.
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-orphan", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "orphan-reviewer",
+              sessionNum: 20,
+              name: "Reviewer of #99",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/other-project",
+              createdAt: Date.now() - 10_000,
+              lastActivityAt: Date.now() - 3_000,
+              cliConnected: true,
+              reviewerOf: 99, // parent #99 is not in the list
+            },
+          ]),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["list", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-orphan",
+        COMPANION_AUTH_TOKEN: "auth-orphan",
+      });
+
+      expect(result.status).toBe(0);
+
+      // Orphaned reviewer appears under its own CWD group with correct header.
+      // The header count is 0 top-level sessions (the reviewer is still a reviewer),
+      // but the reviewer is rendered as an orphan inside printNestedSessions.
+      expect(result.stdout).toMatch(/▸\s+other-project\s+0/);
+      expect(result.stdout).toMatch(/↳.*Reviewer of #99/);
+    } finally {
+      server.close();
+    }
+  });
+});
