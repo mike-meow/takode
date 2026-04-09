@@ -8,6 +8,38 @@ import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
 type SearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
+/** Shared status count type used for worker summaries and group headers. */
+export interface StatusCounts {
+  running: number;
+  permission: number;
+  unread: number;
+}
+
+const STATUS_COUNT_STYLES = [
+  { key: "running" as const, text: "text-cc-success", bg: "bg-cc-success" },
+  { key: "permission" as const, text: "text-cc-warning", bg: "bg-cc-warning" },
+  { key: "unread" as const, text: "text-blue-500", bg: "bg-blue-500" },
+];
+
+/** Renders colored dot+count indicators for running/permission/unread statuses. */
+export function StatusCountDots({ counts }: { counts: StatusCounts }) {
+  const hasAny = counts.running > 0 || counts.permission > 0 || counts.unread > 0;
+  if (!hasAny) return null;
+  return (
+    <span className="flex items-center gap-1 shrink-0 text-[10px] font-medium">
+      {STATUS_COUNT_STYLES.map(
+        ({ key, text, bg }) =>
+          counts[key] > 0 && (
+            <span key={key} className={`${text} flex items-center gap-0.5`}>
+              {counts[key]}
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${bg}`} />
+            </span>
+          ),
+      )}
+    </span>
+  );
+}
+
 const SEARCH_MATCH_LABELS: Record<SearchMatchedField, string> = {
   name: "name",
   task: "task",
@@ -107,7 +139,7 @@ interface SessionItemProps {
   /** When true, renders a compact chip (no preview, no herd badge, no shield). Tree view workers only. */
   compact?: boolean;
   /** Worker status counts displayed on leader chips in tree view. */
-  workerStatusSummary?: { running: number; permission: number; unread: number };
+  workerStatusSummary?: StatusCounts;
 }
 
 export function SessionItem({
@@ -643,28 +675,7 @@ export function SessionItem({
                     );
                   })()}
                 {/* Worker status summary (leader chips in tree view) */}
-                {workerStatusSummary && (workerStatusSummary.running > 0 || workerStatusSummary.permission > 0 || workerStatusSummary.unread > 0) && (
-                  <span className="flex items-center gap-1 shrink-0 text-[10px] font-medium">
-                    {workerStatusSummary.running > 0 && (
-                      <span className="text-cc-success flex items-center gap-0.5">
-                        {workerStatusSummary.running}
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" />
-                      </span>
-                    )}
-                    {workerStatusSummary.permission > 0 && (
-                      <span className="text-cc-warning flex items-center gap-0.5">
-                        {workerStatusSummary.permission}
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" />
-                      </span>
-                    )}
-                    {workerStatusSummary.unread > 0 && (
-                      <span className="text-blue-500 flex items-center gap-0.5">
-                        {workerStatusSummary.unread}
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
-                      </span>
-                    )}
-                  </span>
-                )}
+                {workerStatusSummary && <StatusCountDots counts={workerStatusSummary} />}
                 {hasBranchDivergence && (
                   <span className="flex items-center gap-0.5 text-[10px] shrink-0">
                     {s.gitAhead > 0 && <span className="text-green-500">{s.gitAhead}&#8593;</span>}

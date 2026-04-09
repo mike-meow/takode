@@ -13,7 +13,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import type { TreeViewGroupData, TreeNode } from "../utils/tree-grouping.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
-import { SessionItem } from "./SessionItem.js";
+import { SessionItem, StatusCountDots, type StatusCounts } from "./SessionItem.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { isTouchDevice } from "../utils/mobile.js";
@@ -223,7 +223,7 @@ export function TreeViewGroup({
 
   function renderSessionItem(
     s: SessionItemType,
-    opts?: { compact?: boolean; workerStatusSummary?: { running: number; permission: number; unread: number } },
+    opts?: { compact?: boolean; workerStatusSummary?: StatusCounts },
   ) {
     const permCount = countUserPermissions(pendingPermissions.get(s.id));
     const attention = sessionAttention?.get(s.id) ?? null;
@@ -247,35 +247,34 @@ export function TreeViewGroup({
     );
   }
 
+  /** Count worker sessions by visual status for the leader chip's status summary. */
+  function computeWorkerSummary(workers: SessionItemType[]): StatusCounts {
+    let running = 0;
+    let permission = 0;
+    let unread = 0;
+    for (const w of workers) {
+      const wPermCount = countUserPermissions(pendingPermissions.get(w.id));
+      const wAttention = sessionAttention?.get(w.id) ?? null;
+      const status = deriveSessionStatus({
+        archived: w.archived,
+        permCount: wPermCount,
+        isConnected: w.isConnected,
+        sdkState: w.sdkState,
+        status: w.status,
+        hasUnread: !!wAttention,
+        idleKilled: w.idleKilled,
+      });
+      if (status === "running" || status === "compacting") running++;
+      else if (status === "permission") permission++;
+      else if (status === "completed_unread") unread++;
+    }
+    return { running, permission, unread };
+  }
+
   function renderTreeNode(node: TreeNode) {
     const hasWorkers = node.workers.length > 0;
     const isNodeCollapsed = collapsedTreeNodes.has(node.leader.id);
-
-    // Compute worker status summary for the leader chip
-    const workerSummary = hasWorkers
-      ? (() => {
-          let running = 0;
-          let permission = 0;
-          let unread = 0;
-          for (const w of node.workers) {
-            const wPermCount = countUserPermissions(pendingPermissions.get(w.id));
-            const wAttention = sessionAttention?.get(w.id) ?? null;
-            const status = deriveSessionStatus({
-              archived: w.archived,
-              permCount: wPermCount,
-              isConnected: w.isConnected,
-              sdkState: w.sdkState,
-              status: w.status,
-              hasUnread: !!wAttention,
-              idleKilled: w.idleKilled,
-            });
-            if (status === "running" || status === "compacting") running++;
-            else if (status === "permission") permission++;
-            else if (status === "completed_unread") unread++;
-          }
-          return { running, permission, unread };
-        })()
-      : undefined;
+    const workerSummary = hasWorkers ? computeWorkerSummary(node.workers) : undefined;
 
     return (
       <div key={node.leader.id}>
@@ -355,25 +354,8 @@ export function TreeViewGroup({
             <span className="text-[11px] font-semibold text-cc-fg/80 truncate">{group.name}</span>
           )}
           {hasStatus && (
-            <span className="flex items-center gap-1 ml-auto shrink-0 text-[10px] font-medium">
-              {group.runningCount > 0 && (
-                <span className="text-cc-success flex items-center gap-0.5">
-                  {group.runningCount}
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-success" />
-                </span>
-              )}
-              {group.permCount > 0 && (
-                <span className="text-cc-warning flex items-center gap-0.5">
-                  {group.permCount}
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-warning" />
-                </span>
-              )}
-              {group.unreadCount > 0 && (
-                <span className="text-blue-500 flex items-center gap-0.5">
-                  {group.unreadCount}
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
-                </span>
-              )}
+            <span className="ml-auto">
+              <StatusCountDots counts={{ running: group.runningCount, permission: group.permCount, unread: group.unreadCount }} />
             </span>
           )}
           <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">{totalSessions}</span>

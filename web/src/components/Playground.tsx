@@ -2388,6 +2388,71 @@ export function Playground() {
           </div>
         </Section>
 
+        <Section
+          title="Tree View Compact Workers + Leader Summary"
+          description="In tree view, workers render compact (no preview, no herd badge, no shield). Leaders show a worker status summary with colored count dots."
+        >
+          <div className="max-w-md">
+            <Card label="Leader with worker status summary">
+              <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2">
+                <SessionItem
+                  session={PLAYGROUND_SESSION_ROWS[0].session}
+                  isActive={false}
+                  sessionName={PLAYGROUND_SESSION_ROWS[0].sessionName}
+                  sessionPreview={PLAYGROUND_SESSION_ROWS[0].preview}
+                  permCount={0}
+                  isRecentlyRenamed={false}
+                  workerStatusSummary={{ running: 2, permission: 1, unread: 0 }}
+                  onSelect={() => {}}
+                  onStartRename={() => {}}
+                  onArchive={() => {}}
+                  onUnarchive={() => {}}
+                  onDelete={() => {}}
+                  onClearRecentlyRenamed={() => {}}
+                  editingSessionId={null}
+                  editingName=""
+                  setEditingName={() => {}}
+                  onConfirmRename={() => {}}
+                  onCancelRename={() => {}}
+                  editInputRef={{ current: null }}
+                  herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(PLAYGROUND_SESSION_ROWS[0].session.id)}
+                />
+              </div>
+            </Card>
+            <Card label="Compact worker chips (tree view)">
+              <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2 ml-4 border-l border-cc-border/20 pl-2">
+                {PLAYGROUND_SESSION_ROWS.filter(({ session }) => session.herdedBy && session.reviewerOf === undefined)
+                  .slice(0, 3)
+                  .map(({ session, sessionName, preview }) => (
+                    <SessionItem
+                      key={session.id}
+                      session={session}
+                      isActive={false}
+                      sessionName={sessionName}
+                      sessionPreview={preview}
+                      permCount={session.permCount}
+                      isRecentlyRenamed={false}
+                      compact
+                      onSelect={() => {}}
+                      onStartRename={() => {}}
+                      onArchive={() => {}}
+                      onUnarchive={() => {}}
+                      onDelete={() => {}}
+                      onClearRecentlyRenamed={() => {}}
+                      editingSessionId={null}
+                      editingName=""
+                      setEditingName={() => {}}
+                      onConfirmRename={() => {}}
+                      onCancelRename={() => {}}
+                      editInputRef={{ current: null }}
+                      herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(session.id)}
+                    />
+                  ))}
+              </div>
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Composer ──────────────────────────────── */}
         <Section title="Composer" description="Message input bar with mode toggle, image upload, and send/stop buttons">
           <div className="max-w-3xl">
