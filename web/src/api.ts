@@ -303,9 +303,12 @@ export interface AppSettings {
   defaultClaudeBackend: "claude" | "claude-sdk";
   sleepInhibitorEnabled: boolean;
   sleepInhibitorDurationMinutes: number;
+  questmasterViewMode: QuestmasterViewMode;
   restartSupported: boolean;
   claudeDefaultModel?: string;
 }
+
+export type QuestmasterViewMode = "cards" | "compact";
 
 /** Discriminated union for session auto-namer backend. */
 export type NamerConfig =
@@ -745,6 +748,7 @@ export const api = {
     defaultClaudeBackend?: "claude" | "claude-sdk";
     sleepInhibitorEnabled?: boolean;
     sleepInhibitorDurationMinutes?: number;
+    questmasterViewMode?: QuestmasterViewMode;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),

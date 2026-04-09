@@ -49,8 +49,12 @@ export interface CompanionSettings {
   sleepInhibitorEnabled: boolean;
   /** Duration in minutes for each caffeinate engagement (default: 5, minimum: 1) */
   sleepInhibitorDurationMinutes: number;
+  /** Preferred Questmaster list layout. Optional for backward-compatible tests/mocks. */
+  questmasterViewMode?: QuestmasterViewMode;
   updatedAt: number;
 }
+
+export type QuestmasterViewMode = "cards" | "compact";
 
 /** Enhancement output style: "default" = clean prose paragraphs, "bullet" = structured bullet points. */
 export type EnhancementMode = "default" | "bullet";
@@ -137,6 +141,7 @@ let settings: CompanionSettings = {
   editorConfig: { editor: "none" },
   sleepInhibitorEnabled: false,
   sleepInhibitorDurationMinutes: 5,
+  questmasterViewMode: "cards",
   updatedAt: 0,
 };
 let secrets: CompanionSecrets = {
@@ -315,6 +320,10 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
       typeof raw?.sleepInhibitorDurationMinutes === "number" && raw.sleepInhibitorDurationMinutes >= 1
         ? Math.floor(raw.sleepInhibitorDurationMinutes)
         : 5,
+    questmasterViewMode:
+      raw?.questmasterViewMode === "compact" || raw?.questmasterViewMode === "cards"
+        ? raw.questmasterViewMode
+        : "cards",
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -410,6 +419,7 @@ export function updateSettings(
       | "editorConfig"
       | "sleepInhibitorEnabled"
       | "sleepInhibitorDurationMinutes"
+      | "questmasterViewMode"
     >
   >,
 ): CompanionSettings {

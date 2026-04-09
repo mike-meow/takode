@@ -9,6 +9,8 @@ const mockMarkQuestVerificationInbox = vi.fn();
 const mockTransitionQuest = vi.fn();
 const mockCreateQuest = vi.fn();
 const mockMarkQuestDone = vi.fn();
+const mockGetSettings = vi.fn();
+const mockUpdateSettings = vi.fn();
 const mockNavigateToSession = vi.fn();
 let promptSpy: ReturnType<typeof vi.spyOn>;
 
@@ -19,6 +21,8 @@ vi.mock("../api.js", () => ({
     transitionQuest: (...args: unknown[]) => mockTransitionQuest(...args),
     createQuest: (...args: unknown[]) => mockCreateQuest(...args),
     markQuestDone: (...args: unknown[]) => mockMarkQuestDone(...args),
+    getSettings: (...args: unknown[]) => mockGetSettings(...args),
+    updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
   },
 }));
@@ -236,6 +240,10 @@ beforeEach(() => {
         tags: input.tags,
       }) as QuestmasterTask,
   );
+  mockGetSettings.mockResolvedValue({ questmasterViewMode: "cards" });
+  mockUpdateSettings.mockImplementation(async (input: { questmasterViewMode?: "cards" | "compact" }) => ({
+    questmasterViewMode: input.questmasterViewMode ?? "cards",
+  }));
   window.location.hash = "#/questmaster";
 });
 
@@ -298,6 +306,53 @@ describe("QuestmasterPage verification inbox", () => {
 
     const order = Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]")).map((el) => el.dataset.questId);
     expect(order).toEqual(["q-10", "q-11"]);
+  });
+
+  it("loads the server-persisted compact view and renders quests as dense rows", async () => {
+    // View mode is a server setting: activating Questmaster should hydrate the compact table without localStorage.
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+
+    renderQuestmaster({ isActive: true });
+
+    expect(await screen.findAllByRole("columnheader", { name: "Quest" })).not.toHaveLength(0);
+    expect(screen.getAllByRole("columnheader", { name: "Owner" })).not.toHaveLength(0);
+    expect(screen.getAllByRole("columnheader", { name: "Verify" })).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: /q-1 Inbox quest/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /q-2 Regular verification quest/ })).toBeInTheDocument();
+  });
+
+  it("saves the compact/cards toggle to server settings", async () => {
+    // Toggling should PUT the preference to the server and immediately swap card list for table view.
+    renderQuestmaster();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith({ questmasterViewMode: "compact" });
+    });
+    expect(screen.getAllByRole("columnheader", { name: "Feedback" })).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cards" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith({ questmasterViewMode: "cards" });
+    });
+    expect(screen.queryAllByRole("columnheader", { name: "Feedback" })).toHaveLength(0);
+  });
+
+  it("opens the existing editable Questmaster detail modal from a compact row", async () => {
+    // Compact rows should use the same editable detail path as cards, not the read-only global hover modal.
+    renderQuestmaster();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
+    await screen.findAllByRole("columnheader", { name: "Quest" });
+
+    fireEvent.click(screen.getByRole("button", { name: /q-1 Inbox quest/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Edit")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Assign" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /^Later$/ })).toBeInTheDocument();
   });
 
   it("marks an inbox quest as read", async () => {

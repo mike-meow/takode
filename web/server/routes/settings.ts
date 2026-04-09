@@ -15,6 +15,7 @@ import {
   type SttModel,
   type EditorConfig,
   type EnhancementMode,
+  type QuestmasterViewMode,
 } from "../settings-manager.js";
 import { getLogPath } from "../server-logger.js";
 import type { RouteContext } from "./context.js";
@@ -125,6 +126,10 @@ export function createSettingsRoutes(ctx: RouteContext) {
     return { editor: "none" };
   }
 
+  function normalizeQuestmasterViewMode(mode: unknown): QuestmasterViewMode {
+    return mode === "compact" ? "compact" : "cards";
+  }
+
   // ─── Caffeinate status ──────────────────────────────────────────
 
   api.get("/caffeinate-status", (c) => {
@@ -157,6 +162,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       defaultClaudeBackend: settings.defaultClaudeBackend,
       sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
       sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
+      questmasterViewMode: normalizeQuestmasterViewMode(settings.questmasterViewMode),
       restartSupported: !!process.env.COMPANION_SUPERVISED,
       logFile: getLogPath(),
       claudeDefaultModel,
@@ -263,6 +269,13 @@ export function createSettingsRoutes(ctx: RouteContext) {
     ) {
       return c.json({ error: "sleepInhibitorDurationMinutes must be an integer between 1 and 30" }, 400);
     }
+    if (
+      body.questmasterViewMode !== undefined &&
+      body.questmasterViewMode !== "cards" &&
+      body.questmasterViewMode !== "compact"
+    ) {
+      return c.json({ error: 'questmasterViewMode must be "cards" or "compact"' }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
@@ -285,6 +298,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "defaultClaudeBackend",
       "sleepInhibitorEnabled",
       "sleepInhibitorDurationMinutes",
+      "questmasterViewMode",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -319,6 +333,10 @@ export function createSettingsRoutes(ctx: RouteContext) {
       sleepInhibitorEnabled: typeof body.sleepInhibitorEnabled === "boolean" ? body.sleepInhibitorEnabled : undefined,
       sleepInhibitorDurationMinutes:
         typeof body.sleepInhibitorDurationMinutes === "number" ? body.sleepInhibitorDurationMinutes : undefined,
+      questmasterViewMode:
+        body.questmasterViewMode === "cards" || body.questmasterViewMode === "compact"
+          ? body.questmasterViewMode
+          : undefined,
     });
 
     return c.json({
@@ -341,6 +359,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       defaultClaudeBackend: settings.defaultClaudeBackend,
       sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
       sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
+      questmasterViewMode: normalizeQuestmasterViewMode(settings.questmasterViewMode),
     });
   });
 

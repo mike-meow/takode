@@ -132,6 +132,7 @@ vi.mock("./settings-manager.js", () => ({
     defaultClaudeBackend: "claude",
     sleepInhibitorEnabled: false,
     sleepInhibitorDurationMinutes: 5,
+    questmasterViewMode: "cards",
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -162,6 +163,7 @@ vi.mock("./settings-manager.js", () => ({
     defaultClaudeBackend: patch.defaultClaudeBackend ?? "claude",
     sleepInhibitorEnabled: patch.sleepInhibitorEnabled ?? false,
     sleepInhibitorDurationMinutes: patch.sleepInhibitorDurationMinutes ?? 5,
+    questmasterViewMode: patch.questmasterViewMode ?? "cards",
     updatedAt: Date.now(),
   })),
   getServerName: vi.fn(() => ""),
@@ -2650,6 +2652,7 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      questmasterViewMode: "cards",
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
       claudeDefaultModel: expect.any(String),
@@ -2717,6 +2720,7 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      questmasterViewMode: "cards",
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
       claudeDefaultModel: expect.any(String),
@@ -2881,6 +2885,7 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
+      questmasterViewMode: undefined,
     });
     const json = await res.json();
     expect(json).toEqual({
@@ -2908,6 +2913,7 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      questmasterViewMode: "cards",
     });
   });
 
@@ -2969,6 +2975,7 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
+      questmasterViewMode: undefined,
     });
   });
 
@@ -3095,6 +3102,7 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: undefined,
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
+      questmasterViewMode: undefined,
     });
   });
 
@@ -3292,6 +3300,39 @@ describe("PUT /api/settings", () => {
     );
     const json = await res.json();
     expect(json.heavyRepoModeEnabled).toBe(true);
+  });
+
+  it("updates Questmaster view mode setting", async () => {
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      ...settingsManager.getSettings(),
+      questmasterViewMode: "compact",
+      updatedAt: Date.now(),
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questmasterViewMode: "compact" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ questmasterViewMode: "compact" }),
+    );
+    const json = await res.json();
+    expect(json.questmasterViewMode).toBe("compact");
+  });
+
+  it("returns 400 for invalid Questmaster view mode", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questmasterViewMode: "grid" }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: 'questmasterViewMode must be "cards" or "compact"' });
   });
 
   it("preserves custom transcription vocabulary when saving settings", async () => {

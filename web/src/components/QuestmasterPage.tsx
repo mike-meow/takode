@@ -20,6 +20,7 @@ import { MarkdownContent } from "./MarkdownContent.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
 import { timeAgo, verificationProgress, getQuestOwnerSessionId, CopyableQuestId } from "../utils/quest-helpers.js";
+import type { QuestmasterViewMode } from "../api.js";
 import type { QuestmasterTask, QuestStatus, QuestVerificationItem, QuestFeedbackEntry, QuestImage } from "../types.js";
 
 // ─── Image paste/upload helpers ────────────────────────────────────────────
@@ -135,6 +136,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const askPermissionMap = useStore((s) => s.askPermission);
 
   const [filter, setFilter] = useState<QuestStatus | "all">("all");
+  const [viewMode, setViewMode] = useState<QuestmasterViewMode>("cards");
+  const [viewModeSaving, setViewModeSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -289,6 +292,36 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       window.removeEventListener("focus", handleFocus);
     };
   }, [isActive]);
+
+  const refreshServerViewMode = useCallback(async () => {
+    try {
+      const settings = await api.getSettings();
+      setViewMode(settings.questmasterViewMode);
+    } catch (err) {
+      console.warn("[questmaster] failed to load server view mode", err);
+    }
+  }, []);
+
+  // The compact/card preference is server-owned. Refresh it on page activation
+  // and on focus so multiple browser tabs converge to the latest saved mode.
+  useEffect(() => {
+    if (!isActive) return;
+    refreshServerViewMode();
+
+    function handleFocus() {
+      refreshServerViewMode();
+    }
+    function handleVisibility() {
+      if (document.visibilityState === "visible") refreshServerViewMode();
+    }
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [isActive, refreshServerViewMode]);
 
   // Hydrate persisted scroll position once enough content has rendered.
   useEffect(() => {
@@ -594,6 +627,23 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleViewModeChange(nextMode: QuestmasterViewMode) {
+    if (nextMode === viewMode) return;
+    const previousMode = viewMode;
+    setViewMode(nextMode);
+    setViewModeSaving(true);
+    setError("");
+    try {
+      const settings = await api.updateSettings({ questmasterViewMode: nextMode });
+      setViewMode(settings.questmasterViewMode);
+    } catch (err) {
+      setViewMode(previousMode);
+      setError(err instanceof Error ? err.message : "Failed to save Questmaster view mode");
+    } finally {
+      setViewModeSaving(false);
     }
   }
 
@@ -1173,6 +1223,29 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
           {/* Status dropdown + Search bar */}
           <div className="flex items-center gap-2">
+            {/* Server-persisted view mode toggle */}
+            <div
+              className="flex items-center rounded-lg border border-cc-border bg-cc-input-bg p-0.5 shrink-0"
+              aria-label="Quest view mode"
+            >
+              {(["cards", "compact"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => handleViewModeChange(mode)}
+                  disabled={viewModeSaving}
+                  aria-pressed={viewMode === mode}
+                  className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer disabled:cursor-wait ${
+                    viewMode === mode
+                      ? "bg-cc-hover text-cc-fg shadow-sm"
+                      : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover/50"
+                  }`}
+                >
+                  {mode === "cards" ? "Cards" : "Compact"}
+                </button>
+              ))}
+            </div>
+
             {/* Status filter dropdown */}
             <div ref={statusDropdownRef} className="relative shrink-0">
               <button
@@ -1650,8 +1723,20 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                       </div>
                     ))}
                   {!isCollapsed && (
-                    <div className="space-y-2">
-                      {section.quests.map((quest) => {
+                    <>
+                      {viewMode === "compact" && (
+                        <CompactQuestTable
+                          quests={section.quests}
+                          onOpenQuest={handleExpand}
+                          renderSearchHighlight={renderSearchHighlight}
+                        />
+                      )}
+                      <div
+                        className={viewMode === "compact" ? "hidden" : "space-y-2"}
+                        aria-hidden={viewMode === "compact"}
+                        style={viewMode === "compact" ? { display: "none" } : undefined}
+                      >
+                        {section.quests.map((quest) => {
                         const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
                         const cfg = STATUS_CONFIG[quest.status];
                         const isExpanded = expandedId === quest.questId;
@@ -2657,8 +2742,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
               );
@@ -2732,6 +2818,123 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 }
 
 // ─── Picker session chip (read-only mirror of SessionItem) ───────────────────
+
+function CompactQuestTable({
+  quests,
+  onOpenQuest,
+  renderSearchHighlight,
+}: {
+  quests: QuestmasterTask[];
+  onOpenQuest: (quest: QuestmasterTask) => void;
+  renderSearchHighlight: (text: string) => React.ReactNode;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-cc-border bg-cc-card">
+      <table className="w-full min-w-[760px] text-xs">
+        <thead>
+          <tr className="border-b border-cc-border bg-cc-bg/50 text-cc-muted">
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Quest</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Title</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Owner</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Status</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Verify</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Feedback</th>
+            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {quests.map((quest) => {
+            const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
+            const cfg = STATUS_CONFIG[quest.status];
+            const questSessionId = getQuestOwnerSessionId(quest);
+            const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
+            const vProgress = hasVerification ? verificationProgress(quest.verificationItems) : null;
+            const feedbackEntries =
+              "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+            const unaddressedFeedbackCount =
+              feedbackEntries?.filter((entry) => entry.author === "human" && !entry.addressed).length ?? 0;
+            const totalFeedbackCount = feedbackEntries?.filter((entry) => entry.author === "human").length ?? 0;
+            const isInboxVerification = isVerificationInboxUnread(quest);
+
+            return (
+              <tr
+                key={quest.id}
+                data-quest-id={quest.questId}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenQuest(quest)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenQuest(quest);
+                  }
+                }}
+                className={`group border-b border-cc-border last:border-0 hover:bg-cc-hover/30 focus-visible:bg-cc-hover/40 focus-visible:outline-none cursor-pointer ${
+                  isCancelled ? "opacity-60" : ""
+                }`}
+              >
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle">
+                  <span className="font-mono-code text-blue-400 group-hover:text-blue-300">
+                    {renderSearchHighlight(quest.questId)}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <div
+                    className={`max-w-[360px] truncate font-medium ${
+                      isCancelled ? "text-cc-muted line-through" : "text-cc-fg"
+                    }`}
+                  >
+                    {renderSearchHighlight(quest.title)}
+                  </div>
+                  {quest.tags && quest.tags.length > 0 && (
+                    <div className="mt-0.5 flex items-center gap-1 overflow-hidden text-[10px] text-cc-muted/60">
+                      {quest.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="truncate">
+                          #{tag.toLowerCase()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle">
+                  {questSessionId ? (
+                    <SessionNumChip sessionId={questSessionId} />
+                  ) : (
+                    <span className="text-cc-muted">{"\u2014"}</span>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle">
+                  <span className="inline-flex items-center gap-1.5 text-cc-muted">
+                    <span className={`h-1.5 w-1.5 rounded-full ${isCancelled ? "bg-red-400" : cfg.dot}`} />
+                    <span>{isCancelled ? "Cancelled" : cfg.label}</span>
+                    {isInboxVerification && <span className="text-amber-300">Inbox</span>}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle text-cc-muted tabular-nums">
+                  {vProgress ? `${vProgress.checked}/${vProgress.total}` : "\u2014"}
+                </td>
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle tabular-nums">
+                  {totalFeedbackCount > 0 ? (
+                    <span className={unaddressedFeedbackCount > 0 ? "text-amber-400" : "text-emerald-400/70"}>
+                      {unaddressedFeedbackCount > 0
+                        ? `${unaddressedFeedbackCount} open / ${totalFeedbackCount}`
+                        : `${totalFeedbackCount} addressed`}
+                    </span>
+                  ) : (
+                    <span className="text-cc-muted">{"\u2014"}</span>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 whitespace-nowrap align-middle text-cc-muted/70">
+                  {timeAgo((quest as { updatedAt?: number }).updatedAt ?? quest.createdAt)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /** Read-only session chip for the assign picker, matching the sidebar's visual layout. */
 function PickerSessionChip({

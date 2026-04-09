@@ -64,6 +64,7 @@ describe("settings-manager", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      questmasterViewMode: "cards",
       updatedAt: 0,
     });
   });
@@ -183,6 +184,20 @@ describe("settings-manager", () => {
     _resetForTest(settingsPath);
 
     expect(getSettings().transcriptionConfig.voiceCaptureMode).toBe("append");
+  });
+
+  it("persists Questmaster view mode across reloads", async () => {
+    // Questmaster layout is a server preference so multiple browser tabs share it.
+    updateSettings({ questmasterViewMode: "compact" });
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.questmasterViewMode).toBe("compact");
+
+    _resetForTest(settingsPath);
+
+    expect(getSettings().questmasterViewMode).toBe("compact");
   });
 
   it("loads existing settings from disk", () => {
@@ -315,6 +330,7 @@ describe("settings-manager", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      questmasterViewMode: "cards",
       updatedAt: 0,
     });
   });
