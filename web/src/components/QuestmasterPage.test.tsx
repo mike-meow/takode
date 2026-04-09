@@ -314,11 +314,65 @@ describe("QuestmasterPage verification inbox", () => {
 
     renderQuestmaster({ isActive: true });
 
-    expect(await screen.findAllByRole("columnheader", { name: "Quest" })).not.toHaveLength(0);
-    expect(screen.getAllByRole("columnheader", { name: "Owner" })).not.toHaveLength(0);
-    expect(screen.getAllByRole("columnheader", { name: "Verify" })).not.toHaveLength(0);
+    expect(await screen.findAllByRole("columnheader", { name: "Quest" })).toHaveLength(1);
+    expect(screen.getAllByRole("columnheader", { name: "Owner" })).toHaveLength(1);
+    expect(screen.getAllByRole("columnheader", { name: "Verify" })).toHaveLength(1);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.queryByText("Verification Inbox")).not.toBeVisible();
     expect(screen.getByRole("button", { name: /q-1 Inbox quest/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /q-2 Regular verification quest/ })).toBeInTheDocument();
+  });
+
+  it("orders compact rows by newest update without grouping by status", async () => {
+    // Compact mode is one updated-time-sorted work-board-style table, independent of quest status buckets.
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-20-v1", questId: "q-20", title: "Old verification" }),
+        updatedAt: 1_000,
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-21-v1", questId: "q-21", title: "Newest refined" }),
+        status: "refined",
+        updatedAt: 9_000,
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-22-v1", questId: "q-22", title: "Middle progress" }),
+        status: "in_progress",
+        updatedAt: 5_000,
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+
+    await screen.findByRole("button", { name: /q-21 Newest refined/ });
+    const rows = screen
+      .getAllByRole("button")
+      .map((el) => el.getAttribute("data-quest-id"))
+      .filter(Boolean);
+    expect(rows).toEqual(["q-21", "q-22", "q-20"]);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+  });
+
+  it("applies the existing status dropdown filter to the flat compact table", async () => {
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+    mockState.quests = [
+      { ...buildVerificationQuest({ id: "q-30-v1", questId: "q-30", title: "Verification row" }) } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-31-v1", questId: "q-31", title: "Refined row" }),
+        status: "refined",
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+    await screen.findByRole("button", { name: /q-30 Verification row/ });
+
+    fireEvent.click(screen.getByRole("button", { name: /^All2/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Refined1$/ }));
+
+    expect(screen.queryByRole("button", { name: /q-30 Verification row/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /q-31 Refined row/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("table")).toHaveLength(1);
   });
 
   it("saves the compact/cards toggle to server settings", async () => {
@@ -330,7 +384,7 @@ describe("QuestmasterPage verification inbox", () => {
     await waitFor(() => {
       expect(mockUpdateSettings).toHaveBeenCalledWith({ questmasterViewMode: "compact" });
     });
-    expect(screen.getAllByRole("columnheader", { name: "Feedback" })).not.toHaveLength(0);
+    expect(screen.getAllByRole("columnheader", { name: "Feedback" })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Cards" }));
 
@@ -353,6 +407,21 @@ describe("QuestmasterPage verification inbox", () => {
     expect(within(dialog).getByText("Edit")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Assign" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: /^Later$/ })).toBeInTheDocument();
+  });
+
+  it("opens compact rows even when their Cards-mode section is collapsed", async () => {
+    // Compact view is flat: a previously-collapsed Cards group must not remove its editable modal host.
+    renderQuestmaster();
+
+    fireEvent.click(screen.getByText("Verification Inbox"));
+    expect(screen.queryByText("Inbox quest")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
+    await screen.findByRole("button", { name: /q-1 Inbox quest/ });
+
+    fireEvent.click(screen.getByRole("button", { name: /q-1 Inbox quest/ }));
+
+    expect(await screen.findByRole("dialog")).toHaveAttribute("aria-label", "Quest details: Inbox quest");
   });
 
   it("marks an inbox quest as read", async () => {

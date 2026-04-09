@@ -1092,6 +1092,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     : [];
   const sortByRecencyDesc = (items: QuestmasterTask[]): QuestmasterTask[] =>
     [...items].sort((a, b) => questRecencyTs(b) - questRecencyTs(a));
+  const compactQuests = sortByRecencyDesc(filtered);
 
   const questSections: QuestSection[] = [];
   if (showVerificationSplit && verificationInboxQuests.length > 0) {
@@ -1681,7 +1682,20 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                   : "No quests match this filter."}
             </div>
           ) : (
-            questSections.map((section) => {
+            <>
+              {viewMode === "compact" && (
+                <CompactQuestTable
+                  quests={compactQuests}
+                  onOpenQuest={handleExpand}
+                  renderSearchHighlight={renderSearchHighlight}
+                />
+              )}
+              <div
+                className={viewMode === "compact" ? "hidden" : "contents"}
+                aria-hidden={viewMode === "compact"}
+                style={viewMode === "compact" ? { display: "none" } : undefined}
+              >
+                {questSections.map((section) => {
               const isCollapsible = !!section.collapseGroup;
               const isCollapsed = !!section.collapseGroup && collapsedGroups.has(section.collapseGroup);
               const showSectionHeader =
@@ -1722,20 +1736,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                         <span className="text-[10px] text-cc-muted/50">{section.quests.length}</span>
                       </div>
                     ))}
-                  {!isCollapsed && (
-                    <>
-                      {viewMode === "compact" && (
-                        <CompactQuestTable
-                          quests={section.quests}
-                          onOpenQuest={handleExpand}
-                          renderSearchHighlight={renderSearchHighlight}
-                        />
-                      )}
-                      <div
-                        className={viewMode === "compact" ? "hidden" : "space-y-2"}
-                        aria-hidden={viewMode === "compact"}
-                        style={viewMode === "compact" ? { display: "none" } : undefined}
-                      >
+                  {(!isCollapsed || viewMode === "compact") && (
+                    <div className="space-y-2">
                         {section.quests.map((quest) => {
                         const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
                         const cfg = STATUS_CONFIG[quest.status];
@@ -2743,12 +2745,13 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                           </div>
                         );
                         })}
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
-            })
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>
