@@ -27,13 +27,21 @@ function makeMockStream(trackState: "live" | "ended" = "live"): MediaStream {
   } as any;
 }
 
-/** Minimal MediaRecorder mock that exposes start/stop controls */
+/** Minimal MediaRecorder mock that exposes start/stop controls.
+ *  Tracks the last created instance via MockMediaRecorder.lastInstance for tests
+ *  that need to trigger error events after recording starts. */
 class MockMediaRecorder {
+  static lastInstance: MockMediaRecorder | null = null;
+
   state: "inactive" | "recording" | "paused" = "inactive";
   mimeType = "audio/webm";
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   onerror: (() => void) | null = null;
+
+  constructor() {
+    MockMediaRecorder.lastInstance = this;
+  }
 
   start() {
     this.state = "recording";
@@ -41,10 +49,16 @@ class MockMediaRecorder {
 
   stop() {
     this.state = "inactive";
-    // Deliver a small data chunk, then fire onstop asynchronously
+    // Deliver a small data chunk, then fire onstop
     // (matches real browser behavior where onstop fires after ondataavailable)
     this.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) });
     this.onstop?.();
+  }
+
+  /** Test helper: simulate a recording error mid-recording */
+  triggerError() {
+    this.state = "inactive";
+    this.onerror?.();
   }
 }
 
@@ -387,5 +401,69 @@ describe("useVoiceInput — onAudioReady", () => {
 
     expect(result.current.isRecording).toBe(false);
     expect(onAudioReady).not.toHaveBeenCalled();
+  });
+});
+
+// ── Hook tests: recorder error handling ────────────────────────────────────
+
+describe("useVoiceInput — recorder.onerror", () => {
+  it("sets error and clears recording state when MediaRecorder errors mid-recording", async () => {
+    const onAudioReady = vi.fn();
+    const { result } = renderHook(() => useVoiceInput({ onAudioReady }));
+
+    await act(async () => { result.current.startRecording(); });
+    expect(result.current.isRecording).toBe(true);
+
+    // Simulate a recorder error via the mock's triggerError helper
+    const recorder = MockMediaRecorder.lastInstance!;
+    act(() => { recorder.triggerError(); });
+
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.isPreparing).toBe(false);
+    expect(result.current.error).toBe("Recording failed");
+    expect(onAudioReady).not.toHaveBeenCalled();
+  });
+});
+
+// ── Hook tests: warming promise race prevention ────────────────────────────
+
+describe("useVoiceInput — warming promise coalescing", () => {
+  it("startRecording awaits in-flight warmMicrophone instead of duplicating getUserMedia", async () => {
+    // Make getUserMedia hang until we resolve it manually
+    let resolveStream!: (stream: MediaStream) => void;
+    getUserMediaMock.mockImplementation(
+      () => new Promise<MediaStream>((r) => { resolveStream = r; }),
+    );
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    // Start warming (fires getUserMedia, hangs on promise)
+    act(() => { result.current.warmMicrophone(); });
+
+    // Immediately start recording before warm resolves -- should NOT fire a second getUserMedia
+    act(() => { result.current.startRecording(); });
+    expect(result.current.isPreparing).toBe(true);
+
+    // Resolve the single getUserMedia call
+    await act(async () => { resolveStream(makeMockStream()); });
+
+    expect(result.current.isRecording).toBe(true);
+    expect(result.current.isPreparing).toBe(false);
+    // Only ONE getUserMedia call total (not two)
+    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("concurrent warmMicrophone calls do not fire duplicate getUserMedia requests", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+
+    // Fire warmMicrophone twice in quick succession
+    act(() => {
+      result.current.warmMicrophone();
+      result.current.warmMicrophone();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    // Only one getUserMedia call despite two warmMicrophone calls
+    expect(getUserMediaMock).toHaveBeenCalledTimes(1);
   });
 });

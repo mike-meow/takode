@@ -131,6 +131,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   // Pre-warmed mic stream, kept alive between recordings to avoid getUserMedia latency
   const cachedStreamRef = useRef<MediaStream | null>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks an in-flight getUserMedia call from warmMicrophone so startRecording can
+  // await it instead of firing a duplicate request (prevents orphaned stream leaks).
+  const warmingPromiseRef = useRef<Promise<MediaStream | null> | null>(null);
 
   // Web Audio API refs for volume metering
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -207,26 +210,38 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     idleTimeoutRef.current = setTimeout(releaseCachedStream, STREAM_IDLE_TIMEOUT_MS);
   }, [releaseCachedStream]);
 
+  /** Check if the cached pre-warmed stream is still usable (has live tracks). */
+  function isCachedStreamLive(): boolean {
+    const stream = cachedStreamRef.current;
+    if (!stream) return false;
+    const tracks = stream.getTracks();
+    return tracks.length > 0 && tracks.every((t) => t.readyState === "live");
+  }
+
   /** Pre-warm the microphone stream so startRecording() is near-instant.
-   *  Safe to call multiple times -- no-ops if a live stream already exists. */
+   *  Safe to call multiple times -- no-ops if a live stream or in-flight request exists. */
   const warmMicrophone = useCallback(() => {
     if (!support.isSupported) return;
-    // Already have a live cached stream
-    if (cachedStreamRef.current) {
-      const tracks = cachedStreamRef.current.getTracks();
-      if (tracks.length > 0 && tracks.every((t) => t.readyState === "live")) return;
-      // Tracks ended (e.g. permission revoked) -- clear stale ref
-      cachedStreamRef.current = null;
-    }
-    navigator.mediaDevices
+    // Already have a live cached stream or an in-flight warming request
+    if (isCachedStreamLive() || warmingPromiseRef.current) return;
+    // Clear stale stream ref if tracks ended
+    cachedStreamRef.current = null;
+
+    const promise = navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
         cachedStreamRef.current = stream;
         resetIdleTimeout();
+        return stream;
       })
       .catch(() => {
         // Permission denied or error -- no-op, startRecording will handle it
+        return null;
+      })
+      .finally(() => {
+        warmingPromiseRef.current = null;
       });
+    warmingPromiseRef.current = promise;
   }, [support.isSupported, resetIdleTimeout]);
 
   const stopRecording = useCallback(() => {
@@ -256,17 +271,15 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     setIsPreparing(true);
 
     try {
-      // Attempt to reuse cached pre-warmed stream
-      let stream = cachedStreamRef.current;
-      if (stream) {
-        const tracks = stream.getTracks();
-        if (tracks.length === 0 || tracks.some((t) => t.readyState !== "live")) {
-          // Cached stream is stale (tracks ended) -- need fresh one
-          stream = null;
-          cachedStreamRef.current = null;
-        }
+      // If warmMicrophone has an in-flight getUserMedia, await it instead of duplicating
+      if (warmingPromiseRef.current) {
+        await warmingPromiseRef.current;
       }
+
+      // Attempt to reuse cached pre-warmed stream
+      let stream: MediaStream | null = isCachedStreamLive() ? cachedStreamRef.current : null;
       if (!stream) {
+        cachedStreamRef.current = null;
         // No cached stream available -- fall back to fresh getUserMedia
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
