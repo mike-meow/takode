@@ -575,16 +575,29 @@ async function handleList(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  // Group sessions by project (repo root or cwd)
+  // Group sessions by project (repo root or cwd).
+  // Reviewers are grouped with their parent worker so they don't create
+  // separate single-session groups for each worktree.
   const groups = new Map<string, typeof filtered>();
   const archived: typeof filtered = [];
+
+  // Build sessionNum → projectKey lookup so reviewers can join their parent's group
+  const sessionProjectKey = new Map<number, string>();
+  for (const s of filtered) {
+    if (!s.archived && s.sessionNum !== undefined && s.reviewerOf === undefined) {
+      sessionProjectKey.set(s.sessionNum, (s.repoRoot || s.cwd || "").replace(/\/+$/, "") || "/");
+    }
+  }
 
   for (const s of filtered) {
     if (s.archived) {
       archived.push(s);
       continue;
     }
-    const projectKey = (s.repoRoot || s.cwd || "").replace(/\/+$/, "") || "/";
+    // Reviewers inherit their parent's project group when the parent is visible
+    const ownKey = (s.repoRoot || s.cwd || "").replace(/\/+$/, "") || "/";
+    const projectKey =
+      s.reviewerOf !== undefined ? (sessionProjectKey.get(s.reviewerOf) ?? ownKey) : ownKey;
     if (!groups.has(projectKey)) groups.set(projectKey, []);
     groups.get(projectKey)!.push(s);
   }
@@ -657,7 +670,7 @@ function printSessionLine(
   },
   opts?: { indent?: boolean },
 ): void {
-  const prefix = opts?.indent ? "    " : "  ";
+  const prefix = opts?.indent ? "        ↳ " : "  ";
   const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
   const name = formatInlineText(s.name || "(unnamed)");
   const role = s.isOrchestrator ? " [leader]" : s.reviewerOf !== undefined ? " [reviewer]" : "";
@@ -691,7 +704,11 @@ function printSessionLine(
   const preview = s.lastMessagePreview ? `  "${truncate(s.lastMessagePreview, 50)}"` : "";
 
   console.log(`${prefix}${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${attention}`);
-  console.log(`${prefix}      ${cwdLabel}${branch}${gitDelta}${diffStats}${wt}  ${activity}${preview}`);
+  // Compact display for indented reviewer sessions: skip the detail line (cwd/branch)
+  // since reviewers share the parent's worktree and the extra line is just noise
+  if (!opts?.indent) {
+    console.log(`${prefix}      ${cwdLabel}${branch}${gitDelta}${diffStats}${wt}  ${activity}${preview}`);
+  }
 }
 
 /**
