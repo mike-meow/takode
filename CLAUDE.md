@@ -11,6 +11,21 @@ It began as a Companion fork and now provides a multi-session workspace with cro
 
 Use Questmaster to track project progress for this repository. Treat project tasks/todos as quests and keep status current via the `quest` CLI and Questmaster workflow.
 
+## Skills (Auto-Installed)
+
+The Takode server symlinks project skills into global skill directories at startup (see `web/server/skill-symlink.ts` and `web/server/index.ts`). Each skill is symlinked into three locations: `~/.claude/skills/` (Claude Code), `~/.codex/skills/` (legacy Codex), and `~/.agents/skills/` (new agents format). The canonical source is `.claude/skills/` in the project repo -- edit skills there, not in the global directories. If a backend-specific override exists (e.g. `.codex/skills/<slug>/`), that version is used for that backend instead.
+
+| Skill | Source | Purpose |
+|-------|--------|---------|
+| `takode-orchestration` | `.claude/skills/takode-orchestration/` | Cross-session orchestration: dispatch, quest journey, board, leader ops |
+| `groom` | `.claude/skills/groom/` | Multi-perspective code review via parallel subagents |
+| `skeptic-review` | `.claude/skills/skeptic-review/` | Adversarial work integrity review of worker output |
+| `cron-scheduling` | `.claude/skills/cron-scheduling/` | Cron expression helper (prevents scheduling errors) |
+| `worktree-rules` | `.claude/skills/worktree-rules/` | Worktree-to-main-repo porting workflow |
+| `playwright-e2e-tester` | `.claude/skills/playwright-e2e-tester/` | E2E browser testing via Playwright MCP |
+
+Additionally, `quest-integration.ts` generates and installs the `quest` skill docs (from `web/server/templates/quest-skill-docs.md`) into both Claude and Codex skill directories at startup.
+
 ## Development Commands
 
 ```bash

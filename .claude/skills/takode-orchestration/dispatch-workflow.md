@@ -68,6 +68,8 @@ Return a plan for approval before implementing.
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 
+**Forward user screenshots.** When the user provides screenshots alongside a task request, attach them to the quest via `quest feedback q-XX --image <path>` before dispatching. If no quest exists (e.g. ad-hoc investigation), send the image file path to the worker via `takode send` so they can Read it. `takode spawn` does not support images -- always use a follow-up message or quest attachment.
+
 ## 7. Update the Board
 
 ```bash
