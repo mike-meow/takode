@@ -4417,6 +4417,25 @@ describe("POST /api/sessions/create with backend", () => {
     expect(launcher.getOrchestratorGuardrails).toHaveBeenCalledWith("codex");
   });
 
+  it("assigns 'Leader N' name and disables autonamer for orchestrator sessions", async () => {
+    // Verify the integration: orchestrator sessions get "Leader N" naming
+    // and noAutoName is set to suppress the autonamer.
+    vi.mocked(sessionNames.getNextLeaderNumber).mockReturnValue(42);
+
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", backend: "claude", role: "orchestrator" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sessionNames.setName).toHaveBeenCalledWith("session-1", "Leader 42");
+    expect(sessionNames.getNextLeaderNumber).toHaveBeenCalled();
+    // Verify noAutoName is set on the session object
+    const launched = launcher.launch.mock.results[0]?.value;
+    expect(launched?.noAutoName).toBe(true);
+  });
+
   it("defaults to claude backend when not specified", async () => {
     const res = await app.request("/api/sessions/create", {
       method: "POST",
