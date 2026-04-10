@@ -1,4 +1,12 @@
 // @vitest-environment jsdom
+//
+// Tests for htmlFragmentToMarkdown -- converts DOM Range fragments back to markdown.
+// Used by SelectionContextMenu to offer "Copy as Markdown" for user-selected text
+// within assistant messages. The input HTML is always produced by react-markdown
+// + remarkGfm, so the tag vocabulary is bounded.
+//
+// Requires jsdom for DOM APIs (DOMParser, Range, document.createRange).
+
 import { describe, it, expect } from "vitest";
 import { htmlFragmentToMarkdown } from "./html-to-markdown.js";
 

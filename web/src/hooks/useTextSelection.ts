@@ -67,9 +67,12 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     setState(EMPTY_STATE);
     suppressRef.current = true;
     window.getSelection()?.removeAllRanges();
-    // Reset suppress after a tick so future natural selectionchange events are processed
+    // Reset suppress after both a RAF and a microtask to ensure all pending
+    // selectionchange handlers have fired before we start listening again
     requestAnimationFrame(() => {
-      suppressRef.current = false;
+      setTimeout(() => {
+        suppressRef.current = false;
+      }, 0);
     });
   }, []);
 
@@ -96,7 +99,7 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
         return;
       }
 
-      // Must be within our container
+      // Must be within our container (container is non-null here: guarded at effect entry)
       if (!container!.contains(anchorMsg)) {
         setState(EMPTY_STATE);
         return;
@@ -123,29 +126,38 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       });
     }
 
-    function handleMouseUp() {
-      // Delay evaluation to let browser finalize the selection
+    // Both mouseup and selectionchange defer to RAF so they never race.
+    // mouseup triggers evaluation; selectionchange re-evaluates (catches
+    // keyboard-driven selection changes and deselection).
+    function scheduleEvaluation() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(evaluateSelection);
     }
 
+    function handleMouseUp() {
+      scheduleEvaluation();
+    }
+
     function handleSelectionChange() {
       if (suppressRef.current) return;
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-        setState(EMPTY_STATE);
-      }
+      scheduleEvaluation();
+    }
+
+    // Dismiss on scroll -- the menu position becomes stale
+    function handleScroll() {
+      if (suppressRef.current) return;
+      cancelAnimationFrame(rafRef.current);
+      setState(EMPTY_STATE);
     }
 
     container.addEventListener("mouseup", handleMouseUp);
     document.addEventListener("selectionchange", handleSelectionChange);
-    // Dismiss on scroll -- the menu position becomes stale when the container scrolls
-    container.addEventListener("scroll", handleSelectionChange, { passive: true });
+    container.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       container.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("selectionchange", handleSelectionChange);
-      container.removeEventListener("scroll", handleSelectionChange);
+      container.removeEventListener("scroll", handleScroll);
       cancelAnimationFrame(rafRef.current);
     };
   }, [containerRef]);

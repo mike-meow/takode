@@ -47,24 +47,33 @@ export function SelectionContextMenu({ selection, sessionId, onClose }: Selectio
 
   const handleCopyRichText = useCallback(() => {
     if (!selection.range) return;
-    const fragment = selection.range.cloneContents();
-    const tempDiv = document.createElement("div");
-    tempDiv.appendChild(fragment);
-    const html = tempDiv.innerHTML;
-    const plainText = selection.plainText;
-    copyRichText(html, plainText).catch(console.error);
+    try {
+      const fragment = selection.range.cloneContents();
+      const tempDiv = document.createElement("div");
+      tempDiv.appendChild(fragment);
+      const html = tempDiv.innerHTML;
+      const plainText = selection.plainText;
+      copyRichText(html, plainText).catch((e) => console.error("Failed to copy rich text:", e));
+    } catch (e) {
+      // Range may have become stale if the DOM re-rendered since selection
+      console.error("Selection range became invalid:", e);
+    }
     onClose();
   }, [selection, onClose]);
 
   const handleCopyMarkdown = useCallback(() => {
     if (!selection.range) return;
-    const markdown = htmlFragmentToMarkdown(selection.range);
-    writeClipboardText(markdown).catch(console.error);
+    try {
+      const markdown = htmlFragmentToMarkdown(selection.range);
+      writeClipboardText(markdown).catch((e) => console.error("Failed to copy markdown:", e));
+    } catch (e) {
+      console.error("Selection range became invalid:", e);
+    }
     onClose();
   }, [selection, onClose]);
 
   const handleCopyPlainText = useCallback(() => {
-    writeClipboardText(selection.plainText).catch(console.error);
+    writeClipboardText(selection.plainText).catch((e) => console.error("Failed to copy plain text:", e));
     onClose();
   }, [selection, onClose]);
 

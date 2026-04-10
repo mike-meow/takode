@@ -6,14 +6,22 @@
  * HTML-to-markdown library.
  */
 
+/** Depth limit to prevent stack overflow on pathologically nested HTML. */
+const MAX_DEPTH = 50;
+
 /** Convert a Range's cloned contents into markdown text. */
 export function htmlFragmentToMarkdown(range: Range): string {
   const fragment = range.cloneContents();
-  return processNode(fragment).trim();
+  return processNode(fragment, 0).trim();
 }
 
 /** Convert an arbitrary DOM node (or fragment) to markdown recursively. */
-function processNode(node: Node): string {
+function processNode(node: Node, depth: number): string {
+  // Bail out on excessive nesting -- return plain text as fallback
+  if (depth > MAX_DEPTH) {
+    return node.textContent ?? "";
+  }
+
   // Text node: return content as-is
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? "";
@@ -21,7 +29,7 @@ function processNode(node: Node): string {
 
   // Document fragment: process all children
   if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-    return processChildren(node);
+    return processChildren(node, depth);
   }
 
   if (!(node instanceof HTMLElement)) {
@@ -33,17 +41,17 @@ function processNode(node: Node): string {
   switch (tag) {
     case "strong":
     case "b": {
-      const inner = processChildren(node);
+      const inner = processChildren(node, depth);
       return inner ? `**${inner}**` : "";
     }
     case "em":
     case "i": {
-      const inner = processChildren(node);
+      const inner = processChildren(node, depth);
       return inner ? `*${inner}*` : "";
     }
     case "del":
     case "s": {
-      const inner = processChildren(node);
+      const inner = processChildren(node, depth);
       return inner ? `~~${inner}~~` : "";
     }
     case "code": {
@@ -65,7 +73,7 @@ function processNode(node: Node): string {
     }
     case "a": {
       const href = node.getAttribute("href") ?? "";
-      const inner = processChildren(node);
+      const inner = processChildren(node, depth);
       return href ? `[${inner}](${href})` : inner;
     }
     case "img": {
@@ -74,25 +82,25 @@ function processNode(node: Node): string {
       return `![${alt}](${src})`;
     }
     case "h1":
-      return `\n\n# ${processChildren(node)}\n\n`;
+      return `\n\n# ${processChildren(node, depth)}\n\n`;
     case "h2":
-      return `\n\n## ${processChildren(node)}\n\n`;
+      return `\n\n## ${processChildren(node, depth)}\n\n`;
     case "h3":
-      return `\n\n### ${processChildren(node)}\n\n`;
+      return `\n\n### ${processChildren(node, depth)}\n\n`;
     case "h4":
-      return `\n\n#### ${processChildren(node)}\n\n`;
+      return `\n\n#### ${processChildren(node, depth)}\n\n`;
     case "h5":
-      return `\n\n##### ${processChildren(node)}\n\n`;
+      return `\n\n##### ${processChildren(node, depth)}\n\n`;
     case "h6":
-      return `\n\n###### ${processChildren(node)}\n\n`;
+      return `\n\n###### ${processChildren(node, depth)}\n\n`;
     case "p":
-      return `\n\n${processChildren(node)}\n\n`;
+      return `\n\n${processChildren(node, depth)}\n\n`;
     case "br":
       return "\n";
     case "hr":
       return "\n\n---\n\n";
     case "blockquote": {
-      const inner = processChildren(node).trim();
+      const inner = processChildren(node, depth).trim();
       return (
         "\n\n" +
         inner
@@ -103,46 +111,45 @@ function processNode(node: Node): string {
       );
     }
     case "ul":
-      return "\n\n" + processListItems(node, "ul") + "\n\n";
+      return "\n\n" + processListItems(node, "ul", depth) + "\n\n";
     case "ol":
-      return "\n\n" + processListItems(node, "ol") + "\n\n";
-    case "li": {
+      return "\n\n" + processListItems(node, "ol", depth) + "\n\n";
+    case "li":
       // li is normally handled by processListItems; fallback if encountered directly
-      return processChildren(node);
-    }
+      return processChildren(node, depth);
     case "table":
-      return "\n\n" + processTable(node) + "\n\n";
+      return "\n\n" + processTable(node, depth) + "\n\n";
     case "thead":
     case "tbody":
     case "tr":
     case "th":
     case "td":
       // These are handled by processTable; fallback to just children
-      return processChildren(node);
+      return processChildren(node, depth);
     case "div":
     case "span":
     case "section":
-      return processChildren(node);
+      return processChildren(node, depth);
     default:
-      return processChildren(node);
+      return processChildren(node, depth);
   }
 }
 
-function processChildren(node: Node): string {
+function processChildren(node: Node, depth: number): string {
   let result = "";
   for (const child of Array.from(node.childNodes)) {
-    result += processNode(child);
+    result += processNode(child, depth + 1);
   }
   return result;
 }
 
-function processListItems(listNode: Node, listType: "ul" | "ol"): string {
+function processListItems(listNode: Node, listType: "ul" | "ol", depth: number): string {
   const items: string[] = [];
   let index = 1;
   for (const child of Array.from(listNode.childNodes)) {
     if (child instanceof HTMLElement && child.tagName.toLowerCase() === "li") {
       const prefix = listType === "ul" ? "- " : `${index}. `;
-      const content = processChildren(child).trim();
+      const content = processChildren(child, depth + 1).trim();
       items.push(`${prefix}${content}`);
       index++;
     }
@@ -150,7 +157,7 @@ function processListItems(listNode: Node, listType: "ul" | "ol"): string {
   return items.join("\n");
 }
 
-function processTable(tableNode: Node): string {
+function processTable(tableNode: Node, depth: number): string {
   const rows: string[][] = [];
   let headerRow: string[] | null = null;
 
@@ -161,7 +168,7 @@ function processTable(tableNode: Node): string {
     for (const cell of Array.from(tr.children)) {
       const tag = cell.tagName.toLowerCase();
       if (tag === "th" || tag === "td") {
-        cells.push(processChildren(cell).trim());
+        cells.push(processChildren(cell, depth + 1).trim());
       }
     }
     if (cells.length > 0) {
