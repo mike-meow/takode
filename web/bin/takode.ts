@@ -2576,8 +2576,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
           body.worker = workerRef;
         }
       }
-      // When reassigning to a different worker, clear stale waitFor dependencies
-      // unless the user explicitly provided --wait-for in the same command
+      // When changing the worker (reassigning or clearing), clear stale waitFor
+      // dependencies unless the user explicitly provided --wait-for in the same command
       if (!("waitFor" in body)) {
         body.waitFor = [];
       }
