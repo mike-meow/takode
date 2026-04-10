@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
+// Shared styles for menu containers and items, extracted to avoid duplication.
+const MENU_STYLES = {
+  container: "fixed z-50 w-fit min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-visible",
+  submenuContainer: "fixed z-[60] w-fit min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg py-1",
+  item: "w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer whitespace-nowrap",
+  disabledItem: "w-full px-2.5 py-1.5 text-left text-[11px] text-cc-muted font-mono-code break-all leading-relaxed",
+} as const;
+
 export interface ContextMenuItem {
   label: string;
   onClick: () => void;
@@ -72,7 +80,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 w-fit min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-visible"
+      className={MENU_STYLES.container}
       style={{ left: x, top: y }}
     >
       {confirmingItem ? (
@@ -107,7 +115,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             item.disabled ? (
               <div
                 key={`${item.label}-${idx}`}
-                className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-muted font-mono-code break-all leading-relaxed"
+                className={MENU_STYLES.disabledItem}
               >
                 {item.label}
               </div>
@@ -143,7 +151,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
                   }
                 }}
                 onMouseEnter={() => setExpandedSubmenu(null)}
-                className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer whitespace-nowrap"
+                className={MENU_STYLES.item}
               >
                 {item.label}
               </button>
@@ -205,7 +213,7 @@ function SubmenuItem({
     >
       <button
         onClick={onOpen}
-        className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center justify-between whitespace-nowrap"
+        className={`${MENU_STYLES.item} flex items-center justify-between`}
       >
         <span>{item.label}</span>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5 ml-2 opacity-50">
@@ -215,7 +223,7 @@ function SubmenuItem({
       {isOpen && item.children && (
         <div
           ref={subRef}
-          className="fixed z-[60] w-fit min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg py-1"
+          className={MENU_STYLES.submenuContainer}
           style={subStyle}
           onMouseLeave={() => onClose()}
         >
@@ -223,7 +231,7 @@ function SubmenuItem({
             <button
               key={`${child.label}-${ci}`}
               onClick={() => onAction(child)}
-              className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer whitespace-nowrap"
+              className={MENU_STYLES.item}
             >
               {child.label}
             </button>
