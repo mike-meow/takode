@@ -229,6 +229,16 @@ export function Sidebar() {
     };
   }, []);
 
+  // Hydrate tree groups on mount so sidebar renders correct grouping immediately.
+  // After this initial fetch, WebSocket tree_groups_update keeps groups in sync.
+  useEffect(() => {
+    api.getTreeGroups().then((tgs) => {
+      useStore.getState().setTreeGroups(tgs.groups, tgs.assignments, tgs.nodeOrder ?? {});
+    }).catch((e) => {
+      console.warn("[sidebar] tree group hydration failed:", e);
+    });
+  }, []);
+
   // Fetch server settings (name + ID) on mount
   useEffect(() => {
     api

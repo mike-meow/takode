@@ -27,6 +27,7 @@ const mockApi = {
   unarchiveSession: vi.fn().mockResolvedValue({}),
   getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
   updateSettings: vi.fn().mockResolvedValue({ herdLeaderFirstEnabled: false }),
+  getTreeGroups: vi.fn().mockResolvedValue({ groups: [{ id: "default", name: "Default" }], assignments: {}, nodeOrder: {} }),
 };
 
 vi.mock("../api.js", () => ({
@@ -38,6 +39,7 @@ vi.mock("../api.js", () => ({
     unarchiveSession: (...args: unknown[]) => mockApi.unarchiveSession(...args),
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
     updateSettings: (...args: unknown[]) => mockApi.updateSettings(...args),
+    getTreeGroups: (...args: unknown[]) => mockApi.getTreeGroups(...args),
   },
 }));
 
@@ -104,6 +106,7 @@ interface MockStoreState {
   markAllSessionsViewed: ReturnType<typeof vi.fn>;
   markSessionUnread: ReturnType<typeof vi.fn>;
   clearSessionAttention: ReturnType<typeof vi.fn>;
+  setTreeGroups: ReturnType<typeof vi.fn>;
 }
 
 function makeSession(id: string, overrides: Partial<SessionState> = {}): SessionState {
@@ -201,6 +204,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     markAllSessionsViewed: vi.fn(),
     markSessionUnread: vi.fn(),
     clearSessionAttention: vi.fn(),
+    setTreeGroups: vi.fn(),
     ...overrides,
   };
 }
@@ -275,6 +279,22 @@ describe("Sidebar", { timeout: 10000 }, () => {
       expect(mockState.setSdkSessions).toHaveBeenCalledWith(listed);
     });
     expect(mockConnectAllSessions).not.toHaveBeenCalled();
+  });
+
+  it("hydrates tree groups from server on mount", async () => {
+    // Validates that sidebar fetches tree groups on first render so grouping
+    // is correct immediately, without waiting for a WebSocket session connect.
+    const groups = [{ id: "default", name: "Default" }, { id: "g1", name: "Project A" }];
+    const assignments = { "s1": "g1" };
+    const nodeOrder = { "g1": ["s1"] };
+    mockApi.getTreeGroups.mockResolvedValueOnce({ groups, assignments, nodeOrder });
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.getTreeGroups).toHaveBeenCalledTimes(1);
+    });
+    expect(mockState.setTreeGroups).toHaveBeenCalledWith(groups, assignments, nodeOrder);
   });
 
   it("renders 'New Session' button", () => {

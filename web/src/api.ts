@@ -673,7 +673,7 @@ export const api = {
   getHerdedSessions: (orchId: string) => get<SdkSessionInfo[]>(`/sessions/${encodeURIComponent(orchId)}/herd`),
 
   // Tree groups (herd-centric sidebar grouping)
-  getTreeGroups: () => get<{ groups: TreeGroup[]; assignments: Record<string, string> }>("/tree-groups"),
+  getTreeGroups: () => get<{ groups: TreeGroup[]; assignments: Record<string, string>; nodeOrder: Record<string, string[]> }>("/tree-groups"),
 
   updateTreeGroups: (state: { groups: TreeGroup[]; assignments: Record<string, string> }) =>
     put<{ ok: boolean }>("/tree-groups", state),
