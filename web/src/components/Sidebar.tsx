@@ -360,7 +360,11 @@ export function Sidebar() {
   }
 
   function handleCreateTreeGroup() {
-    api.createTreeGroup("New group").catch(console.error);
+    // Auto-increment: "Group 1", "Group 2", etc.
+    const existing = new Set(treeGroups.map((g) => g.name));
+    let n = 1;
+    while (existing.has(`Group ${n}`)) n++;
+    api.createTreeGroup(`Group ${n}`).catch(console.error);
   }
 
   // Focus edit input when entering edit mode
@@ -641,6 +645,48 @@ export function Sidebar() {
       });
     },
     [treeGroupIds, treeViewGroups, treeAssignments],
+  );
+
+  // Session-level DnD for cross-group moves in tree view.
+  // Maps each root session ID to its group so we can detect cross-group drops.
+  const sessionToGroupMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of treeViewGroups) {
+      for (const n of g.nodes) map.set(n.leader.id, g.id);
+    }
+    return map;
+  }, [treeViewGroups]);
+  const allTreeSessionIds = useMemo(
+    () => treeViewGroups.flatMap((g) => g.nodes.map((n) => n.leader.id)),
+    [treeViewGroups],
+  );
+  const sessionPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const sessionSensors = useSensors(sessionPointerSensor);
+  const handleTreeSessionDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const activeId = active.id as string;
+      const overId = over.id as string;
+      const sourceGroup = sessionToGroupMap.get(activeId);
+      const targetGroup = sessionToGroupMap.get(overId);
+      if (!sourceGroup || !targetGroup) return;
+      if (sourceGroup !== targetGroup) {
+        // Cross-group move: assign session to the target's group
+        api.assignSessionToTreeGroup(activeId, targetGroup).catch(console.error);
+      } else {
+        // Within-group reorder
+        const group = treeViewGroups.find((g) => g.id === sourceGroup);
+        if (!group) return;
+        const nodeIds = group.nodes.map((n) => n.leader.id);
+        const oldIndex = nodeIds.indexOf(activeId);
+        const newIndex = nodeIds.indexOf(overId);
+        if (oldIndex === -1 || newIndex === -1) return;
+        const newOrder = arrayMove(nodeIds, oldIndex, newIndex);
+        api.updateTreeNodeOrder(sourceGroup, newOrder).catch(console.error);
+      }
+    },
+    [sessionToGroupMap, treeViewGroups],
   );
 
   // Server-side session search (debounced, abort on query change).
@@ -1028,6 +1074,14 @@ export function Sidebar() {
                 modifiers={[restrictToVerticalAxis]}
               >
                 <SortableContext items={treeGroupIds} strategy={verticalListSortingStrategy}>
+                  {/* Session-level DndContext enables cross-group drag-and-drop */}
+                  <DndContext
+                    sensors={sessionSortMode === "activity" ? [] : sessionSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={sessionSortMode === "activity" ? undefined : handleTreeSessionDragEnd}
+                    modifiers={[restrictToVerticalAxis]}
+                  >
+                    <SortableContext items={allTreeSessionIds} strategy={verticalListSortingStrategy}>
                   {treeViewGroups.map((group, i) => (
                     <SortableProjectGroup key={group.id} id={group.id}>
                       {({ setNodeRef, style, listeners, attributes, isDragging }) => (
@@ -1062,6 +1116,8 @@ export function Sidebar() {
                       )}
                     </SortableProjectGroup>
                   ))}
+                    </SortableContext>
+                  </DndContext>
                 </SortableContext>
               </DndContext>
               {/* Create new group button */}
@@ -1418,20 +1474,25 @@ export function Sidebar() {
                     useStore.getState().markSessionUnread(contextMenu.sessionId);
                   },
                 },
-            // "Move to" group items (tree view only)
+            // "Move to..." submenu (tree view only)
             ...(sidebarViewMode === "tree" && treeGroups.length > 0
-              ? treeGroups
-                  .filter((g) => {
-                    // Don't show the group this session is already in
-                    const currentGroup = treeAssignments.get(contextMenu.sessionId) || "default";
-                    return g.id !== currentGroup;
-                  })
-                  .map((g) => ({
-                    label: `Move to ${g.name}`,
-                    onClick: () => {
-                      api.assignSessionToTreeGroup(contextMenu.sessionId, g.id).catch(console.error);
+              ? (() => {
+                  const currentGroup = treeAssignments.get(contextMenu.sessionId) || "default";
+                  const otherGroups = treeGroups.filter((g) => g.id !== currentGroup);
+                  if (otherGroups.length === 0) return [];
+                  return [
+                    {
+                      label: "Move to...",
+                      onClick: () => {},
+                      children: otherGroups.map((g) => ({
+                        label: g.name,
+                        onClick: () => {
+                          api.assignSessionToTreeGroup(contextMenu.sessionId, g.id).catch(console.error);
+                        },
+                      })),
                     },
-                  }))
+                  ];
+                })()
               : []),
             isArchived
               ? {

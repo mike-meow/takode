@@ -5,6 +5,8 @@ export interface ContextMenuItem {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Nested submenu items -- renders as a hover-expanded child menu. */
+  children?: ContextMenuItem[];
   confirm?: {
     title: string;
     description: string;
@@ -23,6 +25,7 @@ interface ContextMenuProps {
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmingItem, setConfirmingItem] = useState<ContextMenuItem | null>(null);
+  const [expandedSubmenu, setExpandedSubmenu] = useState<number | null>(null);
 
   useEffect(() => {
     function handleDismiss(e: Event) {
@@ -34,6 +37,8 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       if (e.key === "Escape") {
         if (confirmingItem) {
           setConfirmingItem(null);
+        } else if (expandedSubmenu !== null) {
+          setExpandedSubmenu(null);
         } else {
           onClose();
         }
@@ -47,7 +52,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       document.removeEventListener("touchstart", handleDismiss);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose, confirmingItem]);
+  }, [onClose, confirmingItem, expandedSubmenu]);
 
   // Clamp to viewport bounds
   useEffect(() => {
@@ -67,7 +72,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-hidden"
+      className="fixed z-50 min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg overflow-visible"
       style={{ left: x, top: y }}
     >
       {confirmingItem ? (
@@ -106,6 +111,22 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               >
                 {item.label}
               </div>
+            ) : item.children && item.children.length > 0 ? (
+              <SubmenuItem
+                key={`${item.label}-${idx}`}
+                item={item}
+                isOpen={expandedSubmenu === idx}
+                onOpen={() => setExpandedSubmenu(idx)}
+                onClose={() => setExpandedSubmenu(null)}
+                onAction={(child) => {
+                  try {
+                    child.onClick();
+                  } catch (e) {
+                    console.error("Submenu action error:", e);
+                  }
+                  onClose();
+                }}
+              />
             ) : (
               <button
                 key={`${item.label}-${idx}`}
@@ -121,6 +142,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
                     onClose();
                   }
                 }}
+                onMouseEnter={() => setExpandedSubmenu(null)}
                 className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
               >
                 {item.label}
@@ -131,5 +153,83 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       )}
     </div>,
     document.body,
+  );
+}
+
+/** A menu item that opens a submenu on hover/click. */
+function SubmenuItem({
+  item,
+  isOpen,
+  onOpen,
+  onClose,
+  onAction,
+}: {
+  item: ContextMenuItem;
+  isOpen: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onAction: (child: ContextMenuItem) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const subRef = useRef<HTMLDivElement>(null);
+
+  // Position the submenu to the right, clamping to viewport
+  const [subStyle, setSubStyle] = useState<React.CSSProperties>({});
+  useEffect(() => {
+    if (!isOpen || !rowRef.current) return;
+    const rect = rowRef.current.getBoundingClientRect();
+    let left = rect.right + 2;
+    let top = rect.top;
+    // Clamp right edge
+    if (left + 140 > window.innerWidth) {
+      left = rect.left - 142;
+    }
+    // Clamp bottom -- estimate ~28px per child item
+    const estimatedHeight = (item.children?.length ?? 0) * 28 + 8;
+    if (top + estimatedHeight > window.innerHeight) {
+      top = window.innerHeight - estimatedHeight - 8;
+    }
+    setSubStyle({ position: "fixed" as const, left, top });
+  }, [isOpen, item.children?.length]);
+
+  return (
+    <div
+      ref={rowRef}
+      className="relative"
+      onMouseEnter={onOpen}
+      onMouseLeave={(e) => {
+        // Don't close if moving into the submenu panel
+        if (subRef.current?.contains(e.relatedTarget as Node)) return;
+        onClose();
+      }}
+    >
+      <button
+        onClick={onOpen}
+        className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer flex items-center justify-between"
+      >
+        <span>{item.label}</span>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-2.5 h-2.5 ml-2 opacity-50">
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+      </button>
+      {isOpen && item.children && (
+        <div
+          ref={subRef}
+          className="fixed z-[60] min-w-[120px] bg-cc-card border border-cc-border rounded-lg shadow-lg py-1"
+          style={subStyle}
+          onMouseLeave={() => onClose()}
+        >
+          {item.children.map((child, ci) => (
+            <button
+              key={`${child.label}-${ci}`}
+              onClick={() => onAction(child)}
+              className="w-full px-2.5 py-1.5 text-left text-[11px] text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            >
+              {child.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

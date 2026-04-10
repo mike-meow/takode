@@ -1,15 +1,8 @@
 import { type RefObject, useCallback, useState, useRef, useEffect } from "react";
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type Modifier,
   type DraggableAttributes,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { TreeViewGroupData, TreeNode } from "../utils/tree-grouping.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
@@ -19,11 +12,6 @@ import { useStore, countUserPermissions } from "../store.js";
 import { isTouchDevice } from "../utils/mobile.js";
 import { api } from "../api.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
-
-const restrictToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -143,9 +131,6 @@ export function TreeViewGroup({
   const reorderMode = useStore((s) => s.reorderMode);
   const sessionSortMode = useStore((s) => s.sessionSortMode);
   const touchDevice = isTouchDevice();
-
-  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
-  const sensors = useSensors(pointerSensor);
   const isDraggable = sessionSortMode !== "activity";
 
   const [editingGroupName, setEditingGroupName] = useState(false);
@@ -209,21 +194,6 @@ export function TreeViewGroup({
 
   // Root node IDs for drag-and-drop (leaders and standalone sessions)
   const rootNodeIds = group.nodes.map((n) => n.leader.id);
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
-      const oldIndex = rootNodeIds.indexOf(active.id as string);
-      const newIndex = rootNodeIds.indexOf(over.id as string);
-      if (oldIndex === -1 || newIndex === -1) return;
-      const newOrder = arrayMove(rootNodeIds, oldIndex, newIndex);
-      api.updateTreeNodeOrder(group.id, newOrder).catch((err) => {
-        console.warn("[tree-view-group] failed to update node order:", err);
-      });
-    },
-    [rootNodeIds, group.id],
-  );
 
   // Shared session item props
   const sessionItemProps = {
@@ -439,28 +409,21 @@ export function TreeViewGroup({
         )}
       </div>
 
-      {/* Tree node list */}
+      {/* Tree node list -- DndContext lives in Sidebar for cross-group support */}
       {!isGroupCollapsed && group.nodes.length > 0 && (
-        <DndContext
-          sensors={isDraggable ? sensors : []}
-          collisionDetection={closestCenter}
-          onDragEnd={isDraggable ? handleDragEnd : undefined}
-          modifiers={[restrictToVerticalAxis]}
-        >
-          <SortableContext items={rootNodeIds} strategy={verticalListSortingStrategy}>
-            <div className="space-y-0.5 mt-0.5">
-              {group.nodes.map((node) => (
-                <SortableTreeNode key={node.leader.id} id={node.leader.id} disabled={!isDraggable}>
-                  {({ setNodeRef, style, listeners, attributes }) => (
+        <SortableContext items={rootNodeIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-0.5 mt-0.5">
+            {group.nodes.map((node) => (
+              <SortableTreeNode key={node.leader.id} id={node.leader.id} disabled={!isDraggable}>
+                {({ setNodeRef, style, listeners, attributes }) => (
                     <div ref={setNodeRef} style={style} {...(!touchDevice && isDraggable ? { ...listeners, ...attributes } : {})}>
                       {renderTreeNode(node)}
                     </div>
-                  )}
-                </SortableTreeNode>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+                )}
+              </SortableTreeNode>
+            ))}
+          </div>
+        </SortableContext>
       )}
       {!isGroupCollapsed && group.nodes.length === 0 && (
         <div className="px-4 py-2 text-[11px] text-cc-muted/50 italic">
