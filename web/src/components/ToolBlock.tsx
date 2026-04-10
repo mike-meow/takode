@@ -942,6 +942,11 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
   // is an object reference that can change even when its contents haven't (if the
   // parent's `input` prop is referentially unstable). Using a ref lets the callback
   // always read current values while keeping a permanently stable function reference.
+  //
+  // TODO(refactor): the root cause is DiffViewer calling renderHeaderActions during
+  // render (line ~662, inside data.map). Ideally DiffViewer should memoize the
+  // results or accept precomputed headerActionsByFile, removing this constraint
+  // from callers entirely.
   const parsedRef = useRef(parsed);
   const sessionCwdRef = useRef(sessionCwd);
   parsedRef.current = parsed;
@@ -1019,9 +1024,16 @@ function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>;
     return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
   });
 
+  // Same ref pattern as EditToolDetail: DiffViewer calls renderHeaderActions during
+  // render, so the callback reference must be permanently stable. Although sessionCwd
+  // is a primitive, using a ref keeps the pattern consistent and prevents any future
+  // dep instability from reintroducing the re-render cascade.
+  const sessionCwdRef = useRef(sessionCwd);
+  sessionCwdRef.current = sessionCwd;
+
   const renderHeaderActions = useCallback(
-    (diffFilePath: string) => <DiffOpenFileButton filePath={diffFilePath} cwd={sessionCwd} line={1} />,
-    [sessionCwd],
+    (diffFilePath: string) => <DiffOpenFileButton filePath={diffFilePath} cwd={sessionCwdRef.current} line={1} />,
+    [], // stable forever -- reads current value via ref
   );
 
   if (!content && unifiedDiff) {
