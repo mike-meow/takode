@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type ErrorInfo,
 } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { isSubagentToolName } from "../types.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
@@ -600,17 +601,14 @@ function ToolResultSection({
   toolName: string;
   input: Record<string, unknown>;
 }) {
-  // Subscribe to individual primitive fields instead of the full ToolResultPreview
-  // object. During history replay, the same tool result can be deserialized twice
-  // (from history sync and reconnect replay), creating a new object reference with
-  // identical content. Subscribing to the whole object would defeat Zustand's
-  // Object.is check and trigger unnecessary re-renders — which, combined with the
-  // CollapseFooter useLayoutEffect, can cascade into React error #185.
-  const hasPreview = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId) != null);
-  const previewContent = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.content ?? "");
-  const previewIsError = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.is_error ?? false);
-  const previewIsTruncated = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.is_truncated ?? false);
-  const previewTotalSize = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.total_size ?? 0);
+  // Use shallow equality instead of Object.is for the tool result preview.
+  // During history replay, the same tool result can be deserialized twice
+  // (from history sync and reconnect replay), creating a new object reference
+  // with identical primitive fields. Default Object.is would re-render on every
+  // such reference change -- combined with CollapseFooter's useLayoutEffect,
+  // this cascades into React error #185 (maximum update depth exceeded).
+  // shallow() compares each field individually, so identical content = no re-render.
+  const preview = useStore(useShallow((s) => s.toolResults.get(sessionId)?.get(toolUseId)));
 
   // Subscribe to individual primitive fields instead of the full progress object.
   // The progress object changes on every output chunk and elapsed-seconds tick,
@@ -628,29 +626,29 @@ function ToolResultSection({
   const [loading, setLoading] = useState(false);
   const isCompletedLiveTerminal = toolName === "Bash" && progressToolName === "Bash";
   const shouldUseLiveTranscriptFallback =
-    hasPreview &&
+    !!preview &&
     isCompletedLiveTerminal &&
     liveOutput.length > 0 &&
-    shouldPreferLiveTerminalTranscript(previewContent);
+    shouldPreferLiveTerminalTranscript(preview.content);
 
   // Suppress the result section for web search when the result just echoes the
-  // query or is a generic placeholder — the query is already shown in ToolDetail.
-  if (hasPreview && !previewIsError && (toolName === "WebSearch" || toolName === "web_search")) {
+  // query or is a generic placeholder -- the query is already shown in ToolDetail.
+  if (preview && !preview.is_error && (toolName === "WebSearch" || toolName === "web_search")) {
     const query = extractWebSearchQuery(input);
-    const content = previewContent.trim();
+    const content = preview.content.trim();
     if (!content || content === query || content === "Web search completed") {
       return null;
     }
   }
 
-  // Suppress the result section for successful Edit/Write calls — the diff
+  // Suppress the result section for successful Edit/Write calls -- the diff
   // already shows the edit succeeded, and the "file has been updated" message
   // is redundant. Only show the result section when the edit failed.
-  if (hasPreview && !previewIsError && (toolName === "Edit" || toolName === "Write")) {
+  if (preview && !preview.is_error && (toolName === "Edit" || toolName === "Write")) {
     return null;
   }
 
-  if (!hasPreview) {
+  if (!preview) {
     if (!progressToolName?.trim()) return null;
     return (
       <div className="mt-2 pt-2 border-t border-cc-border/50">
@@ -677,7 +675,7 @@ function ToolResultSection({
     );
   }
 
-  if (isReadImage && !previewIsError) {
+  if (isReadImage && !preview.is_error) {
     return (
       <div className="mt-2 pt-2 border-t border-cc-border/50">
         <div className="flex items-center gap-2 mb-1.5">
@@ -696,8 +694,8 @@ function ToolResultSection({
     );
   }
 
-  const displayContent = shouldUseLiveTranscriptFallback ? liveOutput : (fullContent ?? previewContent);
-  const showExpandButton = !shouldUseLiveTranscriptFallback && previewIsTruncated && fullContent === null;
+  const displayContent = shouldUseLiveTranscriptFallback ? liveOutput : (fullContent ?? preview.content);
+  const showExpandButton = !shouldUseLiveTranscriptFallback && preview.is_truncated && fullContent === null;
 
   const fetchFull = async () => {
     setLoading(true);
@@ -715,7 +713,7 @@ function ToolResultSection({
     <div className="mt-2 pt-2 border-t border-cc-border/50">
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-[10px] font-medium text-cc-muted uppercase tracking-wider">Result</span>
-        {previewIsError && (
+        {preview.is_error && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-error/10 text-cc-error font-medium">error</span>
         )}
         {isCompletedLiveTerminal && (
@@ -726,8 +724,8 @@ function ToolResultSection({
         {shouldUseLiveTranscriptFallback && (
           <span className="text-[10px] text-cc-muted">showing captured transcript</span>
         )}
-        {previewIsTruncated && fullContent === null && (
-          <span className="text-[10px] text-cc-muted">{formatBytes(previewTotalSize)}</span>
+        {preview.is_truncated && fullContent === null && (
+          <span className="text-[10px] text-cc-muted">{formatBytes(preview.total_size)}</span>
         )}
       </div>
       {showExpandButton && (
@@ -736,7 +734,7 @@ function ToolResultSection({
           disabled={loading}
           className="mb-1 text-[10px] text-cc-primary hover:underline cursor-pointer disabled:opacity-50"
         >
-          {loading ? "Loading..." : `Show full result (${formatBytes(previewTotalSize)})`}
+          {loading ? "Loading..." : `Show full result (${formatBytes(preview.total_size)})`}
         </button>
       )}
       <div className="group/code relative rounded-lg overflow-hidden">
@@ -747,7 +745,7 @@ function ToolResultSection({
           className={`text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 ${
             fullContent === null ? "max-h-40" : "max-h-96"
           } overflow-y-auto overflow-x-auto ${
-            previewIsError ? "bg-cc-error/5 border border-cc-error/20 text-cc-error" : "bg-cc-code-bg text-cc-muted"
+            preview.is_error ? "bg-cc-error/5 border border-cc-error/20 text-cc-error" : "bg-cc-code-bg text-cc-muted"
           }`}
         >
           {showExpandButton ? "..." : ""}
