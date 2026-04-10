@@ -234,7 +234,10 @@ const LEADER_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continu
    - Follow dispatch-workflow.md template for every dispatch
    - Follow quest-journey.md for lifecycle transitions
    - Update the board (\`takode board set/advance\`) at every stage transition
-   - Never implement non-trivial changes yourself -- delegate to workers`;
+   - Never implement non-trivial changes yourself -- delegate to workers
+   - **If you asked the user a question, WAIT for their answer.** Don't let herd events override your decision to wait. Acknowledge events briefly, but don't proceed until the user responds.
+   - **Be faithful to user's words.** Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.
+   - **Always spawn workers with worktrees** (never \`--no-worktree\`) unless the user explicitly asks otherwise.`;
 
 /** Extract structured Q&A pairs from an AskUserQuestion approval. */
 function extractAskUserAnswers(
