@@ -27,7 +27,7 @@ import { GitHubPRDisplay, CodexRateLimitsSection, CodexTokenDetailsSection } fro
 import { SessionCreationProgress } from "./SessionCreationProgress.js";
 import { StepList } from "./SessionCreationView.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
-import { SessionItem } from "./SessionItem.js";
+import { SessionItem, StatusCountDots } from "./SessionItem.js";
 import type { CreationProgressEvent } from "../types.js";
 import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { HighlightedText } from "./HighlightedText.js";
@@ -2453,20 +2453,144 @@ export function Playground() {
         </Section>
 
         <Section
-          title="Tree View Compact Workers + Leader Summary"
-          description="In tree view, workers render compact (no preview, no herd badge, no shield). Leaders show a worker status summary with colored count dots."
+          title="Herd Collapsible Container"
+          description="In tree view, herded sessions are wrapped in a collapsible container. Leader renders at full width with no indentation. Workers appear inside the container when expanded."
         >
-          <div className="max-w-md">
-            <Card label="Leader with worker status summary">
+          <div className="max-w-md space-y-3">
+            <Card label="Collapsed herd container (default)">
+              <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2">
+                <div className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20">
+                  {/* Leader chip */}
+                  <SessionItem
+                    session={PLAYGROUND_SESSION_ROWS[0].session}
+                    isActive={false}
+                    sessionName={PLAYGROUND_SESSION_ROWS[0].sessionName}
+                    sessionPreview={PLAYGROUND_SESSION_ROWS[0].preview}
+                    permCount={0}
+                    isRecentlyRenamed={false}
+                    onSelect={() => {}}
+                    onStartRename={() => {}}
+                    onArchive={() => {}}
+                    onUnarchive={() => {}}
+                    onDelete={() => {}}
+                    onClearRecentlyRenamed={() => {}}
+                    editingSessionId={null}
+                    editingName=""
+                    setEditingName={() => {}}
+                    onConfirmRename={() => {}}
+                    onCancelRename={() => {}}
+                    editInputRef={{ current: null }}
+                    herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(PLAYGROUND_SESSION_ROWS[0].session.id)}
+                  />
+                  {/* Herd summary bar */}
+                  <div className="w-full flex items-center gap-1.5 px-3 py-1 border-t border-cc-border/30 text-[10px] text-cc-muted">
+                    <StatusCountDots counts={{ running: 2, permission: 1, unread: 0 }} />
+                    <span className="flex items-center gap-0.5 text-cc-muted/50">
+                      1
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-muted/30" />
+                    </span>
+                    <span className="ml-auto text-cc-muted/50 shrink-0">4 workers</span>
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-muted/40 shrink-0">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card label="Expanded herd container">
+              <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2">
+                <div className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20">
+                  {/* Leader chip */}
+                  <SessionItem
+                    session={PLAYGROUND_SESSION_ROWS[0].session}
+                    isActive={false}
+                    sessionName={PLAYGROUND_SESSION_ROWS[0].sessionName}
+                    sessionPreview={PLAYGROUND_SESSION_ROWS[0].preview}
+                    permCount={0}
+                    isRecentlyRenamed={false}
+                    onSelect={() => {}}
+                    onStartRename={() => {}}
+                    onArchive={() => {}}
+                    onUnarchive={() => {}}
+                    onDelete={() => {}}
+                    onClearRecentlyRenamed={() => {}}
+                    editingSessionId={null}
+                    editingName=""
+                    setEditingName={() => {}}
+                    onConfirmRename={() => {}}
+                    onCancelRename={() => {}}
+                    editInputRef={{ current: null }}
+                    herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(PLAYGROUND_SESSION_ROWS[0].session.id)}
+                  />
+                  {/* Herd summary bar (expanded) */}
+                  <div className="w-full flex items-center gap-1.5 px-3 py-1 border-t border-cc-border/30 text-[10px] text-cc-muted">
+                    <StatusCountDots counts={{ running: 2, permission: 1, unread: 0 }} />
+                    <span className="flex items-center gap-0.5 text-cc-muted/50">
+                      1
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-muted/30" />
+                    </span>
+                    <span className="ml-auto text-cc-muted/50 shrink-0">4 workers</span>
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-cc-muted/40 rotate-180 shrink-0">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </div>
+                  {/* Workers container */}
+                  <div className="border-t border-cc-border/30">
+                    {PLAYGROUND_SESSION_ROWS.filter(({ session }) => session.herdedBy && session.reviewerOf === undefined)
+                      .slice(0, 3)
+                      .map(({ session, sessionName, preview }) => (
+                        <SessionItem
+                          key={session.id}
+                          session={session}
+                          isActive={false}
+                          sessionName={sessionName}
+                          sessionPreview={preview}
+                          permCount={session.permCount}
+                          isRecentlyRenamed={false}
+                          compact
+                          onSelect={() => {}}
+                          onStartRename={() => {}}
+                          onArchive={() => {}}
+                          onUnarchive={() => {}}
+                          onDelete={() => {}}
+                          onClearRecentlyRenamed={() => {}}
+                          editingSessionId={null}
+                          editingName=""
+                          setEditingName={() => {}}
+                          onConfirmRename={() => {}}
+                          onCancelRename={() => {}}
+                          editInputRef={{ current: null }}
+                          herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(session.id)}
+                        />
+                      ))}
+                    {/* Collapse footer */}
+                    <div className="w-full flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-cc-muted/40">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0">
+                        <path d="M4 10l4-4 4 4" />
+                      </svg>
+                      <span>Collapse</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card label="Standalone session (no herd container)">
               <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2">
                 <SessionItem
-                  session={PLAYGROUND_SESSION_ROWS[0].session}
+                  session={{
+                    ...PLAYGROUND_SESSION_ROWS[3].session,
+                    id: "standalone-demo",
+                    isOrchestrator: false,
+                    herdedBy: undefined,
+                    sessionNum: 42,
+                  }}
                   isActive={false}
-                  sessionName={PLAYGROUND_SESSION_ROWS[0].sessionName}
-                  sessionPreview={PLAYGROUND_SESSION_ROWS[0].preview}
+                  sessionName="Standalone Session"
+                  sessionPreview="Not part of any herd -- no container wrapping."
                   permCount={0}
                   isRecentlyRenamed={false}
-                  workerStatusSummary={{ running: 2, permission: 1, unread: 0 }}
                   onSelect={() => {}}
                   onStartRename={() => {}}
                   onArchive={() => {}}
@@ -2479,39 +2603,7 @@ export function Playground() {
                   onConfirmRename={() => {}}
                   onCancelRename={() => {}}
                   editInputRef={{ current: null }}
-                  herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(PLAYGROUND_SESSION_ROWS[0].session.id)}
                 />
-              </div>
-            </Card>
-            <Card label="Compact worker chips (tree view)">
-              <div className="space-y-0.5 rounded-xl bg-cc-sidebar p-2 ml-4 border-l border-cc-border/20 pl-2">
-                {PLAYGROUND_SESSION_ROWS.filter(({ session }) => session.herdedBy && session.reviewerOf === undefined)
-                  .slice(0, 3)
-                  .map(({ session, sessionName, preview }) => (
-                    <SessionItem
-                      key={session.id}
-                      session={session}
-                      isActive={false}
-                      sessionName={sessionName}
-                      sessionPreview={preview}
-                      permCount={session.permCount}
-                      isRecentlyRenamed={false}
-                      compact
-                      onSelect={() => {}}
-                      onStartRename={() => {}}
-                      onArchive={() => {}}
-                      onUnarchive={() => {}}
-                      onDelete={() => {}}
-                      onClearRecentlyRenamed={() => {}}
-                      editingSessionId={null}
-                      editingName=""
-                      setEditingName={() => {}}
-                      onConfirmRename={() => {}}
-                      onCancelRename={() => {}}
-                      editInputRef={{ current: null }}
-                      herdGroupBadgeTheme={PLAYGROUND_HERD_GROUP_THEMES.get(session.id)}
-                    />
-                  ))}
               </div>
             </Card>
           </div>

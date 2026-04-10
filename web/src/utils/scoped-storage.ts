@@ -50,6 +50,7 @@ const SCOPED_KEYS = [
   "cc-questmaster-view",
   "cc-collapsed-tree-groups",
   "cc-collapsed-tree-nodes",
+  "cc-expanded-herd-nodes",
 ];
 
 function getServerIdPrefix(): string {

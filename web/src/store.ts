@@ -230,6 +230,7 @@ interface AppState {
   treeNodeOrder: Map<string, string[]>; // groupId -> ordered root session IDs
   collapsedTreeGroups: Set<string>;
   collapsedTreeNodes: Set<string>; // collapsed leader sessions (hides workers)
+  expandedHerdNodes: Set<string>; // explicitly expanded herd containers (default: collapsed)
 
   // Questmaster
   quests: QuestmasterTask[];
@@ -427,6 +428,7 @@ interface AppState {
   setTreeGroups: (groups: import("./types.js").TreeGroup[], assignments: Record<string, string>, nodeOrder: Record<string, string[]>) => void;
   toggleTreeGroupCollapse: (groupId: string) => void;
   toggleTreeNodeCollapse: (sessionId: string) => void;
+  toggleHerdNodeExpand: (sessionId: string) => void;
 
   // Plan mode actions
   setPreviousPermissionMode: (sessionId: string, mode: string) => void;
@@ -675,6 +677,7 @@ export const useStore = create<AppState>((set) => ({
   treeNodeOrder: new Map(),
   collapsedTreeGroups: getInitialCollapsedSet("cc-collapsed-tree-groups"),
   collapsedTreeNodes: getInitialCollapsedSet("cc-collapsed-tree-nodes"),
+  expandedHerdNodes: getInitialCollapsedSet("cc-expanded-herd-nodes"),
   quests: [],
   questsLoading: false,
   setQuests: (quests) => set({ quests }),
@@ -1874,6 +1877,18 @@ export const useStore = create<AppState>((set) => ({
       }
       scopedSetItem("cc-collapsed-tree-nodes", JSON.stringify(Array.from(collapsedTreeNodes)));
       return { collapsedTreeNodes };
+    }),
+
+  toggleHerdNodeExpand: (sessionId) =>
+    set((s) => {
+      const expandedHerdNodes = new Set(s.expandedHerdNodes);
+      if (expandedHerdNodes.has(sessionId)) {
+        expandedHerdNodes.delete(sessionId);
+      } else {
+        expandedHerdNodes.add(sessionId);
+      }
+      scopedSetItem("cc-expanded-herd-nodes", JSON.stringify(Array.from(expandedHerdNodes)));
+      return { expandedHerdNodes };
     }),
 
   setPreviousPermissionMode: (sessionId, mode) =>

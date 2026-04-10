@@ -19,8 +19,10 @@ interface TreeViewGroupProps {
   group: TreeViewGroupData;
   isGroupCollapsed: boolean;
   collapsedTreeNodes: Set<string>;
+  expandedHerdNodes: Set<string>;
   onToggleGroupCollapse: (groupId: string) => void;
   onToggleNodeCollapse: (sessionId: string) => void;
+  onToggleHerdExpand: (sessionId: string) => void;
   onCreateSession: (groupId: string) => void;
   currentSessionId: string | null;
   sessionNames: Map<string, string>;
@@ -94,8 +96,10 @@ export function TreeViewGroup({
   group,
   isGroupCollapsed,
   collapsedTreeNodes,
+  expandedHerdNodes,
   onToggleGroupCollapse,
   onToggleNodeCollapse,
+  onToggleHerdExpand,
   onCreateSession,
   currentSessionId,
   sessionNames,
@@ -272,22 +276,98 @@ export function TreeViewGroup({
 
   function renderTreeNode(node: TreeNode) {
     const hasWorkers = node.workers.length > 0;
-    const hasChildren = hasWorkers || node.reviewers.length > 0;
-    const isNodeCollapsed = collapsedTreeNodes.has(node.leader.id);
+    const hasReviewersOnly = !hasWorkers && node.reviewers.length > 0;
     const workerSummary = hasWorkers ? computeWorkerSummary(node.workers) : undefined;
 
-    return (
-      <div key={node.leader.id}>
-        {/* Leader row with inline chevron */}
-        <div className="flex items-start">
-          {hasChildren && (
+    // Herded nodes (leader with workers): collapsible container pattern
+    if (hasWorkers) {
+      const isExpanded = expandedHerdNodes.has(node.leader.id);
+      const idleCount = node.workers.length - (workerSummary!.running + workerSummary!.permission + workerSummary!.unread);
+
+      return (
+        <div key={node.leader.id} className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20">
+          {/* Leader chip -- full width, no chevron, no indent */}
+          {renderSessionItem(node.leader)}
+
+          {/* Herd summary bar -- always visible, toggles expand/collapse */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleHerdExpand(node.leader.id);
+            }}
+            className="w-full flex items-center gap-1.5 px-3 py-1 border-t border-cc-border/30 text-[10px] text-cc-muted hover:bg-cc-hover/50 transition-colors cursor-pointer"
+            title={isExpanded ? "Collapse workers" : "Expand workers"}
+          >
+            <StatusCountDots counts={workerSummary!} />
+            {idleCount > 0 && (
+              <span className="flex items-center gap-0.5 text-cc-muted/50">
+                {idleCount}
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-muted/30" />
+              </span>
+            )}
+            <span className="ml-auto text-cc-muted/50 shrink-0">
+              {node.workers.length} worker{node.workers.length !== 1 ? "s" : ""}
+            </span>
+            <svg
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className={`w-3 h-3 text-cc-muted/40 transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`}
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+
+          {/* Workers container -- only when expanded */}
+          {isExpanded && (
+            <div className="border-t border-cc-border/30">
+              {node.workers.map((w) => {
+                const workerReviewers = node.reviewers.filter(
+                  (r) => r.reviewerOf === w.sessionNum,
+                );
+                return (
+                  <div key={w.id}>
+                    {renderSessionItem(w, { compact: true })}
+                    {workerReviewers.map((r) => renderSessionItem(r, { compact: true }))}
+                  </div>
+                );
+              })}
+              {node.reviewers
+                .filter((r) => r.reviewerOf === node.leader.sessionNum)
+                .map((r) => renderSessionItem(r, { compact: true }))}
+
+              {/* Collapse footer */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleHerdExpand(node.leader.id);
+                }}
+                className="w-full flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-cc-muted/40 hover:text-cc-muted hover:bg-cc-hover/40 transition-colors cursor-pointer"
+                title="Collapse workers"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0">
+                  <path d="M4 10l4-4 4 4" />
+                </svg>
+                <span>Collapse</span>
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Standalone node with only reviewers (no workers): simple chevron toggle
+    if (hasReviewersOnly) {
+      const isNodeCollapsed = collapsedTreeNodes.has(node.leader.id);
+      return (
+        <div key={node.leader.id}>
+          <div className="flex items-start">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleNodeCollapse(node.leader.id);
               }}
               className="shrink-0 w-5 h-7 flex items-center justify-center text-cc-muted hover:text-cc-fg cursor-pointer"
-              title={isNodeCollapsed ? "Expand workers" : "Collapse workers"}
+              title={isNodeCollapsed ? "Expand reviewers" : "Collapse reviewers"}
             >
               <svg
                 viewBox="0 0 16 16"
@@ -297,31 +377,23 @@ export function TreeViewGroup({
                 <path d="M6 4l4 4-4 4" />
               </svg>
             </button>
+            <div className="flex-1 min-w-0">
+              {renderSessionItem(node.leader)}
+            </div>
+          </div>
+          {!isNodeCollapsed && (
+            <div className="ml-2 pl-[10px] border-l border-cc-border/40">
+              {node.reviewers.map((r) => renderSessionItem(r, { compact: true }))}
+            </div>
           )}
-          <div className={`flex-1 min-w-0 ${!hasChildren ? "pl-5" : ""}`}>
-            {renderSessionItem(node.leader, { workerStatusSummary: workerSummary })}
-          </div>
         </div>
+      );
+    }
 
-        {/* Workers + reviewers at same level with tight indent guide */}
-        {hasChildren && !isNodeCollapsed && (
-          <div className="ml-2 pl-[10px] border-l border-cc-border/40">
-            {node.workers.map((w) => {
-              const workerReviewers = node.reviewers.filter(
-                (r) => r.reviewerOf === w.sessionNum,
-              );
-              return (
-                <div key={w.id}>
-                  {renderSessionItem(w, { compact: true })}
-                  {workerReviewers.map((r) => renderSessionItem(r, { compact: true }))}
-                </div>
-              );
-            })}
-            {node.reviewers
-              .filter((r) => r.reviewerOf === node.leader.sessionNum)
-              .map((r) => renderSessionItem(r, { compact: true }))}
-          </div>
-        )}
+    // Standalone node (no workers, no reviewers): plain session chip
+    return (
+      <div key={node.leader.id}>
+        {renderSessionItem(node.leader)}
       </div>
     );
   }
