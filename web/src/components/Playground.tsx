@@ -32,6 +32,7 @@ import type { CreationProgressEvent } from "../types.js";
 import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { HighlightedText } from "./HighlightedText.js";
 import { ReplyChip } from "./Composer.js";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import type { SessionItem as SidebarSessionItem } from "../utils/project-grouping.js";
 import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-group-theme.js";
@@ -3144,6 +3145,18 @@ export function Playground() {
           </div>
         </Section>
 
+        {/* ─── Selection Context Menu ──────────────────────────────── */}
+        <Section
+          title="Selection Context Menu"
+          description="Floating context menu shown when the user selects text within an assistant message. Offers quoting and copy options."
+        >
+          <div className="max-w-3xl">
+            <Card label="Menu above selected text">
+              <PlaygroundSelectionContextMenu />
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── User Message Reply Chip ──────────────────────────────── */}
         <Section
           title="User Message Reply Chip"
@@ -5454,6 +5467,75 @@ function PlaygroundLightboxDemo() {
         data-testid="playground-lightbox-trigger"
       />
       {open && <Lightbox src={demoSrc} alt="Lightbox demo" onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/**
+ * Playground demo for the Selection Context Menu.
+ * Shows a mock assistant message with simulated highlighted text and a static context menu.
+ */
+function PlaygroundSelectionContextMenu() {
+  const [menuOpen, setMenuOpen] = useState(true);
+
+  // Static menu items matching the real SelectionContextMenu
+  const menuItems: ContextMenuItem[] = [
+    { label: "Quote selected", onClick: () => setMenuOpen(false) },
+    {
+      label: "Copy",
+      onClick: () => {},
+      children: [
+        { label: "Rich text", onClick: () => {} },
+        { label: "Markdown", onClick: () => {} },
+        { label: "Plain text", onClick: () => {} },
+      ],
+    },
+  ];
+
+  return (
+    <div className="relative" style={{ minHeight: 180 }}>
+      {/* Mock assistant message with simulated text selection */}
+      <div className="flex items-start gap-3">
+        <PawTrailAvatar />
+        <div className="flex-1 min-w-0">
+          <div className="markdown-body text-[14px] text-cc-fg leading-relaxed">
+            <p className="mb-3">
+              Here are the key design principles for the new architecture:
+            </p>
+            <p className="mb-3">
+              1.{" "}
+              <mark
+                style={{
+                  background: "rgba(56, 132, 244, 0.3)",
+                  borderRadius: 2,
+                  padding: "1px 0",
+                }}
+              >
+                Leader has zero extra indentation -- no toggle arrow before it. It looks
+                exactly like a standalone session.
+              </mark>
+            </p>
+            <p className="mb-3 last:mb-0">
+              2. Herd summary bar sits directly below the leader.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Static context menu positioned above the "selected" text */}
+      {menuOpen && (
+        <ContextMenu x={100} y={4} items={menuItems} onClose={() => setMenuOpen(false)} />
+      )}
+
+      {/* Re-open button if closed */}
+      {!menuOpen && (
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="mt-3 text-xs text-cc-primary hover:underline cursor-pointer"
+        >
+          Show menu again
+        </button>
+      )}
     </div>
   );
 }

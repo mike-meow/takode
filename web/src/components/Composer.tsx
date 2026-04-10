@@ -466,6 +466,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("resize", updateLayout);
   }, [zoomLevel]);
 
+  // Focus the textarea when external code (e.g. SelectionContextMenu "Quote selected")
+  // signals focus via the store's focusComposerTrigger counter.
+  const focusTrigger = useStore((s) => s.focusComposerTrigger);
+  useEffect(() => {
+    if (focusTrigger > 0) {
+      textareaRef.current?.focus();
+    }
+  }, [focusTrigger]);
+
   // Track whether the current text change came from user typing (handleInput).
   // When it did, handleInput already adjusted the textarea height synchronously,
   // so the effect below can skip. For programmatic changes (draft restore on

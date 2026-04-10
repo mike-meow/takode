@@ -13,6 +13,8 @@ import { isTouchDevice } from "../utils/mobile.js";
 import { sendToSession } from "../ws.js";
 import { useCollapsePolicy } from "../hooks/use-collapse-policy.js";
 import { TimerChip } from "./TimerWidget.js";
+import { useTextSelection } from "../hooks/useTextSelection.js";
+import { SelectionContextMenu } from "./SelectionContextMenu.js";
 import {
   isUserBoundaryEntry,
   useFeedModel,
@@ -1389,6 +1391,7 @@ const FeedEntries = memo(function FeedEntries({
           <div
             key={entry.msg.id}
             data-message-id={entry.msg.id}
+            data-message-role={entry.msg.role}
             data-feed-block-id={getMessageFeedBlockId(entry.msg.id)}
           >
             {markerLabel && <MinuteBoundaryTimestamp timestamp={entry.msg.timestamp} label={markerLabel} />}
@@ -1400,6 +1403,7 @@ const FeedEntries = memo(function FeedEntries({
           <div
             key={entry.msg.id}
             data-message-id={entry.msg.id}
+            data-message-role={entry.msg.role}
             data-feed-block-id={getMessageFeedBlockId(entry.msg.id)}
           >
             <MessageBubble message={entry.msg} sessionId={sessionId} />
@@ -2224,6 +2228,7 @@ export function MessageFeed({
   const shouldBottomAlignNextUserMessage = useStore((s) => s.bottomAlignNextUserMessage.has(sessionId));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const containerRef = useRef<HTMLDivElement>(null);
+  const textSelection = useTextSelection(containerRef);
   const contentRootRef = useRef<HTMLDivElement>(null);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
@@ -3495,6 +3500,9 @@ export function MessageFeed({
             </button>
           </div>
         )}
+
+        {/* Floating context menu for text selection within assistant messages */}
+        <SelectionContextMenu selection={textSelection} sessionId={sessionId} onClose={textSelection.clear} />
       </div>
     </div>
   );

@@ -480,6 +480,11 @@ interface AppState {
   replyContexts: Map<string, { messageId: string; previewText: string }>;
   setReplyContext: (sessionId: string, context: { messageId: string; previewText: string } | null) => void;
 
+  // Monotonic counter -- incremented to signal the Composer to focus its textarea.
+  // Used by SelectionContextMenu's "Quote selected" action.
+  focusComposerTrigger: number;
+  focusComposer: () => void;
+
   // Turn activity collapse state.
   // Default: last turn expanded, all others collapsed. Overrides let the user
   // toggle individual turns away from the default (true = expanded, false = collapsed).
@@ -726,6 +731,7 @@ export const useStore = create<AppState>((set) => ({
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
   replyContexts: new Map(),
+  focusComposerTrigger: 0,
   turnActivityOverrides: new Map(),
   autoExpandedTurnIds: new Map(),
   collapsibleTurnIds: new Map(),
@@ -2004,6 +2010,8 @@ export const useStore = create<AppState>((set) => ({
       return { replyContexts };
     }),
 
+  focusComposer: () => set((s) => ({ focusComposerTrigger: s.focusComposerTrigger + 1 })),
+
   toggleTurnActivity: (sessionId, turnId, defaultExpanded) =>
     set((s) => {
       const overrides = new Map(s.turnActivityOverrides);
@@ -2139,6 +2147,7 @@ export const useStore = create<AppState>((set) => ({
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
       replyContexts: new Map(),
+      focusComposerTrigger: 0,
       turnActivityOverrides: new Map(),
       autoExpandedTurnIds: new Map(),
       collapsibleTurnIds: new Map(),
