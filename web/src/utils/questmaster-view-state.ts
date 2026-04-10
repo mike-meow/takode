@@ -15,9 +15,18 @@ const QUESTMASTER_COLLAPSE_GROUPS: Set<QuestmasterCollapsedGroup> = new Set([
   VERIFICATION_INBOX_COLLAPSE_KEY,
 ]);
 
+const VALID_QUEST_STATUSES: Set<QuestStatus> = new Set([
+  "idea",
+  "refined",
+  "in_progress",
+  "needs_verification",
+  "done",
+]);
+
 export type QuestmasterViewState = {
   scrollTop: number;
   collapsedGroups: QuestmasterCollapsedGroup[];
+  statusFilter?: QuestStatus[];
 };
 
 function normalizeCollapsedGroups(value: unknown): QuestmasterCollapsedGroup[] {
@@ -27,16 +36,26 @@ function normalizeCollapsedGroups(value: unknown): QuestmasterCollapsedGroup[] {
   );
 }
 
+/** Normalize a persisted status filter array. Returns undefined if absent or invalid (meaning "all"). */
+function normalizeStatusFilter(value: unknown): QuestStatus[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const valid = value.filter((s): s is QuestStatus => VALID_QUEST_STATUSES.has(s as QuestStatus));
+  // If empty or contains all statuses, treat as "all" (no filter stored)
+  if (valid.length === 0 || valid.length === VALID_QUEST_STATUSES.size) return undefined;
+  return valid;
+}
+
 export function loadQuestmasterViewState(): QuestmasterViewState | null {
   const raw = scopedGetItem(QUESTMASTER_VIEW_STATE_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { scrollTop?: unknown; collapsedGroups?: unknown };
+    const parsed = JSON.parse(raw) as { scrollTop?: unknown; collapsedGroups?: unknown; statusFilter?: unknown };
     const scrollTop =
       typeof parsed.scrollTop === "number" && Number.isFinite(parsed.scrollTop) ? Math.max(0, parsed.scrollTop) : 0;
     return {
       scrollTop,
       collapsedGroups: normalizeCollapsedGroups(parsed.collapsedGroups),
+      statusFilter: normalizeStatusFilter(parsed.statusFilter),
     };
   } catch {
     return null;
@@ -49,6 +68,7 @@ export function saveQuestmasterViewState(state: QuestmasterViewState): void {
     JSON.stringify({
       scrollTop: Math.max(0, state.scrollTop),
       collapsedGroups: normalizeCollapsedGroups(state.collapsedGroups),
+      statusFilter: normalizeStatusFilter(state.statusFilter),
     }),
   );
 }

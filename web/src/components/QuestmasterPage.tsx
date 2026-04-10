@@ -136,7 +136,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const sessionPreviews = useStore((s) => s.sessionPreviews);
   const askPermissionMap = useStore((s) => s.askPermission);
 
-  const [filter, setFilter] = useState<QuestStatus | "all">("all");
+  const [filter, setFilter] = useState<Set<QuestStatus>>(() => {
+    const persisted = initialViewState?.statusFilter;
+    return persisted ? new Set(persisted) : new Set(ALL_STATUSES);
+  });
+  const allSelected = filter.size === ALL_STATUSES.length;
   const [viewMode, setViewMode] = useState<QuestmasterViewMode>("cards");
   const [viewModeSaving, setViewModeSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -350,6 +354,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       saveQuestmasterViewState({
         scrollTop: el.scrollTop,
         collapsedGroups: Array.from(collapsedGroups),
+        statusFilter: Array.from(filter),
       });
     };
 
@@ -367,25 +372,25 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       if (rafId !== null) cancelAnimationFrame(rafId);
       persistNow();
     };
-  }, [isActive, collapsedGroups]);
+  }, [isActive, collapsedGroups, filter]);
 
-  // Persist immediately when collapse state changes.
+  // Persist immediately when collapse state or filter changes.
   useEffect(() => {
     if (!isActive) return;
     if (!hasHydratedViewStateRef.current) return;
     saveQuestmasterViewState({
       scrollTop: scrollContainerRef.current?.scrollTop ?? 0,
       collapsedGroups: Array.from(collapsedGroups),
+      statusFilter: Array.from(filter),
     });
-  }, [isActive, collapsedGroups]);
-
+  }, [isActive, collapsedGroups, filter]);
   // Deep-link support: any hash with ?quest=q-123 should focus and expand that quest.
   useEffect(() => {
     const targetQuestId = questIdFromHash(hash);
     if (!targetQuestId) return;
     const targetQuest = quests.find((q) => q.questId === targetQuestId);
     if (!targetQuest) return;
-    setFilter("all");
+    setFilter(new Set(ALL_STATUSES));
     // Ensure deep-linked quests are visible in the list as well as the modal.
     setCollapsedGroups((prev) => {
       const targetGroup = isVerificationInboxUnread(targetQuest) ? VERIFICATION_INBOX_COLLAPSE_KEY : targetQuest.status;
@@ -1069,8 +1074,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     counts[s] = afterTags.filter((q) => q.status === s).length;
   }
 
-  // Layer 3: status filter
-  const filtered = filter === "all" ? afterTags : afterTags.filter((q) => q.status === filter);
+  // Layer 3: status filter (multi-select -- filter.has checks membership in the active set)
+  const filtered = allSelected ? afterTags : afterTags.filter((q) => filter.has(q.status));
 
   type QuestSection = {
     key: string;
@@ -1081,7 +1086,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     collapseGroup?: QuestmasterCollapsedGroup;
   };
 
-  const showVerificationSplit = filter === "all" || filter === "needs_verification";
+  const showVerificationSplit = allSelected || filter.has("needs_verification");
   const verificationInboxQuests = showVerificationSplit ? filtered.filter((q) => isVerificationInboxUnread(q)) : [];
   const regularVerificationQuests = showVerificationSplit
     ? filtered.filter((q) => q.status === "needs_verification" && !isVerificationInboxUnread(q))
@@ -1098,11 +1103,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       dotClass: "bg-amber-400",
       textClass: "text-amber-300",
       quests: sortByRecencyDesc(verificationInboxQuests),
-      ...(filter === "all" ? { collapseGroup: VERIFICATION_INBOX_COLLAPSE_KEY } : {}),
+      ...(filter.size > 1 ? { collapseGroup: VERIFICATION_INBOX_COLLAPSE_KEY } : {}),
     });
   }
 
-  for (const status of filter === "all" ? DISPLAY_ORDER : ALL_STATUSES) {
+  for (const status of allSelected ? DISPLAY_ORDER : ALL_STATUSES) {
     const sectionQuests =
       status === "needs_verification" && showVerificationSplit
         ? regularVerificationQuests
@@ -1115,7 +1120,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       dotClass: cfg.dot,
       textClass: cfg.text,
       quests: sortByRecencyDesc(sectionQuests),
-      ...(filter === "all" ? { collapseGroup: status } : {}),
+      // Enable collapsible groups when multiple statuses are visible
+      ...(filter.size > 1 ? { collapseGroup: status } : {}),
     });
   }
 
@@ -1243,15 +1249,43 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
               ))}
             </div>
 
-            {/* Status filter dropdown */}
+            {/* Status filter dropdown (multi-select) */}
             <div ref={statusDropdownRef} className="relative shrink-0">
               <button
                 onClick={() => setStatusDropdownOpen((v) => !v)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-cc-hover border border-cc-border hover:border-cc-border text-cc-fg transition-colors cursor-pointer"
               >
-                {filter !== "all" && <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[filter].dot}`} />}
-                <span>{filter === "all" ? "All" : STATUS_CONFIG[filter].label}</span>
-                <span className="text-[10px] text-cc-muted">{counts[filter] ?? 0}</span>
+                {/* Filter pill label: All / single status / multi dots */}
+                {allSelected ? (
+                  <>
+                    <span>All</span>
+                    <span className="text-[10px] text-cc-muted">{counts.all ?? 0}</span>
+                  </>
+                ) : filter.size === 1 ? (
+                  <>
+                    {(() => {
+                      const status = [...filter][0];
+                      return (
+                        <>
+                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[status].dot}`} />
+                          <span>{STATUS_CONFIG[status].label}</span>
+                          <span className="text-[10px] text-cc-muted">{counts[status] ?? 0}</span>
+                        </>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-0.5">
+                      {ALL_STATUSES.filter((s) => filter.has(s)).map((s) => (
+                        <span key={s} className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[s].dot}`} />
+                      ))}
+                    </span>
+                    <span className="text-[10px] text-cc-muted">
+                      {ALL_STATUSES.reduce((sum, s) => sum + (filter.has(s) ? (counts[s] ?? 0) : 0), 0)}
+                    </span>
+                  </>
+                )}
                 <svg
                   viewBox="0 0 16 16"
                   fill="none"
@@ -1263,25 +1297,59 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                 </svg>
               </button>
               {statusDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-44 bg-cc-card border border-cc-border rounded-lg shadow-xl z-30 py-1 overflow-hidden">
+                <div className="absolute top-full left-0 mt-1 w-48 bg-cc-card border border-cc-border rounded-lg shadow-xl z-30 py-1 overflow-hidden">
                   {FILTER_TABS.map((tab) => {
-                    const isActive = filter === tab.value;
+                    const isAll = tab.value === "all";
+                    const isActive = isAll ? allSelected : filter.has(tab.value as QuestStatus);
                     const count = counts[tab.value] ?? 0;
                     return (
                       <button
                         key={tab.value}
                         onClick={() => {
-                          setFilter(tab.value);
-                          setStatusDropdownOpen(false);
+                          if (isAll) {
+                            // "All" row: select all statuses
+                            setFilter(new Set(ALL_STATUSES));
+                          } else {
+                            setFilter((prev) => {
+                              const status = tab.value as QuestStatus;
+                              const wasAllSelected = prev.size === ALL_STATUSES.length;
+                              // When all are selected, clicking one selects ONLY that one
+                              if (wasAllSelected) return new Set([status]);
+                              const next = new Set(prev);
+                              if (next.has(status)) {
+                                next.delete(status);
+                                // Don't allow empty set -- revert to all
+                                if (next.size === 0) return new Set(ALL_STATUSES);
+                              } else {
+                                next.add(status);
+                              }
+                              return next;
+                            });
+                          }
                         }}
                         className={`w-full px-3 py-1.5 text-xs flex items-center gap-2 transition-colors cursor-pointer ${
                           isActive ? "bg-cc-primary/10 text-cc-primary" : "text-cc-fg hover:bg-cc-hover"
                         }`}
                       >
-                        {tab.value !== "all" ? (
-                          <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`} />
+                        {/* Checkbox indicator */}
+                        {isAll ? (
+                          <span className="w-3.5 h-3.5 flex items-center justify-center">
+                            {allSelected ? (
+                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-cc-primary">
+                                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                              </svg>
+                            ) : (
+                              <span className="w-3 h-3 rounded-sm border border-cc-border" />
+                            )}
+                          </span>
                         ) : (
-                          <span className="w-1.5" />
+                          <span className="w-3.5 h-3.5 flex items-center justify-center">
+                            {isActive ? (
+                              <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[tab.value as QuestStatus].dot}`} />
+                            ) : (
+                              <span className={`w-2 h-2 rounded-full border ${STATUS_CONFIG[tab.value as QuestStatus].dot} opacity-25`} />
+                            )}
+                          </span>
                         )}
                         <span className="flex-1 text-left">{tab.label}</span>
                         <span className={`text-[10px] ${isActive ? "text-cc-primary/70" : "text-cc-muted"}`}>
@@ -1695,8 +1763,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
               const isCollapsible = !!section.collapseGroup;
               const isCollapsed = !!section.collapseGroup && collapsedGroups.has(section.collapseGroup);
               const showSectionHeader =
-                filter === "all" ||
-                (filter === "needs_verification" &&
+                filter.size > 1 ||
+                (filter.has("needs_verification") &&
                   (section.key === VERIFICATION_INBOX_COLLAPSE_KEY || section.key === "needs_verification"));
               return (
                 <div key={section.key}>
