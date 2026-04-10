@@ -6,8 +6,9 @@
  * - High-signal: user messages, permission requests, and turn results get generous
  *   content limits (1000 chars) because they're what the leader needs to act on.
  * - Low-noise: assistant messages with tool calls collapse to one-line tool counts.
- * - Final assistant: the last assistant message gets a generous 5000-char limit
- *   because it's typically the worker's conclusion/summary.
+ * - Key message: the last formattable message in each slice gets a generous 5000-char
+ *   limit because it's the event's "key message" (turn conclusion, permission content,
+ *   user instruction, etc.). This message is NEVER skipped by MAX_LINES truncation.
  * - Bounded: capped at MAX_LINES to prevent context bloat in the leader's conversation.
  */
 
@@ -22,8 +23,8 @@ const MAX_LINES = 15;
 const HIGH_SIGNAL_LIMIT = 1000;
 /** Content limit for assistant narration text (lower signal -- tools carry the info). */
 const ASST_TEXT_LIMIT = 120;
-/** Content limit for the final assistant message in a turn (the worker's conclusion). */
-const FINAL_ASST_LIMIT = 5000;
+/** Content limit for the key message in each event (the triggering message). */
+const KEY_MESSAGE_LIMIT = 5000;
 
 // ─── Public API ─────────────────────────────────────────────────────────────────
 
@@ -43,11 +44,15 @@ export interface FormatActivityOptions {
  * Message types and their treatment:
  * - user_message: shown with generous 1000-char limit (high signal)
  * - permission_request: shown with tool name + description (leader needs context)
- * - assistant (non-final): tool calls collapsed to counts; text truncated short (120 chars)
- * - assistant (final): the last assistant in the turn gets 5000-char limit (worker conclusion)
- * - result: shown with generous 1000-char limit (the outcome)
+ * - assistant (non-key): tool calls collapsed to counts; text truncated short (120 chars)
+ * - result (non-key): shown with generous 1000-char limit (the outcome)
  * - permission_approved/denied: one-line summary
  * - others (stream_event, tool_progress, etc.): skipped
+ *
+ * The LAST formattable message is the "key message" -- it gets a 5000-char limit
+ * and is never skipped by MAX_LINES truncation. This is the event's triggering
+ * message: the worker's conclusion (turn_end), permission content (permission_request),
+ * user instruction (user_message), or resolution details (permission_resolved).
  */
 export function formatActivitySummary(
   messages: BrowserIncomingMessage[],
@@ -56,15 +61,9 @@ export function formatActivitySummary(
   const maxLines = options.maxLines ?? MAX_LINES;
   const startIdx = options.startIdx;
 
-  // Find the last assistant message index -- its text is the worker's conclusion/summary
-  // and gets a generous content limit instead of the short narration limit.
-  let lastAssistantIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].type === "assistant") {
-      lastAssistantIdx = i;
-      break;
-    }
-  }
+  // Find the last formattable message -- it's the "key message" that triggered the event
+  // and gets the generous content limit + skip protection.
+  const keyMessageIdx = findLastFormattableIndex(messages);
 
   const lines: string[] = [];
   let skipped = 0;
@@ -74,29 +73,26 @@ export function formatActivitySummary(
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const idx = startIdx + i;
+    const isKeyMessage = i === keyMessageIdx;
 
-    // If we're already at the limit, count remaining as skipped
-    // (but always allow the last message through if it's a result -- it's the turn outcome)
-    if (lines.length >= maxLines) {
-      const isLastAndResult = i === messages.length - 1 && msg.type === "result";
-      if (!isLastAndResult) {
-        if (!isFormattable(msg)) continue;
-        if (firstSkippedIdx < 0) firstSkippedIdx = idx;
-        lastSkippedIdx = idx;
-        skipped++;
-        continue;
-      }
+    // Key message is never skipped -- always preserve it regardless of line count
+    if (lines.length >= maxLines && !isKeyMessage) {
+      if (!isFormattable(msg)) continue;
+      if (firstSkippedIdx < 0) firstSkippedIdx = idx;
+      lastSkippedIdx = idx;
+      skipped++;
+      continue;
     }
 
-    const line = formatMessage(msg, idx, i === lastAssistantIdx);
+    const line = formatMessage(msg, idx, isKeyMessage);
     if (line !== null) lines.push(line);
   }
 
   // Insert skip marker before the last line if we skipped messages
   if (skipped > 0) {
     const skipLine = `  ... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`;
-    // Insert before the last line (which is the result we preserved)
-    if (lines.length > 0 && skipped > 0) {
+    // Insert before the last line (which is the key message we preserved)
+    if (lines.length > 0) {
       lines.splice(lines.length - 1, 0, skipLine);
     } else {
       lines.push(skipLine);
@@ -122,29 +118,32 @@ function isFormattable(msg: BrowserIncomingMessage): boolean {
 
 /** Format a single message into one or more lines. Returns null if the message
  *  should be skipped (non-formattable type, or assistant with no useful content).
- *  isLastAssistant: when true, uses generous content limit for the worker's conclusion. */
-function formatMessage(msg: BrowserIncomingMessage, idx: number, isLastAssistant: boolean): string | null {
+ *  isKeyMessage: when true, uses generous KEY_MESSAGE_LIMIT for content. */
+function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string | null {
   switch (msg.type) {
     case "user_message": {
       const content = msg.content || "";
       const source = formatUserSource(msg);
-      return `  [${idx}] ${source}: "${truncate(content, HIGH_SIGNAL_LIMIT)}"`;
+      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
+      return `  [${idx}] ${source}: "${truncate(content, limit)}"`;
     }
 
     case "assistant":
-      return formatAssistantMessage(msg, idx, isLastAssistant);
+      return formatAssistantMessage(msg, idx, isKeyMessage);
 
     case "result": {
       const data = msg.data as { result?: string; is_error?: boolean };
       const icon = data.is_error ? "✗" : "✓";
       const text = data.result?.trim() || "done";
-      return `  [${idx}] ${icon} "${truncate(text, HIGH_SIGNAL_LIMIT)}"`;
+      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
+      return `  [${idx}] ${icon} "${truncate(text, limit)}"`;
     }
 
     case "permission_request": {
       const req = (msg as { request?: { tool_name?: string; description?: string } }).request;
       const tool = req?.tool_name || "unknown";
-      const desc = req?.description ? `: ${truncate(req.description, HIGH_SIGNAL_LIMIT)}` : "";
+      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
+      const desc = req?.description ? `: ${truncate(req.description, limit)}` : "";
       return `  [${idx}] ⏸ permission ${tool}${desc}`;
     }
 
@@ -164,11 +163,10 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isLastAssistant
 }
 
 /** Format an assistant message: text content + collapsed tool counts.
- *  The last assistant message in a turn gets a generous content limit since
- *  it typically contains the worker's conclusion/summary. */
-function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isLastAssistant: boolean): string | null {
+ *  Key messages get a generous content limit for the worker's conclusion. */
+function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string | null {
   const blocks: ContentBlock[] = (msg as { message?: { content?: ContentBlock[] } }).message?.content || [];
-  const textLimit = isLastAssistant ? FINAL_ASST_LIMIT : ASST_TEXT_LIMIT;
+  const textLimit = isKeyMessage ? KEY_MESSAGE_LIMIT : ASST_TEXT_LIMIT;
 
   const textParts: string[] = [];
   const toolCounts: Record<string, number> = {};
@@ -210,6 +208,15 @@ function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isLast
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Find the index of the last formattable message in the slice.
+ *  This is the "key message" that triggered the event and gets generous treatment. */
+function findLastFormattableIndex(messages: BrowserIncomingMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isFormattable(messages[i])) return i;
+  }
+  return -1;
+}
 
 /** Format tool counts with optional summaries for low-count tools.
  *  e.g. "Read×2, Bash: bun test, Edit store.ts"
