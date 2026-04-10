@@ -52,6 +52,31 @@ function sumDiffFileStats(fileStats: Map<string, { additions: number; deletions:
   return { additions, deletions };
 }
 
+/** Build "Move to..." submenu items for the session context menu (tree view only). */
+function buildMoveToSubmenu(
+  sidebarViewMode: string,
+  treeGroups: Array<{ id: string; name: string }>,
+  treeAssignments: Map<string, string>,
+  sessionId: string,
+): ContextMenuItem[] {
+  if (sidebarViewMode !== "tree" || treeGroups.length === 0) return [];
+  const currentGroup = treeAssignments.get(sessionId) || "default";
+  const otherGroups = treeGroups.filter((g) => g.id !== currentGroup);
+  if (otherGroups.length === 0) return [];
+  return [
+    {
+      label: "Move to...",
+      onClick: () => {},
+      children: otherGroups.map((g) => ({
+        label: g.name,
+        onClick: () => {
+          api.assignSessionToTreeGroup(sessionId, g.id).catch(console.error);
+        },
+      })),
+    },
+  ];
+}
+
 function SortableProjectGroup({
   id,
   children,
@@ -1475,25 +1500,7 @@ export function Sidebar() {
                   },
                 },
             // "Move to..." submenu (tree view only)
-            ...(sidebarViewMode === "tree" && treeGroups.length > 0
-              ? (() => {
-                  const currentGroup = treeAssignments.get(contextMenu.sessionId) || "default";
-                  const otherGroups = treeGroups.filter((g) => g.id !== currentGroup);
-                  if (otherGroups.length === 0) return [];
-                  return [
-                    {
-                      label: "Move to...",
-                      onClick: () => {},
-                      children: otherGroups.map((g) => ({
-                        label: g.name,
-                        onClick: () => {
-                          api.assignSessionToTreeGroup(contextMenu.sessionId, g.id).catch(console.error);
-                        },
-                      })),
-                    },
-                  ];
-                })()
-              : []),
+            ...buildMoveToSubmenu(sidebarViewMode, treeGroups, treeAssignments, contextMenu.sessionId),
             isArchived
               ? {
                   label: "Unarchive",
