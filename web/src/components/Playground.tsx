@@ -4488,6 +4488,70 @@ export function Playground() {
                 />
               </div>
             </Card>
+            <Card label="Collapsed leader turn — sub-conclusions before herd events">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <PawTrailAvatar />
+                  <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
+                    {/* Collapsed activity bar */}
+                    <button className="w-full flex items-center gap-1.5 py-1.5 px-3 border-l-2 border-cc-border/40 bg-cc-hover/10 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
+                        <path d="M6 4l4 4-4 4" />
+                      </svg>
+                      <span>12 messages</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>15 tools</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>4 herd events</span>
+                      <span className="text-cc-muted/40">&middot;</span>
+                      <span>45m</span>
+                    </button>
+                    {/* Sub-conclusions with herd summaries */}
+                    <div className="px-3 pt-2 space-y-1.5">
+                      <div>
+                        <MessageBubble
+                          message={{
+                            id: "playground-subconc-1",
+                            role: "assistant",
+                            content: "Dispatched #264 to work on q-42. Spawned skeptic reviewer #265.",
+                            timestamp: Date.now() - 120000,
+                          }}
+                        />
+                        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted/60 font-mono-code py-0.5 leading-snug">
+                          <span className="text-amber-500/40 shrink-0">◇</span>
+                          <span className="truncate">Herd: #264 turn_end, #265 turn_end</span>
+                        </div>
+                      </div>
+                      <div>
+                        <MessageBubble
+                          message={{
+                            id: "playground-subconc-2",
+                            role: "assistant",
+                            content: "q-42 complete! Skeptic ACCEPTED. Now dispatching q-43 to #266.",
+                            timestamp: Date.now() - 60000,
+                          }}
+                        />
+                        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted/60 font-mono-code py-0.5 leading-snug">
+                          <span className="text-amber-500/40 shrink-0">◇</span>
+                          <span className="truncate">Herd: #266 turn_end</span>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Final response entry */}
+                    <div className="px-3 py-2.5">
+                      <MessageBubble
+                        message={{
+                          id: "playground-subconc-final",
+                          role: "assistant",
+                          content: "All 3 quests dispatched and verified. Porting commits to main now.",
+                          timestamp: Date.now() - 30000,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
           </div>
         </Section>
         <Section

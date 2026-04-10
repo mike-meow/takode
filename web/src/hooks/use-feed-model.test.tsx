@@ -322,6 +322,52 @@ describe("sub-conclusions in collapsed turns", () => {
     // No sub-conclusions since the only candidate is the responseEntry
     expect(turn.subConclusions).toHaveLength(0);
   });
+
+  it("does not bridge across tool results between assistant and herd event", () => {
+    // When a tool_use result sits between the assistant message and the herd event,
+    // the assistant should NOT become a sub-conclusion (the sequence is broken).
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "go", timestamp: 1 }),
+      makeMessage({ id: "a1", role: "assistant", content: "Checking status...", timestamp: 2 }),
+      // Tool result message (role=assistant, no text content, only tool_use blocks)
+      makeMessage({
+        id: "tool1",
+        role: "assistant",
+        content: "",
+        timestamp: 3,
+        contentBlocks: [{ type: "tool_use", id: "tu1", name: "Bash", input: { command: "ls" } }],
+      }),
+      makeMessage({ id: "r1", role: "system", content: "file1.ts\nfile2.ts", timestamp: 4 }),
+      makeHerdEvent("h1", "#5 | turn_end | ✓ 3s", 5),
+      makeMessage({ id: "a2", role: "assistant", content: "All done.", timestamp: 6 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    // a1 should NOT be a sub-conclusion because a tool result intervened
+    expect(turn.subConclusions).toHaveLength(0);
+    expect((turn.responseEntry as { msg: ChatMessage }).msg.id).toBe("a2");
+  });
+
+  it("picks only the last of consecutive assistant messages before a herd event", () => {
+    // When two assistant messages appear in a row before a herd event,
+    // only the second (immediately preceding) becomes the sub-conclusion.
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "go", timestamp: 1 }),
+      makeMessage({ id: "a1", role: "assistant", content: "First thought.", timestamp: 2 }),
+      makeMessage({ id: "a2", role: "assistant", content: "Second thought.", timestamp: 3 }),
+      makeHerdEvent("h1", "#5 | turn_end | ✓ 3s", 4),
+      makeMessage({ id: "a3", role: "assistant", content: "Done.", timestamp: 5 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    expect(turn.subConclusions).toHaveLength(1);
+    // a2 is the immediately preceding assistant, not a1
+    expect((turn.subConclusions[0].entry as { msg: ChatMessage }).msg.id).toBe("a2");
+  });
 });
 
 describe("summarizeHerdEvents", () => {

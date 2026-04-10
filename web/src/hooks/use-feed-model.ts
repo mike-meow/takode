@@ -422,11 +422,6 @@ function isHerdEventEntry(entry: FeedEntry): boolean {
   return entry.kind === "message" && entry.msg.role === "user" && entry.msg.agentSource?.sessionId === "herd-events";
 }
 
-/** Check if a FeedEntry is an assistant message with text content. */
-function isAssistantTextEntry(entry: FeedEntry): boolean {
-  return entry.kind === "message" && entry.msg.role === "assistant" && !!entry.msg.content?.trim();
-}
-
 /** Summarize herd event messages into a compact one-liner.
  *  Parses "#N | type | ..." header lines from each message and returns
  *  e.g. "Herd: #264 turn_end, #267 turn_end" */
@@ -450,6 +445,8 @@ export function summarizeHerdEvents(herdEntries: FeedEntry[]): string {
 
 /** Extract sub-conclusions from a turn's entries.
  *  A sub-conclusion is the last assistant text message before a herd event injection.
+ *  Only the immediately preceding assistant message qualifies -- intervening tool results,
+ *  system messages, or other non-assistant entries break the sequence.
  *  Consecutive herd events are grouped into a single summary. */
 function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | null): SubConclusion[] {
   const subConclusions: SubConclusion[] = [];
@@ -459,7 +456,7 @@ function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | 
   while (i < entries.length) {
     const entry = entries[i];
 
-    if (isAssistantTextEntry(entry)) {
+    if (entry.kind === "message" && entry.msg.role === "assistant" && entry.msg.content?.trim()) {
       lastAssistantEntry = entry;
       i++;
       continue;
@@ -484,8 +481,9 @@ function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | 
       continue;
     }
 
-    // Non-assistant, non-herd entry: reset tracking
-    // (tool results, system messages, etc. break the assistant→herd sequence)
+    // Non-assistant, non-herd entry (tool results, system messages, etc.)
+    // breaks the assistant→herd sequence
+    lastAssistantEntry = null;
     i++;
   }
 
