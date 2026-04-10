@@ -177,7 +177,8 @@ export function buildToolSummary(name: string, input: Record<string, unknown>): 
   const basename = path.split("/").pop() || path;
   switch (name) {
     case "Bash":
-      return truncate(String(input.command || ""), 60);
+      // Prefer human-readable description over raw command (less noisy in activity summaries)
+      return truncate(String(input.description || input.command || ""), 60);
     case "Edit":
       return basename;
     case "Read":

@@ -8,7 +8,10 @@
  * - Low-noise: assistant messages with tool calls collapse to one-line tool counts.
  * - Key message: the last formattable message in each slice gets a generous 5000-char
  *   limit because it's the event's "key message" (turn conclusion, permission content,
- *   user instruction, etc.). This message is NEVER skipped by MAX_LINES truncation.
+ *   user instruction, etc.). Naturally preserved by tail-priority truncation.
+ * - Tail-priority truncation: when output exceeds MAX_LINES, the TAIL (most recent
+ *   messages) is preserved because it's the most diagnostic -- what happened right
+ *   before the event. Layout: first line + skip marker + last (maxLines-1) lines.
  * - Bounded: capped at MAX_LINES to prevent context bloat in the leader's conversation.
  */
 
@@ -49,10 +52,11 @@ export interface FormatActivityOptions {
  * - permission_approved/denied: one-line summary
  * - others (stream_event, tool_progress, etc.): skipped
  *
- * The LAST formattable message is the "key message" -- it gets a 5000-char limit
- * and is never skipped by MAX_LINES truncation. This is the event's triggering
- * message: the worker's conclusion (turn_end), permission content (permission_request),
- * user instruction (user_message), or resolution details (permission_resolved).
+ * The LAST formattable message is the "key message" -- it gets a 5000-char limit.
+ *
+ * Truncation is TAIL-PRIORITY: when output exceeds maxLines, the most recent
+ * messages are preserved (they're the most diagnostic). Layout when truncated:
+ *   first line + "... N messages skipped [range]" + last (maxLines-1) lines
  */
 export function formatActivitySummary(
   messages: BrowserIncomingMessage[],
@@ -62,44 +66,41 @@ export function formatActivitySummary(
   const startIdx = options.startIdx;
 
   // Find the last formattable message -- it's the "key message" that triggered the event
-  // and gets the generous content limit + skip protection.
+  // and gets the generous content limit.
   const keyMessageIdx = findLastFormattableIndex(messages);
 
-  const lines: string[] = [];
-  let skipped = 0;
-  let lastSkippedIdx = -1;
-  let firstSkippedIdx = -1;
-
+  // Pass 1: format ALL messages into lines, tracking their original message indices
+  const allLines: Array<{ line: string; msgIdx: number }> = [];
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const idx = startIdx + i;
     const isKeyMessage = i === keyMessageIdx;
-
-    // Key message is never skipped -- always preserve it regardless of line count
-    if (lines.length >= maxLines && !isKeyMessage) {
-      if (!isFormattable(msg)) continue;
-      if (firstSkippedIdx < 0) firstSkippedIdx = idx;
-      lastSkippedIdx = idx;
-      skipped++;
-      continue;
-    }
-
     const line = formatMessage(msg, idx, isKeyMessage);
-    if (line !== null) lines.push(line);
+    if (line !== null) allLines.push({ line, msgIdx: idx });
   }
 
-  // Insert skip marker before the last line if we skipped messages
-  if (skipped > 0) {
-    const skipLine = `  ... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`;
-    // Insert before the last line (which is the key message we preserved)
-    if (lines.length > 0) {
-      lines.splice(lines.length - 1, 0, skipLine);
-    } else {
-      lines.push(skipLine);
-    }
+  if (allLines.length === 0) return "";
+
+  // Pass 2: tail-priority truncation -- keep first line + last (maxLines-1) lines
+  if (allLines.length <= maxLines) {
+    return allLines.map((l) => l.line).join("\n");
   }
 
-  return lines.join("\n");
+  const head = allLines[0];
+  const tailCount = maxLines - 1;
+  // Guard: slice(-0) === slice(0) in JS, returning ALL elements instead of none
+  const tail = tailCount > 0 ? allLines.slice(-tailCount) : [];
+  const skipped = allLines.length - 1 - tailCount;
+  const firstSkippedIdx = allLines[1].msgIdx;
+  const lastSkippedIdx = allLines[allLines.length - 1 - tailCount].msgIdx;
+
+  const result: string[] = [head.line];
+  result.push(
+    `  ... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`,
+  );
+  for (const t of tail) result.push(t.line);
+
+  return result.join("\n");
 }
 
 // ─── Message Formatting ──────────────────────────────────────────────────────

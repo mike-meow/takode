@@ -5,9 +5,10 @@
  * from messageHistory slices, including:
  * - User message rendering with source labels
  * - Assistant tool call collapsing
+ * - Bash description field preference over raw command
  * - Result message rendering with success/error icons
  * - Permission request/approved/denied rendering
- * - Truncation when exceeding maxLines cap
+ * - Tail-priority truncation when exceeding maxLines cap
  * - Edge cases: empty input, non-formattable messages, single messages
  */
 
@@ -141,6 +142,30 @@ describe("formatActivitySummary", () => {
     expect(result).not.toContain("×");
   });
 
+  it("prefers Bash description field over raw command when available", () => {
+    // Bash tool calls with a 'description' field should show the description
+    // instead of the truncated raw command, for better readability.
+    const messages = [
+      assistantMsg("", [
+        { name: "Bash", input: { command: "cd /tmp && find . -name '*.ts' -exec grep -l 'export' {} + | head -20", description: "Find TypeScript files with exports" } },
+      ]),
+    ];
+    const result = formatActivitySummary(messages, { startIdx: 10 });
+    expect(result).toContain("Bash: Find TypeScript files with exports");
+    expect(result).not.toContain("cd /tmp");
+  });
+
+  it("falls back to Bash command when no description field exists", () => {
+    // When no description is provided, fall back to showing the command.
+    const messages = [
+      assistantMsg("", [
+        { name: "Bash", input: { command: "bun test --watch" } },
+      ]),
+    ];
+    const result = formatActivitySummary(messages, { startIdx: 10 });
+    expect(result).toContain("Bash: bun test --watch");
+  });
+
   it("formats error results with ✗ icon", () => {
     const messages = [resultMsg("TypeError: x is not defined", true)];
     const result = formatActivitySummary(messages, { startIdx: 0 });
@@ -193,8 +218,10 @@ describe("formatActivitySummary", () => {
     expect(result).toContain("[1] user:");
   });
 
-  it("truncates output at maxLines, preserving key message (last formattable)", () => {
-    // Create 20 messages: many assistant messages plus a final result
+  it("truncates with tail-priority: keeps first line + skip marker + last N lines", () => {
+    // Create 20 messages: many assistant messages plus a final result.
+    // With tail-priority truncation (maxLines=5), output should be:
+    //   first line (step 0) + skip marker + last 4 lines (steps 16-18 + result)
     const messages: BrowserIncomingMessage[] = [];
     for (let i = 0; i < 19; i++) {
       messages.push(
@@ -204,16 +231,49 @@ describe("formatActivitySummary", () => {
     messages.push(resultMsg("All done"));
 
     const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 5 });
-
-    // Should contain skip marker
-    expect(result).toContain("... ");
-    expect(result).toContain("skipped");
-    // Final result (the key message) should still be present
-    expect(result).toContain("✓");
-    expect(result).toContain("All done");
-    // Total lines should be bounded: 5 initial + 1 skip marker + 1 preserved key msg = ~7
     const lines = result.split("\n");
-    expect(lines.length).toBeLessThanOrEqual(8);
+
+    // First line should be the first message (step 0)
+    expect(lines[0]).toContain("[0] asst:");
+    expect(lines[0]).toContain("step 0");
+    // Second line should be the skip marker
+    expect(lines[1]).toContain("...");
+    expect(lines[1]).toContain("skipped");
+    // Last lines should be the TAIL (most recent messages)
+    expect(result).toContain("step 18");
+    expect(result).toContain("All done");
+    // Total: 1 head + 1 skip + 4 tail = 6 lines
+    expect(lines.length).toBe(6);
+  });
+
+  it("handles maxLines=1 edge case: head + skip marker, no tail", () => {
+    // With maxLines=1 and multiple messages, tailCount = 0, so output is
+    // just the first line + skip marker (no tail lines).
+    const messages = [userMsg("first"), userMsg("second"), userMsg("third")];
+    const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 1 });
+    const lines = result.split("\n");
+
+    expect(lines[0]).toContain('[0] user: "first"');
+    expect(lines[1]).toContain("2 messages skipped");
+    expect(lines.length).toBe(2);
+  });
+
+  it("does not truncate when exactly at maxLines boundary", () => {
+    // 3 formattable messages with maxLines=3 should NOT truncate
+    const messages = [userMsg("a"), userMsg("b"), userMsg("c")];
+    const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 3 });
+    expect(result).not.toContain("skipped");
+    expect(result.split("\n").length).toBe(3);
+
+    // 4 formattable messages with maxLines=3 SHOULD truncate
+    const messages4 = [userMsg("a"), userMsg("b"), userMsg("c"), userMsg("d")];
+    const result4 = formatActivitySummary(messages4, { startIdx: 0, maxLines: 3 });
+    expect(result4).toContain("skipped");
+    // Layout: 1 head + 1 skip + 2 tail = 4 lines
+    expect(result4.split("\n").length).toBe(4);
+    // Tail should have the last 2 messages
+    expect(result4).toContain('[2] user: "c"');
+    expect(result4).toContain('[3] user: "d"');
   });
 
   it("truncates long user message content at HIGH_SIGNAL_LIMIT when not key message", () => {
@@ -316,9 +376,9 @@ describe("formatActivitySummary", () => {
     expect(permLine!).not.toContain("…");
   });
 
-  it("preserves key message assistant even when maxLines exceeded (main bug fix)", () => {
-    // This tests the core fix: previously only the last result was preserved past
-    // maxLines. Now the last formattable message (key message) is always preserved.
+  it("preserves key message in the tail when maxLines exceeded", () => {
+    // The key message (last formattable = worker's conclusion) is naturally
+    // in the tail, so tail-priority truncation preserves it.
     const messages: BrowserIncomingMessage[] = [];
     // Fill 20 assistant messages to exceed maxLines (5)
     for (let i = 0; i < 19; i++) {
@@ -332,10 +392,13 @@ describe("formatActivitySummary", () => {
 
     const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 5 });
 
-    // The key message (last assistant) should be preserved past maxLines
+    // The key message (last assistant) should be preserved in the tail
     expect(result).toContain(conclusion);
     // Skip marker should be present
     expect(result).toContain("skipped");
+    // Early messages (middle) should be skipped, not the tail
+    expect(result).not.toContain("step 5");
+    expect(result).not.toContain("step 10");
   });
 
   it("applies key message limit to permission_approved/denied when last formattable", () => {
