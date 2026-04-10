@@ -93,3 +93,15 @@ The `--reviewer` flag automatically:
 - Only after port is confirmed: transition the quest to `needs_verification`
 - `takode board advance <quest-id>` -- this removes the row from the board
 - Run `takode notify review "<quest-id> ready for verification"` to alert the user that the quest is ready for verification
+
+## Feedback Rework Loop
+
+When the user provides feedback on a completed quest (in `needs_verification` or `done` state):
+
+1. **Record the feedback**: `quest feedback <id> --text "..." --author human` (attach screenshots with `--image <path>`)
+2. **Reset the quest state**: `quest transition <id> --status refined`
+3. **Dispatch for full quest journey**: Treat the rework as a fresh dispatch. The quest goes through PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING again, ensuring rework gets the same review rigor as the original implementation. Never skip review steps for "small" feedback fixes.
+4. **Prefer the original worker** if still available -- it has the most context from the first implementation. Check `takode list` for idle/disconnected workers with matching quest history.
+5. **The worker must mark each feedback entry as addressed**: `quest address <id> <index>` after fixing each item.
+
+This loop can repeat multiple times. Each round is a full quest journey.

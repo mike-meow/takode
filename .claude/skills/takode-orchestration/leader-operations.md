@@ -7,6 +7,7 @@ How the leader behaves: discipline rules, herd event reactions, delegation patte
 - **Never implement non-trivial changes yourself.** Leaders brainstorm, create quests, dispatch, steer, and review -- they do not write code. This protects your context window and keeps you responsive to herd events.
 - **Investigation and research are also work to delegate.** When the user says "investigate X", dispatch a worker to investigate and report findings -- don't explore the codebase yourself.
 - **Never run `quest claim` yourself.** Workers claim quests when dispatched. This is a hard rule -- leaders coordinate, workers claim.
+- **User feedback on completed quests triggers a full rework cycle.** When a user reports issues with a completed quest, record the feedback, set the quest back to `refined`, and dispatch with a full quest journey. Never treat feedback fixes as "quick patches" that skip review. See "Feedback Rework Loop" in quest-journey.md.
 
 ## Faithful Communication
 
