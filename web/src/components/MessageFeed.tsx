@@ -310,10 +310,16 @@ function FeedStatusPill({
   onVisibleHeightChange?: (height: number) => void;
 }) {
   return (
-    <div className="pointer-events-none absolute bottom-2 right-2 z-10 sm:bottom-3 sm:right-3 flex flex-row-reverse items-end gap-1.5">
-      <ElapsedTimer sessionId={sessionId} variant="floating" onVisibleHeightChange={onVisibleHeightChange} />
-      <TimerChip sessionId={sessionId} />
-    </div>
+    <>
+      {/* Purring chip — lower left (original position) */}
+      <div className="pointer-events-none absolute bottom-2 left-2 z-10 sm:bottom-3 sm:left-3">
+        <ElapsedTimer sessionId={sessionId} variant="floating" onVisibleHeightChange={onVisibleHeightChange} />
+      </div>
+      {/* Timer chip — lower right */}
+      <div className="pointer-events-none absolute bottom-2 right-2 z-10 sm:bottom-3 sm:right-3">
+        <TimerChip sessionId={sessionId} />
+      </div>
+    </>
   );
 }
 
