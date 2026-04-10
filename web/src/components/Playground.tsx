@@ -3304,7 +3304,7 @@ export function Playground() {
                 </button>
                 {/* Dark container simulates the chat area where the chip floats */}
                 <div className="relative h-24 rounded-lg border border-cc-border bg-cc-bg overflow-hidden">
-                  <div className="absolute bottom-2 left-2 flex flex-col-reverse items-start gap-1.5">
+                  <div className="absolute bottom-2 right-2 flex flex-row-reverse items-end gap-1.5">
                     <TimerChip sessionId="playground-timers" />
                   </div>
                 </div>
