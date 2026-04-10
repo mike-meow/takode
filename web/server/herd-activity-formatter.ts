@@ -6,6 +6,8 @@
  * - High-signal: user messages, permission requests, and turn results get generous
  *   content limits (1000 chars) because they're what the leader needs to act on.
  * - Low-noise: assistant messages with tool calls collapse to one-line tool counts.
+ * - Final assistant: the last assistant message gets a generous 5000-char limit
+ *   because it's typically the worker's conclusion/summary.
  * - Bounded: capped at MAX_LINES to prevent context bloat in the leader's conversation.
  */
 
@@ -18,8 +20,10 @@ import { buildToolSummary } from "./takode-messages.js";
 const MAX_LINES = 15;
 /** Content limit for high-signal messages (user, permission, result). */
 const HIGH_SIGNAL_LIMIT = 1000;
-/** Content limit for assistant text (lower signal -- tools carry the info). */
+/** Content limit for assistant narration text (lower signal -- tools carry the info). */
 const ASST_TEXT_LIMIT = 120;
+/** Content limit for the final assistant message in a turn (the worker's conclusion). */
+const FINAL_ASST_LIMIT = 5000;
 
 // ─── Public API ─────────────────────────────────────────────────────────────────
 
@@ -39,7 +43,8 @@ export interface FormatActivityOptions {
  * Message types and their treatment:
  * - user_message: shown with generous 1000-char limit (high signal)
  * - permission_request: shown with tool name + description (leader needs context)
- * - assistant: tool calls collapsed to counts; text truncated short
+ * - assistant (non-final): tool calls collapsed to counts; text truncated short (120 chars)
+ * - assistant (final): the last assistant in the turn gets 5000-char limit (worker conclusion)
  * - result: shown with generous 1000-char limit (the outcome)
  * - permission_approved/denied: one-line summary
  * - others (stream_event, tool_progress, etc.): skipped
@@ -50,6 +55,16 @@ export function formatActivitySummary(
 ): string {
   const maxLines = options.maxLines ?? MAX_LINES;
   const startIdx = options.startIdx;
+
+  // Find the last assistant message index -- its text is the worker's conclusion/summary
+  // and gets a generous content limit instead of the short narration limit.
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].type === "assistant") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
 
   const lines: string[] = [];
   let skipped = 0;
@@ -73,7 +88,7 @@ export function formatActivitySummary(
       }
     }
 
-    const line = formatMessage(msg, idx);
+    const line = formatMessage(msg, idx, i === lastAssistantIdx);
     if (line !== null) lines.push(line);
   }
 
@@ -106,8 +121,9 @@ function isFormattable(msg: BrowserIncomingMessage): boolean {
 }
 
 /** Format a single message into one or more lines. Returns null if the message
- *  should be skipped (non-formattable type, or assistant with no useful content). */
-function formatMessage(msg: BrowserIncomingMessage, idx: number): string | null {
+ *  should be skipped (non-formattable type, or assistant with no useful content).
+ *  isLastAssistant: when true, uses generous content limit for the worker's conclusion. */
+function formatMessage(msg: BrowserIncomingMessage, idx: number, isLastAssistant: boolean): string | null {
   switch (msg.type) {
     case "user_message": {
       const content = msg.content || "";
@@ -116,7 +132,7 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number): string | null 
     }
 
     case "assistant":
-      return formatAssistantMessage(msg, idx);
+      return formatAssistantMessage(msg, idx, isLastAssistant);
 
     case "result": {
       const data = msg.data as { result?: string; is_error?: boolean };
@@ -147,9 +163,12 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number): string | null 
   }
 }
 
-/** Format an assistant message: text content (short) + collapsed tool counts. */
-function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number): string | null {
+/** Format an assistant message: text content + collapsed tool counts.
+ *  The last assistant message in a turn gets a generous content limit since
+ *  it typically contains the worker's conclusion/summary. */
+function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isLastAssistant: boolean): string | null {
   const blocks: ContentBlock[] = (msg as { message?: { content?: ContentBlock[] } }).message?.content || [];
+  const textLimit = isLastAssistant ? FINAL_ASST_LIMIT : ASST_TEXT_LIMIT;
 
   const textParts: string[] = [];
   const toolCounts: Record<string, number> = {};
@@ -175,7 +194,7 @@ function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number): strin
 
   if (hasText) {
     const combinedText = textParts.join(" ");
-    parts.push(truncate(combinedText, ASST_TEXT_LIMIT));
+    parts.push(truncate(combinedText, textLimit));
   }
 
   if (hasTools) {

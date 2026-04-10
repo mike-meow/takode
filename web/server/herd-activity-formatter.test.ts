@@ -225,12 +225,46 @@ describe("formatActivitySummary", () => {
     expect(result).toContain("…");
   });
 
-  it("truncates long assistant text to short limit", () => {
+  it("truncates non-final assistant text to short 120-char limit", () => {
+    // Non-final assistant messages (narration) use the short limit
     const longText = "b".repeat(300);
-    const messages = [assistantMsg(longText)];
+    const messages = [
+      assistantMsg(longText),
+      assistantMsg("final conclusion"), // this is the final assistant
+    ];
     const result = formatActivitySummary(messages, { startIdx: 0 });
-    // Assistant text limit is 120 chars
-    expect(result.length).toBeLessThan(300);
+    // The first assistant's text should be truncated at 120 chars
+    const firstLine = result.split("\n")[0];
+    expect(firstLine.length).toBeLessThan(200);
+    expect(firstLine).toContain("…");
+  });
+
+  it("uses generous 5000-char limit for the final assistant message (worker conclusion)", () => {
+    // The last assistant message in a turn is the worker's conclusion/summary
+    // and should get a generous content limit, not the 120-char narration limit.
+    const conclusion = "This is the worker's detailed summary. ".repeat(50); // ~1900 chars
+    const messages = [
+      userMsg("Fix the bug"),
+      assistantMsg("Looking into it", [{ name: "Read", input: { file_path: "/src/auth.ts" } }]),
+      assistantMsg(conclusion),
+    ];
+    const result = formatActivitySummary(messages, { startIdx: 0 });
+
+    // The final assistant message should NOT be truncated (it's under 5000 chars)
+    expect(result).toContain("This is the worker's detailed summary.");
+    // Count how much of the conclusion appears
+    const lastLine = result.split("\n").find((l) => l.includes("worker's detailed summary"));
+    expect(lastLine).toBeDefined();
+    expect(lastLine!.length).toBeGreaterThan(500); // way more than the 120-char limit
+  });
+
+  it("truncates final assistant at 5000 chars, not at 120", () => {
+    const hugeConclusion = "x".repeat(6000);
+    const messages = [assistantMsg(hugeConclusion)];
+    const result = formatActivitySummary(messages, { startIdx: 0 });
+    // Should be truncated at ~5000, not at 120
+    expect(result.length).toBeGreaterThan(4000);
+    expect(result.length).toBeLessThan(5100);
     expect(result).toContain("…");
   });
 });
