@@ -337,4 +337,21 @@ describe("formatActivitySummary", () => {
     // Skip marker should be present
     expect(result).toContain("skipped");
   });
+
+  it("applies key message limit to permission_approved/denied when last formattable", () => {
+    // When permission_approved or permission_denied is the key message, its summary
+    // should get KEY_MESSAGE_LIMIT (5000) instead of the default 80-char limit.
+    const longSummary = "Justification: ".repeat(250); // ~3750 chars
+    const messages = [
+      userMsg("Deploy"),
+      permissionApprovedMsg("Bash", longSummary),
+    ];
+    const result = formatActivitySummary(messages, { startIdx: 0 });
+
+    // The summary should NOT be truncated at 80 chars
+    const permLine = result.split("\n").find((l) => l.includes("✓ approved"));
+    expect(permLine).toBeDefined();
+    expect(permLine!).not.toContain("…");
+    expect(permLine!.length).toBeGreaterThan(1000);
+  });
 });

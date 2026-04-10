@@ -149,12 +149,14 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: b
 
     case "permission_approved": {
       const m = msg as { tool_name?: string; summary?: string };
-      return `  [${idx}] ✓ approved ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, 80)}` : ""}`;
+      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
+      return `  [${idx}] ✓ approved ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, limit)}` : ""}`;
     }
 
     case "permission_denied": {
       const m = msg as { tool_name?: string; summary?: string };
-      return `  [${idx}] ✗ denied ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, 80)}` : ""}`;
+      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
+      return `  [${idx}] ✗ denied ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, limit)}` : ""}`;
     }
 
     default:
