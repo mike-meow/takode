@@ -978,8 +978,10 @@ describe("formatHerdEventBatch with activity injection", () => {
     expect(result).not.toContain("should not appear");
   });
 
-  it("deduplicates activity using lastEmittedMsgTo watermark", () => {
-    // Two consecutive events from the same worker with overlapping ranges
+  it("does not deduplicate within a single batch (watermarks updated by caller after delivery)", () => {
+    // Within one formatHerdEventBatch call, watermarks aren't updated yet --
+    // that's the caller's job via updateLastEmittedMsgTo after injection.
+    // So two events from the same session each get their full msgRange.
     const events = [
       makeEvent({
         event: "turn_end",
@@ -1005,13 +1007,9 @@ describe("formatHerdEventBatch with activity injection", () => {
       lastEmittedMsgTo: watermarks,
     });
 
-    // First event requests [10]-[15]
+    // Both events get their full range -- no within-batch dedup
     expect(requestedRanges[0]).toEqual({ from: 10, to: 15 });
-    // Second event is deduplicated: start at max(13, 15+1) = 16 (because
-    // formatHerdEventBatch reads watermarks as it goes, and the first event's
-    // msgRange.to is NOT written to the watermark by the formatter itself --
-    // that's done by the caller via updateLastEmittedMsgTo. So within one
-    // batch, events from the same session don't deduplicate against each other.
+    expect(requestedRanges[1]).toEqual({ from: 13, to: 20 });
     // This is intentional: the batch is a single delivery unit.)
     expect(requestedRanges[1]).toEqual({ from: 13, to: 20 });
   });

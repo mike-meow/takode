@@ -179,7 +179,7 @@ function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number): strin
   }
 
   if (hasTools) {
-    const toolStr = formatToolCounts(toolCounts, toolSummaries);
+    const toolStr = formatActivityToolLine(toolCounts, toolSummaries);
     if (hasText) {
       parts.push(`| ${toolStr}`);
     } else {
@@ -193,8 +193,9 @@ function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number): strin
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
 /** Format tool counts with optional summaries for low-count tools.
- *  e.g. "Read×2, Bash: bun test, Edit store.ts" */
-function formatToolCounts(
+ *  e.g. "Read×2, Bash: bun test, Edit store.ts"
+ *  Named distinctly from formatToolCounts in herd-event-dispatcher.ts (different signature). */
+function formatActivityToolLine(
   counts: Record<string, number>,
   summaries: Record<string, string[]>,
 ): string {

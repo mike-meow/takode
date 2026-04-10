@@ -337,14 +337,16 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
   );
 }
 
-/** Compact inline rendering for herd event summaries — one line per event. */
+/** Compact inline rendering for herd event summaries — collapsed by default.
+ *  Shows one-line event headers (#N | turn_end | ...) with a toggle chevron.
+ *  Expanding reveals the full injected peek-style activity content. */
 export function HerdEventMessage({ message }: { message: ChatMessage; showTimestamp: boolean }) {
   // The content is formatted by formatHerdEventBatch():
-  // "N events from N sessions\n\n#34 Worker A | turn_end | ✓ 56.3s\n#35 Worker B | ..."
-  // Extract individual event lines (skip the header and blank lines).
-  const lines = message.content.split("\n").filter((line) => line.trim().length > 0 && line.startsWith("#"));
+  // "N events from N sessions\n\n#34 | turn_end | ✓ 56.3s\n  [120] user: ...\n  [121] asst: ...\n#35 | ..."
+  // Parse into events: each starts with a #N line (header) followed by indented activity lines.
+  const events = useMemo(() => parseHerdEvents(message.content), [message.content]);
 
-  if (lines.length === 0) {
+  if (events.length === 0) {
     // Fallback for unexpected format — render as simple muted text
     return (
       <div className="text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 animate-[fadeSlideIn_0.2s_ease-out]">
@@ -355,17 +357,77 @@ export function HerdEventMessage({ message }: { message: ChatMessage; showTimest
 
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out] space-y-0">
-      {lines.map((line, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 leading-snug"
-        >
-          <span className="text-amber-500/60 shrink-0">◇</span>
-          <span className="truncate">{line}</span>
-        </div>
+      {events.map((evt, i) => (
+        <HerdEventEntry key={i} header={evt.header} activity={evt.activity} />
       ))}
     </div>
   );
+}
+
+/** A single herd event: always shows the header, toggles activity on click. */
+function HerdEventEntry({ header, activity }: { header: string; activity: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasActivity = activity.length > 0;
+
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-1.5 text-[11px] text-cc-muted font-mono-code pl-9 py-0.5 leading-snug${
+          hasActivity ? " cursor-pointer hover:text-cc-fg/70 transition-colors" : ""
+        }`}
+        onClick={hasActivity ? () => setExpanded((v) => !v) : undefined}
+      >
+        <span className="text-amber-500/60 shrink-0">◇</span>
+        <span className="truncate">{header}</span>
+        {hasActivity && (
+          <svg
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            className={`w-2.5 h-2.5 shrink-0 text-cc-muted/40 transition-transform ${expanded ? "rotate-90" : ""}`}
+          >
+            <path d="M6 3l5 5-5 5V3z" />
+          </svg>
+        )}
+      </div>
+      {expanded && (
+        <div className="pl-[52px] py-0.5 space-y-0">
+          {activity.map((line, j) => (
+            <div key={j} className="text-[10px] text-cc-muted/70 font-mono-code leading-snug whitespace-pre-wrap">
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Parse herd event batch content into structured events with headers and activity lines.
+ *
+ *  Format contract (produced by formatHerdEventBatch + formatSingleEvent in
+ *  web/server/herd-event-dispatcher.ts):
+ *    "N events from N sessions\n\n"         ← batch header (skipped)
+ *    "#5 | turn_end | ✓ 15.3s | ...\n"      ← event header (starts with #)
+ *    "  [169] user: \"Fix bug\"\n"           ← activity line (2-space indent)
+ *    "  [170] asst: Edit: auth.ts\n"         ← activity line
+ *    "#6 | permission_request | ...\n"       ← next event header
+ */
+function parseHerdEvents(content: string): Array<{ header: string; activity: string[] }> {
+  const events: Array<{ header: string; activity: string[] }> = [];
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    if (line.startsWith("#")) {
+      // New event header
+      events.push({ header: line, activity: [] });
+    } else if (line.startsWith("  ") && line.trim().length > 0 && events.length > 0) {
+      // Indented activity line belongs to the current event
+      events[events.length - 1].activity.push(line);
+    }
+    // Skip the batch header ("N events from N sessions") and blank lines
+  }
+
+  return events;
 }
 
 type SearchHighlightInfo = { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;

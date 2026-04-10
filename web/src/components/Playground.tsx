@@ -6,7 +6,7 @@ import {
   PermissionsCollapsedChip,
   EvaluatingCollapsedChip,
 } from "./PermissionBanner.js";
-import { CodexThinkingInline, MessageBubble, UserReplyChip, NotificationMarker } from "./MessageBubble.js";
+import { CodexThinkingInline, MessageBubble, UserReplyChip, NotificationMarker, HerdEventMessage } from "./MessageBubble.js";
 import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "./ToolBlock.js";
 import { BoardBlock } from "./BoardBlock.js";
@@ -4432,6 +4432,21 @@ export function Playground() {
                     #34 | turn_end | ✓ 56.3s | tools: Read(3), Grep(2) | &quot;Refactored auth middleware&quot;
                   </span>
                 </div>
+              </div>
+            </Card>
+            <Card label="Herd event with collapsible activity (click chevron to expand)">
+              <div className="py-2">
+                <HerdEventMessage
+                  showTimestamp={false}
+                  message={{
+                    id: "herd-activity-demo",
+                    role: "user",
+                    content:
+                      '1 event from 1 session\n\n#8 | turn_end | ✓ 15.3s | tools: Edit(3), Bash(2) | [169]-[281] | "Fixed login validation"\n  [169] user: "Fix the login bug in auth.ts"\n  [170] asst: Read×2, Grep×1\n  [171] asst: Edit: auth.ts, Bash: bun test\n  [172] ✓ "Fixed the login validation logic"',
+                    timestamp: Date.now(),
+                    agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+                  }}
+                />
               </div>
             </Card>
           </div>

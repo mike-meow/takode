@@ -11,7 +11,7 @@ vi.mock("remark-gfm", () => ({
   default: {},
 }));
 
-import { MessageBubble } from "./MessageBubble.js";
+import { MessageBubble, HerdEventMessage } from "./MessageBubble.js";
 import { useStore } from "../store.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
@@ -752,5 +752,89 @@ describe("MessageBubble - content block grouping", () => {
     // The two Read tools should not be grouped since there is a text block between them
     const labels = screen.getAllByText("Read File");
     expect(labels.length).toBe(2);
+  });
+});
+
+// ─── HerdEventMessage tests ─────────────────────────────────────────────────
+
+describe("HerdEventMessage", () => {
+  it("renders event headers collapsed by default", () => {
+    // Herd event with activity lines should show header but NOT activity
+    const msg = makeMessage({
+      role: "user",
+      content:
+        '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s | tools: Edit(1)\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+    // Header should be visible
+    expect(screen.getByText(/turn_end.*5\.0s/)).toBeTruthy();
+    // Activity should NOT be visible (collapsed)
+    expect(screen.queryByText(/Fix bug/)).toBeNull();
+  });
+
+  it("expands activity on click when activity lines are present", () => {
+    const msg = makeMessage({
+      role: "user",
+      content:
+        '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+    // Click the header to expand
+    fireEvent.click(screen.getByText(/turn_end/));
+    // Activity should now be visible
+    expect(screen.getByText(/Fix bug/)).toBeTruthy();
+    expect(screen.getByText(/Done/)).toBeTruthy();
+  });
+
+  it("renders events without activity as non-clickable", () => {
+    // Event header with no activity lines -- no chevron, not expandable
+    const msg = makeMessage({
+      role: "user",
+      content: "1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s",
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+    // Header visible
+    expect(screen.getByText(/turn_end/)).toBeTruthy();
+    // No chevron SVG for events without activity
+    const container = screen.getByText(/turn_end/).closest("div")!;
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
+  it("renders multiple events with independent collapse state", () => {
+    const msg = makeMessage({
+      role: "user",
+      content:
+        '2 events from 1 session\n\n#8 | turn_end | ✓ 5.0s\n  [10] user: "First"\n#9 | turn_end | ✓ 3.0s\n  [15] user: "Second"',
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+    // Both headers visible, no activity
+    expect(screen.getByText(/5\.0s/)).toBeTruthy();
+    expect(screen.getByText(/3\.0s/)).toBeTruthy();
+    expect(screen.queryByText(/First/)).toBeNull();
+    expect(screen.queryByText(/Second/)).toBeNull();
+
+    // Expand only first event
+    fireEvent.click(screen.getByText(/5\.0s/));
+    expect(screen.getByText(/First/)).toBeTruthy();
+    expect(screen.queryByText(/Second/)).toBeNull();
+  });
+
+  it("falls back to raw content when no # lines are found", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "unexpected format with no event lines",
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+    expect(screen.getByText("unexpected format with no event lines")).toBeTruthy();
   });
 });
