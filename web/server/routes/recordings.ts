@@ -3,7 +3,7 @@ import type { RouteContext } from "./context.js";
 
 export function createRecordingsRoutes(ctx: RouteContext) {
   const api = new Hono();
-  const { recorder, resolveId } = ctx;
+  const { launcher, recorder, resolveId } = ctx;
 
   // ─── Recording Management ──────────────────────────────────
 
@@ -26,10 +26,26 @@ export function createRecordingsRoutes(ctx: RouteContext) {
   api.get("/sessions/:id/recording/status", (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
-    if (!recorder) return c.json({ recording: false, available: false });
+    const session = launcher.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    // Primary artifact-discovery endpoint for debugging session behavior.
+    // Use this instead of guessing tmpdir-derived paths:
+    // - `filePath`: raw protocol recording JSONL
+    // - `sdkDebugFile`: Claude SDK debug log, when available
+    // - `recordingsDir`: the server's actual active tmpdir-backed recording root
+    if (!recorder) {
+      return c.json({
+        recording: false,
+        available: false,
+        sdkDebugFile: session.sdkDebugLogPath,
+      });
+    }
     return c.json({
       recording: recorder.isRecording(id),
       available: true,
+      recordingsDir: recorder.getRecordingsDir(),
+      globalEnabled: recorder.isGloballyEnabled(),
+      sdkDebugFile: session.sdkDebugLogPath,
       ...recorder.getRecordingStatus(id),
     });
   });

@@ -70,6 +70,10 @@ async function readProcessCmdline(pid: number): Promise<string | null> {
   }
 }
 
+function getClaudeSdkDebugLogPath(port: number, sessionId: string): string {
+  return join(homedir(), ".companion", "logs", `claude-sdk-${port}-${sessionId}.log`);
+}
+
 function sanitizeSpawnArgsForLog(args: string[]): string {
   const secretKeyPattern = /(token|key|secret|password)/i;
   const out = [...args];
@@ -339,6 +343,8 @@ export interface SdkSessionInfo {
   resumeAt?: string;
   /** The Companion-injected system prompt constructed at launch time (for debugging in Session Info). */
   injectedSystemPrompt?: string;
+  /** Stable per-session Claude SDK debug log path for transport/process debugging. */
+  sdkDebugLogPath?: string;
 
   // Container fields
   /** Docker container ID when session runs inside a container */
@@ -1494,6 +1500,7 @@ export class CliLauncher {
       extraInstructions: options.extraInstructions,
     });
     if (sdkInstructions) info.injectedSystemPrompt = sdkInstructions;
+    info.sdkDebugLogPath ||= getClaudeSdkDebugLogPath(this.port, sessionId);
     const adapter = new ClaudeSdkAdapter(sessionId, {
       model: options.model,
       cwd: info.cwd,
@@ -1504,6 +1511,7 @@ export class CliLauncher {
       recorder: this.recorder,
       pluginDirs: options.pluginDirs,
       instructions: sdkInstructions || undefined,
+      debugFile: info.sdkDebugLogPath,
     });
 
     if (this.onClaudeSdkAdapter) {

@@ -43,6 +43,7 @@ export interface ClaudeSdkAdapterOptions {
   cliSessionId?: string;
   env?: Record<string, string | undefined>;
   claudeBinary?: string;
+  debugFile?: string;
   recorder?: RecorderManager | null;
   /** Plugin directories to pass to Claude Code */
   pluginDirs?: string[];
@@ -204,6 +205,9 @@ export class ClaudeSdkAdapter
     if (this.options.claudeBinary) {
       sessionOptions.pathToClaudeCodeExecutable = this.options.claudeBinary;
     }
+    if (this.options.debugFile) {
+      sessionOptions.debugFile = this.options.debugFile;
+    }
 
     console.log(
       `[claude-sdk-adapter] Creating session ${this.sessionId} with options:`,
@@ -214,6 +218,7 @@ export class ClaudeSdkAdapter
         settingSources: sessionOptions.settingSources,
         plugins: plugins.map((p) => p.path),
         claudeBinary: this.options.claudeBinary ?? "(default)",
+        debugFile: this.options.debugFile ?? null,
       }),
     );
 

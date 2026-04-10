@@ -157,6 +157,12 @@ export class SessionRecorder {
  * are ephemeral debugging data and benefit from fast local storage. Override
  * with COMPANION_RECORDINGS_DIR for persistent storage.
  *
+ * Debugging note: do not assume this is literally `/tmp/companion-recordings`.
+ * On macOS, `tmpdir()` often resolves to a per-user path under `/var/folders/...`.
+ * To discover the real active path for the running server, prefer:
+ * - `GET /api/traffic/stats` for the server-wide recordings directory
+ * - `GET /api/sessions/:id/recording/status` for the concrete file paths of one session
+ *
  * Automatic rotation: when total lines across all recording files exceed
  * maxLines (default 500 000, override with COMPANION_RECORDINGS_MAX_LINES),
  * the oldest files are deleted until we're back under the limit.

@@ -335,6 +335,11 @@ function createMockRecorder() {
     getRecordingsDir: vi.fn(() => "/tmp/companion-recordings"),
     isGloballyEnabled: vi.fn(() => true),
     getMaxLines: vi.fn(() => 500000),
+    isRecording: vi.fn(() => true),
+    getRecordingStatus: vi.fn(() => ({ filePath: "/tmp/companion-recordings/session-1.jsonl" })),
+    enableForSession: vi.fn(),
+    disableForSession: vi.fn(),
+    listRecordings: vi.fn(async () => []),
   } as any;
 }
 
@@ -1451,6 +1456,38 @@ describe("GET /api/sessions/:id", () => {
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json).toEqual({ error: "Session not found" });
+  });
+});
+
+describe("GET /api/sessions/:id/recording/status", () => {
+  it("returns recording metadata and sdk debug path when found", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "running",
+      cwd: "/test",
+      sdkDebugLogPath: "/logs/claude-sdk-s1.log",
+    });
+
+    const res = await app.request("/api/sessions/s1/recording/status", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      recording: true,
+      available: true,
+      recordingsDir: "/tmp/companion-recordings",
+      globalEnabled: true,
+      sdkDebugFile: "/logs/claude-sdk-s1.log",
+      filePath: "/tmp/companion-recordings/session-1.jsonl",
+    });
+  });
+
+  it("returns 404 when session not found", async () => {
+    launcher.getSession.mockReturnValue(undefined);
+
+    const res = await app.request("/api/sessions/s1/recording/status", { method: "GET" });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Session not found" });
   });
 });
 
