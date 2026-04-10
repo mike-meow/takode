@@ -3216,7 +3216,7 @@ export function Playground() {
                 <NotificationMarker category="needs-input" summary="Need decision on auth approach" />
               </div>
             </Card>
-            <Card label="review (blue, no summary)">
+            <Card label="review (green, no summary)">
               <div className="text-cc-fg text-sm">
                 <p>All changes have been committed and tests pass. The PR is ready for your review.</p>
                 <NotificationMarker category="review" />

@@ -415,8 +415,10 @@ export function NotificationMarker({ category, summary }: { category: "needs-inp
   const label = summary || (isAction ? "Needs input" : "Ready for review");
   return (
     <div
-      className={`inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-        isAction ? "bg-amber-400/15 text-amber-400" : "bg-blue-500/15 text-blue-400"
+      className={`inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+        isAction
+          ? "border-amber-500/20 bg-amber-500/5 text-amber-400"
+          : "border-emerald-500/20 bg-emerald-500/5 text-cc-muted"
       }`}
     >
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0">
