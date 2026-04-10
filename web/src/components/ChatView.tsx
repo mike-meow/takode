@@ -12,7 +12,6 @@ import {
 import { TaskOutlineBar } from "./TaskOutlineBar.js";
 import { TodoStatusLine } from "./TodoStatusLine.js";
 import { WorkBoardBar } from "./WorkBoardBar.js";
-import { TimerWidget } from "./TimerWidget.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { SearchBar } from "./SearchBar.js";
 import { useSessionSearch } from "../hooks/useSessionSearch.js";
@@ -256,9 +255,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 
       {/* Persistent work board for orchestrator sessions */}
       <WorkBoardBar sessionId={sessionId} />
-
-      {/* Session-scoped timers — shows active timer count + next fire time */}
-      <TimerWidget sessionId={sessionId} />
 
       {/* Composer */}
       <Composer sessionId={sessionId} />

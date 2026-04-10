@@ -11,7 +11,7 @@ import { Lightbox } from "./Lightbox.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "./ToolBlock.js";
 import { BoardBlock } from "./BoardBlock.js";
 import { WorkBoardBar } from "./WorkBoardBar.js";
-import { TimerWidget } from "./TimerWidget.js";
+import { TimerChip, TimerModal } from "./TimerWidget.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { useStore, COLOR_THEMES, isDarkTheme, type ColorTheme } from "../store.js";
@@ -3244,13 +3244,13 @@ export function Playground() {
           </div>
         </Section>
 
-        {/* ─── Timer Widget ──────────────────────────────────── */}
+        {/* ─── Timer Chip + Modal ──────────────────────────────────── */}
         <Section
-          title="Timer Widget"
-          description="Session-scoped timer display that sits between the board bar and composer."
+          title="Timer Chip + Modal"
+          description="Floating glassmorphic chip (like Purring indicator) that opens a modal with full timer details."
         >
           <div className="max-w-3xl space-y-4">
-            <Card label="Timer widget (with timers)">
+            <Card label="Timer chip (floating pill)">
               <div className="p-3 space-y-2">
                 <button
                   type="button"
@@ -3286,7 +3286,7 @@ export function Playground() {
                             {
                               id: "t3",
                               sessionId: "playground-timers",
-                              prompt: "Deploy reminder",
+                              prompt: "Deploy reminder — make sure the staging build has passed CI before promoting to production",
                               type: "at" as const,
                               originalSpec: "3pm",
                               nextFireAt: now + 7_200_000,
@@ -3302,12 +3302,25 @@ export function Playground() {
                 >
                   Seed timer data
                 </button>
-                <div className="border border-cc-border rounded-lg overflow-hidden">
-                  <TimerWidget sessionId="playground-timers" />
+                {/* Dark container simulates the chat area where the chip floats */}
+                <div className="relative h-24 rounded-lg border border-cc-border bg-cc-bg overflow-hidden">
+                  <div className="absolute bottom-2 left-2 flex flex-col-reverse items-start gap-1.5">
+                    <TimerChip sessionId="playground-timers" />
+                  </div>
                 </div>
                 <p className="text-[10px] text-cc-muted">
-                  Click "Seed timer data" first. The collapsed bar shows timer count and next fire time. Click to expand
-                  the full list. Hover a timer row to reveal the cancel button.
+                  Click "Seed timer data" first. The chip shows timer count and next fire time as a glassmorphic pill.
+                  Click the chip to open the full modal with untruncated prompt text and cancel controls.
+                </p>
+              </div>
+            </Card>
+
+            <Card label="Timer modal (standalone)">
+              <div className="p-3 space-y-2">
+                <TimerModalDemo />
+                <p className="text-[10px] text-cc-muted">
+                  Opens the timer detail modal. Seed timer data above first to see entries.
+                  Shows full prompt text, timer type, countdown, and per-timer cancel button.
                 </p>
               </div>
             </Card>
@@ -5303,6 +5316,24 @@ function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Timer Modal Demo ────────────────────────────────────────────────────────
+
+function TimerModalDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs font-medium px-3 py-1.5 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 transition-colors cursor-pointer"
+      >
+        Open timer modal
+      </button>
+      {open && <TimerModal sessionId="playground-timers" onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

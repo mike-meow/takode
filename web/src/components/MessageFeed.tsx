@@ -12,6 +12,7 @@ import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } 
 import { isTouchDevice } from "../utils/mobile.js";
 import { sendToSession } from "../ws.js";
 import { useCollapsePolicy } from "../hooks/use-collapse-policy.js";
+import { TimerChip } from "./TimerWidget.js";
 import {
   isUserBoundaryEntry,
   useFeedModel,
@@ -309,8 +310,9 @@ function FeedStatusPill({
   onVisibleHeightChange?: (height: number) => void;
 }) {
   return (
-    <div className="pointer-events-none absolute bottom-2 left-2 z-10 sm:bottom-3 sm:left-3">
+    <div className="pointer-events-none absolute bottom-2 left-2 z-10 sm:bottom-3 sm:left-3 flex flex-col-reverse items-start gap-1.5">
       <ElapsedTimer sessionId={sessionId} variant="floating" onVisibleHeightChange={onVisibleHeightChange} />
+      <TimerChip sessionId={sessionId} />
     </div>
   );
 }
