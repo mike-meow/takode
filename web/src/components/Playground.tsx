@@ -4488,7 +4488,7 @@ export function Playground() {
                 />
               </div>
             </Card>
-            <Card label="Collapsed leader turn — sub-conclusions before herd events">
+            <Card label="Collapsed leader turn — sub-conclusions (no herd summary lines)">
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <PawTrailAvatar />
@@ -4506,36 +4506,24 @@ export function Playground() {
                       <span className="text-cc-muted/40">&middot;</span>
                       <span>45m</span>
                     </button>
-                    {/* Sub-conclusions with herd summaries */}
+                    {/* Sub-conclusions (herd summary lines omitted in collapsed view) */}
                     <div className="px-3 pt-2 space-y-1.5">
-                      <div>
-                        <MessageBubble
-                          message={{
-                            id: "playground-subconc-1",
-                            role: "assistant",
-                            content: "Dispatched #264 to work on q-42. Spawned skeptic reviewer #265.",
-                            timestamp: Date.now() - 120000,
-                          }}
-                        />
-                        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted/60 font-mono-code py-0.5 leading-snug">
-                          <span className="text-amber-500/40 shrink-0">◇</span>
-                          <span className="truncate">Herd: #264 turn_end, #265 turn_end</span>
-                        </div>
-                      </div>
-                      <div>
-                        <MessageBubble
-                          message={{
-                            id: "playground-subconc-2",
-                            role: "assistant",
-                            content: "q-42 complete! Skeptic ACCEPTED. Now dispatching q-43 to #266.",
-                            timestamp: Date.now() - 60000,
-                          }}
-                        />
-                        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted/60 font-mono-code py-0.5 leading-snug">
-                          <span className="text-amber-500/40 shrink-0">◇</span>
-                          <span className="truncate">Herd: #266 turn_end</span>
-                        </div>
-                      </div>
+                      <MessageBubble
+                        message={{
+                          id: "playground-subconc-1",
+                          role: "assistant",
+                          content: "Dispatched #264 to work on q-42. Spawned skeptic reviewer #265.",
+                          timestamp: Date.now() - 120000,
+                        }}
+                      />
+                      <MessageBubble
+                        message={{
+                          id: "playground-subconc-2",
+                          role: "assistant",
+                          content: "q-42 complete! Skeptic ACCEPTED. Now dispatching q-43 to #266.",
+                          timestamp: Date.now() - 60000,
+                        }}
+                      />
                     </div>
                     {/* Final response entry */}
                     <div className="px-3 py-2.5">

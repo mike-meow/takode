@@ -2158,25 +2158,22 @@ const TurnEntries = memo(function TurnEntries({
                                   onClick={() => toggleTurn(turn.id)}
                                 />
                               )}
-                              {/* Sub-conclusions: assistant messages before herd events, shown in collapsed view */}
+                              {/* Sub-conclusions: assistant messages before herd events, shown in collapsed view.
+                                 Herd event details (◇ lines) are omitted here for brevity — they appear
+                                 as HerdEventBatchGroup entries when the turn is expanded. */}
                               {turn.subConclusions.length > 0 && (
                                 <div className="px-3 pt-2 space-y-1.5">
                                   <HidePawContext.Provider value={true}>
                                     {turn.subConclusions.map((sc, scIdx) => (
-                                      <div key={scIdx}>
-                                        <FeedEntries
-                                          entries={[sc.entry]}
-                                          sessionId={sessionId}
-                                          minuteBoundaryLabels={minuteBoundaryLabels}
-                                          isCodexSession={isCodexSession}
-                                          activeCodexTerminalIds={activeCodexTerminalIds}
-                                          onOpenCodexTerminal={onOpenCodexTerminal}
-                                        />
-                                        <div className="flex items-center gap-1.5 text-[11px] text-cc-muted/60 font-mono-code py-0.5 leading-snug">
-                                          <span className="text-amber-500/40 shrink-0">◇</span>
-                                          <span className="truncate">{sc.herdSummary}</span>
-                                        </div>
-                                      </div>
+                                      <FeedEntries
+                                        key={scIdx}
+                                        entries={[sc.entry]}
+                                        sessionId={sessionId}
+                                        minuteBoundaryLabels={minuteBoundaryLabels}
+                                        isCodexSession={isCodexSession}
+                                        activeCodexTerminalIds={activeCodexTerminalIds}
+                                        onOpenCodexTerminal={onOpenCodexTerminal}
+                                      />
                                     ))}
                                   </HidePawContext.Provider>
                                 </div>
