@@ -57,7 +57,8 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `**Key disciplines**:\n` +
     `- If you asked the user a question, WAIT for their answer. Don't let herd events override your decision to wait.\n` +
     `- Be faithful to user's words. Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.\n` +
-    `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n\n` +
+    `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n` +
+    `- Don't echo CLI output as prose. \`takode board\` and \`takode list\` already display state -- don't repeat it in markdown tables or summaries.\n\n` +
     `**On startup**: Load the \`takode-orchestration\` and \`quest\` skills for full CLI references. Then acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.`
   );
 }

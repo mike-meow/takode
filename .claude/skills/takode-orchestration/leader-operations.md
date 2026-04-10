@@ -42,6 +42,7 @@ Every user message has a source tag:
 
 ## Communication Patterns
 
+- **Don't echo CLI output as prose.** `takode board`, `takode list`, and other CLI commands already display state in the terminal. Never repeat that information as markdown tables or summaries in your message -- it wastes tokens and clutters the conversation. Just run the command and move on.
 - **Include source conversation references.** When dispatching quests from a brainstorming discussion, include the session ID and message range so workers can inspect design rationale.
 - **Reference, don't relay.** When forwarding findings, summaries, or context between sessions, point to the source: "Read session #X message Y" (use `takode read` to find the message ID). Only paraphrase when you need to add corrections or additional context. This avoids information loss and saves your context window.
 - **Batch related messages.** If you need to send context + instructions to a worker, send it as one message rather than multiple.
