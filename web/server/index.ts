@@ -781,6 +781,7 @@ ensureSkillSymlinks([
   "skeptic-review",
   "worktree-rules",
   "playwright-e2e-tester",
+  "random-memory-ideas",
 ]);
 
 // ── Idle session manager — enforce maxKeepAlive ─────────────────────────────

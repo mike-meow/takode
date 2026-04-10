@@ -1,0 +1,4 @@
+interface:
+  display_name: "Random Memory Ideas"
+  short_description: "Capture random ideas into Notion"
+  default_prompt: "Use $random-memory-ideas to save this thought in my Random Memory Hub."
