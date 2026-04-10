@@ -1756,6 +1756,93 @@ describe("takode board quest ID validation", () => {
   });
 });
 
+describe("takode board set --worker auto-clears waitFor", () => {
+  // When --worker is provided without --wait-for, the CLI should send waitFor: []
+  // to clear stale dependencies from a previous board entry. When --wait-for is
+  // also provided, the explicit value should take precedence.
+
+  let server: ReturnType<typeof createServer>;
+  let port: number;
+  let capturedBodies: JsonObject[];
+
+  beforeAll(async () => {
+    capturedBodies = [];
+    server = createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-1", isOrchestrator: true }));
+        return;
+      }
+      // Capture the board set POST body and respond with a valid board
+      if (req.method === "POST" && req.url?.startsWith("/api/sessions/leader-1/board")) {
+        const body = await readJson(req);
+        capturedBodies.push(body);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ board: [{ questId: body.questId, status: body.status ?? "PLANNING" }] }));
+        return;
+      }
+      // Worker info lookup -- return a resolved session
+      if (req.method === "GET" && req.url?.includes("/sessions/") && req.url?.endsWith("/info")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-session-abc", sessionNum: 3 }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    capturedBodies = [];
+  });
+
+  it("sends waitFor: [] when --worker is provided without --wait-for", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--worker", "3", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual([]);
+  });
+
+  it("preserves explicit --wait-for when provided alongside --worker", async () => {
+    const result = await runTakode(
+      ["board", "set", "q-1", "--worker", "3", "--wait-for", "q-2,q-3", "--port", String(port)],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual(["q-2", "q-3"]);
+  });
+
+  it("does not send waitFor when --worker is not provided", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--status", "PLANNING", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toBeUndefined();
+  });
+});
+
 describe("takode list reviewer nesting", () => {
   // Verifies that reviewer sessions are nested under their parent worker
   // in the CWD group, the group header count excludes reviewers, and
