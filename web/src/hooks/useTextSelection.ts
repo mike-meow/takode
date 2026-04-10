@@ -135,11 +135,11 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
 
     function handleMouseDown() {
       mouseDownRef.current = true;
-      // Dismiss existing menu when starting a new selection
-      setState(EMPTY_STATE);
     }
 
-    // Only show the menu after the user releases the mouse (drag complete)
+    // Only show the menu after the user releases the mouse (drag complete).
+    // Listens on document (not container) so the flag resets even if mouseup
+    // fires outside the container (e.g., user drags out of the message area).
     function handleMouseUp() {
       mouseDownRef.current = false;
       scheduleEvaluation();
@@ -161,13 +161,13 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     }
 
     container.addEventListener("mousedown", handleMouseDown);
-    container.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("mouseup", handleMouseUp);
     document.addEventListener("selectionchange", handleSelectionChange);
     container.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       container.removeEventListener("mousedown", handleMouseDown);
-      container.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("selectionchange", handleSelectionChange);
       container.removeEventListener("scroll", handleScroll);
       cancelAnimationFrame(rafRef.current);
