@@ -55,15 +55,18 @@ export function CollapseFooter({
   const footerRef = useRef<HTMLButtonElement>(null);
   const [tall, setTall] = useState(false);
 
-  // Measure distance between header and footer after mount/content changes.
-  // This is a one-shot check — content doesn't resize after expansion.
+  // One-shot measurement after mount. Content doesn't resize after expansion,
+  // so we only need to check once. Running this on every render (missing deps)
+  // causes a useLayoutEffect+setState loop that compounds with any parent
+  // re-render into React error #185 (maximum update depth exceeded).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot measurement on mount only
   useLayoutEffect(() => {
     const header = headerRef.current;
     const footer = footerRef.current;
     if (!header || !footer) return;
     const distance = footer.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
     setTall(distance >= MIN_HEIGHT_FOR_FOOTER);
-  });
+  }, []);
 
   if (!tall) {
     // Render an invisible placeholder so layout doesn't shift if content grows

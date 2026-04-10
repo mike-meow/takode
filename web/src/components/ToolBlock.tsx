@@ -270,14 +270,20 @@ const ToolBlockInner = memo(function ToolBlockInner({
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
   const label = getToolLabel(name);
-  const resultPreview = useStore((s) => (sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) : undefined));
+  // Subscribe to a boolean primitive instead of the full ToolResultPreview object.
+  // The object reference can change during history replay (re-deserialization),
+  // which defeats Zustand's Object.is check and causes unnecessary re-renders.
+  // The header only needs to know *whether* a result exists, not its contents.
+  const hasResult = useStore((s) =>
+    sessionId ? s.toolResults.get(sessionId)?.get(toolUseId) != null : false,
+  );
   // Only subscribe to the toolName field (a primitive string) instead of the
   // entire progress object. This prevents re-renders from progress.output or
   // progress.elapsedSeconds updates that don't affect the header badge.
   const retainedProgressToolName = useStore((s) =>
     sessionId ? s.toolProgress.get(sessionId)?.get(toolUseId)?.toolName : undefined,
   );
-  const showCompletedLiveBadge = name === "Bash" && !!resultPreview && retainedProgressToolName === "Bash";
+  const showCompletedLiveBadge = name === "Bash" && hasResult && retainedProgressToolName === "Bash";
 
   // Extract the most useful preview
   const preview = getPreview(name, input);
@@ -594,7 +600,18 @@ function ToolResultSection({
   toolName: string;
   input: Record<string, unknown>;
 }) {
-  const preview = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId));
+  // Subscribe to individual primitive fields instead of the full ToolResultPreview
+  // object. During history replay, the same tool result can be deserialized twice
+  // (from history sync and reconnect replay), creating a new object reference with
+  // identical content. Subscribing to the whole object would defeat Zustand's
+  // Object.is check and trigger unnecessary re-renders — which, combined with the
+  // CollapseFooter useLayoutEffect, can cascade into React error #185.
+  const hasPreview = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId) != null);
+  const previewContent = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.content ?? "");
+  const previewIsError = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.is_error ?? false);
+  const previewIsTruncated = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.is_truncated ?? false);
+  const previewTotalSize = useStore((s) => s.toolResults.get(sessionId)?.get(toolUseId)?.total_size ?? 0);
+
   // Subscribe to individual primitive fields instead of the full progress object.
   // The progress object changes on every output chunk and elapsed-seconds tick,
   // creating a new reference each time. Subscribing to the whole object would
@@ -611,16 +628,16 @@ function ToolResultSection({
   const [loading, setLoading] = useState(false);
   const isCompletedLiveTerminal = toolName === "Bash" && progressToolName === "Bash";
   const shouldUseLiveTranscriptFallback =
-    !!preview &&
+    hasPreview &&
     isCompletedLiveTerminal &&
     liveOutput.length > 0 &&
-    shouldPreferLiveTerminalTranscript(preview.content);
+    shouldPreferLiveTerminalTranscript(previewContent);
 
   // Suppress the result section for web search when the result just echoes the
   // query or is a generic placeholder — the query is already shown in ToolDetail.
-  if (preview && !preview.is_error && (toolName === "WebSearch" || toolName === "web_search")) {
+  if (hasPreview && !previewIsError && (toolName === "WebSearch" || toolName === "web_search")) {
     const query = extractWebSearchQuery(input);
-    const content = preview.content.trim();
+    const content = previewContent.trim();
     if (!content || content === query || content === "Web search completed") {
       return null;
     }
@@ -629,11 +646,11 @@ function ToolResultSection({
   // Suppress the result section for successful Edit/Write calls — the diff
   // already shows the edit succeeded, and the "file has been updated" message
   // is redundant. Only show the result section when the edit failed.
-  if (preview && !preview.is_error && (toolName === "Edit" || toolName === "Write")) {
+  if (hasPreview && !previewIsError && (toolName === "Edit" || toolName === "Write")) {
     return null;
   }
 
-  if (!preview) {
+  if (!hasPreview) {
     if (!progressToolName?.trim()) return null;
     return (
       <div className="mt-2 pt-2 border-t border-cc-border/50">
@@ -660,7 +677,7 @@ function ToolResultSection({
     );
   }
 
-  if (isReadImage && !preview.is_error) {
+  if (isReadImage && !previewIsError) {
     return (
       <div className="mt-2 pt-2 border-t border-cc-border/50">
         <div className="flex items-center gap-2 mb-1.5">
@@ -679,8 +696,8 @@ function ToolResultSection({
     );
   }
 
-  const displayContent = shouldUseLiveTranscriptFallback ? liveOutput : (fullContent ?? preview.content);
-  const showExpandButton = !shouldUseLiveTranscriptFallback && preview.is_truncated && fullContent === null;
+  const displayContent = shouldUseLiveTranscriptFallback ? liveOutput : (fullContent ?? previewContent);
+  const showExpandButton = !shouldUseLiveTranscriptFallback && previewIsTruncated && fullContent === null;
 
   const fetchFull = async () => {
     setLoading(true);
@@ -698,7 +715,7 @@ function ToolResultSection({
     <div className="mt-2 pt-2 border-t border-cc-border/50">
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-[10px] font-medium text-cc-muted uppercase tracking-wider">Result</span>
-        {preview.is_error && (
+        {previewIsError && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cc-error/10 text-cc-error font-medium">error</span>
         )}
         {isCompletedLiveTerminal && (
@@ -709,8 +726,8 @@ function ToolResultSection({
         {shouldUseLiveTranscriptFallback && (
           <span className="text-[10px] text-cc-muted">showing captured transcript</span>
         )}
-        {preview.is_truncated && fullContent === null && (
-          <span className="text-[10px] text-cc-muted">{formatBytes(preview.total_size)}</span>
+        {previewIsTruncated && fullContent === null && (
+          <span className="text-[10px] text-cc-muted">{formatBytes(previewTotalSize)}</span>
         )}
       </div>
       {showExpandButton && (
@@ -719,7 +736,7 @@ function ToolResultSection({
           disabled={loading}
           className="mb-1 text-[10px] text-cc-primary hover:underline cursor-pointer disabled:opacity-50"
         >
-          {loading ? "Loading..." : `Show full result (${formatBytes(preview.total_size)})`}
+          {loading ? "Loading..." : `Show full result (${formatBytes(previewTotalSize)})`}
         </button>
       )}
       <div className="group/code relative rounded-lg overflow-hidden">
@@ -730,7 +747,7 @@ function ToolResultSection({
           className={`text-[11px] font-mono-code whitespace-pre leading-relaxed rounded-lg px-2.5 py-2 ${
             fullContent === null ? "max-h-40" : "max-h-96"
           } overflow-y-auto overflow-x-auto ${
-            preview.is_error ? "bg-cc-error/5 border border-cc-error/20 text-cc-error" : "bg-cc-code-bg text-cc-muted"
+            previewIsError ? "bg-cc-error/5 border border-cc-error/20 text-cc-error" : "bg-cc-code-bg text-cc-muted"
           }`}
         >
           {showExpandButton ? "..." : ""}
