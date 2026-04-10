@@ -1841,6 +1841,22 @@ describe("takode board set --worker auto-clears waitFor", () => {
     expect(capturedBodies).toHaveLength(1);
     expect(capturedBodies[0].waitFor).toBeUndefined();
   });
+
+  it("handles --wait-for with empty string by sending empty array (not [''])", async () => {
+    // Guards against naive .split(",") producing [""] instead of []
+    const result = await runTakode(
+      ["board", "set", "q-1", "--wait-for", "", "--port", String(port)],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual([]);
+  });
 });
 
 describe("takode list reviewer nesting", () => {
