@@ -314,9 +314,9 @@ export function TreeViewGroup({
             </svg>
           </button>
 
-          {/* Workers container -- only when expanded */}
+          {/* Workers container -- only when expanded, with left accent rail */}
           {isExpanded && (
-            <div className="border-t border-cc-border/30">
+            <div className="border-t border-cc-border/30 border-l-[3px] border-l-cc-primary/30 ml-0.5 pl-3">
               {node.workers.map((w) => {
                 const workerReviewers = node.reviewers.filter(
                   (r) => r.reviewerOf === w.sessionNum,
@@ -331,21 +331,6 @@ export function TreeViewGroup({
               {node.reviewers
                 .filter((r) => r.reviewerOf === node.leader.sessionNum)
                 .map((r) => renderSessionItem(r, { compact: true }))}
-
-              {/* Collapse footer */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleHerdNodeExpand(node.leader.id);
-                }}
-                className="w-full flex items-center justify-center gap-1 px-2 py-0.5 text-[10px] text-cc-muted/40 hover:text-cc-muted hover:bg-cc-hover/40 transition-colors cursor-pointer"
-                title="Collapse workers"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0">
-                  <path d="M4 10l4-4 4 4" />
-                </svg>
-                <span>Collapse</span>
-              </button>
             </div>
           )}
         </div>
