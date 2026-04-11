@@ -32,18 +32,24 @@ function findMessageAncestor(node: Node | null): HTMLElement | null {
   return null;
 }
 
-/** Calculate menu position: centered above the selection rect, flipped below if no space. */
+/** Calculate menu position: bottom-aligned above the selection rect so the menu
+ *  doesn't obscure the highlighted text. Falls back to below if no space above. */
 function computeMenuPosition(rect: DOMRect): { x: number; y: number } {
   const MENU_WIDTH_ESTIMATE = 180;
-  const GAP = 8;
+  const MENU_HEIGHT_ESTIMATE = 68; // 2 items ~28px each + 8px padding + 4px border
+  const GAP = 6;
 
   let x = rect.left + rect.width / 2 - MENU_WIDTH_ESTIMATE / 2;
   // Clamp to viewport horizontal bounds
   x = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_ESTIMATE - 8));
 
-  // Prefer above the selection; flip below if not enough space
-  let y = rect.top - GAP;
-  if (y < 40) {
+  // Place the menu's bottom edge above the selection top, so the selection stays visible.
+  // If there isn't enough room above, flip to below the selection.
+  const aboveY = rect.top - GAP - MENU_HEIGHT_ESTIMATE;
+  let y: number;
+  if (aboveY >= 4) {
+    y = aboveY;
+  } else {
     y = rect.bottom + GAP;
   }
 
@@ -78,11 +84,14 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     });
   }, []);
 
+  // Capture the element on every render so the effect re-runs when it transitions
+  // from null (e.g. during a loading state) to a real DOM node.
+  const container = containerRef.current;
+
   useEffect(() => {
     // Skip on touch-only devices -- mobile has native selection UI
     if (!window.matchMedia("(pointer: fine)").matches) return;
 
-    const container = containerRef.current;
     if (!container) return;
 
     function evaluateSelection() {
@@ -101,7 +110,7 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
         return;
       }
 
-      // Must be within our container (container is non-null here: guarded at effect entry)
+      // Must be within our container (non-null: effect only registers when container exists)
       if (!container!.contains(anchorMsg)) {
         setState(EMPTY_STATE);
         return;
@@ -172,7 +181,7 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       container.removeEventListener("scroll", handleScroll);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [containerRef]);
+  }, [container]);
 
   return { ...state, clear };
 }
