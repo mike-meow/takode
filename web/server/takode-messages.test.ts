@@ -605,4 +605,18 @@ describe("buildReadResponse", () => {
     expect(result.content).not.toContain("[Tool: Agent]");
     expect(result.content).not.toContain("agentId:");
   });
+
+  it("returns tool_result_preview content when reading a preview message directly", () => {
+    // tool_result_preview messages are not peekable (filtered from peek/scan),
+    // but they are accessible via read by index and should show actual content
+    const history: BrowserIncomingMessage[] = [
+      userMsg("Question", 1000),
+      assistantMsg("Working on it", 2000),
+      toolResultPreview("tu-1", "file contents here"),
+    ];
+
+    const result = buildReadResponse(history, 2)!;
+    expect(result.type).toBe("tool_result_preview");
+    expect(result.content).toContain("[Tool Result] file contents here");
+  });
 });
