@@ -1443,18 +1443,21 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (info.backendType === "codex") return c.json({ error: "Force compact not supported for Codex" }, 400);
 
     // Queue /compact to be sent as first message after relaunch.
-    // The CLI in SDK mode doesn't intercept slash commands from user messages,
-    // so we kill and relaunch with --resume. On a fresh connection, /compact
-    // as the first user message will fit in the context and trigger compaction.
+    // SDK sessions flush pendingMessages through adapter.sendBrowserMessage()
+    // (browser format), WebSocket sessions flush through sendToCLI() (NDJSON).
     const session = wsBridge.getOrCreateSession(id);
-    session.pendingMessages.push(
-      JSON.stringify({
-        type: "user",
-        message: { role: "user", content: "/compact" },
-        parent_tool_use_id: null,
-        session_id: info.cliSessionId,
-      }),
-    );
+    if (info.backendType === "claude-sdk") {
+      session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
+    } else {
+      session.pendingMessages.push(
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "/compact" },
+          parent_tool_use_id: null,
+          session_id: info.cliSessionId,
+        }),
+      );
+    }
 
     // Notify browsers compaction is starting
     wsBridge.broadcastToSession(id, { type: "status_change", status: "compacting" });

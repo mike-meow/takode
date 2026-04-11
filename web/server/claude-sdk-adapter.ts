@@ -573,18 +573,8 @@ export class ClaudeSdkAdapter
         const vscodeSelection = (msg as any).vscodeSelection as VsCodeSelectionMetadata | undefined;
         if (!content && !images?.length) return true;
 
-        // Intercept /compact -- the Claude Agent SDK has no programmatic
-        // compact API (unlike Codex's thread/compact/start), so signal the
-        // bridge to use the kill+relaunch mechanism instead of sending this
-        // as a regular user message that the CLI would treat as a prompt.
-        if (
-          typeof content === "string" &&
-          content.trim().toLowerCase() === "/compact" &&
-          !images?.length
-        ) {
-          this.compactRequestedCb?.();
-          return true;
-        }
+        // /compact interception is handled by ws-bridge.routeBrowserMessage
+        // before timestamp tagging. The adapter just forwards it to the CLI.
 
         const selectionText = vscodeSelection ? formatVsCodeSelectionPrompt(vscodeSelection) : null;
 

@@ -4339,24 +4339,8 @@ export class WsBridge {
       }
     });
 
-    adapter.onCompactRequested(() => {
-      console.log(
-        `[ws-bridge] /compact intercepted for SDK session ${sessionTag(sessionId)}, triggering force-compact`,
-      );
-      const cliSessionId = this.launcher?.getSession(sessionId)?.cliSessionId || "";
-      session.pendingMessages.push(
-        JSON.stringify({
-          type: "user",
-          message: { role: "user", content: "/compact" },
-          parent_tool_use_id: null,
-          session_id: cliSessionId,
-        }),
-      );
-      this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
-      if (this.onCLIRelaunchNeeded) {
-        this.onCLIRelaunchNeeded(sessionId);
-      }
-    });
+    // /compact interception moved to routeBrowserMessage (before timestamp
+    // tagging). The adapter.onCompactRequested callback is no longer fired.
 
     adapter.onInitError((error) => {
       console.error(`[ws-bridge] Claude SDK adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
@@ -7081,6 +7065,21 @@ export class WsBridge {
       return;
     }
 
+    // Intercept /compact BEFORE timestamp tagging or adapter dispatch.
+    // Both the SDK adapter's exact-match check and the CLI's internal /compact
+    // handler break when the message is prefixed with a timestamp tag like
+    // "[User 7:41 PM] /compact". Handle it here for all backend types.
+    if (
+      msg.type === "user_message" &&
+      typeof msg.content === "string" &&
+      msg.content.trim().toLowerCase() === "/compact" &&
+      !msg.images?.length &&
+      session.backendType !== "codex"
+    ) {
+      this.handleForceCompact(session);
+      return;
+    }
+
     // For Codex/Claude SDK sessions, route CLI-bound messages through the adapter,
     // while ws-bridge still owns cross-cutting session state/history/permissions.
     if (session.backendType === "codex" || session.backendType === "claude-sdk") {
@@ -7966,6 +7965,53 @@ export class WsBridge {
     // Trigger auto-naming evaluation (async, fire-and-forget)
     if (this.onUserMessage) {
       this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, ingested.wasGenerating);
+    }
+  }
+
+  /** Intercept /compact from the browser and trigger a kill+relaunch cycle.
+   *  The CLI doesn't expose a programmatic compact API, so we relaunch with
+   *  --resume and queue /compact as the first user message on the fresh process.
+   *  This must run BEFORE timestamp tagging -- the tag prefix breaks both the
+   *  SDK adapter's exact-match check and the CLI's internal /compact handler. */
+  private handleForceCompact(session: Session) {
+    const sessionId = session.id;
+    console.log(`[ws-bridge] /compact intercepted for session ${sessionTag(sessionId)}, triggering force-compact`);
+
+    // Record /compact in message history so it appears in the chat UI.
+    const ts = Date.now();
+    const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
+      type: "user_message",
+      content: "/compact",
+      timestamp: ts,
+      id: `user-${ts}-${this.userMsgCounter++}`,
+    };
+    session.messageHistory.push(userHistoryEntry);
+    session.lastUserMessage = "/compact";
+    this.launcher?.touchUserMessage(session.id);
+    this.broadcastToBrowsers(session, userHistoryEntry);
+
+    // Queue /compact for the relaunched CLI process.
+    // SDK sessions flush pendingMessages through adapter.sendBrowserMessage()
+    // which expects browser-format messages (type: "user_message").
+    // WebSocket sessions flush through sendToCLI() which expects NDJSON
+    // (type: "user"). Use the correct format for each backend type.
+    if (session.backendType === "claude-sdk") {
+      session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
+    } else {
+      const cliSessionId = this.launcher?.getSession(sessionId)?.cliSessionId || "";
+      session.pendingMessages.push(
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "/compact" },
+          parent_tool_use_id: null,
+          session_id: cliSessionId,
+        }),
+      );
+    }
+
+    this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
+    if (this.onCLIRelaunchNeeded) {
+      this.onCLIRelaunchNeeded(sessionId);
     }
   }
 

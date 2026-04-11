@@ -14077,11 +14077,11 @@ describe("SDK disconnect auto-relaunch", () => {
     expect(session.state.backend_type).toBe("claude-sdk");
   });
 
-  it("queues /compact and requests relaunch when SDK adapter emits compact_requested", () => {
-    // When the SDK adapter intercepts a /compact user message, it fires the
-    // onCompactRequested callback. The bridge should queue /compact as a
-    // pending message (so it's the first thing sent after relaunch), broadcast
-    // "compacting" status to browsers, and trigger a relaunch.
+  it("queues /compact and requests relaunch when browser sends /compact user_message", () => {
+    // /compact interception moved from the SDK adapter to routeBrowserMessage
+    // (before timestamp tagging). Sending a user_message with content "/compact"
+    // should queue it as a pending message, broadcast "compacting" status, and
+    // trigger a relaunch — without the message reaching the adapter.
     const sid = "s-compact";
     const relaunchCb = vi.fn();
     bridge.onCLIRelaunchNeededCallback(relaunchCb);
@@ -14098,7 +14098,11 @@ describe("SDK disconnect auto-relaunch", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
 
-    adapter.emitCompactRequested();
+    // Send /compact as a browser user message
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "/compact",
+    }));
 
     // Should have triggered relaunch
     expect(relaunchCb).toHaveBeenCalledWith(sid);
@@ -14109,15 +14113,59 @@ describe("SDK disconnect auto-relaunch", () => {
       expect.objectContaining({ type: "status_change", status: "compacting" }),
     );
 
-    // Should have queued /compact as a pending message for the relaunched CLI
+    // Should have recorded the /compact in message history
     const session = bridge.getSession(sid)!;
+    const userMsg = session.messageHistory.find(
+      (m) => m.type === "user_message" && (m as any).content === "/compact",
+    );
+    expect(userMsg).toBeTruthy();
+
+    // Should have queued /compact in browser format for the SDK adapter flush
+    expect(session.pendingMessages.length).toBe(1);
+    const queued = JSON.parse(session.pendingMessages[0]);
+    expect(queued).toEqual({ type: "user_message", content: "/compact" });
+  });
+
+  it("queues /compact in NDJSON format for WebSocket sessions", () => {
+    // WebSocket (plain Claude) sessions flush pendingMessages through
+    // sendToCLI() which expects NDJSON format (type: "user").
+    const sid = "s-compact-ws";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ cliSessionId: "cli-sess-456" })),
+    } as any);
+
+    // Create session with default backendType (claude = WebSocket)
+    const session = bridge.getOrCreateSession(sid);
+    expect(session.backendType).toBe("claude");
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "/compact",
+    }));
+
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(
+      expect.objectContaining({ type: "status_change", status: "compacting" }),
+    );
+
+    // WebSocket sessions queue NDJSON format for sendToCLI flush
     expect(session.pendingMessages.length).toBe(1);
     const queued = JSON.parse(session.pendingMessages[0]);
     expect(queued).toEqual({
       type: "user",
       message: { role: "user", content: "/compact" },
       parent_tool_use_id: null,
-      session_id: "cli-sess-123",
+      session_id: "cli-sess-456",
     });
   });
 });
