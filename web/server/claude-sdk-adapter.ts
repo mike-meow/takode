@@ -111,22 +111,6 @@ export class ClaudeSdkAdapter
     return this.dispatchOutgoing(msg);
   }
 
-  /**
-   * Send /compact directly to the SDK session, bypassing the normal
-   * /compact interception in dispatchOutgoing (which triggers a relaunch).
-   * Used by the bridge for auto-compact on relaunch. (q-181)
-   */
-  sendCompactCommand(): void {
-    if (!this.connected || !this.sdkSession) {
-      console.warn(`[claude-sdk-adapter] Cannot send /compact — session ${this.sessionId} not connected`);
-      return;
-    }
-    console.log(`[claude-sdk-adapter] Sending /compact to session ${this.sessionId}`);
-    this.sdkSession.send("/compact").catch((err: Error) => {
-      console.error(`[claude-sdk-adapter] /compact send failed for session ${this.sessionId}:`, err);
-    });
-  }
-
   onBrowserMessage(cb: (msg: BrowserIncomingMessage) => void): void {
     this.browserMessageCb = cb;
   }
