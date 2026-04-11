@@ -3977,8 +3977,7 @@ export class WsBridge {
     // unstable_v2_resumeSession which replays history. Using messageHistory
     // length alone would false-positive when an adapter is replaced during
     // normal operation (e.g., adapter failure + relaunch mid-conversation).
-    const isResuming = !!launcherInfo?.cliSessionId && session.messageHistory.length > 0;
-    if (isResuming) {
+    if (!!launcherInfo?.cliSessionId && session.messageHistory.length > 0) {
       if (session.cliResumingClearTimer) {
         clearTimeout(session.cliResumingClearTimer);
         session.cliResumingClearTimer = null;
@@ -3991,7 +3990,7 @@ export class WsBridge {
     // When resuming, defer the flush until replay is done (cliResuming cleared
     // by debounced timer in onBrowserMessage below) — the CLI silently drops
     // messages received mid-replay, same as the WS path (q-209).
-    if (!isResuming && session.pendingMessages.length > 0) {
+    if (!session.cliResuming && session.pendingMessages.length > 0) {
       console.log(
         `[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on SDK adapter attach for session ${sessionTag(sessionId)}`,
       );
@@ -4000,15 +3999,15 @@ export class WsBridge {
         try {
           const msg = JSON.parse(raw) as BrowserOutgoingMessage;
           adapter.sendBrowserMessage(msg);
-        } catch {
-          // Corrupt queued message — skip
+        } catch (e) {
+          console.warn(`[ws-bridge] Skipping corrupt queued message for session ${sessionTag(sessionId)}: ${raw.substring(0, 80)}`);
         }
       }
     }
 
     // Flush pending herd events now that isSessionIdle() can return true.
     // Defer when resuming — the debounced timer handles this.
-    if (!isResuming && this.herdEventDispatcher) {
+    if (!session.cliResuming && this.herdEventDispatcher) {
       const orchInfo = this.launcher?.getSession(session.id);
       if (orchInfo?.isOrchestrator) {
         this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
@@ -4031,7 +4030,9 @@ export class WsBridge {
           console.log(
             `[ws-bridge] cliResuming cleared for SDK session ${sessionTag(session.id)} — replay done`,
           );
-          // Reset stale compaction state now that replay is truly done.
+          // Replayed status_change:"compacting" may have set this true during
+          // replay. Reset it now — otherwise the browser shows a permanent
+          // compaction indicator after replay ends.
           session.state.is_compacting = false;
           // Flush messages deferred during replay.
           if (session.pendingMessages.length > 0) {
@@ -4044,7 +4045,7 @@ export class WsBridge {
                 const deferredMsg = JSON.parse(raw) as BrowserOutgoingMessage;
                 adapter.sendBrowserMessage(deferredMsg);
               } catch {
-                /* skip corrupt */
+                console.warn(`[ws-bridge] Skipping corrupt deferred message for session ${sessionTag(session.id)}: ${raw.substring(0, 80)}`);
               }
             }
           }
@@ -4245,14 +4246,9 @@ export class WsBridge {
           this.injectLeaderCompactionRecovery(session);
         }
         this.persistSession(session);
-        // Suppress stale status_change broadcasts during resume replay (q-220).
-        // The browser already has the correct state from state_snapshot; letting
-        // replayed status:"running" through would override it and stick forever.
-        // Compaction state above is still updated — only the browser broadcast
-        // is suppressed.
+        // Suppress stale status broadcasts during --resume replay (q-220);
+        // compaction state above is still tracked.
         if (session.cliResuming) return;
-        // Fall through to broadcastToBrowsers — the browser uses status_change
-        // to update the session status indicator.
       }
 
       // Intercept compact_boundary from SDK adapter — the adapter forwards the

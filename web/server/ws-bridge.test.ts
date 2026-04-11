@@ -16942,4 +16942,70 @@ describe("SDK resume stall: cliResuming guards (q-220)", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  it("resets is_compacting to false when debounce fires after replay", () => {
+    vi.useFakeTimers();
+
+    createResumedSdkSession("s1");
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    const session = bridge.getSession("s1")!;
+
+    // Replay a compacting status — the flag gets set during replay
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    expect(session.state.is_compacting).toBe(true);
+
+    // After the debounce fires, stale compaction state must be reset.
+    // A replayed "compacting" from a completed historical turn shouldn't
+    // leave the session permanently showing a compaction indicator.
+    vi.advanceTimersByTime(2100);
+    expect(session.cliResuming).toBe(false);
+    expect(session.state.is_compacting).toBe(false);
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("defers herd event flush during resume and fires after debounce", () => {
+    vi.useFakeTimers();
+
+    createResumedSdkSession("s1");
+    const session = bridge.getSession("s1")!;
+
+    // Set up a mock herd event dispatcher
+    const mockDispatcher = { onOrchestratorTurnEnd: vi.fn() } as any;
+    bridge.setHerdEventDispatcher(mockDispatcher);
+
+    // Override the launcher to also report isOrchestrator
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({
+        sessionId: "s1",
+        state: "connected",
+        backendType: "claude-sdk",
+        cliSessionId: "cli-session-for-resume",
+        isOrchestrator: true,
+      })),
+      setCLISessionId: vi.fn(),
+    } as any);
+
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    // Herd events should NOT have been flushed on attach (deferred)
+    expect(mockDispatcher.onOrchestratorTurnEnd).not.toHaveBeenCalled();
+
+    // Trigger the debounce via a replayed message
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+    vi.advanceTimersByTime(2100);
+
+    // After debounce clears cliResuming, herd events should be flushed
+    expect(session.cliResuming).toBe(false);
+    expect(mockDispatcher.onOrchestratorTurnEnd).toHaveBeenCalledWith("s1");
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
 });
