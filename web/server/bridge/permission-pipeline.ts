@@ -233,23 +233,16 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
   };
 
   // Tier 2: Settings.json rule matching — fast static check against user allow rules.
-  // For SDK sessions, the CLI's built-in rule engine is bypassed by --permission-prompt-tool
-  // stdio. For Codex sessions, there is no CLI-side rule engine at all.
-  // WebSocket sessions already have CLI-side checking so they skip this tier.
-  // Also skip tools that can never be auto-approved (they'd just return null anyway).
+  // Enabled for all backends. SDK sessions bypass the CLI's built-in rule engine
+  // (--permission-prompt-tool stdio), Codex has no CLI-side engine, and WebSocket
+  // sessions may forward requests the CLI couldn't approve (e.g. Bash commands
+  // not matching the CLI's narrower rule set, or requests during plan mode).
+  // Skip tools that can never be auto-approved (they'd just return null anyway).
   const settingsRuleEnabled =
     options.enableSettingsRuleApprove !== false &&
-    (_backend === "claude-sdk" || _backend === "codex") &&
     !NEVER_AUTO_APPROVE.has(toolName);
-  // DEBUG — remove after confirming settings rule matcher is being called
-  console.log(
-    `[permission-pipeline] Tier 2 check: backend=${_backend}, settingsRuleEnabled=${settingsRuleEnabled}, tool=${toolName}, session=${session.id.slice(0, 8)}`,
-  );
   if (settingsRuleEnabled) {
     return shouldSettingsRuleApprove(toolName, input, session.state.cwd).then((matchedRule) => {
-      console.log(
-        `[permission-pipeline] Settings rule result: ${matchedRule ?? "NO MATCH"} for ${toolName}(${toolName === "Bash" ? String(input.command ?? "").slice(0, 80) : String(input.file_path ?? "").slice(0, 80)})`,
-      );
       if (matchedRule) {
         return { kind: "settings_rule_approved" as const, request: perm, matchedRule };
       }

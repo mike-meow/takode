@@ -6031,6 +6031,25 @@ export class WsBridge {
           },
         });
         this.sendToCLI(session, ndjson);
+
+        // Broadcast approval to browsers for UI consistency (parity with SDK path)
+        const approvedMsg: BrowserIncomingMessage = {
+          type: "permission_approved",
+          id: `approval-${result.request.request_id}`,
+          request_id: result.request.request_id,
+          tool_name: result.request.tool_name,
+          tool_use_id: result.request.tool_use_id,
+          summary: getApprovalSummary(result.request.tool_name, result.request.input),
+          timestamp: Date.now(),
+        };
+        session.messageHistory.push(approvedMsg);
+        this.broadcastToBrowsers(session, approvedMsg);
+
+        if (result.request.tool_name === "EnterPlanMode") {
+          this.handleSetPermissionMode(session, "plan");
+        }
+
+        this.persistSession(session);
         return;
       }
 

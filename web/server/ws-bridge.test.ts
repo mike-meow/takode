@@ -2,8 +2,18 @@ import { vi } from "vitest";
 
 const mockExecSync = vi.hoisted(() => vi.fn());
 const mockExec = vi.hoisted(() => vi.fn());
+const mockShouldSettingsRuleApprove = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 vi.mock("node:child_process", () => ({ execSync: mockExecSync, exec: mockExec }));
 vi.mock("node:crypto", () => ({ randomUUID: () => "test-uuid" }));
+// Mock settings rule loading so real user ~/.claude/settings.json rules don't
+// interfere with tests. Tests that need specific rules override this per-call.
+vi.mock("./bridge/settings-rule-matcher.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./bridge/settings-rule-matcher.js")>();
+  return {
+    ...original,
+    shouldSettingsRuleApprove: mockShouldSettingsRuleApprove,
+  };
+});
 
 import { WsBridge, type SocketData } from "./ws-bridge.js";
 import { SessionStore } from "./session-store.js";
@@ -212,6 +222,7 @@ beforeEach(() => {
   bridge.resetTrafficStats();
   mockExecSync.mockReset();
   mockExec.mockReset();
+  mockShouldSettingsRuleApprove.mockReset().mockResolvedValue(null);
   // Default: mockExec delegates to mockExecSync so tests that set up
   // mockExecSync automatically work for async computeDiffStatsAsync too.
   mockExec.mockImplementation((cmd: string, opts: any, cb?: Function) => {
@@ -3402,6 +3413,101 @@ describe("CLI message routing", () => {
     const session = bridge.getSession("s1")!;
     expect(session.pendingPermissions.size).toBe(1);
     expect(session.attentionReason).toBeNull();
+  });
+
+  it("control_request (can_use_tool): Tier 1 mode auto-approves Write in acceptEdits and broadcasts permission_approved", async () => {
+    const session = bridge.getSession("s1")!;
+    session.state.permissionMode = "acceptEdits";
+    browser.send.mockClear();
+
+    const msg = JSON.stringify({
+      type: "control_request",
+      request_id: "req-mode-auto",
+      request: {
+        subtype: "can_use_tool",
+        tool_name: "Write",
+        input: { file_path: "/tmp/test.txt", content: "hello" },
+        description: "Write a file",
+        tool_use_id: "tu-mode-auto",
+      },
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+    await new Promise((r) => setTimeout(r, 0)); // flush async handleControlRequest
+
+    // Should NOT be added to pending (auto-approved)
+    expect(session.pendingPermissions.has("req-mode-auto")).toBe(false);
+
+    // CLI should receive control_response with allow
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const controlResp = cliCalls.find(
+      (c: any) => c.type === "control_response" && c.response?.request_id === "req-mode-auto",
+    );
+    expect(controlResp).toBeDefined();
+    expect(controlResp.response.response.behavior).toBe("allow");
+
+    // Browser should receive permission_approved (not just permission_request)
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const approvedMsg = browserCalls.find(
+      (c: any) => c.type === "permission_approved" && c.request_id === "req-mode-auto",
+    );
+    expect(approvedMsg).toBeDefined();
+    expect(approvedMsg.tool_name).toBe("Write");
+    expect(approvedMsg.tool_use_id).toBe("tu-mode-auto");
+
+    // Should be in message history
+    const historyEntry = session.messageHistory.find(
+      (m: any) => m.type === "permission_approved" && m.request_id === "req-mode-auto",
+    );
+    expect(historyEntry).toBeDefined();
+  });
+
+  it("control_request (can_use_tool): Tier 2 settings rule auto-approves Bash mkdir for WS sessions", async () => {
+    const session = bridge.getSession("s1")!;
+    // Plan mode: Tier 1 won't fire for Bash, but Tier 2 should match settings rule
+    session.state.permissionMode = "plan";
+
+    // Mock settings rule matcher to approve mkdir commands
+    mockShouldSettingsRuleApprove.mockResolvedValueOnce("Bash(mkdir *)");
+
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    const msg = JSON.stringify({
+      type: "control_request",
+      request_id: "req-settings-rule",
+      request: {
+        subtype: "can_use_tool",
+        tool_name: "Bash",
+        input: { command: "mkdir -p /tmp/test-dir" },
+        description: "Create directory",
+        tool_use_id: "tu-settings-rule",
+      },
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+    // Tier 2 is async (settings rule check returns a promise), so flush promises
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Should NOT be added to pending (auto-approved via settings rule)
+    expect(session.pendingPermissions.has("req-settings-rule")).toBe(false);
+
+    // CLI should receive control_response with allow
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const controlResp = cliCalls.find(
+      (c: any) => c.type === "control_response" && c.response?.request_id === "req-settings-rule",
+    );
+    expect(controlResp).toBeDefined();
+    expect(controlResp.response.response.behavior).toBe("allow");
+
+    // Browser should receive permission_approved
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const approvedMsg = browserCalls.find(
+      (c: any) => c.type === "permission_approved" && c.request_id === "req-settings-rule",
+    );
+    expect(approvedMsg).toBeDefined();
+    expect(approvedMsg.tool_name).toBe("Bash");
   });
 
   it("tool_progress: broadcasts", () => {
