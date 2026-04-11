@@ -9610,7 +9610,7 @@ export class WsBridge {
    *  For AskUserQuestion: first question text. For ExitPlanMode: truncated plan. */
   private buildPermissionPreview(
     perm: PermissionRequest,
-  ): Pick<TakodePermissionRequestEventData, "question" | "options" | "planPreview"> {
+  ): Pick<TakodePermissionRequestEventData, "question" | "options" | "planPreview" | "planContent"> {
     if (perm.tool_name === "AskUserQuestion") {
       const questions = perm.input.questions as
         | Array<{ question: string; options?: Array<{ label: string }> }>
@@ -9624,8 +9624,12 @@ export class WsBridge {
       }
     }
     if (perm.tool_name === "ExitPlanMode") {
-      const plan = typeof perm.input.plan === "string" ? perm.input.plan.slice(0, 200) : undefined;
-      return plan ? { planPreview: plan } : {};
+      const plan = typeof perm.input.plan === "string" ? perm.input.plan : undefined;
+      if (!plan) return {};
+      return {
+        planPreview: plan.slice(0, 200),
+        planContent: plan,
+      };
     }
     return {};
   }

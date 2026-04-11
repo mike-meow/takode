@@ -893,6 +893,8 @@ export interface TakodePermissionRequestEventData {
   question?: string;
   options?: string[];
   planPreview?: string;
+  /** Full plan text for ExitPlanMode -- included in herd events so leaders can review inline. */
+  planContent?: string;
   /** Who triggered the turn containing this permission request. */
   turn_source?: "user" | "leader" | "system" | "unknown";
   /** Index of the last assistant message in messageHistory when the permission was emitted. */

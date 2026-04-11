@@ -558,7 +558,12 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       const userInitiated = evt.data.turn_source === "user" ? " (user-initiated)" : "";
       // Include message index so the leader can run `takode read <session> <msg_index>`
       const msgRef = typeof evt.data.msg_index === "number" ? ` | msg [${evt.data.msg_index}]` : "";
-      return `${label} | permission_request${userInitiated} | ${tool}${summary}${msgRef}${ageSuffix}`;
+      const header = `${label} | permission_request${userInitiated} | ${tool}${summary}${msgRef}${ageSuffix}`;
+      // Include full plan content so leaders can review inline without extra tool calls
+      if (typeof evt.data.planContent === "string" && evt.data.planContent.length > 0) {
+        return `${header}\n\n<plan>\n${evt.data.planContent}\n</plan>`;
+      }
+      return header;
     }
     case "session_error": {
       const error = typeof evt.data.error === "string" ? truncate(evt.data.error, 80) : "unknown error";

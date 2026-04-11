@@ -646,6 +646,41 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("msg [42]");
   });
 
+  it("includes full plan content inline for ExitPlanMode permission_request", () => {
+    // When a worker submits a plan via ExitPlanMode, the herd event should
+    // include the full plan text so the leader can review without extra tool calls.
+    const planText = "## Plan\n\n1. Add feature X\n2. Update tests";
+    const events = [
+      makeEvent({
+        event: "permission_request",
+        data: {
+          tool_name: "ExitPlanMode",
+          summary: "ExitPlanMode",
+          msg_index: 10,
+          planContent: planText,
+        },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("ExitPlanMode");
+    expect(result).toContain("<plan>");
+    expect(result).toContain(planText);
+    expect(result).toContain("</plan>");
+  });
+
+  it("omits plan block when planContent is not present in permission_request", () => {
+    // Regular permission requests (non-ExitPlanMode) should not have plan blocks.
+    const events = [
+      makeEvent({
+        event: "permission_request",
+        data: { tool_name: "Bash", summary: "git status" },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).not.toContain("<plan>");
+    expect(result).not.toContain("</plan>");
+  });
+
   it("formats user-initiated permission_request with (user-initiated) annotation", () => {
     const events = [
       makeEvent({
