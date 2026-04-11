@@ -87,8 +87,6 @@ export class ClaudeSdkAdapter
   private compactRequestedCb: (() => void) | null = null;
   private pendingPermissions = new Map<string, PendingPermission>();
   private pendingOutgoing: BrowserOutgoingMessage[] = [];
-  /** When true, send /compact after the first system.init to prevent context overflow. (q-181) */
-  private autoCompactOnInit = false;
   /** Cached MCP servers from the last session_init, used to respond to mcp_get_status. */
   private cachedMcpServers: Array<{ name: string; status: string }> = [];
 
@@ -114,14 +112,19 @@ export class ClaudeSdkAdapter
   }
 
   /**
-   * Request auto-compaction after the first system.init. The adapter will
-   * send /compact directly to the SDK session once initialized, bypassing
-   * the normal /compact interception in dispatchOutgoing (which triggers
-   * a relaunch loop). Used by the bridge when context is near-full on
-   * relaunch. (q-181)
+   * Send /compact directly to the SDK session, bypassing the normal
+   * /compact interception in dispatchOutgoing (which triggers a relaunch).
+   * Used by the bridge for auto-compact on relaunch. (q-181)
    */
-  requestAutoCompactOnInit(): void {
-    this.autoCompactOnInit = true;
+  sendCompactCommand(): void {
+    if (!this.connected || !this.sdkSession) {
+      console.warn(`[claude-sdk-adapter] Cannot send /compact — session ${this.sessionId} not connected`);
+      return;
+    }
+    console.log(`[claude-sdk-adapter] Sending /compact to session ${this.sessionId}`);
+    this.sdkSession.send("/compact").catch((err: Error) => {
+      console.error(`[claude-sdk-adapter] /compact send failed for session ${this.sessionId}:`, err);
+    });
   }
 
   onBrowserMessage(cb: (msg: BrowserIncomingMessage) => void): void {
@@ -432,17 +435,6 @@ export class ClaudeSdkAdapter
               skills: msg.skills || [],
             },
           } as any);
-
-          // Auto-compact after init when context was near-full on relaunch.
-          // Sends /compact directly, bypassing the normal interception in
-          // dispatchOutgoing (which would trigger another relaunch). (q-181)
-          if (this.autoCompactOnInit) {
-            this.autoCompactOnInit = false;
-            console.log(`[claude-sdk-adapter] Auto-compacting session ${this.sessionId} after init`);
-            this.sdkSession?.send("/compact").catch((err: Error) => {
-              console.error(`[claude-sdk-adapter] Auto-compact failed for session ${this.sessionId}:`, err);
-            });
-          }
         } else if (msg.subtype === "status") {
           this.emitBrowserMessage({
             type: "status_change",

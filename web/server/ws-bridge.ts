@@ -301,7 +301,7 @@ type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta> &
   Partial<{ refreshSkills: (forceReload?: boolean) => Promise<string[]> }>;
 type ClaudeSdkBridgeAdapter = BackendAdapter<ClaudeSdkSessionMeta> &
   CompactRequestedAwareAdapter &
-  Partial<{ requestAutoCompactOnInit: () => void }>;
+  Partial<{ sendCompactCommand: () => void }>;
 
 interface Session {
   id: string;
@@ -340,6 +340,8 @@ interface Session {
   pendingQuestCommands: Map<string, { questId: string; targetStatus?: QuestLifecycleStatus }>;
   /** Set after compact_boundary; the next user text message is the summary */
   awaitingCompactSummary?: boolean;
+  /** Set when the SDK adapter should auto-compact after first system.init (q-181) */
+  sdkAutoCompactOnInit?: boolean;
   /** Accumulates content blocks for assistant messages with the same ID (parallel tool calls) */
   assistantAccumulator: Map<string, { contentBlockIds: Set<string> }>;
   /** Wall-clock start times for tool calls (tool_use_id → Date.now()). Transient, not persisted. */
@@ -3959,9 +3961,13 @@ export class WsBridge {
     // After server restart, resumed SDK sessions rebuild the full conversation
     // history from disk. For heavy sessions (e.g., leaders with 4000+ messages),
     // the context can exceed the model's window within a few turns, causing the
-    // model to silently drop tool_use blocks (text-only responses). Requesting
-    // auto-compact tells the adapter to send /compact after its first system.init,
-    // compacting the context before the user's next message arrives. (q-181)
+    // model to silently drop tool_use blocks (text-only responses). Injecting
+    // /compact as the first message on relaunch compacts the context before the
+    // user's next message arrives, preventing this degradation. (q-181)
+    //
+    // We set a flag so the adapter can send /compact directly to the SDK session
+    // after initialization, bypassing the normal /compact interception (which
+    // triggers another relaunch, creating an infinite loop).
     const AUTO_COMPACT_THRESHOLD_PCT = 70;
     const cliSessionId = this.launcher?.getSession(sessionId)?.cliSessionId;
     if (
@@ -3973,7 +3979,7 @@ export class WsBridge {
         `[ws-bridge] Auto-compacting SDK session ${sessionTag(sessionId)} on relaunch ` +
           `(context ${session.state.context_used_percent}% >= ${AUTO_COMPACT_THRESHOLD_PCT}% threshold)`,
       );
-      adapter.requestAutoCompactOnInit?.();
+      session.sdkAutoCompactOnInit = true;
       this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
     }
 
@@ -4098,6 +4104,18 @@ export class WsBridge {
           if (launcherInfo?.isOrchestrator) {
             this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
           }
+        }
+
+        // Auto-compact: if the session was flagged for compaction during relaunch
+        // (context_used_percent exceeded threshold), send /compact directly to the
+        // SDK session now that it's initialized. This bypasses the normal /compact
+        // interception path (which would trigger another relaunch loop). (q-181)
+        if (session.sdkAutoCompactOnInit) {
+          session.sdkAutoCompactOnInit = false;
+          console.log(
+            `[ws-bridge] Sending /compact to SDK session ${sessionTag(sessionId)} after init (auto-compact on relaunch)`,
+          );
+          adapter.sendCompactCommand?.();
         }
       }
 
@@ -5787,7 +5805,7 @@ export class WsBridge {
     // generation failures (model silently drops tool calls near context limit).
     if (nextContextPct >= 90 && (session.state.context_used_percent ?? 0) < 90) {
       console.warn(
-        `[ws-bridge] ⚠ Context usage ${nextContextPct}% for session ${sessionTag(session.id)} -- ` +
+        `[ws-bridge] ⚠ Context usage ${nextContextPct}% for session ${sessionTag(session.id)} — ` +
           `tool_use generation may degrade. Consider /compact.`,
       );
     }
