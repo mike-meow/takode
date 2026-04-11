@@ -301,15 +301,17 @@ export function TreeViewGroup({
             className="w-full flex items-center gap-1.5 px-3 py-1 border-t border-cc-border/30 text-[10px] text-cc-muted hover:bg-cc-hover/50 transition-colors cursor-pointer"
             title={isExpanded ? "Collapse workers" : "Expand workers"}
           >
-            <StatusCountDots counts={workerSummary!} />
-            {idleCount > 0 && (
-              <span className="flex items-center gap-0.5 text-cc-muted/50">
-                {idleCount}
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-muted/30" />
-              </span>
-            )}
-            <span className="ml-auto text-cc-muted/50 shrink-0">
+            <span className="text-cc-muted/50 shrink-0">
               {node.workers.length} worker{node.workers.length !== 1 ? "s" : ""}
+            </span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <StatusCountDots counts={workerSummary!} />
+              {idleCount > 0 && (
+                <span className="flex items-center gap-0.5 text-cc-muted/50">
+                  {idleCount}
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-cc-muted/30" />
+                </span>
+              )}
             </span>
             <svg
               viewBox="0 0 16 16"
