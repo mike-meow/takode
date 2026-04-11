@@ -14332,6 +14332,29 @@ describe("CLI slash command interception", () => {
       expect.objectContaining({ type: "user_message", content: "/context" }),
     );
   });
+
+  it("queues to pendingMessages when SDK adapter rejects the message", () => {
+    const sid = "s-slash-queue";
+    const adapter = makeClaudeSdkAdapterMock();
+    adapter.sendBrowserMessage.mockReturnValue(false);
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const session = bridge.getSession(sid)!;
+    session.state.slash_commands = ["context"];
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({
+      type: "user_message",
+      content: "/context",
+    }));
+
+    // Should have queued the message for later flush
+    expect(session.pendingMessages.length).toBe(1);
+    const queued = JSON.parse(session.pendingMessages[0]);
+    expect(queued).toEqual({ type: "user_message", content: "/context" });
+  });
 });
 
 describe("cliResuming debounce prevents false compaction events on --resume replay", () => {
