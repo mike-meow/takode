@@ -9607,10 +9607,10 @@ export class WsBridge {
   }
 
   /** Build a preview of a permission request for inclusion in takode events.
-   *  For AskUserQuestion: first question text. For ExitPlanMode: truncated plan. */
+   *  For AskUserQuestion: first question text. For ExitPlanMode: full plan. */
   private buildPermissionPreview(
     perm: PermissionRequest,
-  ): Pick<TakodePermissionRequestEventData, "question" | "options" | "planPreview" | "planContent"> {
+  ): Pick<TakodePermissionRequestEventData, "question" | "options" | "planContent"> {
     if (perm.tool_name === "AskUserQuestion") {
       const questions = perm.input.questions as
         | Array<{ question: string; options?: Array<{ label: string }> }>
@@ -9626,9 +9626,10 @@ export class WsBridge {
     if (perm.tool_name === "ExitPlanMode") {
       const plan = typeof perm.input.plan === "string" ? perm.input.plan : undefined;
       if (!plan) return {};
+      const MAX_PLAN_CONTENT = 10_000;
       return {
-        planPreview: plan.slice(0, 200),
-        planContent: plan,
+        planContent:
+          plan.length > MAX_PLAN_CONTENT ? plan.slice(0, MAX_PLAN_CONTENT) + "\n\n... (plan truncated)" : plan,
       };
     }
     return {};

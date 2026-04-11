@@ -892,7 +892,6 @@ export interface TakodePermissionRequestEventData {
   summary?: string;
   question?: string;
   options?: string[];
-  planPreview?: string;
   /** Full plan text for ExitPlanMode -- included in herd events so leaders can review inline. */
   planContent?: string;
   /** Who triggered the turn containing this permission request. */
