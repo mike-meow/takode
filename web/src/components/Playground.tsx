@@ -3304,14 +3304,14 @@ export function Playground() {
                     worker: "def456",
                     workerNum: 8,
                     status: "QUEUED",
-                    waitFor: ["q-42"],
+                    waitFor: ["#5"],
                     updatedAt: Date.now() - 30000,
                   },
                   {
                     questId: "q-61",
                     title: "Optimize DB queries",
                     status: "QUEUED",
-                    waitFor: ["q-50", "q-51"],
+                    waitFor: ["q-50", "#8"],
                     updatedAt: Date.now(),
                   },
                 ]}
@@ -3352,14 +3352,14 @@ export function Playground() {
                         worker: "def456",
                         workerNum: 8,
                         status: "SKEPTIC_REVIEWING",
-                        waitFor: ["q-42"],
+                        waitFor: ["#5"],
                         updatedAt: Date.now() - 30000,
                       },
                       {
                         questId: "q-61",
                         title: "Optimize DB queries",
                         status: "PORTING",
-                        waitFor: ["q-50", "q-51"],
+                        waitFor: ["q-50", "#8"],
                         updatedAt: Date.now(),
                       },
                     ];

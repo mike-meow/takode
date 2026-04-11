@@ -2019,3 +2019,97 @@ describe("takode list reviewer nesting", () => {
     }
   });
 });
+
+describe("takode board --wait-for validation (q-N and #N formats)", () => {
+  // CLI-side validation: --wait-for accepts q-N (quest) and #N (session) refs,
+  // rejects bare numbers and arbitrary strings.
+
+  let server: ReturnType<typeof createServer>;
+  let port: number;
+  let capturedBodies: JsonObject[];
+
+  beforeAll(async () => {
+    capturedBodies = [];
+    server = createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-1", isOrchestrator: true }));
+        return;
+      }
+      if (req.method === "POST" && req.url?.startsWith("/api/sessions/leader-1/board")) {
+        const body = await readJson(req);
+        capturedBodies.push(body);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ board: [{ questId: body.questId, status: body.status ?? "QUEUED" }] }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  beforeEach(() => {
+    capturedBodies = [];
+  });
+
+  it("accepts --wait-for #5 (session ref)", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--wait-for", "#5", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual(["#5"]);
+  });
+
+  it("accepts --wait-for q-1,#5 (mixed quest + session refs)", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--wait-for", "q-1,#5", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual(["q-1", "#5"]);
+  });
+
+  it.each(["42", "foo", "q-", "#", "#abc", "session-5"])(
+    "rejects invalid --wait-for value: %j",
+    async (badRef) => {
+      const result = await runTakode(["board", "set", "q-1", "--wait-for", badRef, "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Invalid wait-for");
+      expect(result.stderr).toContain("q-N");
+      expect(result.stderr).toContain("#N");
+      // No POST should have been made
+      expect(capturedBodies).toHaveLength(0);
+    },
+  );
+
+  it("rejects when any ref in a comma-separated list is invalid", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--wait-for", "q-2,42,#3", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("42");
+    expect(capturedBodies).toHaveLength(0);
+  });
+});

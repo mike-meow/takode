@@ -424,7 +424,7 @@ export interface BoardRow {
   workerNum?: number;
   /** Quest Journey state -- each state = a leader action that just happened. */
   status?: string;
-  /** Quest IDs this quest is blocked on (dependency or capacity). */
+  /** Quest IDs (q-N) or session numbers (#N) this quest is blocked on. */
   waitFor?: string[];
   /** Epoch ms when this row was first added to the board. Used for stable sort. */
   createdAt: number;

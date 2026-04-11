@@ -60,14 +60,14 @@ Ask: is the new quest related to this worker's recent context (same feature area
 |-----------|--------|
 | Idle worker with relevant context | Reuse -- send dispatch directly |
 | Disconnected worker (✗) with relevant context | Reuse -- send a message to reconnect it |
-| Best worker busy but strongly relevant | Queue with `--wait-for` on the board |
+| Best worker busy but strongly relevant | Queue with `--wait-for #N` (session) or `--wait-for q-N` (quest) on the board |
 | No worker has relevant context | Spawn fresh |
 
 **Disconnected ≠ dead.** Workers showing `✗` (disconnected) in `takode list` are NOT dead -- they auto-reconnect when you send them a message via `takode send`. Always prefer reusing a disconnected worker with relevant context over spawning a fresh session. Only archive a disconnected worker if you're sure its context is no longer useful.
 
 **Reuse** when the next task continues the worker's recent work (same feature, same files, direct follow-up). The worker already has the codebase context loaded.
 
-**Queue** when the best worker is busy but has strong context overlap. Add the quest to the board as QUEUED with `--wait-for <blocking-quest>` and wait for the worker to free up rather than spawning a fresh session that lacks context.
+**Queue** when the best worker is busy but has strong context overlap. Add the quest to the board as QUEUED with `--wait-for #N` (where N is the worker's session number) and wait for the worker to free up rather than spawning a fresh session that lacks context. You can also use `--wait-for q-N` to wait for a specific quest to leave the board.
 
 **Spawn fresh** when no existing worker has relevant context. Point the new worker to relevant quests or past sessions for context:
 

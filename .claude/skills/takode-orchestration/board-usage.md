@@ -8,9 +8,9 @@ The work board (`takode board show`) is your primary coordination tool. It track
 
 Display the board with stages and next-action hints.
 
-### `takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,q-Y]`
+### `takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,#Y]`
 
-Add or update a row. Use `--wait-for` to mark quests this one is blocked on.
+Add or update a row. Use `--wait-for` to mark quests or sessions this one is blocked on.
 
 ### `takode board advance <quest-id>`
 
@@ -30,7 +30,7 @@ Stages follow the Quest Journey lifecycle (see [quest-journey.md](quest-journey.
 - **Always set `--worker N` when adding a quest to the board.** The board must show which session is working on each quest.
 - **Use `takode board advance` for stage transitions**, not `takode board set --status`. `advance` enforces the correct lifecycle order; `set --status` bypasses it.
 - **Board advances only after completed actions.** Do not advance anticipating what will happen next. Only advance after the action for that stage is actually done.
-- **`--wait-for` column**: list of quest IDs this quest is blocked on. When all entries are resolved (no longer on the board), the actual next action shows instead of "blocked".
+- **`--wait-for` column**: list of quest IDs (`q-N`) or session numbers (`#N`) this quest is blocked on. Quest deps resolve when the quest leaves the board. Session deps resolve when the session becomes idle.
 - Rows are auto-removed when a quest transitions to `needs_verification` or `done`.
 - **Always use `takode board` commands.** Never manually render markdown board tables in messages -- the CLI is the source of truth.
 - The board is stored server-side per leader session and persists across server restarts.

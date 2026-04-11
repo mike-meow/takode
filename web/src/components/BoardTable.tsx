@@ -216,6 +216,22 @@ export function WorkerLink({ sessionId, sessionNum }: { sessionId: string; sessi
   );
 }
 
+/** Renders a single wait-for dependency -- QuestLink for q-N, WorkerLink for #N. */
+function WaitForRef({ depRef }: { depRef: string }) {
+  const sdkSessions = useStore((s) => s.sdkSessions);
+
+  if (depRef.startsWith("#")) {
+    const num = parseInt(depRef.slice(1), 10);
+    const session = sdkSessions.find((s) => s.sessionNum === num);
+    if (session) {
+      return <WorkerLink sessionId={session.sessionId} sessionNum={num} />;
+    }
+    // Session not found in store -- render as plain text
+    return <span className="font-mono-code text-cc-muted">{depRef}</span>;
+  }
+  return <QuestLink questId={depRef} />;
+}
+
 /** Shared board table -- renders the rows without any card chrome or collapse logic. */
 export const BoardTable = memo(function BoardTable({ board }: { board: BoardRowData[] }) {
   if (board.length === 0) {
@@ -251,8 +267,8 @@ export const BoardTable = memo(function BoardTable({ board }: { board: BoardRowD
               <td className="px-3 py-1.5 whitespace-nowrap">
                 {row.waitFor && row.waitFor.length > 0 ? (
                   <span className="flex gap-1.5 flex-wrap">
-                    {row.waitFor.map((qId) => (
-                      <QuestLink key={qId} questId={qId} />
+                    {row.waitFor.map((dep) => (
+                      <WaitForRef key={dep} depRef={dep} />
                     ))}
                   </span>
                 ) : (

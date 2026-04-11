@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { access as accessAsync } from "node:fs/promises";
 import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
-import { isValidQuestId } from "../../shared/quest-journey.js";
+import { isValidQuestId, isValidWaitForRef } from "../../shared/quest-journey.js";
 import {
   buildPeekResponse,
   buildPeekDefault,
@@ -735,6 +735,26 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
   // ─── Work Board ──────────────────────────────────────────────────────
 
+  /** Resolve which #N session deps on the board are currently idle. */
+  function resolveSessionDeps(board: import("../session-types.js").BoardRow[]): string[] {
+    const sessionRefs = new Set<string>();
+    for (const row of board) {
+      for (const dep of row.waitFor ?? []) {
+        if (dep.startsWith("#")) sessionRefs.add(dep);
+      }
+    }
+    if (sessionRefs.size === 0) return [];
+    const resolved: string[] = [];
+    for (const ref of sessionRefs) {
+      const num = ref.slice(1); // strip '#'
+      const sessionId = launcher.resolveSessionId(num);
+      if (sessionId && wsBridge.isSessionIdle(sessionId)) {
+        resolved.push(ref);
+      }
+    }
+    return resolved;
+  }
+
   api.get("/sessions/:id/board", (c) => {
     const auth = authenticateTakodeCaller(c);
     if ("response" in auth) return auth.response;
@@ -746,7 +766,14 @@ export function createTakodeRoutes(ctx: RouteContext) {
       return c.json({ error: "Can only read your own board" }, 403);
     }
 
-    return c.json({ board: wsBridge.getBoard(id) });
+    const board = wsBridge.getBoard(id);
+    const resolve = c.req.query("resolve") === "true";
+
+    if (resolve) {
+      return c.json({ board, resolvedSessionDeps: resolveSessionDeps(board) });
+    }
+
+    return c.json({ board });
   });
 
   api.post("/sessions/:id/board", async (c) => {
@@ -777,18 +804,32 @@ export function createTakodeRoutes(ctx: RouteContext) {
       }
     }
 
+    // Validate and normalize waitFor entries
+    let waitFor: string[] | undefined;
+    if (Array.isArray(body.waitFor)) {
+      const parsed = body.waitFor
+        .filter((s: unknown) => typeof s === "string" && s.trim())
+        .map((s: string) => s.trim());
+      const invalid = parsed.filter((ref: string) => !isValidWaitForRef(ref));
+      if (invalid.length > 0) {
+        return c.json(
+          { error: `Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests or #N for sessions` },
+          400,
+        );
+      }
+      waitFor = parsed;
+    }
+
     const board = wsBridge.upsertBoardRow(id, {
       questId,
       title,
       worker: typeof body.worker === "string" ? body.worker : undefined,
       workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
       status: typeof body.status === "string" ? body.status : undefined,
-      waitFor: Array.isArray(body.waitFor)
-        ? body.waitFor.filter((s: unknown) => typeof s === "string" && s.trim()).map((s: string) => s.trim())
-        : undefined,
+      waitFor,
     });
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
-    return c.json({ board });
+    return c.json({ board, resolvedSessionDeps: resolveSessionDeps(board) });
   });
 
   api.delete("/sessions/:id/board/:questId", (c) => {
@@ -817,7 +858,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const board = wsBridge.removeBoardRows(id, questIds);
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
-    return c.json({ board });
+    return c.json({ board, resolvedSessionDeps: resolveSessionDeps(board) });
   });
 
   api.post("/sessions/:id/board/:questId/advance", (c) => {
@@ -838,7 +879,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const result = wsBridge.advanceBoardRow(id, questId);
     if (!result) return c.json({ error: "Quest not found on board" }, 404);
-    return c.json(result);
+    return c.json({ ...result, resolvedSessionDeps: resolveSessionDeps(result.board) });
   });
 
   return api;

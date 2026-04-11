@@ -2484,7 +2484,7 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
 
 // ─── Board ─────────────────────────────────────────────────────────────────
 
-import { QUEST_JOURNEY_STATES, QUEST_JOURNEY_HINTS, isValidQuestId } from "../shared/quest-journey.js";
+import { QUEST_JOURNEY_STATES, QUEST_JOURNEY_HINTS, isValidQuestId, isValidWaitForRef } from "../shared/quest-journey.js";
 
 interface BoardRow {
   questId: string;
@@ -2503,13 +2503,17 @@ function formatBoardOutput(board: BoardRow[], operation?: string): string {
 }
 
 /** Print board in a human-readable table with Quest Journey state and next-action hints. */
-function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
+function printBoardText(
+  board: BoardRow[],
+  opts?: { allBoardRows?: BoardRow[]; resolvedSessionDeps?: Set<string> },
+): void {
   if (board.length === 0) {
     console.log("Board is empty.");
     return;
   }
 
   // Build a set of active quest IDs on the board (for resolving wait-for status)
+  const { allBoardRows, resolvedSessionDeps } = opts ?? {};
   const activeQuestIds = new Set((allBoardRows || board).map((r) => r.questId));
 
   console.log("");
@@ -2533,7 +2537,10 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
 
     // Wait-for column: distinguish "no deps", "blocked", and "all resolved"
     const allDeps = row.waitFor || [];
-    const blockedDeps = allDeps.filter((wf) => activeQuestIds.has(wf));
+    const blockedDeps = allDeps.filter((wf) => {
+      if (wf.startsWith("#")) return !resolvedSessionDeps?.has(wf); // session: blocked if NOT idle
+      return activeQuestIds.has(wf); // quest: blocked if still on board
+    });
     let waitForStr: string;
     if (blockedDeps.length > 0) {
       waitForStr = blockedDeps.join(", ");
@@ -2559,11 +2566,11 @@ function printBoardText(board: BoardRow[], allBoardRows?: BoardRow[]): void {
 }
 
 /** Output board with frontend-detectable JSON marker, plus a human-readable table when not in --json mode. */
-function outputBoard(board: BoardRow[], jsonMode: boolean, operation?: string): void {
+function outputBoard(board: BoardRow[], jsonMode: boolean, operation?: string, resolvedSessionDeps?: Set<string>): void {
   // Always emit the JSON marker so the Companion frontend can detect and render BoardBlock.
   console.log(formatBoardOutput(board, operation));
   if (!jsonMode) {
-    printBoardText(board, board);
+    printBoardText(board, { allBoardRows: board, resolvedSessionDeps });
   }
 }
 
@@ -2574,8 +2581,12 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   // No subcommand or "show": display board
   if (!sub || sub === "show" || sub.startsWith("--")) {
     const flags = parseFlags(sub === "show" ? args.slice(1) : args);
-    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/board`)) as { board: BoardRow[] };
-    outputBoard(result.board, flags.json === true);
+    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/board?resolve=true`)) as {
+      board: BoardRow[];
+      resolvedSessionDeps?: string[];
+    };
+    const resolvedSessionDeps = new Set(result.resolvedSessionDeps ?? []);
+    outputBoard(result.board, flags.json === true, undefined, resolvedSessionDeps);
     return;
   }
 
@@ -2583,7 +2594,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const questId = args[1];
     if (!questId)
       err(
-        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,q-Y] [--json]`,
+        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y] [--json]`,
       );
     if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
@@ -2596,6 +2607,9 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
         .split(",")
         .map((s: string) => s.trim())
         .filter(Boolean);
+      const invalid = waitFor.filter((ref) => !isValidWaitForRef(ref));
+      if (invalid.length > 0)
+        err(`Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests or #N for sessions`);
       body.waitFor = waitFor;
     }
     if (typeof flags.worker === "string") {
@@ -2627,8 +2641,10 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
 
     const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/board`, body)) as {
       board: BoardRow[];
+      resolvedSessionDeps?: string[];
     };
-    outputBoard(result.board, flags.json === true, `set ${questId}`);
+    const resolved = new Set(result.resolvedSessionDeps ?? []);
+    outputBoard(result.board, flags.json === true, `set ${questId}`, resolved);
     return;
   }
 
@@ -2641,7 +2657,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const result = (await apiPost(
       base,
       `/sessions/${encodeURIComponent(selfId)}/board/${encodeURIComponent(questId)}/advance`,
-    )) as { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string };
+    )) as { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string; resolvedSessionDeps?: string[] };
 
     let operation: string;
     if (result.removed) {
@@ -2653,7 +2669,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     } else {
       operation = `advanced ${questId}`;
     }
-    outputBoard(result.board, flags.json === true, operation);
+    const resolved = new Set(result.resolvedSessionDeps ?? []);
+    outputBoard(result.board, flags.json === true, operation, resolved);
     return;
   }
 
@@ -2667,8 +2684,10 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
 
     const result = (await apiDelete(base, `/sessions/${encodeURIComponent(selfId)}/board/${questIds.join(",")}`)) as {
       board: BoardRow[];
+      resolvedSessionDeps?: string[];
     };
-    outputBoard(result.board, flags.json === true, `removed ${questIds.join(", ")}`);
+    const resolved = new Set(result.resolvedSessionDeps ?? []);
+    outputBoard(result.board, flags.json === true, `removed ${questIds.join(", ")}`, resolved);
     return;
   }
 

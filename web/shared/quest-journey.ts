@@ -11,6 +11,14 @@ export function isValidQuestId(id: string): boolean {
   return QUEST_ID_PATTERN.test(id);
 }
 
+/** Regex pattern for valid wait-for references: q-NNN (quest) or #NNN (session). */
+export const WAIT_FOR_REF_PATTERN = /^(q-\d+|#\d+)$/i;
+
+/** Returns true if the string is a valid wait-for dependency reference (q-N or #N). */
+export function isValidWaitForRef(ref: string): boolean {
+  return WAIT_FOR_REF_PATTERN.test(ref);
+}
+
 /**
  * Quest Journey stages. Each is a present-participle verb describing
  * what is happening NOW for this quest on the board.
