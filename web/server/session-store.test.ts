@@ -656,18 +656,24 @@ describe("append-only frozen history", () => {
     ]);
   });
 
-  it("trims duplicate replay-generated tool_result_preview tails from already-loaded sessions on save", async () => {
+  it("trims duplicate replay-generated tool_result_preview tails on save without mutating live session", async () => {
+    // saveSync must NOT mutate the live session's messageHistory array.
+    // Mutating it would invalidate the ws-bridge's frozenCount and cause
+    // "frozen prefix hash mismatch" on the next browser reconnect.
     const repeatedPreview = makeToolResultPreviewMessage("tu-replayed", "Replay-generated preview");
     const uniquePreview = makeToolResultPreviewMessage("tu-unique", "Latest preview");
     const session = makeSession("trim-loaded-preview-tail", {
       messageHistory: [repeatedPreview, uniquePreview, repeatedPreview, uniquePreview, repeatedPreview],
     });
 
+    const originalLength = session.messageHistory.length;
     store.saveSync(session);
     await store.flushAll();
 
-    expect(session.messageHistory).toEqual([repeatedPreview, uniquePreview]);
+    // Live session's messageHistory must remain untouched
+    expect(session.messageHistory.length).toBe(originalLength);
 
+    // But the persisted version should have duplicates trimmed
     const loaded = await store.load("trim-loaded-preview-tail");
     expect(loaded!.messageHistory).toEqual([repeatedPreview, uniquePreview]);
   });

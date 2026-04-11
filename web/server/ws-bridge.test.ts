@@ -1804,7 +1804,11 @@ describe("Browser handlers", () => {
     expect(replay.events[0].message.type).toBe("stream_event");
   });
 
-  it("session_subscribe: refuses sync without sending full history when known_frozen_count is invalid", async () => {
+  it("session_subscribe: falls back to full history sync when known_frozen_count is invalid", async () => {
+    // When the browser claims a frozen count larger than the server's rendered
+    // count, the initial sync is refused. The fallback retries with
+    // knownFrozenCount=0, delivering a full history_sync so the browser is
+    // never left without history.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -1870,7 +1874,10 @@ describe("Browser handlers", () => {
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls.some((c: any) => c.type === "message_history")).toBe(false);
-    expect(calls.some((c: any) => c.type === "history_sync")).toBe(false);
+    // Fallback full history_sync should be delivered
+    const historySync = calls.find((c: any) => c.type === "history_sync");
+    expect(historySync).toBeDefined();
+    expect(historySync.frozen_base_count).toBe(0);
     const replayMsg = calls.find((c: any) => c.type === "event_replay");
     expect(replayMsg).toBeDefined();
     expect(replayMsg.events.some((e: any) => e.message.type === "stream_event")).toBe(true);
@@ -1879,7 +1886,10 @@ describe("Browser handlers", () => {
     warnSpy.mockRestore();
   });
 
-  it("session_subscribe: refuses sync without sending full history when known_frozen_hash mismatches", async () => {
+  it("session_subscribe: falls back to full history sync when known_frozen_hash mismatches", async () => {
+    // When the browser sends a stale frozen hash on reconnect, the server
+    // should detect the mismatch and retry with a full history delivery
+    // (frozen_base_count=0) instead of leaving the browser with no history.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -1944,10 +1954,17 @@ describe("Browser handlers", () => {
     await flushAsync(); // sendHistorySync is async
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    // Should NOT get legacy message_history
     expect(calls.some((c: any) => c.type === "message_history")).toBe(false);
-    expect(calls.some((c: any) => c.type === "history_sync")).toBe(false);
+    // SHOULD get a fallback full history_sync with frozen_base_count=0
+    const historySync = calls.find((c: any) => c.type === "history_sync");
+    expect(historySync).toBeDefined();
+    expect(historySync.frozen_base_count).toBe(0);
+    // The mismatch/invalid-count warning should still be logged
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[history-sync]"),
+    );
     expect(calls.some((c: any) => c.type === "state_snapshot")).toBe(true);
-    expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 

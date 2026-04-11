@@ -382,14 +382,18 @@ export class SessionStore {
   saveSync(session: PersistedSession): void {
     const cleanedHistory = this.trimDuplicateReplayPreviewTail(session.messageHistory);
     if (cleanedHistory.removedCount > 0) {
-      session.messageHistory = cleanedHistory.messages;
+      // Only use the cleaned array for persistence — do NOT mutate the live
+      // session's messageHistory. The ws-bridge's frozenCount and the browser's
+      // frozen hash are computed against the live array; mutating it here would
+      // invalidate those hashes and cause "frozen prefix hash mismatch" on the
+      // next browser reconnect.
       console.warn(
         `[session-store] Trimmed ${cleanedHistory.removedCount} duplicate replay-generated tool_result_preview messages ` +
           `from hot tail while saving session ${session.id.slice(0, 8)}`,
       );
     }
 
-    const messages = session.messageHistory;
+    const messages = cleanedHistory.messages;
     const allToolResults = session.toolResults ?? [];
 
     // How many messages are in completed turns?

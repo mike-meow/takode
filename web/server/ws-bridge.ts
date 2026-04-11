@@ -7789,7 +7789,12 @@ export class WsBridge {
     // also done in handleBrowserOpen, causing double delivery).
     if (lastAckSeq === 0) {
       if (session.messageHistory.length > 0) {
-        await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
+        const synced = await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
+        if (!synced) {
+          // Frozen prefix hash mismatch — fall back to full history delivery
+          // so the browser rebuilds its frozen state from scratch.
+          await this.sendHistorySync(session, ws, 0, undefined);
+        }
       }
       // Also replay any buffered events so transient messages (stream_event,
       // tool_progress, status_change, etc.) are caught up
@@ -7813,11 +7818,13 @@ export class WsBridge {
       if (hasGap || hasMissedHistoryBacked) {
         // Gap in buffer coverage OR missed history-backed events: send
         // authoritative history state so the browser can rebuild its feed.
-        // Prefer frozen-delta + hot-tail sync. If the client cannot safely
-        // reuse its frozen prefix, refuse sync instead of resending the full
-        // conversation payload.
+        // Prefer frozen-delta + hot-tail sync. If the frozen prefix hash
+        // mismatches, fall back to full history delivery.
         if (session.messageHistory.length > 0) {
-          await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
+          const synced = await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
+          if (!synced) {
+            await this.sendHistorySync(session, ws, 0, undefined);
+          }
         }
         const transientMissed = missedEvents.filter((evt) => !this.isHistoryBackedEvent(evt.message));
         if (transientMissed.length > 0) {
