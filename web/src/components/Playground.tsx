@@ -1372,6 +1372,7 @@ export function Playground() {
       "tb-12": 0.1,
       "tb-14": 0.0,
       "tb-15": 0.0,
+      "tb-image-lightbox": 0.2,
     };
     for (const [id, dur] of Object.entries(toolDurations)) {
       store.setToolResult(sessionId, id, {
@@ -1889,6 +1890,14 @@ export function Playground() {
             </Card>
             <Card label="Standalone lightbox trigger">
               <PlaygroundLightboxDemo />
+            </Card>
+            <Card label="Tool result image preview — click to open lightbox">
+              <ToolBlock
+                name="Read"
+                input={{ file_path: "/Users/dev/project/docs/screenshot.png" }}
+                toolUseId="tb-image-lightbox"
+                sessionId={MOCK_SESSION_ID}
+              />
             </Card>
           </div>
         </Section>
