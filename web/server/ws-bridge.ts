@@ -3573,19 +3573,7 @@ export class WsBridge {
                 updated_input: result.request.input,
               } as any);
             }
-            // Broadcast approval to browsers for UI consistency
-            const approvedMsg: BrowserIncomingMessage = {
-              type: "permission_approved",
-              id: `approval-${result.request.request_id}`,
-              request_id: result.request.request_id,
-              tool_name: result.request.tool_name,
-              tool_use_id: result.request.tool_use_id,
-              summary: getApprovalSummary(result.request.tool_name, result.request.input),
-              timestamp: Date.now(),
-            };
-            session.messageHistory.push(approvedMsg);
-            this.broadcastToBrowsers(session, approvedMsg);
-            this.persistSession(session);
+            this.broadcastAutoApproval(session, result.request);
             return;
           }
 
@@ -6014,6 +6002,31 @@ export class WsBridge {
     return isSensitiveBashCommandPolicy(command);
   }
 
+  /**
+   * Broadcast a permission_approved message to browsers, update history, and
+   * handle EnterPlanMode mode transition. Shared by WS, SDK, and Codex
+   * auto-approval paths (Tier 1 mode + Tier 2 settings rule).
+   */
+  private broadcastAutoApproval(session: Session, request: PermissionRequest): void {
+    const approvedMsg: BrowserIncomingMessage = {
+      type: "permission_approved",
+      id: `approval-${request.request_id}`,
+      request_id: request.request_id,
+      tool_name: request.tool_name,
+      tool_use_id: request.tool_use_id,
+      summary: getApprovalSummary(request.tool_name, request.input),
+      timestamp: Date.now(),
+    };
+    session.messageHistory.push(approvedMsg);
+    this.broadcastToBrowsers(session, approvedMsg);
+
+    if (request.tool_name === "EnterPlanMode") {
+      this.handleSetPermissionMode(session, "plan");
+    }
+
+    this.persistSession(session);
+  }
+
   private handleControlRequest(session: Session, msg: CLIControlRequestMessage): void {
     if (msg.request.subtype !== "can_use_tool") return;
     const toolName = msg.request.tool_name;
@@ -6031,25 +6044,7 @@ export class WsBridge {
           },
         });
         this.sendToCLI(session, ndjson);
-
-        // Broadcast approval to browsers for UI consistency (parity with SDK path)
-        const approvedMsg: BrowserIncomingMessage = {
-          type: "permission_approved",
-          id: `approval-${result.request.request_id}`,
-          request_id: result.request.request_id,
-          tool_name: result.request.tool_name,
-          tool_use_id: result.request.tool_use_id,
-          summary: getApprovalSummary(result.request.tool_name, result.request.input),
-          timestamp: Date.now(),
-        };
-        session.messageHistory.push(approvedMsg);
-        this.broadcastToBrowsers(session, approvedMsg);
-
-        if (result.request.tool_name === "EnterPlanMode") {
-          this.handleSetPermissionMode(session, "plan");
-        }
-
-        this.persistSession(session);
+        this.broadcastAutoApproval(session, result.request);
         return;
       }
 
@@ -6166,29 +6161,7 @@ export class WsBridge {
             updated_input: result.request.input,
           } as any);
         }
-        // Broadcast approval to browsers for UI consistency
-        const approvedMsg: BrowserIncomingMessage = {
-          type: "permission_approved",
-          id: `approval-${result.request.request_id}`,
-          request_id: result.request.request_id,
-          tool_name: result.request.tool_name,
-          tool_use_id: result.request.tool_use_id,
-          summary: getApprovalSummary(result.request.tool_name, result.request.input),
-          timestamp: Date.now(),
-        };
-        session.messageHistory.push(approvedMsg);
-        this.broadcastToBrowsers(session, approvedMsg);
-
-        // EnterPlanMode auto-approved: sync UI to plan mode so the button
-        // reflects the agent's actual state.
-        if (result.request.tool_name === "EnterPlanMode") {
-          this.handleSetPermissionMode(session, "plan");
-          console.log(
-            `[ws-bridge] EnterPlanMode auto-approved for SDK session ${sessionTag(session.id)}, switching to plan mode`,
-          );
-        }
-
-        this.persistSession(session);
+        this.broadcastAutoApproval(session, result.request);
         return;
       }
 
