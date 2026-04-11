@@ -13,6 +13,7 @@ import { isSubagentToolName } from "../types.js";
 import { DiffViewer, formatFileHeaderPath } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
+import { Lightbox } from "./Lightbox.js";
 import { CollapseFooter } from "./CollapseFooter.js";
 import { CopyFormatButton } from "./CopyFormatButton.js";
 import { BoardBlock, type BoardRowData } from "./BoardBlock.js";
@@ -616,6 +617,7 @@ function ToolResultSection({
   const isReadImage = !!imagePath;
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const isCompletedLiveTerminal = toolName === "Bash" && progressToolName === "Bash";
   const shouldUseLiveTranscriptFallback =
     !!preview &&
@@ -668,6 +670,7 @@ function ToolResultSection({
   }
 
   if (isReadImage && !preview.is_error) {
+    const imgUrl = api.getFsImageUrl(imagePath);
     return (
       <div className="mt-2 pt-2 border-t border-cc-border/50">
         <div className="flex items-center gap-2 mb-1.5">
@@ -676,12 +679,14 @@ function ToolResultSection({
         </div>
         <div className="rounded-lg border border-cc-border bg-cc-code-bg/40 p-2">
           <img
-            src={api.getFsImageUrl(imagePath)}
+            src={imgUrl}
             alt={imagePath}
-            className="max-h-48 w-auto rounded border border-cc-border/70 bg-black/10"
+            className="max-h-48 w-auto rounded border border-cc-border/70 bg-black/10 cursor-zoom-in hover:opacity-80 transition-opacity"
+            onClick={() => setLightboxSrc(imgUrl)}
           />
           <div className="mt-1 text-[10px] text-cc-muted">Binary image output hidden.</div>
         </div>
+        {lightboxSrc && <Lightbox src={lightboxSrc} alt={imagePath} onClose={() => setLightboxSrc(null)} />}
       </div>
     );
   }
