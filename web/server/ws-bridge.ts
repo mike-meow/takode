@@ -701,7 +701,7 @@ function resolveResultContextWindow(
 }
 
 /** Token usage fields shared between assistant and result messages. */
-interface TokenUsage {
+export interface TokenUsage {
   input_tokens?: number;
   output_tokens?: number;
   cache_creation_input_tokens?: number;
@@ -721,7 +721,7 @@ interface TokenUsage {
  * Detection: if cache tokens are reported AND their sum fits within
  * input_tokens, then input_tokens already includes them (OpenAI semantics).
  */
-function computeContextUsedPercent(usage: TokenUsage, contextWindow: number): number | undefined {
+export function computeContextUsedPercent(usage: TokenUsage, contextWindow: number): number | undefined {
   const inputTokens = Number(usage.input_tokens || 0);
   const cacheCreation = Number(usage.cache_creation_input_tokens || 0);
   const cacheRead = Number(usage.cache_read_input_tokens || 0);

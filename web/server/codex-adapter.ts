@@ -34,6 +34,7 @@ import type {
 } from "./bridge/adapter-interface.js";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
+import { computeContextUsedPercent, type TokenUsage } from "./ws-bridge.js";
 
 // ─── Codex JSON-RPC Types ─────────────────────────────────────────────────────
 
@@ -3022,21 +3023,17 @@ export class CodexAdapter
 
     const updates: Partial<SessionState> = {};
 
-    // Use last turn's input tokens for context usage — that's what's actually in the window.
-    // output_tokens are excluded — they are generated tokens, not context occupants.
-    // Cache detection: if cached tokens fit within inputTokens, they are already
-    // included (OpenAI semantics); otherwise add them (native Anthropic semantics).
+    // Use last turn's input tokens for context usage — that's what's actually in
+    // the window. Adapts Codex field names to the shared TokenUsage interface.
     if (last && contextWindow && contextWindow > 0) {
-      const inputTokens = last.inputTokens || 0;
-      const cachedInputTokens = last.cachedInputTokens || 0;
-      let usedInContext: number;
-      if (cachedInputTokens > 0 && cachedInputTokens <= inputTokens) {
-        usedInContext = inputTokens;
-      } else {
-        usedInContext = inputTokens + cachedInputTokens;
+      const usage: TokenUsage = {
+        input_tokens: last.inputTokens || 0,
+        cache_read_input_tokens: last.cachedInputTokens || 0,
+      };
+      const pct = computeContextUsedPercent(usage, contextWindow);
+      if (typeof pct === "number") {
+        updates.context_used_percent = pct;
       }
-      const pct = Math.round((usedInContext / contextWindow) * 100);
-      updates.context_used_percent = Math.max(0, Math.min(pct, 100));
     }
 
     // Forward cumulative token breakdown for display in the UI
