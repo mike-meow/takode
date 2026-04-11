@@ -436,6 +436,10 @@ interface Session {
   /** AbortControllers for in-flight LLM auto-approval evaluations, keyed by request_id.
    *  Used to cancel the LLM subprocess when the user responds manually. Transient — not persisted. */
   evaluatingAborts: Map<string, AbortController>;
+  /** Whether we've sent the `initialize` control_request with appendSystemPrompt
+   *  to the current CLI process (WebSocket sessions only). Reset on relaunch so
+   *  new processes get fresh instructions. Prevents double-sends on seamless reconnects. */
+  cliInitializeSent: boolean;
   /** True while a relaunched CLI is replaying old messages via --resume.
    *  During this window, system.status permissionMode changes must NOT
    *  overwrite uiMode — the replayed mode is stale and would revert
@@ -1987,6 +1991,7 @@ export class WsBridge {
         board: new Map(Array.isArray(p.board) ? p.board.map((row: BoardRow) => [row.questId, row]) : []),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
+        cliInitializeSent: false,
         cliResuming: false,
         cliResumingClearTimer: null,
       };
@@ -2591,6 +2596,7 @@ export class WsBridge {
         board: new Map(),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
+        cliInitializeSent: false,
         cliResuming: false,
         cliResumingClearTimer: null,
       };
@@ -4387,6 +4393,8 @@ export class WsBridge {
           `[ws-bridge] CLI connected after relaunch for session ${sessionTag(sessionId)} (not seamless, wasGenerating=${session.disconnectWasGenerating})`,
         );
         session.relaunchPending = false;
+        // New CLI process — needs a fresh initialize control_request.
+        session.cliInitializeSent = false;
       } else {
         session.seamlessReconnect = true;
         console.log(
@@ -4419,6 +4427,28 @@ export class WsBridge {
     this.broadcastToBrowsers(session, { type: "backend_connected" });
     // Retry diff recomputation now that backend connectivity exists.
     this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
+
+    // For WebSocket Claude sessions: send an `initialize` control_request with
+    // appendSystemPrompt to inject Companion instructions (worktree guardrails,
+    // link syntax, session timers, orchestrator instructions, etc.). The
+    // --append-system-prompt CLI flag is not honored in --sdk-url mode, so this
+    // is the only way to inject system prompt content for WebSocket sessions.
+    // Must be sent BEFORE the first user message per the NDJSON protocol.
+    // Skip on seamless reconnects (same CLI process, already initialized).
+    if (session.backendType === "claude" && !session.cliInitializeSent) {
+      const launcherInfoForInit = this.launcher?.getSession(sessionId);
+      const instructions = launcherInfoForInit?.injectedSystemPrompt;
+      if (instructions) {
+        this.sendControlRequest(session, {
+          subtype: "initialize",
+          appendSystemPrompt: instructions,
+        });
+        session.cliInitializeSent = true;
+        console.log(
+          `[ws-bridge] Sent initialize control_request with appendSystemPrompt for session ${sessionTag(sessionId)} (${instructions.length} chars)`,
+        );
+      }
+    }
 
     // Flush any messages queued while waiting for the CLI WebSocket.
     // For NEW sessions: the first user message triggers system.init,
