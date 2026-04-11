@@ -9,8 +9,8 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 | `QUEUED` | Quest is ready, waiting for dispatch | Dispatch to a worker |
 | `PLANNING` | Worker is planning | Wait for `permission_request` (ExitPlanMode), then review plan |
 | `IMPLEMENTING` | Worker is implementing | Wait for `turn_end`, then spawn skeptic reviewer |
-| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run /groom |
-| `GROOM_REVIEWING` | Reviewer is checking groom compliance | Wait for reviewer ACCEPT, then tell worker to port |
+| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run /groom and implement suggestions |
+| `GROOM_REVIEWING` | Worker ran groom and implemented suggestions; reviewer checking compliance | ALWAYS send to reviewer, wait for ACCEPT, then tell worker to port |
 | `PORTING` | Worker is porting to main repo | Wait for port confirmation, then remove from board |
 
 **Board advances only after completed actions.** Do not advance the board anticipating what will happen next. Only advance after the action for that stage is actually done.
@@ -78,16 +78,18 @@ The `--reviewer` flag automatically:
 
 - **This stage is iterative.** Do not advance until the reviewer issues ACCEPT.
 - If the reviewer CHALLENGEs: send findings to the worker for rework, then send the reworked result back to the reviewer. Repeat until ACCEPT.
-- On ACCEPT: tell the worker to run `/groom` for self-review and incorporate suggestions, then `takode board advance <quest-id>`.
+- On ACCEPT: tell the worker to run `/groom` and implement any Critical or Recommended suggestions from the report. `/groom` only generates the review report -- the worker must separately act on the findings.
+- `takode board advance <quest-id>`
 
 ## GROOM_REVIEWING -> PORTING
 
-- Wait for the worker to report back from groom
-- Send the same reviewer a minimal message to check groom compliance. The reviewer decides what to verify.
+- Wait for the worker to report back what groom found and what they changed (or why they skipped a suggestion).
+- **ALWAYS** send groom results to the same reviewer for compliance check -- even if the worker made no changes. The reviewer verifies that no important suggestions were skipped without justification.
 - **This stage is iterative.** Do not advance until the reviewer ACCEPTs.
-- If CHALLENGE: send findings back to the worker, iterate
-- On ACCEPT: tell the worker to port changes using `/port-changes`
+- If CHALLENGE: send findings back to the worker, have them address the issues, then re-send to reviewer. Repeat until ACCEPT.
+- On reviewer ACCEPT: tell the worker to port changes using `/port-changes`
 - `takode board advance <quest-id>`
+- **NEVER combine "groom" and "port" in the same instruction to the worker.** Each is a separate gate.
 
 ## PORTING -> (removed)
 

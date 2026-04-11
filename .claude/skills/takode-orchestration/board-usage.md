@@ -27,6 +27,8 @@ Stages follow the Quest Journey lifecycle (see [quest-journey.md](quest-journey.
 ## Rules
 
 - Every command outputs the full board after the operation
+- **Always set `--worker N` when adding a quest to the board.** The board must show which session is working on each quest.
+- **Use `takode board advance` for stage transitions**, not `takode board set --status`. `advance` enforces the correct lifecycle order; `set --status` bypasses it.
 - **Board advances only after completed actions.** Do not advance anticipating what will happen next. Only advance after the action for that stage is actually done.
 - **`--wait-for` column**: list of quest IDs this quest is blocked on. When all entries are resolved (no longer on the board), the actual next action shows instead of "blocked".
 - Rows are auto-removed when a quest transitions to `needs_verification` or `done`.
