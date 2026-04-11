@@ -657,21 +657,34 @@ describe("CLI handlers", () => {
 
   // ── WebSocket system prompt injection via initialize control_request ──
 
-  it("handleCLIOpen: sends initialize control_request with appendSystemPrompt for WebSocket sessions", () => {
-    // The --append-system-prompt CLI flag is not honored in --sdk-url mode.
-    // Instead, we send a control_request {subtype: "initialize", appendSystemPrompt}
-    // over the WebSocket before the first user message.
-    const instructions = "## Session Timers\n\nUse `takode timer` to create timers.\n\n## Link Syntax\n\nTest instructions";
+  /** Parse CLI socket send calls and find the initialize control_request, if any. */
+  function findInitializeMsg(cli: ReturnType<typeof makeCliSocket>) {
+    const sent = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg.trim()));
+    return sent.find(
+      (m: any) => m.type === "control_request" && m.request?.subtype === "initialize",
+    ) as { type: string; request_id: string; request: { subtype: string; appendSystemPrompt?: string } } | undefined;
+  }
+
+  /** Set up a mock launcher returning a session with the given backendType and optional instructions. */
+  function setLauncherSession(backendType: string, instructions?: string) {
     bridge.setLauncher({
       touchActivity: vi.fn(),
       touchUserMessage: vi.fn(),
       getSession: vi.fn(() => ({
         sessionId: "s1",
         state: "connected",
-        backendType: "claude",
-        injectedSystemPrompt: instructions,
+        backendType,
+        ...(instructions !== undefined ? { injectedSystemPrompt: instructions } : {}),
       })),
     } as any);
+  }
+
+  it("handleCLIOpen: sends initialize control_request with appendSystemPrompt for WebSocket sessions", () => {
+    // The --append-system-prompt CLI flag is not honored in --sdk-url mode.
+    // Instead, we send a control_request {subtype: "initialize", appendSystemPrompt}
+    // over the WebSocket before the first user message.
+    const instructions = "## Session Timers\n\nUse `takode timer` to create timers.\n\n## Link Syntax\n\nTest instructions";
+    setLauncherSession("claude", instructions);
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -679,17 +692,11 @@ describe("CLI handlers", () => {
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
 
-    // Verify that a control_request with subtype "initialize" was sent to CLI
-    const sentCalls = cli.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initMsg = sentCalls.find((s: string) => s.includes('"subtype":"initialize"'));
+    const initMsg = findInitializeMsg(cli);
     expect(initMsg).toBeDefined();
-    const parsed = JSON.parse(initMsg!);
-    expect(parsed.type).toBe("control_request");
-    expect(parsed.request.subtype).toBe("initialize");
-    expect(parsed.request.appendSystemPrompt).toBe(instructions);
-    expect(parsed.request_id).toBeDefined();
+    expect(initMsg!.request.appendSystemPrompt).toBe(instructions);
+    expect(initMsg!.request_id).toBeDefined();
 
-    // cliInitializeSent should be true
     const session = bridge.getSession("s1")!;
     expect(session.cliInitializeSent).toBe(true);
   });
@@ -697,39 +704,31 @@ describe("CLI handlers", () => {
   it("handleCLIOpen: does NOT send initialize for SDK sessions", () => {
     // SDK sessions inject system prompts via V4.prototype.initialize patching,
     // not via WebSocket control_request.
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-      getSession: vi.fn(() => ({
-        sessionId: "s1",
-        state: "connected",
-        backendType: "claude-sdk",
-        injectedSystemPrompt: "some instructions",
-      })),
-    } as any);
+    setLauncherSession("claude-sdk", "some instructions");
 
     const session = bridge.getOrCreateSession("s1", "claude-sdk");
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
 
-    const sentCalls = cli.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initMsg = sentCalls.find((s: string) => s.includes('"subtype":"initialize"'));
-    expect(initMsg).toBeUndefined();
+    expect(findInitializeMsg(cli)).toBeUndefined();
+    expect(session.cliInitializeSent).toBe(false);
+  });
+
+  it("handleCLIOpen: does NOT send initialize for Codex sessions", () => {
+    // Codex uses JSON-RPC initialize, not the NDJSON control_request.
+    setLauncherSession("codex", "some instructions");
+
+    const session = bridge.getOrCreateSession("s1", "codex");
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    expect(findInitializeMsg(cli)).toBeUndefined();
     expect(session.cliInitializeSent).toBe(false);
   });
 
   it("handleCLIOpen: does NOT send initialize when no injectedSystemPrompt", () => {
     // If the launcher has no instructions, skip the initialize request.
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-      getSession: vi.fn(() => ({
-        sessionId: "s1",
-        state: "connected",
-        backendType: "claude",
-        // no injectedSystemPrompt
-      })),
-    } as any);
+    setLauncherSession("claude");
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -737,33 +736,35 @@ describe("CLI handlers", () => {
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
 
-    const sentCalls = cli.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initMsg = sentCalls.find((s: string) => s.includes('"subtype":"initialize"'));
-    expect(initMsg).toBeUndefined();
+    expect(findInitializeMsg(cli)).toBeUndefined();
 
     const session = bridge.getSession("s1")!;
     expect(session.cliInitializeSent).toBe(false);
   });
 
-  it("handleCLIOpen: seamless reconnect does NOT re-send initialize", () => {
-    // When CLI disconnects for token refresh and reconnects within the grace
-    // period, we should NOT re-send initialize (same process, already initialized).
-    const instructions = "## Timers\nTest";
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-      getSession: vi.fn(() => ({
-        sessionId: "s1",
-        state: "connected",
-        backendType: "claude",
-        injectedSystemPrompt: instructions,
-      })),
-    } as any);
+  it("handleCLIOpen: does NOT send initialize when injectedSystemPrompt is empty string", () => {
+    // Empty string is falsy -- should not trigger an initialize request.
+    setLauncherSession("claude", "");
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
-    // First connect — should send initialize
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+
+    expect(findInitializeMsg(cli)).toBeUndefined();
+    expect(bridge.getSession("s1")!.cliInitializeSent).toBe(false);
+  });
+
+  it("handleCLIOpen: seamless reconnect does NOT re-send initialize", () => {
+    // When CLI disconnects for token refresh and reconnects within the grace
+    // period, we should NOT re-send initialize (same process, already initialized).
+    setLauncherSession("claude", "## Timers\nTest");
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // First connect -- should send initialize
     const cli1 = makeCliSocket("s1");
     bridge.handleCLIOpen(cli1, "s1");
     const session = bridge.getSession("s1")!;
@@ -778,27 +779,14 @@ describe("CLI handlers", () => {
 
     // cliInitializeSent should still be true (not reset)
     expect(session.cliInitializeSent).toBe(true);
-
-    // Second connection should NOT have sent initialize
-    const sentCalls2 = cli2.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initMsg2 = sentCalls2.find((s: string) => s.includes('"subtype":"initialize"'));
-    expect(initMsg2).toBeUndefined();
+    expect(findInitializeMsg(cli2)).toBeUndefined();
   });
 
   it("handleCLIOpen: relaunch resets cliInitializeSent and re-sends initialize", () => {
     // When a CLI process is killed and relaunched, the new process needs
     // a fresh initialize control_request.
     const instructions = "## Timers\nTest";
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-      getSession: vi.fn(() => ({
-        sessionId: "s1",
-        state: "connected",
-        backendType: "claude",
-        injectedSystemPrompt: instructions,
-      })),
-    } as any);
+    setLauncherSession("claude", instructions);
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -822,28 +810,15 @@ describe("CLI handlers", () => {
     // cliInitializeSent should be true again (reset then re-sent)
     expect(session.cliInitializeSent).toBe(true);
 
-    // Second connection should have sent initialize
-    const sentCalls2 = cli2.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initMsg2 = sentCalls2.find((s: string) => s.includes('"subtype":"initialize"'));
+    const initMsg2 = findInitializeMsg(cli2);
     expect(initMsg2).toBeDefined();
-    const parsed = JSON.parse(initMsg2!);
-    expect(parsed.request.appendSystemPrompt).toBe(instructions);
+    expect(initMsg2!.request.appendSystemPrompt).toBe(instructions);
   });
 
   it("handleCLIOpen: initialize is sent BEFORE queued user messages", () => {
     // The NDJSON protocol requires initialize to be sent before the first user
     // message. Verify ordering when there are pending messages.
-    const instructions = "## Timers\nTest";
-    bridge.setLauncher({
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-      getSession: vi.fn(() => ({
-        sessionId: "s1",
-        state: "connected",
-        backendType: "claude",
-        injectedSystemPrompt: instructions,
-      })),
-    } as any);
+    setLauncherSession("claude", "## Timers\nTest");
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -858,9 +833,11 @@ describe("CLI handlers", () => {
     bridge.handleCLIOpen(cli, "s1");
 
     // Check ordering: initialize should come before the user message
-    const sentCalls = cli.send.mock.calls.map(([arg]: [string]) => arg.trim());
-    const initIdx = sentCalls.findIndex((s: string) => s.includes('"subtype":"initialize"'));
-    const userIdx = sentCalls.findIndex((s: string) => s.includes('"type":"user"'));
+    const sent = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg.trim()));
+    const initIdx = sent.findIndex(
+      (m: any) => m.type === "control_request" && m.request?.subtype === "initialize",
+    );
+    const userIdx = sent.findIndex((m: any) => m.type === "user");
     expect(initIdx).toBeGreaterThanOrEqual(0);
     expect(userIdx).toBeGreaterThanOrEqual(0);
     expect(initIdx).toBeLessThan(userIdx);
