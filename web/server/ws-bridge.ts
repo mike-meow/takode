@@ -4519,6 +4519,12 @@ export class WsBridge {
     const wasGenerating = session.isGenerating;
     session.backendSocket = null;
     session.cliInitReceived = false; // Reset — next CLI must send system.init before we deliver
+    // Cancel pending replay-completion timer — the CLI is gone, so the flush
+    // should happen on the next reconnect's post-replay callback instead.
+    if (session.cliResumingClearTimer) {
+      clearTimeout(session.cliResumingClearTimer);
+      session.cliResumingClearTimer = null;
+    }
     // DON'T clear isGenerating here — defer to the grace period. During the grace
     // window, the UI already shows "disconnected" (backendSocket=null makes
     // deriveSessionStatus return null). If the CLI reconnects (token refresh),
@@ -5370,6 +5376,25 @@ export class WsBridge {
           );
           // Reset stale compaction state now that replay is truly done.
           session.state.is_compacting = false;
+          // Flush messages deferred from system.init during replay. The CLI
+          // silently drops user messages received mid-replay, so we wait until
+          // the last replayed system.init + 2s debounce before delivering.
+          if (session.pendingMessages.length > 0) {
+            console.log(
+              `[ws-bridge] Flushing ${session.pendingMessages.length} deferred message(s) after replay done for session ${sessionTag(session.id)}`,
+            );
+            const queued = session.pendingMessages.splice(0);
+            for (const ndjson of queued) {
+              this.sendToCLI(session, ndjson);
+            }
+          }
+          // Flush herd events deferred from system.init during replay.
+          if (this.herdEventDispatcher) {
+            const launcherInfo = this.launcher?.getSession(session.id);
+            if (launcherInfo?.isOrchestrator) {
+              this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+            }
+          }
         }, 2000);
       } else {
         // Not resuming — clear compaction state immediately.
@@ -5442,27 +5467,30 @@ export class WsBridge {
       session.seamlessReconnect = false;
       session.disconnectWasGenerating = false;
 
-      // Flush any messages queued before CLI was initialized (e.g. user sent
-      // a message while the container was still starting up).
-      if (session.pendingMessages.length > 0) {
+      // Flush queued messages and herd events. For resuming sessions, defer
+      // until replay completes (cliResuming cleared) -- the CLI silently drops
+      // user messages received during --resume replay, so flushing here would
+      // lose them permanently (the splice empties the queue).
+      if (!session.cliResuming) {
+        if (session.pendingMessages.length > 0) {
+          console.log(
+            `[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) after init for session ${sessionTag(session.id)}`,
+          );
+          const queued = session.pendingMessages.splice(0);
+          for (const ndjson of queued) {
+            this.sendToCLI(session, ndjson);
+          }
+        }
+        if (this.herdEventDispatcher) {
+          const launcherInfo = this.launcher?.getSession(session.id);
+          if (launcherInfo?.isOrchestrator) {
+            this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
+          }
+        }
+      } else if (session.pendingMessages.length > 0) {
         console.log(
-          `[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) after init for session ${sessionTag(session.id)}`,
+          `[ws-bridge] ${session.pendingMessages.length} queued message(s) deferred until replay done for session ${sessionTag(session.id)}`,
         );
-        const queued = session.pendingMessages.splice(0);
-        for (const ndjson of queued) {
-          this.sendToCLI(session, ndjson);
-        }
-      }
-
-      // Flush pending herd events AFTER system.init — this is the safe moment
-      // when the CLI has completed --resume replay and is ready for new messages.
-      // Events accumulated in the herd inbox during the disconnect/relaunch cycle
-      // are delivered here, making event loss impossible by construction.
-      if (this.herdEventDispatcher) {
-        const launcherInfo = this.launcher?.getSession(session.id);
-        if (launcherInfo?.isOrchestrator) {
-          this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
-        }
       }
       this.onSessionActivityStateChanged(session.id, "system_init");
     } else if (msg.subtype === "status") {
