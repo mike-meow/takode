@@ -2222,6 +2222,116 @@ describe("symlinkProjectSettings", () => {
   // for Claude, developer_instructions for Codex, appendSystemPrompt for SDK)
   // instead of file-based injection. See q-124.
 
+  it("removes stale .claude/CLAUDE.md containing old guardrails markers on launch", async () => {
+    // Older code wrote guardrails between WORKTREE_GUARDRAILS_START/END markers.
+    // These files persist across sessions with wrong branch names and repo paths.
+    // The cleanup in injectWorktreeGuardrails should delete the file when it
+    // contains only the old guardrails block.
+    const staleContent =
+      "<!-- WORKTREE_GUARDRAILS_START -->\n" +
+      "# Worktree Session — Branch Guardrails\n" +
+      "You are on branch: `old-branch`\n" +
+      "<!-- WORKTREE_GUARDRAILS_END -->";
+    const claudeMdPath = join(WORKTREE, ".claude", "CLAUDE.md");
+
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path === WORKTREE) return true;
+      if (path === claudeMdPath) return true;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (path === claudeMdPath) return staleContent;
+      return "";
+    });
+
+    await launcher.launch({
+      cwd: WORKTREE,
+      worktreeInfo: {
+        isWorktree: true,
+        repoRoot: REPO_ROOT,
+        branch: "feature-x",
+        actualBranch: "feature-x",
+        worktreePath: WORKTREE,
+      },
+    });
+
+    // File contained only guardrails — should be deleted entirely
+    expect(mockUnlinkSync).toHaveBeenCalledWith(claudeMdPath);
+  });
+
+  it("strips guardrails block but preserves other content in .claude/CLAUDE.md", async () => {
+    // When .claude/CLAUDE.md has user content alongside the old guardrails
+    // markers, only the guardrails block should be removed.
+    const userContent = "# My Project Notes\n\nSome important notes here.";
+    const staleContent =
+      "<!-- WORKTREE_GUARDRAILS_START -->\n" +
+      "# Worktree Session — Branch Guardrails\n" +
+      "You are on branch: `old-branch`\n" +
+      "<!-- WORKTREE_GUARDRAILS_END -->\n" +
+      userContent;
+    const claudeMdPath = join(WORKTREE, ".claude", "CLAUDE.md");
+
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path === WORKTREE) return true;
+      if (path === claudeMdPath) return true;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (path === claudeMdPath) return staleContent;
+      return "";
+    });
+
+    await launcher.launch({
+      cwd: WORKTREE,
+      worktreeInfo: {
+        isWorktree: true,
+        repoRoot: REPO_ROOT,
+        branch: "feature-x",
+        actualBranch: "feature-x",
+        worktreePath: WORKTREE,
+      },
+    });
+
+    // File had other content — should be rewritten without the guardrails block
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(claudeMdPath);
+    expect(mockWriteFileSync).toHaveBeenCalledWith(claudeMdPath, userContent + "\n", "utf-8");
+  });
+
+  it("leaves .claude/CLAUDE.md alone when no guardrails markers are present", async () => {
+    // Files without the old markers should not be touched at all.
+    const normalContent = "# My Project\n\nJust some project instructions.";
+    const claudeMdPath = join(WORKTREE, ".claude", "CLAUDE.md");
+
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path === WORKTREE) return true;
+      if (path === claudeMdPath) return true;
+      return false;
+    });
+    mockReadFileSync.mockImplementation((path: string) => {
+      if (path === claudeMdPath) return normalContent;
+      return "";
+    });
+
+    await launcher.launch({
+      cwd: WORKTREE,
+      worktreeInfo: {
+        isWorktree: true,
+        repoRoot: REPO_ROOT,
+        branch: "feature-x",
+        actualBranch: "feature-x",
+        worktreePath: WORKTREE,
+      },
+    });
+
+    // No markers found — file should not be modified or deleted
+    expect(mockUnlinkSync).not.toHaveBeenCalledWith(claudeMdPath);
+    // writeFile may be called for other reasons (settings), but not for CLAUDE.md
+    const claudeMdWrites = mockWriteFileSync.mock.calls.filter(
+      (c: any[]) => c[0] === claudeMdPath,
+    );
+    expect(claudeMdWrites).toHaveLength(0);
+  });
+
   it("injects worktree porting reference into the Claude system prompt", async () => {
     await launchWorktree();
 

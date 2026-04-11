@@ -2076,6 +2076,11 @@ export class CliLauncher {
       return;
     }
 
+    // Clean up stale .claude/CLAUDE.md guardrails from older code that wrote
+    // worktree guardrails to disk. The dynamic system prompt injection is now
+    // the sole mechanism; leftover files cause duplicate/conflicting guardrails.
+    await this.cleanStaleGuardrailsFile(worktreePath);
+
     // Claude and Claude SDK: symlink project settings (.claude/settings.json)
     // so the worktree inherits the main repo's settings.
     if (backendType === "claude" || backendType === "claude-sdk") {
@@ -2089,6 +2094,54 @@ export class CliLauncher {
       }
     }
     // Codex: no file setup needed — instructions go through session-scoped developer_instructions config.
+  }
+
+  private static readonly STALE_GUARDRAILS_START = "<!-- WORKTREE_GUARDRAILS_START -->";
+  private static readonly STALE_GUARDRAILS_END = "<!-- WORKTREE_GUARDRAILS_END -->";
+
+  /**
+   * Remove stale worktree guardrails from .claude/CLAUDE.md if present.
+   * An older version of injectWorktreeGuardrails wrote guardrails between
+   * WORKTREE_GUARDRAILS_START/END markers. These persist across sessions
+   * with wrong branch names and repo paths. The dynamic system prompt
+   * injection is now the sole mechanism.
+   */
+  private async cleanStaleGuardrailsFile(worktreePath: string): Promise<void> {
+    const claudeMdPath = join(worktreePath, ".claude", "CLAUDE.md");
+    try {
+      if (!(await fileExists(claudeMdPath))) return;
+      const content = await readFile(claudeMdPath, "utf-8");
+      if (!content.includes(CliLauncher.STALE_GUARDRAILS_START)) return;
+
+      // Strip the guardrails block (markers inclusive)
+      const startIdx = content.indexOf(CliLauncher.STALE_GUARDRAILS_START);
+      const endIdx = content.indexOf(CliLauncher.STALE_GUARDRAILS_END);
+      if (startIdx === -1 || endIdx === -1) return;
+
+      const cleaned = (
+        content.slice(0, startIdx) + content.slice(endIdx + CliLauncher.STALE_GUARDRAILS_END.length)
+      ).trim();
+
+      if (cleaned.length === 0) {
+        await unlink(claudeMdPath);
+        console.log(`[cli-launcher] Removed stale .claude/CLAUDE.md (contained only old guardrails)`);
+      } else {
+        await writeFile(claudeMdPath, cleaned + "\n", "utf-8");
+        console.log(`[cli-launcher] Stripped stale guardrails block from .claude/CLAUDE.md`);
+      }
+
+      // Hide the change from git status so it doesn't pollute the worktree
+      try {
+        await execPromise(
+          `git --no-optional-locks update-index --skip-worktree .claude/CLAUDE.md`,
+          { cwd: worktreePath, timeout: 5000 },
+        );
+      } catch {
+        // Non-critical: the file might not be tracked, or git may not be available
+      }
+    } catch {
+      // Non-critical cleanup — don't block session launch
+    }
   }
 
   /**
