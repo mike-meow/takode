@@ -2096,9 +2096,6 @@ export class CliLauncher {
     // Codex: no file setup needed — instructions go through session-scoped developer_instructions config.
   }
 
-  private static readonly STALE_GUARDRAILS_START = "<!-- WORKTREE_GUARDRAILS_START -->";
-  private static readonly STALE_GUARDRAILS_END = "<!-- WORKTREE_GUARDRAILS_END -->";
-
   /**
    * Remove stale worktree guardrails from .claude/CLAUDE.md if present.
    * An older version of injectWorktreeGuardrails wrote guardrails between
@@ -2107,19 +2104,20 @@ export class CliLauncher {
    * injection is now the sole mechanism.
    */
   private async cleanStaleGuardrailsFile(worktreePath: string): Promise<void> {
+    const STALE_START = "<!-- WORKTREE_GUARDRAILS_START -->";
+    const STALE_END = "<!-- WORKTREE_GUARDRAILS_END -->";
     const claudeMdPath = join(worktreePath, ".claude", "CLAUDE.md");
     try {
       if (!(await fileExists(claudeMdPath))) return;
       const content = await readFile(claudeMdPath, "utf-8");
-      if (!content.includes(CliLauncher.STALE_GUARDRAILS_START)) return;
 
       // Strip the guardrails block (markers inclusive)
-      const startIdx = content.indexOf(CliLauncher.STALE_GUARDRAILS_START);
-      const endIdx = content.indexOf(CliLauncher.STALE_GUARDRAILS_END);
+      const startIdx = content.indexOf(STALE_START);
+      const endIdx = content.indexOf(STALE_END);
       if (startIdx === -1 || endIdx === -1) return;
 
       const cleaned = (
-        content.slice(0, startIdx) + content.slice(endIdx + CliLauncher.STALE_GUARDRAILS_END.length)
+        content.slice(0, startIdx) + content.slice(endIdx + STALE_END.length)
       ).trim();
 
       if (cleaned.length === 0) {
@@ -2136,11 +2134,11 @@ export class CliLauncher {
           `git --no-optional-locks update-index --skip-worktree .claude/CLAUDE.md`,
           { cwd: worktreePath, timeout: 5000 },
         );
-      } catch {
-        // Non-critical: the file might not be tracked, or git may not be available
+      } catch (e) {
+        console.debug(`[cli-launcher] Could not mark .claude/CLAUDE.md skip-worktree:`, e);
       }
-    } catch {
-      // Non-critical cleanup — don't block session launch
+    } catch (e) {
+      console.debug(`[cli-launcher] cleanStaleGuardrailsFile error (non-critical):`, e);
     }
   }
 
