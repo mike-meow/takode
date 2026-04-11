@@ -659,11 +659,19 @@ export function SessionItem({
                     });
                     const rvTheme = REVIEWER_BADGE_THEME[rvStatus];
                     return (
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
                           navigateToSession(reviewerSession.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigateToSession(reviewerSession.id);
+                          }
                         }}
                         onMouseDown={(e) => e.stopPropagation()}
                         title={`Reviewer${reviewerSession.sessionNum != null ? ` #${reviewerSession.sessionNum}` : ""} — click to open`}
@@ -683,7 +691,7 @@ export function SessionItem({
                           <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
                         </svg>
                         review
-                      </button>
+                      </div>
                     );
                   })()}
                 {hasBranchDivergence && (
