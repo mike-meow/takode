@@ -288,7 +288,7 @@ export function TreeViewGroup({
       );
 
       return (
-        <div key={node.leader.id} className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20">
+        <div key={node.leader.id} className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20 border-l-[3px] border-l-cc-primary/30">
           {/* Leader chip -- full width, no chevron, no indent */}
           {renderSessionItem(node.leader, { reviewerSession: leaderReviewer })}
 
@@ -320,9 +320,9 @@ export function TreeViewGroup({
             </svg>
           </button>
 
-          {/* Workers container -- only when expanded, with left accent rail */}
+          {/* Workers container -- only when expanded */}
           {isExpanded && (
-            <div className="border-t border-cc-border/30 border-l-[3px] border-l-cc-primary/30 ml-0.5 pl-3">
+            <div className="border-t border-cc-border/30 pl-3">
               {node.workers.map((w) => {
                 const workerReviewer = node.reviewers.find(
                   (r) => r.reviewerOf === w.sessionNum,
@@ -345,7 +345,7 @@ export function TreeViewGroup({
         (r) => r.reviewerOf === node.leader.sessionNum,
       );
       return (
-        <div key={node.leader.id}>
+        <div key={node.leader.id} className="border border-cc-border/20 rounded-lg">
           {renderSessionItem(node.leader, { reviewerSession: leaderReviewer })}
         </div>
       );
@@ -353,7 +353,7 @@ export function TreeViewGroup({
 
     // Standalone node (no workers, no reviewers): plain session chip
     return (
-      <div key={node.leader.id}>
+      <div key={node.leader.id} className="border border-cc-border/20 rounded-lg">
         {renderSessionItem(node.leader)}
       </div>
     );
