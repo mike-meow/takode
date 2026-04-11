@@ -224,7 +224,7 @@ export function TreeViewGroup({
 
   function renderSessionItem(
     s: SessionItemType,
-    opts?: { compact?: boolean },
+    opts?: { compact?: boolean; reviewerSession?: SessionItemType },
   ) {
     const permCount = countUserPermissions(pendingPermissions.get(s.id));
     const attention = sessionAttention?.get(s.id) ?? null;
@@ -242,13 +242,14 @@ export function TreeViewGroup({
         herdGroupBadgeTheme={herdGroupBadgeThemes?.get(s.id)}
         herdHoverHighlight={herdHoverHighlights?.get(s.id)}
         compact={opts?.compact}
+        reviewerSession={opts?.reviewerSession}
         {...sessionItemProps}
       />
     );
   }
 
-  /** Count worker + reviewer sessions by visual status for the herd summary bar. */
-  function computeWorkerSummary(workers: SessionItemType[], reviewers: SessionItemType[]): StatusCounts {
+  /** Count worker sessions by visual status for the herd summary bar. */
+  function computeWorkerSummary(workers: SessionItemType[]): StatusCounts {
     let running = 0;
     let permission = 0;
     let unread = 0;
@@ -269,26 +270,27 @@ export function TreeViewGroup({
       else if (status === "completed_unread") unread++;
     };
     for (const w of workers) countSession(w);
-    for (const r of reviewers) countSession(r);
     return { running, permission, unread };
   }
 
   function renderTreeNode(node: TreeNode) {
     const hasWorkers = node.workers.length > 0;
     const hasReviewersOnly = !hasWorkers && node.reviewers.length > 0;
-    const workerSummary = hasWorkers ? computeWorkerSummary(node.workers, node.reviewers) : undefined;
-    const reviewerCount = node.reviewers.length;
+    const workerSummary = hasWorkers ? computeWorkerSummary(node.workers) : undefined;
 
     // Herded nodes (leader with workers): collapsible container pattern
     if (hasWorkers) {
       const isExpanded = expandedHerdNodes.has(node.leader.id);
-      const totalMembers = node.workers.length + reviewerCount;
+      const totalMembers = node.workers.length;
       const idleCount = totalMembers - (workerSummary!.running + workerSummary!.permission + workerSummary!.unread);
+      const leaderReviewer = node.reviewers.find(
+        (r) => r.reviewerOf === node.leader.sessionNum,
+      );
 
       return (
         <div key={node.leader.id} className="border border-cc-border/40 rounded-lg overflow-hidden bg-cc-card/20">
           {/* Leader chip -- full width, no chevron, no indent */}
-          {renderSessionItem(node.leader)}
+          {renderSessionItem(node.leader, { reviewerSession: leaderReviewer })}
 
           {/* Herd summary bar -- always visible, toggles expand/collapse */}
           <button
@@ -308,7 +310,6 @@ export function TreeViewGroup({
             )}
             <span className="ml-auto text-cc-muted/50 shrink-0">
               {node.workers.length} worker{node.workers.length !== 1 ? "s" : ""}
-              {reviewerCount > 0 && <>, {reviewerCount} review{reviewerCount !== 1 ? "s" : ""}</>}
             </span>
             <svg
               viewBox="0 0 16 16"
@@ -323,56 +324,29 @@ export function TreeViewGroup({
           {isExpanded && (
             <div className="border-t border-cc-border/30 border-l-[3px] border-l-cc-primary/30 ml-0.5 pl-3">
               {node.workers.map((w) => {
-                const workerReviewers = node.reviewers.filter(
+                const workerReviewer = node.reviewers.find(
                   (r) => r.reviewerOf === w.sessionNum,
                 );
                 return (
                   <div key={w.id}>
-                    {renderSessionItem(w, { compact: true })}
-                    {workerReviewers.map((r) => renderSessionItem(r, { compact: true }))}
+                    {renderSessionItem(w, { compact: true, reviewerSession: workerReviewer })}
                   </div>
                 );
               })}
-              {node.reviewers
-                .filter((r) => r.reviewerOf === node.leader.sessionNum)
-                .map((r) => renderSessionItem(r, { compact: true }))}
             </div>
           )}
         </div>
       );
     }
 
-    // Standalone node with only reviewers (no workers): simple chevron toggle
+    // Standalone node with only reviewers (no workers): show reviewer as inline chip
     if (hasReviewersOnly) {
-      const isNodeCollapsed = collapsedTreeNodes.has(node.leader.id);
+      const leaderReviewer = node.reviewers.find(
+        (r) => r.reviewerOf === node.leader.sessionNum,
+      );
       return (
         <div key={node.leader.id}>
-          <div className="flex items-start">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleNodeCollapse(node.leader.id);
-              }}
-              className="shrink-0 w-5 h-7 flex items-center justify-center text-cc-muted hover:text-cc-fg cursor-pointer"
-              title={isNodeCollapsed ? "Expand reviewers" : "Collapse reviewers"}
-            >
-              <svg
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className={`w-3.5 h-3.5 transition-transform ${isNodeCollapsed ? "" : "rotate-90"}`}
-              >
-                <path d="M6 4l4 4-4 4" />
-              </svg>
-            </button>
-            <div className="flex-1 min-w-0">
-              {renderSessionItem(node.leader)}
-            </div>
-          </div>
-          {!isNodeCollapsed && (
-            <div className="ml-2 pl-[10px] border-l border-cc-border/40">
-              {node.reviewers.map((r) => renderSessionItem(r, { compact: true }))}
-            </div>
-          )}
+          {renderSessionItem(node.leader, { reviewerSession: leaderReviewer })}
         </div>
       );
     }
