@@ -2125,6 +2125,16 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
 
   if (result.herded.length > 0) {
     console.log(`[${formatTime(Date.now())}] \u2713 Herded ${result.herded.length} session(s)`);
+    await Promise.all(
+      result.herded.map(async (sid) => {
+        try {
+          const info = await fetchSessionInfo(base, sid);
+          printSessionLine(info);
+        } catch (err) {
+          console.error(`  Failed to fetch info for ${formatInlineText(sid)}: ${err}`);
+        }
+      }),
+    );
   }
   if (result.notFound.length > 0) {
     console.log(
