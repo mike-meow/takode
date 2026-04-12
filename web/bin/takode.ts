@@ -6,7 +6,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
-import { TAKODE_PEEK_CONTENT_LIMIT } from "../shared/takode-constants.js";
+import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
 import {
   getSessionAuthDir,
   getSessionAuthFilePrefixes,
@@ -1112,19 +1112,6 @@ function userSourceLabel(msg: PeekMessage): string {
   return `agent${msg.agentSource.sessionLabel ? ` ${formatInlineText(msg.agentSource.sessionLabel)}` : ""}`;
 }
 
-/** Format multi-line content with ↵ continuation prefix on subsequent lines. */
-function formatMultilineContent(text: string, indent: string): string {
-  const lines = text.split("\n");
-  if (lines.length <= 1) return text;
-  return (
-    lines[0] +
-    "\n" +
-    lines
-      .slice(1)
-      .map((l) => `${indent}↵ ${l}`)
-      .join("\n")
-  );
-}
 
 function formatCollapsedTurn(turn: CollapsedTurn): string {
   const endIdx = turn.endIdx >= 0 ? turn.endIdx : turn.startIdx; // in-progress turns use startIdx as fallback
@@ -1149,15 +1136,15 @@ function formatCollapsedTurn(turn: CollapsedTurn): string {
 
   // Single-message turn or only one side exists: compact format
   if (!hasUser && !hasResult) return header;
-  if (!hasUser) return `${header}\n  "${truncate(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}"`;
-  if (!hasResult) return `${header}\n  ${sourceLabel}: "${truncate(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}"`;
+  if (!hasUser) return `${header}\n  ${formatQuotedContent(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}`;
+  if (!hasResult) return `${header}\n  ${sourceLabel}: ${formatQuotedContent(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}`;
 
-  // Multi-message turn: show source prompt, ellipsis, and assistant response
+  // Multi-message turn: show source prompt, ellipsis, and assistant response (no asst: tag)
   return [
     header,
-    `  ${sourceLabel}: "${truncate(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}"`,
+    `  ${sourceLabel}: ${formatQuotedContent(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}`,
     `  ...`,
-    `  asst: "${truncate(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}"`,
+    `  ${formatQuotedContent(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}`,
   ].join("\n");
 }
 
@@ -1173,23 +1160,17 @@ function printExpandedMessages(messages: PeekMessage[]): void {
     switch (msg.type) {
       case "user":
         console.log(
-          `  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}"`,
+          `  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  ${formatQuotedContent(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`,
         );
         break;
       case "assistant": {
         const text = msg.content.trim();
         const hasTools = msg.tools && msg.tools.length > 0;
-        const label = !text && hasTools ? "tool" : "asst";
         if (text) {
-          const prefix = `  ${idx.padEnd(7)} ${time}  asst  `;
-          const formatted = formatMultilineContent(
-            truncate(text, TAKODE_PEEK_CONTENT_LIMIT),
-            " ".repeat(prefix.length),
-          );
-          console.log(`${prefix}${formatted}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${formatQuotedContent(text, TAKODE_PEEK_CONTENT_LIMIT)}`);
         } else if (hasTools) {
           // No text content -- print idx header so the msg ID is always visible
-          console.log(`  ${idx.padEnd(7)} ${time}  ${label}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  tool`);
         }
         if (hasTools) {
           // Collapse consecutive tool calls by name: Read×2, Grep×1
@@ -1219,14 +1200,14 @@ function printExpandedMessages(messages: PeekMessage[]): void {
         const icon = msg.success ? "✓" : "✗";
         const resultText = msg.content.trim();
         if (resultText) {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, TAKODE_PEEK_CONTENT_LIMIT)}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${formatQuotedContent(resultText, TAKODE_PEEK_CONTENT_LIMIT)}`);
         } else {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} done`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} "done"`);
         }
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${formatQuotedContent(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`);
         break;
     }
   }
@@ -1358,7 +1339,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
     switch (msg.type) {
       case "user":
         console.log(
-          `  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  "${truncate(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}"`,
+          `  ${idx.padEnd(7)} ${time}  ${userSourceLabel(msg)}  ${formatQuotedContent(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`,
         );
         break;
       case "assistant": {
@@ -1366,16 +1347,10 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
         const hasExpandedTools = msg.tools && msg.tools.length > 0;
         if (hasExpandedTools) {
           // Expanded tool display (--show-tools)
-          const label = text ? "asst" : "tool";
           if (text) {
-            const prefix = `  ${idx.padEnd(7)} ${time}  asst  `;
-            const formatted = formatMultilineContent(
-              truncate(text, TAKODE_PEEK_CONTENT_LIMIT),
-              " ".repeat(prefix.length),
-            );
-            console.log(`${prefix}${formatted}`);
+            console.log(`  ${idx.padEnd(7)} ${time}  ${formatQuotedContent(text, TAKODE_PEEK_CONTENT_LIMIT)}`);
           } else {
-            console.log(`  ${idx.padEnd(7)} ${time}  ${label}`);
+            console.log(`  ${idx.padEnd(7)} ${time}  tool`);
           }
           for (const tool of msg.tools) {
             console.log(`  ${idx.padEnd(7)}           → ${formatInlineText(tool.name)}: ${truncate(tool.summary, 80)}`);
@@ -1390,10 +1365,7 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
               ")"
             : "";
           if (text) {
-            const prefix = `  ${idx.padEnd(7)} ${time}  asst  `;
-            const truncated = truncate(text, TAKODE_PEEK_CONTENT_LIMIT);
-            const formatted = formatMultilineContent(truncated, " ".repeat(prefix.length));
-            console.log(`${prefix}${formatted}${toolStr}`);
+            console.log(`  ${idx.padEnd(7)} ${time}  ${formatQuotedContent(text, TAKODE_PEEK_CONTENT_LIMIT)}${toolStr}`);
           } else if (toolStr) {
             console.log(`  ${idx.padEnd(7)} ${time}  tool ${toolStr}`);
           }
@@ -1404,14 +1376,14 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
         const icon = msg.success ? "✓" : "✗";
         const resultText = msg.content.trim();
         if (resultText) {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${truncate(resultText, TAKODE_PEEK_CONTENT_LIMIT)}`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} ${formatQuotedContent(resultText, TAKODE_PEEK_CONTENT_LIMIT)}`);
         } else {
-          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} done`);
+          console.log(`  ${idx.padEnd(7)} ${time}  ${icon} "done"`);
         }
         break;
       }
       case "system":
-        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${truncate(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`);
+        console.log(`  ${idx.padEnd(7)} ${time}  sys   ${formatQuotedContent(msg.content, TAKODE_PEEK_CONTENT_LIMIT)}`);
         break;
     }
   }

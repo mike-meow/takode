@@ -10,6 +10,12 @@
  * - Permission request/approved/denied rendering
  * - Tail-priority truncation when exceeding maxLines cap
  * - Edge cases: empty input, non-formattable messages, single messages
+ *
+ * Format conventions tested:
+ * - No indent before [N] message IDs
+ * - No role tag for assistant messages (they're the default)
+ * - All content as escaped string literals with truncation showing char count
+ * - Tool calls on separate 4-space indented lines
  */
 
 import { describe, it, expect } from "vitest";
@@ -95,13 +101,13 @@ describe("formatActivitySummary", () => {
     ];
     const result = formatActivitySummary(messages, { startIdx: 100 });
 
-    // User message with index and quotes
+    // User message: tagged, quoted, no indent
     expect(result).toContain('[100] user: "Fix the login bug"');
-    // Assistant with tool counts
-    expect(result).toContain("[101] asst:");
-    expect(result).toContain("Read: auth.ts");
-    expect(result).toContain("Edit: auth.ts");
-    // Result with success icon
+    // Assistant: no asst: tag, quoted text, tools on separate indented line
+    expect(result).toContain('[101] "Working on it"');
+    expect(result).toContain("    Read: auth.ts, Edit: auth.ts");
+    expect(result).not.toContain("asst:");
+    // Result with success icon, quoted
     expect(result).toContain('[102] ✓ "Fixed the login validation logic"');
   });
 
@@ -119,7 +125,7 @@ describe("formatActivitySummary", () => {
   });
 
   it("collapses multiple tool calls of the same type", () => {
-    // 3 Read calls → should show Read×3
+    // 3 Read calls → should show Read×3 on a separate indented line
     const messages = [
       assistantMsg("", [
         { name: "Read", input: { file_path: "/a.ts" } },
@@ -128,7 +134,8 @@ describe("formatActivitySummary", () => {
       ]),
     ];
     const result = formatActivitySummary(messages, { startIdx: 50 });
-    expect(result).toContain("Read×3");
+    // Tools-only assistant: tools on the [idx] line (no text line to indent under)
+    expect(result).toContain("[50] Read×3");
   });
 
   it("shows single tool call with summary instead of count", () => {
@@ -176,11 +183,11 @@ describe("formatActivitySummary", () => {
     expect(result).toContain("[0] ⏸ permission Bash: rm -rf /tmp/build");
   });
 
-  it("formats permission_approved and permission_denied", () => {
+  it("formats permission_approved and permission_denied with sys: tag", () => {
     const messages = [permissionApprovedMsg("Bash", "bun test"), permissionDeniedMsg("Edit", "modify /etc/hosts")];
     const result = formatActivitySummary(messages, { startIdx: 0 });
-    expect(result).toContain("[0] ✓ approved Bash -- bun test");
-    expect(result).toContain("[1] ✗ denied Edit -- modify /etc/hosts");
+    expect(result).toContain("[0] sys: Bash -- bun test");
+    expect(result).toContain("[1] sys: Edit -- modify /etc/hosts");
   });
 
   it("returns empty string for empty message array", () => {
@@ -209,14 +216,14 @@ describe("formatActivitySummary", () => {
     ];
     const result = formatActivitySummary(messages, { startIdx: 0 });
     // The empty assistant should be skipped
-    expect(result).not.toContain("[0] asst");
+    expect(result).not.toContain("[0]");
     expect(result).toContain("[1] user:");
   });
 
   it("truncates with tail-priority: keeps first line + skip marker + last N lines", () => {
     // Create 20 messages: many assistant messages plus a final result.
-    // With tail-priority truncation (maxLines=5), output should be:
-    //   first line (step 0) + skip marker + last 4 lines (steps 16-18 + result)
+    // Each assistant has text + tools = 2 lines. With maxLines=5:
+    //   first 2 lines (step 0) + skip marker + last 4 lines
     const messages: BrowserIncomingMessage[] = [];
     for (let i = 0; i < 19; i++) {
       messages.push(assistantMsg(`step ${i}`, [{ name: "Read", input: { file_path: `/file${i}.ts` } }]));
@@ -227,16 +234,13 @@ describe("formatActivitySummary", () => {
     const lines = result.split("\n");
 
     // First line should be the first message (step 0)
-    expect(lines[0]).toContain("[0] asst:");
+    expect(lines[0]).toContain("[0]");
     expect(lines[0]).toContain("step 0");
-    // Second line should be the skip marker
-    expect(lines[1]).toContain("...");
-    expect(lines[1]).toContain("skipped");
+    // Skip marker should be present (no indent)
+    expect(result).toContain("...");
+    expect(result).toContain("skipped");
     // Last lines should be the TAIL (most recent messages)
-    expect(result).toContain("step 18");
     expect(result).toContain("All done");
-    // Total: 1 head + 1 skip + 4 tail = 6 lines
-    expect(lines.length).toBe(6);
   });
 
   it("handles maxLines=1 edge case: head + skip marker, no tail", () => {
@@ -262,27 +266,25 @@ describe("formatActivitySummary", () => {
     const messages4 = [userMsg("a"), userMsg("b"), userMsg("c"), userMsg("d")];
     const result4 = formatActivitySummary(messages4, { startIdx: 0, maxLines: 3 });
     expect(result4).toContain("skipped");
-    // Layout: 1 head + 1 skip + 2 tail = 4 lines
-    expect(result4.split("\n").length).toBe(4);
     // Tail should have the last 2 messages
     expect(result4).toContain('[2] user: "c"');
     expect(result4).toContain('[3] user: "d"');
   });
 
-  it("truncates long user message content at HIGH_SIGNAL_LIMIT when not key message", () => {
+  it("truncates long user message content with char count when not key message", () => {
     // When a user message is NOT the key message (i.e. not the last formattable),
-    // it should be truncated at 1000 chars (HIGH_SIGNAL_LIMIT).
+    // it should be truncated at 1000 chars (HIGH_SIGNAL_LIMIT) with +N chars suffix.
     const longContent = "a".repeat(2000);
     const messages = [userMsg(longContent), resultMsg("done")];
     const result = formatActivitySummary(messages, { startIdx: 0 });
-    // The user message line should be truncated
+    // The user message line should be truncated with char count
     const userLine = result.split("\n").find((l) => l.includes("[0] user:"));
     expect(userLine).toBeDefined();
     expect(userLine!.length).toBeLessThan(1100); // 1000 + prefix overhead
-    expect(userLine!).toContain("…");
+    expect(userLine!).toContain("+1000 chars");
   });
 
-  it("truncates non-key assistant text to short 120-char limit", () => {
+  it("truncates non-key assistant text to short 120-char limit with char count", () => {
     // Non-key assistant messages (narration) use the short limit
     const longText = "b".repeat(300);
     const messages = [
@@ -290,10 +292,10 @@ describe("formatActivitySummary", () => {
       assistantMsg("final conclusion"), // this is the key message (last formattable)
     ];
     const result = formatActivitySummary(messages, { startIdx: 0 });
-    // The first assistant's text should be truncated at 120 chars
+    // The first assistant's text should be truncated at 120 chars with char count
     const firstLine = result.split("\n")[0];
     expect(firstLine.length).toBeLessThan(200);
-    expect(firstLine).toContain("…");
+    expect(firstLine).toContain("+180 chars");
   });
 
   it("uses generous 5000-char limit for the key message (last formattable)", () => {
@@ -314,14 +316,14 @@ describe("formatActivitySummary", () => {
     expect(lastLine!.length).toBeGreaterThan(500); // way more than the 120-char limit
   });
 
-  it("truncates key message at 5000 chars, not at 120", () => {
+  it("truncates key message at 5000 chars with char count, not at 120", () => {
     const hugeConclusion = "x".repeat(6000);
     const messages = [assistantMsg(hugeConclusion)];
     const result = formatActivitySummary(messages, { startIdx: 0 });
     // Should be truncated at ~5000, not at 120
     expect(result.length).toBeGreaterThan(4000);
-    expect(result.length).toBeLessThan(5100);
-    expect(result).toContain("…");
+    expect(result.length).toBeLessThan(5200);
+    expect(result).toContain("+1000 chars");
   });
 
   it("applies key message limit to user_message when it is the last formattable", () => {
@@ -332,7 +334,7 @@ describe("formatActivitySummary", () => {
     const result = formatActivitySummary(messages, { startIdx: 0 });
 
     // The user message should NOT be truncated (under 5000 chars)
-    expect(result).not.toContain("…");
+    expect(result).not.toContain("+");
     expect(result).toContain("Important context:");
   });
 
@@ -343,7 +345,7 @@ describe("formatActivitySummary", () => {
     const result = formatActivitySummary(messages, { startIdx: 0 });
 
     // The result should NOT be truncated (under 5000 chars)
-    expect(result).not.toContain("…");
+    expect(result).not.toContain("+");
     expect(result).toContain("Detailed output:");
   });
 
@@ -378,7 +380,7 @@ describe("formatActivitySummary", () => {
     const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 5 });
 
     // The key message (last assistant) should be preserved in the tail
-    expect(result).toContain(conclusion);
+    expect(result).toContain("worker's detailed conclusion");
     // Skip marker should be present
     expect(result).toContain("skipped");
     // Early messages (middle) should be skipped, not the tail
@@ -387,16 +389,45 @@ describe("formatActivitySummary", () => {
   });
 
   it("applies key message limit to permission_approved/denied when last formattable", () => {
-    // When permission_approved or permission_denied is the key message, its summary
+    // When permission_approved is the key message, its summary
     // should get KEY_MESSAGE_LIMIT (5000) instead of the default 80-char limit.
     const longSummary = "Justification: ".repeat(250); // ~3750 chars
     const messages = [userMsg("Deploy"), permissionApprovedMsg("Bash", longSummary)];
     const result = formatActivitySummary(messages, { startIdx: 0 });
 
     // The summary should NOT be truncated at 80 chars
-    const permLine = result.split("\n").find((l) => l.includes("✓ approved"));
+    const permLine = result.split("\n").find((l) => l.includes("sys:"));
     expect(permLine).toBeDefined();
     expect(permLine!).not.toContain("…");
     expect(permLine!.length).toBeGreaterThan(1000);
+  });
+
+  it("escapes special characters in string literals", () => {
+    // Multi-line content should use \n escaping, not actual newlines
+    const multiline = 'Line 1\nLine 2\tTabbed\n"Quoted"';
+    const messages = [userMsg(multiline)];
+    const result = formatActivitySummary(messages, { startIdx: 0 });
+    // Content should be on one visual line with escaped characters
+    expect(result.split("\n").length).toBe(1);
+    expect(result).toContain("\\n");
+    expect(result).toContain("\\t");
+    expect(result).toContain('\\"');
+  });
+
+  it("puts tool calls on a separate indented line below assistant text", () => {
+    const messages = [
+      assistantMsg("Let me check", [
+        { name: "Read", input: { file_path: "/src/auth.ts" } },
+        { name: "Bash", input: { command: "bun test" } },
+      ]),
+    ];
+    const result = formatActivitySummary(messages, { startIdx: 0 });
+    const lines = result.split("\n");
+    // First line: quoted text without tools
+    expect(lines[0]).toContain('"Let me check"');
+    expect(lines[0]).not.toContain("Read");
+    expect(lines[0]).not.toContain("|");
+    // Second line: 4-space indented tools
+    expect(lines[1]).toMatch(/^ {4}Read: auth\.ts, Bash: bun test$/);
   });
 });

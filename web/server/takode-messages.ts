@@ -171,6 +171,9 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max) + `... [+${s.length - max} chars]`;
 }
 
+// Re-export shared formatting helpers so server code can import from takode-messages
+export { escapeStringLiteral, formatQuotedContent } from "../shared/takode-constants.js";
+
 /** Extract the most informative argument for each tool type as a one-line summary. */
 export function buildToolSummary(name: string, input: Record<string, unknown>): string {
   const path = (input.file_path as string) || "";

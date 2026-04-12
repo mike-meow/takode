@@ -6,6 +6,8 @@ import {
   buildReadResponse,
   buildToolSummary,
   grepMessageHistory,
+  escapeStringLiteral,
+  formatQuotedContent,
 } from "./takode-messages.js";
 import type { BrowserIncomingMessage, CLIResultMessage } from "./session-types.js";
 
@@ -107,6 +109,55 @@ function permissionApproved(toolName: string, summary: string, ts: number): Brow
     timestamp: ts,
   } as BrowserIncomingMessage;
 }
+
+// ─── escapeStringLiteral & formatQuotedContent ──────────────────────────────
+
+describe("escapeStringLiteral", () => {
+  it("escapes backslashes, double quotes, newlines, tabs, and carriage returns", () => {
+    expect(escapeStringLiteral('hello "world"')).toBe('hello \\"world\\"');
+    expect(escapeStringLiteral("line1\nline2")).toBe("line1\\nline2");
+    expect(escapeStringLiteral("col1\tcol2")).toBe("col1\\tcol2");
+    expect(escapeStringLiteral("back\\slash")).toBe("back\\\\slash");
+    expect(escapeStringLiteral("cr\rhere")).toBe("cr\\rhere");
+  });
+
+  it("handles strings with no special characters", () => {
+    expect(escapeStringLiteral("simple text")).toBe("simple text");
+  });
+
+  it("handles empty string", () => {
+    expect(escapeStringLiteral("")).toBe("");
+  });
+
+  it("escapes multiple special characters in sequence", () => {
+    expect(escapeStringLiteral('a\n"b"\tc')).toBe('a\\n\\"b\\"\\tc');
+  });
+});
+
+describe("formatQuotedContent", () => {
+  it("wraps short content in double quotes", () => {
+    expect(formatQuotedContent("hello", 100)).toBe('"hello"');
+  });
+
+  it("escapes special characters inside quotes", () => {
+    expect(formatQuotedContent('say "hi"\nthere', 100)).toBe('"say \\"hi\\"\\nthere"');
+  });
+
+  it("truncates long content with char count", () => {
+    const result = formatQuotedContent("a".repeat(200), 100);
+    expect(result).toBe('"' + "a".repeat(100) + '" +100 chars');
+  });
+
+  it("does not truncate content at exactly the limit", () => {
+    const result = formatQuotedContent("a".repeat(100), 100);
+    expect(result).toBe('"' + "a".repeat(100) + '"');
+  });
+
+  it("truncates content one char over the limit", () => {
+    const result = formatQuotedContent("a".repeat(101), 100);
+    expect(result).toBe('"' + "a".repeat(100) + '" +1 chars');
+  });
+});
 
 // ─── buildToolSummary ─────────────────────────────────────────────────────────
 

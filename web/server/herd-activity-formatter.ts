@@ -13,10 +13,18 @@
  *   messages) is preserved because it's the most diagnostic -- what happened right
  *   before the event. Layout: first line + skip marker + last (maxLines-1) lines.
  * - Bounded: capped at MAX_LINES to prevent context bloat in the leader's conversation.
+ *
+ * Format conventions (shared with takode scan/peek):
+ * - No indent before [N] message IDs
+ * - Assistant messages have no role tag (they're the default)
+ * - Non-assistant roles tagged: user:, herd:, agent(#N):, sys:
+ * - All content as escaped string literals: "content with \n escapes"
+ * - Truncation shows char count: "truncated" +42 chars
+ * - Tool calls on a separate 4-space indented line below their assistant message
  */
 
 import type { BrowserIncomingMessage, ContentBlock } from "./session-types.js";
-import { buildToolSummary } from "./takode-messages.js";
+import { buildToolSummary, formatQuotedContent } from "./takode-messages.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +57,7 @@ export interface FormatActivityOptions {
  * - permission_request: shown with tool name + description (leader needs context)
  * - assistant (non-key): tool calls collapsed to counts; text truncated short (120 chars)
  * - result (non-key): shown with generous 1000-char limit (the outcome)
- * - permission_approved/denied: one-line summary
+ * - permission_approved/denied: one-line summary with sys: tag
  * - others (stream_event, tool_progress, etc.): skipped
  *
  * The LAST formattable message is the "key message" -- it gets a 5000-char limit.
@@ -72,8 +80,12 @@ export function formatActivitySummary(messages: BrowserIncomingMessage[], option
     const msg = messages[i];
     const idx = startIdx + i;
     const isKeyMessage = i === keyMessageIdx;
-    const line = formatMessage(msg, idx, isKeyMessage);
-    if (line !== null) allLines.push({ line, msgIdx: idx });
+    const lines = formatMessage(msg, idx, isKeyMessage);
+    if (lines !== null) {
+      for (const line of lines) {
+        allLines.push({ line, msgIdx: idx });
+      }
+    }
   }
 
   if (allLines.length === 0) return "";
@@ -92,7 +104,7 @@ export function formatActivitySummary(messages: BrowserIncomingMessage[], option
   const lastSkippedIdx = allLines[allLines.length - 1 - tailCount].msgIdx;
 
   const result: string[] = [head.line];
-  result.push(`  ... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`);
+  result.push(`... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`);
   for (const t of tail) result.push(t.line);
 
   return result.join("\n");
@@ -115,13 +127,13 @@ function isFormattable(msg: BrowserIncomingMessage): boolean {
 /** Format a single message into one or more lines. Returns null if the message
  *  should be skipped (non-formattable type, or assistant with no useful content).
  *  isKeyMessage: when true, uses generous KEY_MESSAGE_LIMIT for content. */
-function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string | null {
+function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string[] | null {
   switch (msg.type) {
     case "user_message": {
       const content = msg.content || "";
       const source = formatUserSource(msg);
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
-      return `  [${idx}] ${source}: "${truncate(content, limit)}"`;
+      return [`[${idx}] ${source}: ${formatQuotedContent(content, limit)}`];
     }
 
     case "assistant":
@@ -132,7 +144,7 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: b
       const icon = data.is_error ? "✗" : "✓";
       const text = data.result?.trim() || "done";
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
-      return `  [${idx}] ${icon} "${truncate(text, limit)}"`;
+      return [`[${idx}] ${icon} ${formatQuotedContent(text, limit)}`];
     }
 
     case "permission_request": {
@@ -140,19 +152,21 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: b
       const tool = req?.tool_name || "unknown";
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
       const desc = req?.description ? `: ${truncate(req.description, limit)}` : "";
-      return `  [${idx}] ⏸ permission ${tool}${desc}`;
+      return [`[${idx}] ⏸ permission ${tool}${desc}`];
     }
 
     case "permission_approved": {
       const m = msg as { tool_name?: string; summary?: string };
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
-      return `  [${idx}] ✓ approved ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, limit)}` : ""}`;
+      const detail = m.summary ? `: ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ${m.tool_name || ""}`;
+      return [`[${idx}] sys${detail}`];
     }
 
     case "permission_denied": {
       const m = msg as { tool_name?: string; summary?: string };
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
-      return `  [${idx}] ✗ denied ${m.tool_name || ""}${m.summary ? ` -- ${truncate(m.summary, limit)}` : ""}`;
+      const detail = m.summary ? `: ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ${m.tool_name || ""}`;
+      return [`[${idx}] sys${detail}`];
     }
 
     default:
@@ -160,9 +174,9 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: b
   }
 }
 
-/** Format an assistant message: text content + collapsed tool counts.
+/** Format an assistant message: quoted text content + collapsed tool counts on a separate line.
  *  Key messages get a generous content limit for the worker's conclusion. */
-function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string | null {
+function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: boolean): string[] | null {
   const blocks: ContentBlock[] = (msg as { message?: { content?: ContentBlock[] } }).message?.content || [];
   const textLimit = isKeyMessage ? KEY_MESSAGE_LIMIT : ASST_TEXT_LIMIT;
 
@@ -186,23 +200,21 @@ function formatAssistantMessage(msg: BrowserIncomingMessage, idx: number, isKeyM
   const hasTools = Object.keys(toolCounts).length > 0;
   if (!hasText && !hasTools) return null;
 
-  const parts: string[] = [`  [${idx}] asst:`];
+  const lines: string[] = [];
+  const toolStr = hasTools ? formatActivityToolLine(toolCounts, toolSummaries) : "";
 
   if (hasText) {
     const combinedText = textParts.join(" ");
-    parts.push(truncate(combinedText, textLimit));
-  }
-
-  if (hasTools) {
-    const toolStr = formatActivityToolLine(toolCounts, toolSummaries);
-    if (hasText) {
-      parts.push(`| ${toolStr}`);
-    } else {
-      parts.push(toolStr);
+    lines.push(`[${idx}] ${formatQuotedContent(combinedText, textLimit)}`);
+    if (hasTools) {
+      lines.push(`    ${toolStr}`);
     }
+  } else {
+    // No text, just tools -- put them on the [idx] line
+    lines.push(`[${idx}] ${toolStr}`);
   }
 
-  return parts.join(" ");
+  return lines;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
