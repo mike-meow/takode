@@ -3074,13 +3074,28 @@ export class WsBridge {
   /** Get attention state for a session (used by REST enrichment and Pushover). */
   getSessionAttentionState(
     sessionId: string,
-  ): { lastReadAt: number; attentionReason: "action" | "error" | "review" | null } | null {
+  ): { lastReadAt: number; attentionReason: "action" | "error" | "review" | null; pendingPermissionSummary: string | null } | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
     return {
       lastReadAt: session.lastReadAt,
       attentionReason: session.attentionReason,
+      pendingPermissionSummary: this.summarizePendingPermissions(session),
     };
+  }
+
+  /** Human-readable summary of pending permissions for display in takode list. */
+  private summarizePendingPermissions(session: Session): string | null {
+    if (session.pendingPermissions.size === 0) return null;
+    const tools = new Set<string>();
+    for (const perm of session.pendingPermissions.values()) {
+      tools.add(perm.tool_name);
+    }
+    // Priority: plans (session-directing) > questions (routine input) > single tool > count
+    if (tools.has("ExitPlanMode")) return "pending plan";
+    if (tools.has("AskUserQuestion")) return "pending question";
+    if (tools.size === 1) return `pending ${[...tools][0]}`;
+    return `${session.pendingPermissions.size} pending permissions`;
   }
 
   getAllSessions(): SessionState[] {

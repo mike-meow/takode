@@ -705,7 +705,11 @@ function printSessionLine(
   // Backend type tag: only show for codex (sdk is implied by session details)
   const backend = s.backendType === "codex" ? " [codex]" : "";
   const status = s.cliConnected ? (s.state === "running" ? "●" : "○") : s.archived ? "⊘" : "✗";
-  const attention = s.attentionReason ? ` ⚠ ${formatInlineText(s.attentionReason)}` : "";
+  const attention = s.pendingPermissionSummary
+    ? ` ⚠ ${formatInlineText(s.pendingPermissionSummary)}`
+    : s.attentionReason
+      ? ` ⚠ ${formatInlineText(s.attentionReason)}`
+      : "";
 
   // Quest indicator: "📋 q-42 in_progress"
   const quest = s.claimedQuestId
