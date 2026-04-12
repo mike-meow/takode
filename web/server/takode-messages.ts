@@ -1177,6 +1177,7 @@ export interface GrepMatch {
 export interface GrepResponse {
   totalMatches: number;
   matches: GrepMatch[];
+  warning?: string;
 }
 
 /** Build a snippet centered on the first match occurrence. */
@@ -1273,7 +1274,17 @@ export function grepMessageHistory(
     }
   }
 
-  return { totalMatches, matches };
+  const result: GrepResponse = { totalMatches, matches };
+
+  // Warn when pattern contains \| (BRE alternation) but matches nothing --
+  // the user likely meant | (JS/ERE alternation).
+  if (totalMatches === 0 && q.includes("\\|")) {
+    result.warning =
+      'Pattern contains "\\|" which matches a literal pipe in JS regex. ' +
+      'For alternation, use "|" instead (e.g. "image|quality" not "image\\|quality").';
+  }
+
+  return result;
 }
 
 // ─── Export (dump session to text) ────────────────────────────────────────────

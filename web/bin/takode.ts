@@ -2958,6 +2958,7 @@ async function handleGrep(base: string, args: string[]): Promise<void> {
     sessionNum: number;
     query: string;
     totalMatches: number;
+    warning?: string;
     matches: Array<{
       idx: number;
       type: string;
@@ -2974,6 +2975,7 @@ async function handleGrep(base: string, args: string[]): Promise<void> {
 
   if (data.totalMatches === 0) {
     console.log(`No matches for "${formatInlineText(query)}" in session #${data.sessionNum}.`);
+    if (data.warning) console.log(`  Hint: ${data.warning}`);
     return;
   }
 
@@ -3123,7 +3125,7 @@ Commands:
   scan     Scan session turns (collapsed summaries, paginated)
   peek     View session activity (available to all sessions)
   read     Read a full message (available to all sessions)
-  grep     Search within a session's messages (case-insensitive)
+  grep     Search within a session's messages (JS regex, case-insensitive)
   export   Export full session history to a text file
   send     Send a message to a herded session
   rename   Rename a session (e.g. takode rename 5 My Session Name)
