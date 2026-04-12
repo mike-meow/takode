@@ -1772,6 +1772,163 @@ describe("POST /api/sessions/:id/archive", () => {
   });
 });
 
+// Archive Group: archives a leader session and all its herded workers in one
+// request. Workers are archived first (avoids herd events to a dead leader),
+// then the leader itself. Partial failures are tracked per-session.
+describe("POST /api/sessions/:id/archive-group", () => {
+  it("archives leader and all herded workers", async () => {
+    // Leader session with isOrchestrator flag
+    launcher.getSession.mockReturnValue({
+      sessionId: "leader-1",
+      state: "connected",
+      cwd: "/test",
+      isOrchestrator: true,
+    });
+    // Two herded workers
+    launcher.getHerdedSessions.mockReturnValue([
+      { sessionId: "worker-1", state: "connected", cwd: "/test", herdedBy: "leader-1", archived: false },
+      { sessionId: "worker-2", state: "connected", cwd: "/test", herdedBy: "leader-1", archived: false },
+    ]);
+
+    const res = await app.request("/api/sessions/leader-1/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ ok: true, archived: 3, failed: 0 });
+    // All three sessions should be killed and archived
+    expect(launcher.kill).toHaveBeenCalledWith("worker-1");
+    expect(launcher.kill).toHaveBeenCalledWith("worker-2");
+    expect(launcher.kill).toHaveBeenCalledWith("leader-1");
+    expect(launcher.setArchived).toHaveBeenCalledWith("worker-1", true);
+    expect(launcher.setArchived).toHaveBeenCalledWith("worker-2", true);
+    expect(launcher.setArchived).toHaveBeenCalledWith("leader-1", true);
+  });
+
+  it("skips already-archived herded workers", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "leader-1",
+      state: "connected",
+      cwd: "/test",
+      isOrchestrator: true,
+    });
+    // One active worker + one already archived (filtered out by the endpoint)
+    launcher.getHerdedSessions.mockReturnValue([
+      { sessionId: "worker-1", state: "connected", cwd: "/test", herdedBy: "leader-1", archived: false },
+      { sessionId: "worker-2", state: "exited", cwd: "/test", herdedBy: "leader-1", archived: true },
+    ]);
+
+    const res = await app.request("/api/sessions/leader-1/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // Only worker-1 + leader = 2 archived (worker-2 was already archived)
+    expect(json).toMatchObject({ ok: true, archived: 2, failed: 0 });
+    expect(launcher.kill).not.toHaveBeenCalledWith("worker-2");
+  });
+
+  // Leader with no active herded workers should still archive just itself
+  it("archives leader alone when no active workers exist", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "leader-1",
+      state: "connected",
+      cwd: "/test",
+      isOrchestrator: true,
+    });
+    launcher.getHerdedSessions.mockReturnValue([]);
+
+    const res = await app.request("/api/sessions/leader-1/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ ok: true, archived: 1, failed: 0 });
+    expect(launcher.kill).toHaveBeenCalledWith("leader-1");
+    expect(launcher.setArchived).toHaveBeenCalledWith("leader-1", true);
+  });
+
+  // When archiveSingleSession throws for one worker, the endpoint should
+  // continue archiving the rest and report partial failure in the response.
+  it("reports partial failure when a worker archive throws", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "leader-1",
+      state: "connected",
+      cwd: "/test",
+      isOrchestrator: true,
+    });
+    launcher.getHerdedSessions.mockReturnValue([
+      { sessionId: "worker-1", state: "connected", cwd: "/test", herdedBy: "leader-1", archived: false },
+      { sessionId: "worker-2", state: "connected", cwd: "/test", herdedBy: "leader-1", archived: false },
+    ]);
+    // Make kill throw only for worker-1
+    launcher.kill.mockImplementation(async (id: string) => {
+      if (id === "worker-1") throw new Error("kill failed");
+    });
+
+    const res = await app.request("/api/sessions/leader-1/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // worker-1 fails, worker-2 + leader succeed
+    expect(json.ok).toBe(false);
+    expect(json.failed).toBeGreaterThanOrEqual(1);
+    expect(json.archived).toBeGreaterThanOrEqual(1);
+    // worker-2 and leader should still be archived despite worker-1 failure
+    expect(launcher.setArchived).toHaveBeenCalledWith("worker-2", true);
+    expect(launcher.setArchived).toHaveBeenCalledWith("leader-1", true);
+
+    // Restore default mock
+    launcher.kill.mockImplementation(async () => {});
+  });
+
+  it("returns 400 when session is not an orchestrator", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "connected",
+      cwd: "/test",
+      isOrchestrator: false,
+    });
+
+    const res = await app.request("/api/sessions/s1/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe("Session is not an orchestrator");
+  });
+
+  it("returns 404 when session does not exist", async () => {
+    launcher.resolveSessionId.mockReturnValue(undefined);
+
+    const res = await app.request("/api/sessions/nonexistent/archive-group", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(404);
+    // Restore default mock
+    launcher.resolveSessionId.mockImplementation((id: string) => id);
+  });
+});
+
 describe("POST /api/sessions/:id/unarchive", () => {
   it("unarchives a non-worktree session and auto-relaunches", async () => {
     // Non-worktree session: no worktree recreation needed

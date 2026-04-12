@@ -631,6 +631,11 @@ export const api = {
   archiveSession: (sessionId: string, opts?: { force?: boolean }) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/archive`, opts),
 
+  archiveGroup: (sessionId: string) =>
+    post<{ ok: boolean; archived: number; failed: number }>(
+      `/sessions/${encodeURIComponent(sessionId)}/archive-group`,
+    ),
+
   unarchiveSession: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/unarchive`),
 
   cancelTimer: (sessionId: string, timerId: string) =>

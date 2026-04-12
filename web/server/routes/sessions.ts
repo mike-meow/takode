@@ -1648,11 +1648,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return c.json({ ok: true, worktree: worktreeResult });
   });
 
-  api.post("/sessions/:id/archive", async (c) => {
-    const id = resolveId(c.req.param("id"));
-    if (!id) return c.json({ error: "Session not found" }, 404);
-    const body = await c.req.json().catch(() => ({}));
-
+  // Shared helper: archive a single session (kill, cleanup, persist).
+  // Used by both /archive and /archive-group endpoints.
+  async function archiveSingleSession(id: string) {
     // Emit herd event before killing — the leader needs to know a worker was archived.
     const archivedSessionInfo = launcher.getSession(id);
     if (archivedSessionInfo?.herdedBy) {
@@ -1703,8 +1701,66 @@ export function createSessionsRoutes(ctx: RouteContext) {
         }
       }
     }
+    return worktreeResult;
+  }
 
+  api.post("/sessions/:id/archive", async (c) => {
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    await c.req.json().catch(() => ({}));
+
+    const worktreeResult = await archiveSingleSession(id);
     return c.json({ ok: true, worktree: worktreeResult });
+  });
+
+  api.post("/sessions/:id/archive-group", async (c) => {
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const leader = launcher.getSession(id);
+    if (!leader) return c.json({ error: "Session not found" }, 404);
+    if (!leader.isOrchestrator) {
+      return c.json({ error: "Session is not an orchestrator" }, 400);
+    }
+
+    // Find all non-archived herded workers
+    const workers = launcher.getHerdedSessions(id).filter((s) => !s.archived);
+
+    const results: Array<{ sessionId: string; ok: boolean; error?: string }> = [];
+
+    // Archive workers first, then the leader (avoids herd events to a dead leader)
+    for (const w of workers) {
+      try {
+        await archiveSingleSession(w.sessionId);
+        results.push({ sessionId: w.sessionId, ok: true });
+      } catch (e) {
+        results.push({
+          sessionId: w.sessionId,
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    // Archive the leader itself
+    try {
+      await archiveSingleSession(id);
+      results.push({ sessionId: id, ok: true });
+    } catch (e) {
+      results.push({
+        sessionId: id,
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    const anyFailed = results.some((r) => !r.ok);
+    return c.json({
+      ok: !anyFailed,
+      archived: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    });
   });
 
   api.post("/sessions/:id/unarchive", async (c) => {

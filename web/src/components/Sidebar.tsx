@@ -534,6 +534,37 @@ export function Sidebar() {
     setConfirmArchiveId(null);
   }, []);
 
+  const doArchiveGroup = useCallback(async (leaderId: string) => {
+    const workers = sdkSessions.filter((s) => s.herdedBy === leaderId && !s.archived);
+    try {
+      // Disconnect all herded workers + the leader locally
+      for (const w of workers) {
+        disconnectSession(w.sessionId);
+        useStore.getState().clearSessionAttention(w.sessionId);
+      }
+      disconnectSession(leaderId);
+      useStore.getState().clearSessionAttention(leaderId);
+
+      await api.archiveGroup(leaderId);
+    } catch {
+      // best-effort
+    }
+    // Navigate away if the current session is part of the archived group
+    const currentId = useStore.getState().currentSessionId;
+    if (currentId) {
+      const allIds = [leaderId, ...workers.map((w) => w.sessionId)];
+      if (allIds.includes(currentId)) {
+        navigateToMostRecentSession({ excludeId: leaderId });
+      }
+    }
+    try {
+      const list = await api.listSessions();
+      useStore.getState().setSdkSessions(list);
+    } catch {
+      // best-effort
+    }
+  }, [sdkSessions]);
+
   const handleUnarchiveSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     try {
@@ -1458,6 +1489,11 @@ export function Sidebar() {
           const attention = sessionAttention.get(contextMenu.sessionId);
           const backendType = sessionInfo?.backendType || sdk?.backendType || "claude";
 
+          // Count non-archived herded workers for "Archive Group" option
+          const herdedWorkers = !isArchived && sdk?.isOrchestrator
+            ? sdkSessions.filter((s) => s.herdedBy === contextMenu.sessionId && !s.archived)
+            : [];
+
           const sessionNum = sdk?.sessionNum;
           const items: ContextMenuItem[] = [
             ...(sessionNum != null
@@ -1556,6 +1592,23 @@ export function Sidebar() {
                     handleArchiveSession(syntheticEvent, contextMenu.sessionId);
                   },
                 },
+            // "Archive Group" — archives leader + all herded workers in one action
+            ...(herdedWorkers.length > 0
+              ? [
+                  {
+                    label: "Archive Group",
+                    onClick: () => {
+                      doArchiveGroup(contextMenu.sessionId);
+                    },
+                    confirm: {
+                      title: "Archive entire group?",
+                      description: `This will archive the leader and ${herdedWorkers.length} worker session${herdedWorkers.length === 1 ? "" : "s"}.`,
+                      confirmLabel: "Archive All",
+                      destructive: true,
+                    },
+                  },
+                ]
+              : []),
             {
               label: "Delete Session",
               onClick: () => {
