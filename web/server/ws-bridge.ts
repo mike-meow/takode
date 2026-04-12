@@ -2930,13 +2930,12 @@ export class WsBridge {
     this.setAttention(session, reason);
 
     // Persist notification to inbox
-    const messageIndex = lastAssistant ? session.messageHistory.lastIndexOf(lastAssistant) : -1;
     const notif: SessionNotification = {
       id: `n-${++session.notificationCounter}`,
       category,
       ...(summary ? { summary } : {}),
       timestamp: Date.now(),
-      messageIndex: messageIndex >= 0 ? messageIndex : session.messageHistory.length - 1,
+      messageId: anchoredMessageId,
       done: false,
     };
     session.notifications.push(notif);

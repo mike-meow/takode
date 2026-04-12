@@ -752,8 +752,8 @@ export interface SessionNotification {
   category: "needs-input" | "review";
   summary?: string;
   timestamp: number;
-  /** Index into messageHistory for jump-to-message links */
-  messageIndex: number;
+  /** Assistant message ID for jump-to-message links (null if no message was anchored) */
+  messageId: string | null;
   done: boolean;
 }
 

@@ -3502,7 +3502,7 @@ export function Playground() {
                               category: "review" as const,
                               summary: "Quest q-235 implementation is complete and ready for review",
                               timestamp: now - 600_000,
-                              messageIndex: 42,
+                              messageId: "mock-msg-42",
                               done: false,
                             },
                             {
@@ -3510,7 +3510,7 @@ export function Playground() {
                               category: "needs-input" as const,
                               summary: "Should we use JPEG q85 or q75 for the transport tier?",
                               timestamp: now - 120_000,
-                              messageIndex: 87,
+                              messageId: "mock-msg-87",
                               done: false,
                             },
                             {
@@ -3518,7 +3518,7 @@ export function Playground() {
                               category: "review" as const,
                               summary: "Port to main repo completed successfully",
                               timestamp: now - 3_600_000,
-                              messageIndex: 15,
+                              messageId: "mock-msg-15",
                               done: true,
                             },
                           ],
