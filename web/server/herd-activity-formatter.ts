@@ -158,14 +158,14 @@ function formatMessage(msg: BrowserIncomingMessage, idx: number, isKeyMessage: b
     case "permission_approved": {
       const m = msg as { tool_name?: string; summary?: string };
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
-      const detail = m.summary ? `: ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ${m.tool_name || ""}`;
+      const detail = m.summary ? `: ✓ ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ✓ ${m.tool_name || ""}`;
       return [`[${idx}] sys${detail}`];
     }
 
     case "permission_denied": {
       const m = msg as { tool_name?: string; summary?: string };
       const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : 80;
-      const detail = m.summary ? `: ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ${m.tool_name || ""}`;
+      const detail = m.summary ? `: ✗ ${m.tool_name || ""} -- ${truncate(m.summary, limit)}` : `: ✗ ${m.tool_name || ""}`;
       return [`[${idx}] sys${detail}`];
     }
 

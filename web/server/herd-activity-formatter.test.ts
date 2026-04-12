@@ -186,8 +186,8 @@ describe("formatActivitySummary", () => {
   it("formats permission_approved and permission_denied with sys: tag", () => {
     const messages = [permissionApprovedMsg("Bash", "bun test"), permissionDeniedMsg("Edit", "modify /etc/hosts")];
     const result = formatActivitySummary(messages, { startIdx: 0 });
-    expect(result).toContain("[0] sys: Bash -- bun test");
-    expect(result).toContain("[1] sys: Edit -- modify /etc/hosts");
+    expect(result).toContain("[0] sys: ✓ Bash -- bun test");
+    expect(result).toContain("[1] sys: ✗ Edit -- modify /etc/hosts");
   });
 
   it("returns empty string for empty message array", () => {
