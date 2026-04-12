@@ -6297,7 +6297,9 @@ export class WsBridge {
         emitTakodePermissionRequest: (targetSession, request) =>
           this.emitTakodeEvent(targetSession.id, "permission_request", {
             tool_name: request.tool_name,
+            request_id: request.request_id,
             summary: request.description || request.tool_name,
+            ...this.buildPermissionPreview(request),
             turn_source: this.getCurrentTurnTriggerSource(targetSession),
             msg_index: this.findLastAssistantMessageIndex(targetSession),
           }),
