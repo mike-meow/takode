@@ -1359,9 +1359,9 @@ export class WsBridge {
         if (!session.isGenerating || !session.generationStartedAt) continue;
 
         // Don't flag sessions that haven't been generating long enough.
-        // lastCliMessageAt / lastCliPingAt may be stale from a previous turn,
-        // so without this guard, a freshly-started generation triggers a false
-        // "stuck" that self-clears on the next cycle once real CLI output arrives.
+        // lastCliMessageAt may be stale from a previous turn, so without
+        // this guard, a freshly-started generation triggers a false "stuck"
+        // that self-clears on the next cycle once real CLI output arrives.
         if (now - session.generationStartedAt < STUCK_THRESHOLD_MS) continue;
 
         // If tools are actively running (started but no result yet), the

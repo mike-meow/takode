@@ -2373,6 +2373,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("/leader-dispatch");
     expect(guardrails).toContain("quest-journey.md");
     expect(guardrails).toContain("board-usage.md");
+    // Leader discipline: wait for user answer, no skipping stages
+    expect(guardrails).toContain("WAIT for their answer");
+    expect(guardrails).toContain("Never skip quest journey stages");
     // Detailed content moved to sub-skill files, not inline
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("takode peek <session> [--from N]");
