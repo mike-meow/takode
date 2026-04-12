@@ -258,11 +258,28 @@ idea → refined → in_progress → needs_verification → done
 - Is the implementation actually complete?
 - Run tests, typecheck, linting yourself first.
 - **Worktree sessions:** If you made the change in a git worktree, finish the full sync-to-main workflow first (rebase/cherry-pick/push/reset/post-reset verification) before running `quest complete` or describing the work as ready for verification.
-- **If reworking a quest with existing feedback**: before submitting, reply to the feedback thread explaining what you did. Use `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap, clarified error messages"`. Be concise — summarize what changed, don't repeat the original feedback.
-- **Then mark each addressed human feedback entry** with `quest address q-N <index>`. This command toggles state, so run `quest show q-N` after each toggle and confirm the entry now shows `addressed` (do not toggle entries already addressed).
-- Do not claim feedback was addressed unless both happened: (1) you posted the agent reply with `quest feedback`, and (2) the corresponding human feedback entries are marked addressed.
-- `quest complete --items "..."` — only include items requiring **human** verification. Update the checklist to reflect the new state (e.g. items that were previously failing may need re-verification). Keep each item to one short sentence.
-- **After submitting**, if you can self-verify any checklist items (e.g. unit tests pass, code review confirms the fix), check them off immediately with `quest check q-N <index>`. Only leave items unchecked if they genuinely need human eyes (UI appearance, UX judgment, etc.).
+
+**Pre-submission checklist (all required):**
+
+1. **Address all human feedback.** For each human feedback entry on the quest:
+   - Post an explicit reply explaining HOW you addressed it: `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap"`
+   - Mark the entry as addressed: `quest address q-N <index>` (run `quest show q-N` after to confirm it shows `addressed`)
+   - Both steps are required -- a reply without marking, or marking without explaining, is incomplete
+   - Do not claim feedback was addressed unless both happened
+
+2. **Add a summary comment.** Before submitting, add a final feedback entry summarizing the work:
+   - `quest feedback q-N --text "Summary: <what was done>"`
+   - Briefly describe the changes made and why
+   - Include commit hashes or PR links if changes were ported (e.g., "Ported as commit abc1234")
+   - The goal: someone reading only the quest (not the session conversation) should understand what happened
+
+3. **Verification items must require human eyes only.** When writing `quest complete --items "..."`:
+   - Do NOT include items you can verify yourself: "tests pass", "typecheck clean", "code compiles", "no regressions in test suite"
+   - DO include items needing human judgment: "popover appears correctly on mobile", "notification chip matches TimerChip styling", "scroll-to-message highlights the right message"
+   - If you can self-verify an item, verify it yourself and don't add it to the checklist
+   - Update the checklist to reflect the current state (items from a previous submission may need re-verification)
+
+- **After submitting**, if you can self-verify any remaining checklist items (e.g. code review confirms the fix), check them off immediately with `quest check q-N <index>`. Only leave items unchecked if they genuinely need human eyes.
 
 ### Verification Inbox workflow
 - Newly submitted quests enter **Verification Inbox** (`verificationInboxUnread=true`).

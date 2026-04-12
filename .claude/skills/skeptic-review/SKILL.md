@@ -76,6 +76,26 @@ Evaluate against these criteria:
 5. **Honesty**: Does the worker's report accurately describe what they did?
    Any exaggerations or omissions?
 
+### Submission Quality Checks
+
+In addition to the work integrity criteria above, check these three concrete
+pass/fail items. If any fail, the verdict is **CHALLENGE**.
+
+1. **Human feedback addressed?** Run `quest show <quest_id>` and check:
+   - Every human feedback entry should be marked `addressed`
+   - Each addressed entry should have a corresponding agent reply comment explaining HOW it was addressed
+   - If any human feedback is unaddressed or has no reply, CHALLENGE: "Human feedback entry #N is not addressed -- post a reply explaining how it was handled and mark it addressed"
+
+2. **Summary comment present?** Look for a final agent feedback entry that:
+   - Summarizes what was done (not just "done" or "completed")
+   - Includes commit hashes or PR links if changes were ported
+   - If missing, CHALLENGE: "Add a summary comment to the quest describing what was done and any relevant commit/PR links"
+
+3. **Verification items are human-only?** Check each verification item in the quest:
+   - Items like "tests pass", "typecheck clean", "no regressions", "code compiles" should NOT be in the checklist -- the agent can verify those itself
+   - Only items requiring human judgment belong: UI appearance, UX feel, behavioral verification in browser, edge cases needing manual testing
+   - If self-verifiable items are present, CHALLENGE: "Verification item #N ('tests pass') can be verified by the agent -- remove it and only keep items requiring human judgment"
+
 ### Step 3: Deliver Verdict
 
 Respond with exactly one of:

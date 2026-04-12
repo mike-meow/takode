@@ -49,8 +49,10 @@ describe("ensureQuestmasterIntegration", () => {
 
     const skill = String(codexSkillWrite?.[1] ?? "");
     expect(skill).toContain("quest address <id> <index> [--json]");
-    expect(skill).toContain("Then mark each addressed human feedback entry");
-    expect(skill).toContain("Do not claim feedback was addressed unless both happened");
+    // Validates the pre-submission checklist includes feedback-addressing and summary requirements
+    expect(skill).toContain("Address all human feedback");
+    expect(skill).toContain("Both steps are required");
+    expect(skill).toContain("Add a summary comment");
   });
 
   it("requires titles under 10 words for refined and later stages", async () => {
