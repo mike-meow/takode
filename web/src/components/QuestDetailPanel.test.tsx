@@ -2,24 +2,41 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { useStore } from "../store.js";
 
-// Mock the api module -- questImageUrl is needed for images, checkQuestVerification for toggles
+// Mock the api module
 const mockCheckQuestVerification = vi.fn();
+const mockTransitionQuest = vi.fn();
+const mockDeleteQuest = vi.fn();
+const mockMarkQuestDone = vi.fn();
+const mockAddQuestFeedback = vi.fn();
 vi.mock("../api.js", () => ({
   api: {
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
     getSettings: vi.fn().mockResolvedValue({ editorConfig: { editor: "none" } }),
     openVsCodeRemoteFile: vi.fn(),
     checkQuestVerification: (...args: unknown[]) => mockCheckQuestVerification(...args),
+    transitionQuest: (...args: unknown[]) => mockTransitionQuest(...args),
+    deleteQuest: (...args: unknown[]) => mockDeleteQuest(...args),
+    markQuestDone: (...args: unknown[]) => mockMarkQuestDone(...args),
+    addQuestFeedback: (...args: unknown[]) => mockAddQuestFeedback(...args),
   },
 }));
 
-// Mock navigateTo for the "Open in Questmaster" button
-const mockNavigateTo = vi.fn();
-vi.mock("../utils/navigation.js", () => ({
-  navigateTo: (...args: unknown[]) => mockNavigateTo(...args),
+// Mock routing
+const mockNavigateToSession = vi.fn();
+vi.mock("../utils/routing.js", () => ({
+  navigateToSession: (...args: unknown[]) => mockNavigateToSession(...args),
+  withoutQuestIdInHash: (hash: string) => hash.replace(/[?&]quest=[^&]+/, ""),
 }));
 
-import { QuestDetailModal } from "./QuestDetailModal.js";
+// Mock quest-assign and quest-rework
+vi.mock("./quest-assign.js", () => ({
+  buildQuestAssignDraft: (questId: string) => `Assign draft for ${questId}`,
+}));
+vi.mock("./quest-rework.js", () => ({
+  buildQuestReworkDraft: (questId: string) => `Rework draft for ${questId}`,
+}));
+
+import { QuestDetailPanel } from "./QuestDetailPanel.js";
 import type { QuestmasterTask, QuestVerificationItem } from "../types.js";
 
 // Minimal quest fixtures for testing
@@ -69,31 +86,34 @@ function makeDoneQuest(): QuestmasterTask {
   } as QuestmasterTask;
 }
 
-describe("QuestDetailModal", () => {
+describe("QuestDetailPanel", () => {
   beforeEach(() => {
     useStore.getState().reset();
-    mockNavigateTo.mockReset();
+    mockNavigateToSession.mockReset();
     mockCheckQuestVerification.mockReset();
+    mockTransitionQuest.mockReset();
+    mockDeleteQuest.mockReset();
+    mockMarkQuestDone.mockReset();
+    mockAddQuestFeedback.mockReset();
     document.body.style.overflow = "";
   });
 
   it("renders nothing when questOverlayId is null", () => {
-    // No quest overlay open
-    const { container } = render(<QuestDetailModal />);
+    const { container } = render(<QuestDetailPanel />);
     expect(container.innerHTML).toBe("");
-    expect(screen.queryByTestId("quest-detail-modal")).toBeNull();
+    expect(screen.queryByTestId("quest-detail-panel")).toBeNull();
   });
 
-  it("renders the modal when questOverlayId matches a quest in the store", () => {
+  it("renders the panel when questOverlayId matches a quest in the store", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    // Modal should be visible with the quest title
-    expect(screen.getByTestId("quest-detail-modal")).toBeTruthy();
+    // Panel should be visible with the quest title
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
     expect(screen.getByText("Fix mobile sidebar overflow")).toBeTruthy();
-    // Status badge should show (the quest status "needs_verification" renders as "Verification")
+    // Status badge
     expect(screen.getAllByText("Verification").length).toBeGreaterThanOrEqual(1);
     // Tags
     expect(screen.getByText("ui")).toBeTruthy();
@@ -101,10 +121,9 @@ describe("QuestDetailModal", () => {
   });
 
   it("renders nothing when questOverlayId does not match any quest", () => {
-    // Store has no quests
     useStore.setState({ quests: [], questOverlayId: "q-999" });
 
-    const { container } = render(<QuestDetailModal />);
+    const { container } = render(<QuestDetailPanel />);
     expect(container.innerHTML).toBe("");
   });
 
@@ -112,8 +131,8 @@ describe("QuestDetailModal", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
-    expect(screen.getByTestId("quest-detail-modal")).toBeTruthy();
+    render(<QuestDetailPanel />);
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(useStore.getState().questOverlayId).toBeNull();
@@ -123,9 +142,9 @@ describe("QuestDetailModal", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    fireEvent.click(screen.getByTestId("quest-detail-backdrop"));
+    fireEvent.click(screen.getByTestId("quest-detail-panel-backdrop"));
     expect(useStore.getState().questOverlayId).toBeNull();
   });
 
@@ -133,33 +152,18 @@ describe("QuestDetailModal", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    fireEvent.click(screen.getByTestId("quest-detail-close"));
+    fireEvent.click(screen.getByTestId("quest-detail-panel-close"));
     expect(useStore.getState().questOverlayId).toBeNull();
-  });
-
-  it("navigates to Questmaster and closes overlay on 'Open in Questmaster' click", () => {
-    const quest = makeVerificationQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    fireEvent.click(screen.getByTestId("quest-detail-open-questmaster"));
-
-    // Should close the overlay
-    expect(useStore.getState().questOverlayId).toBeNull();
-    // Should navigate to questmaster with quest param
-    expect(mockNavigateTo).toHaveBeenCalledWith("/questmaster?quest=q-42");
   });
 
   it("shows description rendered as markdown", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    // Description contains "The sidebar overflows" text
     expect(screen.getByText(/The sidebar overflows/)).toBeTruthy();
   });
 
@@ -167,24 +171,20 @@ describe("QuestDetailModal", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    // Verification item texts
     expect(screen.getByText("Sidebar no overflow on iPhone SE")).toBeTruthy();
     expect(screen.getByText("Scroll works")).toBeTruthy();
 
-    // Checkboxes reflect server state
     const checkboxes = screen.getAllByRole("checkbox");
     expect(checkboxes[0]).toHaveProperty("checked", true);
     expect(checkboxes[1]).toHaveProperty("checked", false);
   });
 
   it("toggles verification checkbox via API and updates store", async () => {
-    // Setup: quest with one unchecked item at index 1
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    // Mock API to return quest with item 1 now checked
     const updatedQuest = makeVerificationQuest({
       verificationItems: [
         { text: "Sidebar no overflow on iPhone SE", checked: true },
@@ -193,21 +193,248 @@ describe("QuestDetailModal", () => {
     });
     mockCheckQuestVerification.mockResolvedValue(updatedQuest);
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
-    // Click the unchecked checkbox (index 1)
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[1]);
 
-    // API should be called with (questId, index, newCheckedValue)
     expect(mockCheckQuestVerification).toHaveBeenCalledWith("q-42", 1, true);
 
-    // After API resolves, store should be updated
     await waitFor(() => {
       const storeQuest = useStore.getState().quests.find((q) => q.questId === "q-42");
       expect(
         (storeQuest as QuestmasterTask & { verificationItems: QuestVerificationItem[] }).verificationItems[1].checked,
       ).toBe(true);
+    });
+  });
+
+  it("keeps checkbox unchanged when API call fails", async () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    mockCheckQuestVerification.mockRejectedValue(new Error("Network error"));
+
+    render(<QuestDetailPanel />);
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+
+    await waitFor(() => {
+      expect(mockCheckQuestVerification).toHaveBeenCalled();
+    });
+
+    const storeQuest = useStore.getState().quests.find((q) => q.questId === "q-42");
+    expect(
+      (storeQuest as QuestmasterTask & { verificationItems: QuestVerificationItem[] }).verificationItems[1].checked,
+    ).toBe(false);
+  });
+
+  it("shows feedback entries with author labels", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Feedback")).toBeTruthy();
+    expect(screen.getByText("Check iPad mini too")).toBeTruthy();
+    expect(screen.getByText("Confirmed working on iPad mini.")).toBeTruthy();
+    expect(screen.getByText("addressed")).toBeTruthy();
+  });
+
+  it("shows notes section for done quests", () => {
+    const quest = makeDoneQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-99" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText(/Reduced p99 latency/)).toBeTruthy();
+  });
+
+  it("shows verification progress in the header", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("1/2")).toBeTruthy();
+  });
+
+  it("shows images with clickable thumbnails", () => {
+    const quest = makeVerificationQuest({
+      images: [{ id: "img-1", filename: "screenshot.png", mimeType: "image/png", path: "/path/to/img-1.png" }],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const img = screen.getByAltText("screenshot.png");
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe("/api/quests/_images/img-1");
+  });
+
+  it("locks body scroll when open", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("closes lightbox first on Escape, keeping the panel open", () => {
+    const quest = makeVerificationQuest({
+      images: [{ id: "img-1", filename: "screenshot.png", mimeType: "image/png", path: "/path/to/img-1.png" }],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const img = screen.getByAltText("screenshot.png");
+    fireEvent.click(img);
+    expect(screen.getByTestId("lightbox-backdrop")).toBeTruthy();
+
+    // First Escape closes lightbox, not panel
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
+    expect(useStore.getState().questOverlayId).toBe("q-42");
+
+    // Second Escape closes panel
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useStore.getState().questOverlayId).toBeNull();
+  });
+
+  it("renders a cancelled quest with red dot styling", () => {
+    const quest = makeDoneQuest();
+    (quest as Record<string, unknown>).cancelled = true;
+    useStore.setState({ quests: [quest], questOverlayId: "q-99" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Optimize DB queries")).toBeTruthy();
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
+  });
+
+  it("renders parent ID badge when quest has a parent", () => {
+    const quest = makeVerificationQuest({ parentId: "q-10" });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("sub:q-10")).toBeTruthy();
+  });
+
+  it("renders a minimal quest without optional fields", () => {
+    const quest: QuestmasterTask = {
+      id: "q-5-v1",
+      questId: "q-5",
+      version: 1,
+      title: "Bare idea quest",
+      status: "idea",
+      createdAt: Date.now() - 60000,
+    } as QuestmasterTask;
+    useStore.setState({ quests: [quest], questOverlayId: "q-5" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Bare idea quest")).toBeTruthy();
+    // "Idea" appears in both the status badge and the select dropdown
+    expect(screen.getAllByText("Idea").length).toBeGreaterThanOrEqual(1);
+    // No verification checklist section (the word "Verification" in dropdown doesn't count)
+    expect(screen.queryByText("Verification", { selector: "label" })).toBeNull();
+    expect(screen.queryByText("Notes")).toBeNull();
+  });
+
+  // ─── Action button tests (new in QuestDetailPanel) ──────────────────
+
+  it("shows Edit button in the action bar", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Edit")).toBeTruthy();
+  });
+
+  it("shows status dropdown with current status", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    // Status dropdown should be a select element with current status
+    const select = screen.getByRole("combobox");
+    expect(select).toBeTruthy();
+  });
+
+  it("shows Delete button that requires confirmation", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const deleteBtn = screen.getByText("Delete");
+    expect(deleteBtn).toBeTruthy();
+
+    // Click Delete -- should show "Confirm Delete"
+    fireEvent.click(deleteBtn);
+    expect(screen.getByText("Confirm Delete")).toBeTruthy();
+    expect(screen.getByText("Cancel")).toBeTruthy();
+  });
+
+  it("shows Finish Quest button for non-done quests", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Finish Quest")).toBeTruthy();
+  });
+
+  it("hides Finish Quest button for done quests", () => {
+    const quest = makeDoneQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-99" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.queryByText("Finish Quest")).toBeNull();
+  });
+
+  it("calls deleteQuest API on confirm delete and closes panel", async () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+    mockDeleteQuest.mockResolvedValue(undefined);
+
+    render(<QuestDetailPanel />);
+
+    // Click Delete, then Confirm Delete
+    fireEvent.click(screen.getByText("Delete"));
+    fireEvent.click(screen.getByText("Confirm Delete"));
+
+    expect(mockDeleteQuest).toHaveBeenCalledWith("q-42");
+
+    await waitFor(() => {
+      // Panel should close after delete
+      expect(useStore.getState().questOverlayId).toBeNull();
+      // Quest should be removed from store
+      expect(useStore.getState().quests.find((q) => q.questId === "q-42")).toBeUndefined();
+    });
+  });
+
+  it("calls markQuestDone API on Finish Quest and closes panel", async () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+    const doneQuest = makeVerificationQuest({ status: "done" });
+    mockMarkQuestDone.mockResolvedValue(doneQuest);
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByText("Finish Quest"));
+
+    expect(mockMarkQuestDone).toHaveBeenCalledWith("q-42");
+
+    await waitFor(() => {
+      // Panel should close after marking done
+      expect(useStore.getState().questOverlayId).toBeNull();
     });
   });
 
@@ -225,7 +452,7 @@ describe("QuestDetailModal", () => {
     });
     mockCheckQuestVerification.mockResolvedValue(updatedQuest);
 
-    render(<QuestDetailModal />);
+    render(<QuestDetailPanel />);
 
     // Click the checked checkbox (index 0) to uncheck it
     const checkboxes = screen.getAllByRole("checkbox");
@@ -241,155 +468,5 @@ describe("QuestDetailModal", () => {
         (storeQuest as QuestmasterTask & { verificationItems: QuestVerificationItem[] }).verificationItems[0].checked,
       ).toBe(false);
     });
-  });
-
-  it("keeps checkbox unchanged when API call fails", async () => {
-    const quest = makeVerificationQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    // Mock API to reject
-    mockCheckQuestVerification.mockRejectedValue(new Error("Network error"));
-
-    render(<QuestDetailModal />);
-
-    const checkboxes = screen.getAllByRole("checkbox");
-    fireEvent.click(checkboxes[1]);
-
-    // Wait for the rejected promise to settle
-    await waitFor(() => {
-      expect(mockCheckQuestVerification).toHaveBeenCalled();
-    });
-
-    // Store should remain unchanged -- item 1 still unchecked
-    const storeQuest = useStore.getState().quests.find((q) => q.questId === "q-42");
-    expect(
-      (storeQuest as QuestmasterTask & { verificationItems: QuestVerificationItem[] }).verificationItems[1].checked,
-    ).toBe(false);
-  });
-
-  it("shows feedback entries with author labels", () => {
-    const quest = makeVerificationQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    expect(screen.getByText("Feedback")).toBeTruthy();
-    expect(screen.getByText("Check iPad mini too")).toBeTruthy();
-    expect(screen.getByText("Confirmed working on iPad mini.")).toBeTruthy();
-    // Addressed badge on first feedback
-    expect(screen.getByText("addressed")).toBeTruthy();
-  });
-
-  it("shows notes section for done quests", () => {
-    const quest = makeDoneQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-99" });
-
-    render(<QuestDetailModal />);
-
-    expect(screen.getByText("Notes")).toBeTruthy();
-    expect(screen.getByText(/Reduced p99 latency/)).toBeTruthy();
-  });
-
-  it("shows verification progress in the header", () => {
-    const quest = makeVerificationQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    // "1/2" progress (1 checked out of 2)
-    expect(screen.getByText("1/2")).toBeTruthy();
-  });
-
-  it("shows images with clickable thumbnails", () => {
-    const quest = makeVerificationQuest({
-      images: [{ id: "img-1", filename: "screenshot.png", mimeType: "image/png", path: "/path/to/img-1.png" }],
-    });
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    // Image should be rendered
-    const img = screen.getByAltText("screenshot.png");
-    expect(img).toBeTruthy();
-    expect(img.getAttribute("src")).toBe("/api/quests/_images/img-1");
-  });
-
-  it("locks body scroll when open", () => {
-    const quest = makeVerificationQuest();
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    expect(document.body.style.overflow).toBe("hidden");
-  });
-
-  it("closes lightbox first on Escape, keeping the quest modal open", () => {
-    // When an image lightbox is open inside the modal, pressing Escape should
-    // close the lightbox but keep the quest detail modal visible.
-    const quest = makeVerificationQuest({
-      images: [{ id: "img-1", filename: "screenshot.png", mimeType: "image/png", path: "/path/to/img-1.png" }],
-    });
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    // Click image to open lightbox
-    const img = screen.getByAltText("screenshot.png");
-    fireEvent.click(img);
-    expect(screen.getByTestId("lightbox-backdrop")).toBeTruthy();
-
-    // First Escape closes lightbox, not modal
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
-    expect(useStore.getState().questOverlayId).toBe("q-42");
-
-    // Second Escape closes modal
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(useStore.getState().questOverlayId).toBeNull();
-  });
-
-  it("renders a cancelled quest with red dot styling", () => {
-    const quest = makeDoneQuest();
-    // Manually add cancelled flag (done quests can be cancelled)
-    (quest as Record<string, unknown>).cancelled = true;
-    useStore.setState({ quests: [quest], questOverlayId: "q-99" });
-
-    render(<QuestDetailModal />);
-
-    // Should show the quest title
-    expect(screen.getByText("Optimize DB queries")).toBeTruthy();
-    // The modal should render (basic smoke test for cancelled path)
-    expect(screen.getByTestId("quest-detail-modal")).toBeTruthy();
-  });
-
-  it("renders parent ID badge when quest has a parent", () => {
-    const quest = makeVerificationQuest({ parentId: "q-10" });
-    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-
-    render(<QuestDetailModal />);
-
-    expect(screen.getByText("sub:q-10")).toBeTruthy();
-  });
-
-  it("renders a minimal quest without optional fields", () => {
-    // Idea-stage quest with no description, no verification, no feedback
-    const quest: QuestmasterTask = {
-      id: "q-5-v1",
-      questId: "q-5",
-      version: 1,
-      title: "Bare idea quest",
-      status: "idea",
-      createdAt: Date.now() - 60000,
-    } as QuestmasterTask;
-    useStore.setState({ quests: [quest], questOverlayId: "q-5" });
-
-    render(<QuestDetailModal />);
-
-    expect(screen.getByText("Bare idea quest")).toBeTruthy();
-    expect(screen.getByText("Idea")).toBeTruthy();
-    // No verification, feedback, or notes sections
-    expect(screen.queryByText("Verification")).toBeNull();
-    expect(screen.queryByText("Feedback")).toBeNull();
-    expect(screen.queryByText("Notes")).toBeNull();
   });
 });

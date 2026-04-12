@@ -289,8 +289,10 @@ interface AppState {
   taskPanelOpen: boolean;
   /** null = closed; {} = global new session; { groupKey, cwd } = group new session */
   newSessionModalState: { groupKey?: string; cwd?: string; treeGroupId?: string } | null;
-  /** Quest ID to show in the global read-only detail overlay, or null when closed. */
+  /** Quest ID to show in the global detail overlay, or null when closed. */
   questOverlayId: string | null;
+  /** Optional search highlight text for the quest overlay (set by QuestmasterPage). */
+  questOverlaySearchHighlight: string | null;
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
   vscodeSelectionContext: VsCodeSelectionState | null;
@@ -312,7 +314,7 @@ interface AppState {
   setTaskPanelOpen: (open: boolean) => void;
   openNewSessionModal: (opts?: { groupKey?: string; cwd?: string; treeGroupId?: string }) => void;
   closeNewSessionModal: () => void;
-  openQuestOverlay: (questId: string) => void;
+  openQuestOverlay: (questId: string, searchHighlight?: string) => void;
   closeQuestOverlay: () => void;
   setVsCodeSelectionContext: (context: VsCodeSelectionState | null) => void;
   newSession: () => void;
@@ -763,6 +765,7 @@ export const useStore = create<AppState>((set) => ({
   taskPanelOpen: false,
   newSessionModalState: null,
   questOverlayId: null,
+  questOverlaySearchHighlight: null,
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
   vscodeSelectionContext: null,
@@ -877,8 +880,9 @@ export const useStore = create<AppState>((set) => ({
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
   openNewSessionModal: (opts) => set({ newSessionModalState: opts ?? {} }),
   closeNewSessionModal: () => set({ newSessionModalState: null }),
-  openQuestOverlay: (questId) => set({ questOverlayId: questId }),
-  closeQuestOverlay: () => set({ questOverlayId: null }),
+  openQuestOverlay: (questId, searchHighlight) =>
+    set({ questOverlayId: questId, questOverlaySearchHighlight: searchHighlight ?? null }),
+  closeQuestOverlay: () => set({ questOverlayId: null, questOverlaySearchHighlight: null }),
   setVsCodeSelectionContext: (context) => set({ vscodeSelectionContext: context }),
   newSession: () => {
     scopedRemoveItem("cc-current-session");
@@ -893,7 +897,7 @@ export const useStore = create<AppState>((set) => ({
     } else if (!id) {
       scopedRemoveItem("cc-current-session");
     }
-    set({ currentSessionId: id });
+    set({ currentSessionId: id, questOverlayId: null, questOverlaySearchHighlight: null });
   },
 
   addSession: (session) =>

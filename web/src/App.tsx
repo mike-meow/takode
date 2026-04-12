@@ -24,7 +24,7 @@ import { TerminalPage } from "./components/TerminalPage.js";
 import { SessionCreationView } from "./components/SessionCreationView.js";
 import { NewSessionModal } from "./components/NewSessionModal.js";
 import { QuestmasterPage } from "./components/QuestmasterPage.js";
-import { QuestDetailModal } from "./components/QuestDetailModal.js";
+import { QuestDetailPanel } from "./components/QuestDetailPanel.js";
 import { isPendingId } from "./utils/pending-creation.js";
 import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
 import {
@@ -373,8 +373,8 @@ export default function App() {
         onClose={() => useStore.getState().closeNewSessionModal()}
       />
 
-      {/* Global read-only quest detail overlay */}
-      <QuestDetailModal />
+      {/* Global quest detail overlay */}
+      <QuestDetailPanel />
 
       {/* Task panel — overlay on mobile, inline on desktop */}
       {currentSessionId && isSessionView && !isPendingId(currentSessionId) && (
