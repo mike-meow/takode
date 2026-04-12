@@ -207,6 +207,8 @@ interface AppState {
   // Board state per session (server-authoritative, from board_updated messages)
   sessionBoards: Map<string, BoardRowData[]>;
   setSessionBoard: (sessionId: string, board: BoardRowData[]) => void;
+  sessionCompletedBoards: Map<string, BoardRowData[]>;
+  setSessionCompletedBoard: (sessionId: string, board: BoardRowData[]) => void;
 
   // Background agent notifications (task_notification from CLI)
   backgroundAgentNotifs: Map<string, Map<string, { status: string; outputFile?: string; summary?: string }>>;
@@ -686,6 +688,13 @@ export const useStore = create<AppState>((set) => ({
       const next = new Map(s.sessionBoards);
       next.set(sessionId, board);
       return { sessionBoards: next };
+    }),
+  sessionCompletedBoards: new Map(),
+  setSessionCompletedBoard: (sessionId, board) =>
+    set((s) => {
+      const next = new Map(s.sessionCompletedBoards);
+      next.set(sessionId, board);
+      return { sessionCompletedBoards: next };
     }),
   backgroundAgentNotifs: new Map(),
   toolStartTimestamps: new Map(),
@@ -2179,6 +2188,7 @@ export const useStore = create<AppState>((set) => ({
       toolResults: new Map(),
       latestBoardToolUseId: new Map(),
       sessionBoards: new Map(),
+      sessionCompletedBoards: new Map(),
       backgroundAgentNotifs: new Map(),
       toolStartTimestamps: new Map(),
       prStatus: new Map(),

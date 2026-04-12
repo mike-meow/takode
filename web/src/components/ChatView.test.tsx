@@ -18,6 +18,7 @@ interface MockStoreState {
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
   sdkSessions: Array<{ sessionId: string; archived?: boolean; isOrchestrator?: boolean }>;
   sessionBoards: Map<string, unknown[]>;
+  sessionCompletedBoards: Map<string, unknown[]>;
 }
 
 let mockState: MockStoreState;
@@ -34,6 +35,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     sessionStatus: new Map([["s1", "idle"]]),
     sdkSessions: [{ sessionId: "s1", archived: false }],
     sessionBoards: new Map(),
+    sessionCompletedBoards: new Map(),
     ...overrides,
   };
 }

@@ -953,6 +953,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // Update Zustand board state so the persistent WorkBoardBar widget
       // and any future live-updating inline boards stay current.
       store.setSessionBoard(sessionId, data.board ?? []);
+      store.setSessionCompletedBoard(sessionId, data.completedBoard ?? []);
       break;
     }
 
@@ -1011,6 +1012,9 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       // Sync board state from server on connect/reconnect
       if (data.board) {
         store.setSessionBoard(sessionId, data.board);
+      }
+      if (data.completedBoard) {
+        store.setSessionCompletedBoard(sessionId, data.completedBoard);
       }
       break;
     }

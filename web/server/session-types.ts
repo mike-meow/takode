@@ -430,6 +430,8 @@ export interface BoardRow {
   createdAt: number;
   /** Epoch ms when this row was last updated. */
   updatedAt: number;
+  /** Epoch ms when this row was moved to the completed list. Present only for completed items. */
+  completedAt?: number;
 }
 
 /** High-level task recognized by the session auto-namer. */
@@ -580,6 +582,7 @@ export type BrowserIncomingMessageBase =
       attentionReason?: "action" | "error" | "review" | null;
       generationStartedAt?: number | null;
       board?: BoardRow[];
+      completedBoard?: BoardRow[];
     }
   | { type: "session_stuck" }
   | { type: "session_unstuck" }
@@ -600,7 +603,7 @@ export type BrowserIncomingMessageBase =
       messageId: string | null;
       notification: { category: "needs-input" | "review"; timestamp: number; summary?: string };
     }
-  | { type: "board_updated"; board: BoardRow[] }
+  | { type: "board_updated"; board: BoardRow[]; completedBoard: BoardRow[] }
   | { type: "timer_update"; timers: import("./timer-types.js").SessionTimer[] }
   | {
       type: "tree_groups_update";

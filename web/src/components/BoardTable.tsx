@@ -22,6 +22,7 @@ export interface BoardRowData {
   waitFor?: string[];
   createdAt?: number;
   updatedAt: number;
+  completedAt?: number;
 }
 
 /** Clickable quest ID link with hover preview card -- navigates to Questmaster detail view. */

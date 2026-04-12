@@ -423,6 +423,8 @@ interface Session {
   keywords: string[];
   /** Leader work board: quest ID → row. Ephemeral per leader session, persisted across restarts. */
   board: Map<string, BoardRow>;
+  /** Completed board items (moved here by rm/advance instead of being deleted). Newest-first by completedAt. */
+  completedBoard: Map<string, BoardRow>;
   /** Whether agent activity has occurred since the last diff computation */
   diffStatsDirty: boolean;
   /** Whether this session was created by resuming an external CLI session (VS Code/terminal) */
@@ -2004,6 +2006,7 @@ export class WsBridge {
         taskHistory: Array.isArray(p.taskHistory) ? p.taskHistory : [],
         keywords: Array.isArray(p.keywords) ? p.keywords : [],
         board: new Map(Array.isArray(p.board) ? p.board.map((row: BoardRow) => [row.questId, row]) : []),
+        completedBoard: new Map(Array.isArray(p.completedBoard) ? p.completedBoard.map((row: BoardRow) => [row.questId, row]) : []),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliInitializeSent: false,
@@ -2070,6 +2073,7 @@ export class WsBridge {
       taskHistory: session.taskHistory,
       keywords: session.keywords,
       board: Array.from(session.board.values()),
+      completedBoard: Array.from(session.completedBoard.values()),
     });
   }
 
@@ -2096,6 +2100,7 @@ export class WsBridge {
       taskHistory: session.taskHistory,
       keywords: session.keywords,
       board: Array.from(session.board.values()),
+      completedBoard: Array.from(session.completedBoard.values()),
     });
   }
 
@@ -2609,6 +2614,7 @@ export class WsBridge {
         taskHistory: [],
         keywords: [],
         board: new Map(),
+        completedBoard: new Map(),
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliInitializeSent: false,
@@ -2975,29 +2981,31 @@ export class WsBridge {
     return this.commitBoard(session);
   }
 
-  /** Remove one or more rows from the board by quest ID. Returns the full board. */
+  /** Remove one or more rows from the board by quest ID. Moves them to completedBoard. */
   removeBoardRows(sessionId: string, questIds: string[]): BoardRow[] | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
     for (const qid of questIds) {
-      session.board.delete(qid);
+      this.moveBoardRowToCompleted(session, qid);
     }
     return this.commitBoard(session);
   }
 
-  /** Remove a quest from ALL session boards (e.g. on quest deletion or cancellation). */
+  /** Remove a quest from ALL session boards (e.g. on quest deletion or cancellation).
+   *  True deletion -- removes from both active board and completed history. */
   removeBoardRowFromAll(questId: string): void {
     for (const session of this.sessions.values()) {
-      if (session.board.has(questId)) {
-        session.board.delete(questId);
-        this.commitBoard(session);
-      }
+      const hadActive = session.board.has(questId);
+      const hadCompleted = session.completedBoard.has(questId);
+      if (hadActive) session.board.delete(questId);
+      if (hadCompleted) session.completedBoard.delete(questId);
+      if (hadActive || hadCompleted) this.commitBoard(session);
     }
   }
 
   /**
    * Advance a board row to the next Quest Journey stage.
-   * If already at the final stage (PORTING), removes the row from the board.
+   * If already at the final stage (PORTING), moves the row to completedBoard.
    * Returns { board, removed } or null if session/row not found.
    */
   advanceBoardRow(
@@ -3013,8 +3021,8 @@ export class WsBridge {
     const previousState = row.status;
 
     if (currentIdx >= QUEST_JOURNEY_STATES.length - 1) {
-      // At the final state -- remove from board
-      session.board.delete(questId);
+      // At the final state -- move to completed
+      this.moveBoardRowToCompleted(session, questId);
       const board = this.commitBoard(session);
       return { board, removed: true, previousState, newState: undefined };
     }
@@ -3027,10 +3035,29 @@ export class WsBridge {
     return { board, removed: false, previousState, newState: row.status };
   }
 
+  /** Get completed board rows sorted by completedAt (newest first). */
+  getCompletedBoard(sessionId: string): BoardRow[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+    return Array.from(session.completedBoard.values()).sort(
+      (a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0),
+    );
+  }
+
+  /** Move a row from active board to completedBoard with a completedAt timestamp. */
+  private moveBoardRowToCompleted(session: Session, questId: string): void {
+    const row = session.board.get(questId);
+    if (!row) return;
+    session.board.delete(questId);
+    row.completedAt = Date.now();
+    session.completedBoard.set(questId, row);
+  }
+
   /** Get board, broadcast update to browsers, and persist. */
   private commitBoard(session: Session): BoardRow[] {
     const board = this.getBoard(session.id);
-    this.broadcastToBrowsers(session, { type: "board_updated", board });
+    const completedBoard = this.getCompletedBoard(session.id);
+    this.broadcastToBrowsers(session, { type: "board_updated", board, completedBoard });
     this.persistSession(session);
     return board;
   }
@@ -9829,6 +9856,7 @@ export class WsBridge {
       attentionReason: session.attentionReason,
       generationStartedAt: session.generationStartedAt ?? null,
       board: this.getBoard(session.id),
+      completedBoard: this.getCompletedBoard(session.id),
     });
   }
 

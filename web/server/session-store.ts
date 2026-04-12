@@ -90,6 +90,8 @@ export interface PersistedSession {
   keywords?: string[];
   /** Leader work board rows, keyed by quest ID */
   board?: BoardRow[];
+  /** Completed board items (moved from board on rm/advance) */
+  completedBoard?: BoardRow[];
 
   // ── Append-only history bookkeeping (managed by SessionStore) ───────────
   /**

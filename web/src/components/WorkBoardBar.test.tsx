@@ -9,7 +9,7 @@ import type { BoardRowData } from "./BoardTable.js";
 
 describe("boardSummary", () => {
   it("returns 'Empty' for an empty board", () => {
-    expect(boardSummary([])).toBe("Empty");
+    expect(boardSummary([], 0)).toBe("Empty");
   });
 
   it("summarises a single status", () => {
@@ -17,7 +17,7 @@ describe("boardSummary", () => {
       { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 },
       { questId: "q-2", status: "IMPLEMENTING", updatedAt: 2 },
     ];
-    expect(boardSummary(board)).toBe("2 IMPLEMENTING");
+    expect(boardSummary(board, 0)).toBe("2 IMPLEMENTING");
   });
 
   it("summarises multiple statuses", () => {
@@ -27,7 +27,7 @@ describe("boardSummary", () => {
       { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3 },
       { questId: "q-4", status: "PORTING", updatedAt: 4 },
     ];
-    const result = boardSummary(board);
+    const result = boardSummary(board, 0);
     // Order follows Map insertion order (first occurrence of each status)
     expect(result).toBe("2 IMPLEMENTING, 1 SKEPTIC_REVIEWING, 1 PORTING");
   });
@@ -38,8 +38,15 @@ describe("boardSummary", () => {
       { questId: "q-2", status: undefined, updatedAt: 2 },
       { questId: "q-3", status: "QUEUED", updatedAt: 3 },
     ];
-    const result = boardSummary(board);
+    const result = boardSummary(board, 0);
     expect(result).toBe("2 unknown, 1 QUEUED");
+  });
+
+  it("includes completed count in summary", () => {
+    const board: BoardRowData[] = [
+      { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 },
+    ];
+    expect(boardSummary(board, 3)).toBe("1 IMPLEMENTING, 3 done");
   });
 });
 
@@ -47,6 +54,7 @@ describe("boardSummary", () => {
 
 interface MockStoreState {
   sessionBoards: Map<string, BoardRowData[]>;
+  sessionCompletedBoards: Map<string, BoardRowData[]>;
   sdkSessions: Array<{ sessionId: string; isOrchestrator?: boolean }>;
 }
 
@@ -55,6 +63,7 @@ let mockState: MockStoreState;
 function resetStore(overrides: Partial<MockStoreState> = {}) {
   mockState = {
     sessionBoards: new Map(),
+    sessionCompletedBoards: new Map(),
     sdkSessions: [],
     ...overrides,
   };

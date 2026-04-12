@@ -2499,11 +2499,18 @@ interface BoardRow {
   waitFor?: string[];
   createdAt: number;
   updatedAt: number;
+  completedAt?: number;
 }
 
 /** Format board output as JSON with a marker for frontend detection. */
-function formatBoardOutput(board: BoardRow[], operation?: string): string {
-  return JSON.stringify({ __takode_board__: true, board, ...(operation ? { operation } : {}) }, null, 2);
+function formatBoardOutput(board: BoardRow[], operation?: string, completedCount?: number, completedBoard?: BoardRow[]): string {
+  return JSON.stringify({
+    __takode_board__: true,
+    board,
+    ...(operation ? { operation } : {}),
+    ...(completedCount != null ? { completedCount } : {}),
+    ...(completedBoard ? { completedBoard } : {}),
+  }, null, 2);
 }
 
 /** Print board in a human-readable table with Quest Journey state and next-action hints. */
@@ -2570,11 +2577,27 @@ function printBoardText(
 }
 
 /** Output board with frontend-detectable JSON marker, plus a human-readable table when not in --json mode. */
-function outputBoard(board: BoardRow[], jsonMode: boolean, operation?: string, resolvedSessionDeps?: Set<string>): void {
+function outputBoard(
+  board: BoardRow[],
+  jsonMode: boolean,
+  operation?: string,
+  resolvedSessionDeps?: Set<string>,
+  completedCount?: number,
+  completedBoard?: BoardRow[],
+): void {
   // Always emit the JSON marker so the Companion frontend can detect and render BoardBlock.
-  console.log(formatBoardOutput(board, operation));
+  console.log(formatBoardOutput(board, operation, completedCount, completedBoard));
   if (!jsonMode) {
     printBoardText(board, { allBoardRows: board, resolvedSessionDeps });
+    // Print completed items table when --all flag includes them
+    if (completedBoard && completedBoard.length > 0) {
+      console.log("── Completed ──────────────────────────────────────────");
+      printBoardText(completedBoard);
+    }
+    // Always show a footer count when completed items exist
+    if (completedCount && completedCount > 0 && !completedBoard) {
+      console.log(`${completedCount} quest${completedCount === 1 ? "" : "s"} completed`);
+    }
   }
 }
 
@@ -2585,12 +2608,19 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
   // No subcommand or "show": display board
   if (!sub || sub === "show" || sub.startsWith("--")) {
     const flags = parseFlags(sub === "show" ? args.slice(1) : args);
-    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/board?resolve=true`)) as {
+    const includeCompleted = flags.all === true;
+    const queryParams = `resolve=true${includeCompleted ? "&include_completed=true" : ""}`;
+    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/board?${queryParams}`)) as {
       board: BoardRow[];
+      completedCount?: number;
+      completedBoard?: BoardRow[];
       resolvedSessionDeps?: string[];
     };
     const resolvedSessionDeps = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, undefined, resolvedSessionDeps);
+    outputBoard(
+      result.board, flags.json === true, undefined, resolvedSessionDeps,
+      result.completedCount, includeCompleted ? result.completedBoard : undefined,
+    );
     return;
   }
 
@@ -2661,12 +2691,12 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const result = (await apiPost(
       base,
       `/sessions/${encodeURIComponent(selfId)}/board/${encodeURIComponent(questId)}/advance`,
-    )) as { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string; resolvedSessionDeps?: string[] };
+    )) as { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string; completedCount?: number; resolvedSessionDeps?: string[] };
 
     let operation: string;
     if (result.removed) {
-      console.log(`${questId}: removed from board (Quest Journey complete)`);
-      operation = `removed ${questId}`;
+      console.log(`${questId}: completed (moved to history)`);
+      operation = `completed ${questId}`;
     } else if (result.previousState && result.newState) {
       console.log(`${questId}: ${result.previousState} -> ${result.newState}`);
       operation = `advanced ${questId} to ${result.newState}`;
@@ -2674,7 +2704,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       operation = `advanced ${questId}`;
     }
     const resolved = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, operation, resolved);
+    outputBoard(result.board, flags.json === true, operation, resolved, result.completedCount);
     return;
   }
 
@@ -2688,10 +2718,11 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
 
     const result = (await apiDelete(base, `/sessions/${encodeURIComponent(selfId)}/board/${questIds.join(",")}`)) as {
       board: BoardRow[];
+      completedCount?: number;
       resolvedSessionDeps?: string[];
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, `removed ${questIds.join(", ")}`, resolved);
+    outputBoard(result.board, flags.json === true, `removed ${questIds.join(", ")}`, resolved, result.completedCount);
     return;
   }
 

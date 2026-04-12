@@ -16857,6 +16857,113 @@ describe("work board", () => {
     bridge.handleBrowserOpen(browser, "s1");
     expect(bridge.advanceBoardRow("s1", "q-999")).toBeNull();
   });
+
+  // ─── completed board (history) ───────────────────────────────────────────
+
+  it("removeBoardRows moves items to completedBoard instead of deleting", () => {
+    // removeBoardRows should archive items to completedBoard with a completedAt
+    // timestamp, not delete them permanently.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Quest 2" });
+
+    bridge.removeBoardRows("s1", ["q-1"]);
+
+    // Active board should only have q-2
+    expect(bridge.getBoard("s1")).toHaveLength(1);
+    expect(bridge.getBoard("s1")[0].questId).toBe("q-2");
+
+    // Completed board should have q-1 with completedAt timestamp
+    const completed = bridge.getCompletedBoard("s1");
+    expect(completed).toHaveLength(1);
+    expect(completed[0].questId).toBe("q-1");
+    expect(completed[0].title).toBe("Quest 1");
+    expect(completed[0].completedAt).toBeGreaterThan(0);
+  });
+
+  it("advanceBoardRow at final stage moves item to completedBoard", () => {
+    // Advancing past PORTING (final stage) should move the row to completed
+    // history, not delete it.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Done quest", status: "PORTING" });
+    const result = bridge.advanceBoardRow("s1", "q-1");
+
+    expect(result!.removed).toBe(true);
+    expect(result!.board).toHaveLength(0);
+
+    const completed = bridge.getCompletedBoard("s1");
+    expect(completed).toHaveLength(1);
+    expect(completed[0].questId).toBe("q-1");
+    expect(completed[0].completedAt).toBeGreaterThan(0);
+  });
+
+  it("removeBoardRowFromAll true-deletes from both active and completed boards", () => {
+    // Quest deletion/cancellation should purge from everywhere -- no history kept.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    // Add two quests, move one to completed
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Quest 2" });
+    bridge.removeBoardRows("s1", ["q-1"]); // q-1 -> completedBoard
+
+    expect(bridge.getCompletedBoard("s1")).toHaveLength(1);
+    expect(bridge.getBoard("s1")).toHaveLength(1);
+
+    // removeBoardRowFromAll should delete from completed
+    bridge.removeBoardRowFromAll("q-1");
+    expect(bridge.getCompletedBoard("s1")).toHaveLength(0);
+
+    // removeBoardRowFromAll should delete from active
+    bridge.removeBoardRowFromAll("q-2");
+    expect(bridge.getBoard("s1")).toHaveLength(0);
+  });
+
+  it("getCompletedBoard returns empty for unknown session", () => {
+    expect(bridge.getCompletedBoard("nonexistent")).toEqual([]);
+  });
+
+  it("board_updated broadcast includes completedBoard", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.removeBoardRows("s1", ["q-1"]);
+
+    // Find the most recent board_updated broadcast
+    const boardUpdates = browser.send.mock.calls
+      .map((call: any[]) => { try { return JSON.parse(call[0]); } catch { return null; } })
+      .filter((msg: any) => msg?.type === "board_updated");
+    const lastUpdate = boardUpdates[boardUpdates.length - 1];
+    expect(lastUpdate.completedBoard).toHaveLength(1);
+    expect(lastUpdate.completedBoard[0].questId).toBe("q-1");
+  });
+
+  it("completedBoard survives persistence round-trip", async () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-42", title: "Fix sidebar", status: "PORTING" });
+    bridge.advanceBoardRow("s1", "q-42"); // moves to completed
+
+    // Wait for debounced write
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Restore from disk
+    const restored = new WsBridge();
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const completed = restored.getCompletedBoard("s1");
+    expect(completed).toHaveLength(1);
+    expect(completed[0].questId).toBe("q-42");
+    expect(completed[0].title).toBe("Fix sidebar");
+    expect(completed[0].completedAt).toBeGreaterThan(0);
+  });
 });
 
 // ─── SDK resume stall (q-220) ──────────────────────────────────────────────

@@ -3,7 +3,8 @@
  *
  * Positioned between TodoStatusLine and Composer in ChatView. Shows a thin
  * summary bar (collapsed, default) that expands on click to show the full
- * board table. Only visible for orchestrator sessions with a non-empty board.
+ * board table. Only visible for orchestrator sessions with a non-empty board
+ * (active or completed items).
  *
  * Follows the TodoStatusLine pattern: shrink-0 at the bottom of the flex
  * column, outside the scrollable message feed.
@@ -19,24 +20,27 @@ import type { BoardRowData } from "./BoardTable.js";
  * e.g. "2 IMPLEMENTING, 1 SKEPTIC_REVIEWING".
  * Rows with no status are grouped as "unknown".
  */
-export function boardSummary(board: BoardRowData[]): string {
-  if (board.length === 0) return "Empty";
+export function boardSummary(board: BoardRowData[], completedCount: number): string {
+  if (board.length === 0 && completedCount === 0) return "Empty";
   const counts = new Map<string, number>();
   for (const row of board) {
     const status = row.status ?? "unknown";
     counts.set(status, (counts.get(status) ?? 0) + 1);
   }
   const parts = [...counts.entries()].map(([s, n]) => `${n} ${s}`);
+  if (completedCount > 0) parts.push(`${completedCount} done`);
   return parts.join(", ");
 }
 
 export function WorkBoardBar({ sessionId }: { sessionId: string }) {
   const board = useStore((s) => s.sessionBoards.get(sessionId));
+  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId));
   const isOrchestrator = useStore((s) =>
     s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true),
   );
 
   const [expanded, setExpanded] = useState(false);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -61,15 +65,50 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener("keydown", handler);
   }, [expanded]);
 
-  // Only show for orchestrator sessions with a non-empty board
-  if (!isOrchestrator || !board || board.length === 0) return null;
+  const activeCount = board?.length ?? 0;
+  const completedCount = completedBoard?.length ?? 0;
+
+  // Only show for orchestrator sessions with a non-empty board (active or completed)
+  if (!isOrchestrator || (activeCount === 0 && completedCount === 0)) return null;
 
   return (
     <div ref={containerRef} className="shrink-0 flex flex-col min-h-0">
       {/* Expanded board table -- inline, pushes chat content up */}
       {expanded && (
         <div className="border-t border-cc-border bg-cc-card max-h-[40dvh] overflow-y-auto">
-          <BoardTable board={board} />
+          {activeCount > 0 && <BoardTable board={board!} />}
+          {activeCount === 0 && <div className="px-3 py-3 text-xs text-cc-muted italic">No active items</div>}
+
+          {/* Collapsible completed section */}
+          {completedCount > 0 && (
+            <div className="border-t border-cc-border">
+              <button
+                type="button"
+                onClick={() => setCompletedExpanded(!completedExpanded)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-cc-hover/50 transition-colors cursor-pointer"
+              >
+                <svg
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`w-2.5 h-2.5 text-cc-muted shrink-0 transition-transform duration-150 ${completedExpanded ? "rotate-90" : ""}`}
+                >
+                  <path d="M4 2l4 4-4 4" />
+                </svg>
+                <span className="text-[11px] text-cc-muted">
+                  {completedCount} completed
+                </span>
+              </button>
+              {completedExpanded && (
+                <div className="opacity-60">
+                  <BoardTable board={completedBoard!} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -86,11 +125,13 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
         </svg>
 
         {/* Summary text */}
-        <span className="text-[11px] text-cc-fg/80 truncate flex-1 text-left">{boardSummary(board)}</span>
+        <span className="text-[11px] text-cc-fg/80 truncate flex-1 text-left">
+          {boardSummary(board ?? [], completedCount)}
+        </span>
 
         {/* Item count */}
         <span className="text-[10px] text-cc-muted shrink-0 tabular-nums">
-          {board.length} {board.length === 1 ? "item" : "items"}
+          {activeCount} {activeCount === 1 ? "item" : "items"}
         </span>
 
         {/* Chevron */}
