@@ -767,14 +767,13 @@ export function createTakodeRoutes(ctx: RouteContext) {
     }
 
     const board = wsBridge.getBoard(id);
-    const completedBoard = wsBridge.getCompletedBoard(id);
     const resolve = c.req.query("resolve") === "true";
     const includeCompleted = c.req.query("include_completed") === "true";
 
     return c.json({
       board,
-      completedCount: completedBoard.length,
-      ...(includeCompleted ? { completedBoard } : {}),
+      completedCount: wsBridge.getCompletedBoardCount(id),
+      ...(includeCompleted ? { completedBoard: wsBridge.getCompletedBoard(id) } : {}),
       ...(resolve ? { resolvedSessionDeps: resolveSessionDeps(board) } : {}),
     });
   });
@@ -861,7 +860,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const board = wsBridge.removeBoardRows(id, questIds);
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
-    return c.json({ board, completedCount: wsBridge.getCompletedBoard(id).length, resolvedSessionDeps: resolveSessionDeps(board) });
+    return c.json({ board, completedCount: wsBridge.getCompletedBoardCount(id), resolvedSessionDeps: resolveSessionDeps(board) });
   });
 
   api.post("/sessions/:id/board/:questId/advance", (c) => {
@@ -882,7 +881,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const result = wsBridge.advanceBoardRow(id, questId);
     if (!result) return c.json({ error: "Quest not found on board" }, 404);
-    return c.json({ ...result, completedCount: wsBridge.getCompletedBoard(id).length, resolvedSessionDeps: resolveSessionDeps(result.board) });
+    return c.json({ ...result, completedCount: wsBridge.getCompletedBoardCount(id), resolvedSessionDeps: resolveSessionDeps(result.board) });
   });
 
   return api;

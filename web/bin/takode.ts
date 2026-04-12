@@ -2503,7 +2503,11 @@ interface BoardRow {
 }
 
 /** Format board output as JSON with a marker for frontend detection. */
-function formatBoardOutput(board: BoardRow[], operation?: string, completedCount?: number, completedBoard?: BoardRow[]): string {
+function formatBoardOutput(
+  board: BoardRow[],
+  opts?: { operation?: string; completedCount?: number; completedBoard?: BoardRow[] },
+): string {
+  const { operation, completedCount, completedBoard } = opts ?? {};
   return JSON.stringify({
     __takode_board__: true,
     board,
@@ -2580,13 +2584,16 @@ function printBoardText(
 function outputBoard(
   board: BoardRow[],
   jsonMode: boolean,
-  operation?: string,
-  resolvedSessionDeps?: Set<string>,
-  completedCount?: number,
-  completedBoard?: BoardRow[],
+  opts?: {
+    operation?: string;
+    resolvedSessionDeps?: Set<string>;
+    completedCount?: number;
+    completedBoard?: BoardRow[];
+  },
 ): void {
+  const { operation, resolvedSessionDeps, completedCount, completedBoard } = opts ?? {};
   // Always emit the JSON marker so the Companion frontend can detect and render BoardBlock.
-  console.log(formatBoardOutput(board, operation, completedCount, completedBoard));
+  console.log(formatBoardOutput(board, { operation, completedCount, completedBoard }));
   if (!jsonMode) {
     printBoardText(board, { allBoardRows: board, resolvedSessionDeps });
     // Print completed items table when --all flag includes them
@@ -2617,10 +2624,11 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       resolvedSessionDeps?: string[];
     };
     const resolvedSessionDeps = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(
-      result.board, flags.json === true, undefined, resolvedSessionDeps,
-      result.completedCount, includeCompleted ? result.completedBoard : undefined,
-    );
+    outputBoard(result.board, flags.json === true, {
+      resolvedSessionDeps,
+      completedCount: result.completedCount,
+      completedBoard: includeCompleted ? result.completedBoard : undefined,
+    });
     return;
   }
 
@@ -2678,7 +2686,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       resolvedSessionDeps?: string[];
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, `set ${questId}`, resolved);
+    outputBoard(result.board, flags.json === true, { operation: `set ${questId}`, resolvedSessionDeps: resolved });
     return;
   }
 
@@ -2704,7 +2712,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       operation = `advanced ${questId}`;
     }
     const resolved = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, operation, resolved, result.completedCount);
+    outputBoard(result.board, flags.json === true, { operation, resolvedSessionDeps: resolved, completedCount: result.completedCount });
     return;
   }
 
@@ -2722,7 +2730,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       resolvedSessionDeps?: string[];
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
-    outputBoard(result.board, flags.json === true, `removed ${questIds.join(", ")}`, resolved, result.completedCount);
+    outputBoard(result.board, flags.json === true, { operation: `removed ${questIds.join(", ")}`, resolvedSessionDeps: resolved, completedCount: result.completedCount });
     return;
   }
 

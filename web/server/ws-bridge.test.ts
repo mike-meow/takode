@@ -16927,6 +16927,35 @@ describe("work board", () => {
     expect(bridge.getCompletedBoard("nonexistent")).toEqual([]);
   });
 
+  it("getCompletedBoard returns items sorted newest-first by completedAt", () => {
+    // Multiple completed items should be ordered by completedAt descending
+    // so the most recently completed item appears first.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    let clock = 1000;
+    const originalNow = Date.now;
+    Date.now = () => clock++;
+
+    try {
+      bridge.upsertBoardRow("s1", { questId: "q-1", title: "First" });
+      bridge.upsertBoardRow("s1", { questId: "q-2", title: "Second" });
+      bridge.upsertBoardRow("s1", { questId: "q-3", title: "Third" });
+
+      // Remove in order: q-1, q-2, q-3 (each gets a later completedAt)
+      bridge.removeBoardRows("s1", ["q-1"]);
+      bridge.removeBoardRows("s1", ["q-2"]);
+      bridge.removeBoardRows("s1", ["q-3"]);
+
+      const completed = bridge.getCompletedBoard("s1");
+      expect(completed).toHaveLength(3);
+      // Newest first: q-3, q-2, q-1
+      expect(completed.map((r) => r.questId)).toEqual(["q-3", "q-2", "q-1"]);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
   it("board_updated broadcast includes completedBoard", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");

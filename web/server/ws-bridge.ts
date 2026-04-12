@@ -3044,6 +3044,11 @@ export class WsBridge {
     );
   }
 
+  /** Get the number of completed board items without copying/sorting. */
+  getCompletedBoardCount(sessionId: string): number {
+    return this.sessions.get(sessionId)?.completedBoard.size ?? 0;
+  }
+
   /** Move a row from active board to completedBoard with a completedAt timestamp. */
   private moveBoardRowToCompleted(session: Session, questId: string): void {
     const row = session.board.get(questId);
