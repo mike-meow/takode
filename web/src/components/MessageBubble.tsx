@@ -81,7 +81,7 @@ function MessageTimestamp({
       data-testid="message-timestamp"
       dateTime={d.toISOString()}
       title={d.toLocaleString()}
-      className={`block mt-1 text-[11px] text-cc-muted/70 ${align === "right" ? "text-right" : "text-left"}`}
+      className={`inline-block ml-2 text-[11px] text-cc-muted/70 ${align === "right" ? "text-right" : "text-left"}`}
     >
       {durationText ? `${timeText} · ${durationText}` : timeText}
     </time>

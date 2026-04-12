@@ -134,19 +134,15 @@ function formatMinuteBoundaryLabel(timestamp: number, previousTimestamp: number 
     current.getDate() !== prev.getDate();
 
   if (includesDate) {
-    return current.toLocaleString([], {
+    return current.toLocaleDateString([], {
       weekday: "short",
       month: "short",
       day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
     });
   }
 
-  return current.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  // No same-day minute marks -- per-message timestamps are sufficient
+  return null;
 }
 
 function buildMinuteBoundaryLabelMap(messages: ChatMessage[]): Map<string, string> {

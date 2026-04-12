@@ -713,7 +713,9 @@ describe("MessageFeed - message rendering", () => {
     expect(screen.getByText("Continue")).toBeTruthy();
   });
 
-  it("shows a centered time marker once for consecutive same-minute messages", () => {
+  it("shows only a date marker for same-day messages, no minute marks", () => {
+    // Same-day minute marks were removed (q-249) -- only date-change markers remain.
+    // The first message in a session always gets a date marker.
     const sid = "test-smart-timestamps-same-minute";
     const base = new Date("2026-02-25T10:00:00.000Z").getTime();
     setStoreMessages(sid, [
@@ -723,11 +725,13 @@ describe("MessageFeed - message rendering", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
+    // Only the initial date marker, no per-minute markers
     expect(screen.getAllByTestId("minute-boundary-timestamp")).toHaveLength(1);
-    expect(screen.queryByTestId("message-timestamp")).toBeNull();
   });
 
-  it("shows centered time markers again when message minute changes", () => {
+  it("does not add extra markers when minute changes on same day", () => {
+    // Same-day minute marks were removed (q-249) -- minute changes don't add markers.
+    // Only the initial date marker appears.
     const sid = "test-smart-timestamps-minute-boundary";
     const base = new Date("2026-02-25T10:00:00.000Z").getTime();
     setStoreMessages(sid, [
@@ -739,8 +743,8 @@ describe("MessageFeed - message rendering", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getAllByTestId("minute-boundary-timestamp")).toHaveLength(2);
-    expect(screen.queryByTestId("message-timestamp")).toBeNull();
+    // Only 1 marker (the initial date), not 2 (would have been 2 with minute marks)
+    expect(screen.getAllByTestId("minute-boundary-timestamp")).toHaveLength(1);
   });
 });
 
