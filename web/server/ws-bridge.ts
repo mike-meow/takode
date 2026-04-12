@@ -778,17 +778,6 @@ function computeResultContextUsedPercent(
   return computeContextUsedPercent(msg.usage, contextWindow);
 }
 
-function computePreTokenContextUsedPercent(
-  model: string | undefined,
-  preTokens: number | undefined,
-): number | undefined {
-  if (!Number.isFinite(preTokens) || Number(preTokens) <= 0) return undefined;
-  const contextWindow = resolveResultContextWindow(model, undefined);
-  if (!contextWindow) return undefined;
-  const pct = Math.round((Number(preTokens) / contextWindow) * 100);
-  return clampPercent(pct);
-}
-
 function extractClaudeTokenDetails(
   modelUsage: CLIResultMessage["modelUsage"],
 ): SessionState["claude_token_details"] | undefined {
