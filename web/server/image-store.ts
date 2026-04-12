@@ -28,6 +28,11 @@ const DEFAULT_BASE_DIR = join(homedir(), ".companion", "images");
 
 const THUMB_MAX_DIM = 300;
 const THUMB_QUALITY = 80;
+/** JPEG quality for lossless-to-JPEG conversion (q-230 confirmed no visible quality loss at 85). */
+const AGENT_QUALITY = 85;
+
+/** Lossless formats that benefit from lossy JPEG conversion on ingest. */
+const JPEG_ELIGIBLE_MIMES = new Set(["image/png", "image/bmp", "image/tiff"]);
 
 /**
  * Max pixel dimension for stored images. Claude Code's Read tool rejects
@@ -70,18 +75,36 @@ export class ImageStore {
     return join(this.baseDir, sessionId);
   }
 
-  /** Store a base64 image to disk (resized to 1920px max) and generate a JPEG thumbnail. */
+  /**
+   * Store a base64 image to disk (resized to 1920px max, converted to JPEG q85
+   * for lossless formats) and generate a JPEG thumbnail.
+   *
+   * The returned `media_type` reflects the actual stored format, which may
+   * differ from the input when lossless-to-JPEG conversion succeeds.
+   */
   async store(sessionId: string, base64Data: string, mediaType: string): Promise<ImageRef> {
     const dir = this.sessionDir(sessionId);
     await mkdir(dir, { recursive: true });
 
-    const ext = MIME_TO_EXT[mediaType] || "bin";
+    let actualMediaType = mediaType;
     const imageId = `${Date.now()}-${this.counter++}-${randomBytes(3).toString("hex")}`;
-    const originalPath = join(dir, `${imageId}.orig.${ext}`);
     const thumbPath = join(dir, `${imageId}.thumb.jpeg`);
 
     const raw = Buffer.from(base64Data, "base64");
-    const buffer = await resizeForStore(raw, mediaType);
+    let buffer = await resizeForStore(raw, mediaType);
+
+    // Convert lossless formats (PNG, BMP, TIFF) to JPEG for ~22% size savings
+    if (JPEG_ELIGIBLE_MIMES.has(mediaType)) {
+      try {
+        buffer = await sharp(buffer).jpeg({ quality: AGENT_QUALITY }).toBuffer();
+        actualMediaType = "image/jpeg";
+      } catch (err) {
+        console.warn(`[image-store] JPEG conversion failed for ${imageId}, keeping original format:`, err);
+      }
+    }
+
+    const ext = MIME_TO_EXT[actualMediaType] || "bin";
+    const originalPath = join(dir, `${imageId}.orig.${ext}`);
     await writeFile(originalPath, buffer);
 
     // Generate thumbnail -- fall back gracefully if sharp can't process
@@ -95,7 +118,7 @@ export class ImageStore {
       console.warn(`[image-store] Failed to generate thumbnail for ${imageId}:`, err);
     }
 
-    return { imageId, media_type: mediaType };
+    return { imageId, media_type: actualMediaType };
   }
 
   /** Get the disk path for an original image, or null if not found. */
