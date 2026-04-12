@@ -18,6 +18,7 @@ import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDurat
 import { BoardBlock } from "./BoardBlock.js";
 import { WorkBoardBar } from "./WorkBoardBar.js";
 import { TimerChip, TimerModal } from "./TimerWidget.js";
+import { NotificationChip } from "./NotificationChip.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { useStore, COLOR_THEMES, isDarkTheme, type ColorTheme } from "../store.js";
@@ -3473,6 +3474,71 @@ export function Playground() {
                 <p className="text-[10px] text-cc-muted">
                   Opens the timer detail modal. Seed timer data above first to see entries. Shows full prompt text,
                   timer type, countdown, and per-timer cancel button.
+                </p>
+              </div>
+            </Card>
+          </div>
+        </Section>
+
+        {/* ─── Notification Inbox ──────────────────────────────────── */}
+        <Section
+          title="Notification Inbox"
+          description="Per-session notification inbox for takode notify events. Chip + modal with active/done sections."
+        >
+          <div className="max-w-3xl space-y-4">
+            <Card label="Notification chip (floating pill)">
+              <div className="p-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = Date.now();
+                    useStore.setState({
+                      sessionNotifications: new Map([
+                        [
+                          "playground-notifs",
+                          [
+                            {
+                              id: "n-1",
+                              category: "review" as const,
+                              summary: "Quest q-235 implementation is complete and ready for review",
+                              timestamp: now - 600_000,
+                              messageIndex: 42,
+                              done: false,
+                            },
+                            {
+                              id: "n-2",
+                              category: "needs-input" as const,
+                              summary: "Should we use JPEG q85 or q75 for the transport tier?",
+                              timestamp: now - 120_000,
+                              messageIndex: 87,
+                              done: false,
+                            },
+                            {
+                              id: "n-3",
+                              category: "review" as const,
+                              summary: "Port to main repo completed successfully",
+                              timestamp: now - 3_600_000,
+                              messageIndex: 15,
+                              done: true,
+                            },
+                          ],
+                        ],
+                      ]),
+                    });
+                  }}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors cursor-pointer"
+                >
+                  Seed notification data
+                </button>
+                <div className="relative h-24 rounded-lg border border-cc-border bg-cc-bg overflow-hidden">
+                  <div className="absolute bottom-2 right-2">
+                    <NotificationChip sessionId="playground-notifs" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-cc-muted">
+                  Click &quot;Seed notification data&quot; first. Shows active count as a glassmorphic pill. Click to open
+                  the inbox modal with active notifications (amber = needs-input, green = review) and a collapsible Done
+                  section. Each item has a checkbox and jumps to the anchored message on click.
                 </p>
               </div>
             </Card>

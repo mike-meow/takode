@@ -297,6 +297,8 @@ function createMockBridge() {
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),
     notifyUser: vi.fn(() => ({ ok: true, anchoredMessageId: "msg-123" })),
+    markNotificationDone: vi.fn(() => true),
+    getNotifications: vi.fn(() => []),
     isSessionBusy: vi.fn(() => false),
     getTrafficStatsSnapshot: vi.fn(() => ({
       windowStartedAt: 1000,
@@ -6453,6 +6455,65 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(403);
+  });
+
+  // ── Notification Inbox ────────────────────────────────────────────
+
+  // Tests that GET /sessions/:id/notifications returns the notification list
+  it("returns notification list via GET /sessions/:id/notifications", async () => {
+    setupTakodeSessions();
+    const mockNotifs = [
+      { id: "n-1", category: "review", timestamp: 1000, messageIndex: 5, done: false },
+    ];
+    bridge.getNotifications.mockReturnValue(mockNotifs);
+
+    const res = await app.request("/api/sessions/orch-1/notifications");
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual(mockNotifs);
+    expect(bridge.getNotifications).toHaveBeenCalledWith("orch-1");
+  });
+
+  // Tests that POST .../notifications/:notifId/done toggles done state
+  it("marks notification as done via POST", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/notifications/n-1/done", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.markNotificationDone).toHaveBeenCalledWith("orch-1", "n-1", true);
+  });
+
+  // Tests that mark-done defaults to true when body.done is omitted
+  it("mark-done defaults to true when done field is omitted", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/notifications/n-1/done", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.markNotificationDone).toHaveBeenCalledWith("orch-1", "n-1", true);
+  });
+
+  // Tests that mark-done returns 404 for unknown notification
+  it("returns 404 for unknown notification ID", async () => {
+    setupTakodeSessions();
+    bridge.markNotificationDone.mockReturnValue(false);
+
+    const res = await app.request("/api/sessions/orch-1/notifications/n-999/done", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: true }),
+    });
+
+    expect(res.status).toBe(404);
   });
 
   it("blocks spoofed sender identity and accepts authenticated send", async () => {

@@ -428,6 +428,8 @@ interface Session {
   completedBoard: Map<string, BoardRow>;
   /** Per-session notification inbox entries from `takode notify`. */
   notifications: SessionNotification[];
+  /** Monotonic counter for notification IDs (survives deletion without collisions). */
+  notificationCounter: number;
   /** Whether agent activity has occurred since the last diff computation */
   diffStatsDirty: boolean;
   /** Whether this session was created by resuming an external CLI session (VS Code/terminal) */
@@ -2011,6 +2013,12 @@ export class WsBridge {
         board: new Map(Array.isArray(p.board) ? p.board.map((row: BoardRow) => [row.questId, row]) : []),
         completedBoard: new Map(Array.isArray(p.completedBoard) ? p.completedBoard.map((row: BoardRow) => [row.questId, row]) : []),
         notifications: Array.isArray(p.notifications) ? p.notifications : [],
+        notificationCounter: Array.isArray(p.notifications)
+          ? p.notifications.reduce((max: number, n: SessionNotification) => {
+              const num = parseInt(n.id.replace("n-", ""), 10);
+              return Number.isFinite(num) && num > max ? num : max;
+            }, 0)
+          : 0,
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliInitializeSent: false,
@@ -2622,6 +2630,7 @@ export class WsBridge {
         board: new Map(),
         completedBoard: new Map(),
         notifications: [],
+        notificationCounter: 0,
         diffStatsDirty: true,
         evaluatingAborts: new Map(),
         cliInitializeSent: false,
@@ -2923,7 +2932,7 @@ export class WsBridge {
     // Persist notification to inbox
     const messageIndex = lastAssistant ? session.messageHistory.lastIndexOf(lastAssistant) : -1;
     const notif: SessionNotification = {
-      id: `n-${session.notifications.length + 1}`,
+      id: `n-${++session.notificationCounter}`,
       category,
       ...(summary ? { summary } : {}),
       timestamp: Date.now(),
@@ -2943,13 +2952,11 @@ export class WsBridge {
       this.pushoverNotifier.scheduleNotification(sessionId, eventType, detail, undefined, { skipReadCheck: true });
     }
 
-    // Broadcast notification to browsers
+    // Broadcast attention + notification inbox to browsers
     this.broadcastToBrowsers(session, {
       type: "session_update",
-      session: { attentionReason: session.attentionReason, notifications: session.notifications },
+      session: { attentionReason: session.attentionReason },
     });
-
-    // Broadcast notification inbox update
     this.broadcastToBrowsers(session, {
       type: "notification_update",
       notifications: session.notifications,
