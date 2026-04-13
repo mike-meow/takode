@@ -17404,6 +17404,10 @@ describe("notifyUser herded session routing", () => {
       getSession: vi.fn(() => ({ sessionId: "s1", state: "connected", herdedBy: "leader-1" })),
     } as any);
 
+    // Subscribe to takode events to verify no herd events are emitted for review
+    const capturedEvents: any[] = [];
+    bridge.subscribeTakodeEvents(new Set(["s1"]), (evt) => capturedEvents.push(evt));
+
     // Add an assistant message so notifyUser can anchor to it
     const session = (bridge as any).sessions.get("s1");
     session.messageHistory.push({
@@ -17433,6 +17437,10 @@ describe("notifyUser herded session routing", () => {
       .map((c: any[]) => { try { return JSON.parse(c[0]); } catch { return null; } })
       .filter((m: any) => m?.type === "session_update" && m.session?.attentionReason !== undefined);
     expect(attentionUpdates).toHaveLength(0);
+
+    // Verify NO herd event was emitted (review is silenced entirely, unlike needs-input)
+    const herdEvents = capturedEvents.filter((e) => e.event === "notification_needs_input");
+    expect(herdEvents).toHaveLength(0);
   });
 
   it("emits notification_needs_input herd event for herded needs-input notifications", () => {
