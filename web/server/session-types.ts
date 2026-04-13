@@ -969,6 +969,9 @@ interface TakodeEventBase {
   sessionName: string;
   /** Epoch ms timestamp */
   ts: number;
+  /** Session that triggered this event (e.g. leader who ran archive/answer).
+   *  The herd event dispatcher skips delivering events back to the actor. */
+  actorSessionId?: string;
 }
 
 export type TakodeEvent = {

@@ -406,6 +406,8 @@ interface Session {
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason: "action" | "error" | "review" | null;
+  /** Transient: session that triggered the latest permission response (for actorSessionId tagging) */
+  permissionResponseActorId?: string;
   /** Grace period timer for CLI disconnect — delays side-effects to allow seamless reconnect.
    *  The Claude Code CLI disconnects every 5 minutes for token refresh and reconnects in ~13s.
    *  If the CLI reconnects within the grace period, the disconnect is invisible to the system. */
@@ -1837,7 +1839,10 @@ export class WsBridge {
       updated_input?: Record<string, unknown>;
       message?: string;
     },
+    actorSessionId?: string,
   ): void {
+    // Tag session so permission_resolved emission can include the actor
+    if (actorSessionId) session.permissionResponseActorId = actorSessionId;
     this.routeBrowserMessage(session, msg as BrowserOutgoingMessage);
   }
 
@@ -1850,7 +1855,12 @@ export class WsBridge {
   // ── Takode orchestration event methods ──────────────────────────────────
 
   /** Emit a takode event, buffering it and notifying matching subscribers. */
-  emitTakodeEvent<E extends TakodeEventType>(sessionId: string, event: E, data: TakodeEventDataByType[E]): void {
+  emitTakodeEvent<E extends TakodeEventType>(
+    sessionId: string,
+    event: E,
+    data: TakodeEventDataByType[E],
+    actorSessionId?: string,
+  ): void {
     const takodeEvent = {
       id: this.takodeEventNextId++,
       event,
@@ -1859,6 +1869,7 @@ export class WsBridge {
       sessionName: this.sessionNameGetter?.(sessionId) ?? sessionId.slice(0, 8),
       ts: Date.now(),
       data,
+      ...(actorSessionId ? { actorSessionId } : {}),
     } as TakodeEventFor<E>;
 
     // Ring buffer: evict oldest when full
@@ -8401,12 +8412,14 @@ export class WsBridge {
         }
       }
 
-      // Takode: permission_resolved (approved) — emit for all approvals, not just notable ones
+      // Takode: permission_resolved (approved) -- emit for all approvals, not just notable ones
       if (pending) {
+        const actor = session.permissionResponseActorId;
+        session.permissionResponseActorId = undefined;
         this.emitTakodeEvent(session.id, "permission_resolved", {
           tool_name: pending.tool_name,
           outcome: "approved",
-        });
+        }, actor);
       }
 
       // After ExitPlanMode approval, switch the CLI to the appropriate execution
@@ -8476,10 +8489,14 @@ export class WsBridge {
       this.broadcastToBrowsers(session, deniedMsg);
 
       // Takode: permission_resolved (denied)
-      this.emitTakodeEvent(session.id, "permission_resolved", {
-        tool_name: pending?.tool_name || "unknown",
-        outcome: "denied",
-      });
+      {
+        const actor = session.permissionResponseActorId;
+        session.permissionResponseActorId = undefined;
+        this.emitTakodeEvent(session.id, "permission_resolved", {
+          tool_name: pending?.tool_name || "unknown",
+          outcome: "denied",
+        }, actor);
+      }
     }
     this.persistSession(session);
   }

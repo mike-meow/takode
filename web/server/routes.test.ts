@@ -1661,7 +1661,7 @@ describe("DELETE /api/sessions/:id", () => {
     const res = await app.request("/api/sessions/s1", { method: "DELETE" });
 
     expect(res.status).toBe(200);
-    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("s1", "session_archived", {});
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("s1", "session_archived", {}, undefined);
   });
 
   it("skips herd event when deleting an already-archived session", async () => {

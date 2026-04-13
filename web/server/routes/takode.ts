@@ -559,7 +559,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         request_id: target.request_id,
         behavior: "allow",
         updated_input: { ...target.input, answers: { "0": answerValue } },
-      });
+      }, auth.callerId);
       return c.json({ ok: true, tool_name: target.tool_name, answer: answerValue });
     }
 
@@ -571,7 +571,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
           request_id: target.request_id,
           behavior: "allow",
           updated_input: target.input,
-        });
+        }, auth.callerId);
         return c.json({ ok: true, tool_name: target.tool_name, action: "approved" });
       } else {
         // "reject" or "reject: feedback text"
@@ -581,7 +581,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
           request_id: target.request_id,
           behavior: "deny",
           message: feedback,
-        });
+        }, auth.callerId);
         return c.json({ ok: true, tool_name: target.tool_name, action: "rejected", feedback });
       }
     }

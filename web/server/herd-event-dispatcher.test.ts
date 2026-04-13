@@ -232,6 +232,43 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("skips events triggered by the leader's own actions (actorSessionId)", () => {
+    // When the leader runs takode archive or takode answer, the resulting
+    // herd events should not bounce back to the leader (q-259).
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    // Event triggered by the leader itself (actorSessionId matches orchestrator)
+    triggerEvent(
+      makeEvent({
+        event: "session_archived",
+        data: {},
+        actorSessionId: "orch-1",
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    // Should NOT be delivered -- leader already sees the result
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
+
+    // But events without actorSessionId (or from other sessions) are delivered
+    triggerEvent(
+      makeEvent({
+        id: 2,
+        event: "session_archived",
+        data: {},
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.destroy();
+  });
+
   it("defers user_message to turn_end (not delivered individually)", () => {
     // user_message events are excluded from ACTIONABLE_EVENTS — they're
     // summarized in turn_end instead (count + IDs for peek navigation).

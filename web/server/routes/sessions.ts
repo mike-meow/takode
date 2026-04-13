@@ -37,6 +37,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     imageStore,
     resolveId,
     authenticateTakodeCaller,
+    authenticateCompanionCallerOptional,
     execCaptureStdoutAsync,
     pathExists,
     WEB_DIR,
@@ -1624,10 +1625,12 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     // If not already archived, emit session_archived so the leader gets a
     // herd notification through the same proven path as explicit archiving.
-    // Must happen BEFORE kill — after removal the session info is gone.
+    // Must happen BEFORE kill -- after removal the session info is gone.
     const sessionInfo = launcher.getSession(id);
     if (sessionInfo?.herdedBy && !sessionInfo.archived) {
-      wsBridge.emitTakodeEvent(id, "session_archived", {});
+      const caller = authenticateCompanionCallerOptional(c);
+      const actorId = caller && "callerId" in caller ? caller.callerId : undefined;
+      wsBridge.emitTakodeEvent(id, "session_archived", {}, actorId);
     }
 
     await launcher.kill(id);
@@ -1653,11 +1656,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
   // Shared helper: archive a single session (kill, cleanup, persist).
   // Used by both /archive and /archive-group endpoints.
-  async function archiveSingleSession(id: string) {
-    // Emit herd event before killing — the leader needs to know a worker was archived.
+  async function archiveSingleSession(id: string, actorSessionId?: string) {
+    // Emit herd event before killing -- the leader needs to know a worker was archived.
     const archivedSessionInfo = launcher.getSession(id);
     if (archivedSessionInfo?.herdedBy) {
-      wsBridge.emitTakodeEvent(id, "session_archived", {});
+      wsBridge.emitTakodeEvent(id, "session_archived", {}, actorSessionId);
     }
 
     await launcher.kill(id);
@@ -1712,7 +1715,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (!id) return c.json({ error: "Session not found" }, 404);
     await c.req.json().catch(() => ({}));
 
-    const worktreeResult = await archiveSingleSession(id);
+    const caller = authenticateCompanionCallerOptional(c);
+    const actorId = caller && "callerId" in caller ? caller.callerId : undefined;
+    const worktreeResult = await archiveSingleSession(id, actorId);
     return c.json({ ok: true, worktree: worktreeResult });
   });
 
@@ -1726,6 +1731,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return c.json({ error: "Session is not an orchestrator" }, 400);
     }
 
+    const caller = authenticateCompanionCallerOptional(c);
+    const actorId = caller && "callerId" in caller ? caller.callerId : undefined;
+
     // Find all non-archived herded workers
     const workers = launcher.getHerdedSessions(id).filter((s) => !s.archived);
 
@@ -1734,7 +1742,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // Archive workers first, then the leader (avoids herd events to a dead leader)
     for (const w of workers) {
       try {
-        await archiveSingleSession(w.sessionId);
+        await archiveSingleSession(w.sessionId, actorId);
         results.push({ sessionId: w.sessionId, ok: true });
       } catch (e) {
         results.push({

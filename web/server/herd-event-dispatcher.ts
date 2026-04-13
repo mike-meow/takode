@@ -171,6 +171,10 @@ export class HerdEventDispatcher {
   private onWorkerEvent(orchId: string, event: TakodeEvent): void {
     if (!ACTIONABLE_EVENTS.has(event.event)) return;
 
+    // Skip events triggered by the leader's own actions (e.g. archive, answer).
+    // The leader already sees the result in the tool call response.
+    if (event.actorSessionId === orchId) return;
+
     // Annotate user-initiated turn_end events so the leader can distinguish
     // them from leader-dispatched work, but still deliver them. The leader
     // needs visibility into ALL worker state changes to monitor the herd.
