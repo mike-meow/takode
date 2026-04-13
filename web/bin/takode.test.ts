@@ -345,27 +345,27 @@ describe("takode access control", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            sessionId: "session-153",
-            sessionNum: 153,
-            sessionName: "Worker Peek",
+            sid: "session-153",
+            sn: 153,
+            name: "Worker Peek",
             status: "idle",
             quest: null,
             mode: "default",
             totalTurns: 1,
             totalMessages: 2,
-            collapsedTurns: [],
-            omittedTurnCount: 0,
-            expandedTurn: {
-              turnNum: 1,
-              startedAt: now - 2_000,
-              endedAt: now,
-              durationMs: 2_000,
+            collapsed: [],
+            omitted: 0,
+            expanded: {
+              turn: 1,
+              start: now - 2_000,
+              end: now,
+              dur: 2_000,
               messages: [
                 { idx: 0, type: "user", content: "check status", ts: now - 2_000 },
                 { idx: 1, type: "result", content: "all good", ts: now, success: true },
               ],
               stats: { tools: 0, messages: 2, subagents: 0 },
-              omittedMessageCount: 0,
+              omittedMsgs: 0,
             },
           }),
         );
@@ -389,8 +389,8 @@ describe("takode access control", () => {
       expect(result.status).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual(
         expect.objectContaining({
-          sessionNum: 153,
-          sessionName: "Worker Peek",
+          sn: 153,
+          name: "Worker Peek",
           mode: "default",
         }),
       );
@@ -415,9 +415,9 @@ describe("takode access control", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            sessionId: "session-153",
-            sessionNum: 153,
-            sessionName: "Worker Peek",
+            sid: "session-153",
+            sn: 153,
+            name: "Worker Peek",
             status: "idle",
             quest: null,
             mode: "range",
@@ -428,7 +428,7 @@ describe("takode access control", () => {
               { idx: 3, type: "assistant", content: "done", ts: 1_700_000_000_000 },
               { idx: 4, type: "result", content: "ok", ts: 1_700_000_000_500, success: true },
             ],
-            turnBoundaries: [{ turnNum: 1, startIdx: 2, endIdx: 4 }],
+            bounds: [{ turn: 1, si: 2, ei: 4 }],
           }),
         );
         return;

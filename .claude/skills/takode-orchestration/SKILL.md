@@ -237,7 +237,7 @@ takode grep 1 "commit.*synced" --type result  # only result messages
 takode grep 1 "reward hacking" --count 20
 ```
 
-Each match shows `[msg-id] time type turnNum snippet`. Use `takode read <session> <msg-id>` to see the full message, or `takode peek <session> --turn <N>` for the turn's context.
+Each match shows `[msg-id] time type turn snippet`. Use `takode read <session> <msg-id>` to see the full message, or `takode peek <session> --turn <N>` for the turn's context.
 
 ### `takode export <session> <path>`
 
