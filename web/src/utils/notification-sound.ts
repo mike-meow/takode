@@ -24,7 +24,7 @@ function playTone(ctx: AudioContext, freq: number, start: number, gain: number, 
 
 /**
  * Blue (review/done) -- completion chime.
- * Short ascending two-note tone (E5 → G5), ~500ms.
+ * Short ascending two-note tone (C5 → E5), triangle wave, ~450ms.
  * Warm, satisfying -- like a task-complete ding.
  */
 export function playReviewSound(): void {
@@ -32,8 +32,8 @@ export function playReviewSound(): void {
     const ctx = getAudioContext();
     if (ctx.state === "suspended") ctx.resume();
     const now = ctx.currentTime;
-    playTone(ctx, 659.25, now, 0.3, 0.3, "sine");        // E5
-    playTone(ctx, 783.99, now + 0.15, 0.3, 0.35, "sine"); // G5
+    playTone(ctx, 523.25, now, 0.25, 0.25, "triangle");        // C5
+    playTone(ctx, 659.25, now + 0.15, 0.25, 0.3, "triangle");  // E5
   } catch {
     // Silently fail if Web Audio API is not available
   }
@@ -41,16 +41,16 @@ export function playReviewSound(): void {
 
 /**
  * Amber (needs-input) -- attention tone.
- * Two identical notes with a short pause (gentle double-tap), ~550ms.
- * Slightly brighter than the review chime -- "someone's waiting for you."
+ * Two identical A5 notes with a short pause (gentle double-tap), triangle wave, ~600ms.
+ * Brighter than the review chime -- "someone's waiting for you."
  */
 export function playNeedsInputSound(): void {
   try {
     const ctx = getAudioContext();
     if (ctx.state === "suspended") ctx.resume();
     const now = ctx.currentTime;
-    playTone(ctx, 659.25, now, 0.3, 0.15, "sine");       // E5, first tap
-    playTone(ctx, 659.25, now + 0.3, 0.3, 0.15, "sine"); // E5, second tap
+    playTone(ctx, 880.0, now, 0.2, 0.15, "triangle");       // A5, first tap
+    playTone(ctx, 880.0, now + 0.33, 0.2, 0.15, "triangle"); // A5, second tap
   } catch {
     // Silently fail if Web Audio API is not available
   }
