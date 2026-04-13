@@ -2489,14 +2489,106 @@ describe("cat herding", () => {
     expect(worker?.herdedBy).toBe("orch-1"); // unchanged
   });
 
-  it("unherds a session", async () => {
-    await setupSessions("orch-1", "worker-1");
+  it("transfers attached reviewers with the worker herd", async () => {
+    await setupSessions("orch-1", "orch-2", "worker-1", "reviewer-1");
 
+    const worker = herdLauncher.getSession("worker-1");
+    const reviewer = herdLauncher.getSession("reviewer-1");
+    expect(worker).toBeDefined();
+    expect(reviewer).toBeDefined();
+    worker!.sessionNum = 42;
+    // Simulate the real stale state from q-273: the worker is currently
+    // unherded, but its attached reviewer still belongs to the old leader.
+    reviewer!.reviewerOf = 42;
+    reviewer!.herdedBy = "orch-1";
+
+    const herdChanged = vi.fn();
+    herdLauncher.onHerdChanged = herdChanged;
+
+    const result = herdLauncher.herdSessions("orch-2", ["worker-1"]);
+
+    expect(result.herded).toEqual(["worker-1"]);
+    expect(result.conflicts).toEqual([]);
+    expect(herdLauncher.getSession("worker-1")?.herdedBy).toBe("orch-2");
+    expect(herdLauncher.getSession("reviewer-1")).toMatchObject({
+      reviewerOf: 42,
+      herdedBy: "orch-2",
+    });
+    expect(herdLauncher.getHerdedSessions("orch-2").map((s) => s.sessionId).sort()).toEqual(["reviewer-1", "worker-1"]);
+    expect(herdLauncher.getHerdedSessions("orch-1")).toEqual([]);
+    expect(herdChanged).toHaveBeenCalledWith("orch-2");
+    expect(herdChanged).toHaveBeenCalledWith("orch-1");
+  });
+
+  it("ignores archived reviewers when transferring a worker herd", async () => {
+    await setupSessions("orch-1", "worker-1", "reviewer-1");
+
+    const worker = herdLauncher.getSession("worker-1");
+    const reviewer = herdLauncher.getSession("reviewer-1");
+    expect(worker).toBeDefined();
+    expect(reviewer).toBeDefined();
+    worker!.sessionNum = 42;
+    const herdChanged = vi.fn();
+    herdLauncher.onHerdChanged = herdChanged;
+    // Archived reviewers should remain historical records; transferring the
+    // worker must not reassign them or refresh the previous leader for them.
+    reviewer!.reviewerOf = 42;
+    reviewer!.herdedBy = "orch-2";
+    reviewer!.archived = true;
+
+    herdLauncher.herdSessions("orch-1", ["worker-1"]);
+
+    expect(herdLauncher.getSession("worker-1")?.herdedBy).toBe("orch-1");
+    expect(herdLauncher.getSession("reviewer-1")).toMatchObject({
+      reviewerOf: 42,
+      herdedBy: "orch-2",
+      archived: true,
+    });
+    expect(herdLauncher.getHerdedSessions("orch-1").map((s) => s.sessionId)).toEqual(["worker-1"]);
+    expect(herdChanged).toHaveBeenCalledWith("orch-1");
+    expect(herdChanged).not.toHaveBeenCalledWith("orch-2");
+  });
+
+  it("does not transfer attached reviewers on conflicting herd attempts", async () => {
+    await setupSessions("orch-1", "orch-2", "worker-1", "reviewer-1");
+
+    const worker = herdLauncher.getSession("worker-1");
+    const reviewer = herdLauncher.getSession("reviewer-1");
+    expect(worker).toBeDefined();
+    expect(reviewer).toBeDefined();
+    worker!.sessionNum = 42;
+    worker!.herdedBy = "orch-1";
+    reviewer!.reviewerOf = 42;
+    reviewer!.herdedBy = "orch-1";
+
+    const result = herdLauncher.herdSessions("orch-2", ["worker-1"]);
+
+    expect(result.herded).toEqual([]);
+    expect(result.conflicts).toEqual([{ id: "worker-1", herder: "orch-1" }]);
+    expect(herdLauncher.getSession("worker-1")?.herdedBy).toBe("orch-1");
+    expect(herdLauncher.getSession("reviewer-1")).toMatchObject({
+      reviewerOf: 42,
+      herdedBy: "orch-1",
+    });
+  });
+
+  it("unherds a session", async () => {
+    await setupSessions("orch-1", "worker-1", "reviewer-1");
+
+    const worker = herdLauncher.getSession("worker-1");
+    const reviewer = herdLauncher.getSession("reviewer-1");
+    expect(worker).toBeDefined();
+    expect(reviewer).toBeDefined();
+    worker!.sessionNum = 42;
+    reviewer!.reviewerOf = 42;
+
+    // Unherding the worker should also clear any active attached reviewer so
+    // send/reuse authorization cannot linger on an orphaned reviewer session.
     herdLauncher.herdSessions("orch-1", ["worker-1"]);
     expect(herdLauncher.unherdSession("orch-1", "worker-1")).toBe(true);
 
-    const worker = herdLauncher.getSession("worker-1");
-    expect(worker?.herdedBy).toBeUndefined(); // cleaned up when empty
+    expect(herdLauncher.getSession("worker-1")?.herdedBy).toBeUndefined(); // cleaned up when empty
+    expect(herdLauncher.getSession("reviewer-1")?.herdedBy).toBeUndefined();
     expect(herdLauncher.getHerdedSessions("orch-1")).toEqual([]);
   });
 

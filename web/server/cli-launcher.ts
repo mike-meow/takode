@@ -2572,6 +2572,7 @@ export class CliLauncher {
     const notFound: string[] = [];
     const conflicts: Array<{ id: string; herder: string }> = [];
     const leaders: string[] = [];
+    const changedLeaders = new Set<string>();
     for (const wid of workerIds) {
       const worker = this.sessions.get(wid);
       if (!worker) {
@@ -2587,12 +2588,30 @@ export class CliLauncher {
         conflicts.push({ id: wid, herder: worker.herdedBy });
         continue;
       }
+
+      const attachedReviewers =
+        worker.sessionNum === undefined
+          ? []
+          : Array.from(this.sessions.values()).filter((session) => !session.archived && session.reviewerOf === worker.sessionNum);
+
       worker.herdedBy = orchId;
+      changedLeaders.add(orchId);
+      // Reviewers are operationally attached to their parent worker. If the
+      // worker changes herd ownership, keep reviewer access aligned so the
+      // new leader can actually message/reuse the nested reviewer sessions.
+      for (const reviewer of attachedReviewers) {
+        if (reviewer.herdedBy && reviewer.herdedBy !== orchId) {
+          changedLeaders.add(reviewer.herdedBy);
+        }
+        reviewer.herdedBy = orchId;
+      }
       herded.push(wid);
     }
     if (herded.length > 0) {
       this.persistState();
-      this.onHerdChanged?.(orchId);
+      for (const leaderId of changedLeaders) {
+        this.onHerdChanged?.(leaderId);
+      }
     }
     return { herded, notFound, conflicts, leaders };
   }
@@ -2604,7 +2623,17 @@ export class CliLauncher {
   unherdSession(orchId: string, workerId: string): boolean {
     const worker = this.sessions.get(workerId);
     if (!worker?.herdedBy || worker.herdedBy !== orchId) return false;
+    const attachedReviewers =
+      worker.sessionNum === undefined
+        ? []
+        : Array.from(this.sessions.values()).filter(
+            (session) =>
+              !session.archived && session.reviewerOf === worker.sessionNum && session.herdedBy === orchId,
+          );
     worker.herdedBy = undefined;
+    for (const reviewer of attachedReviewers) {
+      reviewer.herdedBy = undefined;
+    }
     this.persistState();
     this.onHerdChanged?.(orchId);
     return true;
