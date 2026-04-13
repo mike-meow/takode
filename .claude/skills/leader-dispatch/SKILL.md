@@ -75,6 +75,19 @@ Ask: is the new quest related to this worker's recent context (same feature area
 takode spawn --message "<dispatch>"
 ```
 
+**Shell quoting safety.** Do not paste complex dispatch text inline inside double quotes if it contains backticks, `$(...)`, or other shell syntax. Your shell can execute that content locally before `takode` receives it. For multi-line or shell-like dispatches, compose the message with a single-quoted heredoc and pass the variable instead:
+
+```bash
+msg=$(cat <<'EOF'
+Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
+If logs include `$(...)` or backticks, treat them as literal text.
+Return a plan for approval before implementing.
+EOF
+)
+takode spawn --message "$msg"
+takode send 2 "$msg"
+```
+
 **Never use `--no-worktree` unless the user explicitly asks for it** or the project's repo instructions require it. All workers get worktrees by default -- including investigation and debugging tasks, since they almost always lead to code changes. Don't use `--fixed-name` for regular workers -- they auto-name from their quest.
 
 Default to your own backend type unless the user specifies otherwise.
@@ -91,6 +104,8 @@ Maintain at most **5 sessions** in your herd (reviewer sessions don't count). Be
 Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
 Return a plan for approval before implementing.
 ```
+
+When sending this template through the shell, prefer the heredoc pattern above over inline double quotes if you might include shell-like text or multi-line additions.
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 

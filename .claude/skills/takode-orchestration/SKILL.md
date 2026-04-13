@@ -281,6 +281,18 @@ takode send 2 "Please also add tests for the edge cases"
 takode send 2 "Actually, skip the auth tests" --correction
 ```
 
+**Shell quoting safety.** Do not put complex message text directly inside double quotes if it contains backticks, `$(...)`, or other shell syntax. Your shell can execute that content locally before `takode` receives it. For multi-line or shell-like text, build the message with a single-quoted heredoc and pass the variable to `takode`:
+
+```bash
+msg=$(cat <<'EOF'
+Investigate the failing path.
+Treat `foo $(bar)` as literal text, not shell.
+EOF
+)
+takode send 2 "$msg"
+takode spawn --message "$msg"
+```
+
 ### `takode herd <session> [<session> ...]`
 
 Claim worker sessions under your orchestrator. Each session can only have one leader.
@@ -298,6 +310,8 @@ takode spawn                                                    # worktree sessi
 takode spawn --backend claude --count 3 --cwd ~/repos/app --message "Run tests"
 takode spawn --reviewer 5 --no-worktree --fixed-name "Skeptic review of #5" --message "Review session #5 / quest q-42."
 ```
+
+The same shell quoting rule applies to `--message`: avoid inline double-quoted dispatch bodies when the text may contain shell-like content. Use the heredoc pattern above instead.
 
 ### `takode rename <session> <name>`
 
