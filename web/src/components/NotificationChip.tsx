@@ -34,12 +34,14 @@ function NotificationPreviewCard({
   messageId,
   sessionId,
   anchorRect,
+  summary,
   onMouseEnter,
   onMouseLeave,
 }: {
   messageId: string;
   sessionId: string;
   anchorRect: DOMRect;
+  summary?: string;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
@@ -76,7 +78,24 @@ function NotificationPreviewCard({
     }
   }, [anchorRect, cardWidth]);
 
-  if (contextMessages.length === 0) return null;
+  if (contextMessages.length === 0) {
+    // Message not found in store (may be in a collapsed/unloaded turn) -- show summary fallback
+    if (!summary) return null;
+    return createPortal(
+      <div
+        ref={cardRef}
+        className="fixed z-50 pointer-events-auto hidden-on-touch"
+        style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "bottom left" }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden px-3 py-2">
+          <div className="text-[11px] leading-relaxed text-cc-muted">{summary}</div>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
 
   return createPortal(
     <div
@@ -113,11 +132,9 @@ function NotificationPreviewCard({
 function NotificationItem({
   notif,
   sessionId,
-  onClose,
 }: {
   notif: SessionNotification;
   sessionId: string;
-  onClose: () => void;
 }) {
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,13 +151,12 @@ function NotificationItem({
   }, [sessionId, notif.id, notif.done]);
 
   const jumpToMessage = useCallback(() => {
-    if (notif.messageId) {
-      const store = useStore.getState();
-      store.requestScrollToMessage(sessionId, notif.messageId);
-      store.setExpandAllInTurn(sessionId, notif.messageId);
-    }
-    onClose();
-  }, [sessionId, notif.messageId, onClose]);
+    if (!notif.messageId) return;
+    const store = useStore.getState();
+    store.requestScrollToMessage(sessionId, notif.messageId);
+    store.setExpandAllInTurn(sessionId, notif.messageId);
+    // Don't close panel -- user may want to click multiple notifications
+  }, [sessionId, notif.messageId]);
 
   function handleMouseEnter(e: MouseEvent<HTMLButtonElement>) {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -191,14 +207,20 @@ function NotificationItem({
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isNeedsInput ? "bg-amber-400" : "bg-emerald-400"}`}
           />
-          <button
-            onClick={jumpToMessage}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            className={`text-[12px] text-left truncate max-w-[240px] cursor-pointer hover:underline ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}
-          >
-            {notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review")}
-          </button>
+          {notif.messageId ? (
+            <button
+              onClick={jumpToMessage}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+              className={`text-[12px] text-left truncate max-w-[240px] cursor-pointer hover:underline ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}
+            >
+              {notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review")}
+            </button>
+          ) : (
+            <span className={`text-[12px] truncate max-w-[240px] ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}>
+              {notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review")}
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-cc-muted/60 mt-0.5 pl-3">{formatRelativeTime(notif.timestamp)}</div>
       </div>
@@ -209,6 +231,7 @@ function NotificationItem({
           messageId={notif.messageId}
           sessionId={sessionId}
           anchorRect={hoverRect}
+          summary={notif.summary}
           onMouseEnter={handleCardEnter}
           onMouseLeave={handleCardLeave}
         />
@@ -291,7 +314,7 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
             {active.length > 0 && (
               <div className="divide-y divide-cc-border/20">
                 {[...active].reverse().map((n) => (
-                  <NotificationItem key={n.id} notif={n} sessionId={sessionId} onClose={onClose} />
+                  <NotificationItem key={n.id} notif={n} sessionId={sessionId} />
                 ))}
               </div>
             )}
@@ -314,7 +337,7 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
                 {showDone && (
                   <div className="divide-y divide-cc-border/10 opacity-60">
                     {[...done].reverse().map((n) => (
-                      <NotificationItem key={n.id} notif={n} sessionId={sessionId} onClose={onClose} />
+                      <NotificationItem key={n.id} notif={n} sessionId={sessionId} />
                     ))}
                   </div>
                 )}
