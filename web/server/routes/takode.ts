@@ -207,7 +207,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         }
       : null;
 
-    const base = { sessionId, sessionNum, sessionName, status, quest };
+    const base = { sid: sessionId, sn: sessionNum, name: sessionName, status, quest };
 
     // ── Mode detection ──
     const fromParam = c.req.query("from");

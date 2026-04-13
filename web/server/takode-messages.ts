@@ -38,23 +38,23 @@ export interface TakodePeekMessage {
   /** Compact tool counts by name, e.g. { Read: 3, Bash: 2 } (for peek/range modes) */
   toolCounts?: Record<string, number>;
   /** Turn duration in ms (only for result messages) */
-  turnDurationMs?: number;
+  dur?: number;
   /** Whether the result was successful (only for result messages) */
   success?: boolean;
   /** Source of the message if injected programmatically (user_message only) */
-  agentSource?: { sessionId: string; sessionLabel?: string };
+  agent?: { sessionId: string; sessionLabel?: string };
   /** Disk paths of images attached to this message (user_message only).
    *  Points to the full-quality original files in ~/.companion/images/. */
-  imagePaths?: string[];
+  images?: string[];
 }
 
 export interface TakodePeekTurn {
-  turnNum: number;
+  turn: number;
   /** Timestamp of the user message that started this turn */
-  startedAt: number;
-  /** Timestamp of the result message (null if still running) */
-  endedAt: number | null;
-  durationMs: number | null;
+  start: number;
+  /** Timestamp of the result message (omitted if still running) */
+  end?: number;
+  dur?: number;
   messages: TakodePeekMessage[];
 }
 
@@ -65,20 +65,20 @@ export interface TurnStats {
 }
 
 export interface TakodePeekTurnSummary {
-  turnNum: number;
-  startIdx: number;
-  endIdx: number;
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
+  turn: number;
+  si: number;
+  ei: number;
+  start: number;
+  end?: number;
+  dur?: number;
   stats: TurnStats;
-  success: boolean | null;
+  success?: boolean;
   /** Truncated result or last assistant text for the collapsed one-liner */
-  resultPreview: string;
+  result: string;
   /** Truncated user message that started this turn */
-  userPreview: string;
+  user: string;
   /** Source of the user message if injected programmatically */
-  agentSource?: { sessionId: string; sessionLabel?: string };
+  agent?: { sessionId: string; sessionLabel?: string };
 }
 
 /** A compaction event that occurred between turns (or before the first turn). */
@@ -102,14 +102,14 @@ export interface PeekDefaultResponse {
   totalTurns: number;
   totalMessages: number;
   /** Collapsed summaries of recent completed turns */
-  collapsedTurns: TakodePeekTurnSummary[];
+  collapsed: TakodePeekTurnSummary[];
   /** Number of earlier turns not shown */
-  omittedTurnCount: number;
+  omitted: number;
   /** The last turn, expanded with messages */
-  expandedTurn:
+  expanded:
     | (TakodePeekTurn & {
         stats: TurnStats;
-        omittedMessageCount: number;
+        omittedMsgs: number;
       })
     | null;
   /** Compaction events within the visible turn range */
@@ -122,7 +122,7 @@ export interface PeekRangeResponse {
   from: number;
   to: number;
   messages: TakodePeekMessage[];
-  turnBoundaries: { turnNum: number; startIdx: number; endIdx: number }[];
+  bounds: { turn: number; si: number; ei: number }[];
 }
 
 export interface BuildPeekRangeOptions {
@@ -693,15 +693,15 @@ function buildTurnMessages(
       ts,
     };
 
-    // Include agentSource for user messages (identifies human vs agent vs herd origin)
+    // Include agent source for user messages (identifies human vs agent vs herd origin)
     if (msg.type === "user_message" && (msg as any).agentSource) {
-      peekMsg.agentSource = (msg as any).agentSource;
+      peekMsg.agent = (msg as any).agentSource;
     }
 
     // Include image file paths for user messages with attached images
     if (sessionId) {
       const paths = extractImagePaths(sessionId, msg);
-      if (paths) peekMsg.imagePaths = paths;
+      if (paths) peekMsg.images = paths;
     }
 
     // Extract tool calls for assistant messages
@@ -729,7 +729,7 @@ function buildTurnMessages(
     if (msg.type === "result") {
       const data = msg.data;
       peekMsg.success = !data.is_error;
-      peekMsg.turnDurationMs = data.duration_ms;
+      peekMsg.dur = data.duration_ms;
     }
 
     peekMessages.push(peekMsg);
@@ -785,10 +785,10 @@ export function buildPeekResponse(
     });
 
     return {
-      turnNum: allTurns.indexOf(turn),
-      startedAt,
-      endedAt,
-      durationMs,
+      turn: allTurns.indexOf(turn),
+      start: startedAt,
+      ...(endedAt !== null ? { end: endedAt } : {}),
+      ...(durationMs !== null ? { dur: durationMs } : {}),
       messages: peekMessages,
     };
   });
@@ -816,9 +816,9 @@ export function buildPeekDefault(
       mode: "default",
       totalTurns: 0,
       totalMessages,
-      collapsedTurns: [],
-      omittedTurnCount: 0,
-      expandedTurn: null,
+      collapsed: [],
+      omitted: 0,
+      expanded: null,
     };
   }
 
@@ -830,10 +830,10 @@ export function buildPeekDefault(
 
   // Take last N prior turns as collapsed
   const collapsedSlice = priorTurns.slice(-collapsedCount);
-  const omittedTurnCount = priorTurns.length - collapsedSlice.length;
+  const omitted = priorTurns.length - collapsedSlice.length;
 
   // Build collapsed summaries
-  const collapsedTurns: TakodePeekTurnSummary[] = collapsedSlice.map((turn) => {
+  const collapsed: TakodePeekTurnSummary[] = collapsedSlice.map((turn) => {
     const startMsg = messageHistory[turn.startIdx];
     const endMsg = turn.endIdx >= 0 ? messageHistory[turn.endIdx] : null;
     const startedAt = extractTimestamp(startMsg);
@@ -856,17 +856,17 @@ export function buildPeekDefault(
     const userPreview = startMsg.type === "user_message" ? truncate(startMsg.content || "", 80) : "";
 
     return {
-      turnNum: allTurns.indexOf(turn),
-      startIdx: turn.startIdx,
-      endIdx: turn.endIdx,
-      startedAt,
-      endedAt,
-      durationMs,
+      turn: allTurns.indexOf(turn),
+      si: turn.startIdx,
+      ei: turn.endIdx,
+      start: startedAt,
+      ...(endedAt !== null ? { end: endedAt } : {}),
+      ...(durationMs !== null ? { dur: durationMs } : {}),
       stats,
-      success,
-      resultPreview,
-      userPreview,
-      ...((startMsg as any).agentSource ? { agentSource: (startMsg as any).agentSource } : {}),
+      ...(success !== null ? { success } : {}),
+      result: resultPreview,
+      user: userPreview,
+      ...((startMsg as any).agentSource ? { agent: (startMsg as any).agentSource } : {}),
     };
   });
 
@@ -885,8 +885,8 @@ export function buildPeekDefault(
   });
   const lastTurnStats = computeTurnStats(messageHistory, lastTurn.startIdx, lastTurn.endIdx);
 
-  // Apply expandLimit — keep only the last N messages, track omitted count
-  const omittedMessageCount = Math.max(0, expandedMessages.length - expandLimit);
+  // Apply expandLimit -- keep only the last N messages, track omitted count
+  const omittedMsgs = Math.max(0, expandedMessages.length - expandLimit);
   const visibleMessages = expandedMessages.slice(-expandLimit);
 
   // Find compaction events within the visible range (collapsed turns through expanded turn).
@@ -895,8 +895,8 @@ export function buildPeekDefault(
   const visibleStart =
     collapsedSlice.length > 0
       ? collapsedSlice[0].startIdx
-      : omittedTurnCount > 0
-        ? allTurns[omittedTurnCount - 1].endIdx + 1
+      : omitted > 0
+        ? allTurns[omitted - 1].endIdx + 1
         : 0;
   const visibleEnd = lastTurn.endIdx >= 0 ? lastTurn.endIdx : messageHistory.length - 1;
   const compactionEvents = findCompactionEvents(messageHistory, allTurns, visibleStart, visibleEnd);
@@ -905,16 +905,16 @@ export function buildPeekDefault(
     mode: "default",
     totalTurns,
     totalMessages,
-    collapsedTurns,
-    omittedTurnCount,
-    expandedTurn: {
-      turnNum: allTurns.indexOf(lastTurn),
-      startedAt,
-      endedAt,
-      durationMs,
+    collapsed,
+    omitted,
+    expanded: {
+      turn: allTurns.indexOf(lastTurn),
+      start: startedAt,
+      ...(endedAt !== null ? { end: endedAt } : {}),
+      ...(durationMs !== null ? { dur: durationMs } : {}),
       messages: visibleMessages,
       stats: lastTurnStats,
-      omittedMessageCount,
+      omittedMsgs,
     },
     ...(compactionEvents.length > 0 ? { compactionEvents } : {}),
   };
@@ -936,7 +936,7 @@ export function buildPeekRange(
       from: 0,
       to: 0,
       messages: [],
-      turnBoundaries: [],
+      bounds: [],
     };
   }
 
@@ -1019,15 +1019,15 @@ export function buildPeekRange(
 
     const peekMsg: TakodePeekMessage = { idx: i, type: toPeekType(msg.type), content, ts };
 
-    // Include agentSource for user messages (identifies human vs agent vs herd origin)
+    // Include agent source for user messages (identifies human vs agent vs herd origin)
     if (msg.type === "user_message" && (msg as any).agentSource) {
-      peekMsg.agentSource = (msg as any).agentSource;
+      peekMsg.agent = (msg as any).agentSource;
     }
 
     // Include image file paths for user messages with attached images
     if (sessionId) {
       const paths = extractImagePaths(sessionId, msg);
-      if (paths) peekMsg.imagePaths = paths;
+      if (paths) peekMsg.images = paths;
     }
 
     // Tool call extraction: expanded (--show-tools) or compact (default)
@@ -1061,22 +1061,22 @@ export function buildPeekRange(
 
     if (msg.type === "result") {
       peekMsg.success = !(msg.data as CLIResultMessage).is_error;
-      peekMsg.turnDurationMs = (msg.data as CLIResultMessage).duration_ms;
+      peekMsg.dur = (msg.data as CLIResultMessage).duration_ms;
     }
 
     messages.push(peekMsg);
   }
 
   // Find overlapping turn boundaries
-  const turnBoundaries = allTurns
+  const bounds = allTurns
     .filter((t) => {
       const tEnd = t.endIdx >= 0 ? t.endIdx : totalMessages - 1;
       return t.startIdx <= rangeTo && tEnd >= rangeFrom;
     })
     .map((t) => ({
-      turnNum: allTurns.indexOf(t),
-      startIdx: t.startIdx,
-      endIdx: t.endIdx,
+      turn: allTurns.indexOf(t),
+      si: t.startIdx,
+      ei: t.endIdx,
     }));
 
   return {
@@ -1085,7 +1085,7 @@ export function buildPeekRange(
     from: rangeFrom,
     to: rangeTo,
     messages,
-    turnBoundaries,
+    bounds,
   };
 }
 
@@ -1164,9 +1164,9 @@ export interface PeekTurnScanResponse {
   mode: "turn_scan";
   totalTurns: number;
   totalMessages: number;
-  fromTurn: number;
+  from: number;
   /** Number of turns returned in this page */
-  returnedTurns: number;
+  count: number;
   turns: TakodePeekTurnSummary[];
   /** Compaction events that occurred within the scanned turn range */
   compactionEvents?: CompactionEvent[];
@@ -1196,8 +1196,8 @@ export function buildPeekTurnScan(
       mode: "turn_scan",
       totalTurns,
       totalMessages,
-      fromTurn,
-      returnedTurns: 0,
+      from: fromTurn,
+      count: 0,
       turns: [],
       ...(compactionEvents.length > 0 ? { compactionEvents } : {}),
     };
@@ -1226,17 +1226,17 @@ export function buildPeekTurnScan(
     const userPreview = startMsg.type === "user_message" ? truncate(startMsg.content || "", 80) : "";
 
     return {
-      turnNum,
-      startIdx: turn.startIdx,
-      endIdx: turn.endIdx,
-      startedAt,
-      endedAt,
-      durationMs,
+      turn: turnNum,
+      si: turn.startIdx,
+      ei: turn.endIdx,
+      start: startedAt,
+      ...(endedAt !== null ? { end: endedAt } : {}),
+      ...(durationMs !== null ? { dur: durationMs } : {}),
       stats,
-      success,
-      resultPreview,
-      userPreview,
-      ...((startMsg as any).agentSource ? { agentSource: (startMsg as any).agentSource } : {}),
+      ...(success !== null ? { success } : {}),
+      result: resultPreview,
+      user: userPreview,
+      ...((startMsg as any).agentSource ? { agent: (startMsg as any).agentSource } : {}),
     };
   });
 
@@ -1251,8 +1251,8 @@ export function buildPeekTurnScan(
     mode: "turn_scan",
     totalTurns,
     totalMessages,
-    fromTurn,
-    returnedTurns: turns.length,
+    from: fromTurn,
+    count: turns.length,
     turns,
     ...(compactionEvents.length > 0 ? { compactionEvents } : {}),
   };

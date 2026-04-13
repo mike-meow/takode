@@ -1033,23 +1033,23 @@ type PeekMessage = {
   ts: number;
   tools?: Array<{ idx: number; name: string; summary: string }>;
   toolCounts?: Record<string, number>;
-  turnDurationMs?: number;
+  dur?: number;
   success?: boolean;
-  agentSource?: { sessionId: string; sessionLabel?: string };
+  agent?: { sessionId: string; sessionLabel?: string };
 };
 
 type CollapsedTurn = {
-  turnNum: number;
-  startIdx: number;
-  endIdx: number;
-  startedAt: number;
-  endedAt: number | null;
-  durationMs: number | null;
+  turn: number;
+  si: number;
+  ei: number;
+  start: number;
+  end?: number;
+  dur?: number;
   stats: { tools: number; messages: number; subagents: number };
-  success: boolean | null;
-  resultPreview: string;
-  userPreview: string;
-  agentSource?: { sessionId: string; sessionLabel?: string };
+  success?: boolean;
+  result: string;
+  user: string;
+  agent?: { sessionId: string; sessionLabel?: string };
 };
 
 type PeekDefaultResponse = {
@@ -1061,16 +1061,16 @@ type PeekDefaultResponse = {
   mode: "default";
   totalTurns: number;
   totalMessages: number;
-  collapsedTurns: CollapsedTurn[];
-  omittedTurnCount: number;
-  expandedTurn: {
-    turnNum: number;
-    startedAt: number;
-    endedAt: number | null;
-    durationMs: number | null;
+  collapsed: CollapsedTurn[];
+  omitted: number;
+  expanded: {
+    turn: number;
+    start: number;
+    end?: number;
+    dur?: number;
     messages: PeekMessage[];
     stats: { tools: number; messages: number; subagents: number };
-    omittedMessageCount: number;
+    omittedMsgs: number;
   } | null;
 };
 
@@ -1085,7 +1085,7 @@ type PeekRangeResponse = {
   from: number;
   to: number;
   messages: PeekMessage[];
-  turnBoundaries: Array<{ turnNum: number; startIdx: number; endIdx: number }>;
+  bounds: Array<{ turn: number; si: number; ei: number }>;
 };
 
 type PeekDetailResponse = {
@@ -1095,10 +1095,10 @@ type PeekDetailResponse = {
   status: string;
   quest: { id: string; title: string; status: string } | null;
   turns: Array<{
-    turnNum: number;
-    startedAt: number;
-    endedAt: number | null;
-    durationMs: number | null;
+    turn: number;
+    start: number;
+    end?: number;
+    dur?: number;
     messages: PeekMessage[];
   }>;
 };
@@ -1107,17 +1107,17 @@ type PeekDetailResponse = {
 
 /** Derive a source label for user messages: [User], [Herd], or [Agent #N name]. */
 function userSourceLabel(msg: PeekMessage): string {
-  if (!msg.agentSource) return "user";
-  if (msg.agentSource.sessionId === "herd-events") return "herd";
-  return `agent${msg.agentSource.sessionLabel ? ` ${formatInlineText(msg.agentSource.sessionLabel)}` : ""}`;
+  if (!msg.agent) return "user";
+  if (msg.agent.sessionId === "herd-events") return "herd";
+  return `agent${msg.agent.sessionLabel ? ` ${formatInlineText(msg.agent.sessionLabel)}` : ""}`;
 }
 
 function formatCollapsedTurn(turn: CollapsedTurn): string {
-  const endIdx = turn.endIdx >= 0 ? turn.endIdx : turn.startIdx; // in-progress turns use startIdx as fallback
-  const msgRange = `[${turn.startIdx}]-[${endIdx}]`;
-  const startTime = formatTimeShort(turn.startedAt);
-  const endTime = turn.endedAt ? formatTimeShort(turn.endedAt) : "running";
-  const duration = turn.durationMs ? `${Math.round(turn.durationMs / 1000)}s` : "";
+  const endIdx = turn.ei >= 0 ? turn.ei : turn.si; // in-progress turns use si as fallback
+  const msgRange = `[${turn.si}]-[${endIdx}]`;
+  const startTime = formatTimeShort(turn.start);
+  const endTime = turn.end ? formatTimeShort(turn.end) : "running";
+  const duration = turn.dur ? `${Math.round(turn.dur / 1000)}s` : "";
   const durationPart = duration ? ` (${duration})` : "";
 
   const statParts: string[] = [];
@@ -1127,24 +1127,24 @@ function formatCollapsedTurn(turn: CollapsedTurn): string {
 
   const icon = turn.success === true ? "✓" : turn.success === false ? "✗" : "…";
 
-  const header = `Turn ${turn.turnNum} · ${msgRange} · ${startTime}-${endTime}${durationPart}${statStr} · ${icon}`;
+  const header = `Turn ${turn.turn} · ${msgRange} · ${startTime}-${endTime}${durationPart}${statStr} · ${icon}`;
 
-  const sourceLabel = turn.agentSource ? "herd" : "user";
-  const hasUser = !!turn.userPreview;
-  const hasResult = !!turn.resultPreview;
+  const sourceLabel = turn.agent ? "herd" : "user";
+  const hasUser = !!turn.user;
+  const hasResult = !!turn.result;
 
   // Single-message turn or only one side exists: compact format
   if (!hasUser && !hasResult) return header;
-  if (!hasUser) return `${header}\n  ${formatQuotedContent(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}`;
+  if (!hasUser) return `${header}\n  ${formatQuotedContent(turn.result, TAKODE_PEEK_CONTENT_LIMIT)}`;
   if (!hasResult)
-    return `${header}\n  ${sourceLabel}: ${formatQuotedContent(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}`;
+    return `${header}\n  ${sourceLabel}: ${formatQuotedContent(turn.user, TAKODE_PEEK_CONTENT_LIMIT)}`;
 
   // Multi-message turn: show source prompt, ellipsis, and assistant response (no asst: tag)
   return [
     header,
-    `  ${sourceLabel}: ${formatQuotedContent(turn.userPreview, TAKODE_PEEK_CONTENT_LIMIT)}`,
+    `  ${sourceLabel}: ${formatQuotedContent(turn.user, TAKODE_PEEK_CONTENT_LIMIT)}`,
     `  ...`,
-    `  ${formatQuotedContent(turn.resultPreview, TAKODE_PEEK_CONTENT_LIMIT)}`,
+    `  ${formatQuotedContent(turn.result, TAKODE_PEEK_CONTENT_LIMIT)}`,
   ].join("\n");
 }
 
@@ -1240,41 +1240,41 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
   let lastDate = "";
 
   // Omitted turns hint
-  if (d.omittedTurnCount > 0) {
+  if (d.omitted > 0) {
     // Print the date boundary for the first collapsed turn if we have one
-    if (d.collapsedTurns.length > 0) {
-      const firstDate = dateKey(d.collapsedTurns[0].startedAt);
+    if (d.collapsed.length > 0) {
+      const firstDate = dateKey(d.collapsed[0].start);
       if (firstDate !== lastDate) {
-        console.log(`── ${formatDate(d.collapsedTurns[0].startedAt)} ──`);
+        console.log(`── ${formatDate(d.collapsed[0].start)} ──`);
         lastDate = firstDate;
       }
     }
-    console.log(`  ... ${d.omittedTurnCount} earlier turns omitted (takode peek ${safeSessionRef} --from 0 to browse)`);
+    console.log(`  ... ${d.omitted} earlier turns omitted (takode peek ${safeSessionRef} --from 0 to browse)`);
     console.log("");
   }
 
   // Collapsed turns
-  for (const turn of d.collapsedTurns) {
-    const turnDate = dateKey(turn.startedAt);
+  for (const turn of d.collapsed) {
+    const turnDate = dateKey(turn.start);
     if (turnDate !== lastDate) {
-      console.log(`── ${formatDate(turn.startedAt)} ──`);
+      console.log(`── ${formatDate(turn.start)} ──`);
       lastDate = turnDate;
     }
     console.log(formatCollapsedTurn(turn));
   }
 
   // Expanded turn (the last turn, shown in detail)
-  if (d.expandedTurn) {
-    const et = d.expandedTurn;
-    const turnDate = dateKey(et.startedAt);
+  if (d.expanded) {
+    const et = d.expanded;
+    const turnDate = dateKey(et.start);
     if (turnDate !== lastDate) {
-      console.log(`── ${formatDate(et.startedAt)} ──`);
+      console.log(`── ${formatDate(et.start)} ──`);
       lastDate = turnDate;
     }
 
-    const duration = et.durationMs ? `${Math.round(et.durationMs / 1000)}s` : "running";
-    const durationPart = et.durationMs ? ` (${duration})` : "";
-    const msgCount = et.messages.length + et.omittedMessageCount;
+    const duration = et.dur ? `${Math.round(et.dur / 1000)}s` : "running";
+    const durationPart = et.dur ? ` (${duration})` : "";
+    const msgCount = et.messages.length + et.omittedMsgs;
 
     const statParts: string[] = [];
     if (et.stats.tools > 0) statParts.push(`${et.stats.tools} tools`);
@@ -1287,14 +1287,14 @@ function printPeekDefault(d: PeekDefaultResponse, sessionRef: string): void {
 
     console.log("");
     console.log(
-      `Turn ${et.turnNum} (last, ${msgCount} messages) · ${formatTimeShort(et.startedAt)}-${et.endedAt ? formatTimeShort(et.endedAt) : "running"}${durationPart}${statStr}${successIcon}`,
+      `Turn ${et.turn} (last, ${msgCount} messages) · ${formatTimeShort(et.start)}-${et.end ? formatTimeShort(et.end) : "running"}${durationPart}${statStr}${successIcon}`,
     );
 
     // Omitted messages hint
-    if (et.omittedMessageCount > 0) {
-      const firstIdx = et.messages.length > 0 ? et.messages[0].idx - et.omittedMessageCount : 0;
+    if (et.omittedMsgs > 0) {
+      const firstIdx = et.messages.length > 0 ? et.messages[0].idx - et.omittedMsgs : 0;
       console.log(
-        `  ... ${et.omittedMessageCount} earlier messages omitted (takode peek ${safeSessionRef} --from ${firstIdx} to see all)`,
+        `  ... ${et.omittedMsgs} earlier messages omitted (takode peek ${safeSessionRef} --from ${firstIdx} to see all)`,
       );
     }
 
@@ -1328,10 +1328,10 @@ function printPeekRange(d: PeekRangeResponse, sessionRef: string, count: number)
     }
 
     // Turn boundary
-    const boundary = d.turnBoundaries.find((b) => msg.idx >= b.startIdx && msg.idx <= b.endIdx);
-    if (boundary && boundary.turnNum !== activeTurnNum) {
-      console.log(`--- Turn ${boundary.turnNum} ---`);
-      activeTurnNum = boundary.turnNum;
+    const boundary = d.bounds.find((b) => msg.idx >= b.si && msg.idx <= b.ei);
+    if (boundary && boundary.turn !== activeTurnNum) {
+      console.log(`--- Turn ${boundary.turn} ---`);
+      activeTurnNum = boundary.turn;
     }
 
     // Message rendering (compact: tool counts instead of individual lines)
@@ -1417,15 +1417,15 @@ function printPeekDetail(d: PeekDetailResponse): void {
 
   let lastDate = "";
   for (const turn of d.turns) {
-    const turnDate = turn.startedAt ? dateKey(turn.startedAt) : "";
+    const turnDate = turn.start ? dateKey(turn.start) : "";
     if (turnDate && turnDate !== lastDate) {
-      console.log(`── ${formatDate(turn.startedAt)} ──`);
+      console.log(`── ${formatDate(turn.start)} ──`);
       lastDate = turnDate;
     }
 
-    const duration = turn.durationMs ? `${Math.round(turn.durationMs / 1000)}s` : "running";
-    const ended = turn.endedAt ? `, ended ${formatTime(turn.endedAt)}` : "";
-    console.log(`--- Turn ${turn.turnNum} (${duration}${ended}) ---`);
+    const duration = turn.dur ? `${Math.round(turn.dur / 1000)}s` : "running";
+    const ended = turn.end ? `, ended ${formatTime(turn.end)}` : "";
+    console.log(`--- Turn ${turn.turn} (${duration}${ended}) ---`);
 
     printExpandedMessages(turn.messages);
     console.log("");
@@ -2853,8 +2853,8 @@ type PeekTurnScanResponse = {
   mode: "turn_scan";
   totalTurns: number;
   totalMessages: number;
-  fromTurn: number;
-  returnedTurns: number;
+  from: number;
+  count: number;
   turns: CollapsedTurn[];
 };
 
@@ -2909,20 +2909,20 @@ async function handleScan(base: string, args: string[]): Promise<void> {
   printPeekHeader(data);
   console.log(`${data.totalTurns} turns, ${data.totalMessages} messages`);
 
-  if (data.returnedTurns === 0) {
+  if (data.count === 0) {
     console.log("\nNo turns in this range.");
     return;
   }
 
-  const endTurn = data.fromTurn + data.returnedTurns - 1;
-  console.log(`Showing turns ${data.fromTurn}-${endTurn}:`);
+  const endTurn = data.from + data.count - 1;
+  console.log(`Showing turns ${data.from}-${endTurn}:`);
   console.log("");
 
   let lastDate = "";
   for (const turn of data.turns) {
-    const turnDate = dateKey(turn.startedAt);
+    const turnDate = dateKey(turn.start);
     if (turnDate !== lastDate) {
-      console.log(`── ${formatDate(turn.startedAt)} ──`);
+      console.log(`── ${formatDate(turn.start)} ──`);
       lastDate = turnDate;
     }
     console.log(formatCollapsedTurn(turn));
@@ -2932,12 +2932,12 @@ async function handleScan(base: string, args: string[]): Promise<void> {
 
   // Navigation hints -- "Older" goes toward turn 0, "Newer" goes toward the end
   const hints: string[] = [];
-  if (data.fromTurn > 0) {
-    hints.push(`Older: takode scan ${safeSessionRef} --until ${data.fromTurn} --count ${turnCount}`);
+  if (data.from > 0) {
+    hints.push(`Older: takode scan ${safeSessionRef} --until ${data.from} --count ${turnCount}`);
   }
-  if (data.fromTurn + data.returnedTurns < data.totalTurns) {
+  if (data.from + data.count < data.totalTurns) {
     hints.push(
-      `Newer: takode scan ${safeSessionRef} --from ${data.fromTurn + data.returnedTurns} --count ${turnCount}`,
+      `Newer: takode scan ${safeSessionRef} --from ${data.from + data.count} --count ${turnCount}`,
     );
   }
   if (hints.length > 0) {

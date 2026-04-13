@@ -241,9 +241,9 @@ describe("buildPeekResponse", () => {
     expect(result).toHaveLength(1);
 
     const turn = result[0];
-    expect(turn.turnNum).toBe(0);
-    expect(turn.startedAt).toBe(1000);
-    expect(turn.durationMs).toBe(5000);
+    expect(turn.turn).toBe(0);
+    expect(turn.start).toBe(1000);
+    expect(turn.dur).toBe(5000);
     expect(turn.messages).toHaveLength(3);
 
     // User message
@@ -258,7 +258,7 @@ describe("buildPeekResponse", () => {
     // Result message
     expect(turn.messages[2].type).toBe("result");
     expect(turn.messages[2].success).toBe(true);
-    expect(turn.messages[2].turnDurationMs).toBe(5000);
+    expect(turn.messages[2].dur).toBe(5000);
   });
 
   it("extracts multiple turns when requested", () => {
@@ -273,8 +273,8 @@ describe("buildPeekResponse", () => {
 
     const result = buildPeekResponse(history, { turns: 2 });
     expect(result).toHaveLength(2);
-    expect(result[0].turnNum).toBe(0);
-    expect(result[1].turnNum).toBe(1);
+    expect(result[0].turn).toBe(0);
+    expect(result[1].turn).toBe(1);
   });
 
   it("returns only last N turns from longer history", () => {
@@ -342,8 +342,8 @@ describe("buildPeekResponse", () => {
 
     const result = buildPeekResponse(history, { turns: 1 });
     expect(result).toHaveLength(1);
-    expect(result[0].endedAt).toBeNull();
-    expect(result[0].durationMs).toBeNull();
+    expect(result[0].end).toBeUndefined();
+    expect(result[0].dur).toBeUndefined();
     expect(result[0].messages).toHaveLength(2);
   });
 
@@ -466,8 +466,8 @@ describe("buildPeekDefault", () => {
     ];
 
     const result = buildPeekDefault(history);
-    expect(result.collapsedTurns).toHaveLength(1);
-    expect(result.collapsedTurns[0].resultPreview).toBe("Subagent finished the audit");
+    expect(result.collapsed).toHaveLength(1);
+    expect(result.collapsed[0].result).toBe("Subagent finished the audit");
   });
 
   it("ignores a trailing injected stop message instead of treating it as a running turn", () => {
@@ -486,9 +486,9 @@ describe("buildPeekDefault", () => {
 
     const result = buildPeekDefault(history);
     expect(result.totalTurns).toBe(1);
-    expect(result.expandedTurn?.startedAt).toBe(1000);
-    expect(result.expandedTurn?.endedAt).toBe(4000);
-    expect(result.expandedTurn?.messages.at(-1)?.type).toBe("result");
+    expect(result.expanded?.start).toBe(1000);
+    expect(result.expanded?.end).toBe(4000);
+    expect(result.expanded?.messages.at(-1)?.type).toBe("result");
   });
 });
 
