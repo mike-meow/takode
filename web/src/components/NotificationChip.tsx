@@ -78,33 +78,11 @@ function NotificationPreviewCard({
     }
   }, [anchorRect, cardWidth]);
 
-  if (contextMessages.length === 0) {
-    // Message not found in store (may be in a collapsed/unloaded turn) -- show summary fallback
-    if (!summary) return null;
-    return createPortal(
-      <div
-        ref={cardRef}
-        className="fixed z-50 pointer-events-auto hidden-on-touch"
-        style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "bottom left" }}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-      >
-        <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden px-3 py-2">
-          <div className="text-[11px] leading-relaxed text-cc-muted">{summary}</div>
-        </div>
-      </div>,
-      document.body,
-    );
-  }
+  // Message not found in store -- show summary fallback if available, otherwise hide
+  if (contextMessages.length === 0 && !summary) return null;
 
-  return createPortal(
-    <div
-      ref={cardRef}
-      className="fixed z-50 pointer-events-auto hidden-on-touch"
-      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "bottom left" }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+  const cardContent =
+    contextMessages.length > 0 ? (
       <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden">
         {contextMessages.map(({ msg, isTarget }) => (
           <div
@@ -122,6 +100,21 @@ function NotificationPreviewCard({
           </div>
         ))}
       </div>
+    ) : (
+      <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden px-3 py-2">
+        <div className="text-[11px] leading-relaxed text-cc-muted">{summary}</div>
+      </div>
+    );
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      className="fixed z-50 pointer-events-auto hidden-on-touch"
+      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "bottom left" }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      {cardContent}
     </div>,
     document.body,
   );
@@ -177,6 +170,7 @@ function NotificationItem({
   }
 
   const isNeedsInput = notif.category === "needs-input";
+  const label = notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review");
 
   return (
     <div className="flex items-start gap-2 px-3 py-2 hover:bg-cc-hover/40 transition-colors group">
@@ -214,11 +208,11 @@ function NotificationItem({
               onMouseLeave={handleMouseLeave}
               className={`text-[12px] text-left truncate max-w-[240px] cursor-pointer hover:underline ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}
             >
-              {notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review")}
+              {label}
             </button>
           ) : (
             <span className={`text-[12px] truncate max-w-[240px] ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}>
-              {notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review")}
+              {label}
             </span>
           )}
         </div>
