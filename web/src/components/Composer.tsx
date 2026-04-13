@@ -1115,7 +1115,18 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // (server-authoritative model — browsers never add user messages locally)
     useStore.getState().requestBottomAlignOnNextUserMessage(sessionId);
     useStore.getState().clearComposerDraft(sessionId);
+
+    // Auto-mark notification as done when the user replies to a notification message.
+    // Must run before clearing reply context since we need the messageId.
+    if (currentReplyContext?.messageId) {
+      const notifications = useStore.getState().sessionNotifications.get(sessionId);
+      const notif = notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
+      if (notif) {
+        api.markNotificationDone(sessionId, notif.id, true).catch(() => {});
+      }
+    }
     useStore.getState().setReplyContext(sessionId, null);
+
     setSlashMenuOpen(false);
     setDollarMenuOpen(false);
     setDollarQuery("");

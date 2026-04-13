@@ -400,28 +400,104 @@ export { EVENT_HEADER_RE, parseHerdEvents } from "../utils/herd-event-parser.js"
 
 type SearchHighlightInfo = { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
 
-/** Compact marker rendered after the assistant message content when a notification was anchored to it. */
-export function NotificationMarker({ category, summary }: { category: "needs-input" | "review"; summary?: string }) {
+/** Compact marker rendered inline for notification tool calls.
+ *  When sessionId and messageId are provided, shows interactive checkbox and reply button.
+ *  Falls back to display-only when no matching notification is found in the store. */
+export function NotificationMarker({
+  category,
+  summary,
+  sessionId,
+  messageId,
+}: {
+  category: "needs-input" | "review";
+  summary?: string;
+  sessionId?: string;
+  messageId?: string;
+}) {
   const isAction = category === "needs-input";
   const label = summary || (isAction ? "Needs input" : "Ready for review");
+
+  // Find the matching notification in the store to enable interactive controls
+  const notif = useStore((s) => {
+    if (!sessionId) return null;
+    const notifications = s.sessionNotifications?.get(sessionId);
+    if (!notifications || !messageId) return null;
+    return notifications.find((n) => n.messageId === messageId) ?? null;
+  });
+
+  const isDone = notif?.done ?? false;
+  const notifId = notif?.id;
+
+  const toggleDone = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!sessionId || !notifId) return;
+      api.markNotificationDone(sessionId, notifId, !isDone).catch(() => {});
+    },
+    [sessionId, notifId, isDone],
+  );
+
+  const handleReply = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!sessionId || !messageId) return;
+      const previewText = label;
+      useStore.getState().setReplyContext(sessionId, { messageId, previewText });
+    },
+    [sessionId, messageId, label],
+  );
+
   return (
     <div
-      className={`inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-        isAction
-          ? "border-amber-500/20 bg-amber-500/5 text-amber-400"
-          : "border-emerald-500/20 bg-emerald-500/5 text-cc-muted"
+      className={`inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-opacity ${
+        isDone
+          ? "border-cc-border bg-cc-hover/30 text-cc-muted opacity-60"
+          : isAction
+            ? "border-amber-500/20 bg-amber-500/5 text-amber-400"
+            : "border-emerald-500/20 bg-emerald-500/5 text-cc-muted"
       }`}
     >
+      {/* Checkbox (only when interactive) */}
+      {notif && (
+        <button
+          onClick={toggleDone}
+          className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+          title={isDone ? "Mark unhandled" : "Mark handled"}
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+            {isDone ? (
+              <path d="M8 2a6 6 0 100 12A6 6 0 008 2zM0 8a8 8 0 1116 0A8 8 0 010 8zm11.354-1.646a.5.5 0 00-.708-.708L7 9.293 5.354 7.646a.5.5 0 10-.708.708l2 2a.5.5 0 00.708 0l4-4z" />
+            ) : (
+              <path d="M8 2a6 6 0 100 12A6 6 0 008 2zM0 8a8 8 0 1116 0A8 8 0 010 8z" />
+            )}
+          </svg>
+        </button>
+      )}
+
+      {/* Icon */}
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0">
         {isAction ? (
-          // Bell icon for needs-input
           <path d="M8 1.5A3.5 3.5 0 004.5 5v2.5c0 .78-.26 1.54-.73 2.16L3 10.66V11.5h10v-.84l-.77-1A3.49 3.49 0 0111.5 7.5V5A3.5 3.5 0 008 1.5zM6.5 13a1.5 1.5 0 003 0h-3z" />
         ) : (
-          // Checkmark-circle icon for review
           <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.03 5.28a.75.75 0 00-1.06-1.06L7 8.19 5.78 6.97a.75.75 0 00-1.06 1.06l1.75 1.75a.75.75 0 001.06 0l3.5-3.5z" />
         )}
       </svg>
-      {label}
+
+      {/* Label */}
+      <span className={isDone ? "line-through" : ""}>{label}</span>
+
+      {/* Reply button (only when interactive) */}
+      {notif && sessionId && messageId && (
+        <button
+          onClick={handleReply}
+          className="shrink-0 ml-0.5 cursor-pointer hover:opacity-80 transition-opacity"
+          title="Reply to this notification"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+            <path d="M6.78 1.97a.75.75 0 010 1.06L3.81 6h6.44A4.75 4.75 0 0115 10.75v1.5a.75.75 0 01-1.5 0v-1.5a3.25 3.25 0 00-3.25-3.25H3.81l2.97 2.97a.75.75 0 11-1.06 1.06l-4.25-4.25a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 0z" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -788,10 +864,10 @@ function AssistantMessage({
           // Single tool_use renders as before
           if (group.items.length === 1) {
             const item = group.items[0];
-            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />;
+            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} parentMessageId={message.id} />;
           }
           // Grouped tool_uses
-          return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} />;
+          return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} parentMessageId={message.id} />;
         })}
         {showTimestamp && (
           <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
@@ -1064,7 +1140,7 @@ function ContentBlockRenderer({
   return null;
 }
 
-function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolGroupItem[]; sessionId?: string }) {
+function ToolGroupBlock({ name, items, sessionId, parentMessageId }: { name: string; items: ToolGroupItem[]; sessionId?: string; parentMessageId?: string }) {
   const [open, setOpen] = useState(true);
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
@@ -1076,7 +1152,7 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
     return (
       <div className="flex flex-col gap-2">
         {items.map((item, i) => (
-          <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+          <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} parentMessageId={parentMessageId} />
         ))}
       </div>
     );
@@ -1112,6 +1188,7 @@ function ToolGroupBlock({ name, items, sessionId }: { name: string; items: ToolG
               input={item.input}
               toolUseId={item.id}
               sessionId={sessionId}
+              parentMessageId={parentMessageId}
               hideLabel={name === "Bash"}
             />
           ))}

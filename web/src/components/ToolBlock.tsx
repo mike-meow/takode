@@ -230,6 +230,7 @@ interface ToolBlockProps {
   input: Record<string, unknown>;
   toolUseId: string;
   sessionId?: string;
+  parentMessageId?: string;
   hideLabel?: boolean;
   defaultOpen?: boolean;
 }
@@ -250,6 +251,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
   input,
   toolUseId,
   sessionId,
+  parentMessageId,
   hideLabel = false,
   defaultOpen,
 }: ToolBlockProps) {
@@ -313,7 +315,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
   // takode notify: render inline notification chip instead of terminal block.
   const notifyMatch = name === "Bash" ? parseTakodeNotifyCommand(String(input.command || "")) : null;
   if (notifyMatch) {
-    return <NotificationMarker category={notifyMatch.category} />;
+    return <NotificationMarker category={notifyMatch.category} sessionId={sessionId} messageId={parentMessageId} />;
   }
 
   return (
