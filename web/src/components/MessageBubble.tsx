@@ -474,13 +474,9 @@ export function NotificationMarker({
         </button>
       )}
 
-      {/* Icon */}
+      {/* Bell icon (used for both categories) */}
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0">
-        {isAction ? (
-          <path d="M8 1.5A3.5 3.5 0 004.5 5v2.5c0 .78-.26 1.54-.73 2.16L3 10.66V11.5h10v-.84l-.77-1A3.49 3.49 0 0111.5 7.5V5A3.5 3.5 0 008 1.5zM6.5 13a1.5 1.5 0 003 0h-3z" />
-        ) : (
-          <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.03 5.28a.75.75 0 00-1.06-1.06L7 8.19 5.78 6.97a.75.75 0 00-1.06 1.06l1.75 1.75a.75.75 0 001.06 0l3.5-3.5z" />
-        )}
+        <path d="M8 1.5A3.5 3.5 0 004.5 5v2.5c0 .78-.26 1.54-.73 2.16L3 10.66V11.5h10v-.84l-.77-1A3.49 3.49 0 0111.5 7.5V5A3.5 3.5 0 008 1.5zM6.5 13a1.5 1.5 0 003 0h-3z" />
       </svg>
 
       {/* Label */}
@@ -829,6 +825,9 @@ function AssistantMessage({
         >
           {userAddressed && <LeaderUserAddressedMarker />}
           <MarkdownContent text={displayMessage.content} sessionId={sessionId} searchHighlight={searchHighlight} />
+          {message.notification && (
+            <NotificationMarker category={message.notification.category} summary={message.notification.summary} sessionId={sessionId} messageId={message.id} />
+          )}
           {showTimestamp && (
             <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
           )}
@@ -869,6 +868,9 @@ function AssistantMessage({
           // Grouped tool_uses
           return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} parentMessageId={message.id} />;
         })}
+        {message.notification && (
+          <NotificationMarker category={message.notification.category} summary={message.notification.summary} sessionId={sessionId} messageId={message.id} />
+        )}
         {showTimestamp && (
           <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
         )}
