@@ -8,6 +8,10 @@ const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Track processed tool_use IDs to prevent duplicate task creation */
 const processedToolUseIds = new Map<string, Set<string>>();
+
+/** Debounce guard: prevent overlapping notification sounds from rapid updates. */
+let lastNotificationSoundAt = 0;
+const NOTIFICATION_SOUND_DEBOUNCE_MS = 1000;
 /** Delay transient backend_disconnected flips to avoid sidebar flicker during fast relaunches. */
 const CLI_DISCONNECT_DEBOUNCE_MS = 250;
 
@@ -976,8 +980,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
 
       store.setSessionNotifications(sessionId, newNotifications);
 
-      // Play differentiated sounds for new notifications (when tab is not focused)
-      if (added.length > 0 && !document.hasFocus() && store.notificationSound) {
+      // Play differentiated sounds for new notifications (when tab is not focused).
+      // Debounce to prevent overlapping sounds from rapid notification_update messages.
+      const now = Date.now();
+      if (added.length > 0 && !document.hasFocus() && store.notificationSound && now - lastNotificationSoundAt >= NOTIFICATION_SOUND_DEBOUNCE_MS) {
+        lastNotificationSoundAt = now;
         const hasNeedsInput = added.some((n: { category: string }) => n.category === "needs-input");
         if (hasNeedsInput) {
           playNeedsInputSound();
