@@ -590,6 +590,35 @@ describe("Session management", () => {
     expect(questEvents).toHaveLength(1);
   });
 
+  it("session_quest_claimed is not buffered for event replay (prevents stale chips on reconnect)", () => {
+    // Quest lifecycle events are one-shot notifications that generate ephemeral
+    // chat chips. Buffering them causes stale chips from previous quest operations
+    // to reappear when a browser reconnects after server restart.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.setSessionClaimedQuest("s1", { id: "q-1", title: "Quest One", status: "in_progress" });
+
+    const session = bridge.getSession("s1")!;
+    const bufferedTypes = session.eventBuffer.map((e: any) => e.message.type);
+    expect(bufferedTypes).not.toContain("session_quest_claimed");
+  });
+
+  it("session_name_update is not buffered for event replay (prevents stale names on reconnect)", () => {
+    // Session name updates are one-shot notifications. Replaying stale name
+    // updates on reconnect would overwrite the current name with old values.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.broadcastNameUpdate("s1", "New Session Name", "quest");
+
+    const session = bridge.getSession("s1")!;
+    const bufferedTypes = session.eventBuffer.map((e: any) => e.message.type);
+    expect(bufferedTypes).not.toContain("session_name_update");
+  });
+
   it("closeSession: closes all sockets and removes session", () => {
     const cli = makeCliSocket("s1");
     const browser1 = makeBrowserSocket("s1");

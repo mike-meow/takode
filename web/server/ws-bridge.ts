@@ -9912,7 +9912,12 @@ export class WsBridge {
       msg.type !== "session_init" &&
       msg.type !== "message_history" &&
       msg.type !== "event_replay" &&
-      msg.type !== "leader_group_idle"
+      msg.type !== "leader_group_idle" &&
+      // One-shot notifications: replaying these on reconnect creates stale
+      // quest chips and duplicate name updates. Quest/name state is already
+      // delivered via session_update messages.
+      msg.type !== "session_quest_claimed" &&
+      msg.type !== "session_name_update"
     );
   }
 
