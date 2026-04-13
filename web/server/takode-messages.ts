@@ -145,7 +145,7 @@ export interface TakodeReadResponse {
   /** Raw content blocks for assistant messages */
   contentBlocks?: unknown[];
   /** Disk paths of images attached to this message (user_message only). */
-  imagePaths?: string[];
+  images?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1152,7 +1152,7 @@ export function buildReadResponse(
   // Include image file paths for user messages with attached images
   if (sessionId) {
     const paths = extractImagePaths(sessionId, msg);
-    if (paths) response.imagePaths = paths;
+    if (paths) response.images = paths;
   }
 
   return response;
@@ -1268,7 +1268,7 @@ export interface GrepMatch {
   /** Snippet with matched text in context (~120 chars) */
   snippet: string;
   /** Which turn this message belongs to */
-  turnNum: number | null;
+  turn: number | null;
 }
 
 export interface GrepResponse {
@@ -1366,7 +1366,7 @@ export function grepMessageHistory(
         type: toPeekType(msg.type),
         ts,
         snippet: buildGrepSnippet(fullText, re),
-        turnNum: turnLookup.get(i) ?? null,
+        turn: turnLookup.get(i) ?? null,
       });
     }
   }

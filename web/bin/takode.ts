@@ -1053,9 +1053,9 @@ type CollapsedTurn = {
 };
 
 type PeekDefaultResponse = {
-  sessionId: string;
-  sessionNum: number;
-  sessionName: string;
+  sid: string;
+  sn: number;
+  name: string;
   status: string;
   quest: { id: string; title: string; status: string } | null;
   mode: "default";
@@ -1075,9 +1075,9 @@ type PeekDefaultResponse = {
 };
 
 type PeekRangeResponse = {
-  sessionId: string;
-  sessionNum: number;
-  sessionName: string;
+  sid: string;
+  sn: number;
+  name: string;
   status: string;
   quest: { id: string; title: string; status: string } | null;
   mode: "range";
@@ -1089,9 +1089,9 @@ type PeekRangeResponse = {
 };
 
 type PeekDetailResponse = {
-  sessionId: string;
-  sessionNum: number;
-  sessionName: string;
+  sid: string;
+  sn: number;
+  name: string;
   status: string;
   quest: { id: string; title: string; status: string } | null;
   turns: Array<{
@@ -1216,12 +1216,12 @@ function printExpandedMessages(messages: PeekMessage[]): void {
 }
 
 function printPeekHeader(d: {
-  sessionNum: number;
-  sessionName: string;
+  sn: number;
+  name: string;
   status: string;
   quest?: { id: string; title: string; status: string } | null;
 }): void {
-  console.log(`Session #${d.sessionNum} "${formatInlineText(d.sessionName)}" -- ${formatInlineText(d.status)}`);
+  console.log(`Session #${d.sn} "${formatInlineText(d.name)}" -- ${formatInlineText(d.status)}`);
   if (d.quest) {
     console.log(
       `Quest: ${formatInlineText(d.quest.id)} "${formatInlineText(d.quest.title)}" [${formatInlineText(d.quest.status)}]`,
@@ -2845,9 +2845,9 @@ async function handleBranch(base: string, args: string[]): Promise<void> {
 // ─── Scan handler ────────────────────────────────────────────────────────────
 
 type PeekTurnScanResponse = {
-  sessionId: string;
-  sessionNum: number;
-  sessionName: string;
+  sid: string;
+  sn: number;
+  name: string;
   status: string;
   quest: { id: string; title: string; status: string } | null;
   mode: "turn_scan";
@@ -3005,7 +3005,7 @@ async function handleGrep(base: string, args: string[]): Promise<void> {
       type: string;
       ts: number;
       snippet: string;
-      turnNum: number | null;
+      turn: number | null;
     }>;
   };
 
@@ -3030,7 +3030,7 @@ async function handleGrep(base: string, args: string[]): Promise<void> {
   for (const match of data.matches) {
     const time = formatTimeShort(match.ts);
     const idx = `[${match.idx}]`;
-    const turnLabel = match.turnNum !== null ? `T${match.turnNum}` : "  ";
+    const turnLabel = match.turn !== null ? `T${match.turn}` : "  ";
     const typeLabel = match.type.padEnd(6);
     console.log(`  ${idx.padEnd(7)} ${time}  ${typeLabel} ${turnLabel.padEnd(5)} ${match.snippet}`);
   }
