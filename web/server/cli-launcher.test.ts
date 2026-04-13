@@ -2380,6 +2380,14 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("repeated `takode peek` / `takode scan` checks");
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Only inspect a worker after a herd event");
+    expect(guardrails).toContain("Make every worker instruction stage-explicit");
+    expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("implement and stop when done");
+    expect(guardrails).toContain("Do **not** tell the worker to port yet");
+    expect(guardrails).toContain("investigation, design, or other no-code quests");
+    expect(guardrails).toContain("implement any Critical or Recommended suggestions, report back, and wait");
+    expect(guardrails).toContain("what artifact to produce and to stop afterward");
+    expect(guardrails).toContain("send a separate explicit port instruction when ready");
     expect(guardrails).toContain("takode notify");
     expect(guardrails).toContain("needs-input");
     expect(guardrails).toContain("review");
@@ -2408,6 +2416,13 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("default to your own backend type");
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("wait for the next herd event");
+    expect(guardrails).toContain("Make every worker instruction stage-explicit");
+    expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("implement and stop when done");
+    expect(guardrails).toContain("Do **not** tell the worker to port yet");
+    expect(guardrails).toContain("implement any Critical or Recommended suggestions, report back, and wait");
+    expect(guardrails).toContain("what artifact to produce and to stop afterward");
+    expect(guardrails).toContain("send a separate explicit port instruction when ready");
     // No verbose CLI command docs
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("CLAUDE.md");

@@ -9,8 +9,8 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 | `QUEUED` | Quest is ready, waiting for dispatch | Dispatch to a worker |
 | `PLANNING` | Worker is planning | Wait for `permission_request` (ExitPlanMode), then review plan |
 | `IMPLEMENTING` | Worker is implementing | Wait for `turn_end`, then spawn skeptic reviewer |
-| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run /groom and implement suggestions |
-| `GROOM_REVIEWING` | Worker ran groom and implemented suggestions; reviewer checking compliance | ALWAYS send to reviewer, wait for ACCEPT, then tell worker to port |
+| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run `/groom`, implement any Critical or Recommended suggestions, report back, and wait |
+| `GROOM_REVIEWING` | Worker ran groom and implemented suggestions; reviewer checking compliance | ALWAYS send to reviewer, wait for ACCEPT, then send a separate explicit port instruction when ready |
 | `PORTING` | Worker is porting to main repo | Wait for port confirmation, then remove from board |
 
 **Board advances only after completed actions.** Do not advance the board anticipating what will happen next. Only advance after the action for that stage is actually done.
@@ -18,6 +18,15 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 **Update the board immediately.** When a herd event arrives that changes quest state (turn_end, permission_request, etc.), update the board as your FIRST action -- before reviewing content, reading messages, or composing responses. The board must always reflect real-time state.
 
 **Mandatory stages:** Skeptic review and groom review are mandatory for ALL quests with code changes -- no exceptions for "small" or "trivial" changes. Groom may only be skipped when the task produced zero code changes (e.g., analysis-only work).
+
+## Stage-Explicit Worker Steering
+
+- **Authorize one stage at a time.** Every leader-to-worker message should say what the worker is allowed to do now and what must wait.
+- **Initial dispatch = planning only.** The worker returns a plan and stops. Do not imply implementation is approved.
+- **Plan approval = implement and stop.** Tell the worker to implement, report back, and wait. Do not let the worker infer review, porting, or quest transitions.
+- **Review/rework = do the named work and stop.** If you send reviewer findings or tell the worker to run `/groom`, also tell them to report back and wait. Do not imply porting is authorized.
+- **Porting requires an explicit instruction.** Only tell the worker to run `/port-changes` after the reviewer ACCEPTs and you are ready for porting.
+- **Investigation/design/no-code quests still need explicit boundaries.** Tell the worker what artifact to produce, have them stop afterward, and choose the next step yourself. Do not assume the worker should self-complete, self-transition, or self-port.
 
 ## Refine (before QUEUED)
 
@@ -29,6 +38,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 ## QUEUED -> PLANNING
 
 - Choose a worker and send the standardized dispatch message by invoking `/leader-dispatch`
+- The initial dispatch authorizes planning only. Tell the worker to return a plan and stop; do not imply implementation is approved.
 - `takode board set <quest-id> --worker <N> --status PLANNING`
 
 ## PLANNING -> IMPLEMENTING
@@ -39,6 +49,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 - Be skeptical and adversarial: does the plan actually address the root problem? Are there misunderstandings or shortcuts that would produce wrong results?
 - It's better to reject and redirect now than to let the worker implement the wrong thing
 - Approve or reject with specific feedback via `takode answer`
+- On approve, send an explicit stage instruction: implement now, then stop and report back. Do not let the worker assume review, `/groom`, `/port-changes`, or quest transitions are authorized.
 - On approve: `takode board advance <quest-id>`
 
 ## IMPLEMENTING -> SKEPTIC_REVIEWING
@@ -80,7 +91,8 @@ The `--reviewer` flag automatically:
 
 - **This stage is iterative.** Do not advance until the reviewer issues ACCEPT.
 - If the reviewer CHALLENGEs: send findings to the worker for rework, then send the reworked result back to the reviewer. Repeat until ACCEPT.
-- On ACCEPT: tell the worker to run `/groom` and implement any Critical or Recommended suggestions from the report. `/groom` only generates the review report -- the worker must separately act on the findings.
+- If you send rework, tell the worker to address the findings, report back, and stop again. Do not imply porting is authorized.
+- On ACCEPT: tell the worker to run `/groom` and implement any Critical or Recommended suggestions from the report. `/groom` only generates the review report -- the worker must separately act on the findings. Tell the worker to report back and wait; do not tell them to port yet.
 - `takode board advance <quest-id>`
 
 ## GROOM_REVIEWING -> PORTING
@@ -89,12 +101,15 @@ The `--reviewer` flag automatically:
 - **ALWAYS** send groom results to the same reviewer for compliance check -- even if the worker made no changes. The reviewer verifies that no important suggestions were skipped without justification.
 - **This stage is iterative.** Do not advance until the reviewer ACCEPTs.
 - If CHALLENGE: send findings back to the worker, have them address the issues, then re-send to reviewer. Repeat until ACCEPT.
-- On reviewer ACCEPT: tell the worker to port changes using `/port-changes`
+- Keep the worker waiting while the reviewer checks compliance. If more changes are needed, tell the worker exactly what to do and to stop again afterward.
+- On reviewer ACCEPT: tell the worker to port changes using `/port-changes`. Porting must be a separate, explicit instruction.
 - `takode board advance <quest-id>`
 - **NEVER combine "groom" and "port" in the same instruction to the worker.** Each is a separate gate.
 
 ## PORTING -> (removed)
 
+- Tell the worker to run `/port-changes` only when you are explicitly ready for porting. Do not assume they will self-port once review is done.
+- For investigation, design, or other no-code quests, give an explicit next-step instruction after the worker reports back. Do not ask them to self-complete or move the quest forward on their own.
 - Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote)
 - Only after port is confirmed: transition the quest to `needs_verification`
 - `takode board advance <quest-id>` -- this removes the row from the board

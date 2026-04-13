@@ -81,7 +81,7 @@ takode spawn --message "<dispatch>"
 msg=$(cat <<'EOF'
 Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
 If logs include `$(...)` or backticks, treat them as literal text.
-Return a plan for approval before implementing.
+Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
 EOF
 )
 takode spawn --message "$msg"
@@ -102,7 +102,7 @@ Maintain at most **5 sessions** in your herd (reviewer sessions don't count). Be
 
 ```
 Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
-Return a plan for approval before implementing.
+Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
 ```
 
 When sending this template through the shell, prefer the heredoc pattern above over inline double quotes if you might include shell-like text or multi-line additions.
@@ -111,12 +111,37 @@ If the worker needs additional context (related sessions, rejected approaches, u
 
 **Workers must stop after each stage boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, self-groom, or self-port. The leader advances the quest through review stages.
 
+**Make every follow-up message stage-explicit.**
+- **Initial dispatch**: planning only. The worker returns a plan and stops.
+- **Plan approval**: say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
+- **Review or groom follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Do not imply porting is authorized.
+- **Porting**: send a separate, explicit `/port-changes` instruction only after reviewer ACCEPT.
+- **Investigation/design/no-code quests**: say what artifact to produce, then tell the worker to stop and report back. Do not assume the worker should self-complete or self-transition the quest.
+
+**Use explicit phrasing when steering between stages.** Good defaults:
+
+```
+Implement the approved plan, then stop and report back. Do not run /groom, /port-changes, or change the quest status yourself.
+```
+
+```
+Address the reviewer findings, then stop and report back. Do not port yet.
+```
+
+```
+Run /groom, implement any Critical or Recommended suggestions, then stop and report back. Do not port yet.
+```
+
+```
+Port now using /port-changes, then report back when sync is complete.
+```
+
 **For feedback rework dispatches**, use this extended template instead:
 
 ```
 Work on [q-XX](quest:q-XX). Read the quest and check unaddressed feedback: `quest show q-XX && quest claim q-XX`.
 Address all unaddressed feedback items. After fixing each item, mark it as addressed: `quest address q-XX <index>`.
-Return a plan for approval before implementing.
+Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
 ```
 
 This ensures workers know about pending feedback and explicitly mark each item as addressed after fixing it.
