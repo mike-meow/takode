@@ -1,9 +1,12 @@
 let audioContext: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
-  if (!audioContext) {
-    audioContext = new AudioContext();
+  // Recreate if the context was closed (browser can close it when tab is
+  // backgrounded for extended periods or under memory pressure).
+  if (audioContext && audioContext.state !== "closed") {
+    return audioContext;
   }
+  audioContext = new AudioContext();
   return audioContext;
 }
 
@@ -27,15 +30,15 @@ function playTone(ctx: AudioContext, freq: number, start: number, gain: number, 
  * Short ascending two-note tone (C5 → E5), triangle wave, ~450ms.
  * Warm, satisfying -- like a task-complete ding.
  */
-export function playReviewSound(): void {
+export async function playReviewSound(): Promise<void> {
   try {
     const ctx = getAudioContext();
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") await ctx.resume();
     const now = ctx.currentTime;
     playTone(ctx, 523.25, now, 0.25, 0.25, "triangle");        // C5
     playTone(ctx, 659.25, now + 0.15, 0.25, 0.3, "triangle");  // E5
   } catch {
-    // Silently fail if Web Audio API is not available
+    // Web Audio API not available
   }
 }
 
@@ -44,19 +47,19 @@ export function playReviewSound(): void {
  * Two identical A5 notes with a short pause (gentle double-tap), triangle wave, ~600ms.
  * Brighter than the review chime -- "someone's waiting for you."
  */
-export function playNeedsInputSound(): void {
+export async function playNeedsInputSound(): Promise<void> {
   try {
     const ctx = getAudioContext();
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") await ctx.resume();
     const now = ctx.currentTime;
     playTone(ctx, 880.0, now, 0.2, 0.15, "triangle");       // A5, first tap
     playTone(ctx, 880.0, now + 0.33, 0.2, 0.15, "triangle"); // A5, second tap
   } catch {
-    // Silently fail if Web Audio API is not available
+    // Web Audio API not available
   }
 }
 
 /** Backward-compatible alias for the review completion chime. */
-export function playNotificationSound(): void {
-  playReviewSound();
+export async function playNotificationSound(): Promise<void> {
+  await playReviewSound();
 }
