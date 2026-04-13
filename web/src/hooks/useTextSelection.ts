@@ -32,27 +32,26 @@ function findMessageAncestor(node: Node | null): HTMLElement | null {
   return null;
 }
 
-/** Calculate menu position: bottom-aligned above the selection rect so the menu
- *  doesn't obscure the highlighted text. Falls back to below if no space above. */
-function computeMenuPosition(rect: DOMRect): { x: number; y: number } {
+/** Calculate menu position: above the selection on desktop, below on touch
+ *  (where the native iOS callout and handles appear above). */
+function computeMenuPosition(rect: DOMRect, preferBelow: boolean): { x: number; y: number } {
   const MENU_WIDTH_ESTIMATE = 180;
-  const MENU_HEIGHT_ESTIMATE = 68; // 2 items ~28px each + 8px padding + 4px border
+  const MENU_HEIGHT_ESTIMATE = 68;
   const GAP = 6;
 
   let x = rect.left + rect.width / 2 - MENU_WIDTH_ESTIMATE / 2;
-  // Clamp to viewport horizontal bounds
   x = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_ESTIMATE - 8));
 
-  // Place the menu's bottom edge above the selection top, so the selection stays visible.
-  // If there isn't enough room above, flip to below the selection.
-  const aboveY = rect.top - GAP - MENU_HEIGHT_ESTIMATE;
-  let y: number;
-  if (aboveY >= 4) {
-    y = aboveY;
-  } else {
-    y = rect.bottom + GAP;
+  if (preferBelow) {
+    // Touch: place below selection to avoid overlapping native iOS callout above
+    const belowY = rect.bottom + GAP;
+    const aboveY = rect.top - GAP - MENU_HEIGHT_ESTIMATE;
+    return { x, y: belowY + MENU_HEIGHT_ESTIMATE > window.innerHeight - 4 ? Math.max(4, aboveY) : belowY };
   }
 
+  // Desktop: place above selection so the highlighted text stays visible
+  const aboveY = rect.top - GAP - MENU_HEIGHT_ESTIMATE;
+  const y = aboveY >= 4 ? aboveY : rect.bottom + GAP;
   return { x, y };
 }
 
@@ -61,22 +60,25 @@ function computeMenuPosition(rect: DOMRect): { x: number; y: number } {
  *
  * Returns selection state with position data for rendering a floating context menu.
  * Only activates for non-empty selections fully within a single assistant message.
- * Skipped on touch-only devices (mobile has native copy/paste UI).
+ * On touch devices, delays evaluation to let the native selection UI finalize.
  */
 export function useTextSelection(containerRef: RefObject<HTMLElement | null>): TextSelectionState {
   const [state, setState] = useState<Omit<TextSelectionState, "clear">>(EMPTY_STATE);
   const rafRef = useRef<number>(0);
+  const touchDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track whether we should suppress the next selectionchange (after programmatic clear)
   const suppressRef = useRef(false);
   // Track mouse-down state so we only show the menu after mouseup, not mid-drag
   const mouseDownRef = useRef(false);
+  // Track touch state so we only show the menu after touchend, not mid-drag
+  const touchActiveRef = useRef(false);
+  // Whether the current interaction started with touch (affects menu position)
+  const isTouchInteractionRef = useRef(false);
 
   const clear = useCallback(() => {
     setState(EMPTY_STATE);
     suppressRef.current = true;
     window.getSelection()?.removeAllRanges();
-    // Reset suppress after both a RAF and a microtask to ensure all pending
-    // selectionchange handlers have fired before we start listening again
     requestAnimationFrame(() => {
       setTimeout(() => {
         suppressRef.current = false;
@@ -84,14 +86,9 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     });
   }, []);
 
-  // Capture the element on every render so the effect re-runs when it transitions
-  // from null (e.g. during a loading state) to a real DOM node.
   const container = containerRef.current;
 
   useEffect(() => {
-    // Skip on touch-only devices -- mobile has native selection UI
-    if (!window.matchMedia("(pointer: fine)").matches) return;
-
     if (!container) return;
 
     function evaluateSelection() {
@@ -104,19 +101,16 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       const anchorMsg = findMessageAncestor(sel.anchorNode);
       const focusMsg = findMessageAncestor(sel.focusNode);
 
-      // Both endpoints must be within a message, and the same message
       if (!anchorMsg || !focusMsg || anchorMsg !== focusMsg) {
         setState(EMPTY_STATE);
         return;
       }
 
-      // Must be within our container (non-null: effect only registers when container exists)
       if (!container!.contains(anchorMsg)) {
         setState(EMPTY_STATE);
         return;
       }
 
-      // Only assistant messages
       if (anchorMsg.dataset.messageRole !== "assistant") {
         setState(EMPTY_STATE);
         return;
@@ -133,7 +127,7 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
         isActive: true,
         plainText: sel.toString(),
         range: range.cloneRange(),
-        position: computeMenuPosition(rect),
+        position: computeMenuPosition(rect, isTouchInteractionRef.current),
       });
     }
 
@@ -142,27 +136,39 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       rafRef.current = requestAnimationFrame(evaluateSelection);
     }
 
+    // ─── Mouse handlers (desktop) ────────────────────────────────────
     function handleMouseDown() {
       mouseDownRef.current = true;
+      isTouchInteractionRef.current = false;
     }
 
-    // Only show the menu after the user releases the mouse (drag complete).
-    // Listens on document (not container) so the flag resets even if mouseup
-    // fires outside the container (e.g., user drags out of the message area).
     function handleMouseUp() {
       mouseDownRef.current = false;
       scheduleEvaluation();
     }
 
-    // selectionchange fires continuously during drag -- only use it to detect
-    // deselection (collapse) or keyboard-driven selection changes AFTER mouseup.
+    // ─── Touch handlers (iOS / mobile) ───────────────────────────────
+    function handleTouchStart() {
+      touchActiveRef.current = true;
+      isTouchInteractionRef.current = true;
+    }
+
+    function handleTouchEnd() {
+      touchActiveRef.current = false;
+      // Delay evaluation to let iOS finalize the selection via native handles.
+      // Without this, getSelection() may return stale or incomplete results.
+      if (touchDelayRef.current) clearTimeout(touchDelayRef.current);
+      touchDelayRef.current = setTimeout(scheduleEvaluation, 300);
+    }
+
+    // selectionchange fires during drag and after iOS handle adjustments.
+    // Only evaluate after the pointer/touch is released.
     function handleSelectionChange() {
       if (suppressRef.current) return;
-      if (mouseDownRef.current) return; // Don't activate mid-drag
+      if (mouseDownRef.current || touchActiveRef.current) return;
       scheduleEvaluation();
     }
 
-    // Dismiss on scroll -- the menu position becomes stale
     function handleScroll() {
       if (suppressRef.current) return;
       cancelAnimationFrame(rafRef.current);
@@ -171,15 +177,20 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
 
     container.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("mouseup", handleMouseUp);
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
     document.addEventListener("selectionchange", handleSelectionChange);
     container.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       container.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("mouseup", handleMouseUp);
+      container.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchend", handleTouchEnd);
       document.removeEventListener("selectionchange", handleSelectionChange);
       container.removeEventListener("scroll", handleScroll);
       cancelAnimationFrame(rafRef.current);
+      if (touchDelayRef.current) clearTimeout(touchDelayRef.current);
     };
   }, [container]);
 
