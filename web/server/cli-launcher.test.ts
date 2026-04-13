@@ -2376,6 +2376,10 @@ describe("getOrchestratorGuardrails", () => {
     // Leader discipline: wait for user answer, no skipping stages
     expect(guardrails).toContain("WAIT for their answer");
     expect(guardrails).toContain("Never skip quest journey stages");
+    expect(guardrails).toContain("Do not use sleep-based waits");
+    expect(guardrails).toContain("repeated `takode peek` / `takode scan` checks");
+    expect(guardrails).toContain("wait for the next herd event");
+    expect(guardrails).toContain("Only inspect a worker after a herd event");
     expect(guardrails).toContain("takode notify");
     expect(guardrails).toContain("needs-input");
     expect(guardrails).toContain("review");
@@ -2402,6 +2406,8 @@ describe("getOrchestratorGuardrails", () => {
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");
+    expect(guardrails).toContain("Do not use sleep-based waits");
+    expect(guardrails).toContain("wait for the next herd event");
     // No verbose CLI command docs
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("CLAUDE.md");

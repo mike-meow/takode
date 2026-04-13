@@ -535,6 +535,7 @@ Workers have the same tools and skills you do. Give workers the quest ID and a b
 ## Herd Event Workflow
 
 Events from herded sessions are delivered automatically as \`[Herd]\` user messages when you go idle. No polling needed.
+Do not use sleep-based waits or repeated \`takode peek\` / \`takode scan\` checks to watch for routine worker progress or completion. Herd events are push-based and arrive automatically when you go idle. Update the board, then wait for the next herd event. Only inspect a worker after a herd event or when resolving a concrete inconsistency.
 
 **Message sources** -- every user message has a source tag:
 - **\`[User HH:MM]\`** -- human operator
