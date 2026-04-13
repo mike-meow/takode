@@ -1880,7 +1880,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
             : existingReviewer.sessionId.slice(0, 8);
         err(
           `Session #${reviewerOfNum} already has an active reviewer (${existingLabel}). ` +
-            `Stop it first with \`takode interrupt ${existingLabel}\`.`,
+            `Archive it first with \`takode archive ${existingLabel}\`.`,
         );
       }
 

@@ -70,9 +70,10 @@ The `--reviewer` flag automatically:
 
 ### Reviewer Lifecycle
 
-- **One reviewer per parent.** To replace, stop the old reviewer first with `takode interrupt`.
-- **Persistent**: reuse the same reviewer for follow-up reviews and groom compliance checks on the same worker
-- **Auto-cleanup**: reviewer is archived when its parent worker is archived
+- **One reviewer per parent.** To replace, archive the old reviewer with `takode archive`.
+- **Reuse within a quest**: keep the same reviewer for follow-up reviews and groom compliance checks on the same worker
+- **Archive after the quest is ported**: reviewers are one-off quality gates -- archive them once the quest journey is complete
+- **Auto-cleanup**: reviewer is automatically archived when its parent worker is archived
 - **Herd limit exempt**: reviewer sessions do NOT count toward the 5-session herd limit
 
 ## SKEPTIC_REVIEWING -> GROOM_REVIEWING
