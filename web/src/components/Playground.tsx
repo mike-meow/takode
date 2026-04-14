@@ -3543,6 +3543,23 @@ export function Playground() {
                 </p>
               </div>
             </Card>
+
+            <Card label="Combined chips (same-line layout)">
+              <div className="p-3 space-y-2">
+                <p className="text-[10px] text-cc-muted mb-2">
+                  Seed both timer and notification data above, then see them side-by-side as they appear in the feed.
+                </p>
+                <div className="relative h-24 rounded-lg border border-cc-border bg-cc-bg overflow-hidden">
+                  <div className="pointer-events-none absolute bottom-2 right-2 flex flex-row items-end gap-1.5 sm:bottom-3 sm:right-3">
+                    <TimerChip sessionId="playground-timers" />
+                    <NotificationChip sessionId="playground-notifs" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-cc-muted">
+                  Timer chip on the left, notification chip on the right -- mirrors FeedStatusPill layout.
+                </p>
+              </div>
+            </Card>
           </div>
         </Section>
 

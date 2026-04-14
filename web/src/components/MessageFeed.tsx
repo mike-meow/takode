@@ -314,10 +314,10 @@ function FeedStatusPill({
       <div className="pointer-events-none absolute bottom-2 left-2 z-10 sm:bottom-3 sm:left-3">
         <ElapsedTimer sessionId={sessionId} variant="floating" onVisibleHeightChange={onVisibleHeightChange} />
       </div>
-      {/* Timer + Notification chips — lower right, stacked vertically */}
-      <div className="pointer-events-none absolute bottom-2 right-2 z-10 flex flex-col items-end gap-1.5 sm:bottom-3 sm:right-3">
-        <NotificationChip sessionId={sessionId} />
+      {/* Timer + Notification chips — lower right, same line */}
+      <div className="pointer-events-none absolute bottom-2 right-2 z-10 flex flex-row items-end gap-1.5 sm:bottom-3 sm:right-3">
         <TimerChip sessionId={sessionId} />
+        <NotificationChip sessionId={sessionId} />
       </div>
     </>
   );
