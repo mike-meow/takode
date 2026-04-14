@@ -2930,6 +2930,45 @@ describe("handleMessage: state_snapshot", () => {
 });
 
 // ===========================================================================
+// handleMessage: codex_pending_input_cancelled
+// ===========================================================================
+describe("handleMessage: codex_pending_input_cancelled", () => {
+  it("restores draft images into the composer when a pending Codex input is cancelled", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "codex_pending_input_cancelled",
+      input: {
+        id: "pending-1",
+        content: "restore this image",
+        timestamp: Date.now(),
+        cancelable: true,
+        draftImages: [
+          {
+            name: "attachment-1.png",
+            base64: "restore-image-data",
+            mediaType: "image/png",
+          },
+        ],
+      },
+    });
+
+    const draft = useStore.getState().composerDrafts.get("s1");
+    expect(draft).toEqual({
+      text: "restore this image",
+      images: [
+        {
+          name: "attachment-1.png",
+          base64: "restore-image-data",
+          mediaType: "image/png",
+        },
+      ],
+    });
+  });
+});
+
+// ===========================================================================
 // handleMessage: permission_approved removes pending permission
 // ===========================================================================
 describe("handleMessage: permission_approved", () => {

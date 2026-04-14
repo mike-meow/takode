@@ -7892,23 +7892,15 @@ export class WsBridge {
         return;
       }
 
-      // Prefer local image paths for Codex user turns so thread history stores
-      // compact local references instead of large data: URLs.
+      // For image-bearing user turns, prefer path-based text context instead of
+      // backend-native image transport when possible.
       let adapterMsg: BrowserOutgoingMessage = msg;
       if (msg.type === "user_message" && msg.images?.length) {
-        // Append image file path annotation so the agent can see/reference images.
-        // Mirrors the annotation logic in handleUserMessage for CLI sessions.
+        // Append image file path annotation so the agent can locate the files on
+        // disk. Mirrors the annotation logic in handleUserMessage for CLI sessions.
         let annotatedContent = msg.content || "";
-        if (userImageRefs?.length) {
-          const paths = deriveAttachmentPaths(session.id, userImageRefs);
-          annotatedContent += formatAttachmentPathAnnotation(paths);
-        }
-        // Start with the annotated content
-        adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
+        let resolvedPaths: string[] | null = null;
 
-        // local_images (file paths on disk) only works for Codex which has a
-        // native localImage content type. The Claude SDK doesn't support file
-        // paths and still needs base64 image data.
         if (session.backendType === "codex") {
           if (this.imageStore && userImageRefs?.length === msg.images.length) {
             const paths: string[] = [];
@@ -7921,23 +7913,27 @@ export class WsBridge {
               this.notifyImageSendFailure(session, new Error(`image ${ref.imageId} not found after upload`));
               return;
             }
-            const localMsg = { ...adapterMsg, local_images: paths } as BrowserOutgoingMessage;
-            delete (localMsg as { images?: unknown }).images;
-            adapterMsg = localMsg;
+            resolvedPaths = paths;
           } else {
             this.notifyImageSendFailure(session, new Error("uploaded images missing from image store"));
             return;
           }
-        } else if (session.backendType === "claude-sdk") {
-          // SDK sessions: the CLI doesn't support image content blocks via
-          // stdin transport — only the WebSocket path (--sdk-url) handles them.
-          // Strip the images field and rely on the file path annotation in the
-          // text content, which tells Claude to use the Read tool to view the
-          // image from disk.
-          if (userImageRefs?.length) {
-            const paths = deriveAttachmentPaths(session.id, userImageRefs);
-            annotatedContent = (msg.content || "") + formatAttachmentPathAnnotation(paths);
-          }
+        } else if (userImageRefs?.length) {
+          resolvedPaths = deriveAttachmentPaths(session.id, userImageRefs);
+        }
+
+        if (resolvedPaths?.length) {
+          annotatedContent += formatAttachmentPathAnnotation(resolvedPaths);
+        }
+        // Start with the annotated content.
+        adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
+
+        if (session.backendType === "claude-sdk" || session.backendType === "codex") {
+          // Adapter-backed sessions rely on the file-path annotation in text
+          // instead of backend-native image transport. Claude SDK stdin never
+          // supported image content blocks, and Codex now intentionally follows
+          // the same path-only behavior to avoid the reconnect-prone native
+          // localImage path.
           const stripped = { ...adapterMsg, content: annotatedContent } as BrowserOutgoingMessage;
           delete (stripped as { images?: unknown }).images;
           adapterMsg = stripped;
