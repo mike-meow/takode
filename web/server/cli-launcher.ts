@@ -472,7 +472,8 @@ ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
   parts.push(
     "## Session Timers\n\n" +
       "Use `takode timer` to create session-scoped timers that fire within this session.\n" +
-      "Do NOT use CronCreate -- it is not available. Use `takode timer` instead.\n\n" +
+      "Do NOT use CronCreate or ScheduleWakeup -- they are not available. Use `takode timer` instead.\n\n" +
+      "**Never sleep longer than 1 minute.** For any wait exceeding 1 minute, use `takode timer` instead of `sleep`, `ScheduleWakeup`, or polling loops. Timers free up your session for herd events and other work while you wait; sleeping blocks you.\n\n" +
       "    takode timer create <prompt> --in 30m       # fire once after 30 minutes\n" +
       "    takode timer create <prompt> --at 3pm       # fire once at 3pm\n" +
       "    takode timer create <prompt> --every 10m    # fire every 10 minutes\n" +
