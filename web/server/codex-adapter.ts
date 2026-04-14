@@ -783,6 +783,7 @@ export class CodexAdapter
   // State
   private threadId: string | null = null;
   private currentTurnId: string | null = null;
+  private suppressedTurnResultIds = new Set<string>();
   private connected = false;
   private initialized = false;
   private initFailed = false;
@@ -1154,6 +1155,41 @@ export class CodexAdapter
 
   getCurrentTurnId(): string | null {
     return this.currentTurnId;
+  }
+
+  async rollbackTurns(numTurns: number): Promise<void> {
+    if (!this.threadId) {
+      throw new Error("No Codex thread started yet");
+    }
+    if (!Number.isInteger(numTurns) || numTurns < 1) {
+      throw new Error(`Invalid rollback turn count: ${numTurns}`);
+    }
+
+    const activeTurnId = this.currentTurnId;
+    if (activeTurnId) {
+      // Revert should not surface an extra interrupted result into Takode
+      // history, because the route already truncated browser history to the
+      // pre-revert state before we mutate the backend thread.
+      this.suppressedTurnResultIds.add(activeTurnId);
+      try {
+        await this.interruptAndWaitForTurnEnd();
+      } catch (err) {
+        this.suppressedTurnResultIds.delete(activeTurnId);
+        throw err;
+      }
+    }
+
+    try {
+      await this.transport.call("thread/rollback", {
+        threadId: this.threadId,
+        numTurns,
+      });
+    } catch (err) {
+      if (activeTurnId) {
+        this.suppressedTurnResultIds.delete(activeTurnId);
+      }
+      throw err;
+    }
   }
 
   private isMissingRolloutError(err: unknown): boolean {
@@ -2904,6 +2940,10 @@ export class CodexAdapter
     this.currentTurnId = null;
     // Wake any callers waiting for the turn to end (e.g. interruptAndWaitForTurnEnd)
     for (const resolve of this.turnEndResolvers.splice(0)) resolve();
+
+    if (typeof turn?.id === "string" && this.suppressedTurnResultIds.delete(turn.id)) {
+      return;
+    }
 
     // Always emit a result — even for interrupted turns — so the server
     // transitions to idle. For internal interrupts (new message while a turn

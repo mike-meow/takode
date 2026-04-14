@@ -83,6 +83,51 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     return { cleaned: result.removed, path: mapping.worktreePath };
   }
+
+  function buildCodexTurnSegments(
+    messageHistory: Array<{ type: string; id?: string }>,
+  ): Array<{ startIdx: number; userMessageIds: string[] }> {
+    const segments: Array<{ startIdx: number; userMessageIds: string[] }> = [];
+    let startIdx: number | null = null;
+    let userMessageIds: string[] = [];
+
+    for (let idx = 0; idx < messageHistory.length; idx++) {
+      const msg = messageHistory[idx];
+      if (msg.type === "user_message") {
+        if (startIdx === null) startIdx = idx;
+        if (typeof msg.id === "string") userMessageIds.push(msg.id);
+      }
+      if (msg.type === "result" && startIdx !== null) {
+        segments.push({ startIdx, userMessageIds: [...userMessageIds] });
+        startIdx = null;
+        userMessageIds = [];
+      }
+    }
+
+    if (startIdx !== null) {
+      segments.push({ startIdx, userMessageIds: [...userMessageIds] });
+    }
+
+    return segments;
+  }
+
+  function computeCodexRevertPlan(
+    session: {
+      messageHistory: Array<{ type: string; id?: string }>;
+    },
+    messageId: string,
+  ): { truncateIdx: number; numTurns: number; exactTurnBoundary: boolean } | null {
+    const segments = buildCodexTurnSegments(session.messageHistory);
+    const targetTurnIndex = segments.findIndex((segment) => segment.userMessageIds.includes(messageId));
+    if (targetTurnIndex < 0) return null;
+
+    const targetSegment = segments[targetTurnIndex]!;
+    return {
+      truncateIdx: targetSegment.startIdx,
+      numTurns: segments.length - targetTurnIndex,
+      exactTurnBoundary: targetSegment.userMessageIds[0] === messageId,
+    };
+  }
   // ─── SDK Sessions (--sdk-url) ─────────────────────────────────────
   type SessionBackend = "claude" | "codex" | "claude-sdk";
   type CreationProgressStatus = "in_progress" | "done" | "error";
@@ -1507,7 +1552,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
     if (!info.cliSessionId) return c.json({ error: "No CLI session to resume" }, 400);
-    if (info.backendType === "codex") return c.json({ error: "Revert not supported for Codex" }, 400);
 
     const session = wsBridge.getOrCreateSession(id);
 
@@ -1517,13 +1561,13 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     // Find the target user message in history
     const targetIdx = session.messageHistory.findIndex(
-      (m) => m.type === "user_message" && (m as { id?: string }).id === body.messageId,
+      (m: any) => m.type === "user_message" && (m as { id?: string }).id === body.messageId,
     );
     if (targetIdx < 0) {
       console.log(
         `[revert] Message not found. Available user messages: ${JSON.stringify(
           session.messageHistory
-            .map((m, i) => (m.type === "user_message" ? { idx: i, id: (m as { id?: string }).id } : null))
+            .map((m: any, i: number) => (m.type === "user_message" ? { idx: i, id: (m as { id?: string }).id } : null))
             .filter(Boolean),
         )}`,
       );
@@ -1531,94 +1575,128 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     console.log(`[revert] Found target user message at index ${targetIdx} of ${session.messageHistory.length}`);
 
+    let truncateIdx = targetIdx;
+    let codexRollbackTurns: number | null = null;
+    if (info.backendType === "codex") {
+      const codexPlan = computeCodexRevertPlan(session, body.messageId);
+      if (!codexPlan) {
+        return c.json({ error: "Message not found in Codex turn history" }, 404);
+      }
+      if (!codexPlan.exactTurnBoundary) {
+        const error =
+          "Codex revert only supports the first user message in a Codex turn. This message shares a turn with earlier input; revert the first message in that turn instead.";
+        wsBridge.broadcastToSession(id, { type: "error", message: error });
+        return c.json({ error }, 409);
+      }
+      truncateIdx = codexPlan.truncateIdx;
+      codexRollbackTurns = codexPlan.numTurns;
+      console.log(
+        `[revert] Codex rollback plan: truncateIdx=${truncateIdx} numTurns=${codexRollbackTurns} (messageId=${body.messageId})`,
+      );
+    }
+
     // Find the preceding assistant message with a UUID for --resume-session-at
     let assistantUuid: string | undefined;
-    for (let i = targetIdx - 1; i >= 0; i--) {
-      const m = session.messageHistory[i];
-      if (m.type === "assistant" && (m as { uuid?: string }).uuid) {
-        assistantUuid = (m as { uuid?: string }).uuid;
-        console.log(`[revert] Found preceding assistant UUID=${assistantUuid} at index ${i}`);
-        break;
+    if (info.backendType !== "codex") {
+      for (let i = truncateIdx - 1; i >= 0; i--) {
+        const m = session.messageHistory[i];
+        if (m.type === "assistant" && (m as { uuid?: string }).uuid) {
+          assistantUuid = (m as { uuid?: string }).uuid;
+          console.log(`[revert] Found preceding assistant UUID=${assistantUuid} at index ${i}`);
+          break;
+        }
+      }
+      if (!assistantUuid) {
+        console.log(
+          `[revert] No preceding assistant UUID found. Message types before target: ${session.messageHistory
+            .slice(0, truncateIdx)
+            .map(
+              (m: any, i: number) =>
+                `${i}:${m.type}${m.type === "assistant" ? `(uuid=${(m as { uuid?: string }).uuid ?? "NONE"})` : ""}`,
+            )
+            .join(", ")}`,
+        );
       }
     }
-    if (!assistantUuid) {
-      console.log(
-        `[revert] No preceding assistant UUID found. Message types before target: ${session.messageHistory
-          .slice(0, targetIdx)
-          .map(
-            (m, i) =>
-              `${i}:${m.type}${m.type === "assistant" ? `(uuid=${(m as { uuid?: string }).uuid ?? "NONE"})` : ""}`,
-          )
-          .join(", ")}`,
-      );
-    }
-
-    // Truncate server-side message history
-    session.messageHistory = session.messageHistory.slice(0, targetIdx);
-    session.frozenCount = Math.min(session.frozenCount, session.messageHistory.length);
-    console.log(
-      `[revert] Truncated server messageHistory to ${session.messageHistory.length} entries (frozenCount=${session.frozenCount})`,
-    );
-
-    // Truncate task history: keep only entries whose trigger message survived truncation
-    if (session.taskHistory?.length) {
-      const remainingUserMsgIds = new Set(
-        session.messageHistory
-          .filter((m) => m.type === "user_message")
-          .map((m) => (m as { id?: string }).id)
-          .filter((id): id is string => typeof id === "string"),
-      );
-      const prevCount = session.taskHistory.length;
-      session.taskHistory = session.taskHistory.filter((t) => remainingUserMsgIds.has(t.triggerMessageId));
-      if (session.taskHistory.length !== prevCount) {
-        wsBridge.broadcastToSession(id, { type: "session_task_history", tasks: session.taskHistory });
-      }
-    }
-
-    // Clear orphaned permission dialogs
-    session.pendingPermissions.clear();
-    wsBridge.broadcastToSession(id, { type: "permissions_cleared" });
-
-    // Clear stale eventBuffer -- events from the reverted turn would otherwise
-    // survive persistence and get replayed to browsers after server restart.
-    // Keep nextEventSeq unchanged so subsequent broadcasts (status_change,
-    // message_history) use seq numbers beyond browsers' lastAckSeq, ensuring
-    // they are not skipped by the browser's dedup check in ws-transport.ts.
-    session.eventBuffer = [];
-
-    // Clear stale compaction state — a reverted turn may have started
-    // compaction (setting these flags) before the user rolled back.
-    // Without clearing, the next /compact produces duplicate markers (q-227).
-    session.awaitingCompactSummary = false;
-    session.compactedDuringTurn = false;
-    if (session.state) session.state.is_compacting = false;
 
     // Notify browsers that revert is in progress
     wsBridge.broadcastToSession(id, { type: "status_change", status: "reverting" });
 
-    // Persist immediately (don't rely on debounce — crash would lose truncation)
-    wsBridge.persistSessionSync(id);
+    try {
+      if (info.backendType === "codex") {
+        console.log(`[revert] Rolling back Codex thread by ${codexRollbackTurns} turn(s)`);
+        const { promise, requiresRelaunch } = wsBridge.beginCodexRollback(id, {
+          numTurns: codexRollbackTurns || 1,
+          truncateIdx,
+          clearCodexState: true,
+        });
+        if (requiresRelaunch && info.state !== "starting") {
+          const result = await launcher.relaunch(id);
+          if (!result.ok) {
+            wsBridge.broadcastToSession(id, { type: "status_change", status: "idle" });
+            const error = result.error || "Relaunch failed";
+            wsBridge.broadcastToSession(id, { type: "error", message: error });
+            return c.json({ error }, 503);
+          }
+        }
+        await Promise.race([
+          promise,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for Codex rollback")), 10_000)),
+        ]);
+      } else {
+        // Kill CLI and relaunch with --resume-session-at to truncate CLI's history
+        let result: { ok: boolean; error?: string };
+        if (assistantUuid) {
+          console.log(`[revert] Relaunching with --resume-session-at ${assistantUuid}`);
+          result = await launcher.relaunchWithResumeAt(id, assistantUuid);
+        } else {
+          // Reverting the first user message — start fresh
+          console.log(`[revert] No assistant UUID: clearing cliSessionId and relaunching fresh`);
+          info.cliSessionId = undefined;
+          result = await launcher.relaunch(id);
+        }
 
-    // Kill CLI and relaunch with --resume-session-at to truncate CLI's history
-    let result: { ok: boolean; error?: string };
-    if (assistantUuid) {
-      console.log(`[revert] Relaunching with --resume-session-at ${assistantUuid}`);
-      result = await launcher.relaunchWithResumeAt(id, assistantUuid);
+        if (!result.ok) {
+          console.log(`[revert] Relaunch FAILED: ${result.error}`);
+          const error = result.error || "Relaunch failed";
+          wsBridge.broadcastToSession(id, { type: "status_change", status: "idle" });
+          wsBridge.broadcastToSession(id, { type: "error", message: error });
+          return c.json({ error }, 503);
+        }
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      console.log(`[revert] Backend rollback FAILED: ${error}`);
+      wsBridge.broadcastToSession(id, { type: "status_change", status: "idle" });
+      wsBridge.broadcastToSession(id, { type: "error", message: error });
+      return c.json({ error }, 503);
+    }
+
+    if (info.backendType === "codex") {
+      const revertedSession = wsBridge.getSession(id);
+      console.log(
+        `[revert] Backend revert succeeded. Codex history now has ${revertedSession?.messageHistory.length ?? 0} msgs`,
+      );
     } else {
-      // Reverting the first user message — start fresh
-      console.log(`[revert] No assistant UUID: clearing cliSessionId and relaunching fresh`);
-      info.cliSessionId = undefined;
-      result = await launcher.relaunch(id);
-    }
+      const revertedSession = wsBridge.prepareSessionForRevert(id, truncateIdx);
+      if (!revertedSession) {
+        wsBridge.broadcastToSession(id, { type: "status_change", status: "idle" });
+        return c.json({ error: "Session not found" }, 404);
+      }
+      console.log(
+        `[revert] Truncated server messageHistory to ${revertedSession.messageHistory.length} entries (frozenCount=${revertedSession.frozenCount})`,
+      );
 
-    if (!result.ok) {
-      console.log(`[revert] Relaunch FAILED: ${result.error}`);
-      return c.json({ error: result.error || "Relaunch failed" }, 503);
-    }
-    console.log(`[revert] Relaunch succeeded. Broadcasting truncated history (${session.messageHistory.length} msgs)`);
+      // Persist immediately (don't rely on debounce — crash would lose truncation)
+      wsBridge.persistSessionSync(id);
+      console.log(
+        `[revert] Backend revert succeeded. Broadcasting truncated history (${revertedSession.messageHistory.length} msgs)`,
+      );
 
-    // Broadcast updated (truncated) history to all browsers
-    wsBridge.broadcastToSession(id, { type: "message_history", messages: session.messageHistory });
+      // Broadcast updated (truncated) history to all browsers
+      wsBridge.broadcastToSession(id, { type: "message_history", messages: revertedSession.messageHistory });
+      wsBridge.broadcastToSession(id, { type: "status_change", status: "idle" });
+    }
 
     console.log(`[revert] === REVERT COMPLETE === session=${id.slice(0, 8)}`);
     return c.json({ ok: true });

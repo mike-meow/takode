@@ -71,6 +71,8 @@ export interface PersistedSession {
   pendingMessages: string[];
   pendingCodexTurns?: CodexOutboundTurn[];
   pendingCodexInputs?: PendingCodexInput[];
+  pendingCodexRollback?: { numTurns: number; truncateIdx: number; clearCodexState: boolean } | null;
+  pendingCodexRollbackError?: string | null;
   pendingPermissions: [string, PermissionRequest][];
   eventBuffer?: BufferedBrowserEvent[];
   nextEventSeq?: number;

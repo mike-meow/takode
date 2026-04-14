@@ -294,7 +294,12 @@ type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta> &
   TurnStartFailedAwareAdapter &
   CurrentTurnIdAwareAdapter &
   RateLimitsAwareAdapter &
-  Partial<{ refreshSkills: (forceReload?: boolean) => Promise<string[]> }>;
+  {
+    rollbackTurns: (numTurns: number) => Promise<void>;
+  } &
+  Partial<{
+    refreshSkills: (forceReload?: boolean) => Promise<string[]>;
+  }>;
 type ClaudeSdkBridgeAdapter = BackendAdapter<ClaudeSdkSessionMeta> & CompactRequestedAwareAdapter;
 
 interface Session {
@@ -317,6 +322,12 @@ interface Session {
   pendingCodexTurns: CodexOutboundTurn[];
   /** Codex inputs accepted by Takode but not yet delivered to Codex. */
   pendingCodexInputs: PendingCodexInput[];
+  /** Pending Codex thread rollback to run on the next connected adapter. */
+  pendingCodexRollback: { numTurns: number; truncateIdx: number; clearCodexState: boolean } | null;
+  /** Last error from a pending Codex rollback, if any. */
+  pendingCodexRollbackError: string | null;
+  /** Resolver for an in-flight deferred Codex rollback request. */
+  pendingCodexRollbackWaiter: { resolve: () => void; reject: (err: Error) => void } | null;
   /** Monotonic sequence for broadcast events */
   nextEventSeq: number;
   /** Recent broadcast events for reconnect replay */
@@ -1980,6 +1991,23 @@ export class WsBridge {
         pendingMessages: p.pendingMessages || [],
         pendingCodexTurns: restoredCodexTurns,
         pendingCodexInputs: Array.isArray(p.pendingCodexInputs) ? p.pendingCodexInputs : [],
+        pendingCodexRollback:
+          p.pendingCodexRollback &&
+          typeof p.pendingCodexRollback === "object" &&
+          Number.isInteger((p.pendingCodexRollback as { numTurns?: number }).numTurns) &&
+          Number.isInteger((p.pendingCodexRollback as { truncateIdx?: number }).truncateIdx) &&
+          typeof (p.pendingCodexRollback as { clearCodexState?: unknown }).clearCodexState === "boolean" &&
+          (p.pendingCodexRollback as { numTurns: number }).numTurns > 0 &&
+          (p.pendingCodexRollback as { truncateIdx: number }).truncateIdx >= 0
+            ? {
+                numTurns: (p.pendingCodexRollback as { numTurns: number }).numTurns,
+                truncateIdx: (p.pendingCodexRollback as { truncateIdx: number }).truncateIdx,
+                clearCodexState: (p.pendingCodexRollback as { clearCodexState: boolean }).clearCodexState,
+              }
+            : null,
+        pendingCodexRollbackError:
+          typeof p.pendingCodexRollbackError === "string" ? p.pendingCodexRollbackError : null,
+        pendingCodexRollbackWaiter: null,
         nextEventSeq: p.nextEventSeq && p.nextEventSeq > 0 ? p.nextEventSeq : 1,
         eventBuffer: Array.isArray(p.eventBuffer) ? p.eventBuffer : [],
         lastAckSeq: typeof p.lastAckSeq === "number" ? p.lastAckSeq : 0,
@@ -2092,6 +2120,8 @@ export class WsBridge {
       pendingMessages: session.pendingMessages,
       pendingCodexTurns: session.pendingCodexTurns,
       pendingCodexInputs: session.pendingCodexInputs,
+      pendingCodexRollback: session.pendingCodexRollback,
+      pendingCodexRollbackError: session.pendingCodexRollbackError,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -2120,6 +2150,8 @@ export class WsBridge {
       pendingMessages: session.pendingMessages,
       pendingCodexTurns: session.pendingCodexTurns,
       pendingCodexInputs: session.pendingCodexInputs,
+      pendingCodexRollback: session.pendingCodexRollback,
+      pendingCodexRollbackError: session.pendingCodexRollbackError,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -2601,6 +2633,9 @@ export class WsBridge {
         pendingMessages: [],
         pendingCodexTurns: [],
         pendingCodexInputs: [],
+        pendingCodexRollback: null,
+        pendingCodexRollbackError: null,
+        pendingCodexRollbackWaiter: null,
         nextEventSeq: 1,
         eventBuffer: [],
         lastAckSeq: 0,
@@ -2667,6 +2702,148 @@ export class WsBridge {
 
   getSession(sessionId: string): Session | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  prepareSessionForRevert(
+    sessionId: string,
+    truncateIdx: number,
+    options?: { clearCodexState?: boolean },
+  ): Session | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+
+    session.messageHistory = session.messageHistory.slice(0, truncateIdx);
+    session.frozenCount = Math.min(session.frozenCount, session.messageHistory.length);
+
+    const lastUser = [...session.messageHistory]
+      .reverse()
+      .find((msg) => msg.type === "user_message" && typeof (msg as { content?: string }).content === "string");
+    session.lastUserMessage =
+      lastUser && typeof (lastUser as { content?: string }).content === "string"
+        ? (lastUser as { content: string }).content.slice(0, 80)
+        : undefined;
+
+    if (session.taskHistory?.length) {
+      const remainingUserMsgIds = new Set(
+        session.messageHistory
+          .filter((msg) => msg.type === "user_message")
+          .map((msg) => (msg as { id?: string }).id)
+          .filter((id): id is string => typeof id === "string"),
+      );
+      const prevCount = session.taskHistory.length;
+      session.taskHistory = session.taskHistory.filter((task) => remainingUserMsgIds.has(task.triggerMessageId));
+      if (session.taskHistory.length !== prevCount) {
+        this.broadcastToSession(sessionId, { type: "session_task_history", tasks: session.taskHistory });
+      }
+    }
+
+    session.pendingPermissions.clear();
+    this.broadcastToSession(sessionId, { type: "permissions_cleared" });
+
+    session.eventBuffer = [];
+    session.awaitingCompactSummary = false;
+    session.compactedDuringTurn = false;
+    if (session.state) session.state.is_compacting = false;
+
+    if (options?.clearCodexState) {
+      session.pendingCodexTurns = [];
+      session.pendingCodexInputs = [];
+      session.pendingMessages = [];
+      session.pendingCodexRollback = null;
+      session.pendingCodexRollbackError = null;
+      session.userMessageIdsThisTurn = [];
+      session.queuedTurnStarts = 0;
+      session.queuedTurnReasons = [];
+      session.queuedTurnUserMessageIds = [];
+      session.queuedTurnInterruptSources = [];
+      session.interruptedDuringTurn = false;
+      session.interruptSourceDuringTurn = null;
+      session.isGenerating = false;
+      session.generationStartedAt = null;
+      if (session.optimisticRunningTimer) {
+        clearTimeout(session.optimisticRunningTimer);
+        session.optimisticRunningTimer = null;
+      }
+      this.broadcastToSession(sessionId, { type: "codex_pending_inputs", inputs: [] });
+    }
+
+    return session;
+  }
+
+  private finalizeCodexRollback(session: Session): void {
+    const plan = session.pendingCodexRollback;
+    if (!plan) return;
+    const waiter = session.pendingCodexRollbackWaiter;
+
+    const revertedSession = this.prepareSessionForRevert(session.id, plan.truncateIdx, {
+      clearCodexState: plan.clearCodexState,
+    });
+    if (!revertedSession) return;
+
+    session.pendingCodexRollback = null;
+    session.pendingCodexRollbackError = null;
+    waiter?.resolve();
+    session.pendingCodexRollbackWaiter = null;
+    this.persistSessionSync(session.id);
+    this.broadcastToSession(session.id, { type: "message_history", messages: revertedSession.messageHistory });
+    this.broadcastToSession(session.id, { type: "status_change", status: "idle" });
+  }
+
+  beginCodexRollback(
+    sessionId: string,
+    plan: { numTurns: number; truncateIdx: number; clearCodexState: boolean },
+  ): { promise: Promise<void>; requiresRelaunch: boolean } {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return {
+        promise: Promise.reject(new Error("Session not found")),
+        requiresRelaunch: false,
+      };
+    }
+
+    if (!Number.isInteger(plan.numTurns) || plan.numTurns < 1) {
+      return {
+        promise: Promise.reject(new Error(`Invalid rollback turn count: ${plan.numTurns}`)),
+        requiresRelaunch: false,
+      };
+    }
+    if (!Number.isInteger(plan.truncateIdx) || plan.truncateIdx < 0) {
+      return {
+        promise: Promise.reject(new Error(`Invalid rollback truncate index: ${plan.truncateIdx}`)),
+        requiresRelaunch: false,
+      };
+    }
+
+    session.pendingCodexRollback = plan;
+    session.pendingCodexRollbackError = null;
+    this.persistSession(session);
+
+    const liveAdapter = session.codexAdapter;
+    if (liveAdapter?.isConnected()) {
+      return {
+        promise: liveAdapter
+          .rollbackTurns(plan.numTurns)
+          .then(() => {
+            this.finalizeCodexRollback(session);
+          })
+          .catch((err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            session.pendingCodexRollback = null;
+            session.pendingCodexRollbackError = message;
+            session.pendingCodexRollbackWaiter?.reject(new Error(message));
+            session.pendingCodexRollbackWaiter = null;
+            this.persistSession(session);
+            throw err;
+          }),
+        requiresRelaunch: false,
+      };
+    }
+
+    const promise = new Promise<void>((resolve, reject) => {
+      session.pendingCodexRollbackWaiter = { resolve, reject };
+      this.persistSession(session);
+    });
+    return { promise, requiresRelaunch: true };
   }
 
   private findHistoryReplayEntry<T extends BrowserIncomingMessage>(
@@ -3779,7 +3956,8 @@ export class WsBridge {
       if (meta.cliSessionId && this.onCLISessionId) {
         this.onCLISessionId(session.id, meta.cliSessionId);
       }
-      if (meta.resumeSnapshot) {
+      const pendingRollback = session.pendingCodexRollback;
+      if (meta.resumeSnapshot && !pendingRollback) {
         this.hydrateCodexResumedHistory(session, meta.resumeSnapshot);
         this.reconcileCodexResumedTurn(session, meta.resumeSnapshot);
       }
@@ -3793,6 +3971,31 @@ export class WsBridge {
       }
       if (meta.cwd) session.state.cwd = meta.cwd;
       session.state.backend_type = "codex";
+      if (pendingRollback) {
+        session.pendingCodexRollbackError = null;
+        void adapter
+          .rollbackTurns(pendingRollback.numTurns)
+          .then(() => {
+            if (session.codexAdapter !== adapter) return;
+            this.finalizeCodexRollback(session);
+          })
+          .catch((err) => {
+            if (session.codexAdapter !== adapter) return;
+            const message = err instanceof Error ? err.message : String(err);
+            session.pendingCodexRollback = null;
+            session.pendingCodexRollbackError = message;
+            session.pendingCodexRollbackWaiter?.reject(new Error(message));
+            session.pendingCodexRollbackWaiter = null;
+            console.error(
+              `[ws-bridge] Pending Codex rollback failed for session ${sessionTag(session.id)}: ${message}`,
+            );
+            this.persistSession(session);
+          });
+        this.broadcastToBrowsers(session, { type: "backend_connected" });
+        this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true, notifyPoller: true });
+        this.persistSession(session);
+        return;
+      }
       const steeredPending = this.trySteerPendingCodexInputs(session, "session_meta");
       if (!steeredPending) {
         this.dispatchQueuedCodexTurns(session, "session_meta");
@@ -3865,6 +4068,11 @@ export class WsBridge {
       if (session.codexAdapter !== adapter) return;
       console.error(`[ws-bridge] Codex adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
       session.codexAdapter = null;
+      if (session.pendingCodexRollback) {
+        session.pendingCodexRollbackError = error;
+        session.pendingCodexRollbackWaiter?.reject(new Error(error));
+        session.pendingCodexRollbackWaiter = null;
+      }
       const pending = this.getCodexTurnInRecovery(session);
       if (pending) {
         pending.status = "blocked_broken_session";

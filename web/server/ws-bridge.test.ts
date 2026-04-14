@@ -59,6 +59,7 @@ function makeCodexAdapterMock() {
   let onTurnSteeredCb: ((turnId: string, pendingInputIds: string[]) => void) | undefined;
   let onTurnSteerFailedCb: ((pendingInputIds: string[]) => void) | undefined;
   let currentTurnId: string | null = null;
+  const rollbackTurns = vi.fn(async (_numTurns: number) => {});
 
   return {
     onBrowserMessage: vi.fn((cb: (msg: any) => void) => {
@@ -85,9 +86,11 @@ function makeCodexAdapterMock() {
     onTurnSteerFailed: vi.fn((cb: (pendingInputIds: string[]) => void) => {
       onTurnSteerFailedCb = cb;
     }),
-    sendBrowserMessage: vi.fn(() => true),
+    sendBrowserMessage: vi.fn((_msg?: any) => true),
+    rollbackTurns,
     isConnected: vi.fn(() => true),
     disconnect: vi.fn(async () => {}),
+    getThreadId: vi.fn(() => "thread-ready"),
     getCurrentTurnId: vi.fn(() => currentTurnId),
     emitBrowserMessage: (msg: any) => onBrowserMessageCb?.(msg),
     emitSessionMeta: (meta: any) => onSessionMetaCb?.(meta),
@@ -4776,6 +4779,53 @@ describe("Persistence", () => {
       lastError: null,
     });
     expect(session!.processedClientMessageIdSet.has("restored-client-1")).toBe(true);
+  });
+
+  it("restoreFromDisk: loads persisted pending Codex rollback state", async () => {
+    store.saveSync({
+      id: "persisted-rollback",
+      state: {
+        session_id: "persisted-rollback",
+        backend_type: "codex",
+        model: "gpt-5.4",
+        cwd: "/saved",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 0,
+        context_used_percent: 0,
+        is_compacting: false,
+        git_branch: "main",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/saved",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [],
+      pendingMessages: [],
+      pendingCodexTurns: [],
+      pendingCodexInputs: [],
+      pendingCodexRollback: { numTurns: 2, truncateIdx: 0, clearCodexState: true },
+      pendingCodexRollbackError: "stale error",
+      pendingPermissions: [],
+    } as any);
+
+    await store.flushAll();
+    const count = await bridge.restoreFromDisk();
+    expect(count).toBe(1);
+
+    const session = bridge.getSession("persisted-rollback");
+    expect(session).toBeDefined();
+    expect(session!.pendingCodexRollback).toEqual({ numTurns: 2, truncateIdx: 0, clearCodexState: true });
+    expect(session!.pendingCodexRollbackError).toBe("stale error");
   });
 
   it("restoreFromDisk: does not overwrite live sessions", async () => {
@@ -10389,6 +10439,109 @@ describe("Codex turn-start failure re-queue", () => {
       adapterMsg: { type: "user_message", content: "hello again" },
       status: "dispatched",
     });
+  });
+
+  it("executes pending Codex rollback on session reattach before resume hydration", async () => {
+    const session = bridge.getOrCreateSession("s1", "codex");
+    session.messageHistory = [];
+    const { promise, requiresRelaunch } = bridge.beginCodexRollback("s1", {
+      numTurns: 2,
+      truncateIdx: 0,
+      clearCodexState: true,
+    });
+    expect(requiresRelaunch).toBe(true);
+
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+
+    emitCodexSessionReady(adapter, {
+      cliSessionId: "thread-rollback-reattach",
+      resumeSnapshot: {
+        threadId: "thread-rollback-reattach",
+        turnCount: 3,
+        turns: [
+          {
+            id: "turn-1",
+            status: "completed",
+            error: null,
+            items: [{ type: "userMessage", text: "stale replay text" }],
+          },
+        ],
+        lastTurn: {
+          id: "turn-1",
+          status: "completed",
+          error: null,
+          items: [{ type: "userMessage", text: "stale replay text" }],
+        },
+        threadStatus: "idle",
+      },
+    });
+    await promise;
+
+    expect(adapter.rollbackTurns).toHaveBeenCalledWith(2);
+    expect(session.pendingCodexRollback).toBeNull();
+    expect(session.messageHistory).toEqual([]);
+  });
+
+  it("records pending Codex rollback failure on session reattach without hydrating stale resume history", async () => {
+    const session = bridge.getOrCreateSession("s1", "codex");
+    const { promise, requiresRelaunch } = bridge.beginCodexRollback("s1", {
+      numTurns: 2,
+      truncateIdx: 0,
+      clearCodexState: true,
+    });
+    expect(requiresRelaunch).toBe(true);
+
+    const adapter = makeCodexAdapterMock();
+    adapter.rollbackTurns.mockRejectedValueOnce(new Error("rollback refused"));
+    bridge.attachCodexAdapter("s1", adapter as any);
+
+    emitCodexSessionReady(adapter, {
+      cliSessionId: "thread-rollback-failure",
+      resumeSnapshot: {
+        threadId: "thread-rollback-failure",
+        turnCount: 3,
+        turns: [
+          {
+            id: "turn-1",
+            status: "completed",
+            error: null,
+            items: [{ type: "userMessage", text: "stale replay text" }],
+          },
+        ],
+        lastTurn: {
+          id: "turn-1",
+          status: "completed",
+          error: null,
+          items: [{ type: "userMessage", text: "stale replay text" }],
+        },
+        threadStatus: "idle",
+      },
+    });
+
+    await expect(promise).rejects.toThrow("rollback refused");
+    expect(session.pendingCodexRollback).toBeNull();
+    expect(session.pendingCodexRollbackError).toBe("rollback refused");
+    expect(session.messageHistory).toEqual([]);
+  });
+
+  it("preserves pending Codex rollback across init error so a later reconnect can retry", async () => {
+    const session = bridge.getOrCreateSession("s1", "codex");
+    const { promise, requiresRelaunch } = bridge.beginCodexRollback("s1", {
+      numTurns: 2,
+      truncateIdx: 0,
+      clearCodexState: true,
+    });
+    expect(requiresRelaunch).toBe(true);
+
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    adapter.emitInitError("codex init failed");
+
+    await expect(promise).rejects.toThrow("codex init failed");
+    expect(session.pendingCodexRollback).toEqual({ numTurns: 2, truncateIdx: 0, clearCodexState: true });
+    expect(session.pendingCodexRollbackError).toBe("codex init failed");
+    expect(session.messageHistory).toEqual([]);
   });
 
   it("flushes stale adapter turn-start failures to the active adapter", () => {

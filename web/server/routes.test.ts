@@ -282,6 +282,55 @@ function createMockBridge() {
     addTaskEntry: vi.fn(),
     updateQuestTaskEntries: vi.fn(),
     removeBoardRowFromAll: vi.fn(),
+    prepareSessionForRevert: vi.fn((sessionId: string, truncateIdx: number, options?: { clearCodexState?: boolean }) => {
+      const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
+      if (!session) return null;
+      session.messageHistory = session.messageHistory.slice(0, truncateIdx);
+      session.frozenCount = Math.min(session.frozenCount ?? 0, session.messageHistory.length);
+      session.pendingPermissions?.clear?.();
+      session.eventBuffer = [];
+      session.awaitingCompactSummary = false;
+      session.compactedDuringTurn = false;
+      if (session.state) session.state.is_compacting = false;
+      if (options?.clearCodexState) {
+        session.pendingCodexTurns = [];
+        session.pendingCodexInputs = [];
+        session.pendingMessages = [];
+        session.pendingCodexRollback = null;
+        session.pendingCodexRollbackError = null;
+        session.userMessageIdsThisTurn = [];
+        session.queuedTurnStarts = 0;
+        session.queuedTurnReasons = [];
+        session.queuedTurnUserMessageIds = [];
+        session.queuedTurnInterruptSources = [];
+        session.interruptedDuringTurn = false;
+        session.interruptSourceDuringTurn = null;
+        session.isGenerating = false;
+        session.generationStartedAt = null;
+        if (session.optimisticRunningTimer) session.optimisticRunningTimer = null;
+        bridge.broadcastToSession(sessionId, { type: "codex_pending_inputs", inputs: [] });
+      }
+      bridge.broadcastToSession(sessionId, { type: "permissions_cleared" });
+      return session;
+    }),
+    beginCodexRollback: vi.fn((sessionId: string, plan: { numTurns: number; truncateIdx: number; clearCodexState: boolean }) => {
+      const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
+      const adapter = session?.codexAdapter;
+      if (adapter?.isConnected?.() && adapter.rollbackTurns) {
+        return {
+          promise: adapter.rollbackTurns(plan.numTurns).then(() => {
+            const reverted = bridge.prepareSessionForRevert(sessionId, plan.truncateIdx, {
+              clearCodexState: plan.clearCodexState,
+            });
+            bridge.persistSessionSync(sessionId);
+            bridge.broadcastToSession(sessionId, { type: "message_history", messages: reverted.messageHistory });
+            bridge.broadcastToSession(sessionId, { type: "status_change", status: "idle" });
+          }),
+          requiresRelaunch: false,
+        };
+      }
+      return { promise: Promise.resolve(), requiresRelaunch: true };
+    }),
     persistSessionSync: vi.fn(),
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),
@@ -5348,10 +5397,10 @@ describe("POST /api/sessions/create-stream", () => {
 
 // ─── Revert ───────────────────────────────────────────────────────────────
 
-describe("POST /api/sessions/:id/revert", () => {
-  // Helper to create a mock session with message history for revert tests.
-  // Simulates a session with 2 turns: user→assistant→user→assistant.
-  function setupRevertSession(overrides?: Partial<{ state: string; backendType: string; cliSessionId: string }>) {
+  describe("POST /api/sessions/:id/revert", () => {
+    // Helper to create a mock session with message history for revert tests.
+    // Simulates a session with 2 turns: user→assistant→user→assistant.
+    function setupRevertSession(overrides?: Partial<{ state: string; backendType: string; cliSessionId: string }>) {
     const sessionInfo = {
       sessionId: "session-1",
       state: "exited",
@@ -5363,7 +5412,7 @@ describe("POST /api/sessions/:id/revert", () => {
     };
     launcher.getSession.mockReturnValue(sessionInfo);
 
-    const mockSession = {
+    const mockSession: any = {
       messageHistory: [
         { type: "user_message", id: "user-msg-1", content: "Hello" },
         {
@@ -5380,20 +5429,26 @@ describe("POST /api/sessions/:id/revert", () => {
           parent_tool_use_id: null,
         },
       ],
-      pendingPermissions: new Map(),
-      eventBuffer: [
-        { seq: 1, message: { type: "assistant", message: { id: "asst-msg-1" } } },
-        { seq: 2, message: { type: "status_change", status: "idle" } },
-        { seq: 3, message: { type: "assistant", message: { id: "asst-msg-2" } } },
-        { seq: 4, message: { type: "status_change", status: "idle" } },
-      ],
-      nextEventSeq: 5,
-      frozenCount: 4,
-    };
-    bridge.getOrCreateSession.mockReturnValue(mockSession);
+        pendingPermissions: new Map(),
+        pendingMessages: [],
+        pendingCodexTurns: [],
+        pendingCodexInputs: [],
+        pendingCodexRollback: null,
+        pendingCodexRollbackError: null,
+        eventBuffer: [
+          { seq: 1, message: { type: "assistant", message: { id: "asst-msg-1" } } },
+          { seq: 2, message: { type: "status_change", status: "idle" } },
+          { seq: 3, message: { type: "assistant", message: { id: "asst-msg-2" } } },
+          { seq: 4, message: { type: "status_change", status: "idle" } },
+        ],
+        nextEventSeq: 5,
+        frozenCount: 4,
+        lastUserMessage: "Do something",
+      };
+      bridge.getOrCreateSession.mockReturnValue(mockSession);
 
-    return { sessionInfo, mockSession };
-  }
+      return { sessionInfo, mockSession };
+    }
 
   // Reverting to the second user message should truncate history to before
   // that message and call relaunchWithResumeAt with the preceding assistant UUID.
@@ -5470,9 +5525,69 @@ describe("POST /api/sessions/:id/revert", () => {
     expect(res.status).toBe(404);
   });
 
-  // Returns 400 for Codex sessions since revert relies on Claude CLI --resume-session-at.
-  it("returns 400 for Codex sessions", async () => {
-    setupRevertSession({ backendType: "codex" });
+  // Codex revert uses thread/rollback and clears Codex-only pending state so
+  // browser chips and replay queues do not resurrect reverted inputs.
+  it("reverts Codex sessions via thread rollback and clears pending Codex state", async () => {
+    const { mockSession } = setupRevertSession({ backendType: "codex" });
+    mockSession.messageHistory = [
+      { type: "user_message", id: "user-msg-1", content: "Hello" },
+      {
+        type: "assistant",
+        message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" },
+        parent_tool_use_id: null,
+      },
+      {
+        type: "result",
+        data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" },
+      },
+      { type: "user_message", id: "user-msg-2", content: "Do something" },
+      {
+        type: "assistant",
+        message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" },
+        parent_tool_use_id: null,
+      },
+      {
+        type: "result",
+        data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" },
+      },
+    ];
+    mockSession.frozenCount = 6;
+    const rollbackTurns = vi.fn(async () => {});
+    mockSession.codexAdapter = {
+      isConnected: () => true,
+      getThreadId: () => "cli-sess-1",
+      rollbackTurns,
+    };
+    mockSession.pendingCodexInputs = [{ id: "pending-1", content: "queued", timestamp: 1, cancelable: true }];
+    mockSession.pendingCodexTurns = [
+      {
+        adapterMsg: { type: "codex_start_pending", pendingInputIds: ["pending-1"], inputs: [{ content: "queued" }] },
+        userMessageId: "pending-1",
+        pendingInputIds: ["pending-1"],
+        userContent: "queued",
+        historyIndex: 0,
+        status: "queued",
+        dispatchCount: 0,
+        createdAt: 1,
+        updatedAt: 1,
+        acknowledgedAt: null,
+        turnTarget: null,
+        lastError: null,
+        turnId: null,
+        disconnectedAt: null,
+        resumeConfirmedAt: null,
+      },
+    ];
+    mockSession.pendingMessages = ['{"type":"permission_response","request_id":"req-1","behavior":"allow"}'];
+    mockSession.userMessageIdsThisTurn = [2];
+    mockSession.queuedTurnStarts = 1;
+    mockSession.queuedTurnReasons = ["follow_up"];
+    mockSession.queuedTurnUserMessageIds = [[2]];
+    mockSession.queuedTurnInterruptSources = ["user"];
+    mockSession.interruptedDuringTurn = true;
+    mockSession.interruptSourceDuringTurn = "user";
+    mockSession.isGenerating = true;
+    mockSession.generationStartedAt = 123;
 
     const res = await app.request("/api/sessions/session-1/revert", {
       method: "POST",
@@ -5480,9 +5595,93 @@ describe("POST /api/sessions/:id/revert", () => {
       body: JSON.stringify({ messageId: "user-msg-2" }),
     });
 
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toContain("Codex");
+    expect(res.status).toBe(200);
+    expect(rollbackTurns).toHaveBeenCalledWith(1);
+    expect(mockSession.messageHistory).toHaveLength(3);
+    expect(mockSession.pendingCodexInputs).toEqual([]);
+    expect(mockSession.pendingCodexTurns).toEqual([]);
+    expect(mockSession.pendingMessages).toEqual([]);
+    expect(mockSession.userMessageIdsThisTurn).toEqual([]);
+    expect(mockSession.queuedTurnStarts).toBe(0);
+    expect(mockSession.isGenerating).toBe(false);
+    expect(mockSession.generationStartedAt).toBeNull();
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("session-1", {
+      type: "codex_pending_inputs",
+      inputs: [],
+    });
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("session-1", { type: "status_change", status: "idle" });
+  });
+
+  // Codex rollback is turn-based upstream, so Takode refuses follow-up user
+  // messages that were steered into an existing Codex turn. Users must revert
+  // from the first user message in that turn to avoid hidden extra deletions.
+  it("rejects Codex revert for a later user message inside the same Codex turn", async () => {
+    const { mockSession } = setupRevertSession({ backendType: "codex" });
+    mockSession.messageHistory = [
+      { type: "user_message", id: "user-msg-1", content: "Hello" },
+      { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      { type: "user_message", id: "user-msg-2", content: "First input in turn 2" },
+      { type: "user_message", id: "user-msg-3", content: "Steered follow-up in turn 2" },
+      { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
+      {
+        type: "result",
+        data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" },
+      },
+    ];
+    mockSession.frozenCount = 6;
+    const rollbackTurns = vi.fn(async () => {});
+    mockSession.codexAdapter = {
+      isConnected: () => true,
+      getThreadId: () => "cli-sess-1",
+      rollbackTurns,
+    };
+
+    const res = await app.request("/api/sessions/session-1/revert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: "user-msg-3" }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(rollbackTurns).not.toHaveBeenCalled();
+    expect(mockSession.messageHistory).toHaveLength(7);
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("first user message in a Codex turn"),
+      }),
+    );
+  });
+
+  it("reverts Codex to before the first user turn", async () => {
+    const { mockSession } = setupRevertSession({ backendType: "codex" });
+    mockSession.messageHistory = [
+      { type: "user_message", id: "user-msg-1", content: "Hello" },
+      { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      { type: "user_message", id: "user-msg-2", content: "Do something" },
+      { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+    ];
+    mockSession.frozenCount = 6;
+    const rollbackTurns = vi.fn(async () => {});
+    mockSession.codexAdapter = {
+      isConnected: () => true,
+      getThreadId: () => "cli-sess-1",
+      rollbackTurns,
+    };
+
+    const res = await app.request("/api/sessions/session-1/revert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: "user-msg-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(rollbackTurns).toHaveBeenCalledWith(2);
+    expect(mockSession.messageHistory).toEqual([]);
   });
 
   // Returns 400 when the session has no CLI session ID to resume.
@@ -5525,6 +5724,117 @@ describe("POST /api/sessions/:id/revert", () => {
     expect(res.status).toBe(503);
     const json = await res.json();
     expect(json.error).toBe("CLI not found");
+  });
+
+  it("returns 503 when Codex rollback fails", async () => {
+    const { mockSession } = setupRevertSession({ backendType: "codex" });
+    mockSession.messageHistory = [
+      { type: "user_message", id: "user-msg-1", content: "Hello" },
+      { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      { type: "user_message", id: "user-msg-2", content: "Do something" },
+      { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+    ];
+    mockSession.pendingPermissions = new Map([["perm-1", { tool_name: "Bash" }]]);
+    mockSession.pendingCodexInputs = [{ id: "pending-1", content: "queued", timestamp: 1, cancelable: true }];
+    mockSession.pendingCodexTurns = [
+      {
+        adapterMsg: { type: "codex_start_pending", pendingInputIds: ["pending-1"], inputs: [{ content: "queued" }] },
+        userMessageId: "pending-1",
+        pendingInputIds: ["pending-1"],
+        userContent: "queued",
+        historyIndex: 0,
+        status: "queued",
+        dispatchCount: 0,
+        createdAt: 1,
+        updatedAt: 1,
+        acknowledgedAt: null,
+        turnTarget: null,
+        lastError: null,
+        turnId: null,
+        disconnectedAt: null,
+        resumeConfirmedAt: null,
+      },
+    ];
+    mockSession.pendingMessages = ['{"type":"permission_response","request_id":"req-1","behavior":"allow"}'];
+    mockSession.codexAdapter = {
+      isConnected: () => true,
+      getThreadId: () => "cli-sess-1",
+      rollbackTurns: vi.fn(async () => {
+        throw new Error("rollback failed");
+      }),
+    };
+
+    const res = await app.request("/api/sessions/session-1/revert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: "user-msg-2" }),
+    });
+
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json.error).toContain("rollback failed");
+    expect(mockSession.messageHistory).toHaveLength(6);
+    expect(mockSession.pendingPermissions.size).toBe(1);
+    expect(mockSession.pendingCodexInputs).toHaveLength(1);
+    expect(mockSession.pendingCodexTurns).toHaveLength(1);
+    expect(mockSession.pendingMessages).toHaveLength(1);
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("session-1", { type: "status_change", status: "idle" });
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ type: "error", message: expect.stringContaining("rollback failed") }),
+    );
+  });
+
+  it("reverts Codex via route when rollback requires relaunch and later succeeds", async () => {
+    const { mockSession, sessionInfo } = setupRevertSession({ backendType: "codex" });
+    mockSession.messageHistory = [
+      { type: "user_message", id: "user-msg-1", content: "Hello" },
+      { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      { type: "user_message", id: "user-msg-2", content: "Do something" },
+      { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
+      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+    ];
+    mockSession.frozenCount = 6;
+
+    let resolveRollback!: () => void;
+    const rollbackPromise = new Promise<void>((resolve) => {
+      resolveRollback = resolve;
+    });
+    bridge.beginCodexRollback.mockReturnValue({ promise: rollbackPromise, requiresRelaunch: true });
+    launcher.relaunch.mockImplementation(async () => {
+      sessionInfo.state = "starting";
+      queueMicrotask(() => {
+        const reverted = bridge.prepareSessionForRevert("session-1", 3, { clearCodexState: true });
+        bridge.persistSessionSync("session-1");
+        bridge.broadcastToSession("session-1", { type: "message_history", messages: reverted.messageHistory });
+        bridge.broadcastToSession("session-1", { type: "status_change", status: "idle" });
+        resolveRollback();
+      });
+      return { ok: true };
+    });
+
+    const res = await app.request("/api/sessions/session-1/revert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: "user-msg-2" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.beginCodexRollback).toHaveBeenCalledWith("session-1", {
+      numTurns: 1,
+      truncateIdx: 3,
+      clearCodexState: true,
+    });
+    expect(launcher.relaunch).toHaveBeenCalledWith("session-1");
+    expect(mockSession.messageHistory).toHaveLength(3);
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("session-1", {
+      type: "message_history",
+      messages: mockSession.messageHistory,
+    });
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("session-1", { type: "status_change", status: "idle" });
   });
 
   // Revert must clear stale eventBuffer entries so browsers don't replay

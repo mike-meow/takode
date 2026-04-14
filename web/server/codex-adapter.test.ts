@@ -927,6 +927,75 @@ describe("CodexAdapter", () => {
     expect(lines.find((line) => line.method === "turn/start")).toBeUndefined();
   });
 
+  it("calls thread/rollback for Codex revert", async () => {
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+
+    const rollbackPromise = adapter.rollbackTurns(2);
+    await tick();
+
+    const lines = parseWrittenJsonLines(stdin.chunks);
+    const rollback = lines.find((line) => line.method === "thread/rollback");
+    expect(rollback).toBeDefined();
+    expect(rollback.params).toEqual({ threadId: "thr_123", numTurns: 2 });
+
+    stdout.push(JSON.stringify({ id: rollback.id, result: {} }) + "\n");
+    await rollbackPromise;
+  });
+
+  it("suppresses the interrupted result emitted while rollback interrupts an active turn", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+    adapter.sendBrowserMessage({ type: "user_message", content: "active turn" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 3, result: {} }) + "\n");
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_active" } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+    const rollbackPromise = adapter.rollbackTurns(1);
+    await tick();
+
+    let lines = parseWrittenJsonLines(stdin.chunks);
+    const interrupt = lines.find((line) => line.method === "turn/interrupt");
+    expect(interrupt).toBeDefined();
+    expect(interrupt.params.turnId).toBe("turn_active");
+
+    stdout.push(JSON.stringify({ id: interrupt.id, result: {} }) + "\n");
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: { turn: { id: "turn_active", status: "interrupted", items: [], error: null } },
+      }) + "\n",
+    );
+    await tick();
+
+    lines = parseWrittenJsonLines(stdin.chunks);
+    const rollback = lines.find((line) => line.method === "thread/rollback");
+    expect(rollback).toBeDefined();
+    expect(messages.find((msg) => msg.type === "result")).toBeUndefined();
+
+    stdout.push(JSON.stringify({ id: rollback.id, result: {} }) + "\n");
+    await rollbackPromise;
+  });
+
   it("keeps /compact as a normal turn when the message carries extra payload", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
