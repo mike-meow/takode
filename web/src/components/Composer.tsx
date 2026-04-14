@@ -508,14 +508,13 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [voiceError, failedTranscription, setVoiceError]);
 
-  const cliConnected = useStore((s) => s.cliConnected);
+  const isConnected = useStore((s) => s.cliConnected.get(sessionId) ?? false);
   const sessionData = useStore((s) => s.sessions.get(sessionId));
   const sdkSession = useStore((s) => s.sdkSessions?.find((x) => x.sessionId === sessionId));
   const diffLinesAdded = sessionData?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
   const diffLinesRemoved = sessionData?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
   const vscodeSelectionState = useStore((s) => s.vscodeSelectionContext);
 
-  const isConnected = cliConnected.get(sessionId) ?? false;
   const currentMode = sessionData?.permissionMode || "acceptEdits";
   const isCodex = sessionData?.backend_type === "codex";
   const askPermission = useStore((s) => {
@@ -1477,8 +1476,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return null;
   });
 
-  const sessionStatus = useStore((s) => s.sessionStatus);
-  const isRunning = sessionStatus.get(sessionId) === "running";
+  const isRunning = useStore((s) => s.sessionStatus.get(sessionId) === "running");
   const canSend = (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal;
 
   // Mobile collapsible composer — collapse when empty (no text, no images), regardless of streaming
