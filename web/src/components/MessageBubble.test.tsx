@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ChatMessage, ContentBlock } from "../types.js";
+
+const revertToMessageMock = vi.hoisted(() => vi.fn(async () => ({})));
+vi.mock("../api.js", () => ({
+  api: {
+    revertToMessage: revertToMessageMock,
+  },
+}));
 
 // Mock react-markdown to avoid ESM/parsing issues in tests
 vi.mock("react-markdown", () => ({
@@ -100,6 +107,10 @@ describe("MessageBubble - error system messages", () => {
 // ─── User messages ───────────────────────────────────────────────────────────
 
 describe("MessageBubble - user messages", () => {
+  beforeEach(() => {
+    revertToMessageMock.mockClear();
+  });
+
   it("renders user message right-aligned with content", () => {
     const msg = makeMessage({ role: "user", content: "Hello Claude" });
     const { container } = render(<MessageBubble message={msg} />);
@@ -220,6 +231,183 @@ describe("MessageBubble - user messages", () => {
     // Close with Escape
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("lightbox-backdrop")).toBeNull();
+  });
+
+  it("shows 'Revert to here' in the user message menu for Codex sessions", () => {
+    // q-289 follow-up: Codex sessions should now expose the same user-message
+    // revert affordance as Claude sessions when backend support exists.
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+
+    try {
+      const msg = makeMessage({ role: "user", content: "Can I revert this?" });
+      render(<MessageBubble message={msg} sessionId="codex-session" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      expect(screen.getByText("Copy message")).toBeTruthy();
+      expect(screen.getByText("Revert to here")).toBeTruthy();
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+    }
+  });
+
+  it("does not show 'Revert to here' for later Codex user messages in the same turn", () => {
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+
+    try {
+      const first = makeMessage({ id: "u1", role: "user", content: "First user input" });
+      const second = makeMessage({ id: "u2", role: "user", content: "Second user input" });
+      useStore.getState().setMessages("codex-session", [first, second]);
+      render(<MessageBubble message={second} sessionId="codex-session" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      expect(screen.getByText("Copy message")).toBeTruthy();
+      expect(screen.queryByText("Revert to here")).toBeNull();
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+      useStore.getState().setMessages("codex-session", []);
+    }
+  });
+
+  it("does not show 'Revert to here' when no sessionId is available", () => {
+    // Revert remains unavailable without a session anchor because the client
+    // has no target session/message route to send to the server.
+    const msg = makeMessage({ role: "user", content: "No session to revert" });
+    render(<MessageBubble message={msg} />);
+
+    fireEvent.click(screen.getByTitle("Message options"));
+    expect(screen.getByText("Copy message")).toBeTruthy();
+    expect(screen.queryByText("Revert to here")).toBeNull();
+  });
+
+  it("restores image attachments into the composer draft after revert", async () => {
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+    useStore.getState().setComposerDraft("codex-session", {
+      text: "stale draft text",
+      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      statusText: "OK",
+      blob: async () => new Blob([Uint8Array.from([1, 2, 3])], { type: "image/png" }),
+    }));
+    const prevFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock as any);
+
+    try {
+      const msg = makeMessage({
+        role: "user",
+        content: "Revert this with image",
+        images: [{ imageId: "img-1", media_type: "image/png" }],
+      });
+      render(<MessageBubble message={msg} sessionId="codex-session" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      fireEvent.click(screen.getByText("Revert to here"));
+      fireEvent.click(screen.getByText("Revert"));
+
+      await waitFor(() => {
+        expect(revertToMessageMock).toHaveBeenCalledWith("codex-session", msg.id);
+      });
+      await waitFor(() => {
+        const draft = useStore.getState().composerDrafts.get("codex-session");
+        expect(draft?.text).toBe("Revert this with image");
+        expect(draft?.images).toHaveLength(1);
+        expect(draft?.images[0]?.name).toBe("attachment-1.png");
+        expect(draft?.images[0]?.mediaType).toBe("image/png");
+        expect(draft?.images[0]?.base64).toBeTruthy();
+      });
+      const finalDraft = useStore.getState().composerDrafts.get("codex-session");
+      expect(finalDraft?.images?.[0]?.name).not.toBe("stale.png");
+      expect(fetchMock).toHaveBeenCalledWith("/api/images/codex-session/img-1/full");
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+      vi.stubGlobal("fetch", prevFetch as any);
+    }
+  });
+
+  it("keeps the reverted text draft even if image restoration fails", async () => {
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+    useStore.getState().setComposerDraft("codex-session", {
+      text: "stale draft text",
+      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      statusText: "boom",
+    }));
+    const prevFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock as any);
+
+    try {
+      const msg = makeMessage({
+        role: "user",
+        content: "Keep my text",
+        images: [{ imageId: "img-1", media_type: "image/png" }],
+      });
+      render(<MessageBubble message={msg} sessionId="codex-session" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      fireEvent.click(screen.getByText("Revert to here"));
+      fireEvent.click(screen.getByText("Revert"));
+
+      await waitFor(() => {
+        expect(revertToMessageMock).toHaveBeenCalledWith("codex-session", msg.id);
+      });
+      await waitFor(() => {
+        const draft = useStore.getState().composerDrafts.get("codex-session");
+        expect(draft?.text).toBe("Keep my text");
+      });
+      const draft = useStore.getState().composerDrafts.get("codex-session");
+      expect(draft?.images ?? []).toEqual([]);
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+      vi.stubGlobal("fetch", prevFetch as any);
+    }
+  });
+
+  it("clears stale draft images for plain-text Codex reverts", async () => {
+    const prevSessions = useStore.getState().sessions;
+    const nextSessions = new Map(prevSessions);
+    nextSessions.set("codex-session", { backend_type: "codex" } as any);
+    useStore.setState({ sessions: nextSessions });
+    useStore.getState().setComposerDraft("codex-session", {
+      text: "stale draft text",
+      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+    });
+
+    try {
+      const msg = makeMessage({
+        role: "user",
+        content: "Plain text revert",
+      });
+      render(<MessageBubble message={msg} sessionId="codex-session" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      fireEvent.click(screen.getByText("Revert to here"));
+      fireEvent.click(screen.getByText("Revert"));
+
+      await waitFor(() => {
+        expect(revertToMessageMock).toHaveBeenCalledWith("codex-session", msg.id);
+      });
+      const draft = useStore.getState().composerDrafts.get("codex-session");
+      expect(draft).toEqual({ text: "Plain text revert", images: [] });
+    } finally {
+      useStore.setState({ sessions: prevSessions });
+    }
   });
 });
 

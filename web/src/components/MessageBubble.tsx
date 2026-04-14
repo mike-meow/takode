@@ -17,6 +17,8 @@ import { generateReplyPreview } from "../utils/reply-preview.js";
 import { parseReplyContext } from "../utils/reply-context.js";
 import { FILE_TOOL_NAMES } from "../hooks/use-feed-model.js";
 
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
 /** Detect assistant messages with no visible content (empty text, no blocks, no notification).
  *  Used to skip rendering empty bubbles that would show only a timestamp. */
 export function isEmptyAssistantMessage(msg: ChatMessage): boolean {
@@ -60,6 +62,34 @@ function formatTurnDuration(ms: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.round(seconds % 60);
   return `${mins}m ${secs}s`;
+}
+
+function buildDraftImageName(mediaType: string, index: number): string {
+  const ext = mediaType.split("/")[1]?.replace("jpeg", "jpg").replace("svg+xml", "svg") || "bin";
+  return `attachment-${index + 1}.${ext}`;
+}
+
+async function restoreMessageImagesToDraft(
+  sessionId: string,
+  images: NonNullable<ChatMessage["images"]>,
+): Promise<Array<{ name: string; base64: string; mediaType: string }>> {
+  const restored = await Promise.all(
+    images.map(async (img, idx) => {
+      const res = await fetch(`/api/images/${encodeURIComponent(sessionId)}/${encodeURIComponent(img.imageId)}/full`);
+      if (!res.ok) throw new Error(`Failed to fetch image ${img.imageId}: ${res.statusText}`);
+      const blob = await res.blob();
+      const arrayBuf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return {
+        name: buildDraftImageName(img.media_type, idx),
+        base64: btoa(binary),
+        mediaType: blob.type || img.media_type,
+      };
+    }),
+  );
+  return restored;
 }
 
 function MessageTimestamp({ timestamp, turnDurationMs }: { timestamp: number; turnDurationMs?: number }) {
@@ -546,7 +576,20 @@ function UserMessage({
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const isCodex = useStore((s) => s.sessions.get(sessionId ?? "")?.backend_type === "codex");
-  const canRevert = !isCodex && !!sessionId;
+  const messagesBySession = useStore((s) => s.messages);
+  const sessionMessages = sessionId ? messagesBySession.get(sessionId) ?? EMPTY_MESSAGES : EMPTY_MESSAGES;
+  const canRevert = useMemo(() => {
+    if (!sessionId) return false;
+    if (!isCodex) return true;
+    const idx = sessionMessages.findIndex((m) => m.id === message.id);
+    if (idx < 0) return true;
+    for (let i = idx - 1; i >= 0; i--) {
+      const prior = sessionMessages[i];
+      if (prior?.role !== "user") return true;
+      return false;
+    }
+    return true;
+  }, [sessionId, isCodex, sessionMessages, message.id]);
 
   // Parse reply-to context from message content (display only -- raw text still goes to assistant)
   const replyContext = useMemo(() => parseReplyContext(message.content), [message.content]);
@@ -603,7 +646,7 @@ function UserMessage({
         </CollapsibleContent>
         {showTimestamp && <MessageTimestamp timestamp={message.timestamp} />}
       </div>
-      <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} />
+      <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} isCodex={isCodex} />
       {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
     </div>
   );
@@ -616,10 +659,12 @@ function UserMessageMenu({
   message,
   sessionId,
   canRevert,
+  isCodex,
 }: {
   message: ChatMessage;
   sessionId?: string;
   canRevert: boolean;
+  isCodex: boolean;
 }) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -639,11 +684,20 @@ function UserMessageMenu({
     try {
       await api.revertToMessage(sessionId, message.id);
       // Prefill the composer with the reverted message so the user can edit and resend
-      useStore.getState().setComposerDraft(sessionId, { text: message.content, images: [] });
+      const store = useStore.getState();
+      store.setComposerDraft(sessionId, { text: message.content, images: [] });
+      if (message.images?.length) {
+        try {
+          const images = await restoreMessageImagesToDraft(sessionId, message.images);
+          store.setComposerDraft(sessionId, { text: message.content, images });
+        } catch (imageErr) {
+          console.error("Failed to restore images after revert:", imageErr);
+        }
+      }
     } catch (err) {
       console.error("Revert failed:", err);
     }
-  }, [sessionId, message.id, message.content]);
+  }, [sessionId, message.id, message.content, message.images]);
 
   const toggle = useCallback(() => {
     if (menuPos) {
