@@ -41,6 +41,12 @@ function formatRelativeTime(epochMs: number): string {
   return `${diffDay}d ago`;
 }
 
+function formatHistoryBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB history`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB history`;
+  return `${bytes} B history`;
+}
+
 export function SessionHoverCard({
   session: s,
   sessionName,
@@ -138,6 +144,7 @@ export function SessionHoverCard({
     sdkSessionMeta?.codexTokenDetails?.modelContextWindow ??
     sdkSessionMeta?.claudeTokenDetails?.modelContextWindow ??
     0;
+  const messageHistoryBytes = sessionState?.message_history_bytes ?? sdkSessionMeta?.messageHistoryBytes ?? 0;
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
 
@@ -366,7 +373,7 @@ export function SessionHoverCard({
         )}
 
         {/* Stats row */}
-        {(turns > 0 || contextPercent > 0 || contextWindow > 0 || s.lastActivityAt) && (
+        {(turns > 0 || contextPercent > 0 || messageHistoryBytes > 0 || contextWindow > 0 || s.lastActivityAt) && (
           <div className="px-4 py-2 border-t border-cc-border/50">
             <div className="flex items-center gap-2 text-[11px] text-cc-muted">
               {turns > 0 && (
@@ -380,15 +387,23 @@ export function SessionHoverCard({
                   <span>{Math.round(contextPercent)}% context</span>
                 </>
               )}
-              {contextWindow > 0 && (
+              {messageHistoryBytes > 0 && (
                 <>
                   {(turns > 0 || contextPercent > 0) && <span className="text-cc-muted/40">&middot;</span>}
+                  <span title="Server-tracked message history size">{formatHistoryBytes(messageHistoryBytes)}</span>
+                </>
+              )}
+              {contextWindow > 0 && (
+                <>
+                  {(turns > 0 || contextPercent > 0 || messageHistoryBytes > 0) && (
+                    <span className="text-cc-muted/40">&middot;</span>
+                  )}
                   <span>{formatContextWindowLabel(contextWindow)}</span>
                 </>
               )}
               {s.lastActivityAt && (
                 <>
-                  {(turns > 0 || contextPercent > 0 || contextWindow > 0) && (
+                  {(turns > 0 || contextPercent > 0 || messageHistoryBytes > 0 || contextWindow > 0) && (
                     <span className="text-cc-muted/40">&middot;</span>
                   )}
                   <span title={new Date(s.lastActivityAt).toLocaleString()}>

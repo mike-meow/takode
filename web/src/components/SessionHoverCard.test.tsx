@@ -8,7 +8,14 @@ const mockStoreState = {
   zoomLevel: 1,
   sdkSessions: [] as Array<{
     sessionId: string;
+    sessionNum?: number;
+    state?: "idle" | "starting" | "connected" | "running" | "exited";
+    backendType?: "claude" | "codex" | "claude-sdk";
+    cwd?: string;
+    herdedBy?: string;
+    archived?: boolean;
     contextUsedPercent?: number;
+    messageHistoryBytes?: number;
     codexTokenDetails?: { modelContextWindow?: number };
     claudeTokenDetails?: { modelContextWindow?: number };
   }>,
@@ -46,6 +53,8 @@ function makeSession(overrides: Partial<SessionItemType> = {}): SessionItemType 
 
 describe("SessionHoverCard", () => {
   it("shows the max context window rounded to whole K tokens", () => {
+    // q-291: live hover-card metrics should use the authoritative
+    // sessionState.message_history_bytes value from the server.
     const sessionState = {
       session_id: "s1",
       backend_type: "codex",
@@ -61,6 +70,7 @@ describe("SessionHoverCard", () => {
       total_cost_usd: 0,
       num_turns: 1,
       context_used_percent: 73,
+      message_history_bytes: 1_572_864,
       git_branch: "jiayi",
       is_worktree: false,
       is_containerized: false,
@@ -94,14 +104,18 @@ describe("SessionHoverCard", () => {
     );
 
     expect(screen.getByText("73% context")).toBeInTheDocument();
+    expect(screen.getByText("1.5 MB history")).toBeInTheDocument();
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
   });
 
   it("falls back to sdk session metadata when no live session state is present", () => {
+    // q-291: when the full live session state is unavailable, the hover card
+    // should still render message size from sdkSessions fallback metadata.
     mockStoreState.sdkSessions = [
       {
         sessionId: "s1",
         contextUsedPercent: 73,
+        messageHistoryBytes: 972_800,
         codexTokenDetails: { modelContextWindow: 258_400 },
       },
     ];
@@ -122,7 +136,76 @@ describe("SessionHoverCard", () => {
       );
 
       expect(screen.getByText("73% context")).toBeInTheDocument();
+      expect(screen.getByText("950 KB history")).toBeInTheDocument();
       expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+    } finally {
+      mockStoreState.sdkSessions = [];
+    }
+  });
+
+  it("prefers live session message-history bytes over sdk fallback metadata", () => {
+    // q-291: when both sources exist, the live authoritative session state
+    // must win over potentially stale sdkSessions fallback metadata.
+    mockStoreState.sdkSessions = [
+      {
+        sessionId: "s1",
+        contextUsedPercent: 73,
+        messageHistoryBytes: 972_800,
+        codexTokenDetails: { modelContextWindow: 258_400 },
+      },
+    ];
+
+    const sessionState = {
+      session_id: "s1",
+      backend_type: "codex",
+      model: "gpt-5.4",
+      cwd: "/repo",
+      tools: [],
+      permissionMode: "default",
+      claude_code_version: "1.0.0",
+      mcp_servers: [],
+      agents: [],
+      slash_commands: [],
+      skills: [],
+      total_cost_usd: 0,
+      num_turns: 1,
+      context_used_percent: 73,
+      message_history_bytes: 1_572_864,
+      git_branch: "jiayi",
+      is_worktree: false,
+      is_containerized: false,
+      repo_root: "/repo",
+      git_ahead: 0,
+      git_behind: 0,
+      total_lines_added: 0,
+      total_lines_removed: 0,
+      codex_token_details: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedInputTokens: 0,
+        reasoningOutputTokens: 0,
+        modelContextWindow: 258_400,
+      },
+      is_compacting: false,
+    } as SessionState;
+
+    try {
+      render(
+        <SessionHoverCard
+          session={makeSession()}
+          sessionName="Explain Codex Session Steering"
+          sessionPreview={undefined}
+          taskHistory={undefined}
+          sessionState={sessionState}
+          cliSessionId="cli-1"
+          anchorRect={new DOMRect(120, 80, 200, 40)}
+          onMouseEnter={() => {}}
+          onMouseLeave={() => {}}
+        />,
+      );
+
+      expect(screen.getByText("1.5 MB history")).toBeInTheDocument();
+      expect(screen.queryByText("950 KB history")).toBeNull();
     } finally {
       mockStoreState.sdkSessions = [];
     }
