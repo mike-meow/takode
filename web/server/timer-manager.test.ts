@@ -148,13 +148,9 @@ describe("TimerManager", () => {
 
       expect(bridge.injectUserMessage).toHaveBeenCalledWith(
         "session-1",
-        expect.stringContaining("Timer t1 cancelled"),
+        '[⏰ Timer t1 cancelled] check the build',
         { sessionId: "timer:t1", sessionLabel: "Timer t1" },
       );
-      // Verify the title and extra detail are included so the agent knows what was cancelled.
-      const callArgs = bridge.injectUserMessage.mock.calls[0];
-      expect(callArgs[1]).toContain("check the build");
-      expect(callArgs[1]).toContain("Inspect the latest failing shard");
     });
   });
 

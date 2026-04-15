@@ -98,10 +98,7 @@ export class TimerManager {
     this.broadcastTimers(sessionId);
 
     // Notify the agent that the user manually cancelled this timer
-    const content =
-      `[⏰ Timer ${timerId} cancelled] ` +
-      `The user manually cancelled timer "${timer.title}"` +
-      (timer.description ? `.\n\nDescription:\n${timer.description}` : "");
+    const content = `[⏰ Timer ${timerId} cancelled] ${timer.title}`;
     this.wsBridge.injectUserMessage(sessionId, content, {
       sessionId: `timer:${timerId}`,
       sessionLabel: `Timer ${timerId}`,

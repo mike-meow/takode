@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { SessionTimer } from "../types.js";
@@ -38,6 +38,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeTimer(overrides: Partial<SessionTimer> = {}): SessionTimer {
@@ -64,14 +68,16 @@ describe("TimerChip", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders a single timer chip with its title and next fire time", () => {
-    // Verifies humans see the concise timer title first when only one timer is active.
+  it("renders a compact single-timer chip with count and next fire time", () => {
+    // The collapsed chip should stay small: show count plus next-fire timing,
+    // not the timer title itself.
     resetStore({
       sessionTimers: new Map([["s1", [makeTimer()]]]),
     });
     render(<TimerChip sessionId="s1" />);
-    expect(screen.getByText("Check the build status")).toBeInTheDocument();
+    expect(screen.getByText("1 timer")).toBeInTheDocument();
     expect(screen.getByText(/next in/)).toBeInTheDocument();
+    expect(screen.queryByText("Check the build status")).toBeNull();
   });
 
   it("pluralises 'timers' for multiple entries", () => {
@@ -93,6 +99,8 @@ describe("TimerChip", () => {
   it("shows next fire time from the soonest timer", () => {
     // The chip should display the countdown for the timer that fires soonest,
     // regardless of insertion order.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T09:00:00Z"));
     const soonest = Date.now() + 120_000; // 2m
     const later = Date.now() + 7_200_000; // 2h
     resetStore({

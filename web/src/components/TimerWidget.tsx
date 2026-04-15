@@ -178,7 +178,7 @@ export function TimerChip({ sessionId }: { sessionId: string }) {
   const closeModal = useCallback(() => setModalOpen(false), []);
 
   if (timers.length === 0) return null;
-  const primaryLabel = timers.length === 1 ? sorted[0].title : `${timers.length} timers`;
+  const primaryLabel = `${timers.length} timer${timers.length !== 1 ? "s" : ""}`;
 
   return (
     <>
