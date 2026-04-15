@@ -2800,7 +2800,9 @@ export class CliLauncher {
         const text = decoder.decode(value);
         if (tailLines) appendStreamTail(tailLines, text);
         if (text.trim()) {
-          log(`[session:${sessionId}:${label}] ${text.trimEnd()}`);
+          const sessionNum = this.getSessionNum(sessionId);
+          const sessionLabel = sessionNum !== undefined ? `#${sessionNum}` : sessionId.slice(0, 8);
+          log(`[session:${sessionLabel}:${label}] ${text.trimEnd()}`);
         }
       }
     } catch {

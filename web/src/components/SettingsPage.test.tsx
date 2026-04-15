@@ -230,10 +230,11 @@ describe("SettingsPage", () => {
   });
 
   it("navigates to logs page from settings", async () => {
-    // The new settings affordance should route directly into the dedicated log viewer.
+    // The log viewer should be grouped under Server & Diagnostics rather than exposed as a standalone Logs section.
     render(<SettingsPage />);
     await screen.findByText("Notifications");
 
+    expect(screen.queryByText(/^Logs$/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Open Log Viewer"));
     expect(window.location.hash).toBe("#/logs");
   });

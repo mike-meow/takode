@@ -737,6 +737,39 @@ describe("launch", () => {
     expect(cmdAndArgs).toContain("model_reasoning_effort=high");
   });
 
+  it("logs session stderr with the human session number when available", async () => {
+    // The production log viewer should show #N labels for session stream output instead of raw UUIDs.
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let stderrController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    mockSpawn.mockReturnValueOnce({
+      pid: 33333,
+      kill: vi.fn(),
+      exited: new Promise<number>(() => {}),
+      stdin: new WritableStream<Uint8Array>(),
+      stdout: new ReadableStream<Uint8Array>(),
+      stderr: new ReadableStream<Uint8Array>({
+        start(controller) {
+          stderrController = controller;
+        },
+      }),
+    });
+
+    await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      codexSandbox: "workspace-write",
+    });
+    await waitForSpawnCalls(1);
+    const sessionNum = launcher.getSessionNum("test-session-id");
+
+    stderrController?.enqueue(new TextEncoder().encode("token expired\n"));
+    stderrController?.close();
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+
+    expect(stderrSpy).toHaveBeenCalledWith(`[session:#${sessionNum}:stderr] token expired`);
+    stderrSpy.mockRestore();
+  });
+
   it("uses a cached native Codex artifact when the resolved binary is a bootstrap wrapper", async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), "codex-bootstrap-test-"));
     const wrapperPath = join(fixtureRoot, "codex-wrapper");

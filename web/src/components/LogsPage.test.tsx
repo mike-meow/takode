@@ -4,12 +4,14 @@ import "@testing-library/jest-dom";
 
 const mockApi = {
   getLogs: vi.fn(),
+  listSessions: vi.fn(),
   buildLogStreamUrl: vi.fn((_query?: unknown) => "/api/logs/stream?tail=0"),
 };
 
 vi.mock("../api.js", () => ({
   api: {
     getLogs: (query?: unknown) => mockApi.getLogs(query),
+    listSessions: () => mockApi.listSessions(),
   },
   buildLogStreamUrl: (query?: unknown) => mockApi.buildLogStreamUrl(query),
 }));
@@ -53,6 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   MockEventSource.instances = [];
   window.location.hash = "#/logs";
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
   mockApi.getLogs.mockResolvedValue({
     entries: [
       {
@@ -68,6 +71,10 @@ beforeEach(() => {
     availableComponents: ["server", "ws-bridge"],
     logFile: "/tmp/server-3456.jsonl",
   });
+  mockApi.listSessions.mockResolvedValue([
+    { sessionId: "session-468", sessionNum: 468, createdAt: 1 },
+    { sessionId: "session-7", sessionNum: 7, createdAt: 1 },
+  ]);
 });
 
 describe("LogsPage", () => {
@@ -102,6 +109,18 @@ describe("LogsPage", () => {
     expect(await screen.findByText("Started")).toBeInTheDocument();
     expect(screen.getByText("/tmp/server-3456.jsonl")).toBeInTheDocument();
     expect(screen.getByLabelText("Message Filter")).toBeInTheDocument();
+  });
+
+  it("shows mobile filter controls collapsed by default", async () => {
+    // On mobile, the filters should collapse so the log feed gets most of the vertical space.
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    render(<LogsPage />);
+
+    expect(screen.getByText("Show Filters")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Message Filter")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Show Filters"));
+    expect(await screen.findByLabelText("Message Filter")).toBeInTheDocument();
   });
 
   it("appends streamed entries and navigates back to settings", async () => {
@@ -142,6 +161,30 @@ describe("LogsPage", () => {
 
     fireEvent.click(screen.getByText("Back"));
     expect(window.location.hash).toBe("#/settings");
+  });
+
+  it("renders session-backed component and metadata labels with session numbers", async () => {
+    // Human-readable session numbers should replace raw session UUIDs in the visible log labels.
+    render(<LogsPage />);
+    const stream = MockEventSource.instances[0];
+    stream.emit("entry", {
+      ts: 1_700_000_001_000,
+      isoTime: "2024-11-14T22:13:21.000Z",
+      level: "error",
+      component: "session:session-468:stderr",
+      message: "Reconnect failed",
+      sessionId: "session-7",
+      pid: 123,
+      seq: 2,
+    });
+    stream.emit("ready", {
+      ok: true,
+      availableComponents: ["session:session-468:stderr"],
+      logFile: "/tmp/server-3456.jsonl",
+    });
+
+    expect(await screen.findByText("session:#468:stderr")).toBeInTheDocument();
+    expect(screen.getByText("session=#7")).toBeInTheDocument();
   });
 
   it("rewires queries when filters change and surfaces offline stream state", async () => {

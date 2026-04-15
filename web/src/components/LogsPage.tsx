@@ -37,9 +37,19 @@ function toggleSelection<T extends string>(allItems: T[], current: T[] | null, i
   return next.length === allItems.length ? null : next;
 }
 
-function renderMeta(entry: ServerLogEntry): string {
+function formatSessionLabel(sessionId: string, sessionLabels: Map<string, string>): string {
+  return sessionLabels.get(sessionId) || sessionId;
+}
+
+function formatComponentLabel(component: string, sessionLabels: Map<string, string>): string {
+  const match = component.match(/^session:([^:]+):(stdout|stderr)$/);
+  if (!match) return component;
+  return `session:${formatSessionLabel(match[1], sessionLabels)}:${match[2]}`;
+}
+
+function renderMetaWithSessions(entry: ServerLogEntry, sessionLabels: Map<string, string>): string {
   const details: string[] = [];
-  if (entry.sessionId) details.push(`session=${entry.sessionId}`);
+  if (entry.sessionId) details.push(`session=${formatSessionLabel(entry.sessionId, sessionLabels)}`);
   if (entry.source) details.push(`source=${entry.source}`);
   if (entry.meta && Object.keys(entry.meta).length > 0) details.push(JSON.stringify(entry.meta));
   return details.join(" ");
@@ -58,7 +68,30 @@ export function LogsPage() {
   const [streamState, setStreamState] = useState<"connecting" | "live" | "offline">("connecting");
   const [logFile, setLogFile] = useState<string | null>(null);
   const [followPaused, setFollowPaused] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 1024));
+  const [sessionLabels, setSessionLabels] = useState<Map<string, string>>(new Map());
   const feedRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .listSessions()
+      .then((sessions) => {
+        if (cancelled) return;
+        const next = new Map<string, string>();
+        for (const session of sessions) {
+          if (typeof session.sessionNum === "number") {
+            next.set(session.sessionId, `#${session.sessionNum}`);
+          }
+        }
+        setSessionLabels(next);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedComponents === null) return;
@@ -196,8 +229,19 @@ export function LogsPage() {
           </div>
         </div>
 
+        <div className="flex items-center justify-between gap-3 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((current) => !current)}
+            className="px-3 py-2 rounded-lg text-sm font-medium bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+          >
+            {filtersOpen ? "Hide Filters" : "Show Filters"}
+          </button>
+          <span className="text-xs text-cc-muted">{filtersOpen ? "Filters expanded" : "Logs prioritized"}</span>
+        </div>
+
         <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)] min-h-0 flex-1">
-          <div className="min-h-0 rounded-2xl border border-cc-border bg-cc-card p-4 space-y-4 overflow-y-auto">
+          <div className={`${filtersOpen ? "" : "hidden"} min-h-0 rounded-2xl border border-cc-border bg-cc-card p-4 space-y-4 overflow-y-auto lg:block`}>
             <div>
               <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="log-pattern">
                 Message Filter
@@ -275,7 +319,7 @@ export function LogsPage() {
                         }
                         className="rounded border-cc-border"
                       />
-                      <span className="font-mono text-xs">{component}</span>
+                      <span className="font-mono text-xs">{formatComponentLabel(component, sessionLabels)}</span>
                     </label>
                   );
                 })}
@@ -322,13 +366,13 @@ export function LogsPage() {
               {entries.length === 0 && !loading && <p className="text-cc-muted">No logs match the current filters.</p>}
 
               {entries.map((entry) => {
-                const details = renderMeta(entry);
+                const details = renderMetaWithSessions(entry, sessionLabels);
                 return (
                   <div key={`${entry.ts}-${entry.seq}`} className="rounded-xl border border-cc-border/70 bg-cc-bg/70 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="text-cc-muted">{new Date(entry.ts).toLocaleTimeString()}</span>
                       <span className={`font-semibold ${levelBadgeClass(entry.level)}`}>{entry.level.toUpperCase()}</span>
-                      <span className="text-cc-primary">{entry.component}</span>
+                      <span className="text-cc-primary">{formatComponentLabel(entry.component, sessionLabels)}</span>
                       <span className="text-cc-fg break-all">{entry.message}</span>
                     </div>
                     {details && <div className="mt-1 text-[11px] text-cc-muted break-all">{details}</div>}
