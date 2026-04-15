@@ -6498,7 +6498,9 @@ describe("POST /api/quests/:questId/feedback", () => {
 
 describe("PATCH /api/quests/:questId/feedback/:index", () => {
   it("edits an agent feedback entry by index", async () => {
-    // Editing should only rewrite the targeted agent comment and preserve the rest of the thread.
+    // Editing should only rewrite the targeted agent comment and preserve the rest of the thread metadata.
+    const editedAt = Date.now();
+    const image = { id: "img-1", filename: "proof.png", mimeType: "image/png", path: "/tmp/proof.png" };
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v3",
       questId: "q-1",
@@ -6512,7 +6514,7 @@ describe("PATCH /api/quests/:questId/feedback/:index", () => {
       verificationItems: [],
       feedback: [
         { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
-        { author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" },
+        { author: "agent", text: "Initial response", ts: editedAt, authorSessionId: "session-1", images: [image] },
       ],
     } as any);
     const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
@@ -6528,7 +6530,7 @@ describe("PATCH /api/quests/:questId/feedback/:index", () => {
       verificationItems: [],
       feedback: [
         { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
-        { author: "agent", text: "Updated response", ts: Date.now(), authorSessionId: "session-1" },
+        { author: "agent", text: "Updated response", ts: editedAt, authorSessionId: "session-1", images: [image] },
       ],
     } as any);
 
@@ -6544,7 +6546,72 @@ describe("PATCH /api/quests/:questId/feedback/:index", () => {
       expect.objectContaining({
         feedback: [
           expect.objectContaining({ author: "human", text: "Please verify spacing" }),
-          expect.objectContaining({ author: "agent", text: "Updated response" }),
+          expect.objectContaining({
+            author: "agent",
+            text: "Updated response",
+            ts: editedAt,
+            authorSessionId: "session-1",
+            images: [expect.objectContaining({ id: "img-1", filename: "proof.png" })],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("clears agent feedback images when edit explicitly sends an empty image list", async () => {
+    // Attachment removal must survive the route layer so clearing the final image does not preserve stale attachments.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
+        {
+          author: "agent",
+          text: "Initial response",
+          ts: Date.now(),
+          authorSessionId: "session-1",
+          images: [{ id: "img-1", filename: "proof.png", mimeType: "image/png", path: "/tmp/proof.png" }],
+        },
+      ],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
+        { author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" },
+      ],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchSpy).toHaveBeenCalledWith(
+      "q-1",
+      expect.objectContaining({
+        feedback: [
+          expect.objectContaining({ author: "human", text: "Please verify spacing" }),
+          expect.objectContaining({ author: "agent", images: undefined }),
         ],
       }),
     );

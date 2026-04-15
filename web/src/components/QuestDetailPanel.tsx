@@ -521,7 +521,7 @@ export function QuestDetailPanel() {
     try {
       const updatedQuest = await api.editQuestFeedback(editingFeedback.questId, editingFeedback.index, {
         text: editingFeedback.text,
-        images: editingFeedback.images.length > 0 ? editingFeedback.images : undefined,
+        images: editingFeedback.images,
       });
       const currentQuests = useStore.getState().quests;
       useStore
@@ -1217,6 +1217,7 @@ export function QuestDetailPanel() {
                                                 )
                                               }
                                               className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                              aria-label={`Remove feedback image ${img.filename}`}
                                             >
                                               x
                                             </button>

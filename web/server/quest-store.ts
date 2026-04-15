@@ -100,11 +100,45 @@ function shouldMarkVerificationInboxUnreadFromFeedbackPatch(
   nextFeedback: QuestFeedbackEntry[] | undefined,
 ): boolean {
   if (current.status !== "needs_verification") return false;
-  if (!nextFeedback || nextFeedback.length === 0) return false;
   const previous = "feedback" in current ? ((current as { feedback?: QuestFeedbackEntry[] }).feedback ?? []) : [];
-  if (nextFeedback.length <= previous.length) return false;
-  const appended = nextFeedback.slice(previous.length);
-  return appended.some((entry) => entry.author === "agent");
+  if (previous.length === 0 && (!nextFeedback || nextFeedback.length === 0)) return false;
+
+  const maxLength = Math.max(previous.length, nextFeedback?.length ?? 0);
+  for (let index = 0; index < maxLength; index += 1) {
+    const before = previous[index];
+    const after = nextFeedback?.[index];
+    if (feedbackEntriesEqual(before, after)) continue;
+    if (before?.author === "agent" || after?.author === "agent") return true;
+  }
+  return false;
+}
+
+function feedbackEntriesEqual(a: QuestFeedbackEntry | undefined, b: QuestFeedbackEntry | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.author === b.author &&
+    a.text === b.text &&
+    a.ts === b.ts &&
+    a.authorSessionId === b.authorSessionId &&
+    a.addressed === b.addressed &&
+    questImagesEqual(a.images, b.images)
+  );
+}
+
+function questImagesEqual(
+  a: QuestFeedbackEntry["images"] | undefined,
+  b: QuestFeedbackEntry["images"] | undefined,
+): boolean {
+  if (!a && !b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every(
+    (image, index) =>
+      image.id === b[index]?.id &&
+      image.filename === b[index]?.filename &&
+      image.mimeType === b[index]?.mimeType &&
+      image.path === b[index]?.path,
+  );
 }
 
 // ─── Paths ───────────────────────────────────────────────────────────────────

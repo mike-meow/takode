@@ -876,6 +876,42 @@ describe("feedback", () => {
     }
   });
 
+  it("moves verification quests back to inbox when agent feedback is edited", async () => {
+    // Agent edits are a fresh reviewer-facing update too, so they should re-open the inbox.
+    await setupVerificationQuest();
+    await questStore.patchQuest("q-1", {
+      feedback: [{ author: "agent" as const, text: "Original reply", ts: 1000, authorSessionId: "session-1" }],
+    });
+    await questStore.markQuestVerificationRead("q-1");
+
+    await questStore.patchQuest("q-1", {
+      feedback: [{ author: "agent" as const, text: "Updated reply", ts: 1000, authorSessionId: "session-1" }],
+    });
+
+    const result = await questStore.getQuest("q-1");
+    expect(result?.status).toBe("needs_verification");
+    if (result?.status === "needs_verification") {
+      expect(result.verificationInboxUnread).toBe(true);
+    }
+  });
+
+  it("moves verification quests back to inbox when agent feedback is removed", async () => {
+    // Removing an agent reply changes what the reviewer sees, so it should also surface as unread.
+    await setupVerificationQuest();
+    await questStore.patchQuest("q-1", {
+      feedback: [{ author: "agent" as const, text: "Original reply", ts: 1000, authorSessionId: "session-1" }],
+    });
+    await questStore.markQuestVerificationRead("q-1");
+
+    await questStore.patchQuest("q-1", { feedback: [] });
+
+    const result = await questStore.getQuest("q-1");
+    expect(result?.status).toBe("needs_verification");
+    if (result?.status === "needs_verification") {
+      expect(result.verificationInboxUnread).toBe(true);
+    }
+  });
+
   it("does not move to inbox for human-only feedback updates", async () => {
     // Human review comments should not re-inbox the quest; only agent updates do.
     await setupVerificationQuest();

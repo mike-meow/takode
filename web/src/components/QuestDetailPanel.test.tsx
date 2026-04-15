@@ -263,6 +263,7 @@ describe("QuestDetailPanel", () => {
   });
 
   it("edits agent feedback and updates the quest in store", async () => {
+    // Editing should persist the agent reply through the API and refresh the quest overlay state.
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
     const updatedQuest = makeVerificationQuest({
@@ -288,13 +289,54 @@ describe("QuestDetailPanel", () => {
 
     expect(mockEditQuestFeedback).toHaveBeenCalledWith("q-42", 1, {
       text: "Updated agent summary.",
-      images: undefined,
+      images: [],
     });
 
     await waitFor(() => {
       expect(useStore.getState().quests.find((q) => q.questId === "q-42")).toMatchObject({
         feedback: expect.arrayContaining([expect.objectContaining({ text: "Updated agent summary." })]),
       });
+    });
+  });
+
+  it("clears edited agent feedback attachments when the last image is removed", async () => {
+    // Removing the last attachment should send an explicit empty images array instead of silently preserving it.
+    const image = { id: "img-1", filename: "attachment.png", mimeType: "image/png", path: "/tmp/attachment.png" };
+    const quest = makeVerificationQuest({
+      feedback: [
+        { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
+        {
+          author: "agent",
+          text: "Confirmed working on iPad mini.",
+          ts: Date.now() - 3600000,
+          authorSessionId: "session-abc",
+          images: [image],
+        },
+      ],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+    const updatedQuest = makeVerificationQuest({
+      feedback: [
+        { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
+        {
+          author: "agent",
+          text: "Confirmed working on iPad mini.",
+          ts: Date.now() - 3600000,
+          authorSessionId: "session-abc",
+        },
+      ],
+    });
+    mockEditQuestFeedback.mockResolvedValue(updatedQuest);
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByLabelText("Edit agent feedback 2"));
+    fireEvent.click(screen.getByLabelText("Remove feedback image attachment.png"));
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(mockEditQuestFeedback).toHaveBeenCalledWith("q-42", 1, {
+      text: "Confirmed working on iPad mini.",
+      images: [],
     });
   });
 
@@ -324,6 +366,36 @@ describe("QuestDetailPanel", () => {
         feedback: [expect.objectContaining({ author: "human", text: "Check iPad mini too" })],
       });
     });
+  });
+
+  it("keeps the panel open when Escape dismisses inline feedback edit state", () => {
+    // Escape should first cancel inline editing rather than closing the whole quest overlay.
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByLabelText("Edit agent feedback 2"));
+    expect(screen.getByText("Save")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByText("Save")).toBeNull();
+    expect(useStore.getState().questOverlayId).toBe("q-42");
+  });
+
+  it("keeps the panel open when inline delete confirmation is cancelled", () => {
+    // Cancel should dismiss the dangerous inline delete state without closing the quest itself.
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByLabelText("Delete agent feedback 2"));
+    fireEvent.click(screen.getByLabelText("Cancel delete agent feedback 2"));
+
+    expect(screen.queryByLabelText("Confirm delete agent feedback 2")).toBeNull();
+    expect(useStore.getState().questOverlayId).toBe("q-42");
   });
 
   it("shows notes section for done quests", () => {
