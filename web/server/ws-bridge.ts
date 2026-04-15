@@ -4484,12 +4484,21 @@ export class WsBridge {
           // - session_id: the Companion UUID (not the CLI's internal ID)
           // - cwd: the launch cwd (worktree path / user-selected dir), not the
           //   CLI's resolved cwd which may differ (e.g., process.cwd() fallback)
+          // - permissionMode: the server's mode (set from the user's explicit
+          //   choice at session creation). The CLI's reported mode may differ
+          //   when canUseTool is provided — the CLI delegates permission
+          //   decisions to the callback and may report "default" internally,
+          //   overwriting the server's "bypassPermissions" (q-316).
           const companionSessionId = session.state.session_id;
           const launchCwd = session.state.cwd;
+          const launchPermissionMode = session.state.permissionMode;
           session.state = { ...session.state, ...initMsg.session, backend_type: "claude-sdk" };
           session.state.session_id = companionSessionId;
           if (launchCwd) {
             session.state.cwd = launchCwd;
+          }
+          if (launchPermissionMode) {
+            session.state.permissionMode = launchPermissionMode;
           }
 
           // Derive uiMode from the CLI's reported permissionMode so the
@@ -4498,10 +4507,13 @@ export class WsBridge {
             session.state.uiMode = session.state.permissionMode === "plan" ? "plan" : "agent";
           }
 
-          // Also fix the forwarded message so the browser sees correct IDs/cwd
+          // Also fix the forwarded message so the browser sees correct IDs/cwd/mode
           initMsg.session = { ...initMsg.session, session_id: companionSessionId, backend_type: "claude-sdk" };
           if (launchCwd) {
             initMsg.session.cwd = launchCwd;
+          }
+          if (launchPermissionMode) {
+            initMsg.session.permissionMode = launchPermissionMode;
           }
           // Include the derived uiMode so the browser's plan/agent button
           // is correct from the first session_init message.

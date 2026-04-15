@@ -16450,6 +16450,114 @@ describe("Claude SDK generation lifecycle on result", () => {
   });
 });
 
+// ─── SDK session_init permissionMode preservation (q-316) ─────────────────────
+
+describe("SDK session_init preserves server permissionMode (q-316)", () => {
+  it("preserves bypassPermissions when CLI session_init reports a different mode", () => {
+    // Bug: the SDK adapter's canUseTool callback causes the CLI to report
+    // permissionMode: "default" in session_init, overwriting the server's
+    // "bypassPermissions" set at session creation. This caused Bash commands
+    // to fall through to human approval instead of being auto-approved.
+    const sid = "sdk-bypass-preserved";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const session = bridge.getSession(sid)!;
+    // Simulate server-side mode set at session creation
+    session.state.permissionMode = "bypassPermissions";
+
+    // SDK adapter emits session_init with CLI's own mode (may differ)
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: `cli-${sid}`,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/different-cwd",
+        tools: [],
+        permissionMode: "default", // CLI reports "default" because canUseTool is provided
+      },
+    });
+
+    // Server's permissionMode should be preserved, not overwritten
+    expect(session.state.permissionMode).toBe("bypassPermissions");
+  });
+
+  it("auto-approves Bash after session_init when server mode is bypassPermissions", () => {
+    // End-to-end: session created with bypassPermissions → CLI session_init
+    // overwrites mode → Bash request should still be auto-approved.
+    const sid = "sdk-bypass-e2e";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const session = bridge.getSession(sid)!;
+    session.state.permissionMode = "bypassPermissions";
+
+    // CLI sends session_init with different mode
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: `cli-${sid}`,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "default",
+      },
+    });
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    session.cliInitReceived = true;
+    browser.send.mockClear();
+
+    // SDK adapter emits a permission_request for Bash cp
+    adapter.emitBrowserMessage({
+      type: "permission_request",
+      request: {
+        request_id: "perm-cp",
+        tool_name: "Bash",
+        input: { command: "cp file1.txt file2.txt" },
+        tool_use_id: "tool-cp",
+        timestamp: Date.now(),
+      },
+    } as any);
+
+    // Should be auto-approved (not forwarded to browser as permission_request)
+    const sent = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const permReqs = sent.filter((m: any) => m.type === "permission_request");
+    expect(permReqs).toHaveLength(0);
+
+    const approvals = sent.filter((m: any) => m.type === "permission_approved");
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0].tool_name).toBe("Bash");
+  });
+
+  it("does not preserve permissionMode when server has no mode set (fresh session)", () => {
+    // If the server has no permissionMode set (undefined), the CLI's reported
+    // mode from session_init should be accepted as-is.
+    const sid = "sdk-no-mode";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const session = bridge.getSession(sid)!;
+    // No permissionMode set on server (simulate fresh session before init)
+    (session.state as any).permissionMode = undefined;
+
+    adapter.emitBrowserMessage({
+      type: "session_init",
+      session: {
+        session_id: `cli-${sid}`,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/test",
+        tools: [],
+        permissionMode: "plan",
+      },
+    });
+
+    // CLI's mode should be accepted
+    expect(session.state.permissionMode).toBe("plan");
+  });
+});
+
 // ─── SDK interactive tool permission routing ─────────────────────────────────
 
 describe("Claude SDK interactive tool permissions", () => {
