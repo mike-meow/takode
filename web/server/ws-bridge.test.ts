@@ -14315,7 +14315,7 @@ describe("Codex user_message takode events", () => {
       expect(workerTurnEndCalls[0]?.[2]).toEqual(
         expect.objectContaining({
           interrupted: true,
-          interrupt_source: "system",
+          interrupt_source: "leader",
         }),
       );
       expect(workerTurnEndCalls[1]?.[2]).toEqual(
