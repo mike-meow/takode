@@ -421,9 +421,6 @@ interface Session {
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason: "action" | "error" | "review" | null;
-  /** Transient: session that triggered the latest permission response (for actorSessionId tagging).
-   *  Safe because sessions process one permission response at a time (serial message handling). */
-  permissionResponseActorId?: string;
   /** Grace period timer for CLI disconnect — delays side-effects to allow seamless reconnect.
    *  The Claude Code CLI disconnects every 5 minutes for token refresh and reconnects in ~13s.
    *  If the CLI reconnects within the grace period, the disconnect is invisible to the system. */
@@ -1892,9 +1889,10 @@ export class WsBridge {
     },
     actorSessionId?: string,
   ): void {
-    // Tag session so permission_resolved emission can include the actor
-    if (actorSessionId) session.permissionResponseActorId = actorSessionId;
-    this.routeBrowserMessage(session, msg as BrowserOutgoingMessage);
+    this.routeBrowserMessage(
+      session,
+      { ...msg, ...(actorSessionId ? { actorSessionId } : {}) } as BrowserOutgoingMessage,
+    );
   }
 
   /** Route an interrupt from an external source (REST API / CLI).
@@ -5500,6 +5498,11 @@ export class WsBridge {
     return agentSource.sessionId === "system" || agentSource.sessionId.startsWith("system:");
   }
 
+  private getInterruptSourceFromActorSessionId(actorSessionId: string | undefined): InterruptSource {
+    if (!actorSessionId) return "user";
+    return this.isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
+  }
+
   /** Local-timezone date key for date-boundary comparison (e.g. "2026-03-31").
    *  Uses local date components so boundaries trigger at local midnight, not UTC. */
   private static localDateKey(ts: number): string {
@@ -7846,6 +7849,7 @@ export class WsBridge {
         const behavior = (msg as any).behavior;
         const pending = session.pendingPermissions.get(requestId);
         if (pending) {
+          const actor = (msg as Extract<BrowserOutgoingMessage, { type: "permission_response" }>).actorSessionId;
           session.pendingPermissions.delete(requestId);
 
           // Forward the response to the SDK adapter so it can resolve the
@@ -7869,7 +7873,7 @@ export class WsBridge {
           this.emitTakodeEvent(session.id, "permission_resolved", {
             tool_name: pending.tool_name,
             outcome: behavior === "allow" ? "approved" : "denied",
-          });
+          }, actor);
 
           // Record in message history
           if (behavior === "allow") {
@@ -7922,10 +7926,12 @@ export class WsBridge {
 
           // ExitPlanMode denial: interrupt the SDK session
           if (behavior === "deny" && pending.tool_name === "ExitPlanMode") {
+            const interruptSource = this.getInterruptSourceFromActorSessionId(actor);
+            this.markTurnInterrupted(session, interruptSource);
             if (session.claudeSdkAdapter) {
-              session.claudeSdkAdapter.sendBrowserMessage({ type: "interrupt" } as any);
+              session.claudeSdkAdapter.sendBrowserMessage({ type: "interrupt", interruptSource } as any);
             } else {
-              this.handleInterrupt(session);
+              this.handleInterrupt(session, interruptSource);
             }
             console.log(`[ws-bridge] ExitPlanMode denied for SDK session ${sessionTag(session.id)}, sending interrupt`);
           }
@@ -8294,7 +8300,7 @@ export class WsBridge {
         break;
 
       case "permission_response":
-        this.handlePermissionResponse(session, msg);
+        this.handlePermissionResponse(session, msg, msg.actorSessionId);
         break;
 
       case "interrupt":
@@ -8865,6 +8871,7 @@ export class WsBridge {
       updated_permissions?: unknown[];
       message?: string;
     },
+    actorSessionId?: string,
   ) {
     // Remove from pending
     const pending = session.pendingPermissions.get(msg.request_id);
@@ -8935,12 +8942,10 @@ export class WsBridge {
 
       // Takode: permission_resolved (approved) -- emit for all approvals, not just notable ones
       if (pending) {
-        const actor = session.permissionResponseActorId;
-        session.permissionResponseActorId = undefined;
         this.emitTakodeEvent(session.id, "permission_resolved", {
           tool_name: pending.tool_name,
           outcome: "approved",
-        }, actor);
+        }, actorSessionId);
       }
 
       // After ExitPlanMode approval, switch the CLI to the appropriate execution
@@ -8987,7 +8992,7 @@ export class WsBridge {
       // When ExitPlanMode is denied, also interrupt the CLI so it stops
       // and waits for new user input (matches Claude Code vanilla behavior)
       if (pending?.tool_name === "ExitPlanMode") {
-        this.handleInterrupt(session, "system");
+        this.handleInterrupt(session, this.getInterruptSourceFromActorSessionId(actorSessionId));
         // Don't broadcast "idle" here — let the CLI's interrupt response set
         // the status naturally. Broadcasting idle eagerly causes a flash when
         // the browser auto-rejects a plan by sending a new message (deny →
@@ -9011,12 +9016,10 @@ export class WsBridge {
 
       // Takode: permission_resolved (denied)
       {
-        const actor = session.permissionResponseActorId;
-        session.permissionResponseActorId = undefined;
         this.emitTakodeEvent(session.id, "permission_resolved", {
           tool_name: pending?.tool_name || "unknown",
           outcome: "denied",
-        }, actor);
+        }, actorSessionId);
       }
     }
     this.persistSession(session);

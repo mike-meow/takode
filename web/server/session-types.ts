@@ -385,6 +385,8 @@ export type BrowserOutgoingMessage =
       updated_input?: Record<string, unknown>;
       updated_permissions?: PermissionUpdate[];
       message?: string;
+      /** Internal-only actor attribution for externally routed permission responses. */
+      actorSessionId?: string;
       client_msg_id?: string;
     }
   | { type: "session_subscribe"; last_seq: number; known_frozen_count?: number; known_frozen_hash?: string }

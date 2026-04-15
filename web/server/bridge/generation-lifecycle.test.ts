@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   setGenerating,
   markRunningFromUserDispatch,
+  markTurnInterrupted,
   RECOVERY_REASONS,
   type GenerationLifecycleSession,
   type GenerationLifecycleDeps,
@@ -156,6 +157,37 @@ describe("setGenerating(false) — queued turn handling", () => {
 
     expect(session.isGenerating).toBe(false);
     expect(session.queuedTurnStarts).toBe(0);
+  });
+
+  it("preserves explicit leader interrupt source when later system cleanup ends the turn", () => {
+    setGenerating(deps, session, true, "initial");
+
+    // A human/leader interrupt can be followed by disconnect cleanup before
+    // the turn_end event is emitted. The explicit source should win.
+    markTurnInterrupted(session, "leader");
+    markTurnInterrupted(session, "system");
+    setGenerating(deps, session, false, "cli_disconnect");
+
+    expect(deps.emitTakodeEvent).toHaveBeenLastCalledWith(
+      session.id,
+      "turn_end",
+      expect.objectContaining({ interrupted: true, interrupt_source: "leader" }),
+    );
+  });
+
+  it("emits system interrupt source when no explicit human source was recorded", () => {
+    setGenerating(deps, session, true, "initial");
+
+    // Recovery-only interruptions should continue to surface as system so herd
+    // summaries can distinguish them from human redirects.
+    markTurnInterrupted(session, "system");
+    setGenerating(deps, session, false, "cli_disconnect");
+
+    expect(deps.emitTakodeEvent).toHaveBeenLastCalledWith(
+      session.id,
+      "turn_end",
+      expect.objectContaining({ interrupted: true, interrupt_source: "system" }),
+    );
   });
 });
 

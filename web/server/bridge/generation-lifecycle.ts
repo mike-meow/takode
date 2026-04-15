@@ -59,10 +59,24 @@ export interface QueuedTurnLifecycleEntry {
   interruptSource: InterruptSource | null;
 }
 
+function interruptSourcePriority(source: InterruptSource | null): number {
+  switch (source) {
+    case "user":
+    case "leader":
+      return 2;
+    case "system":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 export function markTurnInterrupted<S extends GenerationLifecycleSession>(session: S, source: InterruptSource): void {
   if (!session.isGenerating) return;
   session.interruptedDuringTurn = true;
-  session.interruptSourceDuringTurn = source;
+  if (interruptSourcePriority(source) > interruptSourcePriority(session.interruptSourceDuringTurn)) {
+    session.interruptSourceDuringTurn = source;
+  }
 }
 
 export function clearOptimisticRunningTimer<S extends GenerationLifecycleSession>(session: S): void {

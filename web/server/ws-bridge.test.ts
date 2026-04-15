@@ -4747,6 +4747,151 @@ describe("Browser message routing", () => {
     spy.mockRestore();
   });
 
+  it("ExitPlanMode denial from browser emits turn_end with interrupt_source=user", () => {
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
+
+    const session = bridge.getSession("s1")!;
+    // Seed a pending ExitPlanMode request so the denial follows the same
+    // interrupt path as a real in-flight plan exit.
+    session.pendingPermissions.set("perm-exit-plan-user", {
+      request_id: "perm-exit-plan-user",
+      tool_name: "ExitPlanMode",
+      input: { allowedPrompts: [] },
+      description: "Exit plan mode",
+      tool_use_id: "tool-exit-plan-user",
+      timestamp: Date.now(),
+    });
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "perm-exit-plan-user",
+        behavior: "deny",
+        message: "Keep planning",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0,
+        num_turns: 1,
+      }),
+    );
+
+    const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
+    expect(turnEndCalls.length).toBeGreaterThan(0);
+    expect(turnEndCalls[turnEndCalls.length - 1]?.[2]).toEqual(
+      expect.objectContaining({ interrupted: true, interrupt_source: "user" }),
+    );
+    spy.mockRestore();
+  });
+
+  it("ExitPlanMode denial from external leader emits turn_end with interrupt_source=leader", () => {
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
+
+    const session = bridge.getSession("s1")!;
+    session.pendingPermissions.set("perm-exit-plan-leader", {
+      request_id: "perm-exit-plan-leader",
+      tool_name: "ExitPlanMode",
+      input: { allowedPrompts: [] },
+      description: "Exit plan mode",
+      tool_use_id: "tool-exit-plan-leader",
+      timestamp: Date.now(),
+    });
+
+    bridge.routeExternalPermissionResponse(
+      session,
+      {
+        type: "permission_response",
+        request_id: "perm-exit-plan-leader",
+        behavior: "deny",
+        message: "Keep planning",
+      },
+      "leader-7",
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0,
+        num_turns: 1,
+      }),
+    );
+
+    const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
+    expect(turnEndCalls.length).toBeGreaterThan(0);
+    expect(turnEndCalls[turnEndCalls.length - 1]?.[2]).toEqual(
+      expect.objectContaining({ interrupted: true, interrupt_source: "leader" }),
+    );
+    spy.mockRestore();
+  });
+
+  it("ExitPlanMode denial from system actor emits turn_end with interrupt_source=system", () => {
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start work",
+      }),
+    );
+
+    const session = bridge.getSession("s1")!;
+    session.pendingPermissions.set("perm-exit-plan-system", {
+      request_id: "perm-exit-plan-system",
+      tool_name: "ExitPlanMode",
+      input: { allowedPrompts: [] },
+      description: "Exit plan mode",
+      tool_use_id: "tool-exit-plan-system",
+      timestamp: Date.now(),
+    });
+
+    bridge.routeExternalPermissionResponse(
+      session,
+      {
+        type: "permission_response",
+        request_id: "perm-exit-plan-system",
+        behavior: "deny",
+        message: "Keep planning",
+      },
+      "system:auto",
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "result",
+        total_cost_usd: 0,
+        num_turns: 1,
+      }),
+    );
+
+    const turnEndCalls = spy.mock.calls.filter(([, eventType]) => eventType === "turn_end");
+    expect(turnEndCalls.length).toBeGreaterThan(0);
+    expect(turnEndCalls[turnEndCalls.length - 1]?.[2]).toEqual(
+      expect.objectContaining({ interrupted: true, interrupt_source: "system" }),
+    );
+    spy.mockRestore();
+  });
+
   it("interrupt: deduplicates repeated client_msg_id", () => {
     const payload = { type: "interrupt", client_msg_id: "ctrl-msg-1" };
     bridge.handleBrowserMessage(browser, JSON.stringify(payload));
@@ -14170,7 +14315,7 @@ describe("Codex user_message takode events", () => {
       expect(workerTurnEndCalls[0]?.[2]).toEqual(
         expect.objectContaining({
           interrupted: true,
-          interrupt_source: "leader",
+          interrupt_source: "system",
         }),
       );
       expect(workerTurnEndCalls[1]?.[2]).toEqual(
@@ -14182,9 +14327,8 @@ describe("Codex user_message takode events", () => {
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
       );
-      // Both turn_end events are delivered to the leader: user-initiated
-      // ones are annotated with "(user-initiated)" so the leader has full
-      // visibility into all worker state changes.
+      // Both turn_end events are still delivered to the leader so reconnect
+      // recovery remains visible even though the interrupted turn is system-attributed.
       expect(herdDeliveries).toHaveLength(2);
     } finally {
       dispatcher.destroy();
@@ -14358,9 +14502,8 @@ describe("Codex user_message takode events", () => {
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
       );
-      // Both turn_end events are delivered to the leader: user-initiated
-      // ones are annotated with "(user-initiated)" so the leader has full
-      // visibility into all worker state changes.
+      // Both turn_end events are delivered to the leader so the interrupted
+      // correction turn and the resumed completion stay visible in herd.
       expect(herdDeliveries).toHaveLength(2);
     } finally {
       dispatcher.destroy();
@@ -17575,6 +17718,82 @@ describe("Claude SDK interactive tool permissions", () => {
 
     // Pending should be cleared
     expect(session.pendingPermissions.has("perm-exit-plan-2")).toBe(false);
+  });
+
+  it("routes SDK ExitPlanMode denial with leader attribution into turn_end", () => {
+    const sid = "sdk-plan-deny-leader";
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    const session = bridge.getSession(sid)!;
+    session.cliInitReceived = true;
+    session.state.permissionMode = "plan";
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Draft the implementation plan",
+      }),
+    );
+
+    adapter.emitBrowserMessage({
+      type: "permission_request",
+      request: {
+        request_id: "perm-exit-plan-sdk-deny",
+        tool_name: "ExitPlanMode",
+        input: { allowedPrompts: [] },
+        tool_use_id: "tool-exit-plan-sdk-deny",
+        timestamp: Date.now(),
+      },
+    } as any);
+
+    const spy = vi.spyOn(bridge, "emitTakodeEvent");
+    adapter.sendBrowserMessage.mockClear();
+
+    // External permission responses carry the actor session ID. The SDK
+    // denial path must preserve that actor when it synthesizes the interrupt.
+    bridge.routeExternalPermissionResponse(
+      session,
+      {
+        type: "permission_response",
+        request_id: "perm-exit-plan-sdk-deny",
+        behavior: "deny",
+        message: "Keep refining",
+      },
+      "leader-7",
+    );
+
+    const interruptCalls = adapter.sendBrowserMessage.mock.calls
+      .map((args: any[]) => args[0])
+      .filter((message: any) => message.type === "interrupt");
+    expect(interruptCalls).toContainEqual(expect.objectContaining({ interruptSource: "leader" }));
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        result: "",
+        is_error: false,
+        stop_reason: "end_turn",
+        total_cost_usd: 0.01,
+        num_turns: 1,
+        session_id: sid,
+      },
+    });
+
+    const turnEndCalls = spy.mock.calls.filter(([eventSid, eventType]) => eventSid === sid && eventType === "turn_end");
+    expect(turnEndCalls.length).toBeGreaterThan(0);
+    expect(turnEndCalls[turnEndCalls.length - 1]?.[2]).toEqual(
+      expect.objectContaining({ interrupted: true, interrupt_source: "leader" }),
+    );
+
+    spy.mockRestore();
   });
 });
 
