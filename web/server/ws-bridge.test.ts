@@ -8304,7 +8304,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toBeUndefined();
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
     const retried = (firstImageRetryCall as unknown as [any])[0] as any;
@@ -12433,7 +12433,7 @@ describe("Codex resumed-turn recovery", () => {
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toBeUndefined();
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
   });
 
   it("retries when resumed snapshot lastTurn does not match pending disconnected turn", async () => {
@@ -14752,7 +14752,8 @@ describe("Codex image transport", () => {
     );
     await flush();
 
-    // Adapter should receive text-only attachment paths and no native image transport.
+    // Adapter should receive text-only attachment paths AND native local_images
+    // for Codex's localImage transport (q-322 restored this after q-298 broke it).
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const firstImageCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstImageCall).toBeDefined();
@@ -14760,7 +14761,7 @@ describe("Codex image transport", () => {
     const expectedPath = "/tmp/companion-images/img-1.orig.png";
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.inputs[0]?.local_images).toBeUndefined();
+    expect(sentMsg.inputs[0]?.local_images).toEqual([expectedPath]);
     expect(sentMsg.images).toBeUndefined();
 
     // The pending Codex input should stay path-only for transport, but must
@@ -14777,7 +14778,7 @@ describe("Codex image transport", () => {
         mediaType: "image/png",
       },
     ]);
-    expect(session?.pendingCodexInputs[0]?.localImagePaths).toBeUndefined();
+    expect(session?.pendingCodexInputs[0]?.localImagePaths).toEqual([expectedPath]);
   });
 
   it("restores image attachments when a pending Codex image input is cancelled", async () => {
@@ -14900,7 +14901,7 @@ describe("Codex image transport", () => {
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath1}`);
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 2: ${expectedPath2}`);
-    expect(sentMsg.inputs[0]?.local_images).toBeUndefined();
+    expect(sentMsg.inputs[0]?.local_images).toEqual([expectedPath1, expectedPath2]);
     expect(sentMsg.images).toBeUndefined();
   });
 

@@ -8001,13 +8001,17 @@ export class WsBridge {
         adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
 
         if (session.backendType === "claude-sdk" || session.backendType === "codex") {
-          // Adapter-backed sessions rely on the file-path annotation in text
-          // instead of backend-native image transport. Claude SDK stdin never
-          // supported image content blocks, and Codex now intentionally follows
-          // the same path-only behavior to avoid the reconnect-prone native
-          // localImage path.
+          // Adapter-backed sessions strip inline base64 images from the message.
+          // Claude SDK stdin never supported image content blocks.
+          // Codex uses native localImage transport (file paths) instead.
           const stripped = { ...adapterMsg, content: annotatedContent } as BrowserOutgoingMessage;
           delete (stripped as { images?: unknown }).images;
+          // Codex needs local_images for native localImage transport — without
+          // this, Codex only sees the text annotation and tries to read the file
+          // via internal function calls, which crashes (q-322).
+          if (session.backendType === "codex" && resolvedPaths?.length) {
+            (stripped as any).local_images = resolvedPaths;
+          }
           adapterMsg = stripped;
         }
       }
