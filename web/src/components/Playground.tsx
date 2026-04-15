@@ -3269,13 +3269,13 @@ export function Playground() {
             <Card label="review (green, no summary)">
               <div className="text-cc-fg text-sm">
                 <p>All changes have been committed and tests pass. The PR is ready for your review.</p>
-                <NotificationMarker category="review" />
+                <PlaygroundReviewNotificationMarker />
               </div>
             </Card>
             <Card label="review with summary">
               <div className="text-cc-fg text-sm">
                 <p>All changes have been committed and tests pass. The PR is ready for your review.</p>
-                <NotificationMarker category="review" summary="q-131: takode notify fixes ready" />
+                <PlaygroundReviewNotificationMarker summary="q-131: takode notify fixes ready" />
               </div>
             </Card>
           </div>
@@ -5541,6 +5541,20 @@ function PlaygroundClaudeMdButton() {
       <span className="text-[11px] text-cc-muted">Click to open the editor modal (uses server working directory)</span>
       <ClaudeMdEditor cwd={cwd} open={open} onClose={() => setOpen(false)} />
     </div>
+  );
+}
+
+function PlaygroundReviewNotificationMarker({ summary }: { summary?: string }) {
+  const [done, setDone] = useState(false);
+
+  return (
+    <NotificationMarker
+      category="review"
+      summary={summary}
+      doneOverride={done}
+      onToggleDone={() => setDone((prev) => !prev)}
+      showReplyAction={false}
+    />
   );
 }
 

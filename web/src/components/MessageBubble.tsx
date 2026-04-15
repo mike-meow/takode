@@ -431,18 +431,24 @@ export { EVENT_HEADER_RE, parseHerdEvents } from "../utils/herd-event-parser.js"
 type SearchHighlightInfo = { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
 
 /** Compact marker rendered inline for notification tool calls.
- *  When sessionId and messageId are provided, shows interactive checkbox and reply button.
- *  Falls back to display-only when no matching notification is found in the store. */
+ *  When sessionId and messageId are provided, shows the checkbox affordance immediately
+ *  and resolves the backing notification lazily for done-state toggles. */
 export function NotificationMarker({
   category,
   summary,
   sessionId,
   messageId,
+  doneOverride,
+  onToggleDone,
+  showReplyAction = true,
 }: {
   category: "needs-input" | "review";
   summary?: string;
   sessionId?: string;
   messageId?: string;
+  doneOverride?: boolean;
+  onToggleDone?: () => void;
+  showReplyAction?: boolean;
 }) {
   const isAction = category === "needs-input";
   const label = summary || (isAction ? "Needs input" : "Ready for review");
@@ -452,19 +458,38 @@ export function NotificationMarker({
     if (!sessionId) return null;
     const notifications = s.sessionNotifications?.get(sessionId);
     if (!notifications || !messageId) return null;
-    return notifications.find((n) => n.messageId === messageId) ?? null;
+    return notifications.find((n) => n.messageId === messageId && n.category === category) ?? null;
   });
 
-  const isDone = notif?.done ?? false;
-  const notifId = notif?.id;
+  const canToggleDone = !!onToggleDone || (!!sessionId && !!messageId);
+  const isDone = doneOverride ?? notif?.done ?? false;
+  const isToggleReady = !!onToggleDone || !!notif;
+  const toggleLabel =
+    category === "review"
+      ? isDone
+        ? "Mark as not reviewed"
+        : "Mark as reviewed"
+      : isDone
+        ? "Mark unhandled"
+        : "Mark handled";
 
   const toggleDone = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!sessionId || !notifId) return;
-      api.markNotificationDone(sessionId, notifId, !isDone).catch(() => {});
+      if (onToggleDone) {
+        onToggleDone();
+        return;
+      }
+      if (!sessionId || !messageId) return;
+      const liveNotif =
+        useStore
+          .getState()
+          .sessionNotifications.get(sessionId)
+          ?.find((n) => n.messageId === messageId && n.category === category) ?? null;
+      if (!liveNotif) return;
+      api.markNotificationDone(sessionId, liveNotif.id, !liveNotif.done).catch(() => {});
     },
-    [sessionId, notifId, isDone],
+    [sessionId, messageId, category, onToggleDone],
   );
 
   const handleReply = useCallback(
@@ -487,12 +512,14 @@ export function NotificationMarker({
             : "border-emerald-500/20 bg-emerald-500/5 text-cc-muted"
       }`}
     >
-      {/* Checkbox (only when interactive) */}
-      {notif && (
+      {/* Checkbox (shown as soon as the marker has a message anchor) */}
+      {canToggleDone && (
         <button
           onClick={toggleDone}
-          className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-          title={isDone ? "Mark unhandled" : "Mark handled"}
+          className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+          title={isToggleReady ? toggleLabel : "Waiting for notification sync"}
+          aria-label={toggleLabel}
+          disabled={!isToggleReady}
         >
           <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
             {isDone ? (
@@ -513,7 +540,7 @@ export function NotificationMarker({
       <span className={isDone ? "line-through" : ""}>{label}</span>
 
       {/* Reply button (only when interactive) */}
-      {notif && sessionId && messageId && (
+      {showReplyAction && notif && sessionId && messageId && (
         <button
           onClick={handleReply}
           className="shrink-0 ml-0.5 cursor-pointer hover:opacity-80 transition-opacity"

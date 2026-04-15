@@ -3,9 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ChatMessage, ContentBlock } from "../types.js";
 
 const revertToMessageMock = vi.hoisted(() => vi.fn(async () => ({})));
+const markNotificationDoneMock = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock("../api.js", () => ({
   api: {
     revertToMessage: revertToMessageMock,
+    markNotificationDone: markNotificationDoneMock,
   },
 }));
 
@@ -18,7 +20,7 @@ vi.mock("remark-gfm", () => ({
   default: {},
 }));
 
-import { MessageBubble, HerdEventMessage } from "./MessageBubble.js";
+import { MessageBubble, NotificationMarker, HerdEventMessage } from "./MessageBubble.js";
 import { parseHerdEvents } from "../utils/herd-event-parser.js";
 import { useStore } from "../store.js";
 
@@ -507,6 +509,10 @@ describe("MessageBubble - agent source badge", () => {
 // ─── Assistant messages ──────────────────────────────────────────────────────
 
 describe("MessageBubble - assistant messages", () => {
+  beforeEach(() => {
+    markNotificationDoneMock.mockClear();
+  });
+
   it("renders plain text assistant message with markdown", () => {
     const msg = makeMessage({ role: "assistant", content: "Hello world" });
     render(<MessageBubble message={msg} />);
@@ -622,6 +628,187 @@ describe("MessageBubble - assistant messages", () => {
     // Bash rows render as preview-only command entries.
     expect(screen.queryByText("Terminal")).toBeNull();
     expect(screen.getByText("pwd")).toBeTruthy();
+  });
+
+  it("shows a review checkbox affordance for takode notify review tool markers before inbox lookup resolves", () => {
+    // The marker keeps the review checkbox visible immediately so the chip layout
+    // matches the needs-input case, but it should stay disabled until the inbox
+    // has the authoritative notification entry for this message.
+    const msg = makeMessage({
+      id: "asst-review-tool",
+      role: "assistant",
+      content: "",
+      contentBlocks: [{ type: "tool_use", id: "tu-review", name: "Bash", input: { command: "takode notify review" } }],
+    });
+
+    render(<MessageBubble message={msg} sessionId="review-session" />);
+
+    expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Ready for review")).toBeTruthy();
+  });
+
+  it("marks the matching review notification done from the in-message checkbox", async () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const initialNotifications = new Map(prevNotifications);
+    initialNotifications.delete("review-session");
+    useStore.setState({ sessionNotifications: initialNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-tool",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-review", name: "Bash", input: { command: "takode notify review" } }],
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      // Start from the pre-hydration state: the marker is present, but the
+      // authoritative notification inbox has not delivered the matching entry.
+      expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(true);
+
+      const hydratedNotifications = new Map(useStore.getState().sessionNotifications);
+      hydratedNotifications.set("review-session", [
+        {
+          id: "n-review-1",
+          category: "review",
+          timestamp: Date.now(),
+          messageId: "asst-review-tool",
+          done: false,
+        },
+      ]);
+      useStore.setState({ sessionNotifications: hydratedNotifications });
+
+      // After the post-render store update arrives, the marker should enable
+      // and forward the toggle through the existing API surface.
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(false);
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Mark as reviewed" }));
+
+      await waitFor(() => {
+        expect(markNotificationDoneMock).toHaveBeenCalledWith("review-session", "n-review-1", true);
+      });
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
+  it("renders the review checkbox on plain-text assistant messages with direct notification metadata", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-plain",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-plain",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-plain",
+        role: "assistant",
+        content: "This change is ready for review.",
+        notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("Ready for review")).toBeTruthy();
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
+  it("renders the review checkbox on block-based assistant messages with direct notification metadata", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-blocks",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-blocks",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-blocks",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "text", text: "Ready after the latest test pass." }],
+        notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("Ready for review")).toBeTruthy();
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
+  it("renders completed review notifications with the undo label and done styling", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-done",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-done",
+        done: true,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-done",
+        role: "assistant",
+        content: "Review completed.",
+        notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getByRole("button", { name: "Mark as not reviewed" }).hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("Ready for review").className).toContain("line-through");
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
+  it("uses the local toggle override for preview markers instead of the notification API", () => {
+    // Playground previews should be able to demonstrate the review checkbox
+    // locally without routing clicks through the real session notification API.
+    const onToggleDone = vi.fn();
+
+    render(
+      <NotificationMarker
+        category="review"
+        summary="Ready for review"
+        doneOverride={false}
+        onToggleDone={onToggleDone}
+        showReplyAction={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark as reviewed" }));
+
+    expect(onToggleDone).toHaveBeenCalledTimes(1);
+    expect(markNotificationDoneMock).not.toHaveBeenCalled();
+    expect(screen.queryByTitle("Reply to this notification")).toBeNull();
   });
 
   it("does not render Task tool_use blocks (they render as SubagentContainers in MessageFeed)", () => {
