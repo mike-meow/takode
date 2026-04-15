@@ -5,6 +5,7 @@ export type Route =
   | { page: "home" }
   | { page: "session"; sessionId: string }
   | { page: "settings" }
+  | { page: "logs" }
   | { page: "terminal" }
   | { page: "environments" }
   | { page: "scheduled" }
@@ -34,6 +35,7 @@ function normalizeQuestId(raw: string | null): string | null {
 export function parseHash(hash: string): Route {
   const { path } = splitHash(hash);
   if (path === "#/settings") return { page: "settings" };
+  if (path === "#/logs") return { page: "logs" };
   if (path === "#/terminal") return { page: "terminal" };
   if (path === "#/environments") return { page: "environments" };
   if (path === "#/scheduled") return { page: "scheduled" };

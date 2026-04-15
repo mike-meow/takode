@@ -229,6 +229,15 @@ describe("SettingsPage", () => {
     expect(window.location.hash).toBe("#/environments");
   });
 
+  it("navigates to logs page from settings", async () => {
+    // The new settings affordance should route directly into the dedicated log viewer.
+    render(<SettingsPage />);
+    await screen.findByText("Notifications");
+
+    fireEvent.click(screen.getByText("Open Log Viewer"));
+    expect(window.location.hash).toBe("#/logs");
+  });
+
   it("updates editor preference from settings dropdown", async () => {
     mockApi.getSettings.mockResolvedValue({
       serverName: "",

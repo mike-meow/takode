@@ -21,6 +21,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { createRoutes } from "./routes.js";
+import { COMPANION_CLIENT_IP_HEADER } from "./routes/auth.js";
 import { CliLauncher } from "./cli-launcher.js";
 import { WsBridge } from "./ws-bridge.js";
 import { SessionStore } from "./session-store.js";
@@ -63,13 +64,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = process.env.__COMPANION_PACKAGE_ROOT || resolve(__dirname, "..");
 
 import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD, RESTART_EXIT_CODE } from "./constants.js";
-import { initServerLogger } from "./server-logger.js";
+import { createLogger, flushServerLogger, initServerLogger } from "./server-logger.js";
 
 const defaultPort = process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
 const port = Number(process.env.PORT) || defaultPort;
 
 // Initialize file-based logging before anything else logs
 initServerLogger(port);
+const serverLog = createLogger("server");
 
 await initWithPort(port);
 const sessionStore = new SessionStore(undefined, port);
@@ -90,7 +92,7 @@ const perfTracer = new PerfTracer();
 perfTracer.startLagMonitor();
 perfTracer.startSummaryLogging();
 wsBridge.setPerfTracer(perfTracer);
-console.log(`[server] UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE || "4 (default)"}`);
+serverLog.info(`UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE || "4 (default)"}`);
 
 const pushoverNotifier = new PushoverNotifier({
   getSettings: () => {
@@ -678,8 +680,15 @@ const server = Bun.serve<SocketData>({
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
 
-    // Hono handles the rest
-    return app.fetch(req, server);
+    // Hono handles the rest. Tag requests with the resolved client IP so
+    // routes can distinguish loopback browser access from network clients.
+    const requestIp = typeof server.requestIP === "function" ? server.requestIP(req) : null;
+    const headers = new Headers(req.headers);
+    if (requestIp?.address) {
+      headers.set(COMPANION_CLIENT_IP_HEADER, requestIp.address);
+    }
+    const decoratedRequest = new Request(req, { headers });
+    return app.fetch(decoratedRequest, server);
   },
   websocket: {
     idleTimeout: 0, // Disable Bun's idle timeout; we manage liveness via ws.ping heartbeats
@@ -759,10 +768,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 if (!process.env.COMPANION_SUPERVISED) {
-  console.warn(
-    "[server] WARNING: Not started via 'make dev' or 'make serve' — the Restart Server button will not work.",
-  );
-  console.warn("[server]          Use 'make dev' (dev) or 'make serve' (prod) for restart support.");
+  serverLog.warn("Not started via 'make dev' or 'make serve' — the Restart Server button will not work.");
+  serverLog.warn("Use 'make dev' (dev) or 'make serve' (prod) for restart support.");
 }
 
 // ── Cron scheduler ──────────────────────────────────────────────────────────
@@ -793,7 +800,7 @@ sleepInhibitor.start();
 
 // ── Shutdown helpers ─────────────────────────────────────────────────────────
 async function performShutdown() {
-  console.log("[server] Persisting state before shutdown...");
+  serverLog.info("Persisting state before shutdown...");
   idleManager.stop();
   sleepInhibitor.stop();
   await sessionStore.flushAll();
@@ -801,6 +808,7 @@ async function performShutdown() {
   pushoverNotifier.destroy();
   timerManager.destroy();
   cronScheduler.destroy();
+  await flushServerLogger();
 }
 
 function gracefulShutdown() {
@@ -810,7 +818,7 @@ function gracefulShutdown() {
 function requestRestart() {
   // Delay exit so the HTTP response can flush to the browser
   setTimeout(() => {
-    console.log("[server] Restart requested, exiting with code 42...");
+    serverLog.info("Restart requested, exiting with code 42...");
     performShutdown().finally(() => process.exit(RESTART_EXIT_CODE));
   }, 500);
 }
@@ -825,19 +833,22 @@ process.on("SIGINT", gracefulShutdown);
 const RECONNECT_GRACE_MS = Number(process.env.COMPANION_RECONNECT_GRACE_MS || "30000");
 const starting = launcher.getStartingSessions();
 if (starting.length > 0) {
-  console.log(`[server] Waiting ${RECONNECT_GRACE_MS / 1000}s for ${starting.length} CLI process(es) to reconnect...`);
+  serverLog.info(`Waiting ${RECONNECT_GRACE_MS / 1000}s for ${starting.length} CLI process(es) to reconnect...`);
   setTimeout(async () => {
     const stale = launcher.getStartingSessions();
     for (const info of stale) {
       if (info.archived) continue;
-      console.log(`[server] CLI for session ${info.sessionId} did not reconnect, relaunching...`);
+      serverLog.warn("CLI did not reconnect, relaunching session", { sessionId: info.sessionId });
       try {
         const result = await launcher.relaunch(info.sessionId);
         if (!result.ok && result.error) {
-          console.error(`[server] Relaunch failed for ${info.sessionId}: ${result.error}`);
+          serverLog.error("Relaunch failed after reconnect grace period", {
+            sessionId: info.sessionId,
+            error: result.error,
+          });
         }
       } catch (err) {
-        console.error(`[server] Relaunch threw for ${info.sessionId}:`, err);
+        serverLog.error("Relaunch threw after reconnect grace period", { sessionId: info.sessionId, error: err });
       }
     }
   }, RECONNECT_GRACE_MS);

@@ -1,4 +1,5 @@
 import type { SdkSessionInfo, TreeGroup } from "./types.js";
+import { encodeLogQuery, type LogQuery, type LogQueryResponse } from "../shared/logging.js";
 
 const BASE = "/api";
 
@@ -40,7 +41,8 @@ async function post<T = unknown>(path: string, body?: object): Promise<T> {
 async function get<T = unknown>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, signal ? { signal } : undefined);
   if (!res.ok) {
-    throw new Error(res.statusText);
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
   }
   return res.json();
 }
@@ -102,6 +104,11 @@ export async function checkHealth(): Promise<boolean> {
     );
     return false;
   }
+}
+
+export function buildLogStreamUrl(query?: LogQuery & { tail?: number }): string {
+  const qs = query ? encodeLogQuery(query) : "";
+  return `${BASE}/logs/stream${qs ? `?${qs}` : ""}`;
 }
 
 export interface ContainerCreateOpts {
@@ -306,6 +313,7 @@ export interface AppSettings {
   questmasterViewMode: QuestmasterViewMode;
   herdLeaderFirstEnabled: boolean;
   restartSupported: boolean;
+  logFile?: string | null;
   claudeDefaultModel?: string;
 }
 
@@ -758,6 +766,10 @@ export const api = {
 
   // Settings
   getSettings: () => get<AppSettings>("/settings"),
+  getLogs: (query?: LogQuery) => {
+    const qs = query ? encodeLogQuery(query) : "";
+    return get<LogQueryResponse>(`/logs${qs ? `?${qs}` : ""}`);
+  },
   updateSettings: (data: {
     serverName?: string;
     pushoverUserKey?: string;

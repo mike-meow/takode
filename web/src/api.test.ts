@@ -166,7 +166,18 @@ describe("post() error handling", () => {
 // get() error handling
 // ===========================================================================
 describe("get() error handling", () => {
-  it("throws statusText on non-ok response", async () => {
+  it("throws error message from JSON body on non-ok GET responses", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      json: () => Promise.resolve({ error: "Invalid log regex: (" }),
+    });
+
+    await expect(api.listSessions()).rejects.toThrow("Invalid log regex: (");
+  });
+
+  it("falls back to statusText when non-ok GET responses have no error field", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 403,

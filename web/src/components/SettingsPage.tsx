@@ -60,6 +60,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [claudeBin, setClaudeBin] = useState("");
   const [codexBin, setCodexBin] = useState("");
   const [defaultClaudeBackend, setDefaultClaudeBackend] = useState<"claude" | "claude-sdk">("claude");
+  const [logFile, setLogFile] = useState("");
   const [binSaving, setBinSaving] = useState(false);
   const [binError, setBinError] = useState("");
   const [claudeTest, setClaudeTest] = useState<{
@@ -190,6 +191,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setClaudeBin(s.claudeBinary || "");
         setCodexBin(s.codexBinary || "");
         setDefaultClaudeBackend(s.defaultClaudeBackend || "claude");
+        setLogFile(s.logFile || "");
         setMaxKeepAlive(s.maxKeepAlive || 0);
         setHeavyRepoModeEnabled(s.heavyRepoModeEnabled ?? false);
         setSleepInhibitorEnabled(s.sleepInhibitorEnabled ?? false);
@@ -811,7 +813,34 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           </button>
         </CollapsibleSection>
 
-        {/* ── 4. Sessions ──────────────────────────────────────── */}
+        {/* ── 4. Logs ─────────────────────────────────────────── */}
+        <CollapsibleSection
+          id="logs"
+          title="Logs"
+          description="Structured server/runtime logs with filtering, live streaming, and Takode CLI access."
+        >
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = "#/logs";
+              }}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+            >
+              Open Log Viewer
+            </button>
+            {logFile && (
+              <div className="px-3 py-2 rounded-lg bg-cc-hover/60 border border-cc-border text-xs text-cc-muted font-mono break-all">
+                {logFile}
+              </div>
+            )}
+            <p className="text-xs text-cc-muted">
+              CLI access: <code className="font-mono">takode logs --level warn,error --follow</code>
+            </p>
+          </div>
+        </CollapsibleSection>
+
+        {/* ── 5. Sessions ──────────────────────────────────────── */}
         <CollapsibleSection id="sessions" title="Sessions">
           {/* Session Lifecycle — auto-saves on change */}
           <div className="space-y-3">

@@ -182,10 +182,14 @@ vi.mock("./usage-limits.js", () => ({
 import { Hono } from "hono";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildOrchestratorSystemPrompt, createRoutes } from "./routes.js";
 import { _resetModelCache } from "./routes/system.js";
 import { trafficStats } from "./traffic-stats.js";
+import { _resetServerLoggerForTest, createLogger, initServerLogger } from "./server-logger.js";
+import * as serverLoggerModule from "./server-logger.js";
 import * as envManager from "./env-manager.js";
 import * as gitUtils from "./git-utils.js";
 import * as questStore from "./quest-store.js";
@@ -426,6 +430,7 @@ let timerManager: ReturnType<typeof createMockTimerManager>;
 beforeEach(() => {
   vi.clearAllMocks();
   trafficStats.reset();
+  _resetServerLoggerForTest();
   // Reset the LiteLLM model cache so each test starts clean.
   _resetModelCache();
   // Stub global fetch to prevent LiteLLM proxy calls in tests.
@@ -2848,6 +2853,157 @@ describe("POST /api/transcribe", () => {
     expect(enhanceBody.messages[0].content).toContain("Return ONLY the fully edited composer text");
     expect(enhanceBody.messages[1].content).toContain("<CURRENT_COMPOSER_TEXT>");
     expect(enhanceBody.messages[1].content).toContain("<EDIT_INSTRUCTION>");
+  });
+});
+
+describe("GET /api/logs", () => {
+  it("returns structured log entries filtered by component and level", async () => {
+    // Loopback browser access should be allowed, and the query filters should narrow the result set.
+    const logDir = await mkdtemp(join(tmpdir(), "takode-route-logs-"));
+    try {
+      initServerLogger(3456, { logDir, captureConsole: false });
+      const logger = createLogger("ws-bridge");
+      logger.info("connected", { sessionId: "s-1" });
+      logger.error("failed", { sessionId: "s-2" });
+
+      const res = await app.request("/api/logs?component=ws-bridge&level=error", {
+        headers: { "x-companion-client-ip": "127.0.0.1" },
+      });
+      expect(res.status).toBe(200);
+
+      const json = (await res.json()) as {
+        entries: Array<{
+          level: string;
+          component: string;
+          message: string;
+          sessionId?: string;
+          ts: number;
+          isoTime: string;
+        }>;
+        availableComponents: string[];
+        logFile: string | null;
+      };
+
+      expect(json.availableComponents).toEqual(["ws-bridge"]);
+      expect(json.logFile).toContain("server-3456.jsonl");
+      expect(json.entries).toHaveLength(1);
+      expect(json.entries[0]).toMatchObject({
+        level: "error",
+        component: "ws-bridge",
+        message: "failed",
+        sessionId: "s-2",
+      });
+    } finally {
+      await rm(logDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unauthenticated non-loopback log access", async () => {
+    // Structured logs are sensitive, so network clients must authenticate unless they are local loopback requests.
+    const res = await app.request("/api/logs");
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 400 for invalid regex filters", async () => {
+    // Invalid regex should fail fast instead of pretending the query returned zero matches.
+    const res = await app.request("/api/logs?pattern=%28&regex=1", {
+      headers: { "x-companion-client-ip": "127.0.0.1" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid log regex: (" });
+  });
+
+  it("streams snapshot and live entries without dropping the handoff window", async () => {
+    // This regression guards the old snapshot→subscribe gap by emitting an error during
+    // the initial query. The stream must still deliver the snapshot entry and the handoff entry,
+    // while continuing to filter out non-matching live logs after subscription is active.
+    const logDir = await mkdtemp(join(tmpdir(), "takode-stream-logs-"));
+    let querySpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      initServerLogger(3456, { logDir, captureConsole: false });
+      const logger = createLogger("server");
+      logger.info("boot complete");
+      logger.error("snapshot error");
+
+      const originalQueryServerLogs = serverLoggerModule.queryServerLogs;
+      let injectedHandoffEntry = false;
+      querySpy = vi.spyOn(serverLoggerModule, "queryServerLogs").mockImplementation(async (query) => {
+        if (!injectedHandoffEntry) {
+          injectedHandoffEntry = true;
+          logger.error("handoff error");
+        }
+        return originalQueryServerLogs(query);
+      });
+
+      setTimeout(() => {
+        logger.info("ignored live info");
+        logger.error("live error");
+      }, 5);
+
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 30);
+      const res = await app.request("/api/logs/stream?tail=2&level=error", {
+        headers: { "x-companion-client-ip": "127.0.0.1" },
+        signal: controller.signal,
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+      const body = await res.text();
+      expect(body).toContain("event: entry");
+      expect(body).toContain("snapshot error");
+      expect(body).toContain("handoff error");
+      expect(body).toContain("live error");
+      expect(body).not.toContain("ignored live info");
+      expect(body).toContain("event: ready");
+    } finally {
+      querySpy?.mockRestore();
+      await rm(logDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not drop handoff entries for live-only consumers without a snapshot tail", async () => {
+    // Live-only consumers should still receive entries emitted during the subscribe→query handoff
+    // even when the stream does not preload a historical snapshot.
+    const logDir = await mkdtemp(join(tmpdir(), "takode-live-only-logs-"));
+    let querySpy: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      initServerLogger(3456, { logDir, captureConsole: false });
+      const logger = createLogger("server");
+      logger.error("historical error");
+
+      const originalQueryServerLogs = serverLoggerModule.queryServerLogs;
+      let injectedHandoffEntry = false;
+      querySpy = vi.spyOn(serverLoggerModule, "queryServerLogs").mockImplementation(async (query) => {
+        if (!injectedHandoffEntry) {
+          injectedHandoffEntry = true;
+          logger.error("live-only handoff error");
+        }
+        return originalQueryServerLogs(query);
+      });
+
+      setTimeout(() => {
+        logger.error("live-only trailing error");
+      }, 5);
+
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 30);
+      const res = await app.request("/api/logs/stream?level=error", {
+        headers: { "x-companion-client-ip": "127.0.0.1" },
+        signal: controller.signal,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("live-only handoff error");
+      expect(body).toContain("live-only trailing error");
+      expect(body).not.toContain("historical error");
+      expect(body).toContain("event: ready");
+    } finally {
+      querySpy?.mockRestore();
+      await rm(logDir, { recursive: true, force: true });
+    }
   });
 });
 

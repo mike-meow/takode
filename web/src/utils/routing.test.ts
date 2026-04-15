@@ -29,6 +29,11 @@ describe("parseHash", () => {
     expect(parseHash("#/settings")).toEqual({ page: "settings" });
   });
 
+  it("parses logs route", () => {
+    // The dedicated log viewer lives at its own top-level route so settings deep-links stay stable.
+    expect(parseHash("#/logs")).toEqual({ page: "logs" });
+  });
+
   it("parses terminal route", () => {
     expect(parseHash("#/terminal")).toEqual({ page: "terminal" });
   });

@@ -3,6 +3,7 @@ import type { CliLauncher } from "../cli-launcher.js";
 
 export const COMPANION_SESSION_ID_HEADER = "x-companion-session-id";
 export const COMPANION_AUTH_TOKEN_HEADER = "x-companion-auth-token";
+export const COMPANION_CLIENT_IP_HEADER = "x-companion-client-ip";
 
 export type AuthCaller = {
   callerId: string;
@@ -56,4 +57,15 @@ export function validateCompanionAuth(
   }
 
   return { callerId, caller };
+}
+
+export function isLoopbackAddress(address: string | null | undefined): boolean {
+  if (!address) return false;
+  const normalized = address.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "localhost"
+  );
 }

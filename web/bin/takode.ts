@@ -6,6 +6,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
+import { encodeLogQuery, parseLogLevels, parseLogTime, type LogQueryResponse, type ServerLogEntry } from "../shared/logging.js";
 import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
 import {
   getSessionAuthDir,
@@ -3139,6 +3140,146 @@ async function handleExport(base: string, args: string[]): Promise<void> {
   console.log(`Exported ${data.totalMessages} messages (${data.totalTurns} turns) to ${filePath}`);
 }
 
+// ─── Logs handler ───────────────────────────────────────────────────────────
+
+function parsePositiveInt(value: string | boolean | undefined): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.floor(parsed);
+}
+
+function levelColor(level: ServerLogEntry["level"]): string {
+  switch (level) {
+    case "debug":
+      return "\x1b[90m";
+    case "warn":
+      return "\x1b[33m";
+    case "error":
+      return "\x1b[31m";
+    default:
+      return "";
+  }
+}
+
+function formatLogEntry(entry: ServerLogEntry): string {
+  const time = new Date(entry.ts).toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const level = entry.level.toUpperCase().padEnd(5);
+  const component = entry.component.slice(0, 18).padEnd(18);
+  const color = levelColor(entry.level);
+  const reset = color ? "\x1b[0m" : "";
+  const detailParts: string[] = [];
+  if (entry.sessionId) detailParts.push(`session=${entry.sessionId}`);
+  if (entry.source) detailParts.push(`source=${entry.source}`);
+  if (entry.meta && Object.keys(entry.meta).length > 0) detailParts.push(JSON.stringify(entry.meta));
+  const detail = detailParts.length > 0 ? ` ${detailParts.join(" ")}` : "";
+  return `${time} ${color}${level}${reset} ${component} ${formatInlineText(entry.message)}${detail}`;
+}
+
+async function streamTakodeLogs(base: string, query: string, onEntry: (entry: ServerLogEntry) => void): Promise<void> {
+  const controller = new AbortController();
+  const cleanup = () => controller.abort();
+  process.once("SIGINT", cleanup);
+  process.once("SIGTERM", cleanup);
+
+  try {
+    const res = await fetch(`${base}/logs/stream${query ? `?${query}` : ""}`, {
+      headers: takodeAuthHeaders(),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+    }
+    if (!res.body) throw new Error("Log stream did not return a body");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop() || "";
+
+      for (const chunk of chunks) {
+        if (!chunk.trim()) continue;
+        let eventType = "";
+        let data = "";
+        for (const line of chunk.split("\n")) {
+          if (line.startsWith("event:")) eventType = line.slice(6).trim();
+          if (line.startsWith("data:")) data = line.slice(5).trim();
+        }
+        if (eventType !== "entry" || !data) continue;
+        onEntry(JSON.parse(data) as ServerLogEntry);
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === "AbortError")) {
+      throw err;
+    }
+  } finally {
+    process.off("SIGINT", cleanup);
+    process.off("SIGTERM", cleanup);
+  }
+}
+
+async function handleLogs(base: string, args: string[]): Promise<void> {
+  const flags = parseFlags(args);
+  const jsonMode = flags.json === true;
+  const follow = flags.follow === true;
+  const query = {
+    levels: parseLogLevels(typeof flags.level === "string" ? flags.level : undefined),
+    components:
+      typeof flags.component === "string"
+        ? flags.component
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean)
+        : undefined,
+    sessionId: typeof flags.session === "string" ? flags.session : undefined,
+    pattern: typeof flags.pattern === "string" ? flags.pattern : undefined,
+    regex: flags.regex === true,
+    since: parseLogTime(typeof flags.since === "string" ? flags.since : undefined),
+    until: parseLogTime(typeof flags.until === "string" ? flags.until : undefined),
+    limit: parsePositiveInt(flags.limit) ?? 200,
+  };
+
+  if (follow) {
+    await streamTakodeLogs(base, encodeLogQuery({ ...query, tail: query.limit ?? 200 }), (entry) => {
+      if (jsonMode) {
+        console.log(JSON.stringify(entry));
+      } else {
+        console.log(formatLogEntry(entry));
+      }
+    });
+    return;
+  }
+
+  const queryString = encodeLogQuery(query);
+  const data = (await apiGet(base, `/logs${queryString ? `?${queryString}` : ""}`)) as LogQueryResponse;
+
+  if (jsonMode) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+
+  if (data.entries.length === 0) {
+    console.log("No matching logs.");
+  } else {
+    for (const entry of data.entries) {
+      console.log(formatLogEntry(entry));
+    }
+  }
+}
+
 // ─── Main dispatch ──────────────────────────────────────────────────────────
 
 async function handleTimer(base: string, args: string[]): Promise<void> {
@@ -3230,6 +3371,7 @@ Commands:
   peek     View session activity (available to all sessions)
   read     Read a full message (available to all sessions)
   grep     Search within a session's messages (JS regex, case-insensitive)
+  logs     Query and tail structured server logs
   export   Export full session history to a text file
   send     Send a message to a herded session
   rename   Rename a session (e.g. takode rename 5 My Session Name)
@@ -3276,6 +3418,8 @@ Examples:
   takode peek 1 --detail --turns 3
   takode read 1 42
   takode grep 1 "authentication"
+  takode logs --level warn,error --component ws-bridge
+  takode logs --session abc123 --pattern reconnect --follow
   takode export 1 /tmp/session-1.txt
   takode send 2 "Please add tests for the edge cases"
   printf 'Line 1\\nLine 2 with $HOME and \`code\`\\n' | takode send 2 --stdin
@@ -3309,6 +3453,7 @@ try {
     ["peek", {}],
     ["read", {}],
     ["grep", {}],
+    ["logs", {}],
     ["export", {}],
     ["send", { requireOrchestrator: true }],
     ["rename", { requireOrchestrator: true }],
@@ -3369,6 +3514,9 @@ try {
       break;
     case "grep":
       await handleGrep(base, args);
+      break;
+    case "logs":
+      await handleLogs(base, args);
       break;
     case "export":
       await handleExport(base, args);

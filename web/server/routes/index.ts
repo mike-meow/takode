@@ -22,6 +22,7 @@ import { createQuestRoutes } from "./quests.js";
 import { createRecordingsRoutes } from "./recordings.js";
 import { createSystemRoutes } from "./system.js";
 import { createTimerRoutes } from "./timers.js";
+import { createLogsRoutes } from "./logs.js";
 import type { InitialModeState, RouteContext } from "./context.js";
 
 // Keep legacy semantics after moving from server/routes.ts to server/routes/index.ts
@@ -230,6 +231,7 @@ export function createRoutes(
   };
 
   api.route("/", createSystemRoutes(ctx));
+  api.route("/", createLogsRoutes(ctx));
   api.route("/", createSessionsRoutes(ctx));
   api.route("/", createTakodeRoutes(ctx));
   api.route("/", createRecordingsRoutes(ctx));
