@@ -135,7 +135,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     // Poll every 5 seconds as a fallback — lightweight GET that only triggers
     // a React re-render when the returned data differs (Zustand shallow check).
     const interval = setInterval(() => {
-      refreshQuests();
+      refreshQuests({ background: true });
     }, 5_000);
 
     // Refetch when the tab becomes visible again (e.g. user switches back)

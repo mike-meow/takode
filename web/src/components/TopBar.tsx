@@ -59,7 +59,7 @@ export function TopBar() {
   // so we also poll and refresh on tab visibility/focus as a fallback.
   useEffect(() => {
     refreshQuests();
-    const interval = setInterval(refreshQuests, 15_000);
+    const interval = setInterval(() => refreshQuests({ background: true }), 15_000);
     function handleVisibility() {
       if (document.visibilityState === "visible") refreshQuests();
     }

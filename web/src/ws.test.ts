@@ -353,6 +353,8 @@ describe("handleMessage: session_created", () => {
 
     wsModule.connectSession("s-origin");
     fireMessage({ type: "session_created", session_id: "s-new-1" });
+    // session_created is debounced (1s) to coalesce rapid bursts
+    vi.advanceTimersByTime(1000);
     await Promise.resolve();
 
     expect(listSessionsMock).toHaveBeenCalledTimes(1);

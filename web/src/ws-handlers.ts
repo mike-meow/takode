@@ -8,6 +8,8 @@ const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Track processed tool_use IDs to prevent duplicate task creation */
 const processedToolUseIds = new Map<string, Set<string>>();
+/** Debounce timer for session_created events -- coalesce rapid bursts into a single API call. */
+let sessionCreatedTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Debounce guard: prevent overlapping notification sounds from rapid updates. */
 let lastNotificationSoundAt = 0;
@@ -932,19 +934,22 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "session_created": {
-      // Another browser or the API created a session — refresh the session
-      // list so the sidebar shows it immediately without a manual page refresh.
+      // Another browser or the API created a session — debounce the refresh
+      // to coalesce rapid bursts (e.g., multiple sessions created in quick succession).
       const createdId = data.session_id;
       if (createdId && typeof createdId === "string") {
-        console.log(`[ws] session_created: refreshing session list for ${createdId}`);
-        api
-          .listSessions()
-          .then((list) => {
-            store.setSdkSessions(list);
-          })
-          .catch((err) => {
-            console.warn("[ws] Failed to refresh sessions after session_created:", err);
-          });
+        if (sessionCreatedTimer) clearTimeout(sessionCreatedTimer);
+        sessionCreatedTimer = setTimeout(() => {
+          sessionCreatedTimer = null;
+          api
+            .listSessions()
+            .then((list) => {
+              store.setSdkSessions(list);
+            })
+            .catch((err) => {
+              console.warn("[ws] Failed to refresh sessions after session_created:", err);
+            });
+        }, 1_000);
       }
       break;
     }
@@ -1228,7 +1233,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "quest_list_updated": {
-      store.refreshQuests();
+      store.refreshQuests({ background: true });
       break;
     }
 
