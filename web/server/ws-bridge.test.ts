@@ -8054,6 +8054,73 @@ describe("Leader compaction recovery", () => {
     expect(recoveryCalls[0][1]).toContain("port only when explicitly told");
   });
 
+  it("does not inject recovery for Claude WebSocket leaders when compact_boundary never arrived", () => {
+    // q-317: status-only compacting transitions can be noisy or stale. The
+    // leader recovery prompt should only appear after a real Claude
+    // compact_boundary, not just after compacting -> idle.
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    const recoveryCalls = spy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(0);
+  });
+
+  it("injects recovery once for Claude WebSocket leaders after a real compact_boundary", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 80000 },
+        uuid: "real-compact-boundary",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "Compaction summary" },
+        parent_tool_use_id: null,
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    const recoveryCalls = spy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(1);
+    expect(recoveryCalls[0][1]).toContain("/takode-orchestration");
+  });
+
   it("does not inject recovery message for non-leader sessions", () => {
     // Regular (standalone) sessions don't have orchestration skills to reload.
     const adapter = makeClaudeSdkAdapterMock();
@@ -15788,6 +15855,181 @@ describe("cliResuming debounce prevents false compaction events on --resume repl
     vi.advanceTimersByTime(600);
     expect(session.cliResuming).toBe(false); // now cleared
 
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("ignores replayed compact_boundary on Claude WebSocket sessions during cliResuming", () => {
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIOpen(cli, "s1");
+    expect(session.cliResuming).toBe(true);
+
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    expect(session.cliResuming).toBe(true);
+    browser.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 80000 },
+        uuid: "replayed-boundary-uuid",
+        session_id: "s1",
+      }),
+    );
+
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers).toHaveLength(0);
+    expect(session.awaitingCompactSummary).toBeFalsy();
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((m: any) => m.type === "compact_boundary")).toBeUndefined();
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("does not capture replayed compact summaries on Claude WebSocket sessions during cliResuming", () => {
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+    session.cliResuming = true;
+    session.awaitingCompactSummary = true;
+
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIOpen(cli, "s1");
+    browser.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "replayed summary text" },
+        parent_tool_use_id: null,
+        uuid: "replayed-summary",
+        session_id: "s1",
+      }),
+    );
+
+    expect(session.awaitingCompactSummary).toBe(true);
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((m: any) => m.type === "compact_summary")).toBeUndefined();
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("replayed Claude WebSocket compaction during resume is ignored, then the first real compaction after debounce produces one live sequence", () => {
+    // q-317: the WebSocket path now mirrors the SDK replay guard. Replayed
+    // compaction noise during cliResuming must be ignored, then once the
+    // debounce clears, the first real compact_boundary + summary should produce
+    // exactly one live marker and exactly one leader recovery injection.
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIOpen(cli, "s1");
+    expect(session.cliResuming).toBe(true);
+
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+
+    // Phase 1: replay noise during resume must be ignored.
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 80000 },
+        uuid: "old-compact-uuid",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "Old compaction summary" },
+        parent_tool_use_id: null,
+        uuid: "old-summary-msg",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    expect(session.messageHistory.filter((m) => m.type === "compact_marker")).toHaveLength(0);
+    expect(
+      injectSpy.mock.calls.filter(([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System"),
+    ).toHaveLength(0);
+
+    // Phase 2: resume debounce clears stale compaction state.
+    vi.advanceTimersByTime(2100);
+    expect(session.cliResuming).toBe(false);
+    expect(session.awaitingCompactSummary).toBe(false);
+    expect(session.state.is_compacting).toBe(false);
+
+    browser.send.mockClear();
+
+    // Phase 3: first real compaction after replay should surface exactly once.
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+        uuid: "new-compact-uuid",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "New compaction summary" },
+        parent_tool_use_id: null,
+        uuid: "new-summary-msg",
+        session_id: "s1",
+      }),
+    );
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers).toHaveLength(1);
+    expect((markers[0] as any).summary).toBe("New compaction summary");
+    expect((markers[0] as any).cliUuid).toBe("new-compact-uuid");
+
+    const recoveryCalls = injectSpy.mock.calls.filter(
+      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(1);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.filter((m: any) => m.type === "compact_boundary")).toHaveLength(1);
+    expect(calls.filter((m: any) => m.type === "compact_summary")).toHaveLength(1);
+
+    injectSpy.mockRestore();
     vi.clearAllTimers();
     vi.useRealTimers();
   });

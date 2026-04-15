@@ -345,6 +345,8 @@ interface Session {
   pendingQuestCommands: Map<string, { questId: string; targetStatus?: QuestLifecycleStatus }>;
   /** Set after compact_boundary; the next user text message is the summary */
   awaitingCompactSummary?: boolean;
+  /** Claude WebSocket only: a real compact_boundary arrived for the current compaction cycle. */
+  claudeCompactBoundarySeen?: boolean;
   /** Accumulates content blocks for assistant messages with the same ID (parallel tool calls) */
   assistantAccumulator: Map<string, { contentBlockIds: Set<string> }>;
   /** Wall-clock start times for tool calls (tool_use_id → Date.now()). Transient, not persisted. */
@@ -2104,6 +2106,7 @@ export class WsBridge {
         cliInitializeSent: false,
         cliResuming: false,
         cliResumingClearTimer: null,
+        claudeCompactBoundarySeen: false,
       };
       session.state.backend_type = session.backendType;
       session.state.backend_state = session.state.backend_state ?? "disconnected";
@@ -2723,6 +2726,7 @@ export class WsBridge {
         cliInitializeSent: false,
         cliResuming: false,
         cliResumingClearTimer: null,
+        claudeCompactBoundarySeen: false,
       };
       this.sessions.set(sessionId, session);
     } else if (backendType) {
@@ -2776,6 +2780,7 @@ export class WsBridge {
 
     session.eventBuffer = [];
     session.awaitingCompactSummary = false;
+    session.claudeCompactBoundarySeen = false;
     session.compactedDuringTurn = false;
     if (session.state) session.state.is_compacting = false;
 
@@ -5788,7 +5793,7 @@ export class WsBridge {
 
       case "user": {
         // Check if this is the compaction summary (text block following compact_boundary)
-        if (session.awaitingCompactSummary) {
+        if (session.awaitingCompactSummary && !session.cliResuming) {
           const content = (msg as CLIUserMessage).message?.content;
           let summaryText: string | undefined;
           if (typeof content === "string" && content.length > 0) {
@@ -5897,6 +5902,8 @@ export class WsBridge {
           );
           // Reset stale compaction state now that replay is truly done.
           session.state.is_compacting = false;
+          session.awaitingCompactSummary = false;
+          session.claudeCompactBoundarySeen = false;
           // Flush messages deferred from system.init during replay. The CLI
           // silently drops user messages received mid-replay, so we wait until
           // the last replayed system.init + 2s debounce before delivering.
@@ -6020,6 +6027,9 @@ export class WsBridge {
     } else if (msg.subtype === "status") {
       const wasCompacting = session.state.is_compacting;
       session.state.is_compacting = msg.status === "compacting";
+      if (msg.status === "compacting" && !wasCompacting && session.backendType === "claude") {
+        session.claudeCompactBoundarySeen = false;
+      }
       // Guard: only emit compaction_started for NEW compaction transitions (not
       // re-notifications of already-known compaction) and skip --resume replay
       // which replays stale status messages from the CLI's history.
@@ -6042,7 +6052,12 @@ export class WsBridge {
             ? { context_used_percent: session.state.context_used_percent }
             : {}),
         });
-        this.injectLeaderCompactionRecovery(session);
+        if (session.backendType !== "claude" || session.claudeCompactBoundarySeen) {
+          this.injectLeaderCompactionRecovery(session);
+        }
+      }
+      if (wasCompacting && msg.status !== "compacting" && session.backendType === "claude") {
+        session.claudeCompactBoundarySeen = false;
       }
 
       if (msg.permissionMode) {
@@ -6081,12 +6096,20 @@ export class WsBridge {
         this.onSessionActivityStateChanged(session.id, "system_status");
       }
     } else if (msg.subtype === "compact_boundary") {
+      // During --resume replay, replayed compact_boundary must be ignored on
+      // the WebSocket path too. Without this, stale compaction markers and
+      // summary capture can be re-created after reconnect.
+      if (session.cliResuming) return;
       // CLI has compacted its context — append a compact marker as a divider.
       // Old messages are preserved for browser display; the marker visually separates
       // pre- and post-compaction segments. The next CLI "user" message with a text
       // block will contain the compaction summary.
       const cliUuid = (msg as CLISystemCompactBoundaryMessage).uuid;
       const meta = (msg as CLISystemCompactBoundaryMessage).compact_metadata;
+
+      if (session.backendType === "claude") {
+        session.claudeCompactBoundarySeen = true;
+      }
 
       // Dedup: CLI replays compact_boundary on --resume. Skip if a marker with
       // the same CLI uuid already exists in history (replay after server restart).
