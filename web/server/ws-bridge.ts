@@ -3023,10 +3023,37 @@ export class WsBridge {
     return this.launcher?.getSession(session.id)?.isOrchestrator === true;
   }
 
+  private hasLeaderCompactionRecoveryAfterLatestMarker(session: Session): boolean {
+    let latestCompactIdx = -1;
+    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+      if (session.messageHistory[i]?.type === "compact_marker") {
+        latestCompactIdx = i;
+        break;
+      }
+    }
+    if (latestCompactIdx < 0) return false;
+
+    for (let i = latestCompactIdx + 1; i < session.messageHistory.length; i++) {
+      const entry = session.messageHistory[i] as
+        | {
+            type?: string;
+            content?: string;
+            agentSource?: { sessionId: string; sessionLabel?: string };
+          }
+        | undefined;
+      if (entry?.type !== "user_message") continue;
+      if (entry.content !== LEADER_COMPACTION_RECOVERY_PROMPT) continue;
+      if (!this.isSystemSourceTag(entry.agentSource)) continue;
+      return true;
+    }
+    return false;
+  }
+
   /** After compaction, re-inject orchestration context for leader sessions
    *  so they reload skills and refresh herd state before continuing. */
   private injectLeaderCompactionRecovery(session: Session): void {
     if (!this.isLeaderSession(session)) return;
+    if (this.hasLeaderCompactionRecoveryAfterLatestMarker(session)) return;
     console.log(`[ws-bridge] Injecting leader compaction recovery for session ${sessionTag(session.id)}`);
     this.injectUserMessage(session.id, LEADER_COMPACTION_RECOVERY_PROMPT, {
       sessionId: "system",

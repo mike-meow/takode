@@ -8104,7 +8104,11 @@ describe("Leader compaction recovery", () => {
     expect(recoveryCalls).toHaveLength(0);
   });
 
-  it("injects recovery once for Claude WebSocket leaders after a real compact_boundary", () => {
+  it("deduplicates replayed websocket recovery but still injects again for a later real compaction", () => {
+    // Regression for q-317: replayed compacting/null pairs in Claude WebSocket
+    // sessions can arrive after a completed compaction and must not re-inject
+    // the leader recovery prompt unless a new compact_boundary was recorded.
+    // A later real compaction must still inject a fresh recovery message.
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
     bridge.handleCLIMessage(cli, makeInitMsg());
@@ -8115,8 +8119,7 @@ describe("Leader compaction recovery", () => {
       getSession: vi.fn(() => ({ isOrchestrator: true })),
     } as any);
 
-    const spy = vi.spyOn(bridge, "injectUserMessage");
-
+    // First real compaction with a real boundary + summary.
     bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
     bridge.handleCLIMessage(
       cli,
@@ -8124,26 +8127,71 @@ describe("Leader compaction recovery", () => {
         type: "system",
         subtype: "compact_boundary",
         compact_metadata: { trigger: "auto", pre_tokens: 80000 },
-        uuid: "real-compact-boundary",
-        session_id: "s1",
+        uuid: "u-compact-1",
+        session_id: "cli-123",
       }),
     );
     bridge.handleCLIMessage(
       cli,
       JSON.stringify({
         type: "user",
-        message: { role: "user", content: "Compaction summary" },
+        message: { role: "user", content: [{ type: "text", text: "Compaction summary" }] },
         parent_tool_use_id: null,
-        session_id: "s1",
+        uuid: "u-summary-1",
+        session_id: "cli-123",
       }),
     );
     bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
 
-    const recoveryCalls = spy.mock.calls.filter(
-      ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+    // Replayed status pair after the same compaction — must NOT inject again.
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    const sessionAfterReplay = bridge.getSession("s1")!;
+    const replayRecoveries = sessionAfterReplay.messageHistory.filter(
+      (entry: any) =>
+        entry.type === "user_message" &&
+        typeof entry.content === "string" &&
+        entry.content.includes("Context was compacted. Before continuing, reload your orchestration state:") &&
+        entry.agentSource?.sessionId === "system" &&
+        entry.agentSource?.sessionLabel === "System",
     );
-    expect(recoveryCalls).toHaveLength(1);
-    expect(recoveryCalls[0][1]).toContain("/takode-orchestration");
+    expect(replayRecoveries).toHaveLength(1);
+
+    // Second real compaction with a NEW boundary must inject a NEW recovery.
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: "compacting" }));
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 60000 },
+        uuid: "u-compact-2",
+        session_id: "cli-123",
+      }),
+    );
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: "Second compaction summary" }] },
+        parent_tool_use_id: null,
+        uuid: "u-summary-2",
+        session_id: "cli-123",
+      }),
+    );
+    bridge.handleCLIMessage(cli, JSON.stringify({ type: "system", subtype: "status", status: null }));
+
+    const finalSession = bridge.getSession("s1")!;
+    const recoveries = finalSession.messageHistory.filter(
+      (entry: any) =>
+        entry.type === "user_message" &&
+        typeof entry.content === "string" &&
+        entry.content.includes("Context was compacted. Before continuing, reload your orchestration state:") &&
+        entry.agentSource?.sessionId === "system" &&
+        entry.agentSource?.sessionLabel === "System",
+    );
+    expect(recoveries).toHaveLength(2);
   });
 
   it("does not inject recovery message for non-leader sessions", () => {
