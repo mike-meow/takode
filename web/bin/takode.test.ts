@@ -908,6 +908,144 @@ describe("takode send", () => {
   });
 });
 
+describe("takode herd", () => {
+  it("passes force through to the herd API and prints reassignment details", async () => {
+    // Force herd must stay opt-in on the CLI surface and should print the
+    // reassignment summary when the server reports a takeover.
+    const herdBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-force", isOrchestrator: true }));
+        return;
+      }
+      if (method === "POST" && url === "/api/sessions/leader-force/herd") {
+        herdBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            herded: ["worker-force"],
+            notFound: [],
+            conflicts: [],
+            reassigned: [{ id: "worker-force", fromLeader: "leader-old" }],
+            leaders: [],
+          }),
+        );
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-force/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-force",
+            sessionNum: 17,
+            name: "Worker Force",
+            state: "running",
+            cwd: "/tmp/worker-force",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["herd", "--force", "worker-force", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-force",
+        COMPANION_AUTH_TOKEN: "auth-force",
+      });
+
+      expect(result.status).toBe(0);
+      expect(herdBodies).toEqual([{ workerIds: ["worker-force"], force: true }]);
+      expect(result.stdout).toContain("Herded 1 session(s)");
+      expect(result.stdout).toContain("Reassigned worker-force from leader-old");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("keeps ordinary takode herd requests non-force by default", async () => {
+    // The default CLI path must not silently add force, otherwise normal
+    // conflict behavior would be impossible to preserve.
+    const herdBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-plain", isOrchestrator: true }));
+        return;
+      }
+      if (method === "POST" && url === "/api/sessions/leader-plain/herd") {
+        herdBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            herded: ["worker-plain"],
+            notFound: [],
+            conflicts: [],
+            reassigned: [],
+            leaders: [],
+          }),
+        );
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-plain/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-plain",
+            sessionNum: 18,
+            name: "Worker Plain",
+            state: "running",
+            cwd: "/tmp/worker-plain",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["herd", "worker-plain", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-plain",
+        COMPANION_AUTH_TOKEN: "auth-plain",
+      });
+
+      expect(result.status).toBe(0);
+      expect(herdBodies).toEqual([{ workerIds: ["worker-plain"] }]);
+      expect(result.stdout).toContain("Herded 1 session(s)");
+      expect(result.stdout).not.toContain("Reassigned");
+    } finally {
+      server.close();
+    }
+  });
+});
+
 describe("takode spawn", () => {
   it("inherits backend from leader session when --backend is not specified", async () => {
     const createBodies: JsonObject[] = [];

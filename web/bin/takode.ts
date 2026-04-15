@@ -6,6 +6,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
+import type { HerdSessionsResponse } from "../shared/herd-types.js";
 import { encodeLogQuery, parseLogLevels, parseLogTime, type LogQueryResponse, type ServerLogEntry } from "../shared/logging.js";
 import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
 import {
@@ -2169,6 +2170,7 @@ async function handleArchive(base: string, args: string[]): Promise<void> {
 
 async function handleHerd(base: string, args: string[]): Promise<void> {
   const jsonMode = args.includes("--json");
+  const forceMode = args.includes("--force");
   // Parse comma/space-separated session refs (filtering out flags)
   const refs = args
     .filter((a) => !a.startsWith("--"))
@@ -2176,13 +2178,14 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (refs.length === 0) err("Usage: takode herd <session1,session2,...>");
+  if (refs.length === 0) err("Usage: takode herd [--force] <session1,session2,...>");
 
   const mySessionId = getCallerSessionId();
 
   const result = (await apiPost(base, `/sessions/${encodeURIComponent(mySessionId)}/herd`, {
     workerIds: refs,
-  })) as { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders?: string[] };
+    ...(forceMode ? { force: true } : {}),
+  })) as HerdSessionsResponse;
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
@@ -2202,6 +2205,13 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
       }),
     );
   }
+  if (result.reassigned.length > 0) {
+    for (const reassigned of result.reassigned) {
+      console.log(
+        `[${formatTime(Date.now())}] \u21ba Reassigned ${formatInlineText(reassigned.id)} from ${formatInlineText(reassigned.fromLeader)}`,
+      );
+    }
+  }
   if (result.notFound.length > 0) {
     console.log(
       `[${formatTime(Date.now())}] \u2717 Not found: ${result.notFound.map((ref) => formatInlineText(ref)).join(", ")}`,
@@ -2214,7 +2224,7 @@ async function handleHerd(base: string, args: string[]): Promise<void> {
       );
     }
   }
-  if (result.leaders?.length) {
+  if (result.leaders.length > 0) {
     for (const lid of result.leaders) {
       console.log(`[${formatTime(Date.now())}] \u2717 Cannot herd leader session: ${formatInlineText(lid)}`);
     }
@@ -3391,7 +3401,7 @@ Commands:
   export   Export full session history to a text file
   send     Send a message to a herded session
   rename   Rename a session (e.g. takode rename 5 My Session Name)
-  herd     Herd sessions (e.g. takode herd 5,6,7)
+  herd     Herd sessions (e.g. takode herd 5,6,7 or takode herd --force 5)
   unherd   Release a session from your herd (e.g. takode unherd 5)
   interrupt  Interrupt a worker's current turn (e.g. takode interrupt 5)
   archive  Archive a herded session (e.g. takode archive 5)

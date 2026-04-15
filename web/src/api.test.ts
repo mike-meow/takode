@@ -146,6 +146,66 @@ describe("deleteSession", () => {
 });
 
 // ===========================================================================
+// herdSessions
+// ===========================================================================
+describe("herdSessions", () => {
+  it("omits force when not requested", async () => {
+    // The Takode CLI should preserve the normal herd contract unless the user
+    // explicitly opts into force takeover.
+    mockFetch.mockResolvedValueOnce(mockResponse({ herded: ["worker-1"], notFound: [] }));
+
+    await api.herdSessions("leader-1", ["worker-1"]);
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe(`/api/sessions/${encodeURIComponent("leader-1")}/herd`);
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body)).toEqual({ workerIds: ["worker-1"] });
+  });
+
+  it("includes force when requested", async () => {
+    // Force takeover must be explicit on the wire so the server can preserve
+    // the ordinary conflict path for default herd requests.
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ herded: ["worker-1"], notFound: [], reassigned: [{ id: "worker-1", fromLeader: "leader-9" }] }),
+    );
+
+    await api.herdSessions("leader-1", ["worker-1"], { force: true });
+
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({ workerIds: ["worker-1"], force: true });
+  });
+});
+
+describe("herdWorkerToLeader", () => {
+  it("sends the browser-safe herd route without force by default", async () => {
+    // The web UI uses a separate local endpoint because browser requests do not
+    // carry Takode auth headers.
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
+    );
+
+    await api.herdWorkerToLeader("worker-1", "leader-1");
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe(`/api/sessions/${encodeURIComponent("worker-1")}/herd-to`);
+    expect(JSON.parse(opts.body)).toEqual({ leaderSessionId: "leader-1" });
+  });
+
+  it("passes force through on the browser-safe herd route when requested", async () => {
+    // The browser path still needs to preserve the explicit force signal rather
+    // than silently upgrading ordinary herd actions.
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
+    );
+
+    await api.herdWorkerToLeader("worker-1", "leader-1", { force: true });
+
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({ leaderSessionId: "leader-1", force: true });
+  });
+});
+
+// ===========================================================================
 // post() error handling
 // ===========================================================================
 describe("post() error handling", () => {

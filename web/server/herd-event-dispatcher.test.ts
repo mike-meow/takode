@@ -232,6 +232,38 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("delivers herd_reassigned events so previous leaders see forced takeovers", () => {
+    // Forced reassignment must surface as a normal actionable herd event so the
+    // previous leader sees that the worker left its herd.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        event: "herd_reassigned",
+        data: {
+          fromLeaderSessionId: "orch-1",
+          fromLeaderLabel: "#1 Leader One",
+          toLeaderSessionId: "orch-2",
+          toLeaderLabel: "#2 Leader Two",
+          reviewerCount: 1,
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
+    expect(content).toContain("herd_reassigned");
+    expect(content).toContain("#1 Leader One -> #2 Leader Two");
+    expect(content).toContain("+1 reviewer");
+
+    dispatcher.destroy();
+  });
+
   it("skips events triggered by the leader's own actions (actorSessionId)", () => {
     // When the leader runs takode archive or takode answer, the resulting
     // herd events should not bounce back to the leader (q-259).
@@ -383,6 +415,42 @@ describe("HerdEventDispatcher", () => {
     vi.mocked(launcher.getHerdedSessions).mockReturnValue([]);
     dispatcher.onHerdChanged("orch-1");
 
+    expect(dispatcher._getInbox("orch-1")).toBeUndefined();
+
+    dispatcher.destroy();
+  });
+
+  it("keeps a zero-worker inbox alive until a pending herd_reassigned event is delivered", () => {
+    // Regression: when the moved worker was the last herd member, the old
+    // leader still needs the pending herd_reassigned event before inbox teardown.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    triggerEvent(
+      makeEvent({
+        event: "herd_reassigned",
+        data: {
+          fromLeaderSessionId: "orch-1",
+          fromLeaderLabel: "#1 Leader One",
+          toLeaderSessionId: "orch-2",
+          toLeaderLabel: "#2 Leader Two",
+        },
+      }),
+    );
+
+    vi.mocked(launcher.getHerdedSessions).mockReturnValue([]);
+    dispatcher.onHerdChanged("orch-1");
+
+    const inboxBeforeDelivery = dispatcher._getInbox("orch-1");
+    expect(inboxBeforeDelivery).toBeDefined();
+    expect(inboxBeforeDelivery?.workerIds.size).toBe(0);
+
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.onOrchestratorTurnEnd("orch-1");
     expect(dispatcher._getInbox("orch-1")).toBeUndefined();
 
     dispatcher.destroy();
@@ -700,6 +768,27 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("Bash: rm -rf node_modules");
     // No msg_index provided -- should not include msg reference
     expect(result).not.toContain("msg [");
+  });
+
+  it("formats herd_reassigned events with old and new leader labels", () => {
+    // Formatting should preserve both leader labels so the injected herd event
+    // is self-contained when reviewed from the old leader session.
+    const events = [
+      makeEvent({
+        event: "herd_reassigned",
+        data: {
+          fromLeaderSessionId: "orch-1",
+          fromLeaderLabel: "#1 Leader One",
+          toLeaderSessionId: "orch-2",
+          toLeaderLabel: "#2 Leader Two",
+          reviewerCount: 2,
+        },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("herd_reassigned");
+    expect(result).toContain("#1 Leader One -> #2 Leader Two");
+    expect(result).toContain("+2 reviewers");
   });
 
   it("includes msg [N] reference when msg_index is present in permission_request", () => {

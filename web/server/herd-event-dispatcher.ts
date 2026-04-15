@@ -59,6 +59,7 @@ const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "turn_end",
   "permission_request",
   "permission_resolved",
+  "herd_reassigned",
   "session_error",
   "session_archived",
   "session_deleted",
@@ -128,7 +129,16 @@ export class HerdEventDispatcher {
     const workers = this.launcher.getHerdedSessions(orchId);
     const workerIds = new Set(workers.map((w) => w.sessionId));
     if (workerIds.size === 0) {
-      this.teardownForOrchestrator(orchId);
+      const existing = this.inboxes.get(orchId);
+      if (!existing) return;
+      existing.unsubscribe?.();
+      existing.unsubscribe = null;
+      existing.workerIds = workerIds;
+      if (this.pendingCount(existing) > 0 && this.wsBridge.isSessionIdle(orchId)) {
+        this.scheduleDelivery(orchId);
+      } else {
+        this.maybeRetireInbox(orchId, existing);
+      }
       return;
     }
 
@@ -280,6 +290,8 @@ export class HerdEventDispatcher {
         inbox.debounceTimer = null;
       }
       this.flushInbox(orchId);
+    } else {
+      this.maybeRetireInbox(orchId, inbox);
     }
   }
 
@@ -379,7 +391,10 @@ export class HerdEventDispatcher {
     if (!inbox) return;
 
     const pending = this.getPendingEntries(inbox);
-    if (pending.length === 0) return;
+    if (pending.length === 0) {
+      this.maybeRetireInbox(orchId, inbox);
+      return;
+    }
 
     // Re-check idle — orchestrator may have started generating during debounce
     if (!this.wsBridge.isSessionIdle(orchId)) {
@@ -442,6 +457,15 @@ export class HerdEventDispatcher {
   /** Count of events waiting to be delivered. */
   private pendingCount(inbox: HerdInbox): number {
     return this.getPendingEntries(inbox).length;
+  }
+
+  /** Retire an inbox once it has no workers and no queued/in-flight work left. */
+  private maybeRetireInbox(orchId: string, inbox: HerdInbox): void {
+    if (inbox.workerIds.size > 0) return;
+    if (this.pendingCount(inbox) > 0) return;
+    if (inbox.inFlightUpTo !== null) return;
+    if (inbox.debounceTimer !== null) return;
+    this.teardownForOrchestrator(orchId);
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
@@ -581,6 +605,13 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
         return `${header}\n\n<plan>\n${evt.data.planContent}\n</plan>`;
       }
       return header;
+    }
+    case "herd_reassigned": {
+      const reviewerSuffix =
+        typeof evt.data.reviewerCount === "number" && evt.data.reviewerCount > 0
+          ? ` | +${evt.data.reviewerCount} reviewer${evt.data.reviewerCount === 1 ? "" : "s"}`
+          : "";
+      return `${label} | herd_reassigned | ${evt.data.fromLeaderLabel} -> ${evt.data.toLeaderLabel}${reviewerSuffix}${ageSuffix}`;
     }
     case "session_error": {
       const error = typeof evt.data.error === "string" ? truncate(evt.data.error, 80) : "unknown error";

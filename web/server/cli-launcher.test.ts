@@ -268,6 +268,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import { SessionStore } from "./session-store.js";
 import { CliLauncher } from "./cli-launcher.js";
+import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
+import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
+import type { TakodeEvent, TakodeHerdReassignedEventData } from "./session-types.js";
 
 // ─── Bun.spawn mock ─────────────────────────────────────────────────────────
 
@@ -2606,8 +2609,12 @@ describe("cat herding", () => {
   });
 
   it("rejects herding by a second leader (conflict)", async () => {
+    // Conflicting herd attempts must preserve the original ownership path and
+    // must not emit reassignment side effects when force was not requested.
     await setupSessions("orch-1", "orch-2", "worker-1");
 
+    const herdChange = vi.fn();
+    herdLauncher.onHerdChange = herdChange;
     herdLauncher.herdSessions("orch-1", ["worker-1"]);
     const result = herdLauncher.herdSessions("orch-2", ["worker-1"]);
 
@@ -2617,9 +2624,140 @@ describe("cat herding", () => {
 
     const worker = herdLauncher.getSession("worker-1");
     expect(worker?.herdedBy).toBe("orch-1"); // unchanged
+    expect(herdChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "reassigned", workerId: "worker-1" }),
+    );
+  });
+
+  it("force-reassigns a worker to a new leader and notifies before herd membership changes", async () => {
+    // Force takeover must emit the reassignment event before membership refresh
+    // so downstream consumers can notify the old leader on the pre-mutation path.
+    await setupSessions("orch-1", "orch-2", "worker-1", "reviewer-1");
+
+    const worker = herdLauncher.getSession("worker-1");
+    const reviewer = herdLauncher.getSession("reviewer-1");
+    expect(worker).toBeDefined();
+    expect(reviewer).toBeDefined();
+    worker!.sessionNum = 42;
+    worker!.herdedBy = "orch-1";
+    reviewer!.reviewerOf = 42;
+    reviewer!.herdedBy = "orch-1";
+
+    const herdChange = vi.fn();
+    herdLauncher.onHerdChange = herdChange;
+
+    const result = herdLauncher.herdSessions("orch-2", ["worker-1"], { force: true });
+
+    expect(result.herded).toEqual(["worker-1"]);
+    expect(result.conflicts).toEqual([]);
+    expect(result.reassigned).toEqual([{ id: "worker-1", fromLeader: "orch-1" }]);
+    expect(herdChange).toHaveBeenCalledWith({
+      type: "reassigned",
+      workerId: "worker-1",
+      fromLeaderId: "orch-1",
+      toLeaderId: "orch-2",
+      reviewerCount: 1,
+    });
+    const reassignedCallOrder = herdChange.mock.invocationCallOrder[0];
+    const membershipCallOrder = herdChange.mock.invocationCallOrder.find((_, idx) => {
+      return herdChange.mock.calls[idx][0]?.type === "membership_changed";
+    });
+    expect(reassignedCallOrder).toBeLessThan(membershipCallOrder ?? Number.POSITIVE_INFINITY);
+    expect(herdLauncher.getSession("worker-1")?.herdedBy).toBe("orch-2");
+    expect(herdLauncher.getSession("reviewer-1")?.herdedBy).toBe("orch-2");
+  });
+
+  it("preserves the old leader inbox long enough to deliver herd_reassigned on the real bootstrap path", async () => {
+    // End-to-end regression: when the moved worker was the old leader's last
+    // herd member, the production launcher->bridge->dispatcher wiring must still
+    // deliver herd_reassigned before the zero-worker inbox is retired.
+    vi.useFakeTimers();
+    try {
+      await setupSessions("orch-1", "orch-2", "worker-1");
+
+      const subscriptions = new Set<{ sessions: Set<string>; cb: (evt: TakodeEvent) => void }>();
+      const bridge = {
+        subscribeTakodeEvents: vi.fn((sessions: Set<string>, cb: (evt: TakodeEvent) => void) => {
+          const sub = { sessions: new Set(sessions), cb };
+          subscriptions.add(sub);
+          return () => {
+            subscriptions.delete(sub);
+          };
+        }),
+        injectUserMessage: vi.fn(() => "sent" as const),
+        isSessionIdle: vi.fn(() => true),
+        wakeIdleKilledSession: vi.fn(() => false),
+        getSessionMessages: vi.fn(() => null),
+      };
+      const emitTakodeEvent = (event: TakodeEvent) => {
+        for (const sub of subscriptions) {
+          if (sub.sessions.has(event.sessionId)) sub.cb(event);
+        }
+      };
+
+      const dispatcher = new HerdEventDispatcher(bridge, herdLauncher);
+      const emitBridgeEvent = vi.fn(
+        (
+          sessionId: string,
+          event: "herd_reassigned",
+          data: TakodeHerdReassignedEventData,
+          actorSessionId?: string,
+        ) => {
+          emitTakodeEvent({
+            id: Date.now(),
+            event,
+            sessionId,
+            sessionNum: herdLauncher.getSessionNum(sessionId) ?? -1,
+            sessionName: herdLauncher.getSession(sessionId)?.name || sessionId,
+            ts: Date.now(),
+            ...(actorSessionId ? { actorSessionId } : {}),
+            data,
+          } as TakodeEvent);
+        },
+      );
+      herdLauncher.onHerdChange = createLauncherHerdChangeHandler({
+        dispatcher,
+        wsBridge: {
+          emitTakodeEvent: emitBridgeEvent,
+          onHerdMembershipChanged: vi.fn(),
+        },
+        launcher: herdLauncher,
+        getSessionName: () => undefined,
+      });
+
+      herdLauncher.herdSessions("orch-1", ["worker-1"]);
+      dispatcher.setupForOrchestrator("orch-1");
+
+      herdLauncher.herdSessions("orch-2", ["worker-1"], { force: true });
+      expect(emitBridgeEvent).toHaveBeenCalledWith(
+        "worker-1",
+        "herd_reassigned",
+        expect.objectContaining({
+          fromLeaderSessionId: "orch-1",
+          toLeaderSessionId: "orch-2",
+        }),
+        "orch-2",
+      );
+
+      vi.advanceTimersByTime(600);
+
+      expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+        "orch-1",
+        expect.stringContaining("herd_reassigned"),
+        { sessionId: "herd-events", sessionLabel: "Herd Events" },
+      );
+
+      dispatcher.onOrchestratorTurnEnd("orch-1");
+      expect(dispatcher._getInbox("orch-1")).toBeUndefined();
+      dispatcher.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("transfers attached reviewers with the worker herd", async () => {
+    // When a worker moves between leaders, active reviewer sessions must follow
+    // the worker so the new leader retains operational access.
     await setupSessions("orch-1", "orch-2", "worker-1", "reviewer-1");
 
     const worker = herdLauncher.getSession("worker-1");
@@ -2632,8 +2770,8 @@ describe("cat herding", () => {
     reviewer!.reviewerOf = 42;
     reviewer!.herdedBy = "orch-1";
 
-    const herdChanged = vi.fn();
-    herdLauncher.onHerdChanged = herdChanged;
+    const herdChange = vi.fn();
+    herdLauncher.onHerdChange = herdChange;
 
     const result = herdLauncher.herdSessions("orch-2", ["worker-1"]);
 
@@ -2646,11 +2784,13 @@ describe("cat herding", () => {
     });
     expect(herdLauncher.getHerdedSessions("orch-2").map((s) => s.sessionId).sort()).toEqual(["reviewer-1", "worker-1"]);
     expect(herdLauncher.getHerdedSessions("orch-1")).toEqual([]);
-    expect(herdChanged).toHaveBeenCalledWith("orch-2");
-    expect(herdChanged).toHaveBeenCalledWith("orch-1");
+    expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-2" });
+    expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-1" });
   });
 
   it("ignores archived reviewers when transferring a worker herd", async () => {
+    // Archived reviewers are historical records; moving the worker must not
+    // resurrect or reassign them to a new leader.
     await setupSessions("orch-1", "worker-1", "reviewer-1");
 
     const worker = herdLauncher.getSession("worker-1");
@@ -2658,8 +2798,8 @@ describe("cat herding", () => {
     expect(worker).toBeDefined();
     expect(reviewer).toBeDefined();
     worker!.sessionNum = 42;
-    const herdChanged = vi.fn();
-    herdLauncher.onHerdChanged = herdChanged;
+    const herdChange = vi.fn();
+    herdLauncher.onHerdChange = herdChange;
     // Archived reviewers should remain historical records; transferring the
     // worker must not reassign them or refresh the previous leader for them.
     reviewer!.reviewerOf = 42;
@@ -2675,11 +2815,13 @@ describe("cat herding", () => {
       archived: true,
     });
     expect(herdLauncher.getHerdedSessions("orch-1").map((s) => s.sessionId)).toEqual(["worker-1"]);
-    expect(herdChanged).toHaveBeenCalledWith("orch-1");
-    expect(herdChanged).not.toHaveBeenCalledWith("orch-2");
+    expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-1" });
+    expect(herdChange).not.toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-2" });
   });
 
   it("does not transfer attached reviewers on conflicting herd attempts", async () => {
+    // A non-force conflict must leave both the worker and attached reviewers
+    // with the original leader.
     await setupSessions("orch-1", "orch-2", "worker-1", "reviewer-1");
 
     const worker = herdLauncher.getSession("worker-1");

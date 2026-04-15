@@ -45,6 +45,7 @@ import { ImageStore } from "./image-store.js";
 import { IdleManager } from "./idle-manager.js";
 import { SleepInhibitor } from "./sleep-inhibitor.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
+import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
 import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
@@ -137,10 +138,12 @@ containerManager.restoreState(CONTAINER_STATE_PATH);
 // Push-based herd event delivery: wire dispatcher after bridge + launcher are ready
 const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher);
 wsBridge.setHerdEventDispatcher(herdEventDispatcher);
-launcher.onHerdChanged = (orchId) => {
-  herdEventDispatcher.onHerdChanged(orchId);
-  wsBridge.onHerdMembershipChanged(orchId);
-};
+launcher.onHerdChange = createLauncherHerdChangeHandler({
+  dispatcher: herdEventDispatcher,
+  wsBridge,
+  launcher,
+  getSessionName: (sessionId) => sessionNames.getName(sessionId),
+});
 // Bootstrap for existing orchestrators (server restart recovery)
 for (const s of launcher.listSessions()) {
   if (s.isOrchestrator && launcher.getHerdedSessions(s.sessionId).length > 0) {

@@ -860,6 +860,7 @@ export type TakodeEventType =
   | "compaction_finished"
   | "permission_request"
   | "permission_resolved"
+  | "herd_reassigned"
   | "session_disconnected"
   | "session_error"
   | "session_archived"
@@ -928,6 +929,14 @@ export interface TakodePermissionResolvedEventData {
   outcome: "approved" | "denied";
 }
 
+export interface TakodeHerdReassignedEventData {
+  fromLeaderSessionId: string;
+  fromLeaderLabel: string;
+  toLeaderSessionId: string;
+  toLeaderLabel: string;
+  reviewerCount?: number;
+}
+
 export interface TakodeSessionDisconnectedEventData {
   wasGenerating: boolean;
   reason: string;
@@ -958,6 +967,7 @@ export interface TakodeEventDataByType {
   compaction_finished: TakodeCompactionEventData;
   permission_request: TakodePermissionRequestEventData;
   permission_resolved: TakodePermissionResolvedEventData;
+  herd_reassigned: TakodeHerdReassignedEventData;
   session_disconnected: TakodeSessionDisconnectedEventData;
   session_error: TakodeSessionErrorEventData;
   session_archived: TakodeSessionLifecycleEventData;

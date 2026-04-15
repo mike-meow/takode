@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { access as accessAsync } from "node:fs/promises";
 import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
+import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import { isValidQuestId, isValidWaitForRef } from "../../shared/quest-journey.js";
 import {
   buildPeekResponse,
@@ -422,6 +423,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (!Array.isArray(body.workerIds) || body.workerIds.length === 0) {
       return c.json({ error: "workerIds array is required" }, 400);
     }
+    if (body.force !== undefined && typeof body.force !== "boolean") {
+      return c.json({ error: "force must be a boolean" }, 400);
+    }
     // Resolve each worker ref (supports #N, UUID, prefix)
     const resolved: string[] = [];
     const notFound: string[] = [];
@@ -433,13 +437,14 @@ export function createTakodeRoutes(ctx: RouteContext) {
         notFound.push(String(ref));
       }
     }
-    const result = launcher.herdSessions(orchId, resolved);
+    const result = body.force === true ? launcher.herdSessions(orchId, resolved, { force: true }) : launcher.herdSessions(orchId, resolved);
     return c.json({
       herded: result.herded,
       notFound: [...notFound, ...result.notFound],
       conflicts: result.conflicts,
-      ...(result.leaders.length > 0 ? { leaders: result.leaders } : {}),
-    });
+      reassigned: result.reassigned,
+      leaders: result.leaders,
+    } satisfies HerdSessionsResponse);
   });
 
   api.delete("/sessions/:id/herd/:workerId", (c) => {

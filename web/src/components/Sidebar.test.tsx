@@ -25,6 +25,7 @@ const mockApi = {
   deleteSession: vi.fn().mockResolvedValue({}),
   archiveSession: vi.fn().mockResolvedValue({}),
   unarchiveSession: vi.fn().mockResolvedValue({}),
+  herdWorkerToLeader: vi.fn().mockResolvedValue({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
   getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
   updateSettings: vi.fn().mockResolvedValue({ herdLeaderFirstEnabled: false }),
   getTreeGroups: vi
@@ -39,6 +40,7 @@ vi.mock("../api.js", () => ({
     deleteSession: (...args: unknown[]) => mockApi.deleteSession(...args),
     archiveSession: (...args: unknown[]) => mockApi.archiveSession(...args),
     unarchiveSession: (...args: unknown[]) => mockApi.unarchiveSession(...args),
+    herdWorkerToLeader: (...args: unknown[]) => mockApi.herdWorkerToLeader(...args),
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
     updateSettings: (...args: unknown[]) => mockApi.updateSettings(...args),
     getTreeGroups: (...args: unknown[]) => mockApi.getTreeGroups(...args),
@@ -46,6 +48,7 @@ vi.mock("../api.js", () => ({
 }));
 
 const mockWriteClipboardText = vi.fn().mockResolvedValue(undefined);
+const mockAlert = vi.fn();
 vi.mock("../utils/copy-utils.js", () => ({
   writeClipboardText: (...args: unknown[]) => mockWriteClipboardText(...args),
 }));
@@ -242,6 +245,7 @@ import { Sidebar } from "./Sidebar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal("alert", mockAlert);
   mockState = createMockState();
   window.location.hash = "";
   setTouchDevice(false);
@@ -1117,6 +1121,107 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     await waitFor(() => {
       expect(mockApi.deleteSession).toHaveBeenCalledWith("s1");
+    });
+  });
+
+  it("offers a force-herd action to the current leader for workers owned by another leader", async () => {
+    // Workers already owned by a different leader should expose the explicit
+    // force-takeover affordance, including the confirmation gate.
+    const leaderSession = makeSession("leader-1");
+    const workerSession = makeSession("worker-1");
+    const otherLeaderSession = makeSession("leader-9");
+    const leaderSdk = makeSdkSession("leader-1", { isOrchestrator: true, sessionNum: 1 });
+    const workerSdk = makeSdkSession("worker-1", { herdedBy: "leader-9", sessionNum: 7 });
+    const otherLeaderSdk = makeSdkSession("leader-9", { isOrchestrator: true, sessionNum: 9 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leaderSession],
+        ["worker-1", workerSession],
+        ["leader-9", otherLeaderSession],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk, otherLeaderSdk],
+      currentSessionId: "leader-1",
+      sessionNames: new Map([
+        ["leader-1", "Current Leader"],
+        ["worker-1", "Target Worker"],
+        ["leader-9", "Previous Leader"],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("Target Worker").closest("button")!;
+    fireEvent.contextMenu(sessionButton, { clientX: 100, clientY: 120 });
+
+    fireEvent.click(screen.getByText("Force Herd to Current Session"));
+    expect(screen.getByText("Force herd takeover?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Force Herd" }));
+
+    await waitFor(() => {
+      expect(mockApi.herdWorkerToLeader).toHaveBeenCalledWith("worker-1", "leader-1", { force: true });
+    });
+  });
+
+  it("offers a plain herd action without confirmation for unowned workers", async () => {
+    // Ordinary herd actions must remain distinct from force takeover so the UI
+    // does not silently upgrade every herd to a forced reassignment.
+    const leaderSession = makeSession("leader-1");
+    const workerSession = makeSession("worker-2");
+    const leaderSdk = makeSdkSession("leader-1", { isOrchestrator: true, sessionNum: 1 });
+    const workerSdk = makeSdkSession("worker-2", { sessionNum: 8 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leaderSession],
+        ["worker-2", workerSession],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+      currentSessionId: "leader-1",
+      sessionNames: new Map([
+        ["leader-1", "Current Leader"],
+        ["worker-2", "Fresh Worker"],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("Fresh Worker").closest("button")!;
+    fireEvent.contextMenu(sessionButton, { clientX: 100, clientY: 120 });
+
+    fireEvent.click(screen.getByText("Herd to Current Session"));
+    expect(screen.queryByText("Force herd takeover?")).toBeNull();
+
+    await waitFor(() => {
+      expect(mockApi.herdWorkerToLeader).toHaveBeenCalledWith("worker-2", "leader-1", undefined);
+    });
+  });
+
+  it("alerts the user when the herd action fails", async () => {
+    // Browser herd failures must be visible to the user instead of being
+    // swallowed silently by the context-menu action.
+    mockApi.herdWorkerToLeader.mockRejectedValueOnce(new Error("Session is already herded by leader-9"));
+
+    const leaderSession = makeSession("leader-1");
+    const workerSession = makeSession("worker-2");
+    const leaderSdk = makeSdkSession("leader-1", { isOrchestrator: true, sessionNum: 1 });
+    const workerSdk = makeSdkSession("worker-2", { sessionNum: 8 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leaderSession],
+        ["worker-2", workerSession],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+      currentSessionId: "leader-1",
+      sessionNames: new Map([
+        ["leader-1", "Current Leader"],
+        ["worker-2", "Fresh Worker"],
+      ]),
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("Fresh Worker").closest("button")!;
+    fireEvent.contextMenu(sessionButton, { clientX: 100, clientY: 120 });
+    fireEvent.click(screen.getByText("Herd to Current Session"));
+
+    await waitFor(() => {
+      expect(mockAlert).toHaveBeenCalledWith("Session is already herded by leader-9");
     });
   });
 

@@ -24,6 +24,7 @@ import { trafficStats } from "../traffic-stats.js";
 import { generateUniqueSessionName } from "../../src/utils/names.js";
 import { GIT_CMD_TIMEOUT } from "../constants.js";
 import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
+import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import type { RouteContext, OptionalAuthResult } from "./context.js";
 
 /** Extract the caller's session ID from an optional auth result, if available. */
@@ -1390,6 +1391,41 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return c.json({ ok: true, sessionId: id, interruptedBy: callerSessionId });
   };
   api.post("/sessions/:id/interrupt", handleInterrupt);
+
+  // Browser-initiated herd action. Unlike the Takode route, this endpoint is
+  // called by the local web UI and therefore cannot rely on Takode auth
+  // headers; it validates the requested leader session directly instead.
+  api.post("/sessions/:id/herd-to", async (c) => {
+    const workerId = resolveId(c.req.param("id"));
+    if (!workerId) return c.json({ error: "Worker session not found" }, 404);
+
+    const body = await c.req.json().catch(() => ({}));
+    const leaderId = typeof body.leaderSessionId === "string" ? resolveId(body.leaderSessionId) : null;
+    if (!leaderId) return c.json({ error: "Leader session not found" }, 404);
+    if (body.force !== undefined && typeof body.force !== "boolean") {
+      return c.json({ error: "force must be a boolean" }, 400);
+    }
+
+    const leaderInfo = launcher.getSession(leaderId);
+    if (!leaderInfo) return c.json({ error: "Leader session not found" }, 404);
+    if (!leaderInfo.isOrchestrator) return c.json({ error: "Session is not an orchestrator" }, 403);
+
+    const result = launcher.herdSessions(leaderId, [workerId], body.force === true ? { force: true } : undefined);
+    if (result.notFound.length > 0) {
+      return c.json({ error: "Worker session not found" }, 404);
+    }
+    if (result.leaders.length > 0) {
+      return c.json({ error: "Cannot herd a leader session" }, 400);
+    }
+    if (result.conflicts.length > 0) {
+      return c.json({ error: `Session is already herded by ${result.conflicts[0].herder}` }, 409);
+    }
+    if (result.herded.length === 0) {
+      return c.json({ error: "Failed to herd session" }, 500);
+    }
+
+    return c.json(result as HerdSessionsResponse);
+  });
 
   api.post("/sessions/:id/relaunch", async (c) => {
     const id = resolveId(c.req.param("id"));

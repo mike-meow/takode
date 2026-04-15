@@ -31,6 +31,7 @@ import { containerManager } from "./container-manager.js";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
 import { TAKODE_LINK_SYNTAX_INSTRUCTIONS } from "./link-syntax.js";
 import { sessionTag } from "./session-tag.js";
+import type { HerdChangeEvent, HerdSessionsResponse } from "../shared/herd-types.js";
 import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
 
 /** Check if a file exists (async equivalent of existsSync). */
@@ -630,8 +631,8 @@ export class CliLauncher {
   /** Callback to resolve env profile variables by slug (set by server bootstrap). */
   private envResolver: ((slug: string) => Promise<Record<string, string> | null>) | null = null;
 
-  /** Callback when herd relationships change (set by server bootstrap). */
-  onHerdChanged: ((orchId: string) => void) | null = null;
+  /** Callback for herd relationship changes (set by server bootstrap). */
+  onHerdChange: ((event: HerdChangeEvent) => void) | null = null;
 
   // ─── Integer session ID tracking ───────────────────────────────────────────
   private nextSessionNum = 0;
@@ -2578,7 +2579,7 @@ export class CliLauncher {
             worker.herdedBy = undefined;
           }
         }
-        this.onHerdChanged?.(sessionId);
+        this.onHerdChange?.({ type: "membership_changed", leaderId: sessionId });
       }
       this.persistState();
     }
@@ -2594,12 +2595,15 @@ export class CliLauncher {
   herdSessions(
     orchId: string,
     workerIds: string[],
-  ): { herded: string[]; notFound: string[]; conflicts: Array<{ id: string; herder: string }>; leaders: string[] } {
+    options?: { force?: boolean },
+  ): HerdSessionsResponse {
     const herded: string[] = [];
     const notFound: string[] = [];
     const conflicts: Array<{ id: string; herder: string }> = [];
+    const reassigned: Array<{ id: string; fromLeader: string }> = [];
     const leaders: string[] = [];
     const changedLeaders = new Set<string>();
+    const force = options?.force === true;
     for (const wid of workerIds) {
       const worker = this.sessions.get(wid);
       if (!worker) {
@@ -2611,15 +2615,26 @@ export class CliLauncher {
         leaders.push(wid);
         continue;
       }
-      if (worker.herdedBy && worker.herdedBy !== orchId) {
-        conflicts.push({ id: wid, herder: worker.herdedBy });
-        continue;
-      }
-
       const attachedReviewers =
         worker.sessionNum === undefined
           ? []
           : Array.from(this.sessions.values()).filter((session) => !session.archived && session.reviewerOf === worker.sessionNum);
+
+      if (worker.herdedBy && worker.herdedBy !== orchId) {
+        if (!force) {
+          conflicts.push({ id: wid, herder: worker.herdedBy });
+          continue;
+        }
+        this.onHerdChange?.({
+          type: "reassigned",
+          workerId: wid,
+          fromLeaderId: worker.herdedBy,
+          toLeaderId: orchId,
+          reviewerCount: attachedReviewers.length,
+        });
+        reassigned.push({ id: wid, fromLeader: worker.herdedBy });
+        changedLeaders.add(worker.herdedBy);
+      }
 
       worker.herdedBy = orchId;
       changedLeaders.add(orchId);
@@ -2637,10 +2652,10 @@ export class CliLauncher {
     if (herded.length > 0) {
       this.persistState();
       for (const leaderId of changedLeaders) {
-        this.onHerdChanged?.(leaderId);
+        this.onHerdChange?.({ type: "membership_changed", leaderId });
       }
     }
-    return { herded, notFound, conflicts, leaders };
+    return { herded, notFound, conflicts, reassigned, leaders };
   }
 
   /**
@@ -2662,7 +2677,7 @@ export class CliLauncher {
       reviewer.herdedBy = undefined;
     }
     this.persistState();
-    this.onHerdChanged?.(orchId);
+    this.onHerdChange?.({ type: "membership_changed", leaderId: orchId });
     return true;
   }
 

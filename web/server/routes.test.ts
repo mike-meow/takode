@@ -221,7 +221,7 @@ function createMockLauncher() {
     getOrchestratorGuardrails: vi.fn(() => "# Takode — Cross-Session Orchestration\n..."),
     getPort: vi.fn(() => 3456),
     verifySessionAuthToken: vi.fn(() => true),
-    herdSessions: vi.fn(() => ({ herded: [], notFound: [], conflicts: [] })),
+    herdSessions: vi.fn(() => ({ herded: [], notFound: [], conflicts: [], reassigned: [], leaders: [] })),
     unherdSession: vi.fn(() => false),
     getHerdedSessions: vi.fn(() => []),
     // resolveSessionId: pass-through for exact UUIDs (used by resolveId helper in routes)
@@ -7114,6 +7114,59 @@ describe("Takode server-authoritative auth", () => {
     });
     expect(unherdOk.status).toBe(200);
     expect(launcher.unherdSession).toHaveBeenCalledWith("orch-1", "worker-1");
+  });
+
+  it("passes force through herd requests and returns reassignment details", async () => {
+    // Takode herd should return a stable response shape and preserve the
+    // explicit force signal instead of silently upgrading ordinary herd requests.
+    setupTakodeSessions();
+    launcher.herdSessions.mockReturnValue({
+      herded: ["worker-1"],
+      notFound: [],
+      conflicts: [],
+      reassigned: [{ id: "worker-1", fromLeader: "orch-9" }],
+      leaders: [],
+    });
+
+    const res = await app.request("/api/sessions/orch-1/herd", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ workerIds: ["worker-1"], force: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.herdSessions).toHaveBeenCalledWith("orch-1", ["worker-1"], { force: true });
+    await expect(res.json()).resolves.toMatchObject({
+      herded: ["worker-1"],
+      reassigned: [{ id: "worker-1", fromLeader: "orch-9" }],
+    });
+  });
+
+  it("allows the browser UI to herd a worker through the local herd-to route", async () => {
+    // The web UI cannot call Takode-authenticated routes, so it uses a local
+    // browser-safe herd endpoint that still preserves herd semantics.
+    setupTakodeSessions();
+    launcher.herdSessions.mockReturnValue({
+      herded: ["worker-2"],
+      notFound: [],
+      conflicts: [],
+      reassigned: [],
+      leaders: [],
+    });
+
+    const res = await app.request("/api/sessions/worker-2/herd-to", {
+      method: "POST",
+      body: JSON.stringify({ leaderSessionId: "orch-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(launcher.herdSessions).toHaveBeenCalledWith("orch-1", ["worker-2"], undefined);
+    await expect(res.json()).resolves.toMatchObject({
+      herded: ["worker-2"],
+      conflicts: [],
+      reassigned: [],
+      leaders: [],
+    });
   });
 
   it("preserves repoRoot metadata when interrupting a herded session", async () => {

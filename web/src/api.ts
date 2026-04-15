@@ -1,5 +1,6 @@
 import type { SdkSessionInfo, TreeGroup } from "./types.js";
 import { encodeLogQuery, type LogQuery, type LogQueryResponse } from "../shared/logging.js";
+import type { HerdSessionsResponse } from "../shared/herd-types.js";
 
 const BASE = "/api";
 
@@ -679,8 +680,17 @@ export const api = {
     }),
 
   // Cat herding (orchestrator→worker relationships)
-  herdSessions: (orchId: string, workerIds: string[]) =>
-    post<{ herded: string[]; notFound: string[] }>(`/sessions/${encodeURIComponent(orchId)}/herd`, { workerIds }),
+  herdSessions: (orchId: string, workerIds: string[], opts?: { force?: boolean }) =>
+    post<HerdSessionsResponse>(`/sessions/${encodeURIComponent(orchId)}/herd`, {
+      workerIds,
+      ...(opts?.force ? { force: true } : {}),
+    }),
+
+  herdWorkerToLeader: (workerId: string, leaderSessionId: string, opts?: { force?: boolean }) =>
+    post<HerdSessionsResponse>(`/sessions/${encodeURIComponent(workerId)}/herd-to`, {
+      leaderSessionId,
+      ...(opts?.force ? { force: true } : {}),
+    }),
 
   unherdSession: (orchId: string, workerId: string) =>
     del<{ ok: boolean; removed: boolean }>(

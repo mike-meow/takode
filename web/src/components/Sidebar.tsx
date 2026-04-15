@@ -568,6 +568,23 @@ export function Sidebar() {
     [sdkSessions],
   );
 
+  const doHerdToCurrentSession = useCallback(
+    async (workerId: string, force = false) => {
+      const leaderId = useStore.getState().currentSessionId;
+      if (!leaderId) return;
+      try {
+        const result = await api.herdWorkerToLeader(workerId, leaderId, force ? { force: true } : undefined);
+        if (result.herded.length === 0) {
+          throw new Error("Failed to herd session");
+        }
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : "Failed to herd session");
+        return;
+      }
+    },
+    [],
+  );
+
   const handleUnarchiveSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     try {
@@ -1491,6 +1508,15 @@ export function Sidebar() {
           const isExited = sdk?.state === "exited";
           const attention = sessionAttention.get(contextMenu.sessionId);
           const backendType = sessionInfo?.backendType || sdk?.backendType || "claude";
+          const currentLeader = currentSessionId ? sdkSessions.find((s) => s.sessionId === currentSessionId) : undefined;
+          const canHerdToCurrentSession =
+            !isArchived &&
+            !isExited &&
+            !!currentSessionId &&
+            currentSessionId !== contextMenu.sessionId &&
+            currentLeader?.isOrchestrator === true &&
+            sdk?.isOrchestrator !== true;
+          const needsForceHerd = canHerdToCurrentSession && !!sdk?.herdedBy && sdk.herdedBy !== currentSessionId;
 
           // Count non-archived herded workers for "Archive Group" option
           const herdedWorkers =
@@ -1581,6 +1607,25 @@ export function Sidebar() {
                 },
             // "Move to..." submenu (tree view only)
             ...buildMoveToSubmenu(sidebarViewMode, treeGroups, treeAssignments, contextMenu.sessionId),
+            ...(canHerdToCurrentSession
+              ? [
+                  {
+                    label: needsForceHerd ? "Force Herd to Current Session" : "Herd to Current Session",
+                    onClick: () => {
+                      void doHerdToCurrentSession(contextMenu.sessionId, needsForceHerd);
+                    },
+                    ...(needsForceHerd
+                      ? {
+                          confirm: {
+                            title: "Force herd takeover?",
+                            description: "This will move the session out of its current leader's herd into your current leader session.",
+                            confirmLabel: "Force Herd",
+                          },
+                        }
+                      : {}),
+                  },
+                ]
+              : []),
             isArchived
               ? {
                   label: "Unarchive",
