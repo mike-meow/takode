@@ -702,3 +702,47 @@ export function getBranchStatus(repoRoot: string, branchName: string): { ahead: 
   const [behind, ahead] = raw.split(/\s+/).map(Number);
   return { ahead: ahead || 0, behind: behind || 0 };
 }
+
+// ─── Archived branch refs ─────────────────────────────────────────────────────
+// Store worktree branch tips as lightweight refs under refs/companion/archived/
+// so they don't appear in `git branch` output but can be restored on unarchive.
+
+const ARCHIVED_REF_PREFIX = "refs/companion/archived";
+
+/** Save a branch tip as an archived ref, then delete the branch. */
+export function archiveBranch(repoRoot: string, branchName: string): boolean {
+  const commitHash = gitSafe(`rev-parse refs/heads/${branchName}`, repoRoot);
+  if (!commitHash) return false;
+  const ref = `${ARCHIVED_REF_PREFIX}/${branchName}`;
+  gitSafe(`update-ref ${ref} ${commitHash}`, repoRoot);
+  gitSafe(`branch -D ${branchName}`, repoRoot);
+  return true;
+}
+
+/** Async version of archiveBranch. */
+export async function archiveBranchAsync(repoRoot: string, branchName: string): Promise<boolean> {
+  const commitHash = await gitSafeAsync(`rev-parse refs/heads/${branchName}`, repoRoot);
+  if (!commitHash) return false;
+  const ref = `${ARCHIVED_REF_PREFIX}/${branchName}`;
+  await gitSafeAsync(`update-ref ${ref} ${commitHash}`, repoRoot);
+  await gitSafeAsync(`branch -D ${branchName}`, repoRoot);
+  return true;
+}
+
+/** Restore an archived ref as a branch. Returns the commit hash, or null if no archived ref exists. */
+export async function restoreArchivedBranchAsync(repoRoot: string, branchName: string): Promise<string | null> {
+  const ref = `${ARCHIVED_REF_PREFIX}/${branchName}`;
+  const commitHash = await gitSafeAsync(`rev-parse --verify ${ref}`, repoRoot);
+  if (!commitHash) return null;
+  // Create the branch at the archived commit
+  await gitAsync(`branch ${branchName} ${commitHash}`, repoRoot);
+  // Clean up the archived ref
+  await gitSafeAsync(`update-ref -d ${ref}`, repoRoot);
+  return commitHash;
+}
+
+/** Delete an archived ref (cleanup on permanent session delete). */
+export function deleteArchivedRef(repoRoot: string, branchName: string): void {
+  const ref = `${ARCHIVED_REF_PREFIX}/${branchName}`;
+  gitSafe(`update-ref -d ${ref}`, repoRoot);
+}

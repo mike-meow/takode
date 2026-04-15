@@ -281,10 +281,10 @@ describe("recreateWorktreeIfMissing", () => {
     expect(result.error).toContain("Repository not found");
     expect(result.error).toContain("Please clone it first");
   });
-  it("restores original actualBranch when it still exists in the repo (q-329)", async () => {
+  it("restores worktree from archived ref when it exists (q-329)", async () => {
     // When a worktree session is unarchived, recreateWorktreeIfMissing should
-    // reattach to the original -wt- branch (preserved during archive) instead
-    // of creating a fresh random branch.
+    // restore the branch from its archived ref (refs/companion/archived/) and
+    // create a worktree on it, preserving committed work.
     const info = {
       sessionId: "test-session",
       cwd: "/nonexistent/worktree/jiayi-wt-8153",
@@ -305,14 +305,15 @@ describe("recreateWorktreeIfMissing", () => {
       wsBridge: { markWorktree } as any,
     };
 
-    // Mock git operations: repo exists, original branch exists
+    // Mock: repo exists, archived ref exists and is restored
     const getRepoInfoSpy = vi.spyOn(gitUtils, "getRepoInfoAsync").mockResolvedValue({
       repoRoot: "/tmp/test-repo",
+      repoName: "test-repo",
       currentBranch: "jiayi",
       defaultBranch: "main",
       isWorktree: false,
     });
-    const gitSafeSpy = vi.spyOn(gitUtils, "gitSafeAsync").mockResolvedValue("abc123");
+    const restoreRefSpy = vi.spyOn(gitUtils, "restoreArchivedBranchAsync").mockResolvedValue("abc123");
     const gitAsyncSpy = vi.spyOn(gitUtils, "gitAsync").mockResolvedValue("");
 
     try {
@@ -321,42 +322,31 @@ describe("recreateWorktreeIfMissing", () => {
       expect(result.recreated).toBe(true);
       expect(result.error).toBeUndefined();
 
-      // Should have checked if the original branch exists
-      expect(gitSafeSpy).toHaveBeenCalledWith(
-        "rev-parse --verify refs/heads/jiayi-wt-8153",
-        "/tmp/test-repo",
-      );
+      // Should have tried to restore the archived ref
+      expect(restoreRefSpy).toHaveBeenCalledWith("/tmp/test-repo", "jiayi-wt-8153");
 
-      // Should have created worktree on the original branch (no -b flag)
-      expect(gitAsyncSpy).toHaveBeenCalledWith(
-        expect.stringContaining("worktree add"),
-        "/tmp/test-repo",
-      );
+      // Should have created worktree on the restored branch (no -b flag)
       const worktreeAddCmd = gitAsyncSpy.mock.calls.find(
         ([cmd]) => typeof cmd === "string" && cmd.includes("worktree add"),
       );
       expect(worktreeAddCmd?.[0]).toContain("jiayi-wt-8153");
-      // Should NOT have a -b flag (reattaching to existing branch)
       expect(worktreeAddCmd?.[0]).not.toContain("-b");
 
-      // Should have updated launcher with the original branch, not a new one
+      // Should have updated launcher with the original branch
       expect(updateWorktree).toHaveBeenCalledWith("test-session", {
         cwd: expect.any(String),
         actualBranch: "jiayi-wt-8153",
       });
-
-      // Should NOT have called ensureWorktreeAsync (the fallback path)
-      // -- ensureWorktreeAsync would call gitAsync with "-b" to create a new branch
     } finally {
       getRepoInfoSpy.mockRestore();
-      gitSafeSpy.mockRestore();
+      restoreRefSpy.mockRestore();
       gitAsyncSpy.mockRestore();
     }
   });
 
-  it("falls back to fresh branch when actualBranch was deleted (q-329)", async () => {
-    // If the original branch was manually deleted (e.g., git branch -D),
-    // recreateWorktreeIfMissing should fall back to creating a fresh worktree.
+  it("falls back to fresh branch when no archived ref exists (q-329)", async () => {
+    // If no archived ref exists (branch was manually deleted, or session was
+    // archived before the ref feature existed), fall back to fresh worktree.
     const info = {
       sessionId: "test-session",
       cwd: "/nonexistent/worktree/jiayi-wt-9999",
@@ -374,15 +364,15 @@ describe("recreateWorktreeIfMissing", () => {
       wsBridge: { markWorktree: vi.fn() } as any,
     };
 
-    // Mock: repo exists, but original branch does NOT exist
+    // Mock: repo exists, but no archived ref
     const getRepoInfoSpy = vi.spyOn(gitUtils, "getRepoInfoAsync").mockResolvedValue({
       repoRoot: "/tmp/test-repo",
+      repoName: "test-repo",
       currentBranch: "jiayi",
       defaultBranch: "main",
       isWorktree: false,
     });
-    const gitSafeSpy = vi.spyOn(gitUtils, "gitSafeAsync").mockResolvedValue(null);
-    // ensureWorktreeAsync is the fallback -- mock it
+    const restoreRefSpy = vi.spyOn(gitUtils, "restoreArchivedBranchAsync").mockResolvedValue(null);
     const ensureWtSpy = vi.spyOn(gitUtils, "ensureWorktreeAsync").mockResolvedValue({
       worktreePath: "/tmp/worktrees/repo/jiayi-wt-1234",
       branch: "jiayi",
@@ -395,11 +385,8 @@ describe("recreateWorktreeIfMissing", () => {
 
       expect(result.recreated).toBe(true);
 
-      // Should have checked for the original branch and found it missing
-      expect(gitSafeSpy).toHaveBeenCalledWith(
-        "rev-parse --verify refs/heads/jiayi-wt-9999",
-        "/tmp/test-repo",
-      );
+      // Should have tried the archived ref and found nothing
+      expect(restoreRefSpy).toHaveBeenCalledWith("/tmp/test-repo", "jiayi-wt-9999");
 
       // Should have fallen back to ensureWorktreeAsync
       expect(ensureWtSpy).toHaveBeenCalledWith("/tmp/test-repo", "jiayi", {
@@ -415,7 +402,7 @@ describe("recreateWorktreeIfMissing", () => {
       });
     } finally {
       getRepoInfoSpy.mockRestore();
-      gitSafeSpy.mockRestore();
+      restoreRefSpy.mockRestore();
       ensureWtSpy.mockRestore();
     }
   });

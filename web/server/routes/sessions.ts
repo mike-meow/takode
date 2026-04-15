@@ -56,7 +56,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
   function cleanupWorktree(
     sessionId: string,
     force?: boolean,
-    options?: { preserveBranch?: boolean },
+    options?: { archiveBranch?: boolean },
   ): { cleaned?: boolean; dirty?: boolean; path?: string } | undefined {
     const mapping = worktreeTracker.getBySession(sessionId);
     if (!mapping) return undefined;
@@ -73,16 +73,28 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return { cleaned: false, dirty: true, path: mapping.worktreePath };
     }
 
-    // Delete companion-managed branch if it differs from the user-selected branch.
-    // Skip branch deletion when preserveBranch is set (archive path) so committed
-    // work survives and the original branch can be restored on unarchive (q-329).
-    const branchToDelete =
-      !options?.preserveBranch && mapping.actualBranch && mapping.actualBranch !== mapping.branch
-        ? mapping.actualBranch
-        : undefined;
+    const managedBranch =
+      mapping.actualBranch && mapping.actualBranch !== mapping.branch ? mapping.actualBranch : undefined;
+
+    // Archive path (q-329): save the branch tip as a lightweight ref under
+    // refs/companion/archived/ so it doesn't appear in `git branch` output
+    // but can be restored on unarchive. Then delete the branch normally.
+    if (options?.archiveBranch && managedBranch) {
+      gitUtils.archiveBranch(mapping.repoRoot, managedBranch);
+      // archiveBranch already deleted the branch, so skip branchToDelete
+      const result = gitUtils.removeWorktree(mapping.repoRoot, mapping.worktreePath, {
+        force: dirty,
+      });
+      if (result.removed) {
+        worktreeTracker.removeBySession(sessionId);
+      }
+      return { cleaned: result.removed, path: mapping.worktreePath };
+    }
+
+    // Permanent delete: remove worktree and delete the branch
     const result = gitUtils.removeWorktree(mapping.repoRoot, mapping.worktreePath, {
       force: dirty,
-      branchToDelete,
+      branchToDelete: managedBranch,
     });
     if (result.removed) {
       worktreeTracker.removeBySession(sessionId);
@@ -1763,6 +1775,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
     containerManager.removeContainer(id);
 
     const worktreeResult = cleanupWorktree(id, true);
+    // Clean up any stale archived ref from a previous archive cycle (q-329)
+    if (sessionInfo?.isWorktree && sessionInfo.repoRoot && sessionInfo.actualBranch) {
+      gitUtils.deleteArchivedRef(sessionInfo.repoRoot, sessionInfo.actualBranch);
+    }
     prPoller?.unwatch(id);
     launcher.removeSession(id);
     // Broadcast deletion to all browsers BEFORE closing the session sockets.
@@ -1795,10 +1811,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // Stop PR polling for this session
     prPoller?.unwatch(id);
 
-    // Force-delete the worktree directory on archive but preserve the branch.
-    // The directory is generated/derived content; the branch preserves committed
-    // changes and can be restored on unarchive (q-329).
-    const worktreeResult = cleanupWorktree(id, true, { preserveBranch: true });
+    // Force-delete the worktree directory on archive. The branch tip is saved
+    // as an archived ref (refs/companion/archived/) so committed work can be
+    // restored on unarchive without polluting the active branch list (q-329).
+    const worktreeResult = cleanupWorktree(id, true, { archiveBranch: true });
     launcher.setArchived(id, true);
     await sessionStore.setArchived(id, true);
 

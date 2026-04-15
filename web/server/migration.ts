@@ -492,16 +492,13 @@ export async function recreateWorktreeIfMissing(
 
   const oldCwd = info.cwd;
 
-  // Try to restore the original -wt- branch if it survived archiving (q-329).
-  // Archive now preserves the branch (only removes the worktree directory), so
-  // we can reattach to it directly instead of creating a fresh random branch.
+  // Try to restore the original -wt- branch from its archived ref (q-329).
+  // Archive saves branch tips as refs/companion/archived/<branch> so they
+  // don't pollute `git branch` output but can be restored here.
   const actualBranch = info.actualBranch;
   if (actualBranch && actualBranch !== info.branch) {
-    const branchExists = await gitUtils.gitSafeAsync(
-      `rev-parse --verify refs/heads/${actualBranch}`,
-      repoInfo.repoRoot,
-    );
-    if (branchExists !== null) {
+    const restoredCommit = await gitUtils.restoreArchivedBranchAsync(repoInfo.repoRoot, actualBranch);
+    if (restoredCommit) {
       const targetPath = gitUtils.worktreeDir(basename(repoInfo.repoRoot), actualBranch);
       try {
         await gitUtils.gitAsync(`worktree add "${targetPath}" "${actualBranch}"`, repoInfo.repoRoot);
@@ -518,21 +515,20 @@ export async function recreateWorktreeIfMissing(
         });
         deps.wsBridge.markWorktree(sessionId, info.repoRoot, targetPath, repoInfo.defaultBranch, info.branch);
 
-        console.log(`[migration] Restored worktree on original branch ${actualBranch} for session ${sessionId}: ${targetPath}`);
+        console.log(`[migration] Restored worktree from archived ref ${actualBranch} for session ${sessionId}: ${targetPath}`);
         return { recreated: true };
       } catch (err) {
-        // Branch exists but worktree creation failed (e.g., branch already
-        // checked out in another worktree, corrupted repo). Fall through to
-        // the fresh-branch fallback below.
+        // Branch restored from ref but worktree creation failed (e.g., branch
+        // already checked out elsewhere). Fall through to the fresh-branch fallback.
         console.warn(
-          `[migration] Failed to restore worktree on original branch ${actualBranch} for session ${sessionId}, falling back to fresh branch:`,
+          `[migration] Failed to create worktree on restored branch ${actualBranch} for session ${sessionId}, falling back to fresh branch:`,
           err,
         );
       }
     }
   }
 
-  // Fallback: original branch was deleted or doesn't exist -- create a fresh worktree.
+  // Fallback: no archived ref exists -- create a fresh worktree from the base branch.
   const result = await gitUtils.ensureWorktreeAsync(repoInfo.repoRoot, info.branch, {
     baseBranch: repoInfo.defaultBranch,
     createBranch: false,
