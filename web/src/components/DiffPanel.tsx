@@ -196,9 +196,7 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (serverBaseBranch !== baseBranch) {
       setBaseBranch(serverBaseBranch);
-      if (serverBaseBranch && !/^[0-9a-f]{7,40}$/.test(serverBaseBranch)) {
-        setSelectedBranch(serverBaseBranch);
-      }
+      setSelectedBranch(serverBaseBranch && !/^[0-9a-f]{7,40}$/.test(serverBaseBranch) ? serverBaseBranch : null);
       fetchedFilesRef.current.clear();
       contentFetchedRef.current.clear();
       setFileStats(new Map());

@@ -1108,6 +1108,21 @@ describe("CLI handlers", () => {
     expect(state.diff_base_branch).toBe("jiayi");
   });
 
+  it("markWorktree: preserves an explicit default diff base selection", () => {
+    // Restart path: an explicit "use default" selection persists as empty-string
+    // plus the explicit flag, and worktree prepopulation must not overwrite it.
+    const session = bridge.getOrCreateSession("s1");
+    session.state.diff_base_branch = "";
+    session.state.diff_base_branch_explicit = true;
+
+    bridge.markWorktree("s1", "/repo", "/tmp/wt", "jiayi");
+
+    const state = bridge.getSession("s1")!.state;
+    expect(state.git_default_branch).toBe("jiayi");
+    expect(state.diff_base_branch).toBe("");
+    expect(state.diff_base_branch_explicit).toBe(true);
+  });
+
   it("setDiffBaseBranch updates session state, triggers recomputation, and broadcasts", async () => {
     // Mock git commands for the refreshGitInfo + computeDiffStats calls
     mockExecSync.mockImplementation((cmd: string) => {
@@ -1140,6 +1155,7 @@ describe("CLI handlers", () => {
 
     const state = bridge.getSession("s1")!.state;
     expect(state.diff_base_branch).toBe("feature-branch");
+    expect(state.diff_base_branch_explicit).toBe(true);
     // Should have recomputed diff stats
     expect(state.total_lines_added).toBe(10);
     expect(state.total_lines_removed).toBe(5);
@@ -1204,6 +1220,51 @@ describe("CLI handlers", () => {
           total_lines_added: 42,
           total_lines_removed: 17,
         }),
+      }),
+    );
+  });
+
+  it("setDiffBaseBranch: marks an explicit default selection and persists the empty branch", async () => {
+    // The real UI setter path sends empty-string when the user explicitly chooses
+    // the repo default branch. That selection must become authoritative state.
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
+      if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
+      if (cmd.includes("--git-common-dir")) return "/home/user/companion/.git\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("merge-base")) return "abc123\n";
+      if (cmd.includes("diff --numstat")) return "0\t0\tfile.ts\n";
+      return "";
+    });
+
+    bridge.markWorktree("s1", "/home/user/companion", "/tmp/wt", "jiayi");
+    const session = bridge.getSession("s1")!;
+    (session as any).backendSocket = { send: vi.fn() };
+    const browserWs = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browserWs, "s1");
+    const saveSpy = vi.spyOn(store, "save");
+    browserWs.send.mockClear();
+
+    const result = bridge.setDiffBaseBranch("s1", "");
+    expect(result).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(saveSpy).toHaveBeenCalled();
+    });
+
+    const state = bridge.getSession("s1")!.state;
+    expect(state.diff_base_branch).toBe("");
+    expect(state.diff_base_branch_explicit).toBe(true);
+
+    const saved = saveSpy.mock.calls.at(-1)?.[0];
+    expect(saved?.state.diff_base_branch).toBe("");
+    expect(saved?.state.diff_base_branch_explicit).toBe(true);
+
+    const messages = browserWs.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({ diff_base_branch: "" }),
       }),
     );
   });
@@ -1298,6 +1359,85 @@ describe("CLI handlers", () => {
     await vi.waitFor(() => {
       expect(session.state.git_default_branch).toBe("origin/jiayi");
       expect(session.state.diff_base_branch).toBe("origin/jiayi");
+      expect(session.state.git_ahead).toBe(3);
+      expect(session.state.git_behind).toBe(0);
+    });
+  });
+
+  it("handleCLIMessage: system.init preserves an explicit non-worktree diff base branch", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("--git-dir")) return ".git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("jiayi@{upstream}")) return "origin/jiayi\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("main...HEAD")) return "0\t3\n";
+      if (cmd.includes("for-each-ref")) return "jiayi\n";
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) return "refs/remotes/origin/main\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("origin/jiayi...HEAD")) return "0\t0\n";
+      if (cmd.includes("diff --numstat")) return "";
+      throw new Error(`unknown git cmd: ${cmd}`);
+    });
+
+    const session = bridge.getOrCreateSession("s1");
+    session.state.cwd = "/repo";
+    session.state.diff_base_branch = "main";
+    session.state.diff_base_branch_explicit = true;
+    (session as any).backendSocket = { send: vi.fn() };
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/repo" }));
+
+    await vi.waitFor(() => {
+      expect(session.state.git_default_branch).toBe("origin/jiayi");
+      expect(session.state.diff_base_branch).toBe("main");
+      expect(session.state.diff_base_branch_explicit).toBe(true);
+      expect(session.state.git_ahead).toBe(3);
+      expect(session.state.git_behind).toBe(0);
+    });
+  });
+
+  it("handleCLIMessage: transient git failure does not erase an explicit diff base branch", async () => {
+    // A transient refresh failure should not rewrite explicit branch selections.
+    mockExecSync.mockImplementation(() => {
+      throw new Error("git unavailable");
+    });
+
+    const session = bridge.getOrCreateSession("s1");
+    session.state.cwd = "/repo";
+    session.state.diff_base_branch = "main";
+    session.state.diff_base_branch_explicit = true;
+    (session as any).backendSocket = { send: vi.fn() };
+
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/repo" }));
+
+    await vi.waitFor(() => {
+      expect(session.state.git_branch).toBe("");
+      expect(session.state.diff_base_branch).toBe("main");
+      expect(session.state.diff_base_branch_explicit).toBe(true);
+    });
+
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi\n";
+      if (cmd.includes("--git-dir")) return ".git\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("jiayi@{upstream}")) return "origin/jiayi\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("main...HEAD")) return "0\t3\n";
+      if (cmd.includes("for-each-ref")) return "jiayi\n";
+      if (cmd.includes("symbolic-ref refs/remotes/origin/HEAD")) return "refs/remotes/origin/main\n";
+      if (cmd.includes("--left-right --count") && cmd.includes("origin/jiayi...HEAD")) return "0\t0\n";
+      if (cmd.includes("diff --numstat")) return "";
+      throw new Error(`unknown git cmd: ${cmd}`);
+    });
+
+    bridge.handleCLIMessage(cli, makeInitMsg({ cwd: "/repo" }));
+
+    await vi.waitFor(() => {
+      expect(session.state.git_default_branch).toBe("origin/jiayi");
+      expect(session.state.diff_base_branch).toBe("main");
+      expect(session.state.diff_base_branch_explicit).toBe(true);
       expect(session.state.git_ahead).toBe(3);
       expect(session.state.git_behind).toBe(0);
     });
@@ -5068,6 +5208,65 @@ describe("Persistence", () => {
     expect(previewMsg.previews[0].tool_use_id).toBe("cmd_restore");
     expect(previewMsg.previews[0].is_error).toBe(true);
     expect(previewMsg.previews[0].content).toContain("backend was disconnected");
+  });
+
+  it("restoreFromDisk: preserves an explicit default diff base selection across worktree refresh", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
+      if (cmd.includes("rev-parse HEAD")) return "head-worktree\n";
+      if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
+      if (cmd.includes("--git-common-dir")) return "/home/user/companion/.git\n";
+      if (cmd.includes("rev-parse --verify refs/heads/jiayi")) return "jiayi-head\n";
+      if (cmd.includes("merge-base")) return "merge-base-sha\n";
+      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("diff --numstat")) return "3\t1\tweb/src/app.ts\n";
+      return "";
+    });
+
+    store.saveSync({
+      id: "persisted-diff-base",
+      state: {
+        session_id: "persisted-diff-base",
+        backend_type: "claude",
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/tmp/wt",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 0,
+        context_used_percent: 0,
+        is_compacting: false,
+        git_branch: "jiayi-wt-1234",
+        git_default_branch: "jiayi",
+        diff_base_branch: "",
+        diff_base_branch_explicit: true,
+        diff_base_start_sha: "",
+        is_worktree: true,
+        is_containerized: false,
+        repo_root: "/home/user/companion",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [],
+      pendingMessages: [],
+      pendingPermissions: [],
+    } as any);
+
+    await store.flushAll();
+    await bridge.restoreFromDisk();
+
+    const restoredState = await bridge.refreshWorktreeGitStateForSnapshot("persisted-diff-base");
+    expect(restoredState).toBeTruthy();
+    expect(restoredState!.git_default_branch).toBe("jiayi");
+    expect(restoredState!.diff_base_branch).toBe("");
+    expect(restoredState!.diff_base_branch_explicit).toBe(true);
   });
 
   it("persistSession: called after state changes (via store.save)", async () => {

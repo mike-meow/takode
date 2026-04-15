@@ -528,6 +528,7 @@ function makeDefaultState(sessionId: string, backendType: BackendType = "claude"
     git_head_sha: "",
     git_default_branch: "",
     diff_base_branch: "",
+    diff_base_branch_explicit: false,
     diff_base_start_sha: "",
     is_worktree: false,
     is_containerized: false,
@@ -611,19 +612,21 @@ async function resolveGitInfo(state: SessionState): Promise<void> {
     // tracking ref (e.g. origin/jiayi), not repo default (often main).
     if (upstreamRef) {
       state.git_default_branch = upstreamRef;
-      if (!state.diff_base_branch) {
-        state.diff_base_branch = upstreamRef;
-      } else {
-        // Migrate legacy sessions that auto-defaulted to repo default branch.
-        const legacyDefault = await getLegacyDefaultBranch();
-        if (state.diff_base_branch === legacyDefault) {
+      if (!state.diff_base_branch_explicit) {
+        if (!state.diff_base_branch) {
           state.diff_base_branch = upstreamRef;
+        } else {
+          // Migrate legacy sessions that auto-defaulted to repo default branch.
+          const legacyDefault = await getLegacyDefaultBranch();
+          if (state.diff_base_branch === legacyDefault) {
+            state.diff_base_branch = upstreamRef;
+          }
         }
       }
     } else {
       const fallbackBase = await getLegacyDefaultBranch();
       state.git_default_branch = fallbackBase;
-      if (!state.diff_base_branch && state.git_branch) {
+      if (!state.diff_base_branch_explicit && !state.diff_base_branch && state.git_branch) {
         state.diff_base_branch = fallbackBase;
       }
     }
@@ -650,9 +653,12 @@ async function resolveGitInfo(state: SessionState): Promise<void> {
     }
   } catch {
     // Not a git repo or git not available
+    const preservedDiffBaseBranch = state.diff_base_branch;
+    const preservedDiffBaseExplicit = state.diff_base_branch_explicit;
     state.git_branch = "";
     state.git_default_branch = "";
-    state.diff_base_branch = "";
+    state.diff_base_branch = preservedDiffBaseBranch;
+    state.diff_base_branch_explicit = preservedDiffBaseExplicit;
     state.git_head_sha = "";
     state.diff_base_start_sha = "";
     state.is_worktree = false;
@@ -1071,7 +1077,7 @@ export class WsBridge {
     }
     // Set diff_base_branch: prefer explicit parent branch, fall back to defaultBranch
     const diffBase = diffBaseBranch || defaultBranch;
-    if (diffBase && !session.state.diff_base_branch) {
+    if (diffBase && !session.state.diff_base_branch_explicit && !session.state.diff_base_branch) {
       session.state.diff_base_branch = diffBase;
     }
   }
@@ -1091,6 +1097,7 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     session.state.diff_base_branch = branch;
+    session.state.diff_base_branch_explicit = true;
     this.broadcastToBrowsers(session, {
       type: "session_update",
       session: { diff_base_branch: branch },

@@ -693,6 +693,8 @@ export interface SessionState {
   git_head_sha?: string;
   git_default_branch?: string;
   diff_base_branch?: string;
+  /** True when diff_base_branch came from an explicit user selection in the UI. */
+  diff_base_branch_explicit?: boolean;
   /** Stable anchor commit for "agent-made diff" in worktree sessions. */
   diff_base_start_sha?: string;
   is_worktree: boolean;

@@ -337,6 +337,71 @@ describe("DiffPanel", () => {
     expect(optionValues).toContain("origin/jiayi");
   });
 
+  it("rehydrates an explicit default diff-base selection from server state", async () => {
+    mockApi.listBranches.mockResolvedValue([{ name: "main", isCurrent: true, isRemote: false }]);
+    mockApi.getFileDiff.mockResolvedValue({
+      path: "/repo/src/app.ts",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      baseBranch: "main",
+    });
+
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "", git_default_branch: "main" }]]),
+      changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
+      diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
+    });
+
+    render(<DiffPanel sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "main");
+    });
+
+    const [branchSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(branchSelect.value).toBe("");
+    expect(branchSelect.options[0]?.textContent).toContain("vs main (default)");
+  });
+
+  it("updates the branch selector when server state switches back to explicit default after mount", async () => {
+    // Authoritative reconnect/update path: the server can change from an explicit
+    // branch back to the explicit default, and the selector must clear its stale
+    // branch value while diff fetches fall back to the restored default branch.
+    mockApi.listBranches.mockResolvedValue([{ name: "develop" }, { name: "main" }]);
+    mockApi.getFileDiff.mockResolvedValue({
+      path: "/repo/src/app.ts",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      baseBranch: "develop",
+    });
+
+    resetStore({
+      sessions: new Map([["s1", { cwd: "/repo", diff_base_branch: "develop", git_default_branch: "main" }]]),
+      changedFiles: new Map([["s1", new Set(["/repo/src/app.ts"])]]),
+      diffPanelSelectedFile: new Map([["s1", "/repo/src/app.ts"]]),
+    });
+
+    const { rerender } = render(<DiffPanel sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "develop");
+    });
+
+    storeState.sessions = new Map([["s1", { cwd: "/repo", diff_base_branch: "", git_default_branch: "main" }]]);
+    mockApi.getFileDiff.mockResolvedValue({
+      path: "/repo/src/app.ts",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      baseBranch: "main",
+    });
+    rerender(<DiffPanel sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(mockApi.getFileDiff).toHaveBeenCalledWith("/repo/src/app.ts", "main");
+    });
+
+    const [branchSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(branchSelect.value).toBe("");
+    expect(branchSelect.options[0]?.textContent).toContain("vs main (default)");
+  });
+
   it("displays changed files in worktree sessions where repo_root differs from cwd", () => {
     // In a worktree, repo_root points to the main repo (e.g. /main/companion) but
     // the session cwd is the worktree directory. Files under the worktree should appear.
