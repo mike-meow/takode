@@ -77,6 +77,7 @@ export function QuestDetailPanel() {
     images: QuestImage[];
   } | null>(null);
   const editFeedbackTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [confirmDeleteFeedback, setConfirmDeleteFeedback] = useState<{ questId: string; index: number } | null>(null);
 
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export function QuestDetailPanel() {
     setFeedbackImages([]);
     setFeedbackSubmitting(false);
     setEditingFeedback(null);
+    setConfirmDeleteFeedback(null);
     setError("");
     setConfirmDeleteId(null);
     setAssignPickerForId(null);
@@ -121,13 +123,21 @@ export function QuestDetailPanel() {
     useStore.getState().closeQuestOverlay();
   }, []);
 
-  // Escape key: lightbox > assign picker > edit cancel > close panel
+  // Escape key: lightbox > assign picker > inline feedback actions > edit cancel > close panel
   useEffect(() => {
     if (!questOverlayId) return;
     function handleKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (lightboxSrc) return; // Lightbox has its own Escape handler
       if (assignPickerForId) return; // Assign picker has its own Escape handler
+      if (confirmDeleteFeedback) {
+        setConfirmDeleteFeedback(null);
+        return;
+      }
+      if (editingFeedback) {
+        setEditingFeedback(null);
+        return;
+      }
       if (editingId) {
         cancelEdit();
         return;
@@ -136,7 +146,7 @@ export function QuestDetailPanel() {
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [questOverlayId, lightboxSrc, assignPickerForId, editingId, closePanel]);
+  }, [questOverlayId, lightboxSrc, assignPickerForId, confirmDeleteFeedback, editingFeedback, editingId, closePanel]);
 
   // Close assign picker on Escape
   useEffect(() => {
@@ -522,6 +532,28 @@ export function QuestDetailPanel() {
             .sort((a, b) => b.createdAt - a.createdAt),
         );
       setEditingFeedback(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
+
+  async function handleDeleteFeedback(questId: string, index: number) {
+    setFeedbackSubmitting(true);
+    setError("");
+    try {
+      const updatedQuest = await api.deleteQuestFeedback(questId, index);
+      const currentQuests = useStore.getState().quests;
+      useStore
+        .getState()
+        .setQuests(
+          currentQuests
+            .map((q) => (q.questId === updatedQuest.questId ? updatedQuest : q))
+            .sort((a, b) => b.createdAt - a.createdAt),
+        );
+      setConfirmDeleteFeedback(null);
+      setEditingFeedback((prev) => (prev?.questId === questId && prev.index === index ? null : prev));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1055,6 +1087,8 @@ export function QuestDetailPanel() {
                           {feedbackEntries.map((entry, i) => {
                             const isEntryEditing =
                               editingFeedback?.questId === quest.questId && editingFeedback?.index === i;
+                            const isConfirmingDelete =
+                              confirmDeleteFeedback?.questId === quest.questId && confirmDeleteFeedback?.index === i;
                             const feedbackSessionId = entry.author === "agent" ? entry.authorSessionId : undefined;
                             const feedbackAuthorLabel = entry.author;
                             return (
@@ -1103,23 +1137,40 @@ export function QuestDetailPanel() {
                                         </svg>
                                       </button>
                                     )}
-                                    {entry.author === "human" && !isEntryEditing && (
-                                      <button
-                                        onClick={() =>
-                                          setEditingFeedback({
-                                            questId: quest.questId,
-                                            index: i,
-                                            text: entry.text,
-                                            images: entry.images ?? [],
-                                          })
-                                        }
-                                        className="text-cc-muted/30 hover:text-cc-muted/60 cursor-pointer transition-colors"
-                                        title="Edit"
-                                      >
-                                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                                          <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.098a.25.25 0 00-.064.108l-.386 1.35 1.35-.386a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.354L12.427 2.487z" />
-                                        </svg>
-                                      </button>
+                                    {entry.author === "agent" && !isEntryEditing && !isConfirmingDelete && (
+                                      <>
+                                        <button
+                                          onClick={() => {
+                                            setConfirmDeleteFeedback(null);
+                                            setEditingFeedback({
+                                              questId: quest.questId,
+                                              index: i,
+                                              text: entry.text,
+                                              images: entry.images ?? [],
+                                            });
+                                          }}
+                                          className="text-cc-muted/30 hover:text-cc-muted/60 cursor-pointer transition-colors"
+                                          title="Edit agent feedback"
+                                          aria-label={`Edit agent feedback ${i + 1}`}
+                                        >
+                                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                                            <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.098a.25.25 0 00-.064.108l-.386 1.35 1.35-.386a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.354L12.427 2.487z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setEditingFeedback(null);
+                                            setConfirmDeleteFeedback({ questId: quest.questId, index: i });
+                                          }}
+                                          className="text-cc-muted/30 hover:text-red-400 cursor-pointer transition-colors"
+                                          title="Delete agent feedback"
+                                          aria-label={`Delete agent feedback ${i + 1}`}
+                                        >
+                                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                                            <path d="M6.5 1.75A1.75 1.75 0 004.75 3.5v.25H2.5a.75.75 0 000 1.5h.568l.55 7.155A2 2 0 005.612 14.5h4.776a2 2 0 001.994-1.845l.55-7.155h.568a.75.75 0 000-1.5H11.25V3.5A1.75 1.75 0 009.5 1.75h-3zm3.25 2H6.25V3.5a.25.25 0 01.25-.25h3a.25.25 0 01.25.25v.25zm-4.63 1.5l.52 6.766a.5.5 0 00.498.484h4.724a.5.5 0 00.498-.484l.52-6.766H5.12zm2.13 1.25a.75.75 0 011.5 0v4a.75.75 0 01-1.5 0v-4zm-2 0a.75.75 0 011.5 0v4a.75.75 0 01-1.5 0v-4zm4 0a.75.75 0 011.5 0v4a.75.75 0 01-1.5 0v-4z" />
+                                          </svg>
+                                        </button>
+                                      </>
                                     )}
                                   </span>
                                 </div>
@@ -1188,6 +1239,24 @@ export function QuestDetailPanel() {
                                         Cancel
                                       </button>
                                     </div>
+                                  </div>
+                                ) : isConfirmingDelete ? (
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <button
+                                      onClick={() => handleDeleteFeedback(quest.questId, i)}
+                                      disabled={feedbackSubmitting}
+                                      className="text-xs px-2.5 py-1 rounded bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 disabled:opacity-40 cursor-pointer"
+                                      aria-label={`Confirm delete agent feedback ${i + 1}`}
+                                    >
+                                      Confirm delete
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteFeedback(null)}
+                                      className="text-xs px-2.5 py-1 rounded text-cc-muted hover:text-cc-fg cursor-pointer"
+                                      aria-label={`Cancel delete agent feedback ${i + 1}`}
+                                    >
+                                      Cancel
+                                    </button>
                                   </div>
                                 ) : (
                                   <>

@@ -6340,6 +6340,212 @@ describe("POST /api/quests/:questId/feedback", () => {
   });
 });
 
+describe("PATCH /api/quests/:questId/feedback/:index", () => {
+  it("edits an agent feedback entry by index", async () => {
+    // Editing should only rewrite the targeted agent comment and preserve the rest of the thread.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
+        { author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" },
+      ],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
+        { author: "agent", text: "Updated response", ts: Date.now(), authorSessionId: "session-1" },
+      ],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Updated response" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchSpy).toHaveBeenCalledWith(
+      "q-1",
+      expect.objectContaining({
+        feedback: [
+          expect.objectContaining({ author: "human", text: "Please verify spacing" }),
+          expect.objectContaining({ author: "agent", text: "Updated response" }),
+        ],
+      }),
+    );
+  });
+
+  it("rejects edits to human feedback entries", async () => {
+    // Human review comments should remain immutable from the agent-feedback edit endpoint.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "human", text: "Please verify spacing", ts: Date.now(), addressed: false }],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+
+    const res = await app.request("/api/quests/q-1/feedback/0", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Overwritten" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an out-of-range feedback index", async () => {
+    // Invalid indexes should fail before the thread is rewritten.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" }],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+
+    const res = await app.request("/api/quests/q-1/feedback/3", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Updated response" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/quests/:questId/feedback/:index", () => {
+  it("deletes an agent feedback entry by index", async () => {
+    // Deletion should remove only the targeted agent comment and leave human feedback intact.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false },
+        { author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" },
+      ],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "human", text: "Please verify spacing", ts: Date.now() - 1000, addressed: false }],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback/1", {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchSpy).toHaveBeenCalledWith(
+      "q-1",
+      expect.objectContaining({
+        feedback: [expect.objectContaining({ author: "human", text: "Please verify spacing" })],
+      }),
+    );
+  });
+
+  it("rejects deletes for human feedback entries", async () => {
+    // Human review comments should not be removable through the agent-feedback delete path.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "human", text: "Please verify spacing", ts: Date.now(), addressed: false }],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+
+    const res = await app.request("/api/quests/q-1/feedback/0", {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(400);
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for an out-of-range delete index", async () => {
+    // Invalid indexes should fail before the feedback array is rewritten.
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "agent", text: "Initial response", ts: Date.now(), authorSessionId: "session-1" }],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest");
+
+    const res = await app.request("/api/quests/q-1/feedback/3", {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(400);
+    expect(patchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/quests/:questId/done", () => {
   it("clears claimed quest from the pre-transition active owner", async () => {
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({

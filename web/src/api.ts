@@ -1109,6 +1109,8 @@ export const api = {
     index: number,
     updates: { text?: string; images?: import("./types.js").QuestImage[] },
   ) => patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`, updates),
+  deleteQuestFeedback: (id: string, index: number) =>
+    del<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`),
   toggleFeedbackAddressed: (id: string, index: number) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}/addressed`, {}),
 

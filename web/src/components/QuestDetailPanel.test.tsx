@@ -8,6 +8,8 @@ const mockTransitionQuest = vi.fn();
 const mockDeleteQuest = vi.fn();
 const mockMarkQuestDone = vi.fn();
 const mockAddQuestFeedback = vi.fn();
+const mockEditQuestFeedback = vi.fn();
+const mockDeleteQuestFeedback = vi.fn();
 vi.mock("../api.js", () => ({
   api: {
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
@@ -18,6 +20,8 @@ vi.mock("../api.js", () => ({
     deleteQuest: (...args: unknown[]) => mockDeleteQuest(...args),
     markQuestDone: (...args: unknown[]) => mockMarkQuestDone(...args),
     addQuestFeedback: (...args: unknown[]) => mockAddQuestFeedback(...args),
+    editQuestFeedback: (...args: unknown[]) => mockEditQuestFeedback(...args),
+    deleteQuestFeedback: (...args: unknown[]) => mockDeleteQuestFeedback(...args),
   },
 }));
 
@@ -95,6 +99,8 @@ describe("QuestDetailPanel", () => {
     mockDeleteQuest.mockReset();
     mockMarkQuestDone.mockReset();
     mockAddQuestFeedback.mockReset();
+    mockEditQuestFeedback.mockReset();
+    mockDeleteQuestFeedback.mockReset();
     document.body.style.overflow = "";
   });
 
@@ -239,6 +245,85 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText("Check iPad mini too")).toBeTruthy();
     expect(screen.getByText("Confirmed working on iPad mini.")).toBeTruthy();
     expect(screen.getByText("addressed")).toBeTruthy();
+  });
+
+  it("shows edit and delete controls only for agent feedback entries", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    // Human reviewer comments should stay immutable from this inline path.
+    expect(screen.queryByLabelText("Edit agent feedback 1")).toBeNull();
+    expect(screen.queryByLabelText("Delete agent feedback 1")).toBeNull();
+
+    // Agent-authored comments get the management affordances requested by q-311.
+    expect(screen.getByLabelText("Edit agent feedback 2")).toBeTruthy();
+    expect(screen.getByLabelText("Delete agent feedback 2")).toBeTruthy();
+  });
+
+  it("edits agent feedback and updates the quest in store", async () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+    const updatedQuest = makeVerificationQuest({
+      feedback: [
+        { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
+        {
+          author: "agent",
+          text: "Updated agent summary.",
+          ts: Date.now() - 3600000,
+          authorSessionId: "session-abc",
+        },
+      ],
+    });
+    mockEditQuestFeedback.mockResolvedValue(updatedQuest);
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByLabelText("Edit agent feedback 2"));
+    fireEvent.change(screen.getByDisplayValue("Confirmed working on iPad mini."), {
+      target: { value: "Updated agent summary." },
+    });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(mockEditQuestFeedback).toHaveBeenCalledWith("q-42", 1, {
+      text: "Updated agent summary.",
+      images: undefined,
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().quests.find((q) => q.questId === "q-42")).toMatchObject({
+        feedback: expect.arrayContaining([expect.objectContaining({ text: "Updated agent summary." })]),
+      });
+    });
+  });
+
+  it("requires explicit confirmation before deleting agent feedback", async () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+    const updatedQuest = makeVerificationQuest({
+      feedback: [{ author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true }],
+    });
+    mockDeleteQuestFeedback.mockResolvedValue(updatedQuest);
+
+    render(<QuestDetailPanel />);
+
+    fireEvent.click(screen.getByLabelText("Delete agent feedback 2"));
+
+    // Deletion stays two-step so the inline trash affordance is safe to expose.
+    expect(screen.getByLabelText("Confirm delete agent feedback 2")).toBeTruthy();
+    expect(screen.getByLabelText("Cancel delete agent feedback 2")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Confirm delete agent feedback 2"));
+
+    expect(mockDeleteQuestFeedback).toHaveBeenCalledWith("q-42", 1);
+
+    await waitFor(() => {
+      const storeQuest = useStore.getState().quests.find((q) => q.questId === "q-42");
+      expect(storeQuest).toMatchObject({
+        feedback: [expect.objectContaining({ author: "human", text: "Check iPad mini too" })],
+      });
+    });
   });
 
   it("shows notes section for done quests", () => {

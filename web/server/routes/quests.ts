@@ -380,6 +380,7 @@ export function createQuestRoutes(ctx: RouteContext) {
           ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
           : [];
       if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
+      if (existing[index]?.author !== "agent") return c.json({ error: "Only agent feedback can be edited" }, 400);
       const updated = [...existing];
       if (typeof body.text === "string" && body.text.trim())
         updated[index] = { ...updated[index], text: body.text.trim() };
@@ -388,6 +389,29 @@ export function createQuestRoutes(ctx: RouteContext) {
           ...updated[index],
           images: Array.isArray(body.images) && body.images.length > 0 ? body.images : undefined,
         };
+      const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: updated });
+      if (!quest) return c.json({ error: "Quest not found" }, 404);
+      broadcastQuestUpdate(wsBridge);
+      return c.json(quest);
+    } catch (e: unknown) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  // Delete an existing feedback entry by index
+  api.delete("/quests/:questId/feedback/:index", async (c) => {
+    try {
+      const index = parseInt(c.req.param("index"), 10);
+      if (isNaN(index) || index < 0) return c.json({ error: "Invalid index" }, 400);
+      const current = await questStore.getQuest(c.req.param("questId"));
+      if (!current) return c.json({ error: "Quest not found" }, 404);
+      const existing: import("../quest-types.js").QuestFeedbackEntry[] =
+        "feedback" in current
+          ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
+          : [];
+      if (index >= existing.length) return c.json({ error: "Index out of range" }, 400);
+      if (existing[index]?.author !== "agent") return c.json({ error: "Only agent feedback can be deleted" }, 400);
+      const updated = existing.filter((_, feedbackIndex) => feedbackIndex !== index);
       const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: updated });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       broadcastQuestUpdate(wsBridge);
