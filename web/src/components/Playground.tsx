@@ -38,6 +38,7 @@ import { SessionItem, StatusCountDots } from "./SessionItem.js";
 import type { CreationProgressEvent } from "../types.js";
 import { CatPawAvatar, CatPawLeft, CatPawRight, YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { HighlightedText } from "./HighlightedText.js";
+import { FolderPicker } from "./FolderPicker.js";
 import { ReplyChip } from "./Composer.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
@@ -5138,12 +5139,44 @@ export function Playground() {
             </Card>
           </div>
         </Section>
+
+        {/* ─── Folder Picker ──────────────────────────────── */}
+        <Section title="Folder Picker" description="Directory browser modal with breadcrumbs, filter, hidden dirs toggle, and keyboard nav">
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Open folder picker">
+              <PlaygroundFolderPicker />
+            </Card>
+          </div>
+        </Section>
       </div>
     </div>
   );
 }
 
 // ─── Shared Layout Helpers ──────────────────────────────────────────────────
+
+function PlaygroundFolderPicker() {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState("");
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setOpen(true)}
+        className="px-3 py-1.5 text-xs font-medium rounded-md bg-cc-primary text-white hover:bg-cc-primary/90 transition-colors cursor-pointer"
+      >
+        Open Folder Picker
+      </button>
+      {selected && <p className="text-xs text-cc-muted font-mono-code">Selected: {selected}</p>}
+      {open && (
+        <FolderPicker
+          initialPath={selected || ""}
+          onSelect={(path) => setSelected(path)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
 
 function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (

@@ -28,12 +28,13 @@ export function createFilesystemRoutes(ctx: RouteContext) {
 
   api.get("/fs/list", async (c) => {
     const rawPath = c.req.query("path") || homedir();
+    const showHidden = c.req.query("hidden") === "1";
     const basePath = resolve(expandTilde(rawPath));
     try {
       const entries = await readdir(basePath, { withFileTypes: true });
       const dirs: { name: string; path: string }[] = [];
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith(".")) {
+        if (entry.isDirectory() && (showHidden || !entry.name.startsWith("."))) {
           dirs.push({ name: entry.name, path: join(basePath, entry.name) });
         }
       }

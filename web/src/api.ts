@@ -717,7 +717,13 @@ export const api = {
   getSessionSystemPrompt: (sessionId: string) =>
     get<{ prompt: string | null }>(`/sessions/${encodeURIComponent(sessionId)}/system-prompt`),
 
-  listDirs: (path?: string) => get<DirListResult>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  listDirs: (path?: string, opts?: { hidden?: boolean }) => {
+    const params = new URLSearchParams();
+    if (path) params.set("path", path);
+    if (opts?.hidden) params.set("hidden", "1");
+    const qs = params.toString();
+    return get<DirListResult>(`/fs/list${qs ? `?${qs}` : ""}`);
+  },
 
   getHome: () => get<{ home: string; cwd: string }>("/fs/home"),
 
