@@ -16118,9 +16118,119 @@ describe("stuck session watchdog", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  it("auto-recovers orchestrator sessions faster than regular sessions (q-307)", () => {
+    // Orchestrator (leader) sessions gate herd event delivery via isSessionIdle(),
+    // so a stuck leader blocks all workers. The watchdog recovers orchestrators at
+    // 2 min (STUCK_GENERATION_THRESHOLD_MS) instead of the regular 5 min.
+    vi.useFakeTimers();
+    const sid = "s-stuck-orchestrator";
+    const cli = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli, sid);
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    // Set up launcher with isOrchestrator=true
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const session = bridge.getSession(sid)!;
+
+    // Generation started 3 minutes ago — past the 2-min orchestrator threshold
+    // but below the 5-min regular threshold
+    const threeMinAgo = Date.now() - 180_000;
+    session.isGenerating = true;
+    session.generationStartedAt = threeMinAgo;
+    session.lastCliMessageAt = threeMinAgo;
+    session.lastCliPingAt = threeMinAgo;
+    session.lastToolProgressAt = 0;
+    session.stuckNotifiedAt = null;
+
+    bridge.startStuckSessionWatchdog();
+
+    vi.advanceTimersByTime(31_000);
+
+    // Should auto-recover because orchestrators use the faster 2-min threshold
+    expect(session.isGenerating).toBe(false);
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
 });
 
-// ─── SDK task_notification forwarding ────────────────────────────────────────
+// ─── Seamless reconnect with stuck generation (q-307) ─────────────────────
+
+describe("Seamless reconnect with stuck generation (q-307)", () => {
+  it("clears isGenerating on seamless reconnect when generation is older than stuck threshold", () => {
+    // When the CLI does a 5-minute token refresh (seamless reconnect) and the
+    // generation has been running for 2+ minutes, it's provably stuck -- the CLI
+    // had a full refresh cycle to produce output and didn't.
+    vi.useFakeTimers();
+    const sid = "s-seamless-stuck";
+    const cli1 = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli1, sid);
+    bridge.handleCLIMessage(cli1, makeInitMsg());
+
+    const session = bridge.getSession(sid)!;
+
+    // Start generation 3 minutes ago (above the 2-min stuck threshold)
+    session.isGenerating = true;
+    session.generationStartedAt = Date.now() - 180_000;
+
+    // Simulate CLI disconnect (token refresh)
+    bridge.handleCLIClose(cli1, 1000);
+
+    // CLI reconnects within the grace period (seamless)
+    const cli2 = makeCliSocket(sid);
+    bridge.handleCLIOpen(cli2, sid);
+    expect(session.seamlessReconnect).toBe(true);
+
+    // system.init arrives — should force-clear isGenerating because generation is old
+    bridge.handleCLIMessage(cli2, makeInitMsg());
+    expect(session.isGenerating).toBe(false);
+    expect(session.seamlessReconnect).toBe(false); // consumed
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("preserves isGenerating on seamless reconnect when generation is fresh", () => {
+    // Short-lived generations (under 2 min) should still be preserved across
+    // seamless reconnects — the CLI is genuinely still processing.
+    vi.useFakeTimers();
+    const sid = "s-seamless-fresh";
+    const cli1 = makeCliSocket(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleCLIOpen(cli1, sid);
+    bridge.handleCLIMessage(cli1, makeInitMsg());
+
+    const session = bridge.getSession(sid)!;
+
+    // Start generation 30 seconds ago (well below the 2-min threshold)
+    session.isGenerating = true;
+    session.generationStartedAt = Date.now() - 30_000;
+
+    // Simulate seamless reconnect
+    bridge.handleCLIClose(cli1, 1000);
+    const cli2 = makeCliSocket(sid);
+    bridge.handleCLIOpen(cli2, sid);
+    expect(session.seamlessReconnect).toBe(true);
+
+    // system.init arrives — should preserve isGenerating (generation is fresh)
+    bridge.handleCLIMessage(cli2, makeInitMsg());
+    expect(session.isGenerating).toBe(true);
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+});
 
 describe("Claude SDK task_notification forwarding", () => {
   it("persists task_notification from SDK adapter to messageHistory and broadcasts to browser", () => {

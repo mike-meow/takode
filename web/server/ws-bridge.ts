@@ -817,6 +817,14 @@ function extractClaudeTokenDetails(
   };
 }
 
+// ─── Stuck Session Constants ─────────────────────────────────────────────────
+// Shared between the watchdog and system.init reconnect handler.
+
+/** Minimum generation age (ms) before a session is considered potentially stuck.
+ *  Used by the watchdog for first detection AND by the seamless reconnect handler
+ *  to decide whether a long-running generation should be force-cleared. */
+const STUCK_GENERATION_THRESHOLD_MS = 120_000; // 2 minutes
+
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
 export class WsBridge {
@@ -1358,13 +1366,13 @@ export class WsBridge {
 
   /** Periodically check for sessions stuck in "generating" state with no CLI activity. */
   startStuckSessionWatchdog(): void {
-    const STUCK_THRESHOLD_MS = 120_000; // 2 minutes without any CLI activity
+    const STUCK_THRESHOLD_MS = STUCK_GENERATION_THRESHOLD_MS;
     const CHECK_INTERVAL_MS = 30_000; // check every 30s
     const AUTO_RECOVER_MS = 300_000; // 5 minutes — force-clear isGenerating
     // Orchestrator (leader) sessions gate ALL herd event delivery via
     // isSessionIdle(), so a stuck leader blocks the entire herd. Recover
     // faster (same as stuck detection threshold) to unblock workers (q-307).
-    const AUTO_RECOVER_ORCHESTRATOR_MS = 120_000;
+    const AUTO_RECOVER_ORCHESTRATOR_MS = STUCK_GENERATION_THRESHOLD_MS;
 
     const timer = setInterval(() => {
       const now = Date.now();
@@ -5934,7 +5942,7 @@ export class WsBridge {
       // waiting for that turn's backend output, to avoid a spurious turn_end before
       // the real turn starts producing output.
       const generationAge = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
-      const seamlessButStuck = session.seamlessReconnect && generationAge >= 120_000;
+      const seamlessButStuck = session.seamlessReconnect && generationAge >= STUCK_GENERATION_THRESHOLD_MS;
       if (seamlessButStuck) {
         console.warn(
           `[ws-bridge] Seamless reconnect with stale generation (${Math.round(generationAge / 1000)}s) for session ${sessionTag(session.id)} — treating as relaunch`,
