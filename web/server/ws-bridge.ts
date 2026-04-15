@@ -7944,14 +7944,26 @@ export class WsBridge {
       if (session.backendType === "codex" && msg.type === "cancel_pending_codex_input") {
         const pendingInput = session.pendingCodexInputs.find((input) => input.id === msg.id);
         if (!pendingInput?.cancelable) return;
+        const cancelableHeadId = this.getCancelablePendingCodexInputs(session)[0]?.id ?? null;
+        const cancelledHeadPendingInput = cancelableHeadId === msg.id;
         const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-        session.pendingCodexTurns = session.pendingCodexTurns.filter(
-          (turn) => !!activeTurnId && turn.turnId === activeTurnId,
-        );
+        session.pendingCodexTurns = activeTurnId
+          ? session.pendingCodexTurns.filter((turn) => turn.turnId === activeTurnId)
+          : session.pendingCodexTurns.filter((turn) => turn.status === "queued" && turn.turnId == null).slice(0, 1);
         replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
         const removed = this.removePendingCodexInput(session, msg.id);
-        if ((!session.isGenerating || !activeTurnId) && this.getCancelablePendingCodexInputs(session).length > 0) {
-          this.queueCodexPendingStartBatch(session, "cancel_pending_codex_input");
+        const remainingCancelableInputs = this.getCancelablePendingCodexInputs(session);
+        if (!activeTurnId && remainingCancelableInputs.length === 0) {
+          session.pendingCodexTurns = [];
+        } else if (!activeTurnId && remainingCancelableInputs.length > 0) {
+          // Cancelling a newer pending item must not silently dispatch an older
+          // stranded item. Only auto-advance the queue when the cancelled item
+          // was itself the current head pending input.
+          if (cancelledHeadPendingInput) {
+            this.queueCodexPendingStartBatch(session, "cancel_pending_codex_input");
+          } else {
+            this.rebuildQueuedCodexPendingStartBatch(session);
+          }
         }
         if (removed && ws) {
           this.sendToBrowser(ws, { type: "codex_pending_input_cancelled", input: removed });
@@ -9563,7 +9575,7 @@ export class WsBridge {
       .join("\n\n");
   }
 
-  private queueCodexPendingStartBatch(session: Session, reason: string): void {
+  private rebuildQueuedCodexPendingStartBatch(session: Session): void {
     const deliverable = this.getCancelablePendingCodexInputs(session);
     if (deliverable.length === 0) return;
 
@@ -9580,7 +9592,6 @@ export class WsBridge {
       existingHead.updatedAt = Date.now();
       existingHead.lastError = null;
       this.persistSession(session);
-      this.dispatchQueuedCodexTurns(session, reason);
       return;
     }
 
@@ -9612,6 +9623,10 @@ export class WsBridge {
       resumeConfirmedAt: null,
     });
     this.persistSession(session);
+  }
+
+  private queueCodexPendingStartBatch(session: Session, reason: string): void {
+    this.rebuildQueuedCodexPendingStartBatch(session);
     this.dispatchQueuedCodexTurns(session, reason);
   }
 

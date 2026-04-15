@@ -14830,6 +14830,156 @@ describe("Codex image transport", () => {
     expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "restore this image")).toBe(false);
   });
 
+  it("advances delivery to the next pending input when the current head is cancelled", async () => {
+    // The q-326 fix has two halves: canceling a newer pending item must not
+    // dispatch an older item, but canceling the current head should still let
+    // the next pending input advance through the queue.
+    const adapter = makeCodexAdapterMock();
+    let startPendingAttempts = 0;
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      if (msg.type === "codex_start_pending") {
+        startPendingAttempts += 1;
+        return startPendingAttempts > 1;
+      }
+      return true;
+    });
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-q326-cancel-head-advance" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "first pending item",
+      }),
+    );
+    await Promise.resolve();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "second pending item",
+      }),
+    );
+    await Promise.resolve();
+
+    const session = bridge.getSession("s1")!;
+    expect(session.pendingCodexInputs).toHaveLength(2);
+    const firstPendingId = session.pendingCodexInputs[0]?.id;
+    expect(firstPendingId).toBeTruthy();
+    if (!firstPendingId) throw new Error("missing first pending id");
+
+    adapter.sendBrowserMessage.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "cancel_pending_codex_input",
+        id: firstPendingId,
+      }),
+    );
+    await Promise.resolve();
+
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]?.content).toBe("second pending item");
+    expect(startPendingAttempts).toBe(2);
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: [expect.objectContaining({ content: "second pending item" })],
+      }),
+    );
+    expect(getPendingCodexTurn(session)).toMatchObject({
+      status: "dispatched",
+      userContent: "second pending item",
+    });
+  });
+
+  it("does not dispatch an older pending image when cancelling a newer herd-event pending input", async () => {
+    // q-326 incident guard: a later pending herd event should be cancelable
+    // without that cancel action silently delivering an older stuck image turn.
+    const adapter = makeCodexAdapterMock();
+    let startPendingAttempts = 0;
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      if (msg.type === "codex_start_pending") {
+        startPendingAttempts += 1;
+        return false;
+      }
+      return true;
+    });
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-1.orig.png"),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-q326-cancel-mixup" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "Please inspect this screenshot",
+        images: [{ media_type: "image/png", data: "raw-image-data" }],
+      }),
+    );
+    await flush();
+
+    const herdContent = "1 event from 1 session\n\n#472 | turn_end | ✓ 6m 41s";
+    bridge.injectUserMessage("s1", herdContent, {
+      sessionId: "herd-events",
+      sessionLabel: "Herd Events",
+    });
+    await flush();
+
+    const session = bridge.getSession("s1")!;
+    expect(session.pendingCodexInputs).toHaveLength(2);
+    const imagePendingId = session.pendingCodexInputs[0]?.id;
+    const herdPendingId = session.pendingCodexInputs[1]?.id;
+    expect(imagePendingId).toBeTruthy();
+    expect(herdPendingId).toBeTruthy();
+    if (!imagePendingId || !herdPendingId) throw new Error("missing pending ids");
+
+    adapter.sendBrowserMessage.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "cancel_pending_codex_input",
+        id: herdPendingId,
+      }),
+    );
+    await flush();
+
+    expect(startPendingAttempts).toBe(1);
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]?.id).toBe(imagePendingId);
+    expect(session.pendingCodexInputs[0]?.content).toBe("Please inspect this screenshot");
+    expect(session.pendingCodexTurns).toHaveLength(1);
+    expect(getPendingCodexTurn(session)).toMatchObject({
+      status: "queued",
+      userContent: expect.stringContaining("Please inspect this screenshot"),
+    });
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: [expect.objectContaining({ content: expect.stringContaining("Please inspect this screenshot") })],
+      }),
+    );
+    expect(
+      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "Please inspect this screenshot"),
+    ).toBe(false);
+  });
+
   it("sends error when original path lookup fails for Codex images", async () => {
     const adapter = makeCodexAdapterMock();
 
