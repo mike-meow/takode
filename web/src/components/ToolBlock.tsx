@@ -445,9 +445,22 @@ function isTakodeBoardCommand(command: string): boolean {
   return /\btakode\s+board\b/.test(command);
 }
 
+/** Strip leading shell-style env assignments from a Bash command preview. */
+function stripLeadingEnvAssignments(command: string): string {
+  let remaining = command.trimStart();
+  const assignmentRe = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s"'`]+)(?:\s+|$)/;
+
+  for (;;) {
+    const match = remaining.match(assignmentRe);
+    if (!match) return remaining;
+    remaining = remaining.slice(match[0].length).trimStart();
+  }
+}
+
 /** Parse `takode notify <category>` commands, extracting the notification category. */
 function parseTakodeNotifyCommand(command: string): { category: "needs-input" | "review" } | null {
-  const match = command.match(/\btakode\s+notify\s+(needs-input|review)\b/);
+  const normalized = stripLeadingEnvAssignments(command);
+  const match = normalized.match(/^takode\s+notify\s+(needs-input|review)(?=\s|$)/);
   if (!match) return null;
   return { category: match[1] as "needs-input" | "review" };
 }

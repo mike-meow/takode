@@ -739,6 +739,40 @@ describe("MessageBubble - assistant messages", () => {
     }
   });
 
+  it("renders authoritative anchored notifications even when message text mentions takode notify", () => {
+    // The real server-driven notification path comes from message.notification,
+    // not from scanning assistant text. Mentioning `takode notify review` in the
+    // message body must not interfere with anchored notification rendering.
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-authoritative",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-authoritative",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-authoritative",
+        role: "assistant",
+        content: 'Leader note: this quoted text mentions takode notify review but is not the source of the chip.',
+        notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getByText("Ready for review")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Mark as reviewed" }).hasAttribute("disabled")).toBe(false);
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("renders the review checkbox on block-based assistant messages with direct notification metadata", () => {
     const prevNotifications = useStore.getState().sessionNotifications;
     const nextNotifications = new Map(prevNotifications);

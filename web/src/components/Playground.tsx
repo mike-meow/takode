@@ -2120,6 +2120,12 @@ export function Playground() {
               sessionId={MOCK_SESSION_ID}
             />
             <ToolBlock
+              name="Bash"
+              input={{ command: 'takode send 17 "If this looks good, later run takode notify review"' }}
+              toolUseId="tb-notify-quoted"
+              sessionId={MOCK_SESSION_ID}
+            />
+            <ToolBlock
               name="NotebookEdit"
               input={{
                 notebook_path: "/Users/stan/Dev/project/analysis.ipynb",
