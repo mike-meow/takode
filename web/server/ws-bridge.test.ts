@@ -3346,7 +3346,10 @@ describe("CLI message routing", () => {
     );
 
     expect(bridge.getSession("s1")!.attentionReason).toBe("review");
-    expect(bridge.getSession("s1")!.isGenerating).toBe(true);
+    // Claude WebSocket follow-ups are drained inline on result when there is no
+    // pending CLI user payload to keep running, so the worker should be idle
+    // even though the user-triggered completion still leaves review attention.
+    expect(bridge.getSession("s1")!.isGenerating).toBe(false);
 
     bridge.markSessionRead("s1");
 
@@ -3368,7 +3371,9 @@ describe("CLI message routing", () => {
       }),
     );
 
-    expect(bridge.getSession("s1")!.attentionReason).toBeNull();
+    // User-triggered herded completions should continue surfacing review
+    // attention even if later follow-up traffic came from the leader.
+    expect(bridge.getSession("s1")!.attentionReason).toBe("review");
   });
 
   it("notifies leader browser when the entire herd group stays idle for 10s", () => {
@@ -11830,7 +11835,7 @@ describe("Codex recovering state reset", () => {
 describe("Codex broken-session recovery regression", () => {
   it("keeps the acknowledged image turn authoritative and blocks later messages after init failure", async () => {
     const sid = "s-image-init-failure";
-    const expectedAttachmentPath = join(homedir(), ".companion", "images", sid, "img-140.orig.jpeg");
+    const expectedAttachmentPath = "/tmp/companion-images/img-140.orig.jpeg";
     const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
     const adapter1 = makeCodexAdapterMock();
     const imageStore = {
