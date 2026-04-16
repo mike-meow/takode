@@ -428,10 +428,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       }
       // Restore quest name and styling from persisted session state (on reconnect).
       // This is the most reliable path since session_init fires on every WS connect.
-      if (data.session.claimedQuestId && data.session.claimedQuestTitle) {
+      const isOrchestrator = data.session.isOrchestrator === true;
+      if (data.session.claimedQuestId && data.session.claimedQuestTitle && !isOrchestrator) {
         store.setSessionName(sessionId, data.session.claimedQuestTitle);
         store.markQuestNamed(sessionId);
-      } else if (data.session.claimedQuestId) {
+      } else if (data.session.claimedQuestId && !isOrchestrator) {
         store.markQuestNamed(sessionId);
       } else {
         store.clearQuestNamed(sessionId);
@@ -1247,7 +1248,8 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         claimedQuestTitle: data.quest?.title ?? undefined,
         claimedQuestStatus: data.quest?.status ?? undefined,
       });
-      if (data.quest?.id && data.quest?.title && data.quest?.status === "in_progress") {
+      const isOrchestrator = store.sessions.get(sessionId)?.isOrchestrator === true;
+      if (data.quest?.id && data.quest?.title && data.quest?.status === "in_progress" && !isOrchestrator) {
         // Override session name with quest title and mark as quest-named
         // only while the quest is actively in_progress. Once it transitions
         // away (needs_verification, done), clear the guard so the auto-namer

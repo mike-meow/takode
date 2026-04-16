@@ -342,6 +342,26 @@ describe("handleMessage: session_init", () => {
 
     expect(useStore.getState().sessionNames.get("s1")).toBe("Custom Name");
   });
+
+  it("does not overwrite an orchestrator session name from claimedQuestTitle", () => {
+    useStore.getState().setSessionName("s1", "Leader 7");
+
+    wsModule.connectSession("s1");
+    fireMessage({
+      type: "session_init",
+      session: {
+        ...makeSession("s1"),
+        isOrchestrator: true,
+        claimedQuestId: "q-348",
+        claimedQuestTitle: "Prevent leader auto-renames",
+        claimedQuestStatus: "in_progress",
+      },
+    });
+
+    const state = useStore.getState();
+    expect(state.sessionNames.get("s1")).toBe("Leader 7");
+    expect(state.questNamedSessions.has("s1")).toBe(false);
+  });
 });
 
 describe("handleMessage: session_created", () => {
@@ -361,6 +381,38 @@ describe("handleMessage: session_created", () => {
     expect(useStore.getState().sdkSessions.map((s) => s.sessionId)).toEqual(["s-new-1", "s-new-2"]);
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0]?.url).toBe("ws://localhost:3456/ws/browser/s-origin");
+  });
+});
+
+describe("handleMessage: session_quest_claimed", () => {
+  it("keeps worker quest-title behavior unchanged", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setSessionName("s1", "Worker Session");
+
+    fireMessage({
+      type: "session_quest_claimed",
+      quest: { id: "q-348", title: "Prevent leader auto-renames", status: "in_progress" },
+    });
+
+    const state = useStore.getState();
+    expect(state.sessionNames.get("s1")).toBe("Prevent leader auto-renames");
+    expect(state.questNamedSessions.has("s1")).toBe(true);
+  });
+
+  it("does not rename or mark orchestrator sessions as quest-named", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: { ...makeSession("s1"), isOrchestrator: true } });
+    useStore.getState().setSessionName("s1", "Leader 7");
+
+    fireMessage({
+      type: "session_quest_claimed",
+      quest: { id: "q-348", title: "Prevent leader auto-renames", status: "in_progress" },
+    });
+
+    const state = useStore.getState();
+    expect(state.sessionNames.get("s1")).toBe("Leader 7");
+    expect(state.questNamedSessions.has("s1")).toBe(false);
   });
 });
 

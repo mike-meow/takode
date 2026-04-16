@@ -10870,6 +10870,27 @@ describe("Codex adapter result handling", () => {
     });
   });
 
+  it("does not rename orchestrator sessions when a claimed quest becomes in_progress", () => {
+    const browser = makeBrowserSocket("leader-1");
+    bridge.handleBrowserOpen(browser, "leader-1");
+    browser.send.mockClear();
+
+    const session = bridge.getSession("leader-1")!;
+    session.state.isOrchestrator = true;
+
+    bridge.setSessionClaimedQuest("leader-1", {
+      id: "q-74",
+      title: "Fix Codex quest lifecycle chips",
+      status: "in_progress",
+    });
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((c: any) => c.type === "session_quest_claimed")).toBeDefined();
+    expect(
+      calls.find((c: any) => c.type === "session_name_update" && c.name === "Fix Codex quest lifecycle chips"),
+    ).toBeUndefined();
+  });
+
   it("ignores quest lifecycle reconciliation when tool output only contains errors", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();

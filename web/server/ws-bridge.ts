@@ -1554,7 +1554,8 @@ export class WsBridge {
     // away (needs_verification, done), let the auto-namer resume so it can
     // track subsequent agent actions.
     const isQuestActive = quest?.title && quest?.status === "in_progress";
-    if (isQuestActive && this.onSessionNamedByQuest) {
+    const isOrchestrator = session.state.isOrchestrator === true;
+    if (isQuestActive && !isOrchestrator && this.onSessionNamedByQuest) {
       this.onSessionNamedByQuest(sessionId, quest.title);
     }
     this.broadcastToBrowsers(session, {
@@ -1566,7 +1567,7 @@ export class WsBridge {
     // transitions) consistently update the session name and the browser's
     // questNamedSessions guard. Skip this for non-active statuses so the
     // auto-namer can resume.
-    if (isQuestActive) {
+    if (isQuestActive && !isOrchestrator) {
       this.broadcastNameUpdate(sessionId, quest.title, "quest");
     }
     this.persistSession(session);
