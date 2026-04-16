@@ -147,6 +147,30 @@ describe("SessionItem swipe archive", () => {
   });
 });
 
+describe("SessionItem archive confirmation copy", () => {
+  it("shows the worktree warning when confirming a worktree archive", () => {
+    renderSessionItem({
+      archiveConfirmation: { sessionId: "s1", kind: "worktree" },
+      onConfirmArchive: vi.fn(),
+      onCancelArchive: vi.fn(),
+    });
+
+    expect(screen.getByText(/delete the worktree/i)).toBeInTheDocument();
+  });
+
+  it("shows the leader warning with the active worker count", () => {
+    renderSessionItem({
+      session: makeSession({ isOrchestrator: true }),
+      archiveConfirmation: { sessionId: "s1", kind: "leader", activeWorkerCount: 2 },
+      onConfirmArchive: vi.fn(),
+      onCancelArchive: vi.fn(),
+    });
+
+    expect(screen.getByText(/detach 2 active worker sessions/i)).toBeInTheDocument();
+    expect(screen.getByText(/leave them running without a leader/i)).toBeInTheDocument();
+  });
+});
+
 describe("SessionItem search match context", () => {
   it("shows matched field label and highlights matched query text", () => {
     renderSessionItem({

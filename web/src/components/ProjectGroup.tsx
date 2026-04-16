@@ -18,7 +18,7 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,
   x: 0,
 });
-import { SessionItem } from "./SessionItem.js";
+import { SessionItem, type ArchiveConfirmationState } from "./SessionItem.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { isTouchDevice } from "../utils/mobile.js";
 import { api } from "../api.js";
@@ -49,7 +49,7 @@ interface ProjectGroupProps {
   onConfirmRename: () => void;
   onCancelRename: () => void;
   editInputRef: RefObject<HTMLInputElement | null>;
-  confirmArchiveId?: string | null;
+  archiveConfirmation?: ArchiveConfirmationState | null;
   onConfirmArchive?: () => void;
   onCancelArchive?: () => void;
   isFirst: boolean;
@@ -122,7 +122,7 @@ export function ProjectGroup({
   onConfirmRename,
   onCancelRename,
   editInputRef,
-  confirmArchiveId,
+  archiveConfirmation,
   onConfirmArchive,
   onCancelArchive,
   isFirst,
@@ -290,7 +290,7 @@ export function ProjectGroup({
                           onConfirmRename={onConfirmRename}
                           onCancelRename={onCancelRename}
                           editInputRef={editInputRef}
-                          confirmArchiveId={confirmArchiveId}
+                          archiveConfirmation={archiveConfirmation}
                           onConfirmArchive={onConfirmArchive}
                           onCancelArchive={onCancelArchive}
                           attention={attention}

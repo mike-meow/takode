@@ -24,6 +24,7 @@ const mockApi = {
   searchSessions: vi.fn().mockResolvedValue({ query: "", tookMs: 0, totalMatches: 0, results: [] }),
   deleteSession: vi.fn().mockResolvedValue({}),
   archiveSession: vi.fn().mockResolvedValue({}),
+  archiveGroup: vi.fn().mockResolvedValue({ ok: true, archived: 1, failed: 0 }),
   unarchiveSession: vi.fn().mockResolvedValue({}),
   herdWorkerToLeader: vi.fn().mockResolvedValue({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
   getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
@@ -39,6 +40,7 @@ vi.mock("../api.js", () => ({
     searchSessions: (...args: unknown[]) => mockApi.searchSessions(...args),
     deleteSession: (...args: unknown[]) => mockApi.deleteSession(...args),
     archiveSession: (...args: unknown[]) => mockApi.archiveSession(...args),
+    archiveGroup: (...args: unknown[]) => mockApi.archiveGroup(...args),
     unarchiveSession: (...args: unknown[]) => mockApi.unarchiveSession(...args),
     herdWorkerToLeader: (...args: unknown[]) => mockApi.herdWorkerToLeader(...args),
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
@@ -664,6 +666,102 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(archiveButton).toHaveClass("left-1");
     // Archive button overlays on the left side on desktop (no reserved padding — overlays existing pl-3.5)
     expect(sessionButton).toHaveClass("sm:pl-3.5");
+  });
+
+  it("non-leader archive button still archives immediately", async () => {
+    const session = makeSession("s1", { model: "solo-session" });
+    const sdk = makeSdkSession("s1", { model: "solo-session" });
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("solo-session").closest("button")!;
+    const row = sessionButton.parentElement as HTMLElement;
+    fireEvent.click(within(row).getByTitle("Archive session"));
+
+    await waitFor(() => {
+      expect(mockApi.archiveSession).toHaveBeenCalledWith("s1", undefined);
+    });
+    expect(screen.queryByText(/detach 1 active worker session/i)).not.toBeInTheDocument();
+  });
+
+  it("leader archive button requires confirmation while workers are still active", async () => {
+    const leader = makeSession("leader-1", { model: "leader-session" });
+    const worker = makeSession("worker-1", { model: "worker-session" });
+    const leaderSdk = makeSdkSession("leader-1", { model: "leader-session", isOrchestrator: true, createdAt: 2_000 });
+    const workerSdk = makeSdkSession("worker-1", { model: "worker-session", herdedBy: "leader-1", createdAt: 1_000 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leader],
+        ["worker-1", worker],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+    });
+
+    render(<Sidebar />);
+    const leaderButton = screen.getByText("leader-session").closest("button")!;
+    const row = leaderButton.parentElement as HTMLElement;
+
+    fireEvent.click(within(row).getByTitle("Archive session"));
+
+    expect(mockApi.archiveSession).not.toHaveBeenCalled();
+    expect(screen.getByText(/detach 1 active worker session/i)).toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole("button", { name: "Archive" }));
+
+    await waitFor(() => {
+      expect(mockApi.archiveSession).toHaveBeenCalledWith("leader-1", { force: true });
+    });
+  });
+
+  it("leader swipe archive requires confirmation instead of archiving immediately", () => {
+    const leader = makeSession("leader-1", { model: "leader-session" });
+    const worker = makeSession("worker-1", { model: "worker-session" });
+    const leaderSdk = makeSdkSession("leader-1", { model: "leader-session", isOrchestrator: true, createdAt: 2_000 });
+    const workerSdk = makeSdkSession("worker-1", { model: "worker-session", herdedBy: "leader-1", createdAt: 1_000 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leader],
+        ["worker-1", worker],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+    });
+
+    render(<Sidebar />);
+    const leaderButton = screen.getByText("leader-session").closest("button")!;
+
+    fireEvent.touchStart(leaderButton, { touches: [{ clientX: 80, clientY: 40 }] });
+    fireEvent.touchMove(leaderButton, { touches: [{ clientX: 170, clientY: 42 }] });
+    fireEvent.touchEnd(leaderButton);
+
+    expect(mockApi.archiveSession).not.toHaveBeenCalled();
+    expect(screen.getByText(/detach 1 active worker session/i)).toBeInTheDocument();
+  });
+
+  it("context-menu archive uses the same leader confirmation safeguard", () => {
+    const leader = makeSession("leader-1", { model: "leader-session" });
+    const worker = makeSession("worker-1", { model: "worker-session" });
+    const leaderSdk = makeSdkSession("leader-1", { model: "leader-session", isOrchestrator: true, createdAt: 2_000 });
+    const workerSdk = makeSdkSession("worker-1", { model: "worker-session", herdedBy: "leader-1", createdAt: 1_000 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leader],
+        ["worker-1", worker],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+    });
+
+    render(<Sidebar />);
+    const leaderButton = screen.getByText("leader-session").closest("button")!;
+
+    fireEvent.contextMenu(leaderButton, { clientX: 100, clientY: 120 });
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    expect(mockApi.archiveSession).not.toHaveBeenCalled();
+    expect(screen.queryByText("Delete Session")).not.toBeInTheDocument();
+    expect(screen.getByText(/detach 1 active worker session/i)).toBeInTheDocument();
   });
 
   it("permission badge uses mobile-friendly positioning and hover behavior", () => {

@@ -4,7 +4,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { TreeViewGroupData, TreeNode } from "../utils/tree-grouping.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
-import { SessionItem, StatusCountDots, type StatusCounts } from "./SessionItem.js";
+import { SessionItem, StatusCountDots, type ArchiveConfirmationState, type StatusCounts } from "./SessionItem.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 import { useStore, countUserPermissions } from "../store.js";
 import { isTouchDevice } from "../utils/mobile.js";
@@ -40,7 +40,7 @@ interface TreeViewGroupProps {
   onConfirmRename: () => void;
   onCancelRename: () => void;
   editInputRef: RefObject<HTMLInputElement | null>;
-  confirmArchiveId?: string | null;
+  archiveConfirmation?: ArchiveConfirmationState | null;
   onConfirmArchive?: () => void;
   onCancelArchive?: () => void;
   isFirst: boolean;
@@ -115,7 +115,7 @@ export function TreeViewGroup({
   onConfirmRename,
   onCancelRename,
   editInputRef,
-  confirmArchiveId,
+  archiveConfirmation,
   onConfirmArchive,
   onCancelArchive,
   isFirst,
@@ -212,7 +212,7 @@ export function TreeViewGroup({
     onConfirmRename,
     onCancelRename,
     editInputRef,
-    confirmArchiveId,
+    archiveConfirmation,
     onConfirmArchive,
     onCancelArchive,
     reorderMode,

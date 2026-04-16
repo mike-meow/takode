@@ -10,6 +10,12 @@ import { getHighestNotificationUrgency } from "../utils/notification-urgency.js"
 
 type SearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
+export interface ArchiveConfirmationState {
+  sessionId: string;
+  kind: "worktree" | "container" | "leader";
+  activeWorkerCount?: number;
+}
+
 /** Shared status count type used for worker summaries and group headers. */
 export interface StatusCounts {
   running: number;
@@ -142,7 +148,7 @@ interface SessionItemProps {
   onConfirmRename: () => void;
   onCancelRename: () => void;
   editInputRef: RefObject<HTMLInputElement | null>;
-  confirmArchiveId?: string | null;
+  archiveConfirmation?: ArchiveConfirmationState | null;
   onConfirmArchive?: () => void;
   onCancelArchive?: () => void;
   attention?: "action" | "error" | "review" | null;
@@ -194,7 +200,7 @@ export function SessionItem({
   onConfirmRename,
   onCancelRename,
   editInputRef,
-  confirmArchiveId,
+  archiveConfirmation,
   onConfirmArchive,
   onCancelArchive,
   attention,
@@ -746,7 +752,7 @@ export function SessionItem({
       </button>
 
       {/* Inline archive confirmation */}
-      {confirmArchiveId === s.id && onConfirmArchive && onCancelArchive && (
+      {archiveConfirmation?.sessionId === s.id && onConfirmArchive && onCancelArchive && (
         <div className="mx-1 mt-1 mb-0.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
           <div className="flex items-start gap-2">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5">
@@ -754,9 +760,15 @@ export function SessionItem({
             </svg>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-cc-fg leading-snug">
-                {s.isWorktree ? (
+                {archiveConfirmation.kind === "worktree" ? (
                   <>
                     Archiving will <strong>delete the worktree</strong> and any uncommitted changes.
+                  </>
+                ) : archiveConfirmation.kind === "leader" ? (
+                  <>
+                    Archiving this leader will <strong>detach {archiveConfirmation.activeWorkerCount ?? 0} active worker
+                    session{archiveConfirmation.activeWorkerCount === 1 ? "" : "s"}</strong> and leave them running
+                    without a leader.
                   </>
                 ) : (
                   <>

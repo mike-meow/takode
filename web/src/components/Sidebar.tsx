@@ -20,7 +20,7 @@ import { cancelPendingCreation } from "../utils/pending-creation.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { ProjectGroup } from "./ProjectGroup.js";
 import { TreeViewGroup } from "./TreeViewGroup.js";
-import { SessionItem } from "./SessionItem.js";
+import { SessionItem, type ArchiveConfirmationState } from "./SessionItem.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import { SidebarUsageBar } from "./SidebarUsageBar.js";
@@ -106,7 +106,7 @@ export function Sidebar() {
   const [editingName, setEditingName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [mobileReorderHandleActive, setMobileReorderHandleActive] = useState(false);
-  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [archiveConfirmation, setArchiveConfirmation] = useState<ArchiveConfirmationState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
   const [hoveredSession, setHoveredSession] = useState<{ sessionId: string; rect: DOMRect } | null>(null);
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
@@ -490,13 +490,20 @@ export function Sidebar() {
   const handleArchiveSession = useCallback(
     (e: React.MouseEvent, sessionId: string) => {
       e.stopPropagation();
-      // Check if session uses a container or worktree — if so, ask for confirmation
       const sdkInfo = sdkSessions.find((s) => s.sessionId === sessionId);
       const bridgeState = sessions.get(sessionId);
       const isContainerized = bridgeState?.is_containerized || !!sdkInfo?.containerId || false;
       const isWorktree = bridgeState?.is_worktree || sdkInfo?.isWorktree || false;
-      if (isContainerized || isWorktree) {
-        setConfirmArchiveId(sessionId);
+      const activeWorkerCount =
+        sdkInfo?.isOrchestrator === true
+          ? sdkSessions.filter((s) => s.herdedBy === sessionId && !s.archived).length
+          : 0;
+      if (isWorktree || isContainerized || activeWorkerCount > 0) {
+        setArchiveConfirmation({
+          sessionId,
+          kind: isWorktree ? "worktree" : isContainerized ? "container" : "leader",
+          activeWorkerCount: activeWorkerCount > 0 ? activeWorkerCount : undefined,
+        });
         return;
       }
       doArchive(sessionId);
@@ -524,14 +531,14 @@ export function Sidebar() {
   }, []);
 
   const confirmArchive = useCallback(() => {
-    if (confirmArchiveId) {
-      doArchive(confirmArchiveId, true);
-      setConfirmArchiveId(null);
+    if (archiveConfirmation) {
+      doArchive(archiveConfirmation.sessionId, true);
+      setArchiveConfirmation(null);
     }
-  }, [confirmArchiveId, doArchive]);
+  }, [archiveConfirmation, doArchive]);
 
   const cancelArchive = useCallback(() => {
-    setConfirmArchiveId(null);
+    setArchiveConfirmation(null);
   }, []);
 
   const doArchiveGroup = useCallback(
@@ -941,7 +948,7 @@ export function Sidebar() {
     onConfirmRename: confirmRename,
     onCancelRename: cancelRename,
     editInputRef,
-    confirmArchiveId,
+    archiveConfirmation,
     onConfirmArchive: confirmArchive,
     onCancelArchive: cancelArchive,
     sessionAttention,
