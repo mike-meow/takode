@@ -5270,6 +5270,51 @@ describe("Persistence", () => {
     expect(session!.pendingCodexRollbackError).toBe("stale error");
   });
 
+  it("restoreFromDisk: loads persisted Codex fresh-turn guard state", async () => {
+    store.saveSync({
+      id: "persisted-codex-fresh-turn-guard",
+      state: {
+        session_id: "persisted-codex-fresh-turn-guard",
+        backend_type: "codex",
+        model: "gpt-5.4",
+        cwd: "/saved",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 0,
+        context_used_percent: 0,
+        is_compacting: false,
+        git_branch: "main",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/saved",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [],
+      pendingMessages: [],
+      pendingCodexTurns: [],
+      pendingCodexInputs: [],
+      pendingPermissions: [],
+      codexFreshTurnRequiredUntilTurnId: "turn-plan-restored",
+    } as any);
+
+    await store.flushAll();
+    const count = await bridge.restoreFromDisk();
+    expect(count).toBe(1);
+
+    const session = bridge.getSession("persisted-codex-fresh-turn-guard");
+    expect(session).toBeDefined();
+    expect(session!.codexFreshTurnRequiredUntilTurnId).toBe("turn-plan-restored");
+  });
+
   it("restoreFromDisk: does not overwrite live sessions", async () => {
     // Create a live session first
     const liveSession = bridge.getOrCreateSession("live-1");
@@ -14765,6 +14810,104 @@ describe("Codex active-turn steering", () => {
         expectedTurnId: "turn-initial",
       }),
     );
+  });
+
+  it("keeps a denied ExitPlanMode follow-up out of the old Codex turn and dispatches a fresh turn after completion", async () => {
+    const sid = "codex-exit-plan-deny-fresh-turn";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-exit-plan-deny" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "draft the plan",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-plan");
+
+    const session = bridge.getSession(sid)!;
+    session.pendingPermissions.set("perm-exit-plan-codex-deny", {
+      request_id: "perm-exit-plan-codex-deny",
+      tool_name: "ExitPlanMode",
+      input: { allowedPrompts: [] },
+      description: "Exit plan mode",
+      tool_use_id: "tool-exit-plan-codex-deny",
+      timestamp: Date.now(),
+    });
+
+    adapter.sendBrowserMessage.mockClear();
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "permission_response",
+        request_id: "perm-exit-plan-codex-deny",
+        behavior: "deny",
+        message: "Keep planning",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(session.codexFreshTurnRequiredUntilTurnId).toBe("turn-plan");
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "interrupt",
+        interruptSource: "user",
+      }),
+    );
+
+    adapter.sendBrowserMessage.mockClear();
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "fresh instructions after deny",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("fresh instructions after deny");
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_steer_pending",
+      }),
+    );
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "plan turn interrupted",
+        duration_ms: 100,
+        duration_api_ms: 100,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "interrupted",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "codex-result-exit-plan-deny",
+        session_id: sid,
+        codex_turn_id: "turn-plan",
+      },
+    });
+    await Promise.resolve();
+
+    expect(session.codexFreshTurnRequiredUntilTurnId).toBeNull();
+    const startPendingCall = adapter.sendBrowserMessage.mock.calls
+      .map((args: any[]) => args[0])
+      .find((msg: any) => msg?.type === "codex_start_pending");
+    expect(startPendingCall?.type).toBe("codex_start_pending");
+    expect(getCodexStartPendingInputs(startPendingCall)[0]?.content).toContain("fresh instructions after deny");
   });
 
   it("clears a steered follow-up when Codex reports the same turn completed", async () => {

@@ -390,6 +390,9 @@ interface Session {
   /** Interrupt sources aligned with queued follow-up turns.
    *  A queued follow-up does not prove the active turn was interrupted. */
   queuedTurnInterruptSources: (InterruptSource | null)[];
+  /** Codex-only: active turn id that must end before a follow-up can start a fresh turn.
+   *  Used for denied ExitPlanMode so new input does not get steered into the old plan turn. */
+  codexFreshTurnRequiredUntilTurnId: string | null;
   /** Whether system.init has been received since the last CLI connect.
    *  False during --resume replay — messages sent before init are dropped by CLI. */
   cliInitReceived: boolean;
@@ -2043,6 +2046,8 @@ export class WsBridge {
             : null,
         pendingCodexRollbackError:
           typeof p.pendingCodexRollbackError === "string" ? p.pendingCodexRollbackError : null,
+        codexFreshTurnRequiredUntilTurnId:
+          typeof p.codexFreshTurnRequiredUntilTurnId === "string" ? p.codexFreshTurnRequiredUntilTurnId : null,
         pendingCodexRollbackWaiter: null,
         nextEventSeq: p.nextEventSeq && p.nextEventSeq > 0 ? p.nextEventSeq : 1,
         eventBuffer: Array.isArray(p.eventBuffer) ? p.eventBuffer : [],
@@ -2159,6 +2164,7 @@ export class WsBridge {
       pendingCodexInputs: session.pendingCodexInputs,
       pendingCodexRollback: session.pendingCodexRollback,
       pendingCodexRollbackError: session.pendingCodexRollbackError,
+      codexFreshTurnRequiredUntilTurnId: session.codexFreshTurnRequiredUntilTurnId,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -2189,6 +2195,7 @@ export class WsBridge {
       pendingCodexInputs: session.pendingCodexInputs,
       pendingCodexRollback: session.pendingCodexRollback,
       pendingCodexRollbackError: session.pendingCodexRollbackError,
+      codexFreshTurnRequiredUntilTurnId: session.codexFreshTurnRequiredUntilTurnId,
       pendingPermissions: Array.from(session.pendingPermissions.entries()),
       eventBuffer: session.eventBuffer,
       nextEventSeq: session.nextEventSeq,
@@ -2701,6 +2708,7 @@ export class WsBridge {
         queuedTurnReasons: [],
         queuedTurnUserMessageIds: [],
         queuedTurnInterruptSources: [],
+        codexFreshTurnRequiredUntilTurnId: null,
         cliInitReceived: false,
         lastCliMessageAt: 0,
         lastCliPingAt: 0,
@@ -3685,6 +3693,31 @@ export class WsBridge {
     return true;
   }
 
+  private armCodexFreshTurnRequirement(session: Session, turnId: string, reason: string): void {
+    if (session.codexFreshTurnRequiredUntilTurnId === turnId) return;
+    session.codexFreshTurnRequiredUntilTurnId = turnId;
+    console.log(
+      `[ws-bridge] Blocking Codex steering until turn ${turnId} ends for session ${sessionTag(session.id)} (${reason})`,
+    );
+    this.persistSession(session);
+  }
+
+  private clearCodexFreshTurnRequirement(
+    session: Session,
+    reason: string,
+    options?: { completedTurnId?: string | null },
+  ): void {
+    const blockedTurnId = session.codexFreshTurnRequiredUntilTurnId;
+    if (!blockedTurnId) return;
+    const completedTurnId = options?.completedTurnId;
+    if (completedTurnId && blockedTurnId !== completedTurnId) return;
+    session.codexFreshTurnRequiredUntilTurnId = null;
+    console.log(
+      `[ws-bridge] Codex fresh-turn requirement cleared for session ${sessionTag(session.id)} (${reason}${completedTurnId ? `: ${completedTurnId}` : ""})`,
+    );
+    this.persistSession(session);
+  }
+
   private dispatchQueuedCodexTurns(session: Session, reason: string): void {
     const adapter = session.codexAdapter;
     if (!adapter) return;
@@ -3976,6 +4009,9 @@ export class WsBridge {
         session.consecutiveAdapterFailures = 0;
         session.lastAdapterFailureAt = null;
         if (!this.completeCodexTurnsForResult(session, outgoing.data, Date.now())) return;
+        this.clearCodexFreshTurnRequirement(session, "codex_turn_completed", {
+          completedTurnId: typeof outgoing.data.codex_turn_id === "string" ? outgoing.data.codex_turn_id : null,
+        });
         // Route through the unified result handler so Codex gets the same
         // post-turn state refresh (git + diff stats + attention) as Claude.
         this.handleResultMessage(session, outgoing.data);
@@ -8029,6 +8065,20 @@ export class WsBridge {
           session.messageHistory.push(deniedMsg);
           this.broadcastToBrowsers(session, deniedMsg);
         }
+        if (msg.behavior === "deny" && pending?.tool_name === "ExitPlanMode") {
+          const interruptSource = this.getInterruptSourceFromActorSessionId(msg.actorSessionId);
+          this.markTurnInterrupted(session, interruptSource);
+          const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+          if (activeTurnId) {
+            this.armCodexFreshTurnRequirement(session, activeTurnId, "exit_plan_mode_denied");
+          } else {
+            this.clearCodexFreshTurnRequirement(session, "exit_plan_mode_denied_without_active_turn");
+          }
+          session.codexAdapter?.sendBrowserMessage({ type: "interrupt", interruptSource } as any);
+          console.log(
+            `[ws-bridge] ExitPlanMode denied for Codex session ${sessionTag(session.id)}, sending interrupt`,
+          );
+        }
         // Takode: permission_resolved (Codex path)
         if (pending) {
           this.emitTakodeEvent(session.id, "permission_resolved", {
@@ -9731,7 +9781,19 @@ export class WsBridge {
     const adapter = session.codexAdapter;
     const expectedTurnId = adapter?.getCurrentTurnId() ?? null;
     if (!adapter || !expectedTurnId || session.state.backend_state !== "connected" || !adapter.isConnected()) {
+      if (!expectedTurnId) {
+        this.clearCodexFreshTurnRequirement(session, `${reason}_no_active_turn`);
+      }
       return false;
+    }
+    if (session.codexFreshTurnRequiredUntilTurnId === expectedTurnId) {
+      console.log(
+        `[ws-bridge] Skipping Codex steer for session ${sessionTag(session.id)} while turn ${expectedTurnId} still owes a fresh turn (${reason})`,
+      );
+      return false;
+    }
+    if (session.codexFreshTurnRequiredUntilTurnId) {
+      this.clearCodexFreshTurnRequirement(session, `${reason}_active_turn_changed`);
     }
     const deliverable = this.getCancelablePendingCodexInputs(session);
     if (deliverable.length === 0) return false;

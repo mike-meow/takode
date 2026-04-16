@@ -190,6 +190,18 @@ describe("saveSync / load", () => {
     expect(loaded!.lastAckSeq).toBe(1);
     expect(loaded!.processedClientMessageIds).toEqual(["client-msg-1", "client-msg-2"]);
   });
+
+  it("saveSync/load preserves codexFreshTurnRequiredUntilTurnId", async () => {
+    const session = makeSession("s2-codex-fresh-turn", {
+      codexFreshTurnRequiredUntilTurnId: "turn-plan-1",
+    });
+
+    store.saveSync(session);
+    await store.flushAll();
+    const loaded = await store.load("s2-codex-fresh-turn");
+
+    expect(loaded!.codexFreshTurnRequiredUntilTurnId).toBe("turn-plan-1");
+  });
 });
 
 // ─── save (debounced) ─────────────────────────────────────────────────────────

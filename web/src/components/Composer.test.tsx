@@ -734,6 +734,52 @@ describe("Composer sending messages", () => {
     );
   });
 
+  it("rejects a pending plan without sending a redundant interrupt before the new user message", () => {
+    const removePermission = vi.fn();
+    mockStoreState.pendingPermissions = new Map([
+      [
+        "s1",
+        new Map([
+          [
+            "plan-1",
+            {
+              request_id: "plan-1",
+              tool_name: "ExitPlanMode",
+              input: { plan: "## Plan\n\n1. Review the fix" },
+            },
+          ],
+        ]),
+      ],
+    ]);
+    mockStoreState.removePermission = removePermission;
+
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "new instructions" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    // Regression coverage for q-337: a stale browser-side ExitPlanMode chip
+    // must not emit its own bare interrupt and accidentally kill the fresh turn.
+    expect(mockSendToSession).toHaveBeenNthCalledWith(1, "s1", {
+      type: "permission_response",
+      request_id: "plan-1",
+      behavior: "deny",
+      message: "Plan rejected — user sent a new message",
+    });
+    expect(mockSendToSession).toHaveBeenNthCalledWith(
+      2,
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "new instructions",
+        session_id: "s1",
+      }),
+    );
+    expect(mockSendToSession).not.toHaveBeenCalledWith("s1", { type: "interrupt" });
+    expect(removePermission).toHaveBeenCalledWith("s1", "plan-1");
+  });
+
   it("sends VS Code selection metadata separately from the visible user message", () => {
     setupMockStore({
       vscodeSelectionContext: {

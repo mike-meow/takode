@@ -1069,7 +1069,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
         behavior: "deny",
         message: "Plan rejected — user sent a new message",
       });
-      sendToSession(sessionId, { type: "interrupt" });
       useStore.getState().removePermission(sessionId, pendingPlanPerm.request_id);
     }
 

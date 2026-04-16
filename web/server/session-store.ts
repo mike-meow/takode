@@ -73,6 +73,8 @@ export interface PersistedSession {
   pendingCodexInputs?: PendingCodexInput[];
   pendingCodexRollback?: { numTurns: number; truncateIdx: number; clearCodexState: boolean } | null;
   pendingCodexRollbackError?: string | null;
+  /** Codex-only: active turn id that must finish before follow-up input may start a fresh turn. */
+  codexFreshTurnRequiredUntilTurnId?: string | null;
   pendingPermissions: [string, PermissionRequest][];
   eventBuffer?: BufferedBrowserEvent[];
   nextEventSeq?: number;
