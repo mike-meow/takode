@@ -674,6 +674,9 @@ export const api = {
       { done },
     ),
 
+  markAllNotificationsDone: (sessionId: string, done = true) =>
+    post<{ ok: boolean; count: number }>(`/sessions/${encodeURIComponent(sessionId)}/notifications/done-all`, { done }),
+
   setDiffBase: (sessionId: string, branch: string) =>
     patch<{ ok: boolean; diff_base_branch: string }>(`/sessions/${encodeURIComponent(sessionId)}/diff-base`, {
       branch,

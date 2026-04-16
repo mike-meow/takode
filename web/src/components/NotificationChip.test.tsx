@@ -2,22 +2,33 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
+const mockMarkNotificationDone = vi.fn(() => Promise.resolve());
+const mockMarkAllNotificationsDone = vi.fn(() => Promise.resolve());
+const mockRequestScrollToMessage = vi.fn();
+const mockSetExpandAllInTurn = vi.fn();
+const mockOpenQuestOverlay = vi.fn();
 const mockNotifications = new Map<string, Array<any>>();
 
-vi.mock("../store.js", () => ({
-  useStore: (selector: (state: any) => unknown) =>
-    selector({
-      sessionNotifications: mockNotifications,
-      messages: new Map(),
-      zoomLevel: 1,
-      requestScrollToMessage: vi.fn(),
-      setExpandAllInTurn: vi.fn(),
-    }),
-}));
+const mockStoreState: Record<string, any> = {
+  sessionNotifications: mockNotifications,
+  messages: new Map(),
+  quests: [],
+  zoomLevel: 1,
+  requestScrollToMessage: mockRequestScrollToMessage,
+  setExpandAllInTurn: mockSetExpandAllInTurn,
+  openQuestOverlay: mockOpenQuestOverlay,
+};
+
+vi.mock("../store.js", () => {
+  const useStore: any = (selector: (state: any) => unknown) => selector(mockStoreState);
+  useStore.getState = () => mockStoreState;
+  return { useStore };
+});
 
 vi.mock("../api.js", () => ({
   api: {
-    markNotificationDone: vi.fn(() => Promise.resolve()),
+    markNotificationDone: (...args: unknown[]) => mockMarkNotificationDone(...args),
+    markAllNotificationsDone: (...args: unknown[]) => mockMarkAllNotificationsDone(...args),
   },
 }));
 
@@ -31,17 +42,26 @@ function setNotifications(sessionId: string, notifications: Array<any>) {
   mockNotifications.set(sessionId, notifications);
 }
 
+function setQuests(quests: Array<any>) {
+  mockStoreState.quests = quests;
+}
+
 describe("NotificationChip", () => {
   beforeEach(() => {
     mockNotifications.clear();
+    mockStoreState.messages = new Map();
+    mockStoreState.quests = [];
+    mockMarkNotificationDone.mockClear();
+    mockMarkAllNotificationsDone.mockClear();
+    mockRequestScrollToMessage.mockClear();
+    mockSetExpandAllInTurn.mockClear();
+    mockOpenQuestOverlay.mockClear();
   });
 
   it("renders nothing when there are no active notifications", () => {
     // The floating bell should stay hidden when the inbox has only completed
     // notifications or no notifications at all.
-    setNotifications("s1", [
-      { id: "done-1", category: "review", summary: "done", timestamp: Date.now(), done: true },
-    ]);
+    setNotifications("s1", [{ id: "done-1", category: "review", summary: "done", timestamp: Date.now(), done: true }]);
     const { container } = render(<NotificationChip sessionId="s1" />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -86,5 +106,52 @@ describe("NotificationChip", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
     expect(screen.getByRole("dialog", { name: "Notification inbox" })).toBeInTheDocument();
     expect(screen.getByText("Needs review")).toBeInTheDocument();
+  });
+
+  it("renders the quest mention as a quest link while keeping the row clickable for jump-to-message", () => {
+    setQuests([
+      {
+        id: "q-345-v1",
+        questId: "q-345",
+        title: "Compress herd events",
+      },
+    ]);
+    setNotifications("s1", [
+      {
+        id: "review-1",
+        category: "review",
+        summary: "q-345 ready for review: Compress herd events",
+        timestamp: Date.now(),
+        messageId: "msg-123",
+        done: false,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+
+    const questLink = screen.getByRole("link", { name: "q-345" });
+    expect(questLink).toHaveAttribute("href", "#/?quest=q-345");
+
+    fireEvent.click(screen.getByText(/ready for review: Compress herd events/i));
+    expect(mockRequestScrollToMessage).toHaveBeenCalledWith("s1", "msg-123");
+    expect(mockSetExpandAllInTurn).toHaveBeenCalledWith("s1", "msg-123");
+
+    fireEvent.click(questLink);
+    expect(mockOpenQuestOverlay).toHaveBeenCalledWith("q-345");
+    expect(mockRequestScrollToMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a Read All control and marks all active notifications done", () => {
+    setNotifications("s1", [
+      { id: "review-1", category: "review", summary: "Needs review", timestamp: Date.now(), done: false },
+      { id: "review-2", category: "review", summary: "Another review", timestamp: Date.now(), done: false },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: /2 notifications/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Read All" }));
+
+    expect(mockMarkAllNotificationsDone).toHaveBeenCalledWith("s1");
   });
 });

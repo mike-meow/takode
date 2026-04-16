@@ -437,7 +437,10 @@ export function createTakodeRoutes(ctx: RouteContext) {
         notFound.push(String(ref));
       }
     }
-    const result = body.force === true ? launcher.herdSessions(orchId, resolved, { force: true }) : launcher.herdSessions(orchId, resolved);
+    const result =
+      body.force === true
+        ? launcher.herdSessions(orchId, resolved, { force: true })
+        : launcher.herdSessions(orchId, resolved);
     return c.json({
       herded: result.herded,
       notFound: [...notFound, ...result.notFound],
@@ -581,34 +584,46 @@ export function createTakodeRoutes(ctx: RouteContext) {
         answerValue = response; // free text
       }
 
-      wsBridge.routeExternalPermissionResponse(session, {
-        type: "permission_response",
-        request_id: target.request_id,
-        behavior: "allow",
-        updated_input: { ...target.input, answers: { "0": answerValue } },
-      }, auth.callerId);
+      wsBridge.routeExternalPermissionResponse(
+        session,
+        {
+          type: "permission_response",
+          request_id: target.request_id,
+          behavior: "allow",
+          updated_input: { ...target.input, answers: { "0": answerValue } },
+        },
+        auth.callerId,
+      );
       return c.json({ ok: true, tool_name: target.tool_name, answer: answerValue });
     }
 
     if (target.tool_name === "ExitPlanMode") {
       const isApprove = response.toLowerCase().startsWith("approve");
       if (isApprove) {
-        wsBridge.routeExternalPermissionResponse(session, {
-          type: "permission_response",
-          request_id: target.request_id,
-          behavior: "allow",
-          updated_input: target.input,
-        }, auth.callerId);
+        wsBridge.routeExternalPermissionResponse(
+          session,
+          {
+            type: "permission_response",
+            request_id: target.request_id,
+            behavior: "allow",
+            updated_input: target.input,
+          },
+          auth.callerId,
+        );
         return c.json({ ok: true, tool_name: target.tool_name, action: "approved" });
       } else {
         // "reject" or "reject: feedback text"
         const feedback = response.replace(/^reject:?\s*/i, "").trim() || "Rejected by leader";
-        wsBridge.routeExternalPermissionResponse(session, {
-          type: "permission_response",
-          request_id: target.request_id,
-          behavior: "deny",
-          message: feedback,
-        }, auth.callerId);
+        wsBridge.routeExternalPermissionResponse(
+          session,
+          {
+            type: "permission_response",
+            request_id: target.request_id,
+            behavior: "deny",
+            message: feedback,
+          },
+          auth.callerId,
+        );
         return c.json({ ok: true, tool_name: target.tool_name, action: "rejected", feedback });
       }
     }
@@ -774,6 +789,16 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const ok = wsBridge.markNotificationDone(id, notifId, done);
     if (!ok) return c.json({ error: "Notification not found" }, 404);
     return c.json({ ok: true });
+  });
+
+  api.post("/sessions/:id/notifications/done-all", async (c) => {
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    const body = await c.req.json().catch(() => ({}));
+    const done = body.done !== false;
+    const count = wsBridge.markAllNotificationsDone(id, done);
+    if (count < 0) return c.json({ error: "Session not found" }, 404);
+    return c.json({ ok: true, count });
   });
 
   api.get("/sessions/:id/notifications", (c) => {

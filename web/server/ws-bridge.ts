@@ -294,11 +294,9 @@ type CodexBridgeAdapter = BackendAdapter<CodexSessionMeta> &
   TurnSteerFailedAwareAdapter &
   TurnStartFailedAwareAdapter &
   CurrentTurnIdAwareAdapter &
-  RateLimitsAwareAdapter &
-  {
+  RateLimitsAwareAdapter & {
     rollbackTurns: (numTurns: number) => Promise<void>;
-  } &
-  Partial<{
+  } & Partial<{
     refreshSkills: (forceReload?: boolean) => Promise<string[]>;
   }>;
 type ClaudeSdkBridgeAdapter = BackendAdapter<ClaudeSdkSessionMeta> & CompactRequestedAwareAdapter;
@@ -1674,9 +1672,8 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
     const now = Date.now();
-    const generationElapsedMs = session.isGenerating && session.generationStartedAt
-      ? now - session.generationStartedAt
-      : null;
+    const generationElapsedMs =
+      session.isGenerating && session.generationStartedAt ? now - session.generationStartedAt : null;
     // Find oldest active tool start time for stale-tool diagnosis
     let oldestToolAgeMs: number | null = null;
     for (const startedAt of session.toolStartTimes.values()) {
@@ -1896,10 +1893,10 @@ export class WsBridge {
     },
     actorSessionId?: string,
   ): void {
-    this.routeBrowserMessage(
-      session,
-      { ...msg, ...(actorSessionId ? { actorSessionId } : {}) } as BrowserOutgoingMessage,
-    );
+    this.routeBrowserMessage(session, {
+      ...msg,
+      ...(actorSessionId ? { actorSessionId } : {}),
+    } as BrowserOutgoingMessage);
   }
 
   /** Route an interrupt from an external source (REST API / CLI).
@@ -2048,8 +2045,7 @@ export class WsBridge {
                 clearCodexState: (p.pendingCodexRollback as { clearCodexState: boolean }).clearCodexState,
               }
             : null,
-        pendingCodexRollbackError:
-          typeof p.pendingCodexRollbackError === "string" ? p.pendingCodexRollbackError : null,
+        pendingCodexRollbackError: typeof p.pendingCodexRollbackError === "string" ? p.pendingCodexRollbackError : null,
         codexFreshTurnRequiredUntilTurnId:
           typeof p.codexFreshTurnRequiredUntilTurnId === "string" ? p.codexFreshTurnRequiredUntilTurnId : null,
         pendingCodexRollbackWaiter: null,
@@ -3289,6 +3285,23 @@ export class WsBridge {
     return true;
   }
 
+  /** Toggle the done state of all notifications and broadcast the update once. */
+  markAllNotificationsDone(sessionId: string, done: boolean): number {
+    const session = this.sessions.get(sessionId);
+    if (!session) return -1;
+    let count = 0;
+    for (const notif of session.notifications) {
+      if (notif.done === done) continue;
+      notif.done = done;
+      count += 1;
+    }
+    if (count > 0) {
+      this.broadcastToBrowsers(session, { type: "notification_update", notifications: session.notifications });
+      this.persistSession(session);
+    }
+    return count;
+  }
+
   /** Get the notifications array for a session. */
   getNotifications(sessionId: string): SessionNotification[] {
     return this.sessions.get(sessionId)?.notifications ?? [];
@@ -4302,7 +4315,10 @@ export class WsBridge {
         session.consecutiveAdapterFailures++;
       }
       const shouldDeferDisconnectInterruption =
-        wasGenerating && pending !== null && !intentionalRelaunch && !this.launcher?.getSession(sessionId)?.killedByIdleManager;
+        wasGenerating &&
+        pending !== null &&
+        !intentionalRelaunch &&
+        !this.launcher?.getSession(sessionId)?.killedByIdleManager;
       if (shouldDeferDisconnectInterruption) {
         this.clearCodexDisconnectGraceTimer(session, "codex_disconnect_rearm");
         session.codexDisconnectGraceTimer = setTimeout(() => {
@@ -5550,7 +5566,9 @@ export class WsBridge {
     left: { sessionId: string; sessionLabel?: string } | undefined,
     right: { sessionId: string; sessionLabel?: string } | undefined,
   ): boolean {
-    return (left?.sessionId ?? "") === (right?.sessionId ?? "") && (left?.sessionLabel ?? "") === (right?.sessionLabel ?? "");
+    return (
+      (left?.sessionId ?? "") === (right?.sessionId ?? "") && (left?.sessionLabel ?? "") === (right?.sessionLabel ?? "")
+    );
   }
 
   private findMatchingPendingCodexInput(
@@ -6588,8 +6606,7 @@ export class WsBridge {
     }, 0);
     if (queuedEntries.length <= pendingUserMessageCount) return false;
 
-    const retainedEntries =
-      pendingUserMessageCount > 0 ? queuedEntries.slice(-pendingUserMessageCount) : [];
+    const retainedEntries = pendingUserMessageCount > 0 ? queuedEntries.slice(-pendingUserMessageCount) : [];
     const drainedCount = queuedEntries.length - retainedEntries.length;
     console.log(
       `[ws-bridge] Draining ${drainedCount} inline queued Claude turn(s) on ${reason} for session ${sessionTag(session.id)} ` +
@@ -7964,10 +7981,15 @@ export class WsBridge {
           this.clearActionAttentionIfNoPermissions(session);
 
           // Emit takode event for herd monitoring
-          this.emitTakodeEvent(session.id, "permission_resolved", {
-            tool_name: pending.tool_name,
-            outcome: behavior === "allow" ? "approved" : "denied",
-          }, actor);
+          this.emitTakodeEvent(
+            session.id,
+            "permission_resolved",
+            {
+              tool_name: pending.tool_name,
+              outcome: behavior === "allow" ? "approved" : "denied",
+            },
+            actor,
+          );
 
           // Record in message history
           if (behavior === "allow") {
@@ -8113,9 +8135,7 @@ export class WsBridge {
             this.clearCodexFreshTurnRequirement(session, "exit_plan_mode_denied_without_active_turn");
           }
           session.codexAdapter?.sendBrowserMessage({ type: "interrupt", interruptSource } as any);
-          console.log(
-            `[ws-bridge] ExitPlanMode denied for Codex session ${sessionTag(session.id)}, sending interrupt`,
-          );
+          console.log(`[ws-bridge] ExitPlanMode denied for Codex session ${sessionTag(session.id)}, sending interrupt`);
         }
         // Takode: permission_resolved (Codex path)
         if (pending) {
@@ -9050,10 +9070,15 @@ export class WsBridge {
 
       // Takode: permission_resolved (approved) -- emit for all approvals, not just notable ones
       if (pending) {
-        this.emitTakodeEvent(session.id, "permission_resolved", {
-          tool_name: pending.tool_name,
-          outcome: "approved",
-        }, actorSessionId);
+        this.emitTakodeEvent(
+          session.id,
+          "permission_resolved",
+          {
+            tool_name: pending.tool_name,
+            outcome: "approved",
+          },
+          actorSessionId,
+        );
       }
 
       // After ExitPlanMode approval, switch the CLI to the appropriate execution
@@ -9124,10 +9149,15 @@ export class WsBridge {
 
       // Takode: permission_resolved (denied)
       {
-        this.emitTakodeEvent(session.id, "permission_resolved", {
-          tool_name: pending?.tool_name || "unknown",
-          outcome: "denied",
-        }, actorSessionId);
+        this.emitTakodeEvent(
+          session.id,
+          "permission_resolved",
+          {
+            tool_name: pending?.tool_name || "unknown",
+            outcome: "denied",
+          },
+          actorSessionId,
+        );
       }
     }
     this.persistSession(session);

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { QuestInlineLink } from "./QuestInlineLink.js";
 import type { SessionNotification, ChatMessage } from "../types.js";
 import { getHighestNotificationUrgency } from "../utils/notification-urgency.js";
 
@@ -27,6 +28,20 @@ function formatRelativeTime(ts: number): string {
 function truncateContent(msg: ChatMessage, maxLen = 100): string {
   const text = msg.content?.trim() || "";
   return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
+}
+
+function parseSingleQuestSummary(summary?: string): { before: string; questId: string; after: string } | null {
+  if (!summary) return null;
+  const matches = Array.from(summary.matchAll(/\b(q-\d+)\b/gi));
+  if (matches.length !== 1 || matches[0].index == null) return null;
+  const questId = matches[0][1];
+  const start = matches[0].index;
+  const end = start + matches[0][0].length;
+  return {
+    before: summary.slice(0, start),
+    questId,
+    after: summary.slice(end),
+  };
 }
 
 // ─── Hover Preview Card ──────────────────────────────────────────────────────
@@ -125,13 +140,7 @@ function NotificationPreviewCard({
 
 // ─── Notification Item ───────────────────────────────────────────────────────
 
-function NotificationItem({
-  notif,
-  sessionId,
-}: {
-  notif: SessionNotification;
-  sessionId: string;
-}) {
+function NotificationItem({ notif, sessionId }: { notif: SessionNotification; sessionId: string }) {
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -174,6 +183,34 @@ function NotificationItem({
 
   const isNeedsInput = notif.category === "needs-input";
   const label = notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review");
+  const questSummary = !isNeedsInput ? parseSingleQuestSummary(notif.summary) : null;
+  const labelClassName = notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90";
+
+  const renderLabel = () => {
+    if (!questSummary) {
+      return <span className={`block truncate max-w-[240px] ${labelClassName}`}>{label}</span>;
+    }
+
+    return (
+      <span className={`block truncate max-w-[240px] ${labelClassName}`}>
+        {questSummary.before}
+        <QuestInlineLink
+          questId={questSummary.questId}
+          stopPropagation={true}
+          className={`font-mono-code hover:underline ${notif.done ? "text-cc-muted/60" : "text-cc-primary"}`}
+        >
+          {questSummary.questId}
+        </QuestInlineLink>
+        {questSummary.after}
+      </span>
+    );
+  };
+
+  const handleJumpKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    jumpToMessage();
+  };
 
   return (
     <div className="flex items-start gap-2 px-3 py-2 hover:bg-cc-hover/40 transition-colors group">
@@ -205,18 +242,19 @@ function NotificationItem({
             className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isNeedsInput ? "bg-amber-400" : "bg-emerald-400"}`}
           />
           {notif.messageId ? (
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={jumpToMessage}
+              onKeyDown={handleJumpKeyDown}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              className={`text-[12px] text-left truncate max-w-[240px] cursor-pointer hover:underline ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}
+              className="min-w-0 flex-1 cursor-pointer"
             >
-              {label}
-            </button>
+              <div className="text-[12px] text-left">{renderLabel()}</div>
+            </div>
           ) : (
-            <span className={`text-[12px] truncate max-w-[240px] ${notif.done ? "text-cc-muted/60 line-through" : "text-cc-fg/90"}`}>
-              {label}
-            </span>
+            <div className="text-[12px] text-left">{renderLabel()}</div>
           )}
         </div>
         <div className="text-[10px] text-cc-muted/60 mt-0.5 pl-3">{formatRelativeTime(notif.timestamp)}</div>
@@ -243,6 +281,9 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
   const { active, done } = useNotifications(sessionId);
   const [showDone, setShowDone] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const markAllRead = useCallback(() => {
+    api.markAllNotificationsDone(sessionId).catch(() => {});
+  }, [sessionId]);
 
   // Escape to close
   useEffect(() => {
@@ -284,22 +325,32 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
           Notifications
           {active.length > 0 && <span className="ml-1.5 text-[11px] text-cc-muted font-normal">({active.length})</span>}
         </h2>
-        <button
-          onClick={onClose}
-          className="text-cc-muted hover:text-cc-fg transition-colors p-1 -mr-1 cursor-pointer"
-          aria-label="Close"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
+        <div className="flex items-center gap-1.5">
+          {active.length > 0 && (
+            <button
+              onClick={markAllRead}
+              className="text-[11px] text-cc-primary hover:text-cc-primary-hover transition-colors px-1.5 py-0.5 cursor-pointer"
+            >
+              Read All
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-cc-muted hover:text-cc-fg transition-colors p-1 -mr-1 cursor-pointer"
+            aria-label="Close"
           >
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Notification list */}

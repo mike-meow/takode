@@ -286,55 +286,59 @@ function createMockBridge() {
     addTaskEntry: vi.fn(),
     updateQuestTaskEntries: vi.fn(),
     removeBoardRowFromAll: vi.fn(),
-    prepareSessionForRevert: vi.fn((sessionId: string, truncateIdx: number, options?: { clearCodexState?: boolean }) => {
-      const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
-      if (!session) return null;
-      session.messageHistory = session.messageHistory.slice(0, truncateIdx);
-      session.frozenCount = Math.min(session.frozenCount ?? 0, session.messageHistory.length);
-      session.pendingPermissions?.clear?.();
-      session.eventBuffer = [];
-      session.awaitingCompactSummary = false;
-      session.compactedDuringTurn = false;
-      if (session.state) session.state.is_compacting = false;
-      if (options?.clearCodexState) {
-        session.pendingCodexTurns = [];
-        session.pendingCodexInputs = [];
-        session.pendingMessages = [];
-        session.pendingCodexRollback = null;
-        session.pendingCodexRollbackError = null;
-        session.userMessageIdsThisTurn = [];
-        session.queuedTurnStarts = 0;
-        session.queuedTurnReasons = [];
-        session.queuedTurnUserMessageIds = [];
-        session.queuedTurnInterruptSources = [];
-        session.interruptedDuringTurn = false;
-        session.interruptSourceDuringTurn = null;
-        session.isGenerating = false;
-        session.generationStartedAt = null;
-        if (session.optimisticRunningTimer) session.optimisticRunningTimer = null;
-        bridge.broadcastToSession(sessionId, { type: "codex_pending_inputs", inputs: [] });
-      }
-      bridge.broadcastToSession(sessionId, { type: "permissions_cleared" });
-      return session;
-    }),
-    beginCodexRollback: vi.fn((sessionId: string, plan: { numTurns: number; truncateIdx: number; clearCodexState: boolean }) => {
-      const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
-      const adapter = session?.codexAdapter;
-      if (adapter?.isConnected?.() && adapter.rollbackTurns) {
-        return {
-          promise: adapter.rollbackTurns(plan.numTurns).then(() => {
-            const reverted = bridge.prepareSessionForRevert(sessionId, plan.truncateIdx, {
-              clearCodexState: plan.clearCodexState,
-            });
-            bridge.persistSessionSync(sessionId);
-            bridge.broadcastToSession(sessionId, { type: "message_history", messages: reverted.messageHistory });
-            bridge.broadcastToSession(sessionId, { type: "status_change", status: "idle" });
-          }),
-          requiresRelaunch: false,
-        };
-      }
-      return { promise: Promise.resolve(), requiresRelaunch: true };
-    }),
+    prepareSessionForRevert: vi.fn(
+      (sessionId: string, truncateIdx: number, options?: { clearCodexState?: boolean }) => {
+        const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
+        if (!session) return null;
+        session.messageHistory = session.messageHistory.slice(0, truncateIdx);
+        session.frozenCount = Math.min(session.frozenCount ?? 0, session.messageHistory.length);
+        session.pendingPermissions?.clear?.();
+        session.eventBuffer = [];
+        session.awaitingCompactSummary = false;
+        session.compactedDuringTurn = false;
+        if (session.state) session.state.is_compacting = false;
+        if (options?.clearCodexState) {
+          session.pendingCodexTurns = [];
+          session.pendingCodexInputs = [];
+          session.pendingMessages = [];
+          session.pendingCodexRollback = null;
+          session.pendingCodexRollbackError = null;
+          session.userMessageIdsThisTurn = [];
+          session.queuedTurnStarts = 0;
+          session.queuedTurnReasons = [];
+          session.queuedTurnUserMessageIds = [];
+          session.queuedTurnInterruptSources = [];
+          session.interruptedDuringTurn = false;
+          session.interruptSourceDuringTurn = null;
+          session.isGenerating = false;
+          session.generationStartedAt = null;
+          if (session.optimisticRunningTimer) session.optimisticRunningTimer = null;
+          bridge.broadcastToSession(sessionId, { type: "codex_pending_inputs", inputs: [] });
+        }
+        bridge.broadcastToSession(sessionId, { type: "permissions_cleared" });
+        return session;
+      },
+    ),
+    beginCodexRollback: vi.fn(
+      (sessionId: string, plan: { numTurns: number; truncateIdx: number; clearCodexState: boolean }) => {
+        const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
+        const adapter = session?.codexAdapter;
+        if (adapter?.isConnected?.() && adapter.rollbackTurns) {
+          return {
+            promise: adapter.rollbackTurns(plan.numTurns).then(() => {
+              const reverted = bridge.prepareSessionForRevert(sessionId, plan.truncateIdx, {
+                clearCodexState: plan.clearCodexState,
+              });
+              bridge.persistSessionSync(sessionId);
+              bridge.broadcastToSession(sessionId, { type: "message_history", messages: reverted.messageHistory });
+              bridge.broadcastToSession(sessionId, { type: "status_change", status: "idle" });
+            }),
+            requiresRelaunch: false,
+          };
+        }
+        return { promise: Promise.resolve(), requiresRelaunch: true };
+      },
+    ),
     persistSessionSync: vi.fn(),
     getSessionAttentionState: vi.fn(() => null),
     getSessionTaskHistory: vi.fn(() => []),
@@ -351,6 +355,7 @@ function createMockBridge() {
     routeExternalInterrupt: vi.fn(async () => {}),
     notifyUser: vi.fn(() => ({ ok: true, anchoredMessageId: "msg-123" })),
     markNotificationDone: vi.fn(() => true),
+    markAllNotificationsDone: vi.fn(() => 0),
     getNotifications: vi.fn(() => []),
     isSessionBusy: vi.fn(() => false),
     getTrafficStatsSnapshot: vi.fn(() => ({
@@ -449,7 +454,17 @@ beforeEach(() => {
   const terminalManager = { getInfo: () => null, spawn: () => "", kill: () => {} } as any;
   app.route(
     "/api",
-    createRoutes(launcher, bridge, sessionStore, tracker, terminalManager, undefined, recorder, undefined, timerManager),
+    createRoutes(
+      launcher,
+      bridge,
+      sessionStore,
+      tracker,
+      terminalManager,
+      undefined,
+      recorder,
+      undefined,
+      timerManager,
+    ),
   );
 
   // Default no-op mocks for container workspace isolation (called during container session creation)
@@ -5567,10 +5582,10 @@ describe("POST /api/sessions/create-stream", () => {
 
 // ─── Revert ───────────────────────────────────────────────────────────────
 
-  describe("POST /api/sessions/:id/revert", () => {
-    // Helper to create a mock session with message history for revert tests.
-    // Simulates a session with 2 turns: user→assistant→user→assistant.
-    function setupRevertSession(overrides?: Partial<{ state: string; backendType: string; cliSessionId: string }>) {
+describe("POST /api/sessions/:id/revert", () => {
+  // Helper to create a mock session with message history for revert tests.
+  // Simulates a session with 2 turns: user→assistant→user→assistant.
+  function setupRevertSession(overrides?: Partial<{ state: string; backendType: string; cliSessionId: string }>) {
     const sessionInfo = {
       sessionId: "session-1",
       state: "exited",
@@ -5599,26 +5614,26 @@ describe("POST /api/sessions/create-stream", () => {
           parent_tool_use_id: null,
         },
       ],
-        pendingPermissions: new Map(),
-        pendingMessages: [],
-        pendingCodexTurns: [],
-        pendingCodexInputs: [],
-        pendingCodexRollback: null,
-        pendingCodexRollbackError: null,
-        eventBuffer: [
-          { seq: 1, message: { type: "assistant", message: { id: "asst-msg-1" } } },
-          { seq: 2, message: { type: "status_change", status: "idle" } },
-          { seq: 3, message: { type: "assistant", message: { id: "asst-msg-2" } } },
-          { seq: 4, message: { type: "status_change", status: "idle" } },
-        ],
-        nextEventSeq: 5,
-        frozenCount: 4,
-        lastUserMessage: "Do something",
-      };
-      bridge.getOrCreateSession.mockReturnValue(mockSession);
+      pendingPermissions: new Map(),
+      pendingMessages: [],
+      pendingCodexTurns: [],
+      pendingCodexInputs: [],
+      pendingCodexRollback: null,
+      pendingCodexRollbackError: null,
+      eventBuffer: [
+        { seq: 1, message: { type: "assistant", message: { id: "asst-msg-1" } } },
+        { seq: 2, message: { type: "status_change", status: "idle" } },
+        { seq: 3, message: { type: "assistant", message: { id: "asst-msg-2" } } },
+        { seq: 4, message: { type: "status_change", status: "idle" } },
+      ],
+      nextEventSeq: 5,
+      frozenCount: 4,
+      lastUserMessage: "Do something",
+    };
+    bridge.getOrCreateSession.mockReturnValue(mockSession);
 
-      return { sessionInfo, mockSession };
-    }
+    return { sessionInfo, mockSession };
+  }
 
   // Reverting to the second user message should truncate history to before
   // that message and call relaunchWithResumeAt with the preceding assistant UUID.
@@ -5790,7 +5805,10 @@ describe("POST /api/sessions/create-stream", () => {
     mockSession.messageHistory = [
       { type: "user_message", id: "user-msg-1", content: "Hello" },
       { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" },
+      },
       { type: "user_message", id: "user-msg-2", content: "First input in turn 2" },
       { type: "user_message", id: "user-msg-3", content: "Steered follow-up in turn 2" },
       { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
@@ -5830,10 +5848,16 @@ describe("POST /api/sessions/create-stream", () => {
     mockSession.messageHistory = [
       { type: "user_message", id: "user-msg-1", content: "Hello" },
       { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" },
+      },
       { type: "user_message", id: "user-msg-2", content: "Do something" },
       { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" },
+      },
     ];
     mockSession.frozenCount = 6;
     const rollbackTurns = vi.fn(async () => {});
@@ -5901,10 +5925,16 @@ describe("POST /api/sessions/create-stream", () => {
     mockSession.messageHistory = [
       { type: "user_message", id: "user-msg-1", content: "Hello" },
       { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" },
+      },
       { type: "user_message", id: "user-msg-2", content: "Do something" },
       { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" },
+      },
     ];
     mockSession.pendingPermissions = new Map([["perm-1", { tool_name: "Bash" }]]);
     mockSession.pendingCodexInputs = [{ id: "pending-1", content: "queued", timestamp: 1, cancelable: true }];
@@ -5962,10 +5992,16 @@ describe("POST /api/sessions/create-stream", () => {
     mockSession.messageHistory = [
       { type: "user_message", id: "user-msg-1", content: "Hello" },
       { type: "assistant", message: { id: "asst-msg-1", content: [{ type: "text", text: "Hi" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-1", codex_turn_id: "turn-1", is_error: false, subtype: "success", type: "result" },
+      },
       { type: "user_message", id: "user-msg-2", content: "Do something" },
       { type: "assistant", message: { id: "asst-msg-2", content: [{ type: "text", text: "Done" }], model: "gpt-5.4" } },
-      { type: "result", data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" } },
+      {
+        type: "result",
+        data: { uuid: "result-2", codex_turn_id: "turn-2", is_error: false, subtype: "success", type: "result" },
+      },
     ];
     mockSession.frozenCount = 6;
 
@@ -7344,6 +7380,21 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it("marks all notifications done via POST", async () => {
+    setupTakodeSessions();
+    bridge.markAllNotificationsDone.mockReturnValue(3);
+
+    const res = await app.request("/api/sessions/orch-1/notifications/done-all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, count: 3 });
+    expect(bridge.markAllNotificationsDone).toHaveBeenCalledWith("orch-1", true);
   });
 
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
