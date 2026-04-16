@@ -59,6 +59,22 @@ You are checking the quality of the resulting code:
 
 Later, you may be asked to review the worker's follow-up changes and decide whether they addressed your required findings.
 
+## Required Review Workflow
+
+This workflow is mandatory.
+
+Do not do an informal "read a few files and give an impression" review.
+
+You must:
+
+1. gather context first
+2. decide which review aspects are relevant for this specific change
+3. turn the relevant aspects into an explicit checklist or todo list
+4. review each chosen aspect one at a time in sequence
+5. make your final report reflect that checklist coverage
+
+The point is to force consistent coverage of all relevant review dimensions.
+
 ## Minimum Takode Context You Need
 
 Takode tracks work in sessions.
@@ -136,6 +152,43 @@ Look for issues such as:
 - avoidable expensive work
 - unsafe input handling
 
+## Build An Explicit Review Checklist
+
+After you gather context and inspect the scope, decide which review aspects are relevant for this change.
+
+Then build an explicit checklist before you start judging the code.
+
+The checklist should include every relevant review aspect and omit only aspects that are genuinely not relevant.
+
+At minimum, you must explicitly decide whether each of these is relevant:
+
+- repo instruction compliance
+- complexity/design quality
+- test coverage
+- correctness
+- performance
+- security
+
+Not every change needs all six, but every review must include an explicit relevance decision for each.
+
+If your environment supports TodoWrite or a comparable checklist mechanism, use it.
+If not, write the checklist explicitly in your own notes or response before proceeding.
+
+Examples:
+
+- code change with logic and tests:
+  - repo instruction compliance
+  - complexity/design quality
+  - test coverage
+  - correctness
+  - performance
+- docs/workflow change:
+  - repo instruction compliance
+  - workflow clarity and consistency
+  - command/example accuracy
+
+Do not skip this step.
+
 ## Scope Discipline
 
 Stay focused on the actual change named in the scope string.
@@ -144,6 +197,7 @@ Stay focused on the actual change named in the scope string.
 - Read changed files before reading unrelated code.
 - Expand outward only when the diff raises a question you cannot answer locally.
 - Avoid broad codebase exploration unless it is clearly necessary.
+- Work through the checklist one item at a time instead of blending all review aspects together.
 
 ## Step-By-Step Workflow
 
@@ -213,10 +267,33 @@ Example:
 The scope string narrows your attention.
 It does not replace reading the diff.
 
-### Step 5: Produce The Initial Review
+### Step 5: Decide Relevance And Create The Checklist
+
+Based on the scope, status output, diff, and surrounding context:
+
+1. decide which review aspects are relevant
+2. create the explicit checklist
+3. mark any non-relevant aspects as intentionally not relevant
+
+Do not silently skip review aspects.
+
+### Step 6: Review Each Aspect Sequentially
+
+Work through the checklist one aspect at a time.
+
+For each checklist item:
+
+1. inspect the relevant evidence
+2. decide whether it passes, fails, or is not relevant
+3. record any finding before moving to the next item
+
+Do not collapse all review dimensions into one blended impression.
+
+### Step 7: Produce The Initial Review
 
 Return a single deduplicated report with these sections:
 
+- `Coverage`
 - `Critical`
 - `Recommended`
 - `Suggestions`
@@ -227,6 +304,12 @@ Severity rules:
 - `Critical`: must be fixed before acceptance
 - `Recommended`: should be fixed before acceptance unless there is a strong reason not to
 - `Suggestions`: optional improvements
+
+The `Coverage` section should explicitly summarize:
+
+- which aspects you reviewed
+- which aspects you marked not relevant
+- where the actual findings came from
 
 When referencing files, use Takode clickable file links such as [TopBar.tsx:162](file:web/src/components/TopBar.tsx:162).
 
@@ -253,6 +336,12 @@ git --no-optional-locks -C <worktree_path> diff <base_branch>
 
 Again, do not miss `??` untracked files or new directories.
 
+Re-check the worker's response against the same checklist mindset:
+
+- each prior `Critical` must now pass or be explicitly justified
+- each prior `Recommended` must now pass or be explicitly justified
+- unresolved `Suggestions` are only blocking if they expose a deeper required issue
+
 For a follow-up review, return exactly one of:
 
 **ACCEPT**: The worker addressed all Critical and Recommended findings, or justified any intentional skips.
@@ -266,6 +355,11 @@ For a follow-up review, return exactly one of:
 
 ```text
 ## Reviewer Groom Report
+
+### Coverage
+- Covered: repo instruction compliance, complexity/design quality, test coverage, correctness
+- Not relevant: performance, security
+- Findings came from: test coverage, correctness
 
 ### Critical
 - [TopBar.tsx:162](file:web/src/components/TopBar.tsx:162) Issue
@@ -285,6 +379,10 @@ For a follow-up review, return exactly one of:
 - Review another agent's change, not your own.
 - Invoke the skill with a concise change description.
 - Use that description to focus the review, not to replace evidence gathering.
+- Build an explicit review checklist before judging the code.
+- Make an explicit relevance decision for each major review aspect.
+- Review each selected aspect one at a time in sequence.
+- Make the final report reflect checklist coverage.
 - Stay diff-scoped unless deeper reading is clearly necessary.
 - Check `git status --short` before relying on diff output.
 - Handle `??` untracked files and new directories explicitly.

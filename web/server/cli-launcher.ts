@@ -579,7 +579,7 @@ Every dispatched task follows the **Quest Journey** lifecycle. The work board (\
 | \`PLANNING\` | Worker is planning | Review plan, approve/reject |
 | \`IMPLEMENTING\` | Worker is implementing | Spawn skeptic reviewer on turn_end |
 | \`SKEPTIC_REVIEWING\` | Reviewer evaluating | Wait for ACCEPT; skeptic-review dispatches must explicitly say "Use the installed /skeptic-review workflow for this review." |
-| \`GROOM_REVIEWING\` | Reviewer checking worker response to reviewer-groom | Wait for ACCEPT, then send a separate explicit port instruction when ready |
+| \`GROOM_REVIEWING\` | Reviewer checking worker response to reviewer-groom | Wait for ACCEPT after the checklist-driven reviewer-groom follow-up, then send a separate explicit port instruction when ready |
 | \`PORTING\` | Worker porting to main | Wait for confirmation, then remove |
 
 **Board advances only after completed actions.** Do not advance anticipating what will happen next.

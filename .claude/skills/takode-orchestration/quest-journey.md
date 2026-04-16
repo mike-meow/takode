@@ -102,7 +102,7 @@ The `--reviewer` flag automatically:
 - On ACCEPT: send the same reviewer a concise review request, then have the reviewer self-invoke `/reviewer-groom "<scope>"`.
 - The best scope strings usually identify the quest, the worker, and the worker message range that contains the follow-up being reviewed.
 - Example scope: `Review [q-324](quest:q-324) for reviewer-groom follow-up after worker #469's update in [#469 msg 723](session:469:723) through [#469 msg 746](session:469:746)`.
-- `/reviewer-groom` generates the quality report inside the reviewer session.
+- `/reviewer-groom` generates the quality report inside the reviewer session and should follow an explicit checklist-driven review flow.
 - If `/reviewer-groom` returns any Critical or Recommended findings, send them to the worker and tell the worker to address them, report back, and wait. Do not tell the worker to port yet.
 - If `/reviewer-groom` returns no Critical or Recommended findings, treat that as groom acceptance and continue to the next stage.
 - `takode board advance <quest-id>`
