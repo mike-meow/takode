@@ -2551,6 +2551,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Only inspect a worker after a herd event");
     expect(guardrails).toContain("Make every worker instruction stage-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Leaders do not own worker quests");
+    expect(guardrails).toContain("worker doing the job claims and completes the quest");
     expect(guardrails).toContain("implement, update the quest summary comment, and stop when done");
     expect(guardrails).toContain("Do **not** tell the worker to port yet");
     expect(guardrails).toContain("investigation, design, or other no-code quests");
@@ -2587,6 +2589,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Make every worker instruction stage-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Leaders do not own worker quests");
+    expect(guardrails).toContain("worker doing the job claims and completes the quest");
     expect(guardrails).toContain("implement, update the quest summary comment, and stop when done");
     expect(guardrails).toContain("Do **not** tell the worker to port yet");
     expect(guardrails).toContain("address reviewer-groom findings, update the quest summary comment, and stop");

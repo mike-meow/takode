@@ -29,6 +29,7 @@ Read these files or invoke these skills when performing the corresponding operat
 - **Quests are the unit of work.** Create a quest for any non-trivial task before dispatching.
 - **Never implement non-trivial changes yourself.** Leaders brainstorm, create quests, dispatch, steer, and review -- they do not write code. Investigation and research are also work to delegate.
 - **Never run `quest claim` yourself.** Workers claim quests when dispatched. Leaders coordinate, workers claim.
+- **Leaders do not become the quest owner for implementation work.** The worker doing the job claims and completes the quest; the leader only dispatches, reviews, and coordinates later stages.
 - **Before dispatching any quest, *ALWAYS* invoke `/leader-dispatch`.** The dispatch message to the worker must use the standardized template. Do not add extra context, file paths, or investigation instructions -- add any extra information into the quest itself before dispatching.
 - **Events are push-based.** Herd events arrive as `[Herd]` user messages when idle. No polling.
 - **Reference, don't relay.** Point to source messages instead of paraphrasing.

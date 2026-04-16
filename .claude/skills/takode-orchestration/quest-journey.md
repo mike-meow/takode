@@ -23,6 +23,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 
 - **Authorize one stage at a time.** Every leader-to-worker message should say what the worker is allowed to do now and what must wait.
 - **Initial dispatch = planning only.** The worker returns a plan and stops. Do not imply implementation is approved.
+- **Quest ownership stays with the worker.** The worker doing the job claims and completes the quest. The leader coordinates the journey but does not claim the quest on the worker's behalf.
 - **Plan approval = implement, update the quest summary comment, and stop.** Tell the worker to implement, add or refresh the final quest summary comment, report back, and wait. Do not let the worker infer review, porting, or quest transitions.
 - **Review/rework = do the named work, update the summary comment, and stop.** If you send reviewer findings, also tell the worker to refresh the quest summary comment before reporting back and waiting. Do not imply porting is authorized.
 - **Porting requires an explicit instruction.** Only tell the worker to run `/port-changes` after the reviewer ACCEPTs and you are ready for porting.
