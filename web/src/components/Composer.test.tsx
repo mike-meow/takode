@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, createEvent, waitFor } from "@testing-library/react";
+import { Profiler } from "react";
+import { render, screen, fireEvent, createEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionState } from "../../server/session-types.js";
 
@@ -121,23 +122,43 @@ const mockSetAskPermission = vi.fn();
 const mockRequestBottomAlignOnNextUserMessage = vi.fn();
 
 // Shared listener set for mock store reactivity
-const mockStoreListeners = new Set<() => void>();
+const mockStoreListeners = new Set<{
+  getSelected: () => unknown;
+  lastSelectedRef: { current: unknown };
+  notify: () => void;
+}>();
 function notifyMockStore() {
-  mockStoreListeners.forEach((l) => l());
+  mockStoreListeners.forEach((listener) => {
+    const nextSelected = listener.getSelected();
+    if (!Object.is(nextSelected, listener.lastSelectedRef.current)) {
+      listener.lastSelectedRef.current = nextSelected;
+      listener.notify();
+    }
+  });
 }
 
 vi.mock("../store.js", async () => {
   const React = await import("react");
   // Create a mock store function that acts like zustand's useStore with subscribe support
   const useStore: any = (selector: (state: Record<string, unknown>) => unknown) => {
+    const selectorRef = React.useRef(selector);
+    selectorRef.current = selector;
+    const selected = selector(mockStoreState);
+    const lastSelectedRef = React.useRef(selected);
+    lastSelectedRef.current = selected;
     const [, forceUpdate] = React.useReducer((c: number) => c + 1, 0);
     React.useEffect(() => {
-      mockStoreListeners.add(forceUpdate);
+      const listener = {
+        getSelected: () => selectorRef.current(mockStoreState),
+        lastSelectedRef,
+        notify: forceUpdate,
+      };
+      mockStoreListeners.add(listener);
       return () => {
-        mockStoreListeners.delete(forceUpdate);
+        mockStoreListeners.delete(listener);
       };
     }, []);
-    return selector(mockStoreState);
+    return selected;
   };
   // Add getState for imperative access (used by Composer for clearComposerDraft etc.)
   useStore.getState = () => mockStoreState;
@@ -336,6 +357,69 @@ describe("Composer basic rendering", () => {
     // Send button (the round one with the arrow SVG) - identified by title
     const sendBtn = screen.getByTitle("Send message");
     expect(sendBtn).toBeTruthy();
+  });
+
+  it("disables browser spellcheck on the composer textarea", () => {
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea");
+
+    // Regression coverage for q-352: spellcheck must stay off consistently so
+    // the browser does not re-enable per-keystroke decoration in some states.
+    expect(textarea?.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("does not rerender for unrelated sessions and sdkSessions churn", () => {
+    setupMockStore({
+      session: { git_branch: "main", model: "claude-sonnet-4-5-20250929" },
+      sdkSessionTotals: { added: 5, removed: 2 },
+    });
+
+    const sessionsMap = mockStoreState.sessions as Map<string, SessionState>;
+    sessionsMap.set("s2", makeSession({ session_id: "s2", git_branch: "feature/initial" }));
+    mockStoreState.sdkSessions = [
+      ...(mockStoreState.sdkSessions as Array<{
+        sessionId: string;
+        totalLinesAdded: number;
+        totalLinesRemoved: number;
+      }>),
+      { sessionId: "s2", totalLinesAdded: 1, totalLinesRemoved: 1 },
+    ];
+
+    let composerCommits = 0;
+
+    render(
+      <Profiler id="composer" onRender={() => composerCommits++}>
+        <Composer sessionId="s1" />
+      </Profiler>,
+    );
+
+    expect(composerCommits).toBe(1);
+    expect(screen.getByText("main")).toBeTruthy();
+    expect(screen.getByText("sonnet-4.5")).toBeTruthy();
+
+    // Regression coverage for q-352: unrelated session-list polling churn
+    // should not commit the active Composer subtree anymore.
+    act(() => {
+      sessionsMap.set("s2", makeSession({ session_id: "s2", git_branch: "feature/updated", model: "gpt-5.4" }));
+      mockStoreState.sdkSessions = [
+        {
+          sessionId: "s1",
+          totalLinesAdded: 5,
+          totalLinesRemoved: 2,
+        },
+        {
+          sessionId: "s2",
+          totalLinesAdded: 99,
+          totalLinesRemoved: 42,
+        },
+      ];
+      notifyMockStore();
+    });
+
+    expect(composerCommits).toBe(1);
+    expect(screen.getByText("main")).toBeTruthy();
+    expect(screen.getByText("sonnet-4.5")).toBeTruthy();
+    expect(screen.queryByText("+99")).toBeNull();
   });
 
   it("uses explicit zero diff stats from bridge state instead of stale sdk fallback", () => {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
 import {
@@ -30,6 +31,10 @@ import {
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
 import type { CodexAppReference, CodexSkillReference } from "../types.js";
+
+const EMPTY_STRING_ARRAY: string[] = [];
+const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
+const EMPTY_APP_REFERENCES: CodexAppReference[] = [];
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -508,26 +513,62 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [voiceError, failedTranscription, setVoiceError]);
 
-  const isConnected = useStore((s) => s.cliConnected.get(sessionId) ?? false);
-  const sessionData = useStore((s) => s.sessions.get(sessionId));
-  const sdkSession = useStore((s) => s.sdkSessions?.find((x) => x.sessionId === sessionId));
-  const diffLinesAdded = sessionData?.total_lines_added ?? sdkSession?.totalLinesAdded ?? 0;
-  const diffLinesRemoved = sessionData?.total_lines_removed ?? sdkSession?.totalLinesRemoved ?? 0;
+  // Keep the textarea subscribed only to the session fields it actually renders.
+  // This avoids full-composer rerenders from unrelated session poll churn.
+  const sessionView = useStore(
+    useShallow((s) => {
+      const sessionData = s.sessions.get(sessionId);
+      return {
+        isConnected: s.cliConnected.get(sessionId) ?? false,
+        explicitAskPermission: s.askPermission.get(sessionId),
+        backendType: sessionData?.backend_type,
+        permissionMode: sessionData?.permissionMode || "acceptEdits",
+        serverUiMode: sessionData?.uiMode,
+        codexReasoningEffort: sessionData?.codex_reasoning_effort || "",
+        slashCommands: sessionData?.slash_commands ?? EMPTY_STRING_ARRAY,
+        skills: sessionData?.skills ?? EMPTY_STRING_ARRAY,
+        skillMetadata: sessionData?.skill_metadata ?? EMPTY_SKILL_REFERENCES,
+        apps: sessionData?.apps ?? EMPTY_APP_REFERENCES,
+        cwd: sessionData?.cwd,
+        repoRoot: sessionData?.repo_root,
+        gitBranch: sessionData?.git_branch,
+        isContainerized: sessionData?.is_containerized === true,
+        gitAhead: sessionData?.git_ahead || 0,
+        gitBehind: sessionData?.git_behind || 0,
+        model: sessionData?.model,
+        totalLinesAdded: sessionData?.total_lines_added,
+        totalLinesRemoved: sessionData?.total_lines_removed,
+      };
+    }),
+  );
+  const sdkDiffTotals = useStore(
+    useShallow((s) => {
+      const sdkSession = s.sdkSessions?.find((x) => x.sessionId === sessionId);
+      return {
+        totalLinesAdded: sdkSession?.totalLinesAdded ?? 0,
+        totalLinesRemoved: sdkSession?.totalLinesRemoved ?? 0,
+      };
+    }),
+  );
   const vscodeSelectionState = useStore((s) => s.vscodeSelectionContext);
 
-  const currentMode = sessionData?.permissionMode || "acceptEdits";
-  const isCodex = sessionData?.backend_type === "codex";
-  const askPermission = useStore((s) => {
-    const explicit = s.askPermission.get(sessionId);
-    if (typeof explicit === "boolean") return explicit;
-    return isCodex ? deriveCodexAskPermission(currentMode) : true;
-  });
+  const isConnected = sessionView.isConnected;
+  const currentMode = sessionView.permissionMode;
+  const isCodex = sessionView.backendType === "codex";
+  const askPermission =
+    typeof sessionView.explicitAskPermission === "boolean"
+      ? sessionView.explicitAskPermission
+      : isCodex
+        ? deriveCodexAskPermission(currentMode)
+        : true;
+  const diffLinesAdded = sessionView.totalLinesAdded ?? sdkDiffTotals.totalLinesAdded;
+  const diffLinesRemoved = sessionView.totalLinesRemoved ?? sdkDiffTotals.totalLinesRemoved;
   // Prefer the server-provided UI mode when available. permissionMode can be
   // stale during backend transitions (e.g., SDK init/status replay) while uiMode
   // is the authoritative virtual mode for the composer toggle.
-  const uiMode = sessionData?.uiMode ?? (isCodex ? deriveCodexUiMode(currentMode) : deriveUiMode(currentMode));
+  const uiMode = sessionView.serverUiMode ?? (isCodex ? deriveCodexUiMode(currentMode) : deriveUiMode(currentMode));
   const isPlan = uiMode === "plan";
-  const codexReasoningEffort = sessionData?.codex_reasoning_effort || "";
+  const codexReasoningEffort = sessionView.codexReasoningEffort;
   const codexModelOptions = dynamicCodexModels || getModelsForBackend("codex");
   // Resolve the "Default" option: replace the empty-value placeholder with
   // the user's actual configured model from ~/.claude/settings.json so we
@@ -537,7 +578,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     const raw = dynamicClaudeModels || getModelsForBackend("claude");
     return raw.filter((m) => m.value !== "");
   }, [dynamicClaudeModels]);
-  const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionData?.repo_root, sessionData?.cwd);
+  const sessionSelectionRoot = getVsCodeSelectionSessionRoot(sessionView.repoRoot, sessionView.cwd);
   const vscodeSelectionPayload: VsCodeSelectionContextPayload | null = vscodeSelectionState?.selection
     ? resolveVsCodeSelectionForSession(vscodeSelectionState.selection, sessionSelectionRoot)
     : null;
@@ -619,25 +660,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
         pushCommand(cmd, "command");
       }
     }
-    if (sessionData?.slash_commands) {
-      for (const cmd of sessionData.slash_commands) {
-        pushCommand(cmd, "command");
-      }
+    for (const cmd of sessionView.slashCommands) {
+      pushCommand(cmd, "command");
     }
-    if (sessionData?.skills) {
-      for (const skill of sessionData.skills) {
-        pushCommand(skill, "skill");
-      }
+    for (const skill of sessionView.skills) {
+      pushCommand(skill, "skill");
     }
     return cmds;
-  }, [isCodex, sessionData?.slash_commands, sessionData?.skills]);
+  }, [isCodex, sessionView.skills, sessionView.slashCommands]);
 
   const dollarCommands = useMemo<CommandItem[]>(() => {
     if (!isCodex) return [];
     const cmds: CommandItem[] = [];
     const seen = new Set<string>();
     const skillMetadataByName = new Map<string, CodexSkillReference>();
-    for (const skill of sessionData?.skill_metadata ?? []) {
+    for (const skill of sessionView.skillMetadata) {
       const name = skill.name.trim();
       if (name && !skillMetadataByName.has(name)) skillMetadataByName.set(name, skill);
     }
@@ -674,25 +711,25 @@ export function Composer({ sessionId }: { sessionId: string }) {
       });
     };
 
-    for (const skill of sessionData?.skills ?? []) {
+    for (const skill of sessionView.skills) {
       pushSkill(skill, skillMetadataByName.get(skill.trim()));
     }
     for (const skill of skillMetadataByName.values()) {
       pushSkill(skill.name, skill);
     }
-    for (const app of sessionData?.apps ?? []) {
+    for (const app of sessionView.apps) {
       pushApp(app);
     }
     return cmds;
-  }, [isCodex, sessionData?.apps, sessionData?.skill_metadata, sessionData?.skills]);
+  }, [isCodex, sessionView.apps, sessionView.skillMetadata, sessionView.skills]);
 
   useEffect(() => {
     if (!isCodex || !isConnected) return;
-    if ((sessionData?.skill_metadata?.length ?? 0) > 0 || (sessionData?.apps?.length ?? 0) > 0) return;
+    if (sessionView.skillMetadata.length > 0 || sessionView.apps.length > 0) return;
     if (requestedCodexSkillRefreshSessionRef.current === sessionId) return;
     requestedCodexSkillRefreshSessionRef.current = sessionId;
     api.refreshSessionSkills(sessionId).catch(() => {});
-  }, [isCodex, isConnected, sessionData?.apps, sessionData?.skill_metadata, sessionId]);
+  }, [isCodex, isConnected, sessionId, sessionView.apps, sessionView.skillMetadata]);
 
   // Filter commands based on what the user typed after /
   const filteredCommands = useMemo(() => {
@@ -815,11 +852,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
   // Derive the search root from session state (repo_root preferred, cwd fallback)
   const mentionSearchRoot = useMemo(() => {
-    const cwd = sessionData?.cwd;
-    const repoRoot = sessionData?.repo_root;
+    const cwd = sessionView.cwd;
+    const repoRoot = sessionView.repoRoot;
     if (repoRoot && cwd?.startsWith(repoRoot + "/")) return repoRoot;
     return cwd || repoRoot || null;
-  }, [sessionData?.cwd, sessionData?.repo_root]);
+  }, [sessionView.cwd, sessionView.repoRoot]);
 
   // Detect `@` at cursor position and extract query for file search.
   // Called from handleInput — scans backward from cursor to find `@`.
@@ -2053,6 +2090,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
+                spellCheck={false}
                 enterKeyHint={isTouchDevice() ? "enter" : undefined}
                 placeholder={
                   pendingAskUserPerm
@@ -2083,26 +2121,24 @@ export function Composer({ sessionId }: { sessionId: string }) {
             </div>
 
             {/* Git branch + model + lines info */}
-            {(sessionData?.git_branch || sessionData?.model || vscodeSelectionPayload) && (
+            {(sessionView.gitBranch || sessionView.model || vscodeSelectionPayload) && (
               <div className="flex items-center gap-2 px-2 sm:px-4 pb-1 text-[11px] text-cc-muted">
-                {sessionData?.git_branch && (
+                {sessionView.gitBranch && (
                   <span className="flex items-center gap-1 truncate min-w-0">
                     <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 opacity-60">
                       <path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.116.862a2.25 2.25 0 10-.862.862A4.48 4.48 0 007.25 7.5h-1.5A2.25 2.25 0 003.5 9.75v.318a2.25 2.25 0 101.5 0V9.75a.75.75 0 01.75-.75h1.5a5.98 5.98 0 003.884-1.435A2.25 2.25 0 109.634 3.362zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5z" />
                     </svg>
-                    <span className="truncate max-w-[100px] sm:max-w-[160px]">{sessionData.git_branch}</span>
-                    {sessionData.is_containerized && (
+                    <span className="truncate max-w-[100px] sm:max-w-[160px]">{sessionView.gitBranch}</span>
+                    {sessionView.isContainerized && (
                       <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1 rounded">container</span>
                     )}
                   </span>
                 )}
-                {((sessionData?.git_ahead || 0) > 0 || (sessionData?.git_behind || 0) > 0) && (
+                {(sessionView.gitAhead > 0 || sessionView.gitBehind > 0) && (
                   <span className="flex items-center gap-0.5 text-[10px]">
-                    {(sessionData?.git_ahead || 0) > 0 && (
-                      <span className="text-green-500">{sessionData?.git_ahead}&#8593;</span>
-                    )}
-                    {(sessionData?.git_behind || 0) > 0 && (
-                      <span className="text-cc-warning">{sessionData?.git_behind}&#8595;</span>
+                    {sessionView.gitAhead > 0 && <span className="text-green-500">{sessionView.gitAhead}&#8593;</span>}
+                    {sessionView.gitBehind > 0 && (
+                      <span className="text-cc-warning">{sessionView.gitBehind}&#8595;</span>
                     )}
                   </span>
                 )}
@@ -2112,9 +2148,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     <span className="text-red-400">-{diffLinesRemoved}</span>
                   </span>
                 )}
-                {sessionData?.model && (
+                {sessionView.model && (
                   <>
-                    {sessionData?.git_branch && <span className="text-cc-muted/40">&middot;</span>}
+                    {sessionView.gitBranch && <span className="text-cc-muted/40">&middot;</span>}
                     {!isCodex ? (
                       <div className="relative" ref={modelDropdownRef}>
                         <button
@@ -2123,9 +2159,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
                           className={`flex items-center gap-0.5 font-mono-code truncate transition-colors select-none ${
                             !isConnected ? "opacity-30 cursor-not-allowed" : "hover:text-cc-fg cursor-pointer"
                           }`}
-                          title={`Model: ${sessionData.model} (click to change)`}
+                          title={`Model: ${sessionView.model} (click to change)`}
                         >
-                          <span className="truncate">{formatModel(sessionData.model)}</span>
+                          <span className="truncate">{formatModel(sessionView.model)}</span>
                           <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
                             <path d="M4 6l4 4 4-4" />
                           </svg>
@@ -2140,7 +2176,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                                   setShowModelDropdown(false);
                                 }}
                                 className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                                  m.value === sessionData.model ? "text-cc-primary font-medium" : "text-cc-fg"
+                                  m.value === sessionView.model ? "text-cc-primary font-medium" : "text-cc-fg"
                                 }`}
                               >
                                 <span className="mr-1.5">{m.icon}</span>
@@ -2159,9 +2195,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
                             className={`flex items-center gap-0.5 font-mono-code truncate transition-colors select-none ${
                               !isConnected ? "opacity-30 cursor-not-allowed" : "hover:text-cc-fg cursor-pointer"
                             }`}
-                            title={`Model: ${sessionData.model} (relaunch required)`}
+                            title={`Model: ${sessionView.model} (relaunch required)`}
                           >
-                            <span className="truncate">{formatModel(sessionData.model)}</span>
+                            <span className="truncate">{formatModel(sessionView.model)}</span>
                             <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
                               <path d="M4 6l4 4 4-4" />
                             </svg>
@@ -2176,7 +2212,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                                     setShowModelDropdown(false);
                                   }}
                                   className={`w-full px-3 py-2 text-xs text-left hover:bg-cc-hover transition-colors cursor-pointer ${
-                                    m.value === sessionData.model ? "text-cc-primary font-medium" : "text-cc-fg"
+                                    m.value === sessionView.model ? "text-cc-primary font-medium" : "text-cc-fg"
                                   }`}
                                 >
                                   <span className="mr-1.5">{m.icon}</span>
@@ -2233,9 +2269,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 )}
                 {vscodeSelectionPayload && (
                   <>
-                    {(sessionData?.git_branch || sessionData?.model) && (
-                      <span className="text-cc-muted/40">&middot;</span>
-                    )}
+                    {(sessionView.gitBranch || sessionView.model) && <span className="text-cc-muted/40">&middot;</span>}
                     <span
                       className="inline-flex max-w-[160px] shrink min-w-0 items-center gap-0.5 rounded-md border border-cc-border/70 bg-cc-hover/55 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted"
                       title={buildVsCodeSelectionPrompt(vscodeSelectionPayload)}
