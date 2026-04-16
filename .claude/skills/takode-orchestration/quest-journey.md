@@ -9,22 +9,22 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 | `QUEUED` | Quest is ready, waiting for dispatch | Dispatch to a worker |
 | `PLANNING` | Worker is planning | Wait for the plan via `permission_request` or plain-text `turn_end`, then review it |
 | `IMPLEMENTING` | Worker is implementing | Wait for `turn_end`, then spawn skeptic reviewer |
-| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then tell worker to run `/groom`, implement any Critical or Recommended suggestions, report back, and wait |
-| `GROOM_REVIEWING` | Worker ran groom and implemented suggestions; reviewer checking compliance | ALWAYS send to reviewer, wait for ACCEPT, then send a separate explicit port instruction when ready |
+| `SKEPTIC_REVIEWING` | Skeptic reviewer is evaluating | Wait for reviewer ACCEPT, then send the same reviewer a concise review request; the reviewer self-invokes `/reviewer-groom "<scope>"` |
+| `GROOM_REVIEWING` | Reviewer owns the quality pass and follow-up judgment | Wait for reviewer ACCEPT on the worker's response, then send a separate explicit port instruction when ready |
 | `PORTING` | Worker is porting to main repo | Wait for port confirmation, then remove from board |
 
 **Board advances only after completed actions.** Do not advance the board anticipating what will happen next. Only advance after the action for that stage is actually done.
 
 **Update the board immediately.** When a herd event arrives that changes quest state (turn_end, permission_request, etc.), update the board as your FIRST action -- before reviewing content, reading messages, or composing responses. The board must always reflect real-time state.
 
-**Mandatory stages:** Skeptic review and groom review are mandatory for ALL quests with code changes -- no exceptions for "small" or "trivial" changes. Groom may only be skipped when the task produced zero code changes (e.g., analysis-only work).
+**Mandatory stages:** Skeptic review and groom review are mandatory for ALL quests with code changes -- no exceptions for "small" or "trivial" changes. The default groom path is reviewer-owned via `/reviewer-groom`. `/self-groom` is an escalation path, not the default. Groom may only be skipped when the task produced zero code changes (e.g., analysis-only work).
 
 ## Stage-Explicit Worker Steering
 
 - **Authorize one stage at a time.** Every leader-to-worker message should say what the worker is allowed to do now and what must wait.
 - **Initial dispatch = planning only.** The worker returns a plan and stops. Do not imply implementation is approved.
 - **Plan approval = implement and stop.** Tell the worker to implement, report back, and wait. Do not let the worker infer review, porting, or quest transitions.
-- **Review/rework = do the named work and stop.** If you send reviewer findings or tell the worker to run `/groom`, also tell them to report back and wait. Do not imply porting is authorized.
+- **Review/rework = do the named work and stop.** If you send reviewer findings, also tell the worker to report back and wait. Do not imply porting is authorized.
 - **Porting requires an explicit instruction.** Only tell the worker to run `/port-changes` after the reviewer ACCEPTs and you are ready for porting.
 - **Investigation/design/no-code quests still need explicit boundaries.** Tell the worker what artifact to produce, have them stop afterward, and choose the next step yourself. Do not assume the worker should self-complete, self-transition, or self-port.
 
@@ -53,7 +53,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 - Be skeptical and adversarial: does the plan actually address the root problem? Are there misunderstandings or shortcuts that would produce wrong results?
 - It's better to reject and redirect now than to let the worker implement the wrong thing
 - Approve or reject with the correct mechanism for the path used (`takode answer` for `ExitPlanMode`, normal `takode send` for plain-text plans)
-- On approve, send an explicit stage instruction: implement now, then stop and report back. Do not let the worker assume review, `/groom`, `/port-changes`, or quest transitions are authorized.
+- On approve, send an explicit stage instruction: implement now, then stop and report back. Do not let the worker assume review, `/reviewer-groom`, `/self-groom`, `/port-changes`, or quest transitions are authorized.
 - On approve: `takode board advance <quest-id>`
 
 ## IMPLEMENTING -> SKEPTIC_REVIEWING
@@ -62,7 +62,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 - Steer if needed: scope refinements, corrections, additional context for the current task
 - Do NOT send unrelated new tasks to a busy worker -- queue them and wait
 - **When the user is directly steering a herded worker**: stay out of it. Resume normal coordination once the user stops interacting
-- **Workers must NOT self-advance.** After implementing, the worker reports completion and STOPS. It does not run /groom, /port-changes, or /skeptic-review on its own. The leader controls stage transitions.
+- **Workers must NOT self-advance.** After implementing, the worker reports completion and STOPS. It does not run `/reviewer-groom`, `/self-groom`, `/port-changes`, or `/skeptic-review` on its own. The leader controls stage transitions.
 - When `turn_end (✓)` arrives with a quest transition:
   - Run `takode scan <session>` to understand the solution at a high level
   - **Always** spawn a skeptic reviewer (see Skeptic Review below). Skeptic review is mandatory for every quest -- no exceptions, regardless of perceived size or triviality.
@@ -86,7 +86,7 @@ The `--reviewer` flag automatically:
 ### Reviewer Lifecycle
 
 - **One reviewer per parent.** To replace, archive the old reviewer with `takode archive`.
-- **Reuse within a quest**: keep the same reviewer for follow-up reviews and groom compliance checks on the same worker
+- **Reuse within a quest**: keep the same reviewer for follow-up reviews and reviewer-groom follow-up checks on the same worker
 - **Archive after the quest is ported**: reviewers are one-off quality gates -- archive them once the quest journey is complete
 - **Auto-cleanup**: reviewer is automatically archived when its parent worker is archived
 - **Herd limit exempt**: reviewer sessions do NOT count toward the 5-session herd limit
@@ -96,19 +96,24 @@ The `--reviewer` flag automatically:
 - **This stage is iterative.** Do not advance until the reviewer issues ACCEPT.
 - If the reviewer CHALLENGEs: send findings to the worker for rework, then send the reworked result back to the reviewer. Repeat until ACCEPT.
 - If you send rework, tell the worker to address the findings, report back, and stop again. Do not imply porting is authorized.
-- On ACCEPT: tell the worker to run `/groom` and implement any Critical or Recommended suggestions from the report. `/groom` only generates the review report -- the worker must separately act on the findings. Tell the worker to report back and wait; do not tell them to port yet.
+- On ACCEPT: send the same reviewer a concise review request, then have the reviewer self-invoke `/reviewer-groom "<scope>"`.
+- The best scope strings usually identify the quest, the worker, and the worker message range that contains the follow-up being reviewed.
+- Example scope: `Review [q-324](quest:q-324) for reviewer-groom follow-up after worker #469's update in [#469 msg 723](session:469:723) through [#469 msg 746](session:469:746)`.
+- `/reviewer-groom` generates the quality report inside the reviewer session.
+- If `/reviewer-groom` returns any Critical or Recommended findings, send them to the worker and tell the worker to address them, report back, and wait. Do not tell the worker to port yet.
+- If `/reviewer-groom` returns no Critical or Recommended findings, treat that as groom acceptance and continue to the next stage.
 - `takode board advance <quest-id>`
 
 ## GROOM_REVIEWING -> PORTING
 
-- Wait for the worker to report back what groom found and what they changed (or why they skipped a suggestion).
-- **ALWAYS** send groom results to the same reviewer for compliance check -- even if the worker made no changes. The reviewer verifies that no important suggestions were skipped without justification.
+- Wait for the worker to report back what they changed in response to the reviewer-groom findings (or why they skipped a suggestion).
+- **ALWAYS** send the worker's response back to the same reviewer for compliance check. The reviewer verifies that no important Critical or Recommended suggestion was skipped without justification.
 - **This stage is iterative.** Do not advance until the reviewer ACCEPTs.
 - If CHALLENGE: send findings back to the worker, have them address the issues, then re-send to reviewer. Repeat until ACCEPT.
 - Keep the worker waiting while the reviewer checks compliance. If more changes are needed, tell the worker exactly what to do and to stop again afterward.
 - On reviewer ACCEPT: tell the worker to port changes using `/port-changes`. Porting must be a separate, explicit instruction.
 - `takode board advance <quest-id>`
-- **NEVER combine "groom" and "port" in the same instruction to the worker.** Each is a separate gate.
+- **NEVER combine "reviewer-groom/rework" and "port" in the same instruction to the worker.** Each is a separate gate.
 
 ## PORTING -> (removed)
 

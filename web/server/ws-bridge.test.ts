@@ -8220,7 +8220,7 @@ describe("Leader compaction recovery", () => {
     expect(recoveryCalls[0][1]).toContain("stage-explicit");
     expect(recoveryCalls[0][1]).toContain("plan only");
     expect(recoveryCalls[0][1]).toContain("implement and stop");
-    expect(recoveryCalls[0][1]).toContain("groom/rework and report back");
+    expect(recoveryCalls[0][1]).toContain("reviewer-groom/rework and report back");
     expect(recoveryCalls[0][1]).toContain("port only when explicitly told");
   });
 

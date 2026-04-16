@@ -109,19 +109,19 @@ When sending this template through the shell, prefer the heredoc pattern above o
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 
-**Workers must stop after each stage boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, self-groom, or self-port. The leader advances the quest through review stages.
+**Workers must stop after each stage boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run `/reviewer-groom`, run `/self-groom`, or self-port. The leader advances the quest through review stages.
 
 **Make every follow-up message stage-explicit.**
 - **Initial dispatch**: planning only. The worker returns a plan and stops.
 - **Plan approval**: say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
-- **Review or groom follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Do not imply porting is authorized.
+- **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Do not imply porting is authorized.
 - **Porting**: send a separate, explicit `/port-changes` instruction only after reviewer ACCEPT.
 - **Investigation/design/no-code quests**: say what artifact to produce, then tell the worker to stop and report back. Do not assume the worker should self-complete or self-transition the quest.
 
 **Use explicit phrasing when steering between stages.** Good defaults:
 
 ```
-Implement the approved plan, then stop and report back. Do not run /groom, /port-changes, or change the quest status yourself.
+Implement the approved plan, then stop and report back. Do not run /reviewer-groom, /self-groom, /port-changes, or change the quest status yourself.
 ```
 
 ```
@@ -129,7 +129,7 @@ Address the reviewer findings, then stop and report back. Do not port yet.
 ```
 
 ```
-Run /groom, implement any Critical or Recommended suggestions, then stop and report back. Do not port yet.
+Address the reviewer-groom findings, then stop and report back. Do not port yet.
 ```
 
 ```

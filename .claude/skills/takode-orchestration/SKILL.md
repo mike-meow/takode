@@ -21,7 +21,7 @@ Read these files or invoke these skills when performing the corresponding operat
 | Workflow | When to use | Source |
 |----------|------------|--------|
 | **Dispatching work** | Before choosing a worker and sending a quest | Invoke `/leader-dispatch` |
-| **Quest Journey** | Advancing a quest through its lifecycle | [quest-journey.md](quest-journey.md) |
+| **Quest Journey** | Advancing a quest through its lifecycle, including reviewer-owned groom review | [quest-journey.md](quest-journey.md) |
 | **Work board** | Managing the quest board | [board-usage.md](board-usage.md) |
 
 ## Key Principles

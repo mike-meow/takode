@@ -793,7 +793,8 @@ ensureTakodeIntegration(packageRoot);
 ensureSkillSymlinks([
   "takode-orchestration",
   "leader-dispatch",
-  "groom",
+  "self-groom",
+  "reviewer-groom",
   "skeptic-review",
   "worktree-rules",
   "playwright-e2e-tester",

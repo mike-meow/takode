@@ -96,7 +96,7 @@ You
       ├─ Worker #1 (feat/auth)     → worktree, own branch
       ├─ Worker #2 (fix/sidebar)   → worktree, own branch
       ├─ Worker #3 (refactor/api)  → worktree, own branch
-      └─ Reviewer sessions         → skeptic + groom passes
+      └─ Reviewer sessions         → skeptic + reviewer-groom passes
 ```
 
 ---

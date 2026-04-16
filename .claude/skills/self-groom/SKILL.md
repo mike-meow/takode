@@ -1,12 +1,14 @@
 ---
-name: groom
-description: "Multi-perspective code review using parallel subagents. Use when asked to 'groom', 'review my changes', 'clean up code', 'check code quality', or after completing a major feature."
+name: self-groom
+description: "Expensive multi-perspective self-review using parallel subagents. Use when asked for a deep self-review, when the reviewer explicitly escalates to the parallel path, or when you need broader code-quality coverage than the default reviewer-owned pass."
 argument-hint: "[file or directory to focus on]"
 ---
 
-# /groom — Multi-Perspective Code Review
+# /self-groom - Parallel Deep Self-Review
 
 Get the git diff of recent changes, classify the change, then launch parallel review subagents. Synthesize their feedback into a prioritized report.
+
+This is the expensive path. Use `/self-groom` when the user explicitly wants a deeper self-review or when the reviewer asks for the parallel pass.
 
 ## Reviewers
 

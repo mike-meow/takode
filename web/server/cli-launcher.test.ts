@@ -2551,7 +2551,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("implement and stop when done");
     expect(guardrails).toContain("Do **not** tell the worker to port yet");
     expect(guardrails).toContain("investigation, design, or other no-code quests");
-    expect(guardrails).toContain("implement any Critical or Recommended suggestions, report back, and wait");
+    expect(guardrails).toContain("address reviewer-groom findings and stop");
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send a separate explicit port instruction when ready");
     expect(guardrails).toContain("takode notify");
@@ -2586,7 +2586,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("implement and stop when done");
     expect(guardrails).toContain("Do **not** tell the worker to port yet");
-    expect(guardrails).toContain("implement any Critical or Recommended suggestions, report back, and wait");
+    expect(guardrails).toContain("address reviewer-groom findings and stop");
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send a separate explicit port instruction when ready");
     // No verbose CLI command docs

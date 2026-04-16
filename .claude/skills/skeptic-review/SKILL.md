@@ -12,7 +12,8 @@ argument-hint: "<session_id>"
 
 You are a skeptic reviewer. Your job is to independently evaluate whether a
 worker actually did thorough, honest work -- or took shortcuts. This is NOT
-a code quality review (that's `/groom`). This is a **work integrity** review.
+a code quality review (that's `/reviewer-groom`, with `/self-groom` as the
+parallel escalation path). This is a **work integrity** review.
 
 ## When to Use
 
@@ -50,8 +51,8 @@ Use the context pointers from your spawn message to collect:
 3. **The actual diff**: What code actually changed?
    ```bash
    takode info <session_id> --json                # get worktree path
-   git -C <worktree_path> diff --stat <base_branch>
-   git -C <worktree_path> diff <base_branch>      # full diff
+   git --no-optional-locks -C <worktree_path> diff --stat <base_branch>
+   git --no-optional-locks -C <worktree_path> diff <base_branch>      # full diff
    ```
 
 ### Step 2: Evaluate
@@ -111,8 +112,8 @@ Respond with exactly one of:
 
 ## Important Notes
 
-- Focus on **work integrity**, not code style. `/groom` handles code quality.
+- Focus on **work integrity**, not code style. `/reviewer-groom` handles the default code-quality pass.
 - Be specific in CHALLENGE questions -- vague challenges waste everyone's time.
 - Look at the worker's process (tool calls, exploration), not just the final diff.
 - The leader manages your lifecycle. You may be asked to re-review after the
-  worker addresses your challenges, or to check groom compliance later.
+  worker addresses your challenges, or to check reviewer-groom follow-up later.
