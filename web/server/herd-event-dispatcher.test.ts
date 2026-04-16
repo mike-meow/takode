@@ -752,7 +752,7 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("#5");
     expect(result).toContain("turn_end");
     expect(result).toContain("12.3s");
-    expect(result).toContain("Edit(3)");
+    expect(result).toContain("tools: 5");
     expect(result).toContain("Added JWT validation");
   });
 
@@ -995,7 +995,7 @@ describe("formatHerdEventBatch", () => {
     ];
     const result = formatHerdEventBatch(events);
     expect(result).toContain("15m 0s");
-    expect(result).toContain("Edit(3)");
+    expect(result).toContain("tools: 3");
     expect(result).toContain("[169]-[281]");
     expect(result).toContain("3 user msgs [172, 195, 240]");
   });
@@ -1170,7 +1170,7 @@ describe("formatHerdEventBatch with activity injection", () => {
     expect(result).toContain("turn_end");
     // Should also contain the activity summary
     expect(result).toContain('user: "Fix the bug"');
-    expect(result).toContain("Edit: fix.ts");
+    expect(result).toContain("Tool Calls not shown above: 1 Edit.");
     expect(result).toContain("Bug fixed");
   });
 

@@ -4752,7 +4752,7 @@ export function Playground() {
                     id: "herd-chip-demo",
                     role: "user",
                     content:
-                      '1 event from 1 session\n\n#8 | turn_end | ✓ 15.3s | tools: Edit(3), Bash(2) | [169]-[172] | "Fixed login validation"\n  [169] user: "Fix the login bug in auth.ts"\n  [170] asst: Read×2, Grep×1\n  [171] asst: Edit: auth.ts, Bash: bun test\n  [172] ✓ "Fixed the login validation logic"',
+                      '1 event from 1 session\n\n#8 | turn_end | ✓ 15.3s | tools: 5 | [169]-[172] | "Fixed login validation"\n  [169] user: "Fix the login bug in auth.ts"\n  [172] ✓ "Fixed the login validation logic"\nTool Calls not shown above: 2 Read, 1 Grep, 1 Edit, 1 Bash.',
                     timestamp: Date.now(),
                     agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
                   }}
@@ -4767,7 +4767,7 @@ export function Playground() {
                     id: "herd-keymsg-demo",
                     role: "user",
                     content:
-                      "1 event from 1 session\n\n#287 | turn_end | ✓ 53.6s | tools: Read(1), Bash(11), Skill(3) | [1]-[22] | 1s ago\n  [1] asst: I'll load the required skills first.\n  [5] asst: Skills loaded. Now let me gather the evidence.\n  [22] asst: I now have all the evidence. Let me compile the review.\n## Skeptic Review: Session #286 / Quest q-180\n### Task\nFix the autonamer regex to handle edge cases.\n### Assessment\n**ACCEPT**: The work is thorough and the claims are honest.",
+                      "1 event from 1 session\n\n#287 | turn_end | ✓ 53.6s | tools: 15 | [1]-[22] | 1s ago\n  [1] asst: I'll load the required skills first.\n  [5] asst: Skills loaded. Now let me gather the evidence.\n  [22] asst: I now have all the evidence. Let me compile the review.\nTool Calls not shown above: 1 Read, 11 Bash, 3 Skill.\n## Skeptic Review: Session #286 / Quest q-180\n### Task\nFix the autonamer regex to handle edge cases.\n### Assessment\n**ACCEPT**: The work is thorough and the claims are honest.",
                     timestamp: Date.now(),
                     agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
                   }}

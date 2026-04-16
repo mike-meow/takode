@@ -1186,7 +1186,7 @@ describe("HerdEventMessage", () => {
     const msg = makeMessage({
       role: "user",
       content:
-        '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s | tools: Edit(1)\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
+        '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s | tools: 1\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
       agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
     });
     render(<HerdEventMessage message={msg} showTimestamp={false} />);
@@ -1273,7 +1273,7 @@ describe("HerdEventMessage", () => {
       content: [
         "1 event from 1 session",
         "",
-        "#287 | turn_end | ✓ 53.6s | tools: Read(1), Bash(11) | [1]-[22] | 1s ago",
+        "#287 | turn_end | ✓ 53.6s | tools: 12 | [1]-[22] | 1s ago",
         "  [1] asst: I'll load skills first.",
         "  [22] asst: I now have all the evidence.",
         "## Skeptic Review: Session #286",
@@ -1311,14 +1311,14 @@ describe("parseHerdEvents", () => {
     const content = [
       "1 event from 1 session",
       "",
-      "#8 | turn_end | ✓ 5.0s | tools: Edit(1)",
+      "#8 | turn_end | ✓ 5.0s | tools: 1",
       '  [10] user: "Fix bug"',
       '  [11] ✓ "Done"',
     ].join("\n");
 
     const events = parseHerdEvents(content);
     expect(events).toHaveLength(1);
-    expect(events[0].header).toBe("#8 | turn_end | ✓ 5.0s | tools: Edit(1)");
+    expect(events[0].header).toBe("#8 | turn_end | ✓ 5.0s | tools: 1");
     expect(events[0].activity).toHaveLength(2);
   });
 

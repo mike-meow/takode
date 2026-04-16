@@ -689,8 +689,8 @@ function formatDuration(ms: number): string {
 
 function formatToolCounts(tools: Record<string, number> | undefined): string {
   if (!tools || Object.keys(tools).length === 0) return "";
-  const parts = Object.entries(tools).map(([name, count]) => `${name}(${count})`);
-  return ` | tools: ${parts.join(", ")}`;
+  const total = Object.values(tools).reduce((sum, count) => sum + count, 0);
+  return ` | tools: ${total}`;
 }
 
 function truncate(s: string, max: number): string {
