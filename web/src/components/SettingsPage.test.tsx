@@ -150,6 +150,22 @@ describe("SettingsPage", () => {
     await screen.findByText("Notifications");
   });
 
+  it("does not start settings-page background work while inactive", () => {
+    vi.useFakeTimers();
+    try {
+      render(<SettingsPage isActive={false} />);
+
+      // Regression coverage for q-352: the hidden settings/logs-adjacent UI
+      // must not fetch settings or start page-level polling while closed.
+      vi.advanceTimersByTime(20_000);
+
+      expect(mockApi.getSettings).not.toHaveBeenCalled();
+      expect(mockApi.getAutoApprovalConfigs).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("loads persisted custom transcription vocabulary from settings", async () => {
     mockApi.getSettings.mockResolvedValue({
       serverName: "",

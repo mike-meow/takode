@@ -185,6 +185,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   }
 
   useEffect(() => {
+    if (!isActive) return;
     api
       .getSettings()
       .then((s) => {
@@ -228,10 +229,11 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
     loadAutoApprovalConfigs();
-  }, []);
+  }, [isActive]);
 
   // Poll caffeinate status every 5s when sleep inhibitor is enabled
   useEffect(() => {
+    if (!isActive) return;
     if (!sleepInhibitorEnabled) {
       setCaffeinateStatus({ active: false, engagedAt: null, expiresAt: null });
       return;
@@ -251,17 +253,19 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       cancelled = true;
       clearInterval(id);
     };
-  }, [sleepInhibitorEnabled]);
+  }, [isActive, sleepInhibitorEnabled]);
 
   // Tick every second to update elapsed/countdown display
   useEffect(() => {
+    if (!isActive) return;
     if (!sleepInhibitorEnabled || !caffeinateStatus.active) return;
     const id = setInterval(() => setCaffeinateTick((t) => t + 1), 1_000);
     return () => clearInterval(id);
-  }, [sleepInhibitorEnabled, caffeinateStatus.active]);
+  }, [caffeinateStatus.active, isActive, sleepInhibitorEnabled]);
 
   // Restore scroll position on mount, save on scroll (debounced) and unmount
   useEffect(() => {
+    if (!isActive) return;
     const el = scrollRef.current;
     if (!el) return;
 
@@ -286,7 +290,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       clearTimeout(timeout);
       localStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(el.scrollTop));
     };
-  }, []);
+  }, [isActive]);
 
   async function onSavePushover(e: React.FormEvent) {
     e.preventDefault();

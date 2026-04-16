@@ -282,28 +282,20 @@ export default function App() {
       )}
 
       {/* Sidebar — overlay on mobile, inline on desktop */}
-      <div
-        className={`
-          ${isDesktopShell ? "relative z-auto" : "fixed inset-y-0 left-0 z-40"}
-          h-full shrink-0 transition-all duration-200
-          ${
-            isDesktopShell
-              ? sidebarOpen
-                ? "w-[260px] translate-x-0"
-                : "w-0"
-              : sidebarOpen
-                ? "w-[80vw] translate-x-0"
-                : "w-0 -translate-x-full"
-          }
-          overflow-hidden
-        `}
-        style={{
-          touchAction: "pan-y",
-          overscrollBehaviorX: "none",
-        }}
-      >
-        <Sidebar />
-      </div>
+      {sidebarOpen && (
+        <div
+          className={`
+            ${isDesktopShell ? "relative z-auto w-[260px] translate-x-0" : "fixed inset-y-0 left-0 z-40 w-[80vw] translate-x-0"}
+            h-full shrink-0 transition-all duration-200 overflow-hidden
+          `}
+          style={{
+            touchAction: "pan-y",
+            overscrollBehaviorX: "none",
+          }}
+        >
+          <Sidebar />
+        </div>
+      )}
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -316,9 +308,11 @@ export default function App() {
               <span className="text-xs text-red-400 font-medium">Server unreachable</span>
             </div>
           )}
-          <div className={`absolute inset-0 ${isSettingsPage ? "" : "hidden"}`}>
-            <SettingsPage embedded isActive={isSettingsPage} />
-          </div>
+          {isSettingsPage && (
+            <div className="absolute inset-0">
+              <SettingsPage embedded isActive={true} />
+            </div>
+          )}
 
           {isLogsPage && (
             <div className="absolute inset-0">
@@ -344,9 +338,11 @@ export default function App() {
             </div>
           )}
 
-          <div className={`absolute inset-0 ${isQuestmasterPage ? "" : "hidden"}`}>
-            <QuestmasterPage isActive={isQuestmasterPage} />
-          </div>
+          {isQuestmasterPage && (
+            <div className="absolute inset-0">
+              <QuestmasterPage isActive={true} />
+            </div>
+          )}
 
           {isSessionView && (
             <>
@@ -385,10 +381,10 @@ export default function App() {
       <QuestDetailPanel />
 
       {/* Task panel — overlay on mobile, inline on desktop */}
-      {currentSessionId && isSessionView && !isPendingId(currentSessionId) && (
+      {currentSessionId && isSessionView && !isPendingId(currentSessionId) && taskPanelOpen && (
         <>
           {/* Mobile overlay backdrop */}
-          {taskPanelOpen && !isDesktopTaskPanel && (
+          {!isDesktopTaskPanel && (
             <div
               className="fixed inset-0 bg-black/30 z-30"
               onClick={() => useStore.getState().setTaskPanelOpen(false)}
@@ -397,10 +393,8 @@ export default function App() {
 
           <div
             className={`
-              ${isDesktopTaskPanel ? "relative z-auto" : "fixed z-40 right-0 top-0"}
-              h-full shrink-0 transition-all duration-200
-              ${taskPanelOpen ? "w-[280px] translate-x-0" : "w-0 translate-x-full"}
-              overflow-hidden
+              ${isDesktopTaskPanel ? "relative z-auto w-[280px] translate-x-0" : "fixed z-40 right-0 top-0 w-[280px] translate-x-0"}
+              h-full shrink-0 transition-all duration-200 overflow-hidden
             `}
           >
             <TaskPanel sessionId={currentSessionId} />
