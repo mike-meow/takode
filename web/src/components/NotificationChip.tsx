@@ -4,6 +4,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import type { SessionNotification, ChatMessage } from "../types.js";
+import { getHighestNotificationUrgency } from "../utils/notification-urgency.js";
 
 const EMPTY: SessionNotification[] = [];
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -353,6 +354,7 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
 export function NotificationChip({ sessionId }: { sessionId: string }) {
   const { active } = useNotifications(sessionId);
   const [open, setOpen] = useState(false);
+  const urgency = getHighestNotificationUrgency(active);
 
   const toggle = useCallback(() => setOpen((p) => !p), []);
   const close = useCallback(() => setOpen(false), []);
@@ -368,7 +370,7 @@ export function NotificationChip({ sessionId }: { sessionId: string }) {
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_55%)]" />
         <span className="relative">
           <svg
-            className="w-3.5 h-3.5"
+            className={`w-3.5 h-3.5 ${urgency === "needs-input" ? "text-amber-400" : urgency === "review" ? "text-blue-500" : ""}`}
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"

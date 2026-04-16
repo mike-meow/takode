@@ -11,6 +11,7 @@ const mockStoreState = {
   sessionTaskPreview: new Map<string, { text: string; updatedAt: number }>(),
   sessionPreviewUpdatedAt: new Map<string, number>(),
   sessionAttention: new Map<string, "action" | "error" | "review" | null>(),
+  sessionNotifications: new Map<string, Array<any>>(),
 };
 
 vi.mock("../store.js", () => ({
@@ -81,6 +82,10 @@ function renderSessionItem(overrides: Partial<ComponentProps<typeof SessionItem>
     onArchive,
     onSelect,
   };
+}
+
+function setSessionNotifications(sessionId: string, notifications: Array<any>) {
+  mockStoreState.sessionNotifications.set(sessionId, notifications);
 }
 
 const SAGE_THEME: HerdGroupBadgeTheme = {
@@ -233,6 +238,50 @@ describe("SessionItem status dot", () => {
     const dot = screen.getByTestId("session-status-dot");
     expect(dot).toHaveAttribute("data-status", "idle");
     expect(dot).not.toHaveStyle({ animation: "yarn-glow-breathe 2s ease-in-out infinite" });
+  });
+});
+
+describe("SessionItem notification marker", () => {
+  beforeEach(() => {
+    mockStoreState.sessionAttention.clear();
+    mockStoreState.sessionNotifications.clear();
+  });
+
+  it("shows a blue notification marker when review is the highest active inbox urgency", () => {
+    // When there are only active review notifications and no higher-priority
+    // badges, the inline session marker should use the blue review color.
+    setSessionNotifications("s1", [
+      { id: "n-review", category: "review", summary: "Needs review", timestamp: Date.now(), done: false },
+      { id: "n-review-done", category: "review", summary: "Done review", timestamp: Date.now(), done: true },
+    ]);
+
+    renderSessionItem();
+    const marker = screen.getByTestId("session-notification-marker");
+    expect(marker).toHaveAttribute("data-urgency", "review");
+  });
+
+  it("gives needs-input precedence over review in the inline notification marker", () => {
+    // needs-input should take precedence over review for the second consumer
+    // of the shared urgency helper, matching the notification bell behavior.
+    setSessionNotifications("s1", [
+      { id: "n-review", category: "review", summary: "Needs review", timestamp: Date.now(), done: false },
+      { id: "n-input", category: "needs-input", summary: "Need answer", timestamp: Date.now(), done: false },
+    ]);
+
+    renderSessionItem();
+    const marker = screen.getByTestId("session-notification-marker");
+    expect(marker).toHaveAttribute("data-urgency", "needs-input");
+  });
+
+  it("suppresses the inbox marker when a higher-priority attention badge is already active", () => {
+    // The session-level attention badge should continue to win over the inbox
+    // marker so the shared urgency helper does not bypass existing precedence.
+    setSessionNotifications("s1", [
+      { id: "n-review", category: "review", summary: "Needs review", timestamp: Date.now(), done: false },
+    ]);
+
+    const { container } = renderSessionItem({ attention: "action" });
+    expect(container.querySelector('[data-testid="session-notification-marker"]')).toBeNull();
   });
 });
 

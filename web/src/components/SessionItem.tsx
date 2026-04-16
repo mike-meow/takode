@@ -6,6 +6,7 @@ import { navigateToSession } from "../utils/routing.js";
 import { getHighlightParts } from "../utils/highlight.js";
 import { questLabel } from "../utils/quest-helpers.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
+import { getHighestNotificationUrgency } from "../utils/notification-urgency.js";
 
 type SearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
@@ -94,19 +95,25 @@ function timeAgo(epochMs: number): string {
  *  needs-input (amber) takes precedence over review (blue). Only shows for unaddressed (not done) notifications. */
 function NotificationMarker({ sessionId }: { sessionId: string }) {
   const notifications = useStore((s) => s.sessionNotifications?.get(sessionId));
-  if (!notifications) return null;
+  const activeNotifications = notifications?.filter((n) => !n.done);
+  const urgency = getHighestNotificationUrgency(activeNotifications);
 
-  const hasNeedsInput = notifications.some((n) => !n.done && n.category === "needs-input");
-  const hasReview = notifications.some((n) => !n.done && n.category === "review");
-
-  if (hasNeedsInput) {
+  if (urgency === "needs-input") {
     return (
-      <span className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[8px] h-[8px] rounded-full bg-amber-400 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
+      <span
+        data-testid="session-notification-marker"
+        data-urgency="needs-input"
+        className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[8px] h-[8px] rounded-full bg-amber-400 sm:group-hover:opacity-0 transition-opacity pointer-events-none"
+      />
     );
   }
-  if (hasReview) {
+  if (urgency === "review") {
     return (
-      <span className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[6px] h-[6px] rounded-full bg-blue-500 sm:group-hover:opacity-0 transition-opacity pointer-events-none" />
+      <span
+        data-testid="session-notification-marker"
+        data-urgency="review"
+        className="absolute right-11 sm:right-2 top-1/2 -translate-y-1/2 min-w-[6px] h-[6px] rounded-full bg-blue-500 sm:group-hover:opacity-0 transition-opacity pointer-events-none"
+      />
     );
   }
   return null;
