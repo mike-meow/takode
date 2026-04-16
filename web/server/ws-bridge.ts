@@ -3322,10 +3322,14 @@ export class WsBridge {
   removeBoardRows(sessionId: string, questIds: string[]): BoardRow[] | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
+    const completedRows: BoardRow[] = [];
     for (const qid of questIds) {
-      this.moveBoardRowToCompleted(session, qid);
+      const completed = this.moveBoardRowToCompleted(session, qid);
+      if (completed) completedRows.push(completed);
     }
-    return this.commitBoard(session);
+    const board = this.commitBoard(session);
+    this.notifyBoardCompletion(session, completedRows);
+    return board;
   }
 
   /** Remove a quest from ALL session boards (e.g. on quest deletion or cancellation).
@@ -3359,8 +3363,9 @@ export class WsBridge {
 
     if (currentIdx >= QUEST_JOURNEY_STATES.length - 1) {
       // At the final state -- move to completed
-      this.moveBoardRowToCompleted(session, questId);
+      const completed = this.moveBoardRowToCompleted(session, questId);
       const board = this.commitBoard(session);
+      this.notifyBoardCompletion(session, completed ? [completed] : []);
       return { board, removed: true, previousState, newState: undefined };
     }
 
@@ -3384,13 +3389,28 @@ export class WsBridge {
     return this.sessions.get(sessionId)?.completedBoard.size ?? 0;
   }
 
-  /** Move a row from active board to completedBoard with a completedAt timestamp. */
-  private moveBoardRowToCompleted(session: Session, questId: string): void {
+  private notifyBoardCompletion(session: Session, rows: BoardRow[]): void {
+    if (rows.length === 0) return;
+    this.notifyUser(session.id, "review", this.buildBoardCompletionSummary(rows));
+  }
+
+  private buildBoardCompletionSummary(rows: BoardRow[]): string {
+    if (rows.length === 1) {
+      const [row] = rows;
+      return row.title ? `${row.questId} ready for review: ${row.title}` : `${row.questId} ready for review`;
+    }
+    return `${rows.length} quests ready for review: ${rows.map((row) => row.questId).join(", ")}`;
+  }
+
+  /** Move a row from active board to completedBoard with a completedAt timestamp.
+   *  Returns the moved row so callers can derive completion side effects. */
+  private moveBoardRowToCompleted(session: Session, questId: string): BoardRow | null {
     const row = session.board.get(questId);
-    if (!row) return;
+    if (!row) return null;
     session.board.delete(questId);
     row.completedAt = Date.now();
     session.completedBoard.set(questId, row);
+    return row;
   }
 
   /** Get board, broadcast update to browsers, and persist. */

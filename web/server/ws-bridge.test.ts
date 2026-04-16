@@ -18461,6 +18461,129 @@ describe("work board", () => {
     expect(board![0].questId).toBe("q-2");
   });
 
+  it("removeBoardRows sends a review notification when a row is completed", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    session.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-board-remove", content: [{ type: "text", text: "Quest finished" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    browser.send.mockClear();
+
+    bridge.removeBoardRows("s1", ["q-1"]);
+
+    expect(session.notifications).toHaveLength(1);
+    expect(session.notifications[0]).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "q-1 ready for review: Quest 1",
+        messageId: "asst-board-remove",
+      }),
+    );
+    expect(session.attentionReason).toBe("review");
+
+    const notifUpdates = browser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((message: any) => message?.type === "notification_update");
+    expect(notifUpdates).toHaveLength(1);
+  });
+
+  it("removeBoardRows sends one aggregated review notification for multiple completed rows", () => {
+    // Batch completion should produce a single review notification so the same
+    // anchored assistant message does not get conflicting notification stamps.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    session.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-board-batch", content: [{ type: "text", text: "Multiple quests finished" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Quest 2" });
+    browser.send.mockClear();
+
+    bridge.removeBoardRows("s1", ["q-1", "q-2"]);
+
+    expect(session.notifications).toHaveLength(1);
+    expect(session.notifications[0]).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "2 quests ready for review: q-1, q-2",
+        messageId: "asst-board-batch",
+      }),
+    );
+  });
+
+  it("removeBoardRows does not send duplicate review notifications for already-completed rows", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    session.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-board-repeat", content: [{ type: "text", text: "Quest finished" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1" });
+    bridge.removeBoardRows("s1", ["q-1"]);
+    expect(session.notifications).toHaveLength(1);
+
+    browser.send.mockClear();
+    bridge.removeBoardRows("s1", ["q-1"]);
+
+    expect(session.notifications).toHaveLength(1);
+    const notifUpdates = browser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((message: any) => message?.type === "notification_update");
+    expect(notifUpdates).toHaveLength(0);
+  });
+
+  it("removeBoardRows uses quest-only summary when the completed row has no title", () => {
+    // Board rows do not always carry titles, so the fallback summary must stay
+    // readable when completion happens without one.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    session.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-board-untitled", content: [{ type: "text", text: "Quest finished" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("s1", { questId: "q-9" });
+    bridge.removeBoardRows("s1", ["q-9"]);
+
+    expect(session.notifications).toHaveLength(1);
+    expect(session.notifications[0]).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "q-9 ready for review",
+      }),
+    );
+  });
+
   it("removeBoardRowFromAll removes quest from all sessions", () => {
     const browser1 = makeBrowserSocket("s1");
     const browser2 = makeBrowserSocket("s2");
@@ -18639,6 +18762,55 @@ describe("work board", () => {
     expect(result!.board[0].status).toBe("PLANNING");
   });
 
+  it("upsertBoardRow does not send review notifications for non-completion edits", () => {
+    // Ordinary board maintenance should not notify the user unless the row
+    // actually transitions into the completed board.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1", status: "PLANNING" });
+
+    expect(session.notifications).toHaveLength(0);
+    const notifUpdates = browser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((message: any) => message?.type === "notification_update");
+    expect(notifUpdates).toHaveLength(0);
+  });
+
+  it("advanceBoardRow does not notify on non-final transitions", () => {
+    // Intermediate Quest Journey steps should stay silent; only the final
+    // board completion transition should generate a review notification.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1", status: "PLANNING" });
+    browser.send.mockClear();
+
+    const result = bridge.advanceBoardRow("s1", "q-1");
+
+    expect(result?.removed).toBe(false);
+    expect(result?.newState).toBe("IMPLEMENTING");
+    expect(session.notifications).toHaveLength(0);
+    const notifUpdates = browser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((message: any) => message?.type === "notification_update");
+    expect(notifUpdates).toHaveLength(0);
+  });
+
   it("advanceBoardRow walks through all Quest Journey stages", () => {
     // Validates the full state machine progression
     const browser = makeBrowserSocket("s1");
@@ -18677,6 +18849,36 @@ describe("work board", () => {
     expect(result!.removed).toBe(true);
     expect(result!.newState).toBeUndefined();
     expect(result!.board).toHaveLength(0);
+  });
+
+  it("advanceBoardRow sends a review notification when completing the final stage", () => {
+    // Advancing off the final board stage is the explicit completion path for
+    // Quest Journey-driven work and should notify exactly once.
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = (bridge as any).sessions.get("s1");
+    session.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-board-advance", content: [{ type: "text", text: "Quest finished" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", title: "Quest 1", status: "PORTING" });
+    browser.send.mockClear();
+
+    const result = bridge.advanceBoardRow("s1", "q-1");
+
+    expect(result?.removed).toBe(true);
+    expect(session.notifications).toHaveLength(1);
+    expect(session.notifications[0]).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "q-1 ready for review: Quest 1",
+        messageId: "asst-board-advance",
+      }),
+    );
+    expect(session.attentionReason).toBe("review");
   });
 
   it("advanceBoardRow sets QUEUED when status is unrecognized", () => {
