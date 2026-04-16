@@ -4,8 +4,7 @@
  * Verifies that formatActivitySummary() produces correct compact summaries
  * from messageHistory slices, including:
  * - User message rendering with source labels
- * - Assistant tool call collapsing
- * - Bash description field preference over raw command
+ * - Tool-call compression into one aggregate summary line
  * - Result message rendering with success/error icons
  * - Permission request/approved/denied rendering
  * - Tail-priority truncation when exceeding maxLines cap
@@ -15,7 +14,7 @@
  * - No indent before [N] message IDs
  * - No role tag for assistant messages (they're the default)
  * - All content as escaped string literals with truncation showing char count
- * - Tool calls on separate 4-space indented lines
+ * - Tool-call noise hidden from per-message lines
  */
 
 import { describe, it, expect } from "vitest";
@@ -103,9 +102,10 @@ describe("formatActivitySummary", () => {
 
     // User message: tagged, quoted, no indent
     expect(result).toContain('[100] user: "Fix the login bug"');
-    // Assistant: no asst: tag, quoted text, tools on separate indented line
+    // Assistant: no asst: tag, quoted text, tool details hidden in body
     expect(result).toContain('[101] "Working on it"');
-    expect(result).toContain("    Read: auth.ts, Edit: auth.ts");
+    expect(result).not.toContain("Read: auth.ts");
+    expect(result).toContain("Tool Calls not shown above: 1 Read, 1 Edit.");
     expect(result).not.toContain("asst:");
     // Result with success icon, quoted
     expect(result).toContain('[102] ✓ "Fixed the login validation logic"');
@@ -124,8 +124,7 @@ describe("formatActivitySummary", () => {
     expect(result).toContain('[2] agent(#5): "agent dispatched"');
   });
 
-  it("collapses multiple tool calls of the same type", () => {
-    // 3 Read calls → should show Read×3 on a separate indented line
+  it("compresses tool-only periods into a placeholder plus aggregated counts", () => {
     const messages = [
       assistantMsg("", [
         { name: "Read", input: { file_path: "/a.ts" } },
@@ -134,41 +133,38 @@ describe("formatActivitySummary", () => {
       ]),
     ];
     const result = formatActivitySummary(messages, { startIdx: 50 });
-    // Tools-only assistant: tools on the [idx] line (no text line to indent under)
-    expect(result).toContain("[50] Read×3");
+    expect(result).toContain("[50] tool activity only (details hidden)");
+    expect(result).toContain("Tool Calls not shown above: 3 Read.");
   });
 
-  it("shows single tool call with summary instead of count", () => {
-    const messages = [assistantMsg("", [{ name: "Bash", input: { command: "bun test" } }])];
-    const result = formatActivitySummary(messages, { startIdx: 10 });
-    expect(result).toContain("Bash: bun test");
-    expect(result).not.toContain("×");
-  });
-
-  it("prefers Bash description field over raw command when available", () => {
-    // Bash tool calls with a 'description' field should show the description
-    // instead of the truncated raw command, for better readability.
+  it("groups hidden tool counts by category and formats them concisely", () => {
     const messages = [
       assistantMsg("", [
-        {
-          name: "Bash",
-          input: {
-            command: "cd /tmp && find . -name '*.ts' -exec grep -l 'export' {} + | head -20",
-            description: "Find TypeScript files with exports",
-          },
-        },
+        { name: "Bash", input: { command: "bun test" } },
+        { name: "Read", input: { file_path: "/a.ts" } },
+        { name: "Bash", input: { command: "bun typecheck" } },
       ]),
     ];
     const result = formatActivitySummary(messages, { startIdx: 10 });
-    expect(result).toContain("Bash: Find TypeScript files with exports");
-    expect(result).not.toContain("cd /tmp");
+    expect(result).toContain("Tool Calls not shown above: 2 Bash, 1 Read.");
   });
 
-  it("falls back to Bash command when no description field exists", () => {
-    // When no description is provided, fall back to showing the command.
-    const messages = [assistantMsg("", [{ name: "Bash", input: { command: "bun test --watch" } }])];
+  it("hides individual tool-call lines in mixed periods but preserves important non-tool activity", () => {
+    const messages = [
+      userMsg("Fix the auth flow"),
+      assistantMsg("Investigating the auth flow", [
+        { name: "Bash", input: { command: "bun test auth" } },
+        { name: "Read", input: { file_path: "/src/auth.ts" } },
+      ]),
+      resultMsg("Done"),
+    ];
     const result = formatActivitySummary(messages, { startIdx: 10 });
-    expect(result).toContain("Bash: bun test --watch");
+    expect(result).toContain('[10] user: "Fix the auth flow"');
+    expect(result).toContain('[11] "Investigating the auth flow"');
+    expect(result).toContain('[12] ✓ "Done"');
+    expect(result).not.toContain("Bash:");
+    expect(result).not.toContain("Read:");
+    expect(result).toContain("Tool Calls not shown above: 1 Bash, 1 Read.");
   });
 
   it("formats error results with ✗ icon", () => {
@@ -414,7 +410,7 @@ describe("formatActivitySummary", () => {
     expect(result).toContain('\\"');
   });
 
-  it("puts tool calls on a separate indented line below assistant text", () => {
+  it("does not render a separate indented tool line below assistant text", () => {
     const messages = [
       assistantMsg("Let me check", [
         { name: "Read", input: { file_path: "/src/auth.ts" } },
@@ -423,11 +419,11 @@ describe("formatActivitySummary", () => {
     ];
     const result = formatActivitySummary(messages, { startIdx: 0 });
     const lines = result.split("\n");
-    // First line: quoted text without tools
+    // First line: assistant text only
     expect(lines[0]).toContain('"Let me check"');
     expect(lines[0]).not.toContain("Read");
-    expect(lines[0]).not.toContain("|");
-    // Second line: 4-space indented tools
-    expect(lines[1]).toMatch(/^ {4}Read: auth\.ts, Bash: bun test$/);
+    expect(lines[0]).not.toContain("Bash");
+    // Second line: aggregate tool summary, not raw tool detail
+    expect(lines[1]).toBe("Tool Calls not shown above: 1 Read, 1 Bash.");
   });
 });
