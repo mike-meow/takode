@@ -424,6 +424,8 @@ interface Session {
   lastReadAt: number;
   /** Current attention reason: why this session needs the user's attention */
   attentionReason: "action" | "error" | "review" | null;
+  /** Codex-only: defers disconnect interruption side-effects while reconnect/resume may recover the turn. */
+  codexDisconnectGraceTimer: ReturnType<typeof setTimeout> | null;
   /** Grace period timer for CLI disconnect — delays side-effects to allow seamless reconnect.
    *  The Claude Code CLI disconnects every 5 minutes for token refresh and reconnects in ~13s.
    *  If the CLI reconnects within the grace period, the disconnect is invisible to the system. */
@@ -834,6 +836,7 @@ function extractClaudeTokenDetails(
  *  Used by the watchdog for first detection AND by the seamless reconnect handler
  *  to decide whether a long-running generation should be force-cleared. */
 const STUCK_GENERATION_THRESHOLD_MS = 120_000; // 2 minutes
+const CODEX_DISCONNECT_GRACE_MS = 15_000;
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
@@ -2090,6 +2093,7 @@ export class WsBridge {
         lastReadAt: typeof p.lastReadAt === "number" ? p.lastReadAt : 0,
         lastUserMessageDateTag: "",
         attentionReason: p.attentionReason ?? null,
+        codexDisconnectGraceTimer: null,
         disconnectGraceTimer: null,
         disconnectWasGenerating: false,
         seamlessReconnect: false,
@@ -2720,6 +2724,7 @@ export class WsBridge {
         lastReadAt: 0,
         lastUserMessageDateTag: "",
         attentionReason: null,
+        codexDisconnectGraceTimer: null,
         disconnectGraceTimer: null,
         disconnectWasGenerating: false,
         seamlessReconnect: false,
@@ -3765,6 +3770,13 @@ export class WsBridge {
     this.flushQueuedMessagesToCodexAdapter(session, adapter, reason);
   }
 
+  private clearCodexDisconnectGraceTimer(session: Session, reason: string): void {
+    if (!session.codexDisconnectGraceTimer) return;
+    clearTimeout(session.codexDisconnectGraceTimer);
+    session.codexDisconnectGraceTimer = null;
+    console.log(`[ws-bridge] Cleared Codex disconnect grace timer for session ${sessionTag(session.id)} (${reason})`);
+  }
+
   isBackendConnected(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
@@ -3833,6 +3845,7 @@ export class WsBridge {
     const session = this.getOrCreateSession(sessionId, "codex");
     session.backendType = "codex";
     session.state.backend_type = "codex";
+    this.clearCodexDisconnectGraceTimer(session, "adapter_attach");
     if (session.codexAdapter && session.codexAdapter !== adapter) {
       session.codexAdapter.disconnect().catch(() => {});
     }
@@ -4106,6 +4119,7 @@ export class WsBridge {
     // Handle session metadata updates
     adapter.onSessionMeta((meta) => {
       if (session.codexAdapter !== adapter) return;
+      this.clearCodexDisconnectGraceTimer(session, "session_meta");
       if (meta.cliSessionId && this.onCLISessionId) {
         this.onCLISessionId(session.id, meta.cliSessionId);
       }
@@ -4152,7 +4166,9 @@ export class WsBridge {
       const steeredPending = this.trySteerPendingCodexInputs(session, "session_meta");
       if (!steeredPending) {
         this.dispatchQueuedCodexTurns(session, "session_meta");
-        if (!session.isGenerating) {
+        const currentTurnId = adapter.getCurrentTurnId?.() ?? null;
+        const hasPendingLocalInputs = this.getCancelablePendingCodexInputs(session).length > 0;
+        if (!session.isGenerating || (!currentTurnId && hasPendingLocalInputs)) {
           this.queueCodexPendingStartBatch(session, "session_meta");
         }
       }
@@ -4219,6 +4235,7 @@ export class WsBridge {
 
     adapter.onInitError((error) => {
       if (session.codexAdapter !== adapter) return;
+      this.clearCodexDisconnectGraceTimer(session, "init_error");
       console.error(`[ws-bridge] Codex adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
       session.codexAdapter = null;
       if (session.pendingCodexRollback) {
@@ -4284,8 +4301,28 @@ export class WsBridge {
         session.lastAdapterFailureAt = now;
         session.consecutiveAdapterFailures++;
       }
-      this.markTurnInterrupted(session, "system");
-      this.setGenerating(session, false, "codex_disconnect");
+      const shouldDeferDisconnectInterruption =
+        wasGenerating && pending !== null && !intentionalRelaunch && !this.launcher?.getSession(sessionId)?.killedByIdleManager;
+      if (shouldDeferDisconnectInterruption) {
+        this.clearCodexDisconnectGraceTimer(session, "codex_disconnect_rearm");
+        session.codexDisconnectGraceTimer = setTimeout(() => {
+          session.codexDisconnectGraceTimer = null;
+          if (session.codexAdapter || !session.isGenerating) return;
+          this.markTurnInterrupted(session, "system");
+          this.setGenerating(session, false, "codex_disconnect");
+          this.persistSession(session);
+          console.log(
+            `[ws-bridge] Codex disconnect grace expired for session ${sessionTag(session.id)} — emitting deferred system interruption`,
+          );
+        }, CODEX_DISCONNECT_GRACE_MS);
+        console.log(
+          `[ws-bridge] Deferring Codex disconnect interruption for session ${sessionTag(session.id)} ` +
+            `(${CODEX_DISCONNECT_GRACE_MS}ms grace, recoverable pending turn)`,
+        );
+      } else {
+        this.markTurnInterrupted(session, "system");
+        this.setGenerating(session, false, "codex_disconnect");
+      }
       this.broadcastToBrowsers(session, { type: "status_change", status: null });
       this.scheduleCodexToolResultWatchdogs(session, "codex_disconnect");
       this.persistSession(session);

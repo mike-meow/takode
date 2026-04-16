@@ -14409,7 +14409,7 @@ describe("Codex user_message takode events", () => {
     }
   });
 
-  it("delivers only leader-initiated turn_end to herd after correction with reconnect before follow-up start", async () => {
+  it("suppresses the spurious system-interrupted turn_end when reconnect resumes queued correction work", async () => {
     vi.useFakeTimers();
     const leaderId = "orch-correction-reconnect";
     const workerId = "worker-correction-reconnect";
@@ -14557,14 +14557,8 @@ describe("Codex user_message takode events", () => {
       const workerTurnEndCalls = eventSpy.mock.calls.filter(
         ([sid, eventType]) => sid === workerId && eventType === "turn_end",
       );
-      expect(workerTurnEndCalls).toHaveLength(2);
+      expect(workerTurnEndCalls).toHaveLength(1);
       expect(workerTurnEndCalls[0]?.[2]).toEqual(
-        expect.objectContaining({
-          interrupted: true,
-          interrupt_source: "system",
-        }),
-      );
-      expect(workerTurnEndCalls[1]?.[2]).toEqual(
         expect.not.objectContaining({
           interrupted: true,
         }),
@@ -14573,13 +14567,58 @@ describe("Codex user_message takode events", () => {
       const herdDeliveries = herdInjectSpy.mock.calls.filter(
         ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
       );
-      // Both turn_end events are delivered to the leader so the interrupted
-      // correction turn and the resumed completion stay visible in herd.
-      expect(herdDeliveries).toHaveLength(2);
+      expect(herdDeliveries).toHaveLength(1);
     } finally {
       dispatcher.destroy();
       eventSpy.mockRestore();
       herdInjectSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("still emits interrupted (by system) when a recoverable Codex disconnect never resumes", async () => {
+    vi.useFakeTimers();
+    try {
+      const sid = "s-codex-disconnect-grace-expiry";
+      const adapter = makeCodexAdapterMock();
+      bridge.attachCodexAdapter(sid, adapter as any);
+      emitCodexSessionReady(adapter, { cliSessionId: "thread-grace-expiry" });
+
+      const browser = makeBrowserSocket(sid);
+      bridge.handleBrowserOpen(browser, sid);
+
+      const spy = vi.spyOn(bridge, "emitTakodeEvent");
+
+      await bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "run and recover if possible",
+        }),
+      );
+      await Promise.resolve();
+      adapter.emitTurnStarted("turn-grace-expiry");
+
+      adapter.emitDisconnect("turn-grace-expiry");
+      await Promise.resolve();
+
+      expect(bridge.getSession(sid)!.isGenerating).toBe(true);
+
+      vi.advanceTimersByTime(16_000);
+      await Promise.resolve();
+
+      const turnEndCalls = spy.mock.calls.filter(([eventSid, eventType]) => eventSid === sid && eventType === "turn_end");
+      expect(turnEndCalls).toHaveLength(1);
+      expect(turnEndCalls[0]?.[2]).toEqual(
+        expect.objectContaining({
+          interrupted: true,
+          interrupt_source: "system",
+        }),
+      );
+      expect(bridge.getSession(sid)!.isGenerating).toBe(false);
+
+      spy.mockRestore();
+    } finally {
       vi.useRealTimers();
     }
   });
