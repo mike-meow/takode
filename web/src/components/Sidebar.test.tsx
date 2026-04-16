@@ -1344,6 +1344,53 @@ describe("Sidebar", { timeout: 10000 }, () => {
     });
   });
 
+  it("reviewer badge hover switches the hover card to the reviewer session", async () => {
+    // q-340: the inline reviewer chip should act as its own hover target so
+    // the shared hover card shows reviewer details rather than the reviewed parent.
+    const parentSession = makeSession("parent-1");
+    const reviewerSession = makeSession("reviewer-1");
+    const parentSdk = makeSdkSession("parent-1", {
+      sessionNum: 8,
+      createdAt: 1700000000000,
+      cliSessionId: "cli-parent-1",
+    });
+    const reviewerSdk = makeSdkSession("reviewer-1", {
+      sessionNum: 42,
+      createdAt: 1700000001000,
+      cliSessionId: "cli-reviewer-1",
+      reviewerOf: 8,
+    });
+    mockState = createMockState({
+      sessions: new Map([
+        ["parent-1", parentSession],
+        ["reviewer-1", reviewerSession],
+      ]),
+      sdkSessions: [parentSdk, reviewerSdk],
+      sessionNames: new Map([
+        ["parent-1", "Parent Session"],
+        ["reviewer-1", "Reviewer Session"],
+      ]),
+    });
+
+    render(<Sidebar />);
+
+    const parentButton = screen.getByText("Parent Session").closest("button")!;
+    fireEvent.mouseEnter(parentButton);
+
+    await waitFor(() => {
+      expect(screen.getByTitle("parent-1")).toBeInTheDocument();
+    });
+
+    fireEvent.mouseEnter(within(parentButton).getByTestId("session-reviewer-badge"));
+
+    await waitFor(() => {
+      expect(screen.getByTitle("reviewer-1")).toBeInTheDocument();
+      expect(screen.getByTitle("cli-reviewer-1")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTitle("parent-1")).toBeNull();
+  });
+
   it("shows a bounded task-history scroller in session hover card", async () => {
     const session = makeSession("s1");
     const sdk = makeSdkSession("s1");

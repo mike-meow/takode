@@ -357,6 +357,61 @@ describe("SessionItem reviewer badge", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("uses the reviewer session as the hover preview target when the badge is hovered", () => {
+    // Hovering the inline reviewer badge should override the parent row hover
+    // target so the shared sidebar popover previews the reviewer session.
+    const reviewer = makeSession({ id: "reviewer-1", sessionNum: 42, reviewerOf: 8 });
+    const onHoverStart = vi.fn();
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+      onHoverStart,
+    });
+
+    fireEvent.mouseEnter(screen.getByTestId("session-reviewer-badge"));
+
+    expect(onHoverStart).toHaveBeenCalled();
+    expect(onHoverStart.mock.calls.at(-1)?.[0]).toBe("reviewer-1");
+    expect(onHoverStart.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ top: 0, left: 0 }));
+  });
+
+  it("restores the parent hover preview when leaving the reviewer badge back into the row", () => {
+    // Moving off the badge but staying inside the row should put the hover
+    // card back on the parent session instead of clearing the preview.
+    const reviewer = makeSession({ id: "reviewer-1", sessionNum: 42, reviewerOf: 8 });
+    const onHoverStart = vi.fn();
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+      onHoverStart,
+    });
+
+    const badge = screen.getByTestId("session-reviewer-badge");
+    const button = screen.getByText("Session").closest("button")!;
+    fireEvent.mouseLeave(badge, { relatedTarget: button });
+
+    expect(onHoverStart).toHaveBeenCalled();
+    expect(onHoverStart.mock.calls.at(-1)?.[0]).toBe("s1");
+  });
+
+  it("ends hover preview when leaving the reviewer badge away from the row", () => {
+    // Exiting the badge toward the popover/outside world should use the
+    // existing delayed hover-end path instead of snapping back to the parent.
+    const reviewer = makeSession({ id: "reviewer-1", sessionNum: 42, reviewerOf: 8 });
+    const onHoverEnd = vi.fn();
+    renderSessionItem({
+      session: makeSession({ sessionNum: 8 }),
+      reviewerSession: reviewer,
+      onHoverEnd,
+    });
+
+    fireEvent.mouseLeave(screen.getByTestId("session-reviewer-badge"), {
+      relatedTarget: document.body,
+    });
+
+    expect(onHoverEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("shows reviewer session number in the title tooltip", () => {
     // When the reviewer has a sessionNum, the tooltip should include it
     // (e.g., "Reviewer #42 — click to open").

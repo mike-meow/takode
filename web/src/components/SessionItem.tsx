@@ -428,6 +428,12 @@ export function SessionItem({
     );
   };
 
+  const showParentHoverCard = useCallback(() => {
+    if (onHoverStart && buttonRef.current) {
+      onHoverStart(s.id, buttonRef.current.getBoundingClientRect());
+    }
+  }, [onHoverStart, s.id]);
+
   return (
     <div
       className={`relative group ${archived ? "opacity-50" : ""}`}
@@ -458,11 +464,7 @@ export function SessionItem({
             onCtxMenu(e, s.id);
           }
         }}
-        onMouseEnter={() => {
-          if (onHoverStart && buttonRef.current) {
-            onHoverStart(s.id, buttonRef.current.getBoundingClientRect());
-          }
-        }}
+        onMouseEnter={showParentHoverCard}
         onMouseLeave={() => {
           if (onHoverEnd) onHoverEnd();
         }}
@@ -713,6 +715,21 @@ export function SessionItem({
                           }
                         }}
                         onMouseDown={(e) => e.stopPropagation()}
+                        onMouseEnter={(e) => {
+                          e.stopPropagation();
+                          if (onHoverStart) {
+                            onHoverStart(reviewerSession.id, e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.stopPropagation();
+                          const nextTarget = e.relatedTarget;
+                          if (nextTarget instanceof Node && buttonRef.current?.contains(nextTarget)) {
+                            showParentHoverCard();
+                            return;
+                          }
+                          if (onHoverEnd) onHoverEnd();
+                        }}
                         title={`Reviewer${reviewerSession.sessionNum != null ? ` #${reviewerSession.sessionNum}` : ""} — click to open`}
                         className={`inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 rounded-full leading-[16px] shrink-0 ${rvTheme.text} bg-cc-muted/10 hover:bg-cc-muted/20 transition-colors cursor-pointer border ${rvTheme.border}`}
                         style={
