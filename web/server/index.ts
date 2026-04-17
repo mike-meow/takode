@@ -243,7 +243,11 @@ const relaunchQueue = new RelaunchQueue(async (sessionId) => {
 wsBridge.onCLIRelaunchNeededCallback((sessionId) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived || info.killedByIdleManager) return;
-  if (info.state === "starting") return;
+  // Only suppress relaunch for sessions that are mid-startup AND have an
+  // attached backend. After server restart, restored sessions show state
+  // "starting" but the old process is orphaned (connected to the dead
+  // server's WebSocket) -- relaunching is safe and necessary (q-385).
+  if (info.state === "starting" && wsBridge.isBackendAttached(sessionId)) return;
   console.log(`[server] Auto-relaunch requested for session ${sessionId}`);
   relaunchQueue.request(sessionId);
 });

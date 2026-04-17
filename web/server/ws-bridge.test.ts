@@ -11855,6 +11855,169 @@ describe("Codex recovering state reset", () => {
   });
 });
 
+describe("Codex recovery timeout (q-385)", () => {
+  it("resets recovering to disconnected after timeout when no adapter attaches", async () => {
+    // Validates Fix 2: requestCodexAutoRecovery sets a safety timeout that
+    // resets backend_state from "recovering" to "disconnected" if the adapter
+    // never connects. This prevents indefinite stuck states.
+    vi.useFakeTimers();
+    const sid = "s-recovery-timeout";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      getSession: vi.fn(() => ({ state: "exited" })),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid, "codex");
+    session.state.backend_state = "disconnected";
+
+    (bridge as any).requestCodexAutoRecovery(session, "test_reason");
+
+    expect(session.state.backend_state).toBe("recovering");
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+
+    // Fast-forward past the recovery timeout (30s)
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(session.state.backend_state).toBe("disconnected");
+    vi.useRealTimers();
+  });
+
+  it("does not reset if adapter attaches within timeout", async () => {
+    // The timeout should be a no-op if the adapter reconnects in time.
+    vi.useFakeTimers();
+    const sid = "s-recovery-timeout-ok";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      getSession: vi.fn(() => ({ state: "exited" })),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid, "codex");
+    session.state.backend_state = "disconnected";
+
+    (bridge as any).requestCodexAutoRecovery(session, "test_reason");
+    expect(session.state.backend_state).toBe("recovering");
+
+    // Adapter attaches before timeout
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter);
+
+    expect(session.state.backend_state).toBe("connected");
+
+    // Timeout fires but should be a no-op (state is no longer "recovering")
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(session.state.backend_state).toBe("connected");
+    vi.useRealTimers();
+  });
+
+  it("re-requests relaunch even when already recovering (coalesced by relaunch queue)", () => {
+    // requestCodexAutoRecovery allows re-entry when already recovering —
+    // the relaunch queue handles deduplication. This ensures a second
+    // recovery request (e.g. from a user message) reaches the launcher
+    // even if an earlier disconnect-triggered request was suppressed.
+    const sid = "s-recovery-reentry";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      getSession: vi.fn(() => ({ state: "exited" })),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid, "codex");
+    session.state.backend_state = "recovering";
+
+    const result = (bridge as any).requestCodexAutoRecovery(session, "test_reason");
+    expect(result).toBe(true);
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+  });
+});
+
+describe("Stuck pending delivery watchdog (q-385)", () => {
+  it("triggers recovery for Codex sessions with old pending inputs and no adapter", async () => {
+    // Validates Fix 3: the watchdog detects pending delivery inputs that have
+    // been stuck for longer than the threshold and triggers auto-recovery.
+    vi.useFakeTimers();
+    const sid = "s-stuck-pending";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      getSession: vi.fn(() => ({ state: "exited" })),
+    } as any);
+
+    // Create a Codex session with no adapter (simulates post-restart state)
+    const session = bridge.getOrCreateSession(sid, "codex");
+    session.state.backend_state = "disconnected";
+
+    // Directly inject a stale pending input (as if a message arrived
+    // while the adapter was down and recovery failed)
+    session.pendingCodexInputs.push({
+      id: "stuck-input-1",
+      content: "stuck message",
+      timestamp: Date.now() - 70_000,
+      cancelable: true,
+    } as any);
+
+    relaunchCb.mockClear();
+
+    // Start watchdog and advance past check interval (30s)
+    bridge.startStuckSessionWatchdog();
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+    expect(session.state.backend_state).toBe("recovering");
+    vi.useRealTimers();
+  });
+
+  it("does not trigger recovery for sessions with connected adapter", async () => {
+    // Sessions with a live adapter should not trigger the watchdog even if
+    // pending inputs exist (they'll be dispatched normally).
+    vi.useFakeTimers();
+    const sid = "s-pending-with-adapter";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      getSession: vi.fn(() => ({ state: "connected" })),
+    } as any);
+
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter);
+    const session = bridge.getSession(sid)!;
+
+    // Add a stale pending input manually
+    session.pendingCodexInputs.push({
+      id: "test-input-1",
+      content: "pending message",
+      timestamp: Date.now() - 70_000,
+      cancelable: true,
+    } as any);
+
+    relaunchCb.mockClear();
+    bridge.startStuckSessionWatchdog();
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    // No recovery triggered — adapter is attached
+    expect(session.state.backend_state).toBe("connected");
+    vi.useRealTimers();
+  });
+});
+
+describe("isBackendAttached public wrapper (q-385)", () => {
+  it("returns false when no backend is attached", () => {
+    const sid = "s-not-attached";
+    bridge.getOrCreateSession(sid, "codex");
+    expect(bridge.isBackendAttached(sid)).toBe(false);
+  });
+
+  it("returns true when Codex adapter is attached", () => {
+    const sid = "s-codex-attached";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    expect(bridge.isBackendAttached(sid)).toBe(true);
+  });
+});
+
 describe("Codex broken-session recovery regression", () => {
   it("keeps the acknowledged image turn authoritative and blocks later messages after init failure", async () => {
     const sid = "s-image-init-failure";

@@ -835,6 +835,8 @@ function extractClaudeTokenDetails(
  *  to decide whether a long-running generation should be force-cleared. */
 const STUCK_GENERATION_THRESHOLD_MS = 120_000; // 2 minutes
 const CODEX_DISCONNECT_GRACE_MS = 15_000;
+const CODEX_RECOVERY_TIMEOUT_MS = 30_000;
+const STUCK_PENDING_DELIVERY_MS = 60_000;
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
@@ -1392,6 +1394,33 @@ export class WsBridge {
     const timer = setInterval(() => {
       const now = Date.now();
       for (const session of this.sessions.values()) {
+        // ── Stuck pending delivery watchdog (q-385) ──────────────────────
+        // Codex sessions with pending inputs that have no adapter for too
+        // long are stuck. The normal recovery path (requestCodexAutoRecovery
+        // on disconnect) may have been suppressed, so this is a safety net.
+        // Only trigger once: recovery sets backend_state to "recovering",
+        // and we skip sessions already in that state to avoid an infinite
+        // relaunch loop (watchdog → recovering → timeout resets to
+        // disconnected → watchdog fires again).
+        if (
+          session.backendType === "codex" &&
+          session.pendingCodexInputs.length > 0 &&
+          !session.codexAdapter &&
+          session.state.backend_state !== "broken" &&
+          session.state.backend_state !== "recovering"
+        ) {
+          const oldestPending = session.pendingCodexInputs[0];
+          const pendingAge = now - oldestPending.timestamp;
+          if (pendingAge > STUCK_PENDING_DELIVERY_MS) {
+            console.warn(
+              `[ws-bridge] Codex session ${sessionTag(session.id)} has stuck pending delivery ` +
+                `(${Math.round(pendingAge / 1000)}s, ${session.pendingCodexInputs.length} input(s), ` +
+                `backend_state=${session.state.backend_state})`,
+            );
+            this.requestCodexAutoRecovery(session, "stuck_pending_delivery_watchdog");
+          }
+        }
+
         if (!session.isGenerating || !session.generationStartedAt) continue;
 
         // Don't flag sessions that haven't been generating long enough.
@@ -3628,12 +3657,24 @@ export class WsBridge {
       return false;
     }
     if (launcherInfo?.archived || launcherInfo?.killedByIdleManager) return false;
-    if (launcherInfo?.state === "starting") return false;
     if (session.state.backend_state === "broken") return false;
     this.setBackendState(session, "recovering", null);
     this.persistSession(session);
     console.log(`[ws-bridge] Requesting Codex auto-recovery for session ${sessionTag(session.id)} (${reason})`);
     this.onCLIRelaunchNeeded(session.id);
+    // Safety: if recovery doesn't complete within 30s, reset to "disconnected"
+    // so future relaunch attempts are not blocked. This handles the case where
+    // the relaunch callback silently returns (e.g. suppressed for "starting"
+    // sessions) or the spawned process fails to connect (q-385).
+    setTimeout(() => {
+      if (session.state.backend_state !== "recovering") return;
+      if (this.backendAttached(session)) return;
+      console.warn(
+        `[ws-bridge] Codex auto-recovery timeout for session ${sessionTag(session.id)} (${reason}) -- resetting to disconnected`,
+      );
+      this.setBackendState(session, "disconnected", null);
+      this.persistSession(session);
+    }, CODEX_RECOVERY_TIMEOUT_MS);
     return true;
   }
 
@@ -3797,6 +3838,13 @@ export class WsBridge {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     return this.backendConnected(session);
+  }
+
+  /** Is any transport attached (even if still initializing)? */
+  isBackendAttached(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    return this.backendAttached(session);
   }
 
   removeSession(sessionId: string) {
