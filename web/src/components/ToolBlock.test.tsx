@@ -171,7 +171,7 @@ describe("getPreview", () => {
     expect(getPreview("WebSearch", { query: "react testing library" })).toBe("react testing library");
   });
 
-  it("extracts the target path for view_image", () => {
+  it("returns the image path for view_image", () => {
     expect(getPreview("view_image", { path: "/tmp/proof.png" })).toBe("/tmp/proof.png");
   });
 
@@ -544,6 +544,46 @@ describe("ToolBlock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Edit File.*unroll_frank_env_building\.py/ }));
     expect(screen.getByText("unroll_frank_env_building.py")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+    expect(screen.queryByText("No changes")).toBeNull();
+  });
+
+  it("renders the exact #540 headerless multi-hunk Edit update payload", () => {
+    const exact540Diff = [
+      "@@ -26,4 +26,2 @@",
+      " from typing import IO, Any, Iterator, Literal",
+      "-",
+      "-import fire",
+      " from conversation import Completion, CompletionCandidate, Conversation, Message",
+      "@@ -765,2 +763,4 @@",
+      ' if __name__ == "__main__":',
+      "+    import fire",
+      "+",
+      "     fire.Fire(run)",
+    ].join("\n");
+
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path:
+            "/Users/jiayiwei/.companion/worktrees/yolo/jiayi--reward-hacking-judge-wt-7255/code_foundations/src/code_foundations/single_chat_turn_rl/unroll_frank_datasets.py",
+          changes: [
+            {
+              path: "/Users/jiayiwei/.companion/worktrees/yolo/jiayi--reward-hacking-judge-wt-7255/code_foundations/src/code_foundations/single_chat_turn_rl/unroll_frank_datasets.py",
+              kind: "update",
+              diff: exact540Diff,
+            },
+          ],
+        }}
+        toolUseId="tool-540-exact-edit"
+        defaultOpen={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Edit File.*unroll_frank_datasets\.py/ }));
+    expect(screen.getByText("unroll_frank_datasets.py")).toBeTruthy();
+    expect(container.querySelector(".diff-line-del")).toBeTruthy();
     expect(container.querySelector(".diff-line-add")).toBeTruthy();
     expect(screen.queryByText("No changes")).toBeNull();
   });

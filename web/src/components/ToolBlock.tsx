@@ -145,6 +145,7 @@ export function getToolLabel(name: string): string {
   if (name === "Read") return "Read File";
   if (name === "Write") return "Write File";
   if (name === "Edit") return "Edit File";
+  if (name === "view_image") return "View Image";
   if (name === "Glob") return "Find Files";
   if (name === "Grep") return "Search Content";
   if (name === "WebSearch") return "Web Search";
@@ -1388,6 +1389,9 @@ export function getPreview(name: string, input: Record<string, unknown>): string
   }
   if ((name === "Read" || name === "Write" || name === "Edit") && input.file_path) {
     return String(input.file_path);
+  }
+  if (name === "view_image" && input.path) {
+    return String(input.path);
   }
   if (name === "Glob" && input.pattern) return String(input.pattern);
   if (name === "Grep" && input.pattern) {
