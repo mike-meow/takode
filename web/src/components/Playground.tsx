@@ -586,6 +586,7 @@ const MSG_USER_MARKDOWN: ChatMessage = {
   id: "msg-1-md",
   role: "user",
   content: `I found a few issues in the auth flow:
+Please keep the current logging in place while we refactor.
 
 \`\`\`typescript
 const token = await getToken();
@@ -656,7 +657,7 @@ const MSG_ASSISTANT: ChatMessage = {
   contentBlocks: [
     {
       type: "text",
-      text: "I'll help you refactor the authentication module. Let me first look at the current implementation.\n\nHere's what I found:\n- The current auth uses **session cookies** via `express-session`\n- Sessions are stored in a `MemoryStore` (not production-ready)\n- The middleware checks `req.session.userId`\n\n```typescript\n// Current implementation\napp.use(session({\n  secret: process.env.SESSION_SECRET,\n  resave: false,\n  saveUninitialized: false,\n}));\n```\n\n| Feature | Cookies | JWT |\n|---------|---------|-----|\n| Stateless | No | Yes |\n| Scalable | Limited | Excellent |\n| Revocation | Easy | Needs blocklist |\n",
+      text: "I'll help you refactor the authentication module.\nWe can stage the migration instead of replacing auth in one pass.\n\nHere's what I found:\n- The current auth uses **session cookies** via `express-session`\n- Sessions are stored in a `MemoryStore` (not production-ready)\n- The middleware checks `req.session.userId`\n\n```typescript\n// Current implementation\napp.use(session({\n  secret: process.env.SESSION_SECRET,\n  resave: false,\n  saveUninitialized: false,\n}));\n```\n\n| Feature | Cookies | JWT |\n|---------|---------|-----|\n| Stateless | No | Yes |\n| Scalable | Limited | Excellent |\n| Revocation | Easy | Needs blocklist |\n",
     },
   ],
   timestamp: Date.now() - 50000,

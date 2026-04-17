@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import Markdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { api } from "../api.js";
 import { useStore, countUserPermissions } from "../store.js";
@@ -314,7 +315,7 @@ export function MarkdownContent({
   return (
     <div className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words`}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         urlTransform={transformMarkdownUrl}
         disallowedElements={
           isConservative

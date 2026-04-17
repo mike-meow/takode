@@ -16,6 +16,48 @@ vi.mock("../api.js", () => ({
 
 import { MarkdownContent } from "./MarkdownContent.js";
 
+describe("MarkdownContent line breaks", () => {
+  beforeEach(() => {
+    useStore.getState().reset();
+  });
+
+  it("renders visible line breaks for single newlines inside a paragraph", () => {
+    // Validates the shared renderer respects soft line breaks for normal prose.
+    const { container } = render(<MarkdownContent text={"First line\nSecond line"} />);
+
+    const paragraph = container.querySelector("p");
+    expect(paragraph).toBeTruthy();
+    expect(paragraph?.querySelector("br")).toBeTruthy();
+    expect(paragraph?.textContent).toBe("First line\nSecond line");
+  });
+
+  it("keeps markdown lists structured as lists while allowing soft breaks in list items", () => {
+    // Guards against the newline fix flattening list syntax into plain paragraphs.
+    const { container } = render(<MarkdownContent text={"Agenda:\n- first item\n- second item"} />);
+
+    expect(screen.getByText("Agenda:")).toBeTruthy();
+    const list = screen.getByRole("list");
+    expect(list).toBeTruthy();
+    expect(screen.getByText("first item")).toBeTruthy();
+    expect(screen.getByText("second item")).toBeTruthy();
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+  });
+
+  it("preserves fenced code blocks while adding breaks only to surrounding prose", () => {
+    // Ensures fenced code keeps raw newlines instead of being transformed into <br> tags.
+    const { container } = render(
+      <MarkdownContent text={"Summary line\nFollow-up line\n\n```ts\nconst x = 1;\nconst y = 2;\n```"} />,
+    );
+
+    const paragraph = container.querySelector("p");
+    const code = container.querySelector("pre code");
+
+    expect(paragraph?.querySelector("br")).toBeTruthy();
+    expect(code?.querySelector("br")).toBeNull();
+    expect(code?.textContent).toContain("const x = 1;\nconst y = 2;");
+  });
+});
+
 describe("MarkdownContent quest links", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
