@@ -3232,7 +3232,8 @@ export function MessageFeed({
           (e) =>
             (e.kind === "message" && e.msg.id === scrollToMessageId) ||
             (e.kind === "tool_msg_group" && e.firstId === scrollToMessageId),
-        ) || (t.userEntry?.kind === "message" && t.userEntry.msg.id === scrollToMessageId),
+        ) ||
+        (t.userEntry?.kind === "message" && t.userEntry.msg.id === scrollToMessageId),
     );
     if (!targetTurn) {
       // Target message genuinely not in turns (e.g. compacted out of history).

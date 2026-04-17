@@ -616,22 +616,19 @@ export function Sidebar() {
     [sdkSessions],
   );
 
-  const doHerdToCurrentSession = useCallback(
-    async (workerId: string, force = false) => {
-      const leaderId = useStore.getState().currentSessionId;
-      if (!leaderId) return;
-      try {
-        const result = await api.herdWorkerToLeader(workerId, leaderId, force ? { force: true } : undefined);
-        if (result.herded.length === 0) {
-          throw new Error("Failed to herd session");
-        }
-      } catch (err) {
-        window.alert(err instanceof Error ? err.message : "Failed to herd session");
-        return;
+  const doHerdToCurrentSession = useCallback(async (workerId: string, force = false) => {
+    const leaderId = useStore.getState().currentSessionId;
+    if (!leaderId) return;
+    try {
+      const result = await api.herdWorkerToLeader(workerId, leaderId, force ? { force: true } : undefined);
+      if (result.herded.length === 0) {
+        throw new Error("Failed to herd session");
       }
-    },
-    [],
-  );
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to herd session");
+      return;
+    }
+  }, []);
 
   const handleUnarchiveSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -1556,7 +1553,9 @@ export function Sidebar() {
           const isExited = sdk?.state === "exited";
           const attention = sessionAttention.get(contextMenu.sessionId);
           const backendType = sessionInfo?.backendType || sdk?.backendType || "claude";
-          const currentLeader = currentSessionId ? sdkSessions.find((s) => s.sessionId === currentSessionId) : undefined;
+          const currentLeader = currentSessionId
+            ? sdkSessions.find((s) => s.sessionId === currentSessionId)
+            : undefined;
           const canHerdToCurrentSession =
             !isArchived &&
             !isExited &&
@@ -1666,7 +1665,8 @@ export function Sidebar() {
                       ? {
                           confirm: {
                             title: "Force herd takeover?",
-                            description: "This will move the session out of its current leader's herd into your current leader session.",
+                            description:
+                              "This will move the session out of its current leader's herd into your current leader session.",
                             confirmLabel: "Force Herd",
                           },
                         }

@@ -134,7 +134,9 @@ export function createLogsRoutes(ctx: RouteContext) {
           });
         });
 
-        const initial: LogQueryResponse = tail ? await queryServerLogs({ ...query, limit: tail }) : await queryServerLogs(query);
+        const initial: LogQueryResponse = tail
+          ? await queryServerLogs({ ...query, limit: tail })
+          : await queryServerLogs(query);
         const seenKeys = new Set<string>();
 
         if (tail) {

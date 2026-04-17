@@ -515,7 +515,9 @@ export async function recreateWorktreeIfMissing(
         });
         deps.wsBridge.markWorktree(sessionId, info.repoRoot, targetPath, repoInfo.defaultBranch, info.branch);
 
-        console.log(`[migration] Restored worktree from archived ref ${actualBranch} for session ${sessionId}: ${targetPath}`);
+        console.log(
+          `[migration] Restored worktree from archived ref ${actualBranch} for session ${sessionId}: ${targetPath}`,
+        );
         return { recreated: true };
       } catch (err) {
         // Branch restored from ref but worktree creation failed (e.g., branch

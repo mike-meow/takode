@@ -287,7 +287,10 @@ export const BoardTable = memo(function BoardTable({
               </td>
               <td className="px-3 py-1.5 whitespace-nowrap">
                 {isCompleted ? (
-                  <span className="text-cc-muted" title={row.completedAt ? new Date(row.completedAt).toLocaleString() : ""}>
+                  <span
+                    className="text-cc-muted"
+                    title={row.completedAt ? new Date(row.completedAt).toLocaleString() : ""}
+                  >
                     {formatCompletedTime(row.completedAt)}
                   </span>
                 ) : (

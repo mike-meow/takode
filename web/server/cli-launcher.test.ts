@@ -2665,9 +2665,7 @@ describe("cat herding", () => {
 
     const worker = herdLauncher.getSession("worker-1");
     expect(worker?.herdedBy).toBe("orch-1"); // unchanged
-    expect(herdChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "reassigned", workerId: "worker-1" }),
-    );
+    expect(herdChange).not.toHaveBeenCalledWith(expect.objectContaining({ type: "reassigned", workerId: "worker-1" }));
   });
 
   it("force-reassigns a worker to a new leader and notifies before herd membership changes", async () => {
@@ -2738,12 +2736,7 @@ describe("cat herding", () => {
 
       const dispatcher = new HerdEventDispatcher(bridge, herdLauncher);
       const emitBridgeEvent = vi.fn(
-        (
-          sessionId: string,
-          event: "herd_reassigned",
-          data: TakodeHerdReassignedEventData,
-          actorSessionId?: string,
-        ) => {
+        (sessionId: string, event: "herd_reassigned", data: TakodeHerdReassignedEventData, actorSessionId?: string) => {
           emitTakodeEvent({
             id: Date.now(),
             event,
@@ -2782,11 +2775,10 @@ describe("cat herding", () => {
 
       vi.advanceTimersByTime(600);
 
-      expect(bridge.injectUserMessage).toHaveBeenCalledWith(
-        "orch-1",
-        expect.stringContaining("herd_reassigned"),
-        { sessionId: "herd-events", sessionLabel: "Herd Events" },
-      );
+      expect(bridge.injectUserMessage).toHaveBeenCalledWith("orch-1", expect.stringContaining("herd_reassigned"), {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      });
 
       dispatcher.onOrchestratorTurnEnd("orch-1");
       expect(dispatcher._getInbox("orch-1")).toBeUndefined();
@@ -2823,7 +2815,12 @@ describe("cat herding", () => {
       reviewerOf: 42,
       herdedBy: "orch-2",
     });
-    expect(herdLauncher.getHerdedSessions("orch-2").map((s) => s.sessionId).sort()).toEqual(["reviewer-1", "worker-1"]);
+    expect(
+      herdLauncher
+        .getHerdedSessions("orch-2")
+        .map((s) => s.sessionId)
+        .sort(),
+    ).toEqual(["reviewer-1", "worker-1"]);
     expect(herdLauncher.getHerdedSessions("orch-1")).toEqual([]);
     expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-2" });
     expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-1" });

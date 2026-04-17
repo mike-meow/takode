@@ -783,9 +783,12 @@ export function SessionItem({
                   </>
                 ) : archiveConfirmation.kind === "leader" ? (
                   <>
-                    Archiving this leader will <strong>detach {archiveConfirmation.activeWorkerCount ?? 0} active worker
-                    session{archiveConfirmation.activeWorkerCount === 1 ? "" : "s"}</strong> and leave them running
-                    without a leader.
+                    Archiving this leader will{" "}
+                    <strong>
+                      detach {archiveConfirmation.activeWorkerCount ?? 0} active worker session
+                      {archiveConfirmation.activeWorkerCount === 1 ? "" : "s"}
+                    </strong>{" "}
+                    and leave them running without a leader.
                   </>
                 ) : (
                   <>

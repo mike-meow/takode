@@ -183,8 +183,7 @@ export class TimerManager {
 
   /** Fire a single timer: inject user message into the session. */
   private fireTimer(sessionId: string, timer: SessionTimer): void {
-    const content =
-      `[⏰ Timer ${timer.id}] ${timer.title}` + (timer.description ? `\n\n${timer.description}` : "");
+    const content = `[⏰ Timer ${timer.id}] ${timer.title}` + (timer.description ? `\n\n${timer.description}` : "");
     const result = this.wsBridge.injectUserMessage(sessionId, content, {
       sessionId: `timer:${timer.id}`,
       sessionLabel: `Timer ${timer.id}`,

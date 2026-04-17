@@ -11,7 +11,14 @@ function getAudioContext(): AudioContext {
 }
 
 /** Play a single tone with attack-decay envelope. Shared by all notification sounds. */
-function playTone(ctx: AudioContext, freq: number, start: number, gain: number, duration: number, type: OscillatorType): void {
+function playTone(
+  ctx: AudioContext,
+  freq: number,
+  start: number,
+  gain: number,
+  duration: number,
+  type: OscillatorType,
+): void {
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = type;
@@ -35,7 +42,7 @@ export async function playReviewSound(): Promise<void> {
     const ctx = getAudioContext();
     if (ctx.state === "suspended") await ctx.resume();
     const now = ctx.currentTime;
-    playTone(ctx, 659.25, now, 0.3, 0.3, "sine");        // E5
+    playTone(ctx, 659.25, now, 0.3, 0.3, "sine"); // E5
     playTone(ctx, 783.99, now + 0.15, 0.3, 0.35, "sine"); // G5
   } catch {
     // Web Audio API not available
@@ -52,7 +59,7 @@ export async function playNeedsInputSound(): Promise<void> {
     const ctx = getAudioContext();
     if (ctx.state === "suspended") await ctx.resume();
     const now = ctx.currentTime;
-    playTone(ctx, 659.25, now, 0.3, 0.15, "sine");       // E5, first tap
+    playTone(ctx, 659.25, now, 0.3, 0.15, "sine"); // E5, first tap
     playTone(ctx, 659.25, now + 0.3, 0.3, 0.15, "sine"); // E5, second tap
   } catch {
     // Web Audio API not available

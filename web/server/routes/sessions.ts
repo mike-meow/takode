@@ -1695,7 +1695,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
         }
         await Promise.race([
           promise,
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for Codex rollback")), 10_000)),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Timed out waiting for Codex rollback")), 10_000),
+          ),
         ]);
       } else {
         // Kill CLI and relaunch with --resume-session-at to truncate CLI's history

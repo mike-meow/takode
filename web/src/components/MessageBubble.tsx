@@ -613,7 +613,7 @@ function UserMessage({
 
   const isCodex = useStore((s) => s.sessions.get(sessionId ?? "")?.backend_type === "codex");
   const messagesBySession = useStore((s) => s.messages);
-  const sessionMessages = sessionId ? messagesBySession.get(sessionId) ?? EMPTY_MESSAGES : EMPTY_MESSAGES;
+  const sessionMessages = sessionId ? (messagesBySession.get(sessionId) ?? EMPTY_MESSAGES) : EMPTY_MESSAGES;
   const canRevert = useMemo(() => {
     if (!sessionId) return false;
     if (!isCodex) return true;
@@ -916,7 +916,12 @@ function AssistantMessage({
           {userAddressed && <LeaderUserAddressedMarker />}
           <MarkdownContent text={displayMessage.content} sessionId={sessionId} searchHighlight={searchHighlight} />
           {message.notification && (
-            <NotificationMarker category={message.notification.category} summary={message.notification.summary} sessionId={sessionId} messageId={message.id} />
+            <NotificationMarker
+              category={message.notification.category}
+              summary={message.notification.summary}
+              sessionId={sessionId}
+              messageId={message.id}
+            />
           )}
           {showTimestamp && (
             <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
@@ -953,13 +958,35 @@ function AssistantMessage({
           // Single tool_use renders as before
           if (group.items.length === 1) {
             const item = group.items[0];
-            return <ToolBlock key={i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} parentMessageId={message.id} />;
+            return (
+              <ToolBlock
+                key={i}
+                name={item.name}
+                input={item.input}
+                toolUseId={item.id}
+                sessionId={sessionId}
+                parentMessageId={message.id}
+              />
+            );
           }
           // Grouped tool_uses
-          return <ToolGroupBlock key={i} name={group.name} items={group.items} sessionId={sessionId} parentMessageId={message.id} />;
+          return (
+            <ToolGroupBlock
+              key={i}
+              name={group.name}
+              items={group.items}
+              sessionId={sessionId}
+              parentMessageId={message.id}
+            />
+          );
         })}
         {message.notification && (
-          <NotificationMarker category={message.notification.category} summary={message.notification.summary} sessionId={sessionId} messageId={message.id} />
+          <NotificationMarker
+            category={message.notification.category}
+            summary={message.notification.summary}
+            sessionId={sessionId}
+            messageId={message.id}
+          />
         )}
         {showTimestamp && (
           <MessageTimestamp timestamp={displayMessage.timestamp} turnDurationMs={displayMessage.turnDurationMs} />
@@ -1232,7 +1259,17 @@ function ContentBlockRenderer({
   return null;
 }
 
-function ToolGroupBlock({ name, items, sessionId, parentMessageId }: { name: string; items: ToolGroupItem[]; sessionId?: string; parentMessageId?: string }) {
+function ToolGroupBlock({
+  name,
+  items,
+  sessionId,
+  parentMessageId,
+}: {
+  name: string;
+  items: ToolGroupItem[];
+  sessionId?: string;
+  parentMessageId?: string;
+}) {
   const [open, setOpen] = useState(true);
   const headerRef = useRef<HTMLButtonElement>(null);
   const iconType = getToolIcon(name);
@@ -1244,7 +1281,14 @@ function ToolGroupBlock({ name, items, sessionId, parentMessageId }: { name: str
     return (
       <div className="flex flex-col gap-2">
         {items.map((item, i) => (
-          <ToolBlock key={item.id || i} name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} parentMessageId={parentMessageId} />
+          <ToolBlock
+            key={item.id || i}
+            name={item.name}
+            input={item.input}
+            toolUseId={item.id}
+            sessionId={sessionId}
+            parentMessageId={parentMessageId}
+          />
         ))}
       </div>
     );

@@ -870,9 +870,7 @@ export const useStore = create<AppState>((set) => ({
           prev.length === quests.length &&
           prev.every(
             (p, i) =>
-              p.questId === quests[i].questId &&
-              p.version === quests[i].version &&
-              p.updatedAt === quests[i].updatedAt,
+              p.questId === quests[i].questId && p.version === quests[i].version && p.updatedAt === quests[i].updatedAt,
           )
         ) {
           return;

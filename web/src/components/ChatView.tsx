@@ -90,7 +90,10 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     connStatus === "connected" &&
     !cliConnected &&
     backendState !== "broken" &&
-    (backendState === "initializing" || backendState === "resuming" || backendState === "recovering" || !cliEverConnected);
+    (backendState === "initializing" ||
+      backendState === "resuming" ||
+      backendState === "recovering" ||
+      !cliEverConnected);
   const isResumeMissingRolloutError =
     backendError?.includes("could not be resumed because its local rollout is missing or unreadable") ?? false;
   return (

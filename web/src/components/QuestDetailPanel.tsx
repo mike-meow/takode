@@ -1414,7 +1414,9 @@ export function QuestDetailPanel() {
                         >
                           {feedbackSubmitting ? "Saving..." : "Add Feedback"}
                         </button>
-                        {uploadingFeedbackImage && <span className="text-xs text-cc-muted animate-pulse">Uploading...</span>}
+                        {uploadingFeedbackImage && (
+                          <span className="text-xs text-cc-muted animate-pulse">Uploading...</span>
+                        )}
                         <span className="text-[11px] text-cc-muted/40 ml-auto">
                           {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
                         </span>
@@ -1585,7 +1587,10 @@ export function QuestDetailPanel() {
       </div>
 
       {activeCommitSha && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 p-4" onClick={closeCommitModal}>
+        <div
+          className="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 p-4"
+          onClick={closeCommitModal}
+        >
           <div
             className="w-[min(1100px,96vw)] max-h-[90dvh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}

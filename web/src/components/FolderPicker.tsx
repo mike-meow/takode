@@ -22,20 +22,23 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
   const listRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
 
-  const loadDirs = useCallback(async (path?: string) => {
-    setBrowseLoading(true);
-    setFilter("");
-    setFocusIndex(-1);
-    try {
-      const result = await api.listDirs(path, { hidden: showHidden });
-      setBrowsePath(result.path);
-      setBrowseDirs(result.dirs);
-    } catch {
-      setBrowseDirs([]);
-    } finally {
-      setBrowseLoading(false);
-    }
-  }, [showHidden]);
+  const loadDirs = useCallback(
+    async (path?: string) => {
+      setBrowseLoading(true);
+      setFilter("");
+      setFocusIndex(-1);
+      try {
+        const result = await api.listDirs(path, { hidden: showHidden });
+        setBrowsePath(result.path);
+        setBrowseDirs(result.dirs);
+      } catch {
+        setBrowseDirs([]);
+      } finally {
+        setBrowseLoading(false);
+      }
+    },
+    [showHidden],
+  );
 
   useEffect(() => {
     loadDirs(initialPath || undefined);

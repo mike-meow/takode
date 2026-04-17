@@ -920,11 +920,7 @@ export function buildPeekDefault(
   // When no collapsed turns are visible, scan from start of history (or after omitted turns)
   // to catch markers before the expanded turn.
   const visibleStart =
-    collapsedSlice.length > 0
-      ? collapsedSlice[0].startIdx
-      : omitted > 0
-        ? allTurns[omitted - 1].endIdx + 1
-        : 0;
+    collapsedSlice.length > 0 ? collapsedSlice[0].startIdx : omitted > 0 ? allTurns[omitted - 1].endIdx + 1 : 0;
   const visibleEnd = lastTurn.endIdx >= 0 ? lastTurn.endIdx : messageHistory.length - 1;
   const compactionEvents = findCompactionEvents(messageHistory, allTurns, visibleStart, visibleEnd);
 

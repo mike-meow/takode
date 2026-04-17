@@ -565,10 +565,7 @@ describe("takode logs", () => {
       );
 
       expect(result.status).toBe(0);
-      expect(requestUrls).toEqual([
-        "/api/takode/me",
-        "/api/logs?level=warn%2Cerror&component=ws-bridge&limit=200",
-      ]);
+      expect(requestUrls).toEqual(["/api/takode/me", "/api/logs?level=warn%2Cerror&component=ws-bridge&limit=200"]);
       expect(result.stdout).toContain("WARN");
       expect(result.stdout).toContain("ERROR");
       expect(result.stdout).toContain("Permission required");
@@ -647,13 +644,13 @@ describe("takode logs", () => {
       }
       if (method === "GET" && url === "/api/logs/stream?level=error&limit=200&tail=200") {
         res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write('event: entry\n');
+        res.write("event: entry\n");
         res.write(
           'data: {"ts":1700000001000,"isoTime":"2024-11-14T22:13:21.000Z","level":"error","component":"server","message":"Snapshot failure","pid":123,"seq":2}\n\n',
         );
-        res.write('event: ready\n');
+        res.write("event: ready\n");
         res.write('data: {"ok":true,"availableComponents":["server"],"logFile":"/tmp/server-3456.jsonl"}\n\n');
-        res.write('event: entry\n');
+        res.write("event: entry\n");
         res.write(
           'data: {"ts":1700000002000,"isoTime":"2024-11-14T22:13:22.000Z","level":"error","component":"server","message":"Live failure","pid":123,"seq":3}\n\n',
         );
@@ -676,10 +673,7 @@ describe("takode logs", () => {
       });
 
       expect(result.status).toBe(0);
-      expect(requestUrls).toEqual([
-        "/api/takode/me",
-        "/api/logs/stream?level=error&limit=200&tail=200",
-      ]);
+      expect(requestUrls).toEqual(["/api/takode/me", "/api/logs/stream?level=error&limit=200&tail=200"]);
       expect(result.stdout).toContain("Snapshot failure");
       expect(result.stdout).toContain("Live failure");
       expect(result.stdout).toContain("ERROR");
@@ -739,11 +733,11 @@ describe("takode logs", () => {
       }
       if (method === "GET" && url === "/api/logs/stream?level=warn&limit=200&tail=200") {
         res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write('event: entry\n');
+        res.write("event: entry\n");
         res.write(
           'data: {"ts":1700000003000,"isoTime":"2024-11-14T22:13:23.000Z","level":"warn","component":"server","message":"JSON warning","pid":123,"seq":4}\n\n',
         );
-        res.write('event: ready\n');
+        res.write("event: ready\n");
         res.write('data: {"ok":true,"availableComponents":["server"],"logFile":"/tmp/server-3456.jsonl"}\n\n');
         res.end();
         return;
@@ -1787,9 +1781,9 @@ describe("takode timers", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("Pending timers for worker-77 (2):");
-      expect(result.stdout).toContain('t1  in 30m');
-      expect(result.stdout).toContain('t2  every 10m');
-      expect(result.stdout).toContain('last=');
+      expect(result.stdout).toContain("t1  in 30m");
+      expect(result.stdout).toContain("t2  every 10m");
+      expect(result.stdout).toContain("last=");
       expect(result.stdout).toContain('"Refresh context"');
       expect(result.stdout).toContain("Summarize blockers added since the last run.");
     } finally {

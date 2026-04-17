@@ -495,9 +495,7 @@ describe("HerdEventDispatcher", () => {
     dispatcher.setupForOrchestrator("orch-1");
 
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
-    vi.mocked(bridge.injectUserMessage)
-      .mockReturnValueOnce("queued")
-      .mockReturnValueOnce("sent");
+    vi.mocked(bridge.injectUserMessage).mockReturnValueOnce("queued").mockReturnValueOnce("sent");
 
     triggerEvent(makeEvent({ event: "turn_end" }));
 
@@ -1085,9 +1083,7 @@ describe("forceFlushPendingEvents", () => {
     dispatcher.setupForOrchestrator("orch-1");
 
     vi.mocked(bridge.isSessionIdle).mockReturnValue(false);
-    vi.mocked(bridge.injectUserMessage)
-      .mockReturnValueOnce("queued")
-      .mockReturnValueOnce("sent");
+    vi.mocked(bridge.injectUserMessage).mockReturnValueOnce("queued").mockReturnValueOnce("sent");
     triggerEvent(makeEvent({ event: "turn_end" }));
 
     vi.advanceTimersByTime(600);

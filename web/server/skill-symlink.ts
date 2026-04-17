@@ -46,7 +46,8 @@ const AGENTS_SKILLS_HOME = join(HOME, ".agents", "skills");
 export function ensureSkillSymlinks(slugs: string[]): void {
   for (const slug of slugs) {
     const repoDir = join(REPO_CLAUDE_SKILLS_HOME, slug);
-    if (!existsSync(repoDir)) { // sync-ok: startup cold path
+    if (!existsSync(repoDir)) {
+      // sync-ok: startup cold path
       console.warn(`[skill-symlink] Skipping missing repo skill source: ${repoDir}`);
       continue;
     }

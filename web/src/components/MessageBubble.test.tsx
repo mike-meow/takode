@@ -671,7 +671,9 @@ describe("MessageBubble - assistant messages", () => {
         id: "asst-review-tool",
         role: "assistant",
         content: "",
-        contentBlocks: [{ type: "tool_use", id: "tu-review", name: "Bash", input: { command: "takode notify review" } }],
+        contentBlocks: [
+          { type: "tool_use", id: "tu-review", name: "Bash", input: { command: "takode notify review" } },
+        ],
       });
 
       render(<MessageBubble message={msg} sessionId="review-session" />);
@@ -760,7 +762,7 @@ describe("MessageBubble - assistant messages", () => {
       const msg = makeMessage({
         id: "asst-review-authoritative",
         role: "assistant",
-        content: 'Leader note: this quoted text mentions takode notify review but is not the source of the chip.',
+        content: "Leader note: this quoted text mentions takode notify review but is not the source of the chip.",
         notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
       });
 
@@ -1185,8 +1187,7 @@ describe("HerdEventMessage", () => {
     // Herd event with activity lines should show header but NOT activity
     const msg = makeMessage({
       role: "user",
-      content:
-        '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s | tools: 1\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
+      content: '1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s | tools: 1\n  [10] user: "Fix bug"\n  [11] ✓ "Done"',
       agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
     });
     render(<HerdEventMessage message={msg} showTimestamp={false} />);

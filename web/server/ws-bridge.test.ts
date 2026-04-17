@@ -8572,7 +8572,9 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
+      "/tmp/companion-images/img-1.orig.png",
+    ]);
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
     const retried = (firstImageRetryCall as unknown as [any])[0] as any;
@@ -12974,7 +12976,9 @@ describe("Codex resumed-turn recovery", () => {
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual(["/tmp/companion-images/img-1.orig.png"]);
+    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
+      "/tmp/companion-images/img-1.orig.png",
+    ]);
   });
 
   it("retries when resumed snapshot lastTurn does not match pending disconnected turn", async () => {
@@ -14775,7 +14779,9 @@ describe("Codex user_message takode events", () => {
       vi.advanceTimersByTime(16_000);
       await Promise.resolve();
 
-      const turnEndCalls = spy.mock.calls.filter(([eventSid, eventType]) => eventSid === sid && eventType === "turn_end");
+      const turnEndCalls = spy.mock.calls.filter(
+        ([eventSid, eventType]) => eventSid === sid && eventType === "turn_end",
+      );
       expect(turnEndCalls).toHaveLength(1);
       expect(turnEndCalls[0]?.[2]).toEqual(
         expect.objectContaining({
@@ -15624,7 +15630,9 @@ describe("Codex image transport", () => {
 
     expect(session.pendingCodexInputs).toHaveLength(0);
     expect(session.pendingCodexTurns).toHaveLength(0);
-    expect(session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "restore this image")).toBe(false);
+    expect(
+      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "restore this image"),
+    ).toBe(false);
   });
 
   it("advances delivery to the next pending input when the current head is cancelled", async () => {
@@ -15773,7 +15781,9 @@ describe("Codex image transport", () => {
       }),
     );
     expect(
-      session.messageHistory.some((msg: any) => msg.type === "user_message" && msg.content === "Please inspect this screenshot"),
+      session.messageHistory.some(
+        (msg: any) => msg.type === "user_message" && msg.content === "Please inspect this screenshot",
+      ),
     ).toBe(false);
   });
 
@@ -16928,7 +16938,9 @@ describe("cliResuming debounce prevents false compaction events on --resume repl
 
     expect(session.messageHistory.filter((m) => m.type === "compact_marker")).toHaveLength(0);
     expect(
-      injectSpy.mock.calls.filter(([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System"),
+      injectSpy.mock.calls.filter(
+        ([, , source]) => source?.sessionId === "system" && source?.sessionLabel === "System",
+      ),
     ).toHaveLength(0);
 
     // Phase 2: resume debounce clears stale compaction state.
@@ -19892,13 +19904,25 @@ describe("notifyUser herded session routing", () => {
 
     // Verify notification_update was NOT broadcast (herded sessions don't drive browser UI)
     const notifUpdates = browser.send.mock.calls
-      .map((c: any[]) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .map((c: any[]) => {
+        try {
+          return JSON.parse(c[0]);
+        } catch {
+          return null;
+        }
+      })
       .filter((m: any) => m?.type === "notification_update");
     expect(notifUpdates).toHaveLength(0);
 
     // Verify NO session_update with attentionReason was broadcast
     const attentionUpdates = browser.send.mock.calls
-      .map((c: any[]) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .map((c: any[]) => {
+        try {
+          return JSON.parse(c[0]);
+        } catch {
+          return null;
+        }
+      })
       .filter((m: any) => m?.type === "session_update" && m.session?.attentionReason !== undefined);
     expect(attentionUpdates).toHaveLength(0);
 

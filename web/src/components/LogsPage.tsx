@@ -69,7 +69,9 @@ export function LogsPage() {
   const [streamState, setStreamState] = useState<"connecting" | "live" | "offline">("connecting");
   const [logFile, setLogFile] = useState<string | null>(null);
   const [followPaused, setFollowPaused] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 1024));
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    typeof window === "undefined" ? true : window.innerWidth >= 1024,
+  );
   const [sessionLabels, setSessionLabels] = useState<Map<string, string>>(new Map());
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +175,9 @@ export function LogsPage() {
         startTransition(() => {
           setEntries((current) => [...current, entry].slice(-MAX_VISIBLE_ENTRIES));
           setAvailableComponents((current) =>
-            current.includes(entry.component) ? current : [...current, entry.component].sort((a, b) => a.localeCompare(b)),
+            current.includes(entry.component)
+              ? current
+              : [...current, entry.component].sort((a, b) => a.localeCompare(b)),
           );
         });
       } catch {
@@ -243,96 +247,100 @@ export function LogsPage() {
 
         <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)] min-h-0 flex-1">
           {(filtersOpen || isDesktopViewport) && (
-          <div className="min-h-0 rounded-2xl border border-cc-border bg-cc-card p-4 space-y-4 overflow-y-auto">
-            <div>
-              <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="log-pattern">
-                Message Filter
-              </label>
-              <input
-                id="log-pattern"
-                type="text"
-                value={pattern}
-                onChange={(event) => setPattern(event.target.value)}
-                placeholder={regexMode ? "Regex pattern" : "Substring"}
-                className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
-              />
-              <label className="mt-2 flex items-center gap-2 text-xs text-cc-muted">
+            <div className="min-h-0 rounded-2xl border border-cc-border bg-cc-card p-4 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="log-pattern">
+                  Message Filter
+                </label>
                 <input
-                  type="checkbox"
-                  checked={regexMode}
-                  onChange={(event) => setRegexMode(event.target.checked)}
-                  className="rounded border-cc-border"
+                  id="log-pattern"
+                  type="text"
+                  value={pattern}
+                  onChange={(event) => setPattern(event.target.value)}
+                  placeholder={regexMode ? "Regex pattern" : "Substring"}
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
                 />
-                Treat pattern as regex
-              </label>
-            </div>
+                <label className="mt-2 flex items-center gap-2 text-xs text-cc-muted">
+                  <input
+                    type="checkbox"
+                    checked={regexMode}
+                    onChange={(event) => setRegexMode(event.target.checked)}
+                    className="rounded border-cc-border"
+                  />
+                  Treat pattern as regex
+                </label>
+              </div>
 
-            <div>
-              <div className="flex items-center justify-between gap-3 mb-1.5">
-                <h2 className="text-xs font-medium text-cc-muted">Severity</h2>
-                <button
-                  type="button"
-                  onClick={() => setSelectedLevels(null)}
-                  className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
-                >
-                  All
-                </button>
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <h2 className="text-xs font-medium text-cc-muted">Severity</h2>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLevels(null)}
+                    className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
+                  >
+                    All
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {LOG_LEVELS.map((level) => {
+                    const checked = selectedLevels === null || selectedLevels.includes(level);
+                    return (
+                      <label key={level} className="flex items-center gap-2 text-sm text-cc-fg">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setSelectedLevels((current) => toggleSelection([...LOG_LEVELS], current, level))
+                          }
+                          className="rounded border-cc-border"
+                        />
+                        <span className={levelBadgeClass(level)}>{level.toUpperCase()}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="space-y-1">
-                {LOG_LEVELS.map((level) => {
-                  const checked = selectedLevels === null || selectedLevels.includes(level);
-                  return (
-                    <label key={level} className="flex items-center gap-2 text-sm text-cc-fg">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => setSelectedLevels((current) => toggleSelection([...LOG_LEVELS], current, level))}
-                        className="rounded border-cc-border"
-                      />
-                      <span className={levelBadgeClass(level)}>{level.toUpperCase()}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
 
-            <div>
-              <div className="flex items-center justify-between gap-3 mb-1.5">
-                <h2 className="text-xs font-medium text-cc-muted">Components</h2>
-                <button
-                  type="button"
-                  onClick={() => setSelectedComponents(null)}
-                  className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
-                >
-                  All
-                </button>
-              </div>
-              <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                {availableComponents.length === 0 && <p className="text-xs text-cc-muted">No components yet.</p>}
-                {availableComponents.map((component) => {
-                  const checked = selectedComponents === null || selectedComponents.includes(component);
-                  return (
-                    <label key={component} className="flex items-center gap-2 text-sm text-cc-fg">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          setSelectedComponents((current) => toggleSelection(availableComponents, current, component))
-                        }
-                        className="rounded border-cc-border"
-                      />
-                      <span className="font-mono text-xs">{formatComponentLabel(component, sessionLabels)}</span>
-                    </label>
-                  );
-                })}
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <h2 className="text-xs font-medium text-cc-muted">Components</h2>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedComponents(null)}
+                    className="text-xs text-cc-muted hover:text-cc-fg cursor-pointer"
+                  >
+                    All
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                  {availableComponents.length === 0 && <p className="text-xs text-cc-muted">No components yet.</p>}
+                  {availableComponents.map((component) => {
+                    const checked = selectedComponents === null || selectedComponents.includes(component);
+                    return (
+                      <label key={component} className="flex items-center gap-2 text-sm text-cc-fg">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setSelectedComponents((current) => toggleSelection(availableComponents, current, component))
+                          }
+                          className="rounded border-cc-border"
+                        />
+                        <span className="font-mono text-xs">{formatComponentLabel(component, sessionLabels)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
           )}
 
           <div className="min-h-0 rounded-2xl border border-cc-border bg-cc-card overflow-hidden flex flex-col">
             <div className="px-4 py-3 border-b border-cc-border flex items-center justify-between gap-3 text-xs text-cc-muted">
-              <span>{loading ? "Loading logs..." : `${entries.length} visible entr${entries.length === 1 ? "y" : "ies"}`}</span>
+              <span>
+                {loading ? "Loading logs..." : `${entries.length} visible entr${entries.length === 1 ? "y" : "ies"}`}
+              </span>
               <div className="flex items-center gap-3">
                 <span>{followPaused ? "Auto-scroll paused" : "Following live tail"}</span>
                 {followPaused && (
@@ -371,10 +379,15 @@ export function LogsPage() {
               {entries.map((entry) => {
                 const details = renderMetaWithSessions(entry, sessionLabels);
                 return (
-                  <div key={`${entry.ts}-${entry.seq}`} className="rounded-xl border border-cc-border/70 bg-cc-bg/70 px-3 py-2">
+                  <div
+                    key={`${entry.ts}-${entry.seq}`}
+                    className="rounded-xl border border-cc-border/70 bg-cc-bg/70 px-3 py-2"
+                  >
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span className="text-cc-muted">{new Date(entry.ts).toLocaleTimeString()}</span>
-                      <span className={`font-semibold ${levelBadgeClass(entry.level)}`}>{entry.level.toUpperCase()}</span>
+                      <span className={`font-semibold ${levelBadgeClass(entry.level)}`}>
+                        {entry.level.toUpperCase()}
+                      </span>
                       <span className="text-cc-primary">{formatComponentLabel(entry.component, sessionLabels)}</span>
                       <span className="text-cc-fg break-all">{entry.message}</span>
                     </div>

@@ -344,13 +344,7 @@ describe("ToolBlock", () => {
     // The parser should only match a real top-level `takode notify` command.
     // Other commands that merely echo or mention that text must remain normal
     // Bash tool rows.
-    render(
-      <ToolBlock
-        name="Bash"
-        input={{ command: "echo takode notify review" }}
-        toolUseId="tool-notify-embedded"
-      />,
-    );
+    render(<ToolBlock name="Bash" input={{ command: "echo takode notify review" }} toolUseId="tool-notify-embedded" />);
 
     expect(screen.getByText("echo takode notify review")).toBeTruthy();
     expect(screen.queryByText("Ready for review")).toBeNull();

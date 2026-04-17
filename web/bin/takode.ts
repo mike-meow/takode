@@ -7,7 +7,13 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import type { HerdSessionsResponse } from "../shared/herd-types.js";
-import { encodeLogQuery, parseLogLevels, parseLogTime, type LogQueryResponse, type ServerLogEntry } from "../shared/logging.js";
+import {
+  encodeLogQuery,
+  parseLogLevels,
+  parseLogTime,
+  type LogQueryResponse,
+  type ServerLogEntry,
+} from "../shared/logging.js";
 import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
 import {
   getSessionAuthDir,
@@ -1218,8 +1224,7 @@ function formatCollapsedTurn(turn: CollapsedTurn): string {
   // Single-message turn or only one side exists: compact format
   if (!hasUser && !hasResult) return header;
   if (!hasUser) return `${header}\n  ${formatQuotedContent(turn.result, TAKODE_PEEK_CONTENT_LIMIT)}`;
-  if (!hasResult)
-    return `${header}\n  ${sourceLabel}: ${formatQuotedContent(turn.user, TAKODE_PEEK_CONTENT_LIMIT)}`;
+  if (!hasResult) return `${header}\n  ${sourceLabel}: ${formatQuotedContent(turn.user, TAKODE_PEEK_CONTENT_LIMIT)}`;
 
   // Multi-message turn: show source prompt, ellipsis, and assistant response (no asst: tag)
   return [
@@ -3034,9 +3039,7 @@ async function handleScan(base: string, args: string[]): Promise<void> {
     hints.push(`Older: takode scan ${safeSessionRef} --until ${data.from} --count ${turnCount}`);
   }
   if (data.from + data.count < data.totalTurns) {
-    hints.push(
-      `Newer: takode scan ${safeSessionRef} --from ${data.from + data.count} --count ${turnCount}`,
-    );
+    hints.push(`Newer: takode scan ${safeSessionRef} --from ${data.from + data.count} --count ${turnCount}`);
   }
   if (hints.length > 0) {
     console.log(hints.join("  |  "));
@@ -3336,7 +3339,14 @@ async function handleTimer(base: string, args: string[]): Promise<void> {
       }
 
       const result = (await apiPost(base, `/sessions/${sessionId}/timers`, body)) as {
-        timer: { id: string; type: string; nextFireAt: number; originalSpec: string; title: string; description: string };
+        timer: {
+          id: string;
+          type: string;
+          nextFireAt: number;
+          originalSpec: string;
+          title: string;
+          description: string;
+        };
       };
       const t = result.timer;
       const fireAt = new Date(t.nextFireAt).toLocaleTimeString();

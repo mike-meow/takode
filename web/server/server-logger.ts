@@ -323,9 +323,7 @@ function buildEntry(
   const source = extractSource(normalizedMeta);
   const entryMeta =
     normalizedMeta && Object.keys(normalizedMeta).length > 0
-      ? Object.fromEntries(
-          Object.entries(normalizedMeta).filter(([key]) => key !== "sessionId" && key !== "source"),
-        )
+      ? Object.fromEntries(Object.entries(normalizedMeta).filter(([key]) => key !== "sessionId" && key !== "source"))
       : undefined;
   const ts = Date.now();
   return {
@@ -363,7 +361,11 @@ function parseLegacyConsoleArgs(args: unknown[]): {
     }
   }
 
-  const remainderText = rest.map((arg) => formatArg(arg)).filter(Boolean).join(" ").trim();
+  const remainderText = rest
+    .map((arg) => formatArg(arg))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const message = [firstText, remainderText].filter(Boolean).join(" ").trim();
   const extraArgs = rest.filter((arg) => typeof arg !== "string");
   const meta =
@@ -514,7 +516,9 @@ export async function queryServerLogs(query: LogQuery = {}): Promise<LogQueryRes
   await flushServerLogger();
   const preparedQuery = prepareQuery(query);
   const allEntries = await readAllEntries();
-  const availableComponents = [...new Set(allEntries.map((entry) => entry.component))].sort((a, b) => a.localeCompare(b));
+  const availableComponents = [...new Set(allEntries.map((entry) => entry.component))].sort((a, b) =>
+    a.localeCompare(b),
+  );
   const filtered = allEntries.filter((entry) => matchesQuery(entry, preparedQuery));
   const limited =
     typeof query.limit === "number" && Number.isFinite(query.limit) && query.limit > 0

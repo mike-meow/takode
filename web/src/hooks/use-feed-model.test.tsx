@@ -508,7 +508,9 @@ describe("useFeedModel", () => {
     const full = buildFeedModel(messages, true);
     expect(full.turns).toHaveLength(2);
 
-    const { result } = renderHook(() => useFeedModel(messages, { leaderMode: true, frozenCount: 2, frozenRevision: 0 }));
+    const { result } = renderHook(() =>
+      useFeedModel(messages, { leaderMode: true, frozenCount: 2, frozenRevision: 0 }),
+    );
 
     expect(result.current.turns).toHaveLength(2);
     expect(result.current.turns.map((turn) => turn.id)).toEqual(full.turns.map((turn) => turn.id));
@@ -544,7 +546,9 @@ describe("useFeedModel", () => {
     const full = buildFeedModel(messages, true);
     expect(full.turns).toHaveLength(1);
 
-    const { result } = renderHook(() => useFeedModel(messages, { leaderMode: true, frozenCount: 2, frozenRevision: 0 }));
+    const { result } = renderHook(() =>
+      useFeedModel(messages, { leaderMode: true, frozenCount: 2, frozenRevision: 0 }),
+    );
 
     expect(result.current.turns).toHaveLength(1);
     expect(result.current.turns.map((turn) => turn.id)).toEqual(full.turns.map((turn) => turn.id));

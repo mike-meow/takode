@@ -120,9 +120,7 @@ describe("createQuest", () => {
       ),
     );
 
-    const numericIds = created
-      .map((quest) => Number(quest.questId.slice(2)))
-      .sort((a, b) => a - b);
+    const numericIds = created.map((quest) => Number(quest.questId.slice(2))).sort((a, b) => a - b);
     expect(new Set(created.map((quest) => quest.questId)).size).toBe(6);
     expect(numericIds).toEqual([1, 2, 3, 4, 5, 6]);
 
@@ -508,17 +506,9 @@ describe("completeQuest", () => {
     });
     await questStore.claimQuest("q-1", "sess-1");
 
-    const completed = await questStore.completeQuest(
-      "q-1",
-      [{ text: "Human verifies UI", checked: false }],
-      {
-        commitShas: [
-          "BEEF1234",
-          "beef1234",
-          "deadbeefcafebabe",
-        ],
-      },
-    );
+    const completed = await questStore.completeQuest("q-1", [{ text: "Human verifies UI", checked: false }], {
+      commitShas: ["BEEF1234", "beef1234", "deadbeefcafebabe"],
+    });
 
     expect(completed?.status).toBe("needs_verification");
     expect(completed?.commitShas).toEqual(["beef1234", "deadbeefcafebabe"]);

@@ -10,12 +10,9 @@ interface MockStoreState {
 
 const { openQuestOverlay, useStoreMock } = vi.hoisted(() => {
   const openQuestOverlay = vi.fn();
-  const useStoreMock = Object.assign(
-    (selector: (s: MockStoreState) => unknown) => selector(mockState),
-    {
-      getState: () => ({ openQuestOverlay }),
-    },
-  );
+  const useStoreMock = Object.assign((selector: (s: MockStoreState) => unknown) => selector(mockState), {
+    getState: () => ({ openQuestOverlay }),
+  });
   return { openQuestOverlay, useStoreMock };
 });
 

@@ -42,7 +42,9 @@ function makeSession(overrides: Partial<GenerationLifecycleSession> = {}): Gener
   };
 }
 
-function makeDeps(overrides: Partial<GenerationLifecycleDeps<GenerationLifecycleSession>> = {}): GenerationLifecycleDeps<GenerationLifecycleSession> {
+function makeDeps(
+  overrides: Partial<GenerationLifecycleDeps<GenerationLifecycleSession>> = {},
+): GenerationLifecycleDeps<GenerationLifecycleSession> {
   const sessions = new Map<string, GenerationLifecycleSession>();
   return {
     sessions,

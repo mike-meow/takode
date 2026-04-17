@@ -146,11 +146,10 @@ describe("TimerManager", () => {
 
       await manager.cancelTimer("session-1", "t1");
 
-      expect(bridge.injectUserMessage).toHaveBeenCalledWith(
-        "session-1",
-        '[⏰ Timer t1 cancelled] check the build',
-        { sessionId: "timer:t1", sessionLabel: "Timer t1" },
-      );
+      expect(bridge.injectUserMessage).toHaveBeenCalledWith("session-1", "[⏰ Timer t1 cancelled] check the build", {
+        sessionId: "timer:t1",
+        sessionLabel: "Timer t1",
+      });
     });
   });
 

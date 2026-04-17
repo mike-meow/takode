@@ -20,14 +20,8 @@ export function getTranscriptionRequestTimeoutMs(audioSizeBytes: number): number
   if (!Number.isFinite(audioSizeBytes) || audioSizeBytes <= 0) {
     return TRANSCRIPTION_REQUEST_BASE_TIMEOUT_MS;
   }
-  const extraSeconds = Math.max(
-    0,
-    Math.ceil(audioSizeBytes / TRANSCRIPTION_REQUEST_BYTES_PER_EXTRA_SECOND) - 1,
-  );
-  return Math.min(
-    TRANSCRIPTION_REQUEST_BASE_TIMEOUT_MS + extraSeconds * 1_000,
-    TRANSCRIPTION_REQUEST_TIMEOUT_CAP_MS,
-  );
+  const extraSeconds = Math.max(0, Math.ceil(audioSizeBytes / TRANSCRIPTION_REQUEST_BYTES_PER_EXTRA_SECOND) - 1);
+  return Math.min(TRANSCRIPTION_REQUEST_BASE_TIMEOUT_MS + extraSeconds * 1_000, TRANSCRIPTION_REQUEST_TIMEOUT_CAP_MS);
 }
 
 export function resolveAudioUploadFilename(audioType: string): string {
@@ -1152,11 +1146,7 @@ export const api = {
   deleteQuest: (id: string) => del(`/quests/${encodeURIComponent(id)}`),
   claimQuest: (id: string, sessionId: string) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/claim`, { sessionId }),
-  completeQuest: (
-    id: string,
-    verificationItems: import("./types.js").QuestVerificationItem[],
-    commitShas?: string[],
-  ) =>
+  completeQuest: (id: string, verificationItems: import("./types.js").QuestVerificationItem[], commitShas?: string[]) =>
     post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/complete`, {
       verificationItems,
       ...(commitShas?.length ? { commitShas } : {}),

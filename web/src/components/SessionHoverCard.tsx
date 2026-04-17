@@ -105,8 +105,8 @@ export function SessionHoverCard({
         : isRunning
           ? "bg-cc-success"
           : isCompacting
-          ? "bg-cc-warning"
-          : "bg-cc-success/60";
+            ? "bg-cc-warning"
+            : "bg-cc-success/60";
 
   const shortId = s.id.slice(0, 8);
   const label = sessionName || s.model || shortId;
@@ -197,11 +197,7 @@ export function SessionHoverCard({
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span
-              className={`text-[11px] font-medium ${backendToneClass}`}
-            >
-              {backendLabel}
-            </span>
+            <span className={`text-[11px] font-medium ${backendToneClass}`}>{backendLabel}</span>
             {model && (
               <>
                 <span className="text-cc-muted/40 text-[10px]">&middot;</span>
@@ -221,7 +217,14 @@ export function SessionHoverCard({
               </>
             )}
           </div>
-          {s.cwd && <SessionPathSummary cwd={s.cwd} repoRoot={s.repoRoot} isWorktree={s.isWorktree} testIdPrefix="session-hover-path" />}
+          {s.cwd && (
+            <SessionPathSummary
+              cwd={s.cwd}
+              repoRoot={s.repoRoot}
+              isWorktree={s.isWorktree}
+              testIdPrefix="session-hover-path"
+            />
+          )}
         </div>
 
         {/* Message snippet — shown for message-level deep links (session:N:M) */}

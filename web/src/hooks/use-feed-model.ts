@@ -697,7 +697,13 @@ export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTu
     const isBoundary = leaderMode ? isLeaderBoundaryEntry(entry) : isUserBoundaryEntry(entry);
     const splitDeferredLeaderHerd =
       leaderMode &&
-      shouldSplitDeferredLeaderHerdEvent(entry, currentUser, assistantTextCount, lastAssistantText, lastMessageTimestamp);
+      shouldSplitDeferredLeaderHerdEvent(
+        entry,
+        currentUser,
+        assistantTextCount,
+        lastAssistantText,
+        lastMessageTimestamp,
+      );
     if (isBoundary || splitDeferredLeaderHerd) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
@@ -776,7 +782,9 @@ function shouldMergeFirstActiveTurnIntoLastFrozenTurn(baseTurn: Turn, nextTurn: 
   if (!firstEntry) return true;
   if (!isHerdEventEntry(firstEntry)) return true;
 
-  const { assistantTextCount, lastAssistantText, lastMessageTimestamp } = getTurnContinuationContext(baseTurn.allEntries);
+  const { assistantTextCount, lastAssistantText, lastMessageTimestamp } = getTurnContinuationContext(
+    baseTurn.allEntries,
+  );
   return !shouldSplitDeferredLeaderHerdEvent(
     firstEntry,
     baseTurn.userEntry,

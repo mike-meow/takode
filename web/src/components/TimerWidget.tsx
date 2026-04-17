@@ -65,12 +65,16 @@ function TimerModalRow({ timer, sessionId }: { timer: SessionTimer; sessionId: s
         <p className="text-[13px] font-medium text-cc-fg leading-snug break-words">{timer.title}</p>
         {timer.description && (
           <div className="space-y-1">
-            <p className="text-[12px] text-cc-fg/65 leading-snug break-words whitespace-pre-wrap">{visibleDescription}</p>
+            <p className="text-[12px] text-cc-fg/65 leading-snug break-words whitespace-pre-wrap">
+              {visibleDescription}
+            </p>
             {canExpandDescription && (
               <button
                 onClick={() => setExpanded((value) => !value)}
                 className="text-[11px] text-cc-muted hover:text-cc-fg transition-colors cursor-pointer"
-                aria-label={expanded ? `Collapse timer ${timer.id} description` : `Expand timer ${timer.id} description`}
+                aria-label={
+                  expanded ? `Collapse timer ${timer.id} description` : `Expand timer ${timer.id} description`
+                }
               >
                 {expanded ? "Show less" : "Show more"}
               </button>

@@ -2615,11 +2615,7 @@ export class CliLauncher {
    * one leader — if already herded by someone else, it's reported as a conflict.
    * Re-herding by the same orchestrator is idempotent.
    */
-  herdSessions(
-    orchId: string,
-    workerIds: string[],
-    options?: { force?: boolean },
-  ): HerdSessionsResponse {
+  herdSessions(orchId: string, workerIds: string[], options?: { force?: boolean }): HerdSessionsResponse {
     const herded: string[] = [];
     const notFound: string[] = [];
     const conflicts: Array<{ id: string; herder: string }> = [];
@@ -2641,7 +2637,9 @@ export class CliLauncher {
       const attachedReviewers =
         worker.sessionNum === undefined
           ? []
-          : Array.from(this.sessions.values()).filter((session) => !session.archived && session.reviewerOf === worker.sessionNum);
+          : Array.from(this.sessions.values()).filter(
+              (session) => !session.archived && session.reviewerOf === worker.sessionNum,
+            );
 
       if (worker.herdedBy && worker.herdedBy !== orchId) {
         if (!force) {
@@ -2692,8 +2690,7 @@ export class CliLauncher {
       worker.sessionNum === undefined
         ? []
         : Array.from(this.sessions.values()).filter(
-            (session) =>
-              !session.archived && session.reviewerOf === worker.sessionNum && session.herdedBy === orchId,
+            (session) => !session.archived && session.reviewerOf === worker.sessionNum && session.herdedBy === orchId,
           );
     worker.herdedBy = undefined;
     for (const reviewer of attachedReviewers) {

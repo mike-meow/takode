@@ -1147,7 +1147,10 @@ function AskUserQuestionDisplay({
                       title="Send"
                     >
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                        <path d="M8 2.5a.5.5 0 01.5.5v8.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 11.708-.708L7.5 11.793V3a.5.5 0 01.5-.5z" transform="rotate(180 8 8)" />
+                        <path
+                          d="M8 2.5a.5.5 0 01.5.5v8.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 11.708-.708L7.5 11.793V3a.5.5 0 01.5-.5z"
+                          transform="rotate(180 8 8)"
+                        />
                       </svg>
                     </button>
                   </div>

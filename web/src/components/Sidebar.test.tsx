@@ -26,7 +26,9 @@ const mockApi = {
   archiveSession: vi.fn().mockResolvedValue({}),
   archiveGroup: vi.fn().mockResolvedValue({ ok: true, archived: 1, failed: 0 }),
   unarchiveSession: vi.fn().mockResolvedValue({}),
-  herdWorkerToLeader: vi.fn().mockResolvedValue({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
+  herdWorkerToLeader: vi
+    .fn()
+    .mockResolvedValue({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
   getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
   updateSettings: vi.fn().mockResolvedValue({ herdLeaderFirstEnabled: false }),
   getTreeGroups: vi

@@ -2029,15 +2029,22 @@ describe("handleMessage: history_sync", () => {
       type: "history_sync",
       frozen_base_count: 1,
       frozen_delta: [],
-      hot_messages: [{ type: "assistant", message: {
-        id: "msg-fresh",
-        type: "message",
-        role: "assistant",
-        model: "claude-opus-4-20250514",
-        content: [{ type: "text", text: "Fresh synced reply" }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 5, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      }, parent_tool_use_id: null, timestamp: 2000 }],
+      hot_messages: [
+        {
+          type: "assistant",
+          message: {
+            id: "msg-fresh",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [{ type: "text", text: "Fresh synced reply" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 2000,
+        },
+      ],
       frozen_count: 1,
       expected_frozen_hash: "frozen-hash",
       expected_full_hash: "full-hash",
@@ -2328,7 +2335,9 @@ describe("handleMessage: history_sync", () => {
     expect(state.toolStartTimestamps.get("s1")?.has("task-stale-hot")).toBe(false);
     expect(state.toolProgress.has("s1")).toBe(false);
     expect(state.toolResults.get("s1")?.get("task-fresh-sync-2")?.content).toBe("fresh synced result 2");
-    expect(state.backgroundAgentNotifs.get("s1")?.get("task-fresh-sync-2")?.summary).toBe("fresh synced notification 2");
+    expect(state.backgroundAgentNotifs.get("s1")?.get("task-fresh-sync-2")?.summary).toBe(
+      "fresh synced notification 2",
+    );
     expect(state.toolStartTimestamps.get("s1")?.get("task-fresh-sync-2")).toBe(4444);
   });
 });

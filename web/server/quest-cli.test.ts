@@ -304,17 +304,16 @@ describe("quest CLI parallel create", () => {
         expect(result.stderr).toBe("");
       }
 
-      const quests = results.map((result) =>
-        JSON.parse(result.stdout) as {
-          questId: string;
-          id: string;
-          title: string;
-        },
+      const quests = results.map(
+        (result) =>
+          JSON.parse(result.stdout) as {
+            questId: string;
+            id: string;
+            title: string;
+          },
       );
 
-      const numericIds = quests
-        .map((quest) => Number(quest.questId.slice(2)))
-        .sort((a, b) => a - b);
+      const numericIds = quests.map((quest) => Number(quest.questId.slice(2))).sort((a, b) => a - b);
       expect(new Set(quests.map((quest) => quest.questId)).size).toBe(5);
       expect(numericIds).toEqual([1, 2, 3, 4, 5]);
 

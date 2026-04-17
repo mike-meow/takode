@@ -702,10 +702,7 @@ function updateLastEmittedMsgTo(watermarks: Map<string, number>, events: TakodeE
   }
 }
 
-function mergeSurfacedUserMsgIdxs(
-  target: Map<string, Set<number>>,
-  surfaced: Map<string, Set<number>>,
-): void {
+function mergeSurfacedUserMsgIdxs(target: Map<string, Set<number>>, surfaced: Map<string, Set<number>>): void {
   for (const [sessionId, idxs] of surfaced) {
     const existing = target.get(sessionId) ?? new Set<number>();
     for (const idx of idxs) existing.add(idx);

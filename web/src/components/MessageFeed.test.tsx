@@ -579,9 +579,7 @@ describe("MessageFeed section windowing", () => {
     // The DOM should contain the tool group element with data-feed-block-id
     // (tool_msg_group entries render with data-feed-block-id, not data-message-id).
     // This is what the scroll step querySelector falls back to.
-    const toolGroupElement = container.querySelector(
-      `[data-feed-block-id="tool-group:${toolUseMessageId}"]`,
-    );
+    const toolGroupElement = container.querySelector(`[data-feed-block-id="tool-group:${toolUseMessageId}"]`);
     expect(toolGroupElement).not.toBeNull();
     // And confirm there's no data-message-id for this ID (would indicate it
     // wasn't actually grouped into tool_msg_group)

@@ -54,7 +54,9 @@ describe("computeSessionPayloadMetrics", () => {
 
     const replayBytes = Buffer.byteLength(JSON.stringify(history), "utf-8");
     expect(metrics.replayHistoryBytes).toBe(replayBytes);
-    expect(metrics.codexRetainedPayloadBytes).toBe(replayBytes + Buffer.byteLength(full, "utf-8") - Buffer.byteLength(preview, "utf-8"));
+    expect(metrics.codexRetainedPayloadBytes).toBe(
+      replayBytes + Buffer.byteLength(full, "utf-8") - Buffer.byteLength(preview, "utf-8"),
+    );
   });
 
   it("falls back to preview total_size when the indexed full result is missing", () => {
