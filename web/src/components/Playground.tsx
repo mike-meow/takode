@@ -1748,7 +1748,7 @@ export function Playground() {
 
         <Section
           title="Codex Terminal Chips"
-          description="Live Codex Bash commands sit in a reserved bottom band so they do not cover chat text. Completed live shells keep a small badge plus the captured transcript in the inline Bash card when the final tool result is empty."
+          description="Live Codex Bash commands sit in a reserved bottom band so they do not cover chat text. Click a chip to open the draggable, resizable transcript inspector; completed live shells keep a small badge plus the captured transcript in the inline Bash card when the final tool result is empty."
         >
           <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[420px]">
             <MessageFeed sessionId={PLAYGROUND_CODEX_TERMINAL_SESSION_ID} />

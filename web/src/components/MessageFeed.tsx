@@ -1,4 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useMemo, useState, useCallback, memo, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useMemo,
+  useState,
+  useCallback,
+  memo,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useStore } from "../store.js";
 import { CodexThinkingInline, HerdEventMessage, MessageBubble, isEmptyAssistantMessage } from "./MessageBubble.js";
 import { EVENT_HEADER_RE, HERD_CHIP_BASE, HERD_CHIP_INTERACTIVE } from "../utils/herd-event-parser.js";
@@ -33,6 +44,31 @@ const FEED_SECTION_TURN_COUNT = 50;
 const LIVE_ACTIVITY_RAIL_DWELL_MS = 5_000;
 const FEED_EXTRA_SCROLL_SLACK_PX = 12;
 const FLOATING_STATUS_SPACER_MARGIN_PX = 4;
+const CODEX_TERMINAL_INSPECTOR_MARGIN_PX = 16;
+const CODEX_TERMINAL_INSPECTOR_MIN_WIDTH_PX = 320;
+const CODEX_TERMINAL_INSPECTOR_MIN_HEIGHT_PX = 240;
+const CODEX_TERMINAL_INSPECTOR_DEFAULT_WIDTH_PX = 512;
+const CODEX_TERMINAL_INSPECTOR_DEFAULT_HEIGHT_PX = 360;
+
+type CodexTerminalInspectorViewport = {
+  width: number;
+  height: number;
+};
+
+type CodexTerminalInspectorLayout = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type CodexTerminalInspectorInteraction = {
+  mode: "drag" | "resize";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startLayout: CodexTerminalInspectorLayout;
+};
 
 function formatElapsed(ms: number): string {
   const secs = Math.floor(ms / 1000);
@@ -44,6 +80,59 @@ function formatElapsed(ms: number): string {
 function formatTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function getCodexTerminalInspectorViewport(element: HTMLElement | null): CodexTerminalInspectorViewport | null {
+  if (!element) return null;
+  const width = Math.round(element.clientWidth || element.getBoundingClientRect().width);
+  const height = Math.round(element.clientHeight || element.getBoundingClientRect().height);
+  if (width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
+function clampCodexTerminalInspectorLayout(
+  layout: CodexTerminalInspectorLayout,
+  viewport: CodexTerminalInspectorViewport,
+): CodexTerminalInspectorLayout {
+  const maxWidth = Math.max(180, viewport.width - CODEX_TERMINAL_INSPECTOR_MARGIN_PX * 2);
+  const maxHeight = Math.max(180, viewport.height - CODEX_TERMINAL_INSPECTOR_MARGIN_PX * 2);
+  const minWidth = Math.min(CODEX_TERMINAL_INSPECTOR_MIN_WIDTH_PX, maxWidth);
+  const minHeight = Math.min(CODEX_TERMINAL_INSPECTOR_MIN_HEIGHT_PX, maxHeight);
+  const width = clampNumber(layout.width, minWidth, maxWidth);
+  const height = clampNumber(layout.height, minHeight, maxHeight);
+  const x = clampNumber(
+    layout.x,
+    CODEX_TERMINAL_INSPECTOR_MARGIN_PX,
+    viewport.width - CODEX_TERMINAL_INSPECTOR_MARGIN_PX - width,
+  );
+  const y = clampNumber(
+    layout.y,
+    CODEX_TERMINAL_INSPECTOR_MARGIN_PX,
+    viewport.height - CODEX_TERMINAL_INSPECTOR_MARGIN_PX - height,
+  );
+  return { x, y, width, height };
+}
+
+function createDefaultCodexTerminalInspectorLayout(
+  viewport: CodexTerminalInspectorViewport,
+): CodexTerminalInspectorLayout {
+  return clampCodexTerminalInspectorLayout(
+    {
+      x: CODEX_TERMINAL_INSPECTOR_MARGIN_PX,
+      y:
+        viewport.height -
+        CODEX_TERMINAL_INSPECTOR_MARGIN_PX -
+        CODEX_TERMINAL_INSPECTOR_DEFAULT_HEIGHT_PX,
+      width: CODEX_TERMINAL_INSPECTOR_DEFAULT_WIDTH_PX,
+      height: CODEX_TERMINAL_INSPECTOR_DEFAULT_HEIGHT_PX,
+    },
+    viewport,
+  );
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -822,10 +911,12 @@ function CodexTerminalInspector({
   sessionId,
   terminal,
   onClose,
+  viewportRef,
 }: {
   sessionId: string;
   terminal: CodexTerminalEntry;
   onClose: () => void;
+  viewportRef: RefObject<HTMLDivElement | null>;
 }) {
   const statusLabel = terminal.result ? (terminal.result.is_error ? "error" : "complete") : "running";
   const statusClass = terminal.result
@@ -833,14 +924,143 @@ function CodexTerminalInspector({
       ? "bg-cc-error/10 text-cc-error"
       : "bg-cc-success/10 text-cc-success"
     : "bg-cc-primary/10 text-cc-primary";
+  const [layout, setLayout] = useState<CodexTerminalInspectorLayout | null>(null);
+  const layoutRef = useRef<CodexTerminalInspectorLayout | null>(null);
+  const viewportSizeRef = useRef<CodexTerminalInspectorViewport | null>(null);
+  const activeInteractionRef = useRef<CodexTerminalInspectorInteraction | null>(null);
+  const previousToolUseIdRef = useRef<string | null>(null);
+  const teardownInteractionRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
+
+  const stopInteraction = useCallback(() => {
+    activeInteractionRef.current = null;
+    teardownInteractionRef.current?.();
+    teardownInteractionRef.current = null;
+  }, []);
+
+  useEffect(() => stopInteraction, [stopInteraction]);
+
+  useLayoutEffect(() => {
+    const updateViewport = () => {
+      const nextViewport = getCodexTerminalInspectorViewport(viewportRef.current);
+      viewportSizeRef.current = nextViewport;
+      if (!nextViewport) return;
+      setLayout((current) => {
+        if (previousToolUseIdRef.current !== terminal.toolUseId || current == null) {
+          previousToolUseIdRef.current = terminal.toolUseId;
+          return createDefaultCodexTerminalInspectorLayout(nextViewport);
+        }
+        return clampCodexTerminalInspectorLayout(current, nextViewport);
+      });
+    };
+
+    updateViewport();
+    const viewportElement = viewportRef.current;
+    if (!viewportElement || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      updateViewport();
+    });
+    observer.observe(viewportElement);
+    return () => observer.disconnect();
+  }, [terminal.toolUseId, viewportRef]);
+
+  const beginInteraction = useCallback(
+    (event: ReactPointerEvent<HTMLElement>, mode: CodexTerminalInspectorInteraction["mode"]) => {
+      if (event.button !== 0) return;
+      const currentLayout = layoutRef.current;
+      const currentViewport = viewportSizeRef.current;
+      if (!currentLayout || !currentViewport) return;
+      event.preventDefault();
+
+      const interaction: CodexTerminalInspectorInteraction = {
+        mode,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startLayout: currentLayout,
+      };
+      activeInteractionRef.current = interaction;
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const active = activeInteractionRef.current;
+        const viewport = viewportSizeRef.current;
+        if (!active || !viewport || moveEvent.pointerId !== active.pointerId) return;
+        const dx = moveEvent.clientX - active.startClientX;
+        const dy = moveEvent.clientY - active.startClientY;
+        const nextLayout =
+          active.mode === "drag"
+            ? {
+                ...active.startLayout,
+                x: active.startLayout.x + dx,
+                y: active.startLayout.y + dy,
+              }
+            : {
+                ...active.startLayout,
+                width: active.startLayout.width + dx,
+                height: active.startLayout.height + dy,
+              };
+        setLayout(clampCodexTerminalInspectorLayout(nextLayout, viewport));
+      };
+
+      const handleEnd = (endEvent: PointerEvent) => {
+        if (endEvent.pointerId !== interaction.pointerId) return;
+        stopInteraction();
+      };
+
+      teardownInteractionRef.current?.();
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleEnd);
+      window.addEventListener("pointercancel", handleEnd);
+      teardownInteractionRef.current = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleEnd);
+        window.removeEventListener("pointercancel", handleEnd);
+      };
+    },
+    [stopInteraction],
+  );
+
+  const handleHeaderPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("button, a, input, textarea, select, summary, [role='button']")) return;
+      beginInteraction(event, "drag");
+    },
+    [beginInteraction],
+  );
+
+  const handleResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      beginInteraction(event, "resize");
+    },
+    [beginInteraction],
+  );
+
+  if (!layout) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-3 bottom-4 z-20 flex justify-start sm:inset-x-auto sm:left-4">
+    <div data-testid="codex-terminal-inspector-layer" className="pointer-events-none absolute inset-0 z-20">
       <div
         data-testid="codex-terminal-inspector"
-        className="pointer-events-auto w-full max-w-[min(32rem,100%)] rounded-2xl border border-cc-border bg-cc-bg/98 shadow-2xl backdrop-blur-sm"
+        className="pointer-events-auto absolute flex flex-col overflow-hidden rounded-2xl border border-cc-border bg-cc-bg/98 shadow-2xl backdrop-blur-sm"
+        style={{
+          left: `${layout.x}px`,
+          top: `${layout.y}px`,
+          width: `${layout.width}px`,
+          height: `${layout.height}px`,
+          maxWidth: `calc(100% - ${CODEX_TERMINAL_INSPECTOR_MARGIN_PX * 2}px)`,
+          maxHeight: `calc(100% - ${CODEX_TERMINAL_INSPECTOR_MARGIN_PX * 2}px)`,
+        }}
       >
-        <div className="flex items-center gap-2 border-b border-cc-border px-4 py-3">
+        <div
+          data-testid="codex-terminal-inspector-header"
+          onPointerDown={handleHeaderPointerDown}
+          className="flex cursor-grab items-center gap-2 border-b border-cc-border px-4 py-3 active:cursor-grabbing"
+          style={{ touchAction: "none" }}
+        >
           <ToolIcon type="terminal" />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-cc-fg">Terminal transcript</div>
@@ -857,7 +1077,7 @@ function CodexTerminalInspector({
             Minimize
           </button>
         </div>
-        <div className="p-3">
+        <div className="min-h-0 flex-1 overflow-auto p-3">
           <ToolBlock
             name="Bash"
             input={terminal.input}
@@ -866,6 +1086,18 @@ function CodexTerminalInspector({
             defaultOpen
           />
         </div>
+        <button
+          type="button"
+          data-testid="codex-terminal-inspector-resize"
+          aria-label="Resize terminal transcript"
+          onPointerDown={handleResizePointerDown}
+          className="absolute bottom-0 right-0 h-7 w-7 cursor-se-resize rounded-tl-lg text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg"
+          style={{ touchAction: "none" }}
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="ml-auto mt-auto h-4 w-4">
+            <path d="M5 11l6-6M8 11l3-3M11 11l0 0" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -2318,6 +2550,7 @@ export function MessageFeed({
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
   const restoredSessionIdRef = useRef<string | null>(null);
+  const overlayViewportRef = useRef<HTMLDivElement>(null);
   const lastViewportAnchorRef = useRef<{
     signature: string;
     wasAutoFollowing: boolean;
@@ -3401,7 +3634,7 @@ export function MessageFeed({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div ref={overlayViewportRef} data-testid="message-feed-overlay" className="relative flex-1 min-h-0 overflow-hidden">
         <div
           ref={containerRef}
           onScroll={handleScroll}
@@ -3486,6 +3719,7 @@ export function MessageFeed({
             sessionId={sessionId}
             terminal={selectedCodexTerminal}
             onClose={() => setSelectedCodexTerminalId(null)}
+            viewportRef={overlayViewportRef}
           />
         )}
 

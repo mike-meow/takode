@@ -426,6 +426,21 @@ function setElementOffsetMetrics(element: HTMLElement, offsetTop: number, offset
   });
 }
 
+function setElementClientSize(element: HTMLElement, width: number, height: number) {
+  Object.defineProperty(element, "clientWidth", {
+    configurable: true,
+    get() {
+      return width;
+    },
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    get() {
+      return height;
+    },
+  });
+}
+
 beforeEach(() => {
   resetStore();
   mockScrollIntoView.mockClear();
@@ -2180,11 +2195,91 @@ describe("MessageFeed - Codex terminal chips", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
+    setElementClientSize(screen.getByTestId("message-feed-overlay"), 700, 560);
+
     fireEvent.click(screen.getByTestId("codex-live-terminal-chip"));
 
     expect(screen.getByTestId("codex-terminal-inspector")).toBeTruthy();
     expect(screen.getByText("Live output")).toBeTruthy();
     expect(screen.getByText("Waiting for reconnect watchdog...")).toBeTruthy();
+  });
+
+  it("keeps the live inspector draggable within the feed viewport", () => {
+    const sid = "test-codex-live-inspector-drag";
+    setStoreSessionBackend(sid, "codex");
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "codex-live-drag",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-live-drag", name: "Bash", input: { command: "tail -f server.log" } }],
+      }),
+    ]);
+    setStoreToolProgress(sid, [
+      { toolUseId: "tu-live-drag", toolName: "Bash", elapsedSeconds: 17, output: "waiting...\n" },
+    ]);
+    setStoreToolStartTimestamps(sid, { "tu-live-drag": Date.now() - 17_000 });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    setElementClientSize(screen.getByTestId("message-feed-overlay"), 700, 560);
+    fireEvent.click(screen.getByTestId("codex-live-terminal-chip"));
+
+    const inspector = screen.getByTestId("codex-terminal-inspector");
+    const header = screen.getByTestId("codex-terminal-inspector-header");
+
+    expect(inspector.style.left).toBe("16px");
+    expect(inspector.style.top).toBe("184px");
+    expect(inspector.style.width).toBe("512px");
+    expect(inspector.style.height).toBe("360px");
+
+    fireEvent.pointerDown(header, { button: 0, clientX: 40, clientY: 210, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 520, clientY: 510, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(inspector.style.left).toBe("172px");
+    expect(inspector.style.top).toBe("184px");
+
+    fireEvent.pointerDown(header, { button: 0, clientX: 520, clientY: 210, pointerId: 2 });
+    fireEvent.pointerMove(window, { clientX: -50, clientY: -50, pointerId: 2 });
+    fireEvent.pointerUp(window, { pointerId: 2 });
+
+    expect(inspector.style.left).toBe("16px");
+    expect(inspector.style.top).toBe("16px");
+  });
+
+  it("clamps live inspector resizing so the transcript stays on-screen", () => {
+    const sid = "test-codex-live-inspector-resize";
+    setStoreSessionBackend(sid, "codex");
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "codex-live-resize",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-live-resize", name: "Bash", input: { command: "npm run watch" } }],
+      }),
+    ]);
+    setStoreToolProgress(sid, [
+      { toolUseId: "tu-live-resize", toolName: "Bash", elapsedSeconds: 11, output: "rebuilt 3 files\n" },
+    ]);
+    setStoreToolStartTimestamps(sid, { "tu-live-resize": Date.now() - 11_000 });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    setElementClientSize(screen.getByTestId("message-feed-overlay"), 700, 500);
+    fireEvent.click(screen.getByTestId("codex-live-terminal-chip"));
+
+    const inspector = screen.getByTestId("codex-terminal-inspector");
+    const resizeHandle = screen.getByTestId("codex-terminal-inspector-resize");
+
+    fireEvent.pointerDown(resizeHandle, { button: 0, clientX: 528, clientY: 484, pointerId: 3 });
+    fireEvent.pointerMove(window, { clientX: 900, clientY: 900, pointerId: 3 });
+    fireEvent.pointerUp(window, { pointerId: 3 });
+
+    expect(inspector.style.left).toBe("16px");
+    expect(inspector.style.top).toBe("16px");
+    expect(inspector.style.width).toBe("668px");
+    expect(inspector.style.height).toBe("468px");
   });
 
   it("removes the live chip once the Codex Bash command has a final result", () => {
