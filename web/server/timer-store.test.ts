@@ -107,7 +107,7 @@ describe("timer-store", () => {
         ],
       };
 
-      await saveTimers(legacyData as SessionTimerFile);
+      await saveTimers(legacyData as unknown as SessionTimerFile);
       const loaded = await loadTimers(id);
 
       expect(loaded.timers[0].title).toBe("HOURLY DATAGEN CHECK");

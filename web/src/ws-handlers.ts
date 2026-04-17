@@ -428,7 +428,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       }
       // Restore quest name and styling from persisted session state (on reconnect).
       // This is the most reliable path since session_init fires on every WS connect.
-      const isOrchestrator = data.session.isOrchestrator === true;
+      const isOrchestrator = (data.session as unknown as Record<string, unknown>).isOrchestrator === true;
       if (data.session.claimedQuestId && data.session.claimedQuestTitle && !isOrchestrator) {
         store.setSessionName(sessionId, data.session.claimedQuestTitle);
         store.markQuestNamed(sessionId);
@@ -988,16 +988,19 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
 
       // Detect newly added unaddressed notifications by comparing IDs
       const oldIds = new Set(oldNotifications.map((n: { id: string }) => n.id));
-      const added = newNotifications.filter(
-        (n: { id: string; done: boolean }) => !n.done && !oldIds.has(n.id),
-      );
+      const added = newNotifications.filter((n: { id: string; done: boolean }) => !n.done && !oldIds.has(n.id));
 
       store.setSessionNotifications(sessionId, newNotifications);
 
       // Play differentiated sounds for new notifications (when tab is not focused).
       // Debounce to prevent overlapping sounds from rapid notification_update messages.
       const now = Date.now();
-      if (added.length > 0 && !document.hasFocus() && store.notificationSound && now - lastNotificationSoundAt >= NOTIFICATION_SOUND_DEBOUNCE_MS) {
+      if (
+        added.length > 0 &&
+        !document.hasFocus() &&
+        store.notificationSound &&
+        now - lastNotificationSoundAt >= NOTIFICATION_SOUND_DEBOUNCE_MS
+      ) {
         lastNotificationSoundAt = now;
         const hasNeedsInput = added.some((n: { category: string }) => n.category === "needs-input");
         if (hasNeedsInput) {
@@ -1248,7 +1251,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         claimedQuestTitle: data.quest?.title ?? undefined,
         claimedQuestStatus: data.quest?.status ?? undefined,
       });
-      const isOrchestrator = store.sessions.get(sessionId)?.isOrchestrator === true;
+      const isOrchestrator = store.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.isOrchestrator === true;
       if (data.quest?.id && data.quest?.title && data.quest?.status === "in_progress" && !isOrchestrator) {
         // Override session name with quest title and mark as quest-named
         // only while the quest is actively in_progress. Once it transitions

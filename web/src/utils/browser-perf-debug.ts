@@ -97,7 +97,7 @@ function getCurrentRouteHash(): string {
 }
 
 function readNumberField(entry: PerformanceEntry, field: string): number | undefined {
-  const value = (entry as Record<string, unknown>)[field];
+  const value = (entry as unknown as Record<string, unknown>)[field];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

@@ -163,7 +163,7 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
     // Don't close panel -- user may want to click multiple notifications
   }, [sessionId, notif.messageId]);
 
-  function handleMouseEnter(e: MouseEvent<HTMLButtonElement>) {
+  function handleMouseEnter(e: MouseEvent<HTMLElement>) {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     setHoverRect(e.currentTarget.getBoundingClientRect());
   }

@@ -63,6 +63,7 @@ interface MockStoreState {
   >;
   sdkSessions: {
     sessionId: string;
+    isOrchestrator?: boolean;
     backendType?: string;
     cwd?: string;
     gitBranch?: string;

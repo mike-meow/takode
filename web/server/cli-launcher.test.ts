@@ -104,7 +104,7 @@ const mockCp = vi.hoisted(() =>
     // no-op for mocked paths
   }),
 );
-const mockReaddir = vi.hoisted(() => vi.fn(async (..._args: any[]) => []));
+const mockReaddir = vi.hoisted(() => vi.fn(async (..._args: any[]): Promise<any[]> => []));
 const mockStat = vi.hoisted(() =>
   vi.fn(async (..._args: any[]) => ({
     isFile: () => true,
@@ -762,8 +762,9 @@ describe("launch", () => {
     await waitForSpawnCalls(1);
     const sessionNum = launcher.getSessionNum("test-session-id");
 
-    stderrController?.enqueue(new TextEncoder().encode("token expired\n"));
-    stderrController?.close();
+    expect(stderrController).not.toBeNull();
+    stderrController!.enqueue(new TextEncoder().encode("token expired\n"));
+    stderrController!.close();
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
 
     expect(stderrSpy).toHaveBeenCalledWith(`[session:#${sessionNum}:stderr] token expired`);

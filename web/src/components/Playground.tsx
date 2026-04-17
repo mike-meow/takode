@@ -796,8 +796,7 @@ const MSG_ERROR_CONTEXT_LIMIT: ChatMessage = {
 const MSG_ERROR_CODEX_PAYLOAD_TOO_LARGE: ChatMessage = {
   id: "msg-err-codex-413",
   role: "system",
-  content:
-    '413 Payload Too Large: APIError: Github_copilotException - {"message":"failed to parse request","code":""}',
+  content: '413 Payload Too Large: APIError: Github_copilotException - {"message":"failed to parse request","code":""}',
   timestamp: Date.now() - 22500,
   variant: "error",
 };
@@ -3455,7 +3454,8 @@ export function Playground() {
                             {
                               id: "t1",
                               sessionId: "playground-timers",
-                              prompt: "Check the build status and report back",
+                              title: "Check build status",
+                              description: "inspect the latest build status and report back",
                               type: "delay" as const,
                               originalSpec: "30m",
                               nextFireAt: now + 1_800_000,
@@ -3465,7 +3465,8 @@ export function Playground() {
                             {
                               id: "t2",
                               sessionId: "playground-timers",
-                              prompt: "Refresh context and re-read changed files",
+                              title: "Refresh context",
+                              description: "re-read changed files and summarize what moved",
                               type: "recurring" as const,
                               originalSpec: "10m",
                               nextFireAt: now + 360_000,
@@ -3477,8 +3478,8 @@ export function Playground() {
                             {
                               id: "t3",
                               sessionId: "playground-timers",
-                              prompt:
-                                "Deploy reminder — make sure the staging build has passed CI before promoting to production",
+                              title: "Deploy reminder",
+                              description: "make sure the staging build passed CI before promoting to production",
                               type: "at" as const,
                               originalSpec: "3pm",
                               nextFireAt: now + 7_200_000,
@@ -5178,7 +5179,10 @@ export function Playground() {
         </Section>
 
         {/* ─── Folder Picker ──────────────────────────────── */}
-        <Section title="Folder Picker" description="Directory browser modal with breadcrumbs, filter, hidden dirs toggle, and keyboard nav">
+        <Section
+          title="Folder Picker"
+          description="Directory browser modal with breadcrumbs, filter, hidden dirs toggle, and keyboard nav"
+        >
           <div className="space-y-4 max-w-3xl">
             <Card label="Open folder picker">
               <PlaygroundFolderPicker />

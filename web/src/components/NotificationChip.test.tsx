@@ -2,8 +2,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
-const mockMarkNotificationDone = vi.fn(() => Promise.resolve());
-const mockMarkAllNotificationsDone = vi.fn(() => Promise.resolve());
+const mockMarkNotificationDone = vi.fn(async (_sessionId: string, _notifId: string, _done = true) => ({ ok: true }));
+const mockMarkAllNotificationsDone = vi.fn(async (_sessionId: string, _done = true) => ({ ok: true, count: 0 }));
 const mockRequestScrollToMessage = vi.fn();
 const mockSetExpandAllInTurn = vi.fn();
 const mockOpenQuestOverlay = vi.fn();
@@ -27,8 +27,9 @@ vi.mock("../store.js", () => {
 
 vi.mock("../api.js", () => ({
   api: {
-    markNotificationDone: (...args: unknown[]) => mockMarkNotificationDone(...args),
-    markAllNotificationsDone: (...args: unknown[]) => mockMarkAllNotificationsDone(...args),
+    markNotificationDone: (sessionId: string, notifId: string, done = true) =>
+      mockMarkNotificationDone(sessionId, notifId, done),
+    markAllNotificationsDone: (sessionId: string, done = true) => mockMarkAllNotificationsDone(sessionId, done),
   },
 }));
 
@@ -152,6 +153,6 @@ describe("NotificationChip", () => {
     fireEvent.click(screen.getByRole("button", { name: /2 notifications/i }));
     fireEvent.click(screen.getByRole("button", { name: "Read All" }));
 
-    expect(mockMarkAllNotificationsDone).toHaveBeenCalledWith("s1");
+    expect(mockMarkAllNotificationsDone).toHaveBeenCalledWith("s1", true);
   });
 });

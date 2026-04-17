@@ -1558,7 +1558,7 @@ export class WsBridge {
     // away (needs_verification, done), let the auto-namer resume so it can
     // track subsequent agent actions.
     const isQuestActive = quest?.title && quest?.status === "in_progress";
-    const isOrchestrator = session.state.isOrchestrator === true;
+    const isOrchestrator = this.launcher?.getSession(sessionId)?.isOrchestrator === true;
     if (isQuestActive && !isOrchestrator && this.onSessionNamedByQuest) {
       this.onSessionNamedByQuest(sessionId, quest.title);
     }

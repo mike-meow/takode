@@ -10875,8 +10875,10 @@ describe("Codex adapter result handling", () => {
     bridge.handleBrowserOpen(browser, "leader-1");
     browser.send.mockClear();
 
-    const session = bridge.getSession("leader-1")!;
-    session.state.isOrchestrator = true;
+    const launcherMock = {
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    };
+    bridge.setLauncher(launcherMock as any);
 
     bridge.setSessionClaimedQuest("leader-1", {
       id: "q-74",

@@ -48,9 +48,7 @@ function questRecencyTs(quest: QuestmasterTask): number {
   return (quest as { updatedAt?: number }).updatedAt ?? quest.createdAt;
 }
 
-function classifyQuestSearchToken(
-  token: string,
-): { kind: "positiveTag" | "negatedTag" | "text"; value: string } {
+function classifyQuestSearchToken(token: string): { kind: "positiveTag" | "negatedTag" | "text"; value: string } {
   const negatedMatch = token.match(/^-#([^\s#]+)$/);
   if (negatedMatch) return { kind: "negatedTag", value: negatedMatch[1].toLowerCase() };
   const positiveMatch = token.match(/^#([^\s#]*)$/);
@@ -64,7 +62,7 @@ function getTrailingQuestSearchToken(query: string): { kind: "positiveTag" | "ne
   const rawToken = match[1];
   const classified = classifyQuestSearchToken(rawToken);
   if (classified.kind === "text") return null;
-  return classified;
+  return { kind: classified.kind, value: classified.value };
 }
 
 function parseQuestSearchQuery(query: string): { searchText: string; negatedTags: Set<string> } {
@@ -83,7 +81,10 @@ function parseQuestSearchQuery(query: string): { searchText: string; negatedTags
   // Preserve the existing positive #tag autocomplete flow by keeping a trailing
   // positive hashtag token out of plain-text matching/highlighting until the
   // user selects it into the positive tag pill set.
-  const searchText = positiveTokens.join(" ").replace(/(?:^|\s)#[^\s]*$/, "").trim();
+  const searchText = positiveTokens
+    .join(" ")
+    .replace(/(?:^|\s)#[^\s]*$/, "")
+    .trim();
   return { searchText, negatedTags };
 }
 
