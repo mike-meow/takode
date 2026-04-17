@@ -25,6 +25,14 @@ export function getChangePatch(change: Record<string, unknown>): string {
   return "";
 }
 
+function firstNonEmptyString(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return "";
+}
+
 function extractNewTextFromPatch(patch: string): string {
   if (!patch.trim()) return "";
 
@@ -74,11 +82,20 @@ export function parseEditToolInput(
     ? String(input.file_path || firstChangePath || "")
     : String(input.file_path || "");
   const oldText = String(input.old_string || "");
-  const newText = String(input.new_string || "");
   const unifiedDiff = changes
     .map((change) => getChangePatch(change))
     .filter(Boolean)
     .join("\n");
+  const topLevelContent = firstNonEmptyString(input, ["content", "text", "new_string", "newText", "new_content", "newContent"]);
+  const createChangeContent = changes
+    .map((change) => {
+      const kind = typeof change.kind === "string" ? change.kind : typeof change.type === "string" ? change.type : "";
+      if (kind !== "create") return "";
+      if (getChangePatch(change)) return "";
+      return firstNonEmptyString(change, ["content", "text", "new_string", "newText", "new_content", "newContent"]);
+    })
+    .find(Boolean);
+  const newText = String(input.new_string || "") || topLevelContent || createChangeContent || "";
 
   return {
     filePath,

@@ -524,6 +524,25 @@ describe("ToolBlock", () => {
     expect(screen.queryByText("No changes")).toBeNull();
   });
 
+  it("renders a new-file Codex edit block when the payload only includes file content", () => {
+    const { container } = render(
+      <ToolBlock
+        name="Edit"
+        input={{
+          file_path: "/home/user/code_foundations/single_chat_turn_rl/unroll_frank_env_building.py",
+          content: ["def build_env():", "    return 'ok'"].join("\n"),
+        }}
+        toolUseId="tool-7c-codex-edit-content"
+        defaultOpen={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Edit File.*unroll_frank_env_building\.py/ }));
+    expect(screen.getByText("unroll_frank_env_building.py")).toBeTruthy();
+    expect(container.querySelector(".diff-line-add")).toBeTruthy();
+    expect(screen.queryByText("No changes")).toBeNull();
+  });
+
   it("shows an Open File action for local VSCode diffs and jumps to the first changed line", async () => {
     window.history.replaceState({}, "", "/?takodeHost=vscode");
     const postMessageSpy = vi.spyOn(window.parent, "postMessage");
