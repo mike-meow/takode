@@ -566,39 +566,19 @@ export class ClaudeSdkAdapter
         const content = (msg as any).content;
         const images = (msg as any).images as { media_type: string; data: string }[] | undefined;
         const vscodeSelection = (msg as any).vscodeSelection as VsCodeSelectionMetadata | undefined;
-        if (!content && !images?.length) return true;
+        const selectionText = vscodeSelection ? formatVsCodeSelectionPrompt(vscodeSelection) : null;
+        if (!content && !selectionText) return true;
 
         // /compact interception is handled by ws-bridge.routeBrowserMessage
         // before timestamp tagging. The adapter just forwards it to the CLI.
 
-        const selectionText = vscodeSelection ? formatVsCodeSelectionPrompt(vscodeSelection) : null;
-
         if (images?.length) {
-          // Build content blocks: image blocks + text block (with annotation).
-          // Uses the SDKUserMessage format: { type: "user", message: { role: "user", content: [...] }, ... }
-          const blocks: unknown[] = [];
-          for (const img of images) {
-            blocks.push({
-              type: "image",
-              source: { type: "base64", media_type: img.media_type, data: img.data },
-            });
-          }
-          if (content) {
-            blocks.push({ type: "text", text: content });
-          }
-          if (selectionText) {
-            blocks.push({ type: "text", text: selectionText });
-          }
-          const sdkMsg = {
-            type: "user" as const,
-            message: { role: "user" as const, content: blocks },
-            parent_tool_use_id: null,
-            session_id: this.sessionId,
-          };
-          this.sdkSession.send(sdkMsg).catch((err: Error) => {
-            console.error(`[claude-sdk-adapter] Send (with images) failed for session ${this.sessionId}:`, err);
-          });
-        } else if (selectionText) {
+          console.warn(
+            `[claude-sdk-adapter] Ignoring unexpected image payloads for session ${this.sessionId}; expected text-only attachment path annotations`,
+          );
+        }
+
+        if (selectionText) {
           // No images but VSCode selection present: send as structured message
           // with content block array so the model sees both the user text and
           // the selection hint.

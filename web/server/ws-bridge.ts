@@ -5550,7 +5550,7 @@ export class WsBridge {
   }
 
   private shouldSerializeBrowserMessage(session: Session, msg: BrowserOutgoingMessage): boolean {
-    return session.backendType === "codex" && msg.type === "user_message" && !!msg.images?.length;
+    return msg.type === "user_message" && !!msg.images?.length;
   }
 
   private enqueueSessionRoute(session: Session, task: () => Promise<void> | void): Promise<void> {
@@ -8331,54 +8331,31 @@ export class WsBridge {
         return;
       }
 
-      // For image-bearing user turns, prefer path-based text context instead of
-      // backend-native image transport when possible.
+      // For image-bearing user turns, always convert them into server-stored
+      // attachment paths and append those paths to the text prompt. Backend
+      // delivery stays text-only across Codex and Claude SDK.
       let adapterMsg: BrowserOutgoingMessage = msg;
       if (msg.type === "user_message" && msg.images?.length) {
-        // Append image file path annotation so the agent can locate the files on
-        // disk. Mirrors the annotation logic in handleUserMessage for CLI sessions.
         let annotatedContent = msg.content || "";
         let resolvedPaths: string[] | null = null;
 
-        if (session.backendType === "codex") {
-          if (this.imageStore && userImageRefs?.length === msg.images.length) {
-            const paths: string[] = [];
-            for (const ref of userImageRefs) {
-              const originalPath = await this.imageStore.getOriginalPath(session.id, ref.imageId);
-              if (originalPath) {
-                paths.push(originalPath);
-                continue;
-              }
-              this.notifyImageSendFailure(session, new Error(`image ${ref.imageId} not found after upload`));
-              return;
-            }
-            resolvedPaths = paths;
-          } else {
-            this.notifyImageSendFailure(session, new Error("uploaded images missing from image store"));
-            return;
-          }
-        } else if (userImageRefs?.length) {
+        if (userImageRefs?.length === msg.images.length) {
           resolvedPaths = deriveAttachmentPaths(session.id, userImageRefs);
+        } else {
+          this.notifyImageSendFailure(session, new Error("uploaded images missing from image store"));
+          return;
         }
 
         if (resolvedPaths?.length) {
           annotatedContent += formatAttachmentPathAnnotation(resolvedPaths);
         }
-        // Start with the annotated content.
         adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
 
         if (session.backendType === "claude-sdk" || session.backendType === "codex") {
-          // Adapter-backed sessions strip inline base64 images from the message.
-          // Claude SDK stdin never supported image content blocks.
-          // Codex uses native localImage transport (file paths) instead.
+          // Adapter-backed sessions receive text-only user messages. The model
+          // reads attached image paths itself via normal file-reading tools.
           const stripped = { ...adapterMsg, content: annotatedContent } as BrowserOutgoingMessage;
           delete (stripped as { images?: unknown }).images;
-          // Codex needs local_images for native localImage transport — without
-          // this, Codex only sees the text annotation and tries to read the file
-          // via internal function calls, which crashes (q-322).
-          if (session.backendType === "codex" && resolvedPaths?.length) {
-            (stripped as any).local_images = resolvedPaths;
-          }
           adapterMsg = stripped;
         }
       }
@@ -8420,9 +8397,6 @@ export class WsBridge {
             ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
             ...(msg.images?.length ? { draftImages: buildPendingCodexImageDrafts(msg.images) } : {}),
             ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
-            ...(adapterMsg.type === "user_message" && adapterMsg.local_images?.length
-              ? { localImagePaths: adapterMsg.local_images }
-              : {}),
             ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
             ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
           });
@@ -9940,7 +9914,6 @@ export class WsBridge {
   ): import("./session-types.js").CodexPendingBatchInput[] {
     return inputs.map((input) => ({
       content: input.deliveryContent || input.content,
-      ...(input.localImagePaths?.length ? { local_images: input.localImagePaths } : {}),
       ...(input.vscodeSelection ? { vscodeSelection: input.vscodeSelection } : {}),
     }));
   }

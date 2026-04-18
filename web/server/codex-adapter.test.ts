@@ -1010,7 +1010,7 @@ describe("CodexAdapter", () => {
     adapter.sendBrowserMessage({
       type: "user_message",
       content: "/compact",
-      local_images: ["/tmp/proof.png"],
+      images: [{ media_type: "image/png", data: "proof-image-bytes" }],
     });
 
     await tick();
@@ -1189,7 +1189,7 @@ describe("CodexAdapter", () => {
     expect(turnStarts[1].params.collaborationMode).toBeUndefined();
   });
 
-  it("sends localImage user inputs when local_images are provided", async () => {
+  it("sends text-only user inputs when attachment paths are included in the prompt", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
     await tick();
@@ -1204,15 +1204,20 @@ describe("CodexAdapter", () => {
 
     adapter.sendBrowserMessage({
       type: "user_message",
-      content: "Describe these files",
-      local_images: ["/tmp/image-a.png", "/tmp/image-b.png"],
+      content:
+        "Describe these files\n" +
+        "[📎 Image attachments -- use the Read tool to view these files:\n" +
+        "Attachment 1: /tmp/image-a.png\n" +
+        "Attachment 2: /tmp/image-b.png]",
     });
 
     await tick();
 
     const allWritten = stdin.chunks.join("");
     expect(allWritten).toContain('"method":"turn/start"');
-    expect(allWritten).toContain('"type":"localImage"');
+    expect(allWritten).toContain("Attachment 1: /tmp/image-a.png");
+    expect(allWritten).toContain("Attachment 2: /tmp/image-b.png");
+    expect(allWritten).not.toContain('"type":"localImage"');
     expect(allWritten).toContain("/tmp/image-a.png");
     expect(allWritten).toContain("/tmp/image-b.png");
   });

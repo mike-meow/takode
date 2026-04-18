@@ -1396,7 +1396,6 @@ export class CodexAdapter
     type: "user_message";
     content: string;
     images?: { media_type: string; data: string }[];
-    local_images?: string[];
     vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
   }): Promise<void> {
     // User message is the latest completed message before Codex starts reasoning.
@@ -1420,7 +1419,6 @@ export class CodexAdapter
     if (
       isCompactSlashCommand(msg.content) &&
       !msg.images?.length &&
-      !msg.local_images?.length &&
       !msg.vscodeSelection
     ) {
       try {
@@ -1450,23 +1448,12 @@ export class CodexAdapter
       text_elements?: unknown[];
     }> = [];
 
-    // Prefer local paths to avoid persisting large data: URLs in thread history.
-    // Codex schema: UserInput::LocalImage => { type: "localImage", path }.
-    if (msg.local_images?.length) {
-      for (const path of msg.local_images) {
-        input.push({
-          type: "localImage",
-          path,
-        });
-      }
-    }
-
-    // Inline base64 image transport is intentionally disabled for Codex.
-    // Oversized data: URLs can silently drop whole turns; ws-bridge should
-    // provide local_images paths instead.
+    // Backend delivery is text-only. Any image payload that still reaches the
+    // adapter is ignored defensively; the prompt should already contain file
+    // path annotations that the model can read as normal files.
     if (msg.images?.length) {
       console.warn(
-        `[codex-adapter] Ignoring inline images for session ${this.sessionId}; expected local_images path references`,
+        `[codex-adapter] Ignoring unexpected image payloads for session ${this.sessionId}; expected text-only attachment path annotations`,
       );
     }
 
@@ -1547,17 +1534,11 @@ export class CodexAdapter
   private buildCodexBatchInput(
     entries: Array<{
       content: string;
-      local_images?: string[];
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     }>,
   ): Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> {
     const input: Array<{ type: string; text?: string; path?: string; text_elements?: unknown[] }> = [];
     for (const entry of entries) {
-      if (entry.local_images?.length) {
-        for (const path of entry.local_images) {
-          input.push({ type: "localImage", path });
-        }
-      }
       input.push({ type: "text", text: entry.content, text_elements: [] });
       if (entry.vscodeSelection) {
         input.push({ type: "text", text: formatVsCodeSelectionPrompt(entry.vscodeSelection), text_elements: [] });
@@ -1571,7 +1552,6 @@ export class CodexAdapter
     pendingInputIds: string[];
     inputs: Array<{
       content: string;
-      local_images?: string[];
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     }>;
   }): Promise<void> {
@@ -1631,7 +1611,6 @@ export class CodexAdapter
     expectedTurnId: string;
     inputs: Array<{
       content: string;
-      local_images?: string[];
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
     }>;
   }): Promise<void> {

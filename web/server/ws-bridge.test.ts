@@ -132,7 +132,7 @@ function getPendingCodexTurn(session: { pendingCodexTurns?: unknown[] }) {
 function getCodexStartPendingInputs(msg: any) {
   expect(msg?.type).toBe("codex_start_pending");
   expect(Array.isArray(msg?.inputs)).toBe(true);
-  return msg.inputs as Array<{ content: string; local_images?: string[] }>;
+  return msg.inputs as Array<{ content: string }>;
 }
 
 function expectCodexStartPendingTurnLike(
@@ -140,7 +140,7 @@ function expectCodexStartPendingTurnLike(
   expected: {
     firstContent?: string;
     firstContentContaining?: string;
-    firstLocalImages?: string[];
+    forbidNativeImageTransport?: boolean;
     status?: string;
     dispatchCount?: number;
     userContent?: string;
@@ -158,8 +158,8 @@ function expectCodexStartPendingTurnLike(
   if (expected.firstContentContaining !== undefined) {
     expect(inputs[0]?.content).toContain(expected.firstContentContaining);
   }
-  if (expected.firstLocalImages !== undefined) {
-    expect(inputs[0]?.local_images).toEqual(expected.firstLocalImages);
+  if (expected.forbidNativeImageTransport) {
+    expect((inputs[0] as any)?.local_images).toBeUndefined();
   }
   if (expected.status !== undefined) {
     expect(turn.status).toBe(expected.status);
@@ -8574,9 +8574,7 @@ describe("Codex retries user message when turn is stale after disconnect", () =>
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("implement the fix from this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
-      "/tmp/companion-images/img-1.orig.png",
-    ]);
+    expect((getCodexStartPendingInputs(retriedImageMsg)[0] as any)?.local_images).toBeUndefined();
     const firstImageRetryCall = adapter2.sendBrowserMessage.mock.calls[0];
     expect(firstImageRetryCall).toBeDefined();
     const retried = (firstImageRetryCall as unknown as [any])[0] as any;
@@ -12576,7 +12574,7 @@ describe("isBackendAttached public wrapper (q-385)", () => {
 describe("Codex broken-session recovery regression", () => {
   it("keeps the acknowledged image turn authoritative and blocks later messages after init failure", async () => {
     const sid = "s-image-init-failure";
-    const expectedAttachmentPath = "/tmp/companion-images/img-140.orig.jpeg";
+    const expectedAttachmentPath = join(homedir(), ".companion", "images", sid, "img-140.orig.jpeg");
     const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
     const adapter1 = makeCodexAdapterMock();
     const imageStore = {
@@ -12604,7 +12602,7 @@ describe("Codex broken-session recovery regression", () => {
     const session = bridge.getSession(sid)!;
     expectCodexStartPendingTurnLike(getPendingCodexTurn(session), {
       firstContentContaining: expectedAttachmentPath,
-      firstLocalImages: ["/tmp/companion-images/img-140.orig.jpeg"],
+      forbidNativeImageTransport: true,
     });
 
     adapter1.emitTurnStarted("turn-image-140");
@@ -13480,7 +13478,7 @@ describe("Codex resumed-turn recovery", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const expectedPath = "/tmp/companion-images/img-1.orig.png";
+    const expectedPath = join(homedir(), ".companion", "images", sid, "img-1.orig.png");
     expect((getPendingCodexTurn(bridge.getSession(sid)!) as any)?.userContent).toBe(
       "describe this screenshot\n" +
         "[📎 Image attachments -- use the Read tool to view these files:\n" +
@@ -13529,9 +13527,7 @@ describe("Codex resumed-turn recovery", () => {
     const retriedImageMsg = retriedImageCalls[0]?.[0] as any;
     expect(retriedImageMsg).toBeDefined();
     expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.content).toContain("describe this screenshot");
-    expect(getCodexStartPendingInputs(retriedImageMsg)[0]?.local_images).toEqual([
-      "/tmp/companion-images/img-1.orig.png",
-    ]);
+    expect((getCodexStartPendingInputs(retriedImageMsg)[0] as any)?.local_images).toBeUndefined();
   });
 
   it("retries when resumed snapshot lastTurn does not match pending disconnected turn", async () => {
@@ -15973,7 +15969,7 @@ describe("Codex active-turn steering", () => {
 
 describe("Codex image transport", () => {
   // Codex image sends should rely on the same attachment-path text context as
-  // Claude sessions, rather than native localImage transport.
+  // Claude sessions, with no native backend image transport.
   //
   // NOTE: handleBrowserMessage does NOT await routeBrowserMessage (fire-and-forget),
   // so tests need a microtask flush after the call for async image operations.
@@ -16016,16 +16012,15 @@ describe("Codex image transport", () => {
     );
     await flush();
 
-    // Adapter should receive text-only attachment paths AND native local_images
-    // for Codex's localImage transport (q-322 restored this after q-298 broke it).
+    // Adapter should receive text-only attachment paths and no native image transport.
     expect(adapter.sendBrowserMessage).toHaveBeenCalled();
     const firstImageCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstImageCall).toBeDefined();
     const sentMsg = (firstImageCall as unknown as [any])[0] as any;
-    const expectedPath = "/tmp/companion-images/img-1.orig.png";
+    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
-    expect(sentMsg.inputs[0]?.local_images).toEqual([expectedPath]);
+    expect(sentMsg.inputs[0]?.local_images).toBeUndefined();
     expect(sentMsg.images).toBeUndefined();
 
     // The pending Codex input should stay path-only for transport, but must
@@ -16042,7 +16037,7 @@ describe("Codex image transport", () => {
         mediaType: "image/png",
       },
     ]);
-    expect(session?.pendingCodexInputs[0]?.localImagePaths).toEqual([expectedPath]);
+    expect((session?.pendingCodexInputs[0] as any)?.localImagePaths).toBeUndefined();
   });
 
   it("preserves browser send order when an image message is delayed by async storage", async () => {
@@ -16095,8 +16090,10 @@ describe("Codex image transport", () => {
     const firstDispatch = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
     expect(firstDispatch?.type).toBe("codex_start_pending");
     expect(firstDispatch.inputs[0]?.content).toContain("look at this screenshot");
-    expect(firstDispatch.inputs[0]?.content).toContain("Attachment 1: /tmp/companion-images/img-queued.orig.png");
-    expect(firstDispatch.inputs[0]?.local_images).toEqual(["/tmp/companion-images/img-queued.orig.png"]);
+    expect(firstDispatch.inputs[0]?.content).toContain(
+      `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-queued.orig.png")}`,
+    );
+    expect(firstDispatch.inputs[0]?.local_images).toBeUndefined();
 
     expect(getPendingCodexTurn(session)).toMatchObject({
       status: "dispatched",
@@ -16153,13 +16150,15 @@ describe("Codex image transport", () => {
     const firstDispatch = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
     expect(firstDispatch?.type).toBe("codex_start_pending");
     expect(firstDispatch.inputs[0]?.content).toContain("inspect this image before the herd event");
-    expect(firstDispatch.inputs[0]?.content).toContain("Attachment 1: /tmp/companion-images/img-herd.orig.png");
+    expect(firstDispatch.inputs[0]?.content).toContain(
+      `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-herd.orig.png")}`,
+    );
   });
 
   it("preserves queued herd delivery behind an active image turn across reconnect", async () => {
     const sid = "codex-image-herd-reconnect";
     const herdContent = "1 event from 1 session\n\n#491 | turn_end | ✓ 9s";
-    const expectedPath = "/tmp/companion-images/img-reconnect.orig.png";
+    const expectedPath = join(homedir(), ".companion", "images", sid, "img-reconnect.orig.png");
     const adapter1 = makeCodexAdapterMock();
     adapter1.sendBrowserMessage.mockImplementation((msg: any) => {
       if (msg.type === "codex_steer_pending") return false;
@@ -16530,16 +16529,15 @@ describe("Codex image transport", () => {
     ).toBe(false);
   });
 
-  it("sends error when original path lookup fails for Codex images", async () => {
+  it("does not require original path lookups for Codex image turns", async () => {
     const adapter = makeCodexAdapterMock();
 
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
-      getOriginalPath: vi.fn().mockResolvedValue(null),
     };
     bridge.setImageStore(mockImageStore as any);
     bridge.attachCodexAdapter("s1", adapter as any);
-    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-fallback" });
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-text-only" });
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -16554,10 +16552,12 @@ describe("Codex image transport", () => {
     );
     await flush();
 
-    // When original path lookup fails, an error should be sent to the browser
-    // and no turn should be dispatched to the adapter.
-    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
-    expect(browser.send).toHaveBeenCalledWith(expect.stringContaining("Image failed to send"));
+    expect(adapter.sendBrowserMessage).toHaveBeenCalled();
+    const sentMsg = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    const expectedPath = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    expect(sentMsg.type).toBe("codex_start_pending");
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath}`);
+    expect(sentMsg.inputs[0]?.local_images).toBeUndefined();
   });
 
   it("sends all Codex image attachments as ordered path annotations without native image transport", async () => {
@@ -16596,12 +16596,12 @@ describe("Codex image transport", () => {
     const firstMultiImageCall = adapter.sendBrowserMessage.mock.calls[0];
     expect(firstMultiImageCall).toBeDefined();
     const sentMsg = (firstMultiImageCall as unknown as [any])[0] as any;
-    const expectedPath1 = "/tmp/companion-images/img-1.orig.png";
-    const expectedPath2 = "/tmp/companion-images/img-2.orig.png";
+    const expectedPath1 = join(homedir(), ".companion", "images", "s1", "img-1.orig.png");
+    const expectedPath2 = join(homedir(), ".companion", "images", "s1", "img-2.orig.png");
     expect(sentMsg.type).toBe("codex_start_pending");
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${expectedPath1}`);
     expect(sentMsg.inputs[0]?.content).toContain(`Attachment 2: ${expectedPath2}`);
-    expect(sentMsg.inputs[0]?.local_images).toEqual([expectedPath1, expectedPath2]);
+    expect(sentMsg.inputs[0]?.local_images).toBeUndefined();
     expect(sentMsg.images).toBeUndefined();
   });
 
@@ -16668,6 +16668,7 @@ describe("Claude SDK image transport", () => {
     expect(sentMsg.content).toContain("use the Read tool to view these files");
     // Images should be stripped — the CLI doesn't support image content blocks via stdin
     expect(sentMsg.images).toBeUndefined();
+    expect(sentMsg.local_images).toBeUndefined();
   });
 });
 

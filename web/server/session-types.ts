@@ -328,14 +328,12 @@ export interface PendingCodexInput {
   imageRefs?: import("./image-store.js").ImageRef[];
   draftImages?: PendingCodexInputImageDraft[];
   deliveryContent?: string;
-  localImagePaths?: string[];
   agentSource?: { sessionId: string; sessionLabel?: string };
   vscodeSelection?: VsCodeSelectionMetadata;
 }
 
 export interface CodexPendingBatchInput {
   content: string;
-  local_images?: string[];
   vscodeSelection?: VsCodeSelectionMetadata;
 }
 
@@ -349,11 +347,6 @@ export type BrowserOutgoingMessage =
       session_id?: string;
       images?: { media_type: string; data: string }[];
       vscodeSelection?: VsCodeSelectionMetadata;
-      /**
-       * Codex-internal transport optimization: local file paths forwarded as
-       * `UserInput::LocalImage` entries instead of inline data: URLs.
-       */
-      local_images?: string[];
       client_msg_id?: string;
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
       agentSource?: { sessionId: string; sessionLabel?: string };
