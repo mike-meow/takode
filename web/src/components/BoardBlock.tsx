@@ -3,6 +3,7 @@ import { CollapseFooter } from "./CollapseFooter.js";
 import { useStore } from "../store.js";
 import { BoardTable } from "./BoardTable.js";
 import { ToolBlock } from "./ToolBlock.js";
+import { formatQuestJourneyText } from "../../shared/quest-journey.js";
 
 // Re-export for backward compatibility (ToolBlock imports BoardRowData from here)
 export type { BoardRowData } from "./BoardTable.js";
@@ -76,6 +77,7 @@ export const BoardBlock = memo(function BoardBlock({
   }, []);
 
   const headerRef = useRef<HTMLDivElement>(null);
+  const formattedOperation = operation ? formatQuestJourneyText(operation) : undefined;
 
   return (
     <div className="border border-cc-border rounded-[10px] overflow-hidden bg-cc-card">
@@ -105,7 +107,7 @@ export const BoardBlock = memo(function BoardBlock({
           <path d="M4 4h2v5H4zM7 4h2v7H7zM10 4h2v3h-2z" />
         </svg>
         <span className="text-xs font-medium text-cc-fg">Work Board</span>
-        {operation && <span className="text-xs text-cc-muted">-- {operation}</span>}
+        {formattedOperation && <span className="text-xs text-cc-muted">-- {formattedOperation}</span>}
         {canShowOriginalCommand && (
           <span
             role="button"

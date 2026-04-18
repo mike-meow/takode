@@ -55,6 +55,13 @@ export function getQuestJourneyPresentation(status?: string | null): QuestJourne
   return QUEST_JOURNEY_PRESENTATION[status as QuestJourneyState];
 }
 
+/** Replace embedded quest-journey enum tokens in freeform text with human labels. */
+export function formatQuestJourneyText(text: string): string {
+  return text.replace(/\b(QUEUED|PLANNING|IMPLEMENTING|SKEPTIC_REVIEWING|GROOM_REVIEWING|PORTING)\b/g, (match) => {
+    return getQuestJourneyPresentation(match)?.label ?? match;
+  });
+}
+
 /** Next-action hints for each Quest Journey stage. */
 export const QUEST_JOURNEY_HINTS: Record<QuestJourneyState, string> = {
   QUEUED: "dispatch to a worker",
