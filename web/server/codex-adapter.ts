@@ -417,6 +417,11 @@ interface CodexWebSearchItem extends CodexItem {
   searchResults?: unknown[];
 }
 
+interface CodexImageViewItem extends CodexItem {
+  type: "imageView";
+  path?: string;
+}
+
 interface CodexReasoningItem extends CodexItem {
   type: "reasoning";
   summary?: string;
@@ -2498,6 +2503,12 @@ export class CodexAdapter
         break;
       }
 
+      case "imageView": {
+        const imageView = item as CodexImageViewItem;
+        this.emitToolUseStart(item.id, "view_image", { path: imageView.path || "" }, { parentToolUseId });
+        break;
+      }
+
       case "reasoning": {
         const r = item as CodexReasoningItem;
         this.reasoningTextByItemId.set(item.id, r.summary || r.content || "");
@@ -2869,6 +2880,12 @@ export class CodexAdapter
         if (wsResult && wsResult !== wsQuery && wsResult !== "Web search completed") {
           this.emitToolResult(item.id, wsResult, false, parentToolUseId);
         }
+        break;
+      }
+
+      case "imageView": {
+        const imageView = item as CodexImageViewItem;
+        this.ensureToolUseEmitted(item.id, "view_image", { path: imageView.path || "" }, { parentToolUseId });
         break;
       }
 

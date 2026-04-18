@@ -1994,6 +1994,54 @@ describe("CodexAdapter", () => {
     expect(toolUseMsgs).toHaveLength(1);
   });
 
+  it("surfaces imageView item started/completed notifications as a visible tool_use block", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await initializeAdapter(stdout);
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "imageView",
+            id: "image-view-item-1",
+            path: "/tmp/from-item-started.png",
+          },
+        },
+      }) + "\n",
+    );
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "imageView",
+            id: "image-view-item-1",
+            path: "/tmp/from-item-started.png",
+          },
+        },
+      }) + "\n",
+    );
+
+    await tick();
+
+    const toolUseMsgs = messages.filter((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; name?: string; id?: string }> } }).message
+        .content;
+      return content.some((b) => b.type === "tool_use" && b.name === "view_image" && b.id === "image-view-item-1");
+    });
+
+    expect(toolUseMsgs).toHaveLength(1);
+    const toolBlock = (
+      toolUseMsgs[0] as { message: { content: Array<{ type: string; input?: { path?: string } }> } }
+    ).message.content.find((b) => b.type === "tool_use");
+    expect((toolBlock as { input: { path?: string } }).input.path).toBe("/tmp/from-item-started.png");
+  });
+
   it("calls onSessionMeta with thread ID after initialization", async () => {
     const metaCalls: Array<{ cliSessionId?: string; model?: string }> = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "gpt-5.4", cwd: "/project" });

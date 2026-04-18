@@ -2593,6 +2593,23 @@ describe("MessageFeed - Codex terminal chips", () => {
 // ─── getToolOnlyName behavior (tested via grouping) ──────────────────────────
 
 describe("MessageFeed - tool-only message detection", () => {
+  it("renders view_image tool-only messages as a visible View Image block in the chat feed", () => {
+    const sid = "test-view-image-tool";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-view-1", name: "view_image", input: { path: "/tmp/proof.png" } }],
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("View Image")).toBeTruthy();
+    expect(screen.getByText("/tmp/proof.png")).toBeTruthy();
+  });
+
   it("renders file-tool messages as standalone chips without grouping", () => {
     // Edit/Write/Read tools are never grouped at the feed level
     const sid = "test-tool-group";
