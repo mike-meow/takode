@@ -1597,6 +1597,12 @@ export function QuestDetailPanel() {
                 {activeCommitDetails?.message && (
                   <div className="mt-1 text-sm text-cc-fg truncate">{activeCommitDetails.message}</div>
                 )}
+                {activeCommitDetails?.available && (
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]">
+                    <span className="text-green-500">+{activeCommitDetails.additions ?? 0} additions</span>
+                    <span className="text-red-400">-{activeCommitDetails.deletions ?? 0} deletions</span>
+                  </div>
+                )}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {questCommitShas.map((sha, index) => (
                     <button

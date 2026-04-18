@@ -6239,6 +6239,9 @@ describe("GET /api/quests/:questId/commits/:sha", () => {
       if (cmd.includes('show -s --format="%H%x00%h%x00%s%x00%ct"')) {
         return ["abc1234567890abcdef", "abc1234", "Attach commits to quests", "1713292534"].join("\0") + "\n";
       }
+      if (cmd.includes('show --format= --numstat --no-renames "abc1234567890abcdef"')) {
+        return ["12\t4\tweb/server/routes/quests.ts", "3\t0\tweb/src/components/QuestDetailPanel.tsx"].join("\n") + "\n";
+      }
       if (cmd.includes('show --format= --patch --no-color "abc1234567890abcdef"')) {
         return `diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new\n`;
       }
@@ -6253,10 +6256,15 @@ describe("GET /api/quests/:questId/commits/:sha", () => {
       sha: "abc1234567890abcdef",
       shortSha: "abc1234",
       message: "Attach commits to quests",
+      additions: 15,
+      deletions: 4,
       available: true,
     });
     expect(json.diff).toContain("diff --git");
     expect(vi.mocked(execSync)).toHaveBeenCalledWith(expect.stringContaining('rev-parse --verify "abc1234^'));
+    expect(vi.mocked(execSync)).toHaveBeenCalledWith(
+      expect.stringContaining('show --format= --numstat --no-renames "abc1234567890abcdef"'),
+    );
   });
 
   it("returns an unavailable state when the commit cannot be found locally", async () => {

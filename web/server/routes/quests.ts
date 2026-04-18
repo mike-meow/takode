@@ -13,6 +13,20 @@ function normalizeRequestedCommitSha(value: string): string | null {
   return /^[0-9a-f]{7,40}$/.test(sha) ? sha : null;
 }
 
+function parseNumstatTotals(output: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+
+  for (const line of output.split("\n")) {
+    const [add, del] = line.trim().split("\t");
+    if (!add || !del) continue;
+    additions += add === "-" ? 0 : Number.parseInt(add, 10) || 0;
+    deletions += del === "-" ? 0 : Number.parseInt(del, 10) || 0;
+  }
+
+  return { additions, deletions };
+}
+
 function questRepoCandidates(quest: QuestmasterTask, launcher: RouteContext["launcher"]): string[] {
   const sessionIds = [
     ...("sessionId" in quest && typeof quest.sessionId === "string" ? [quest.sessionId] : []),
@@ -151,6 +165,10 @@ export function createQuestRoutes(ctx: RouteContext) {
           repoRoot,
         );
         if (!metadata.trim()) continue;
+        const numstat = await execCaptureStdoutAsync(
+          `${SERVER_GIT_CMD} show --format= --numstat --no-renames "${fullSha}"`,
+          repoRoot,
+        );
         let diff = await execCaptureStdoutAsync(
           `${SERVER_GIT_CMD} show --format= --patch --no-color "${fullSha}"`,
           repoRoot,
@@ -164,11 +182,14 @@ export function createQuestRoutes(ctx: RouteContext) {
 
         const [resolvedSha, shortSha, message, ts] = metadata.trim().split("\0");
         if (!resolvedSha) continue;
+        const totals = parseNumstatTotals(numstat);
         return c.json({
           sha: resolvedSha || fullSha,
           shortSha: shortSha || fullSha.slice(0, 7),
           message: message || "",
           timestamp: Number.parseInt(ts || "0", 10) * 1000,
+          additions: totals.additions,
+          deletions: totals.deletions,
           diff,
           truncated,
           available: true,

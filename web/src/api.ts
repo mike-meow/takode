@@ -251,6 +251,8 @@ export interface QuestCommitLookup {
   shortSha?: string;
   message?: string;
   timestamp?: number;
+  additions?: number;
+  deletions?: number;
   diff?: string;
   truncated?: boolean;
   available: boolean;

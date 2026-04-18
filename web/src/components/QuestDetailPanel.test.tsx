@@ -694,6 +694,8 @@ describe("QuestDetailPanel", () => {
         shortSha: firstSha.slice(0, 7),
         message: "First ported commit",
         timestamp: Date.now(),
+        additions: 12,
+        deletions: 4,
         diff: `diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1 +1 @@\n-old\n+new\n`,
         available: true,
       })
@@ -702,6 +704,8 @@ describe("QuestDetailPanel", () => {
         shortSha: secondSha.slice(0, 7),
         message: "Second ported commit",
         timestamp: Date.now(),
+        additions: 3,
+        deletions: 1,
         diff: `diff --git a/other.ts b/other.ts\n--- a/other.ts\n+++ b/other.ts\n@@ -1 +1 @@\n-before\n+after\n`,
         available: true,
       });
@@ -715,6 +719,8 @@ describe("QuestDetailPanel", () => {
     });
     expect(screen.getByTestId("quest-commit-modal")).toBeTruthy();
     expect(screen.getByText("First ported commit")).toBeTruthy();
+    expect(screen.getByText("+12 additions")).toBeTruthy();
+    expect(screen.getByText("-4 deletions")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Next"));
 
@@ -722,6 +728,8 @@ describe("QuestDetailPanel", () => {
       expect(mockGetQuestCommit).toHaveBeenCalledWith("q-42", secondSha);
     });
     expect(screen.getByText("Second ported commit")).toBeTruthy();
+    expect(screen.getByText("+3 additions")).toBeTruthy();
+    expect(screen.getByText("-1 deletions")).toBeTruthy();
   });
 
   it("shows a graceful unavailable state when a stored commit cannot be loaded", async () => {
