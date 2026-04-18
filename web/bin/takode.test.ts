@@ -3031,12 +3031,9 @@ describe("takode board reviewer status output", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("q-1: PLANNING -> IMPLEMENTING");
-      expect(result.stdout).toContain("WORKER");
-      expect(result.stdout).toContain("REVIEWER");
-      expect(result.stdout).toContain("#7 idle");
-      expect(result.stdout).toContain("#17 running");
-      expect(result.stdout).toContain("#8 disconnected");
-      expect(result.stdout).toContain("no reviewer assigned");
+      expect(result.stdout).toContain("WORKER / REVIEWER");
+      expect(result.stdout).toContain("#7 idle / #17 running");
+      expect(result.stdout).toContain("#8 disconnected / no reviewer");
       expect(result.stdout).not.toContain('"rowSessionStatuses"');
     } finally {
       server.close();
@@ -3045,6 +3042,69 @@ describe("takode board reviewer status output", () => {
 });
 
 describe("takode board output modes", () => {
+  it("makes worker reviewer relationships and next action obvious in board show output", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-visible", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-board-visible/board?resolve=true") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            board: [
+              {
+                questId: "q-420",
+                title: "Recover reviewer visibility",
+                worker: "worker-558",
+                workerNum: 558,
+                status: "SKEPTIC_REVIEWING",
+                waitFor: ["#560"],
+                createdAt: 1,
+                updatedAt: 2,
+              },
+            ],
+            resolvedSessionDeps: [],
+            rowSessionStatuses: {
+              "q-420": {
+                worker: { sessionId: "worker-558", sessionNum: 558, status: "idle" },
+                reviewer: { sessionId: "reviewer-560", sessionNum: 560, status: "running" },
+              },
+            },
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "show", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-visible",
+        COMPANION_AUTH_TOKEN: "auth-board-visible",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("#558 idle / #560 running");
+      expect(result.stdout).toContain("wait #560");
+      expect(result.stdout).toContain("wait for #560");
+    } finally {
+      server.close();
+    }
+  });
+
   it("keeps default board show output human-first without embedded JSON", async () => {
     const server = createServer((req, res) => {
       const method = req.method || "";
@@ -3100,9 +3160,11 @@ describe("takode board output modes", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("QUEST");
-      expect(result.stdout).toContain("NEXT ACTION");
+      expect(result.stdout).toContain("WORKER / REVIEWER");
+      expect(result.stdout).toContain("ACTION");
       expect(result.stdout).toContain("q-12");
-      expect(result.stdout).toContain("#5 idle");
+      expect(result.stdout).toContain("#5 idle / no reviewer");
+      expect(result.stdout).toContain("clear q-9");
       expect(result.stdout).not.toContain("__takode_board__");
       expect(result.stdout).not.toContain('"rowSessionStatuses"');
     } finally {
@@ -3151,7 +3213,7 @@ describe("takode board output modes", () => {
       expect(result.stdout).toContain('"__takode_board__": true');
       expect(result.stdout).toContain('"rowSessionStatuses": {}');
       expect(result.stdout).not.toContain("QUEST");
-      expect(result.stdout).not.toContain("NEXT ACTION");
+      expect(result.stdout).not.toContain("WORKER / REVIEWER");
     } finally {
       server.close();
     }
@@ -3240,6 +3302,9 @@ describe("takode list reviewer nesting", () => {
 
       // Reviewer should be visually nested with ↳ prefix on the same line as its name
       expect(result.stdout).toMatch(/↳.*#11.*Reviewer of #10/);
+
+      // Parent worker should expose attached reviewer state directly.
+      expect(result.stdout).toMatch(/#10.*👀 #11 idle/);
 
       // Reviewer has [reviewer] role tag
       expect(result.stdout).toContain("[reviewer]");

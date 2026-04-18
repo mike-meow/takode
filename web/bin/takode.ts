@@ -1106,7 +1106,15 @@ function printSessionLine(
     claimedQuestStatus?: string | null;
     pendingTimerCount?: number;
   },
-  opts?: { indent?: boolean },
+  opts?: {
+    indent?: boolean;
+    attachedReviewer?: {
+      sessionNum?: number;
+      state: string;
+      cliConnected?: boolean;
+      archived?: boolean;
+    } | null;
+  },
 ): void {
   const prefix = opts?.indent ? "        ↳ " : "  ";
   const num = s.sessionNum !== undefined ? `#${s.sessionNum}` : "  ";
@@ -1127,6 +1135,19 @@ function printSessionLine(
     ? ` 📋 ${formatInlineText(s.claimedQuestId)}${s.claimedQuestStatus ? ` ${formatInlineText(s.claimedQuestStatus)}` : ""}`
     : "";
   const timers = ` ⏰${s.pendingTimerCount ?? 0}`;
+  let reviewerSummary = "";
+  if (!opts?.indent && s.reviewerOf === undefined && opts?.attachedReviewer) {
+    const reviewer = opts.attachedReviewer;
+    const reviewerStatus = reviewer.cliConnected
+      ? reviewer.state === "running"
+        ? "running"
+        : "idle"
+      : reviewer.archived
+        ? "archived"
+        : "disconnected";
+    const reviewerNum = reviewer.sessionNum !== undefined ? `#${reviewer.sessionNum}` : "#?";
+    reviewerSummary = ` 👀 ${reviewerNum} ${reviewerStatus}`;
+  }
 
   const branch = s.gitBranch ? `  ${formatInlineText(s.gitBranch)}` : "";
 
@@ -1146,7 +1167,7 @@ function printSessionLine(
   const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
   const preview = s.lastMessagePreview ? `  "${truncate(s.lastMessagePreview, 50)}"` : "";
 
-  console.log(`${prefix}${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${timers}${attention}`);
+  console.log(`${prefix}${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${timers}${reviewerSummary}${attention}`);
   // Compact display for indented reviewer sessions: skip the detail line (cwd/branch)
   // since reviewers share the parent's worktree and the extra line is just noise
   if (!opts?.indent) {
@@ -1176,10 +1197,10 @@ function printNestedSessions(
 
   let count = 0;
   for (const s of topLevel) {
-    printSessionLine(s);
+    const reviewers = s.sessionNum !== undefined ? reviewersByParent.get(s.sessionNum) : undefined;
+    printSessionLine(s, { attachedReviewer: reviewers?.[0] ?? null });
     if (showTasks) printSessionTasks(s.taskHistory);
     count++;
-    const reviewers = s.sessionNum !== undefined ? reviewersByParent.get(s.sessionNum) : undefined;
     if (reviewers) {
       for (const r of reviewers) {
         printSessionLine(r, { indent: true });
@@ -2972,6 +2993,18 @@ function formatBoardParticipantStatus(
   return opts?.empty ?? "--";
 }
 
+function formatBoardWorkerReviewerSummary(
+  row: BoardRow,
+  rowStatus: BoardRowSessionStatus | undefined,
+): string {
+  if (!row.worker && row.workerNum === undefined) return "--";
+  const worker = formatBoardParticipantStatus(rowStatus?.worker, row.workerNum);
+  const reviewer = rowStatus?.reviewer
+    ? formatBoardParticipantStatus(rowStatus.reviewer, rowStatus.reviewer.sessionNum ?? undefined)
+    : "no reviewer";
+  return `${worker} / ${reviewer}`;
+}
+
 /** Format board output as JSON with a marker for frontend detection. */
 function formatBoardOutput(
   board: BoardRow[],
@@ -3017,15 +3050,14 @@ function printBoardText(
 
   console.log("");
   const qCol = 8;
-  const tCol = 22;
-  const wCol = 18;
-  const rCol = 22;
+  const tCol = 20;
+  const ownerCol = 30;
   const sCol = 18;
-  const waitCol = 14;
+  const waitCol = 16;
   console.log(
-    `${"QUEST".padEnd(qCol)} ${"TITLE".padEnd(tCol)} ${"WORKER".padEnd(wCol)} ${"REVIEWER".padEnd(rCol)} ${"STATE".padEnd(sCol)} ${"WAIT-FOR".padEnd(waitCol)} NEXT ACTION`,
+    `${"QUEST".padEnd(qCol)} ${"TITLE".padEnd(tCol)} ${"WORKER / REVIEWER".padEnd(ownerCol)} ${"STATE".padEnd(sCol)} ${"WAIT-FOR".padEnd(waitCol)} ACTION`,
   );
-  console.log("-".repeat(qCol + tCol + wCol + rCol + sCol + waitCol + 30));
+  console.log("-".repeat(qCol + tCol + ownerCol + sCol + waitCol + 22));
 
   for (const row of board) {
     const quest = row.questId.padEnd(qCol);
@@ -3033,18 +3065,8 @@ function printBoardText(
     const titleStr = row.title ? (row.title.length > tCol - 2 ? row.title.slice(0, tCol - 3) + "…" : row.title) : "--";
     const title = titleStr.padEnd(tCol);
     const rowStatus = rowSessionStatuses?.[row.questId];
-    const workerStr =
-      row.worker || row.workerNum !== undefined
-        ? formatBoardParticipantStatus(rowStatus?.worker, row.workerNum)
-        : formatBoardParticipantStatus(undefined, undefined);
-    const reviewerStr =
-      row.worker || row.workerNum !== undefined
-        ? rowStatus?.reviewer
-          ? formatBoardParticipantStatus(rowStatus.reviewer, rowStatus.reviewer.sessionNum ?? undefined)
-          : "no reviewer assigned"
-        : "--";
-    const worker = workerStr.slice(0, wCol - 1).padEnd(wCol);
-    const reviewer = reviewerStr.slice(0, rCol - 1).padEnd(rCol);
+    const ownerStr = formatBoardWorkerReviewerSummary(row, rowStatus);
+    const owner = ownerStr.slice(0, ownerCol - 1).padEnd(ownerCol);
     const state = (row.status || "--").padEnd(sCol);
 
     // Wait-for column: distinguish "no deps", "blocked", and "all resolved"
@@ -3055,9 +3077,9 @@ function printBoardText(
     });
     let waitForStr: string;
     if (blockedDeps.length > 0) {
-      waitForStr = blockedDeps.join(", ");
+      waitForStr = `wait ${blockedDeps.join(", ")}`;
     } else if (allDeps.length > 0) {
-      waitForStr = "✓ " + allDeps.join(", ");
+      waitForStr = `clear ${allDeps.join(", ")}`;
     } else {
       waitForStr = "--";
     }
@@ -3066,13 +3088,12 @@ function printBoardText(
     // Next action hint: if blocked, show "blocked"; otherwise show state hint
     let nextAction: string;
     if (blockedDeps.length > 0) {
-      nextAction = `blocked (wait for ${blockedDeps.join(", ")})`;
+      nextAction = `wait for ${blockedDeps.join(", ")}`;
     } else {
       nextAction = QUEST_JOURNEY_HINTS[row.status || ""] || "--";
-      if (nextAction !== "--") nextAction = `-> ${nextAction}`;
     }
 
-    console.log(`${quest} ${title} ${worker} ${reviewer} ${state} ${waitForDisplay} ${nextAction}`);
+    console.log(`${quest} ${title} ${owner} ${state} ${waitForDisplay} ${nextAction}`);
   }
   console.log("");
 }
