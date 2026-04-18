@@ -43,9 +43,9 @@ export interface QuestJourneyPresentation {
 export const QUEST_JOURNEY_PRESENTATION: Record<QuestJourneyState, QuestJourneyPresentation> = {
   QUEUED: { label: "Queued", textClassName: "text-cc-muted" },
   PLANNING: { label: "Planning", textClassName: "text-green-400" },
-  IMPLEMENTING: { label: "Implementing", textClassName: "text-green-400" },
-  SKEPTIC_REVIEWING: { label: "Skeptic Review", textClassName: "text-violet-500" },
-  GROOM_REVIEWING: { label: "Groom Review", textClassName: "text-violet-500" },
+  IMPLEMENTING: { label: "Executing Plan", textClassName: "text-green-400" },
+  SKEPTIC_REVIEWING: { label: "Addressing Skeptic", textClassName: "text-violet-500" },
+  GROOM_REVIEWING: { label: "Grooming", textClassName: "text-violet-500" },
   PORTING: { label: "Porting", textClassName: "text-blue-400" },
 };
 

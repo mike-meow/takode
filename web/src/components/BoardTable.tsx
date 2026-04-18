@@ -28,7 +28,9 @@ export interface BoardRowData {
 
 export type BoardTableMode = "active" | "completed";
 
-const JOURNEY_STATUS_PRIORITY = new Map(QUEST_JOURNEY_STATES.map((status, index) => [status, index]));
+const JOURNEY_STATUS_PRIORITY = new Map(
+  [...QUEST_JOURNEY_STATES].reverse().map((status, index) => [status, index]),
+);
 
 function statusPriority(status?: string): number {
   if (!status) return Number.MAX_SAFE_INTEGER - 1;
@@ -357,12 +359,12 @@ export const BoardTable = memo(function BoardTable({
         <thead>
           <tr className="text-cc-muted border-b border-cc-border">
             <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Quest</th>
-            <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Title</th>
             <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Worker</th>
+            <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Status</th>
+            <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Title</th>
             <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">
               {isCompleted ? "Completed Time" : "Wait For"}
             </th>
-            <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -371,7 +373,6 @@ export const BoardTable = memo(function BoardTable({
               <td className="px-3 py-1.5 whitespace-nowrap">
                 <QuestLink questId={row.questId} />
               </td>
-              <td className="px-3 py-1.5 text-cc-fg max-w-[200px] truncate">{row.title || "\u2014"}</td>
               <td className="px-3 py-1.5 whitespace-nowrap">
                 {row.worker ? (
                   <WorkerLink sessionId={row.worker} sessionNum={row.workerNum} />
@@ -379,6 +380,10 @@ export const BoardTable = memo(function BoardTable({
                   <span className="text-cc-muted">{"\u2014"}</span>
                 )}
               </td>
+              <td className="px-3 py-1.5 max-w-[250px]">
+                <StatusCell status={row.status} />
+              </td>
+              <td className="px-3 py-1.5 text-cc-fg max-w-[200px] truncate">{row.title || "\u2014"}</td>
               <td className="px-3 py-1.5 whitespace-nowrap">
                 {isCompleted ? (
                   <span
@@ -400,9 +405,6 @@ export const BoardTable = memo(function BoardTable({
                     )}
                   </>
                 )}
-              </td>
-              <td className="px-3 py-1.5 max-w-[250px]">
-                <StatusCell status={row.status} />
               </td>
             </tr>
           ))}

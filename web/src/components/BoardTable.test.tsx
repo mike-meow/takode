@@ -36,6 +36,13 @@ describe("BoardTable", () => {
 
     render(<BoardTable board={board} />);
 
+    expect(screen.getAllByRole("columnheader").map((node) => node.textContent)).toEqual([
+      "Quest",
+      "Worker",
+      "Status",
+      "Title",
+      "Wait For",
+    ]);
     expect(screen.getByRole("columnheader", { name: "Wait For" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Completed Time" })).not.toBeInTheDocument();
   });
@@ -84,9 +91,9 @@ describe("BoardTable", () => {
 
     expect(screen.getByText("Queued")).toHaveClass("text-cc-muted");
     expect(screen.getByText("Planning")).toHaveClass("text-green-400");
-    expect(screen.getByText("Implementing")).toHaveClass("text-green-400");
-    expect(screen.getByText("Skeptic Review")).toHaveClass("text-violet-500");
-    expect(screen.getByText("Groom Review")).toHaveClass("text-violet-500");
+    expect(screen.getByText("Executing Plan")).toHaveClass("text-green-400");
+    expect(screen.getByText("Addressing Skeptic")).toHaveClass("text-violet-500");
+    expect(screen.getByText("Grooming")).toHaveClass("text-violet-500");
     expect(screen.getByText("Porting")).toHaveClass("text-blue-400");
   });
 
@@ -105,7 +112,7 @@ describe("BoardTable", () => {
       { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3 },
     ]);
 
-    expect(ordered.map((row) => row.questId)).toEqual(["q-2", "q-3", "q-1"]);
+    expect(ordered.map((row) => row.questId)).toEqual(["q-1", "q-3", "q-2"]);
   });
 
   it("orders rows by recency within the same status when there are no dependencies", () => {
