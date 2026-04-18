@@ -69,14 +69,11 @@ export const BoardBlock = memo(function BoardBlock({
     setOpen((prev) => !prev);
   }, []);
 
-  const handleOriginalCommandToggle = useCallback(
-    (e: React.MouseEvent<HTMLElement>) => {
-      e.stopPropagation();
-      setOpen(true);
-      setShowOriginalCommand((prev) => !prev);
-    },
-    [],
-  );
+  const handleOriginalCommandToggle = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    setOpen(true);
+    setShowOriginalCommand((prev) => !prev);
+  }, []);
 
   const headerRef = useRef<HTMLDivElement>(null);
 

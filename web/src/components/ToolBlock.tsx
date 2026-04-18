@@ -308,7 +308,8 @@ const ToolBlockInner = memo(function ToolBlockInner({
   // takode board: render board card instead of terminal block.
   // Tool result previews are truncated to 300 chars by the server, which breaks
   // JSON parsing for boards with several rows. We fetch the full result if needed.
-  const isBoardCommand = !disableInlineSpecialCases && name === "Bash" && isTakodeBoardCommand(String(input.command || ""));
+  const isBoardCommand =
+    !disableInlineSpecialCases && name === "Bash" && isTakodeBoardCommand(String(input.command || ""));
   const parsedBoard = useBoardData(isBoardCommand, sessionId, toolUseId);
   if (isBoardCommand && parsedBoard) {
     return (
