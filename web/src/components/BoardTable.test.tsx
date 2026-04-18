@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { BoardTable, formatCompletedTime, type BoardRowData } from "./BoardTable.js";
+import { BoardTable, formatCompletedTime, orderBoardRows, type BoardRowData } from "./BoardTable.js";
 
 interface MockStoreState {
   quests: Array<{ questId: string }>;
@@ -96,5 +96,45 @@ describe("BoardTable", () => {
     render(<BoardTable board={board} />);
 
     expect(screen.getByText("CUSTOM_STATUS")).toHaveClass("text-cc-muted");
+  });
+
+  it("orders active rows by journey status priority first", () => {
+    const ordered = orderBoardRows([
+      { questId: "q-1", status: "PORTING", updatedAt: 1 },
+      { questId: "q-2", status: "QUEUED", updatedAt: 2 },
+      { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3 },
+    ]);
+
+    expect(ordered.map((row) => row.questId)).toEqual(["q-2", "q-3", "q-1"]);
+  });
+
+  it("orders rows by recency within the same status when there are no dependencies", () => {
+    const ordered = orderBoardRows([
+      { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1_000 },
+      { questId: "q-2", status: "IMPLEMENTING", updatedAt: 5_000 },
+      { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3_000 },
+    ]);
+
+    expect(ordered.map((row) => row.questId)).toEqual(["q-2", "q-3", "q-1"]);
+  });
+
+  it("topologically orders rows within a status group based on quest wait-for dependencies", () => {
+    const ordered = orderBoardRows([
+      { questId: "q-3", status: "IMPLEMENTING", updatedAt: 9_000, waitFor: ["q-2"] },
+      { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1_000 },
+      { questId: "q-2", status: "IMPLEMENTING", updatedAt: 5_000, waitFor: ["q-1"] },
+    ]);
+
+    expect(ordered.map((row) => row.questId)).toEqual(["q-1", "q-2", "q-3"]);
+  });
+
+  it("ignores missing dependencies and falls back safely on cycles within a status group", () => {
+    const ordered = orderBoardRows([
+      { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1_000, waitFor: ["q-999"] },
+      { questId: "q-2", status: "IMPLEMENTING", updatedAt: 3_000, waitFor: ["q-3"] },
+      { questId: "q-3", status: "IMPLEMENTING", updatedAt: 2_000, waitFor: ["q-2"] },
+    ]);
+
+    expect(ordered.map((row) => row.questId)).toEqual(["q-2", "q-3", "q-1"]);
   });
 });

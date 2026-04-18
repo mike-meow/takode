@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useStore } from "../store.js";
 import { getQuestJourneyPresentation } from "../../shared/quest-journey.js";
-import { BoardTable } from "./BoardTable.js";
+import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 
@@ -25,7 +25,7 @@ import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 export function boardSummary(board: BoardRowData[], completedCount: number): string {
   if (board.length === 0 && completedCount === 0) return "Empty";
   const counts = new Map<string, number>();
-  for (const row of board) {
+  for (const row of orderBoardRows(board)) {
     const label = row.status ? (getQuestJourneyPresentation(row.status)?.label ?? row.status) : "unknown";
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }

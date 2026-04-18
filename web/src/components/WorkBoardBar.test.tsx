@@ -23,13 +23,12 @@ describe("boardSummary", () => {
 
   it("summarises multiple statuses", () => {
     const board: BoardRowData[] = [
-      { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 },
+      { questId: "q-1", status: "PORTING", updatedAt: 1 },
       { questId: "q-2", status: "SKEPTIC_REVIEWING", updatedAt: 2 },
       { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3 },
-      { questId: "q-4", status: "PORTING", updatedAt: 4 },
+      { questId: "q-4", status: "IMPLEMENTING", updatedAt: 4 },
     ];
     const result = boardSummary(board, 0);
-    // Order follows Map insertion order (first occurrence of each status)
     expect(result).toBe("2 Implementing, 1 Skeptic Review, 1 Porting");
   });
 
@@ -40,7 +39,7 @@ describe("boardSummary", () => {
       { questId: "q-3", status: "QUEUED", updatedAt: 3 },
     ];
     const result = boardSummary(board, 0);
-    expect(result).toBe("2 unknown, 1 Queued");
+    expect(result).toBe("1 Queued, 2 unknown");
   });
 
   it("includes completed count in summary", () => {
@@ -77,10 +76,15 @@ vi.mock("../store.js", () => ({
   useStore: (selector: (s: MockStoreState) => unknown) => selector(mockState),
 }));
 
-// Mock BoardTable to avoid needing full store for QuestLink/WorkerLink
-vi.mock("./BoardTable.js", () => ({
-  BoardTable: ({ board }: { board: BoardRowData[] }) => <div data-testid="board-table">{board.length} rows</div>,
-}));
+// Mock BoardTable to avoid needing full store for QuestLink/WorkerLink.
+// Keep orderBoardRows real so boardSummary exercises the shared ordering logic.
+vi.mock("./BoardTable.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./BoardTable.js")>();
+  return {
+    ...actual,
+    BoardTable: ({ board }: { board: BoardRowData[] }) => <div data-testid="board-table">{board.length} rows</div>,
+  };
+});
 
 // Must import after mocks are set up
 const { WorkBoardBar } = await import("./WorkBoardBar.js");
@@ -131,7 +135,7 @@ describe("WorkBoardBar", () => {
     });
     const { getByText } = render(<WorkBoardBar sessionId="s1" />);
     // Summary text should show status counts
-    expect(getByText("1 Implementing, 1 Queued")).toBeInTheDocument();
+    expect(getByText("1 Queued, 1 Implementing")).toBeInTheDocument();
     // Item count should show total
     expect(getByText("2 items")).toBeInTheDocument();
   });

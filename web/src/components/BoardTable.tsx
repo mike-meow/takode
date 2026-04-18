@@ -8,7 +8,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo, type MouseEvent } from "react";
 import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession } from "../utils/routing.js";
-import { getQuestJourneyPresentation } from "../../shared/quest-journey.js";
+import { QUEST_JOURNEY_STATES, getQuestJourneyPresentation } from "../../shared/quest-journey.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
@@ -27,6 +27,89 @@ export interface BoardRowData {
 }
 
 export type BoardTableMode = "active" | "completed";
+
+const JOURNEY_STATUS_PRIORITY = new Map(QUEST_JOURNEY_STATES.map((status, index) => [status, index]));
+
+function statusPriority(status?: string): number {
+  if (!status) return Number.MAX_SAFE_INTEGER - 1;
+  return JOURNEY_STATUS_PRIORITY.get(status as (typeof QUEST_JOURNEY_STATES)[number]) ?? Number.MAX_SAFE_INTEGER;
+}
+
+function compareByRecencyDesc(a: BoardRowData, b: BoardRowData): number {
+  return b.updatedAt - a.updatedAt || a.questId.localeCompare(b.questId);
+}
+
+function topologicallySortStatusGroup(rows: BoardRowData[]): BoardRowData[] {
+  if (rows.length <= 1) return [...rows];
+
+  const rowById = new Map(rows.map((row) => [row.questId.toLowerCase(), row]));
+  const indegree = new Map<string, number>();
+  const outgoing = new Map<string, string[]>();
+
+  for (const row of rows) {
+    const key = row.questId.toLowerCase();
+    indegree.set(key, 0);
+    outgoing.set(key, []);
+  }
+
+  for (const row of rows) {
+    const from = row.questId.toLowerCase();
+    const deps = new Set(
+      (row.waitFor ?? [])
+        .map((dep) => dep.toLowerCase())
+        .filter((dep) => dep.startsWith("q-") && rowById.has(dep) && dep !== from),
+    );
+    for (const dep of deps) {
+      outgoing.get(dep)!.push(from);
+      indegree.set(from, (indegree.get(from) ?? 0) + 1);
+    }
+  }
+
+  const queue = rows
+    .filter((row) => (indegree.get(row.questId.toLowerCase()) ?? 0) === 0)
+    .sort(compareByRecencyDesc);
+  const result: BoardRowData[] = [];
+
+  while (queue.length > 0) {
+    const row = queue.shift()!;
+    result.push(row);
+    for (const neighbor of outgoing.get(row.questId.toLowerCase()) ?? []) {
+      const next = (indegree.get(neighbor) ?? 0) - 1;
+      indegree.set(neighbor, next);
+      if (next === 0) {
+        queue.push(rowById.get(neighbor)!);
+        queue.sort(compareByRecencyDesc);
+      }
+    }
+  }
+
+  if (result.length !== rows.length) {
+    return [...rows].sort(compareByRecencyDesc);
+  }
+
+  return result;
+}
+
+export function orderBoardRows(board: BoardRowData[], mode: BoardTableMode = "active"): BoardRowData[] {
+  if (board.length <= 1) return [...board];
+  if (mode === "completed") return [...board].sort(compareByRecencyDesc);
+
+  const grouped = new Map<string, BoardRowData[]>();
+  for (const row of board) {
+    const key = row.status ?? "";
+    const existing = grouped.get(key);
+    if (existing) existing.push(row);
+    else grouped.set(key, [row]);
+  }
+
+  return [...grouped.entries()]
+    .sort(([statusA], [statusB]) => {
+      const byPriority = statusPriority(statusA || undefined) - statusPriority(statusB || undefined);
+      if (byPriority !== 0) return byPriority;
+      return statusA.localeCompare(statusB);
+    })
+    .flatMap(([, rows]) => topologicallySortStatusGroup(rows));
+}
 
 export function formatCompletedTime(timestamp?: number): string {
   if (!timestamp || timestamp <= 0) return "\u2014";
@@ -268,6 +351,7 @@ export const BoardTable = memo(function BoardTable({
   }
 
   const isCompleted = mode === "completed";
+  const orderedBoard = useMemo(() => orderBoardRows(board, mode), [board, mode]);
 
   return (
     <div className="overflow-x-auto">
@@ -284,7 +368,7 @@ export const BoardTable = memo(function BoardTable({
           </tr>
         </thead>
         <tbody>
-          {board.map((row) => (
+          {orderedBoard.map((row) => (
             <tr key={row.questId} className="border-b border-cc-border last:border-0 hover:bg-cc-hover/30">
               <td className="px-3 py-1.5 whitespace-nowrap">
                 <QuestLink questId={row.questId} />
