@@ -510,59 +510,6 @@ function isLeaderBoundaryEntry(entry: FeedEntry): boolean {
   return isUserBoundaryEntry(entry);
 }
 
-const LEADER_HERD_TURN_GAP_MS = 60_000;
-
-function isLikelyInProgressLeaderReply(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
-  if (normalized.endsWith("...")) return true;
-  return (
-    normalized.startsWith("let me ") ||
-    normalized.startsWith("looking into") ||
-    normalized.startsWith("i'll check") ||
-    normalized.startsWith("checking ") ||
-    normalized.startsWith("working on") ||
-    normalized.startsWith("searching ") ||
-    normalized.startsWith("investigating ") ||
-    normalized.startsWith("one moment") ||
-    normalized.startsWith("hang on")
-  );
-}
-
-function shouldSplitDeferredLeaderHerdEvent(
-  entry: FeedEntry,
-  currentUser: FeedEntry | null,
-  assistantTextCount: number,
-  lastAssistantText: string | null,
-  lastMessageTimestamp: number | null,
-): boolean {
-  if (!isHerdEventEntry(entry)) return false;
-  // Only split delayed herd updates after the leader already had time to
-  // answer within the original user turn. A single in-progress status
-  // message ("let me check") is not enough to justify starting a new
-  // synthetic turn there, but a single substantive answer is.
-  //
-  // For already-synthetic herd turns (currentUser === null), a single
-  // assistant follow-up is enough to let a later delayed herd batch start its
-  // own turn instead of visually piling into the earlier herd batch.
-  if (currentUser) {
-    if (assistantTextCount === 0) return false;
-    if (assistantTextCount === 1 && isLikelyInProgressLeaderReply(lastAssistantText || "")) {
-      return false;
-    }
-  } else if (assistantTextCount < 1) {
-    return false;
-  }
-
-  const incomingTs = entry.msg.timestamp;
-  if (typeof incomingTs !== "number" || lastMessageTimestamp === null) return false;
-
-  // If a herd event arrives well after the leader already responded in the
-  // current turn, start a new synthetic turn instead of visually appending a
-  // background backlog under the older user request.
-  return incomingTs - lastMessageTimestamp >= LEADER_HERD_TURN_GAP_MS;
-}
-
 /** Build a Turn from accumulated entries */
 function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: number, leaderMode = false): Turn {
   // Separate system messages (always visible) from collapsible agent activity
@@ -686,59 +633,25 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
 }
 
 /** Group flat feed entries into turns.
- *  Leader mode still primarily splits on user messages. A delayed herd-event
- *  injection that arrives long after the leader already answered in the current
- *  turn starts a new synthetic turn so background updates don't visually pile up
- *  under an older user request. */
+ *  Leader mode splits only on real user boundaries. Herd events, timers, and
+ *  notification-style injected updates remain inside the current agent turn
+ *  until an explicit human or agent-authored user message starts a new one. */
 export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTurnIndex = 0): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
-  let assistantTextCount = 0;
-  let lastAssistantText: string | null = null;
-  let lastMessageTimestamp: number | null = null;
 
   for (const entry of entries) {
     const isBoundary = leaderMode ? isLeaderBoundaryEntry(entry) : isUserBoundaryEntry(entry);
-    const splitDeferredLeaderHerd =
-      leaderMode &&
-      shouldSplitDeferredLeaderHerdEvent(
-        entry,
-        currentUser,
-        assistantTextCount,
-        lastAssistantText,
-        lastMessageTimestamp,
-      );
-    if (isBoundary || splitDeferredLeaderHerd) {
+    if (isBoundary) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
         turns.push(makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode));
       }
-      if (isBoundary) {
-        currentUser = entry;
-        currentEntries = [];
-        assistantTextCount = 0;
-        lastAssistantText = null;
-        lastMessageTimestamp = null;
-      } else {
-        const herdEntry = entry as Extract<FeedEntry, { kind: "message" }>;
-        currentUser = null;
-        currentEntries = [herdEntry];
-        assistantTextCount = 0;
-        lastAssistantText = null;
-        lastMessageTimestamp = typeof herdEntry.msg.timestamp === "number" ? herdEntry.msg.timestamp : null;
-      }
+      currentUser = entry;
+      currentEntries = [];
     } else {
       currentEntries.push(entry);
-      if (entry.kind === "message") {
-        if (typeof entry.msg.timestamp === "number") {
-          lastMessageTimestamp = entry.msg.timestamp;
-        }
-        if (entry.msg.role === "assistant" && entry.msg.content?.trim()) {
-          assistantTextCount += 1;
-          lastAssistantText = entry.msg.content;
-        }
-      }
     }
   }
 
@@ -756,47 +669,9 @@ export function buildFeedModel(messages: ChatMessage[], leaderMode = false, star
   return { entries, turns };
 }
 
-function getTurnContinuationContext(entries: FeedEntry[]): {
-  assistantTextCount: number;
-  lastAssistantText: string | null;
-  lastMessageTimestamp: number | null;
-} {
-  let assistantTextCount = 0;
-  let lastAssistantText: string | null = null;
-  let lastMessageTimestamp: number | null = null;
-
-  for (const entry of entries) {
-    if (entry.kind !== "message") continue;
-    if (typeof entry.msg.timestamp === "number") {
-      lastMessageTimestamp = entry.msg.timestamp;
-    }
-    if (entry.msg.role === "assistant" && entry.msg.content?.trim()) {
-      assistantTextCount += 1;
-      lastAssistantText = entry.msg.content;
-    }
-  }
-
-  return { assistantTextCount, lastAssistantText, lastMessageTimestamp };
-}
-
-function shouldMergeFirstActiveTurnIntoLastFrozenTurn(baseTurn: Turn, nextTurn: Turn, leaderMode: boolean): boolean {
+function shouldMergeFirstActiveTurnIntoLastFrozenTurn(baseTurn: Turn, nextTurn: Turn): boolean {
   if (nextTurn.userEntry !== null) return false;
-  if (!leaderMode) return true;
-
-  const firstEntry = nextTurn.allEntries[0];
-  if (!firstEntry) return true;
-  if (!isHerdEventEntry(firstEntry)) return true;
-
-  const { assistantTextCount, lastAssistantText, lastMessageTimestamp } = getTurnContinuationContext(
-    baseTurn.allEntries,
-  );
-  return !shouldSplitDeferredLeaderHerdEvent(
-    firstEntry,
-    baseTurn.userEntry,
-    assistantTextCount,
-    lastAssistantText,
-    lastMessageTimestamp,
-  );
+  return true;
 }
 
 function concatFeedModels(base: FeedModel, next: FeedModel, leaderMode = false): FeedModel {
@@ -812,7 +687,7 @@ function concatFeedModels(base: FeedModel, next: FeedModel, leaderMode = false):
   if (
     next.turns.length > 0 &&
     base.turns.length > 0 &&
-    shouldMergeFirstActiveTurnIntoLastFrozenTurn(base.turns[base.turns.length - 1], next.turns[0], leaderMode)
+    shouldMergeFirstActiveTurnIntoLastFrozenTurn(base.turns[base.turns.length - 1], next.turns[0])
   ) {
     const lastBase = base.turns[base.turns.length - 1];
     const firstNext = next.turns[0];
@@ -822,6 +697,7 @@ function concatFeedModels(base: FeedModel, next: FeedModel, leaderMode = false):
       lastBase.userEntry,
       [...lastBase.allEntries, ...firstNext.allEntries],
       base.turns.length - 1,
+      leaderMode,
     );
     mergedTurns = [...base.turns.slice(0, -1), merged, ...next.turns.slice(1)];
   } else {
