@@ -328,6 +328,14 @@ function parseFlags(argv: string[]): Record<string, string | boolean> {
   return flags;
 }
 
+function hasHelpFlag(argv: string[]): boolean {
+  return argv.includes("--help") || argv.includes("-h");
+}
+
+function stripHelpFlags(argv: string[]): string[] {
+  return argv.filter((arg) => arg !== "--help" && arg !== "-h");
+}
+
 function assertKnownFlags(flags: Record<string, string | boolean>, allowed: ReadonlySet<string>, usage: string): void {
   const unknown = Object.keys(flags).filter((key) => !allowed.has(key));
   if (unknown.length === 0) return;
@@ -498,6 +506,352 @@ type SessionTimerDetail = {
 const TIMER_CREATE_GUIDANCE =
   "Guidance: keep the timer title short and scannable. Use the description only for extra detail. " +
   "For recurring timers, keep the description general so it does not go stale across repeated firings.";
+
+const LIST_HELP = `Usage: takode list [--herd|--active|--all] [--tasks] [--json]
+
+List sessions.
+
+Options:
+  --herd    Show only sessions herded by you
+  --active  Show all unarchived sessions
+  --all     Include archived sessions
+  --tasks   Include recent task history in each row
+  --json    Output JSON
+`;
+
+const SEARCH_HELP = `Usage: takode search <query> [--all] [--json]
+
+Search sessions by name, task, branch, path, repo, keyword, and user-message content.
+
+Options:
+  --all   Include archived sessions
+  --json  Output JSON
+`;
+
+const INFO_HELP = `Usage: takode info <session> [--json]
+
+Show detailed metadata for a session, including backend, git, quest, and timer state.
+`;
+
+const TASKS_HELP = `Usage: takode tasks <session> [--json]
+
+Show the high-level task outline for a session's conversation history.
+`;
+
+const TIMERS_HELP = `Usage: takode timers <session> [--json]
+
+Show pending timers for a session.
+`;
+
+const SCAN_HELP = `Usage: takode scan <session> [--from N] [--until N] [--count N] [--json]
+
+Scan session turns as collapsed summaries.
+
+Options:
+  --from <turn>   Start at turn N
+  --until <turn>  Show turns ending before turn N
+  --count <n>     Number of turns to show (default: 50)
+  --json          Output JSON
+`;
+
+const PEEK_HELP = `Usage: takode peek <session> [--from N] [--until N] [--count N] [--task N] [--turn N] [--show-tools] [--detail] [--turns N] [--json]
+
+View session activity with progressive detail.
+
+Examples:
+  takode peek 1
+  takode peek 1 --turn 5
+  takode peek 1 --from 500 --count 50
+  takode peek 1 --detail --turns 3
+`;
+
+const READ_HELP = `Usage: takode read <session> <msg-id> [--offset N] [--limit N] [--json]
+
+Read one full message from a session.
+`;
+
+const GREP_HELP = `Usage: takode grep <session> <pattern> [--type user|assistant|result] [--count N] [--json]
+
+Search within a session's messages using JavaScript regex matching.
+`;
+
+const LOGS_HELP = `Usage: takode logs [--level warn,error] [--component name] [--session <id>] [--pattern text] [--regex] [--since time] [--until time] [--limit N] [--follow] [--json]
+
+Query and tail structured Companion server logs.
+`;
+
+const EXPORT_HELP = `Usage: takode export <session> <path>
+
+Export a session's full history to a text file.
+`;
+
+const SEND_HELP = `Usage: takode send <session> <message> [--correction] [--json]
+       takode send <session> --stdin [--correction] [--json]
+
+Send a message to a herded session.
+
+Options:
+  --stdin       Read the message body from stdin
+  --correction  Send steering input to a currently running session
+  --json        Output JSON
+`;
+
+const RENAME_HELP = `Usage: takode rename <session> <name> [--json]
+
+Rename a session.
+`;
+
+const HERD_HELP = `Usage: takode herd [--force] <session1,session2,...> [--json]
+
+Herd one or more worker sessions into your leader session.
+`;
+
+const UNHERD_HELP = `Usage: takode unherd <session> [--json]
+
+Release a worker from your herd.
+`;
+
+const INTERRUPT_HELP = `Usage: takode interrupt <session> [--json]
+
+Interrupt a worker's current turn without archiving it.
+`;
+
+const ARCHIVE_HELP = `Usage: takode archive <session> [--json]
+
+Archive a herded session.
+`;
+
+const PENDING_HELP = `Usage: takode pending <session> [--json]
+
+Show pending AskUserQuestion and ExitPlanMode requests for a herded session.
+`;
+
+const ANSWER_HELP = `Usage: takode answer <session> <response> [--json]
+
+Answer a pending AskUserQuestion or approve/reject a pending plan.
+`;
+
+const SET_BASE_HELP = `Usage: takode set-base <session> <branch> [--json]
+
+Set the diff base branch for a session.
+`;
+
+const REFRESH_BRANCH_HELP = `Usage: takode refresh-branch <session> [--json]
+
+Refresh git branch info for a session after checkout, rebase, or other branch changes.
+`;
+
+const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--json]
+
+Categories:
+  needs-input  User decision or information required
+  review       Ready for user review
+`;
+
+const BOARD_HELP = `Usage: takode board [show|set|advance|rm] ...
+
+Quest Journey work board for the current leader session.
+
+Subcommands:
+  show                    Show the board (default)
+  set <quest-id>          Add or update a board row
+  advance <quest-id>      Move a quest to the next Journey state
+  rm <quest-id> [...]     Remove quests from the active board
+
+Examples:
+  takode board show
+  takode board set q-12 --status PLANNING
+  takode board set q-12 --worker 5 --wait-for q-7,#9
+  takode board advance q-12
+  takode board rm q-12
+`;
+
+const BOARD_SET_HELP = `Usage: takode board set <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y] [--json]
+       takode board add <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y] [--json]
+
+Add or update a board row for a quest.
+`;
+
+const BOARD_ADVANCE_HELP = `Usage: takode board advance <quest-id> [--json]
+
+Advance a quest to the next Quest Journey state.
+`;
+
+const BOARD_RM_HELP = `Usage: takode board rm <quest-id> [<quest-id> ...] [--json]
+
+Remove one or more quests from the active board.
+`;
+
+const BRANCH_HELP = `Usage: takode branch <status|set-base> ...
+
+Branch info and management for the current session.
+
+Subcommands:
+  status                  Show current branch, diff base, and ahead/behind state
+  set-base <branch>       Set the current session's diff base branch
+`;
+
+const BRANCH_STATUS_HELP = `Usage: takode branch status [--json]
+
+Show current branch, diff base, and ahead/behind status for the current session.
+`;
+
+const BRANCH_SET_BASE_HELP = `Usage: takode branch set-base <branch> [--json]
+
+Set the current session's diff base branch.
+`;
+
+const TIMER_HELP = `Usage: takode timer <create|list|cancel> ...
+
+Session-scoped timers for the current session.
+
+Subcommands:
+  create <title> [--desc <description>] --in|--at|--every <spec>
+  list
+  cancel <timer-id>
+
+${TIMER_CREATE_GUIDANCE}
+`;
+
+const TIMER_CREATE_HELP = `Usage: takode timer create <title> [--desc <description>] --in|--at|--every <spec>
+
+Create a session-scoped timer.
+
+Examples:
+  takode timer create "Check build health" --desc "Inspect the latest failing shard if red." --in 30m
+  takode timer create "Deploy reminder" --at 3pm
+  takode timer create "Refresh context" --desc "Summarize new blockers since the last run." --every 10m
+`;
+
+const TIMER_LIST_HELP = `Usage: takode timer list
+
+List active timers for the current session.
+`;
+
+const TIMER_CANCEL_HELP = `Usage: takode timer cancel <timer-id>
+
+Cancel a session-scoped timer.
+`;
+
+function printCommandHelp(command: string, argv: string[]): boolean {
+  const args = stripHelpFlags(argv);
+  switch (command) {
+    case "list":
+      console.log(LIST_HELP);
+      return true;
+    case "search":
+      console.log(SEARCH_HELP);
+      return true;
+    case "info":
+      console.log(INFO_HELP);
+      return true;
+    case "spawn":
+      console.log(SPAWN_FLAG_USAGE);
+      return true;
+    case "tasks":
+      console.log(TASKS_HELP);
+      return true;
+    case "timers":
+      console.log(TIMERS_HELP);
+      return true;
+    case "scan":
+      console.log(SCAN_HELP);
+      return true;
+    case "peek":
+      console.log(PEEK_HELP);
+      return true;
+    case "read":
+      console.log(READ_HELP);
+      return true;
+    case "grep":
+      console.log(GREP_HELP);
+      return true;
+    case "logs":
+      console.log(LOGS_HELP);
+      return true;
+    case "export":
+      console.log(EXPORT_HELP);
+      return true;
+    case "send":
+      console.log(SEND_HELP);
+      return true;
+    case "rename":
+      console.log(RENAME_HELP);
+      return true;
+    case "herd":
+      console.log(HERD_HELP);
+      return true;
+    case "unherd":
+      console.log(UNHERD_HELP);
+      return true;
+    case "interrupt":
+      console.log(INTERRUPT_HELP);
+      return true;
+    case "archive":
+      console.log(ARCHIVE_HELP);
+      return true;
+    case "pending":
+      console.log(PENDING_HELP);
+      return true;
+    case "answer":
+      console.log(ANSWER_HELP);
+      return true;
+    case "set-base":
+      console.log(SET_BASE_HELP);
+      return true;
+    case "refresh-branch":
+      console.log(REFRESH_BRANCH_HELP);
+      return true;
+    case "notify":
+      console.log(NOTIFY_HELP);
+      return true;
+    case "board": {
+      const sub = args[0];
+      if (!sub || sub === "show") {
+        console.log(BOARD_HELP);
+      } else if (sub === "set" || sub === "add") {
+        console.log(BOARD_SET_HELP);
+      } else if (sub === "advance") {
+        console.log(BOARD_ADVANCE_HELP);
+      } else if (sub === "rm") {
+        console.log(BOARD_RM_HELP);
+      } else {
+        console.log(BOARD_HELP);
+      }
+      return true;
+    }
+    case "branch": {
+      const sub = args[0];
+      if (!sub) {
+        console.log(BRANCH_HELP);
+      } else if (sub === "status") {
+        console.log(BRANCH_STATUS_HELP);
+      } else if (sub === "set-base") {
+        console.log(BRANCH_SET_BASE_HELP);
+      } else {
+        console.log(BRANCH_HELP);
+      }
+      return true;
+    }
+    case "timer": {
+      const sub = args[0];
+      if (!sub) {
+        console.log(TIMER_HELP);
+      } else if (sub === "create") {
+        console.log(TIMER_CREATE_HELP);
+      } else if (sub === "list") {
+        console.log(TIMER_LIST_HELP);
+      } else if (sub === "cancel") {
+        console.log(TIMER_CANCEL_HELP);
+      } else {
+        console.log(TIMER_HELP);
+      }
+      return true;
+    }
+    default:
+      return false;
+  }
+}
 
 function formatTimerScheduleLabel(timer: Pick<SessionTimerDetail, "type" | "originalSpec">): string {
   return timer.type === "recurring"
@@ -3488,6 +3842,7 @@ Commands:
   notify         Alert the user (e.g. takode notify review "ready for verification")
   board          Quest Journey work board (e.g. takode board show, takode board set q-12 --status PLANNING)
   timer          Session-scoped timers (create, list, cancel)
+  help           Show detailed help for a command or nested subcommand
 
 Peek modes:
   takode peek 1                    Smart overview (collapsed turns + expanded last turn)
@@ -3528,6 +3883,8 @@ Examples:
   takode refresh-branch 1
   takode branch status
   takode branch set-base origin/main
+  takode board --help
+  takode help timer create
 `);
 }
 
@@ -3571,11 +3928,38 @@ try {
     ["board", {}],
     ["timer", {}],
   ]);
+  if (!command || command === "-h" || command === "--help") {
+    printUsage();
+    process.exit(0);
+  }
+
+  if (command === "help") {
+    const helpTarget = args[0];
+    if (!helpTarget) {
+      printUsage();
+      process.exit(0);
+    }
+    if (!printCommandHelp(helpTarget, args.slice(1))) {
+      console.error(`Unknown command: ${helpTarget}`);
+      printUsage();
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   // Skip auth when asking for help — user should be able to read usage without
   // being in an orchestrator session.
-  const wantsHelp = args.includes("--help") || args.includes("-h");
+  const wantsHelp = hasHelpFlag(args);
+  if (wantsHelp) {
+    if (!printCommandHelp(command, args)) {
+      console.error(`Unknown command: ${command}`);
+      printUsage();
+      process.exit(1);
+    }
+    process.exit(0);
+  }
   const access = command ? commandAccess.get(command) : undefined;
-  if (access && !wantsHelp) {
+  if (access) {
     await ensureTakodeAccess(base, access);
   }
 
@@ -3658,19 +4042,10 @@ try {
     case "timer":
       await handleTimer(base, args);
       break;
-    case "help":
-    case "-h":
-    case "--help":
-      printUsage();
-      break;
     default:
-      if (!command) {
-        printUsage();
-      } else {
-        console.error(`Unknown command: ${command}`);
-        printUsage();
-        process.exit(1);
-      }
+      console.error(`Unknown command: ${command}`);
+      printUsage();
+      process.exit(1);
   }
   process.exit(0);
 } catch (e) {

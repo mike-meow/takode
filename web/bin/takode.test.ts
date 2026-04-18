@@ -2621,6 +2621,71 @@ describe("takode watch deprecation", () => {
     expect(result.stderr).toContain("Unknown command: watch");
     expect(result.stdout).toContain("Usage: takode <command>");
   });
+
+  it.each([
+    [["list", "--help"], "Usage: takode list"],
+    [["search", "--help"], "Usage: takode search"],
+    [["info", "--help"], "Usage: takode info"],
+    [["send", "--help"], "Usage: takode send"],
+    [["logs", "--help"], "Usage: takode logs"],
+    [["notify", "--help"], "Usage: takode notify"],
+  ])("prints top-level command help without auth for %j", async (argv, expected) => {
+    const result = await runTakode(argv, {
+      ...process.env,
+      COMPANION_SESSION_ID: undefined,
+      COMPANION_AUTH_TOKEN: undefined,
+      COMPANION_PORT: undefined,
+      TAKODE_API_PORT: undefined,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(expected);
+    expect(result.stderr).toBe("");
+  });
+
+  it.each([
+    [["board", "--help"], "Usage: takode board [show|set|advance|rm] ..."],
+    [["board", "set", "--help"], "Usage: takode board set <quest-id>"],
+    [["board", "advance", "--help"], "Usage: takode board advance <quest-id>"],
+    [["branch", "--help"], "Usage: takode branch <status|set-base> ..."],
+    [["branch", "status", "--help"], "Usage: takode branch status [--json]"],
+    [["branch", "set-base", "--help"], "Usage: takode branch set-base <branch> [--json]"],
+    [["timer", "--help"], "Usage: takode timer <create|list|cancel> ..."],
+    [["timer", "create", "--help"], "Usage: takode timer create <title>"],
+    [["timer", "cancel", "--help"], "Usage: takode timer cancel <timer-id>"],
+    [["help", "board", "set"], "Usage: takode board set <quest-id>"],
+    [["help", "timer", "create"], "Usage: takode timer create <title>"],
+  ])("prints nested help without executing live commands for %j", async (argv, expected) => {
+    const result = await runTakode(argv, {
+      ...process.env,
+      COMPANION_SESSION_ID: undefined,
+      COMPANION_AUTH_TOKEN: undefined,
+      COMPANION_PORT: undefined,
+      TAKODE_API_PORT: undefined,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(expected);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain("__takode_board__");
+    expect(result.stdout).not.toContain("Board is empty.");
+    expect(result.stdout).not.toContain("No active sessions.");
+    expect(result.stdout).not.toContain("Cannot connect to Companion server");
+  });
+
+  it("keeps unknown commands with --help as an error", async () => {
+    const result = await runTakode(["wat", "--help"], {
+      ...process.env,
+      COMPANION_SESSION_ID: undefined,
+      COMPANION_AUTH_TOKEN: undefined,
+      COMPANION_PORT: undefined,
+      TAKODE_API_PORT: undefined,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Unknown command: wat");
+    expect(result.stdout).toContain("Usage: takode <command>");
+  });
 });
 
 describe("takode board quest ID validation", () => {
