@@ -9,6 +9,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -275,6 +276,117 @@ function transformMarkdownUrl(url: string): string {
   return url;
 }
 
+function MarkdownTable({
+  children,
+  compact = false,
+}: {
+  children: ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <table
+      className={
+        compact
+          ? "min-w-full text-sm border border-cc-border rounded-lg overflow-hidden"
+          : "min-w-full text-sm border border-cc-border rounded-xl overflow-hidden bg-cc-card shadow-[0_0_0_1px_rgba(255,255,255,0.03)]"
+      }
+    >
+      {children}
+    </table>
+  );
+}
+
+function MarkdownTableDialog({
+  children,
+  onClose,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    },
+    [onClose],
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = prev;
+    };
+  }, [handleKeyDown]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-3 py-4 sm:px-6"
+      onClick={onClose}
+      data-testid="markdown-table-backdrop"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Expanded table view"
+        className="w-full max-w-[min(1400px,calc(100vw-1.5rem))] max-h-[92vh] rounded-2xl border border-cc-border bg-cc-bg shadow-2xl overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        data-testid="markdown-table-dialog"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-cc-border bg-cc-card px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-cc-fg">Table View</div>
+            <div className="text-xs text-cc-muted">Expanded to use the full page width.</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-cc-muted hover:bg-cc-hover hover:text-cc-fg transition-colors cursor-pointer"
+            aria-label="Close table view"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-auto px-4 py-4 sm:px-5">
+          <MarkdownTable>{children}</MarkdownTable>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function MarkdownTableWithViewer({ children }: { children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <div className="my-2">
+        <div className="mb-1.5 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-cc-border bg-cc-card px-2.5 py-1 text-[11px] font-medium text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+            data-testid="markdown-table-expand"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
+              <path d="M6 2H3.5A1.5 1.5 0 002 3.5V6M10 2h2.5A1.5 1.5 0 0114 3.5V6M14 10v2.5A1.5 1.5 0 0112.5 14H10M6 14H3.5A1.5 1.5 0 012 12.5V10" />
+            </svg>
+            <span>View table</span>
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <MarkdownTable compact>{children}</MarkdownTable>
+        </div>
+      </div>
+      {expanded && <MarkdownTableDialog onClose={() => setExpanded(false)}>{children}</MarkdownTableDialog>}
+    </>
+  );
+}
+
 export function MarkdownContent({
   text,
   size = "default",
@@ -388,13 +500,7 @@ export function MarkdownContent({
             );
           },
           pre: ({ children }) => <>{children}</>,
-          table: ({ children }) => (
-            <div className="overflow-x-auto my-2">
-              <table className="min-w-full text-sm border border-cc-border rounded-lg overflow-hidden">
-                {children}
-              </table>
-            </div>
-          ),
+          table: ({ children }) => <MarkdownTableWithViewer>{children}</MarkdownTableWithViewer>,
           thead: ({ children }) => <thead className="bg-cc-code-bg/50">{children}</thead>,
           th: ({ children }) => (
             <th className="px-3 py-1.5 text-left text-xs font-semibold text-cc-fg border-b border-cc-border">

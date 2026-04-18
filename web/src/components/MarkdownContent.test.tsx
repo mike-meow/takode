@@ -58,6 +58,45 @@ describe("MarkdownContent line breaks", () => {
   });
 });
 
+describe("MarkdownContent tables", () => {
+  beforeEach(() => {
+    useStore.getState().reset();
+  });
+
+  it("adds a table-only view action without affecting normal markdown", () => {
+    render(
+      <div>
+        <MarkdownContent text={"| Name | Role |\n| --- | --- |\n| Alice | Lead |"} />
+        <MarkdownContent text={"Just a paragraph without any table syntax."} />
+      </div>,
+    );
+
+    expect(screen.getByRole("button", { name: "View table" })).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByText("Just a paragraph without any table syntax.")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "View table" })).toHaveLength(1);
+  });
+
+  it("opens and closes the expanded table overlay", () => {
+    render(<MarkdownContent text={"| Dataset | Path |\n| --- | --- |\n| v7 filtered long | /mnt/v7/long |\n| RTG | /mnt/rtg |"} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "View table" }));
+
+    expect(screen.getByTestId("markdown-table-dialog")).toBeTruthy();
+    expect(screen.getByTestId("markdown-table-backdrop")).toBeTruthy();
+    expect(document.body.style.overflow).toBe("hidden");
+    expect(screen.getAllByText("RTG")).toHaveLength(2);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("markdown-table-dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "View table" }));
+    fireEvent.click(screen.getByTestId("markdown-table-backdrop"));
+    expect(screen.queryByTestId("markdown-table-dialog")).toBeNull();
+  });
+});
+
 describe("MarkdownContent quest links", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");

@@ -1995,6 +1995,28 @@ export function Playground() {
           </div>
         </Section>
 
+        <Section
+          title="Markdown Tables"
+          description="Markdown tables keep their inline scrollable layout, with a table-specific View table action that opens a wider overlay."
+        >
+          <div className="space-y-4 max-w-4xl">
+            <Card label="Wide markdown table with expanded viewer">
+              <MarkdownContent
+                text={`### Dataset Path Mapping
+
+| Dataset | Condor1 Path | MAIDAS Name |
+| --- | --- | --- |
+| v7 filtered long | /mnt/vast/data/jiayiwei/single_turn_mix_v7_filtered/long/ | single_turn_mix_long |
+| v7 filtered short | /mnt/vast/data/jiayiwei/single_turn_mix_v7_filtered/short/ | single_turn_mix_short |
+| v5 VSCode | /mnt/vast/data/jiayiwei/single_turn_mix_v5/ | coding_sft_internal |
+| Frank env building | /mnt/vast/data/jiayiwei/swe_build_env_single_step/ | swe_build_env_long |
+| RTG | /mnt/vast/data/jiayiwei/rtg_single_step/ | Not uploaded |
+| Wenxu patches | /mnt/vast/data/jiayiwei/wenxu_patches_single_step/ | Not uploaded |`}
+              />
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Tool Blocks (standalone) ──────────────────────── */}
         <Section
           title="Tool Blocks"
