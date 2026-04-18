@@ -404,7 +404,7 @@ describe("ToolBlock", () => {
     expect(screen.getByRole("button", { name: "Mark handled" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("renders a show original command affordance for takode board tool blocks", async () => {
+  it("renders a lightweight raw affordance for takode board tool blocks", async () => {
     const boardOutput = [
       JSON.stringify(
         {
@@ -439,7 +439,10 @@ describe("ToolBlock", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Work Board")).toBeTruthy());
-    fireEvent.click(screen.getByText("show original command"));
+    const rawToggle = screen.getByText("raw");
+    expect(rawToggle.className).toContain("text-cc-muted/55");
+    expect(rawToggle.className).not.toContain("border");
+    fireEvent.click(rawToggle);
 
     expect(screen.getByText("Original command")).toBeTruthy();
     expect(screen.getAllByText("takode board show --json").length).toBeGreaterThanOrEqual(1);
@@ -480,11 +483,11 @@ describe("ToolBlock", () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText("show original command")).toBeTruthy());
-    fireEvent.click(screen.getByText("show original command"));
+    await waitFor(() => expect(screen.getByText("raw")).toBeTruthy());
+    fireEvent.click(screen.getByText("raw"));
     expect(screen.getByText(/BOARD OUTPUT MARKER/)).toBeTruthy();
 
-    fireEvent.click(screen.getByText("hide original command"));
+    fireEvent.click(screen.getByText("hide raw"));
     expect(screen.queryByText("Original command")).toBeNull();
     expect(screen.queryByText(/BOARD OUTPUT MARKER/)).toBeNull();
     expect(screen.getByText("Work Board")).toBeTruthy();

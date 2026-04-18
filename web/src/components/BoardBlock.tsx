@@ -119,10 +119,10 @@ export const BoardBlock = memo(function BoardBlock({
                 setShowOriginalCommand((prev) => !prev);
               }
             }}
-            className="ml-2 rounded border border-cc-border px-1.5 py-0.5 text-[10px] text-cc-muted hover:border-cc-muted/40 hover:text-cc-fg transition-colors"
-            title={originalCommand ? `Original command: ${originalCommand}` : "Show original command"}
+            className="ml-1.5 shrink-0 px-0.5 py-0.5 text-[10px] leading-none text-cc-muted/55 hover:text-cc-muted focus-visible:text-cc-muted transition-colors"
+            title={originalCommand ? `Original command: ${originalCommand}` : "Show raw command output"}
           >
-            {showOriginalCommand ? "hide original command" : "show original command"}
+            {showOriginalCommand ? "hide raw" : "raw"}
           </span>
         )}
         <span className="text-xs text-cc-muted ml-auto">

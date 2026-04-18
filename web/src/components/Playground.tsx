@@ -3465,7 +3465,7 @@ export function Playground() {
                 ]}
               />
             </Card>
-            <Card label="Board with original command visible">
+            <Card label="Board with raw debug control visible">
               <PlaygroundBoardWithOriginalCommand />
             </Card>
             <Card label="Empty board">
