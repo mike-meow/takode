@@ -261,7 +261,8 @@ idea → refined → in_progress → needs_verification → done
 - Run tests, typecheck, linting yourself first.
 - **Worktree sessions:** If you made the change in a git worktree, finish the full sync-to-main workflow first (rebase/cherry-pick/push/reset/post-reset verification) before running `quest complete` or describing the work as ready for verification.
 - **If the work was ported/synced:** attach the ordered synced SHAs during the verification handoff with `quest complete q-N --items "..." --commits "sha1,sha2"`. Use the merged/cherry-picked SHAs from the main repo, not the pre-port worktree-only SHAs.
-- **If a leader controls the handoff:** report the ordered synced SHAs explicitly so the later `quest complete` call can attach them. Do not rely on log parsing or memory.
+- **If a leader controls the handoff:** report the ordered synced SHAs explicitly on a dedicated `Synced SHAs: sha1,sha2` line so the later `quest complete` call can attach them. Do not rely on log parsing or memory.
+- **Do not leave commit info only in comments:** summary comments and quest feedback can describe the port, but the verification handoff must still attach those SHAs as structured commit metadata with `--commit`/`--commits`.
 
 **Pre-submission checklist (all three required -- the skeptic reviewer will verify each one and CHALLENGE if any are missing):**
 

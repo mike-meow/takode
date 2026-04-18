@@ -130,7 +130,7 @@ If the worker needs additional context (related sessions, rejected approaches, u
 - **Initial dispatch**: planning only. The worker returns a plan and stops.
 - **Plan approval**: say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
 - **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Do not imply porting is authorized.
-- **Porting**: send a separate, explicit `/port-changes` instruction only after reviewer ACCEPT.
+- **Porting**: send a separate, explicit `/port-changes` instruction only after reviewer ACCEPT. Require the worker's report-back to include a dedicated `Synced SHAs: sha1,sha2` line with the ordered synced SHAs from the main repo.
 - **Investigation/design/no-code quests**: say what artifact to produce, then tell the worker to stop and report back. Do not assume the worker should self-complete or self-transition the quest.
 
 **Use explicit phrasing when steering between stages.** Good defaults:
@@ -148,7 +148,7 @@ Address the reviewer-groom findings, then stop and report back. Do not port yet.
 ```
 
 ```
-Port now using /port-changes, then report back when sync is complete and include the ordered synced SHAs from the main repo.
+Port now using /port-changes, then report back when sync is complete. Include a dedicated `Synced SHAs: sha1,sha2` line with the ordered synced SHAs from the main repo so the later `quest complete ... --commits ...` handoff can attach structured commit metadata instead of relying on feedback comments alone.
 ```
 
 **For feedback rework dispatches**, use this extended template instead:

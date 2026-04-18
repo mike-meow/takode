@@ -114,7 +114,7 @@ The `--reviewer` flag automatically:
 - **This stage is iterative.** Do not advance until the reviewer ACCEPTs.
 - If CHALLENGE: send findings back to the worker, have them address the issues, then re-send to reviewer. Repeat until ACCEPT.
 - Keep the worker waiting while the reviewer checks compliance. If more changes are needed, tell the worker exactly what to do and to stop again afterward.
-- On reviewer ACCEPT: tell the worker to port changes using `/port-changes`. Porting must be a separate, explicit instruction.
+- On reviewer ACCEPT: tell the worker to port changes using `/port-changes`. Porting must be a separate, explicit instruction, and the worker's report-back must include `Synced SHAs: sha1,sha2` with the ordered synced SHAs from the main repo.
 - `takode board advance <quest-id>`
 - **NEVER combine "reviewer-groom/rework" and "port" in the same instruction to the worker.** Each is a separate gate.
 
@@ -122,8 +122,8 @@ The `--reviewer` flag automatically:
 
 - Tell the worker to run `/port-changes` only when you are explicitly ready for porting. Do not assume they will self-port once review is done.
 - For investigation, design, or other no-code quests, give an explicit next-step instruction after the worker reports back. Do not ask them to self-complete or move the quest forward on their own.
-- Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote) **and include the ordered synced SHAs from the main repo**
-- Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`
+- Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote) **and include the ordered synced SHAs from the main repo as a dedicated `Synced SHAs: sha1,sha2` line**
+- Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`. Comments or feedback may summarize the port, but they are not a substitute for structured commit metadata.
 - `takode board advance <quest-id>` -- this removes the row from the board
 - Run `takode notify review "<quest-id> ready for verification"` to alert the user that the quest is ready for verification
 

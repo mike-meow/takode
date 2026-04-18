@@ -93,4 +93,6 @@ If you are also the agent performing the verification handoff, attach the ordere
 quest complete q-N --items "..." --commits "sha1,sha2"
 ```
 
-If a leader controls the quest transition, report back with the ordered synced SHAs explicitly so the later handoff can attach them. Do **not** rely on `/port-changes` logs being parsed after the fact.
+If a leader controls the quest transition, report back with the ordered synced SHAs explicitly so the later handoff can attach them. Put them on a dedicated `Synced SHAs: sha1,sha2` line so the later `quest complete` call can copy them directly. Do **not** rely on `/port-changes` logs being parsed after the fact.
+
+Comments can still summarize what was ported, but they are not a substitute for structured commit metadata. The later verification handoff should attach those SHAs with `quest complete ... --commits ...`, not leave them only in feedback comments.
