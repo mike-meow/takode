@@ -4238,10 +4238,11 @@ export class WsBridge {
       }
       const steeredPending = this.trySteerPendingCodexInputs(session, "session_meta");
       if (!steeredPending) {
+        const headWasBlockedRecovery = this.getCodexHeadTurn(session)?.status === "blocked_broken_session";
         this.dispatchQueuedCodexTurns(session, "session_meta");
         const currentTurnId = adapter.getCurrentTurnId?.() ?? null;
         const hasPendingLocalInputs = this.getCancelablePendingCodexInputs(session).length > 0;
-        if (!session.isGenerating || (!currentTurnId && hasPendingLocalInputs)) {
+        if (!headWasBlockedRecovery && (!session.isGenerating || (!currentTurnId && hasPendingLocalInputs))) {
           this.queueCodexPendingStartBatch(session, "session_meta");
         }
       }
@@ -4304,6 +4305,8 @@ export class WsBridge {
     adapter.onTurnSteerFailed((pendingInputIds) => {
       if (session.codexAdapter !== adapter) return;
       this.setPendingCodexInputsCancelable(session, pendingInputIds, true);
+      this.rebuildQueuedCodexPendingStartBatch(session);
+      this.dispatchQueuedCodexTurns(session, "codex_turn_steer_failed");
     });
 
     adapter.onInitError((error) => {
@@ -4363,6 +4366,7 @@ export class WsBridge {
         session.pendingCodexInputs.map((input) => input.id),
         true,
       );
+      this.rebuildQueuedCodexPendingStartBatch(session);
       this.setBackendState(session, "disconnected", null);
       if (!intentionalRelaunch) {
         if (
@@ -8281,11 +8285,11 @@ export class WsBridge {
         const remainingCancelableInputs = this.getCancelablePendingCodexInputs(session);
         if (!activeTurnId && remainingCancelableInputs.length === 0) {
           session.pendingCodexTurns = [];
-        } else if (!activeTurnId && remainingCancelableInputs.length > 0) {
+        } else if (remainingCancelableInputs.length > 0) {
           // Cancelling a newer pending item must not silently dispatch an older
           // stranded item. Only auto-advance the queue when the cancelled item
           // was itself the current head pending input.
-          if (cancelledHeadPendingInput) {
+          if (!activeTurnId && cancelledHeadPendingInput) {
             this.queueCodexPendingStartBatch(session, "cancel_pending_codex_input");
           } else {
             this.rebuildQueuedCodexPendingStartBatch(session);
@@ -8429,7 +8433,10 @@ export class WsBridge {
         }
         const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
         if (currentTurnId) {
-          this.trySteerPendingCodexInputs(session, "browser_user_message");
+          const steeredPending = this.trySteerPendingCodexInputs(session, "browser_user_message");
+          if (!steeredPending) {
+            this.rebuildQueuedCodexPendingStartBatch(session);
+          }
         } else {
           if (session.codexAdapter && ingested?.wasGenerating) {
             this.persistSession(session);
@@ -9951,30 +9958,69 @@ export class WsBridge {
       .join("\n\n");
   }
 
-  private rebuildQueuedCodexPendingStartBatch(session: Session): void {
-    const deliverable = this.getCancelablePendingCodexInputs(session);
-    if (deliverable.length === 0) return;
+  private findQueuedCodexPendingStartBatchTurn(session: Session): CodexOutboundTurn | null {
+    return (
+      session.pendingCodexTurns.find(
+        (turn) => turn.status === "queued" && turn.turnId == null && turn.adapterMsg.type === "codex_start_pending",
+      ) ?? null
+    );
+  }
 
-    const existingHead = this.getCodexHeadTurn(session);
-    if (existingHead && existingHead.status === "queued" && existingHead.turnId == null) {
-      existingHead.adapterMsg = {
-        type: "codex_start_pending",
-        pendingInputIds: deliverable.map((input) => input.id),
-        inputs: this.buildCodexBatchMessageInputs(deliverable),
-      };
-      existingHead.userMessageId = deliverable[0].id;
-      existingHead.pendingInputIds = deliverable.map((input) => input.id);
-      existingHead.userContent = this.buildCodexPendingBatchRecoveryText(deliverable);
-      existingHead.updatedAt = Date.now();
-      existingHead.lastError = null;
+  private getQueuedCodexPendingBatchInputs(session: Session): PendingCodexInput[] {
+    const head = this.getCodexHeadTurn(session);
+    const coveredIds = new Set<string>();
+    if (head && !(head.status === "queued" && head.turnId == null && head.adapterMsg.type === "codex_start_pending")) {
+      for (const id of head.pendingInputIds ?? [head.userMessageId]) {
+        coveredIds.add(id);
+      }
+    }
+    return this.getCancelablePendingCodexInputs(session).filter((input) => !coveredIds.has(input.id));
+  }
+
+  private rebuildQueuedCodexPendingStartBatch(session: Session): void {
+    const head = this.getCodexHeadTurn(session);
+    const headBlocksQueuedFollowUps =
+      !!head &&
+      head.status === "blocked_broken_session" &&
+      !(head.status === "queued" && head.turnId == null && head.adapterMsg.type === "codex_start_pending");
+    const deliverable = this.getQueuedCodexPendingBatchInputs(session);
+    const existingQueuedTurn = this.findQueuedCodexPendingStartBatchTurn(session);
+    if (headBlocksQueuedFollowUps) {
+      if (!existingQueuedTurn) return;
+      const idx = session.pendingCodexTurns.indexOf(existingQueuedTurn);
+      if (idx >= 0) {
+        session.pendingCodexTurns.splice(idx, 1);
+      }
+      this.persistSession(session);
+      return;
+    }
+    if (deliverable.length === 0) {
+      if (!existingQueuedTurn) return;
+      const idx = session.pendingCodexTurns.indexOf(existingQueuedTurn);
+      if (idx >= 0) {
+        session.pendingCodexTurns.splice(idx, 1);
+      }
       this.persistSession(session);
       return;
     }
 
-    if (existingHead) return;
+    if (existingQueuedTurn) {
+      existingQueuedTurn.adapterMsg = {
+        type: "codex_start_pending",
+        pendingInputIds: deliverable.map((input) => input.id),
+        inputs: this.buildCodexBatchMessageInputs(deliverable),
+      };
+      existingQueuedTurn.userMessageId = deliverable[0].id;
+      existingQueuedTurn.pendingInputIds = deliverable.map((input) => input.id);
+      existingQueuedTurn.userContent = this.buildCodexPendingBatchRecoveryText(deliverable);
+      existingQueuedTurn.updatedAt = Date.now();
+      existingQueuedTurn.lastError = null;
+      this.persistSession(session);
+      return;
+    }
 
     const now = Date.now();
-    this.enqueueCodexTurn(session, {
+    session.pendingCodexTurns.push({
       adapterMsg: {
         type: "codex_start_pending",
         pendingInputIds: deliverable.map((input) => input.id),

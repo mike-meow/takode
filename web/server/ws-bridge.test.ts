@@ -16156,6 +16156,177 @@ describe("Codex image transport", () => {
     expect(firstDispatch.inputs[0]?.content).toContain("Attachment 1: /tmp/companion-images/img-herd.orig.png");
   });
 
+  it("preserves queued herd delivery behind an active image turn across reconnect", async () => {
+    const sid = "codex-image-herd-reconnect";
+    const herdContent = "1 event from 1 session\n\n#491 | turn_end | ✓ 9s";
+    const expectedPath = "/tmp/companion-images/img-reconnect.orig.png";
+    const adapter1 = makeCodexAdapterMock();
+    adapter1.sendBrowserMessage.mockImplementation((msg: any) => {
+      if (msg.type === "codex_steer_pending") return false;
+      return true;
+    });
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-reconnect", media_type: "image/png" }),
+      getOriginalPath: vi.fn().mockResolvedValue(expectedPath),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+    emitCodexSessionReady(adapter1, { cliSessionId: "thread-image-herd-reconnect" });
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "inspect this screenshot before reconnect",
+        images: [{ media_type: "image/png", data: "reconnect-image-data" }],
+      }),
+    );
+    await flush();
+    adapter1.emitTurnStarted("turn-image-reconnect");
+
+    bridge.injectUserMessage(sid, herdContent, {
+      sessionId: "herd-events",
+      sessionLabel: "Herd Events",
+    });
+    await flush();
+
+    const sessionBeforeReconnect = bridge.getSession(sid)!;
+    expect(sessionBeforeReconnect.pendingCodexInputs).toHaveLength(1);
+    expect(sessionBeforeReconnect.pendingCodexInputs[0]?.content).toBe(herdContent);
+    expect(sessionBeforeReconnect.pendingCodexTurns).toHaveLength(2);
+    expect(getPendingCodexTurn(sessionBeforeReconnect)).toMatchObject({
+      userContent: expect.stringContaining("inspect this screenshot before reconnect"),
+      status: "backend_acknowledged",
+      turnId: "turn-image-reconnect",
+    });
+    expect(sessionBeforeReconnect.pendingCodexTurns[1]).toMatchObject({
+      status: "queued",
+      userContent: herdContent,
+      turnId: null,
+    });
+
+    adapter1.emitDisconnect("turn-image-reconnect");
+
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    const reconnectImageTurnText = getPendingCodexTurn(bridge.getSession(sid)!)?.userContent;
+    adapter2.emitSessionMeta({
+      cliSessionId: "thread-image-herd-reconnect",
+      model: "gpt-5.3-codex",
+      cwd: "/repo",
+      resumeSnapshot: {
+        threadId: "thread-image-herd-reconnect",
+        turnCount: 4,
+        lastTurn: {
+          id: "turn-image-reconnect",
+          status: "completed",
+          error: null,
+          items: [
+            {
+              type: "userMessage",
+              content: [{ type: "text", text: reconnectImageTurnText }],
+            },
+            {
+              type: "agentMessage",
+              text: "I inspected the screenshot and recovered the turn.",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(adapter2.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: [expect.objectContaining({ content: herdContent })],
+      }),
+    );
+    const sessionAfterReconnect = bridge.getSession(sid)!;
+    expect(sessionAfterReconnect.pendingCodexTurns).toHaveLength(1);
+    expect(getPendingCodexTurn(sessionAfterReconnect)).toMatchObject({
+      status: "dispatched",
+      userContent: herdContent,
+    });
+  });
+
+  it("keeps later herd retries queued when cancelling another pending herd input behind an active image turn", async () => {
+    const sid = "codex-image-herd-cancel";
+    const herdOne = "1 event from 1 session\n\n#492 | turn_end | ✓ 6s";
+    const herdTwo = "1 event from 1 session\n\n#493 | turn_end | ✓ 4s";
+    const adapter = makeCodexAdapterMock();
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      if (msg.type === "codex_steer_pending") return false;
+      return true;
+    });
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-cancel", media_type: "image/png" }),
+      getOriginalPath: vi.fn().mockResolvedValue("/tmp/companion-images/img-cancel.orig.png"),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-herd-cancel" });
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "hold this screenshot turn open",
+        images: [{ media_type: "image/png", data: "cancel-image-data" }],
+      }),
+    );
+    await flush();
+    adapter.emitTurnStarted("turn-image-cancel");
+
+    bridge.injectUserMessage(sid, herdOne, {
+      sessionId: "herd-events",
+      sessionLabel: "Herd Events",
+    });
+    await flush();
+    bridge.injectUserMessage(sid, herdTwo, {
+      sessionId: "herd-events",
+      sessionLabel: "Herd Events",
+    });
+    await flush();
+
+    const session = bridge.getSession(sid)!;
+    expect(session.pendingCodexInputs).toHaveLength(2);
+    expect(session.pendingCodexTurns).toHaveLength(2);
+    expect(session.pendingCodexTurns[1]).toMatchObject({
+      status: "queued",
+      userContent: `${herdOne}\n\n${herdTwo}`,
+    });
+
+    const herdTwoId = session.pendingCodexInputs.find((input: any) => input.content === herdTwo)?.id;
+    expect(herdTwoId).toBeTruthy();
+    if (!herdTwoId) throw new Error("missing second herd pending id");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "cancel_pending_codex_input",
+        id: herdTwoId,
+      }),
+    );
+    await flush();
+
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]?.content).toBe(herdOne);
+    expect(session.pendingCodexTurns).toHaveLength(2);
+    expect(session.pendingCodexTurns[1]).toMatchObject({
+      status: "queued",
+      userContent: herdOne,
+      turnId: null,
+    });
+  });
+
   it("restores image attachments when a pending Codex image input is cancelled", async () => {
     const mockImageStore = {
       store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
