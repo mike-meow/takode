@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useContext, useLayoutEffect, memo } from "react";
+import { useState, useMemo, useRef, useCallback, useContext, useLayoutEffect, useEffect, memo } from "react";
 import type { ChatMessage, ContentBlock } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
@@ -8,7 +8,7 @@ import { Lightbox } from "./Lightbox.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { getMessageMarkdown, getMessagePlainText, copyRichText, writeClipboardText } from "../utils/copy-utils.js";
 import { EVENT_HEADER_RE, HERD_CHIP_BASE, HERD_CHIP_INTERACTIVE, parseHerdEvents } from "../utils/herd-event-parser.js";
-import { useStore, getSessionSearchState } from "../store.js";
+import { useStore, getSessionSearchState, countUserPermissions } from "../store.js";
 import { formatVsCodeSelectionAttachmentLabel } from "../utils/vscode-context.js";
 import { navigateToSession } from "../utils/routing.js";
 import { api } from "../api.js";
@@ -17,6 +17,8 @@ import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { generateReplyPreview } from "../utils/reply-preview.js";
 import { parseReplyContext } from "../utils/reply-context.js";
 import { FILE_TOOL_NAMES } from "../hooks/use-feed-model.js";
+import { SessionHoverCard } from "./SessionHoverCard.js";
+import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
@@ -414,15 +416,89 @@ function HerdEventEntry({ header, activity }: { header: string; activity: string
   const [expanded, setExpanded] = useState(false);
   const hasActivity = activity.some((line) => line.trim().length > 0);
   const { sessionLabel, remainder } = useMemo(() => splitHerdEventHeader(header), [header]);
+  const sessions = useStore((s) => s.sessions);
+  const sdkSessions = useStore((s) => s.sdkSessions);
+  const sessionNames = useStore((s) => s.sessionNames);
+  const sessionPreviews = useStore((s) => s.sessionPreviews);
+  const sessionTaskHistory = useStore((s) => s.sessionTaskHistory);
+  const pendingPermissions = useStore((s) => s.pendingPermissions);
+  const cliConnected = useStore((s) => s.cliConnected);
+  const sessionStatus = useStore((s) => s.sessionStatus);
+  const askPermission = useStore((s) => s.askPermission);
+  const cliDisconnectReason = useStore((s) => s.cliDisconnectReason);
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+  const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    },
+    [],
+  );
+
   const sessionNum = useMemo(() => {
     if (!sessionLabel) return null;
     const raw = sessionLabel.slice(1);
     const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) ? parsed : null;
   }, [sessionLabel]);
-  const resolvedSessionId = useStore((s) =>
-    sessionNum == null ? null : s.sdkSessions.find((session) => session.sessionNum === sessionNum)?.sessionId ?? null,
+  const sdkInfo = useMemo(
+    () => (sessionNum == null ? null : sdkSessions.find((session) => session.sessionNum === sessionNum) ?? null),
+    [sdkSessions, sessionNum],
   );
+  const resolvedSessionId = sdkInfo?.sessionId ?? null;
+  const sessionItem = useMemo<SessionItemType | null>(() => {
+    if (!resolvedSessionId) return null;
+
+    const bridgeState = sessions.get(resolvedSessionId);
+    const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
+    const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
+    const gitAhead =
+      bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
+    const gitBehind =
+      bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
+
+    return {
+      id: resolvedSessionId,
+      model: bridgeState?.model || sdkInfo?.model || "",
+      cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
+      gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
+      isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
+      gitAhead,
+      gitBehind,
+      linesAdded: bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0,
+      linesRemoved: bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0,
+      isConnected: cliConnected.get(resolvedSessionId) ?? sdkInfo?.cliConnected ?? false,
+      status: sessionStatus.get(resolvedSessionId) ?? null,
+      sdkState: sdkInfo?.state ?? null,
+      createdAt: sdkInfo?.createdAt ?? 0,
+      archived: sdkInfo?.archived ?? false,
+      archivedAt: sdkInfo?.archivedAt,
+      backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
+      repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
+      permCount: countUserPermissions(pendingPermissions.get(resolvedSessionId)),
+      cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
+      cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
+      isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
+      worktreeExists: sdkInfo?.worktreeExists,
+      worktreeDirty: sdkInfo?.worktreeDirty,
+      askPermission: askPermission.get(resolvedSessionId),
+      idleKilled: cliDisconnectReason.get(resolvedSessionId) === "idle_limit",
+      lastActivityAt: sdkInfo?.lastActivityAt,
+      isOrchestrator: sdkInfo?.isOrchestrator || false,
+      herdedBy: sdkInfo?.herdedBy,
+      sessionNum: sdkInfo?.sessionNum ?? null,
+    };
+  }, [
+    askPermission,
+    cliConnected,
+    cliDisconnectReason,
+    pendingPermissions,
+    resolvedSessionId,
+    sdkInfo,
+    sessionStatus,
+    sessions,
+  ]);
 
   const toggleExpanded = useCallback(() => {
     setExpanded((v) => !v);
@@ -452,6 +528,28 @@ function HerdEventEntry({ header, activity }: { header: string; activity: string
     }
   }, []);
 
+  const handleSessionMouseEnter = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!sessionItem) return;
+      if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+      setHoverRect(e.currentTarget.getBoundingClientRect());
+    },
+    [sessionItem],
+  );
+
+  const handleSessionMouseLeave = useCallback(() => {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    hideHoverTimerRef.current = setTimeout(() => setHoverRect(null), 100);
+  }, []);
+
+  const handleHoverCardEnter = useCallback(() => {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+  }, []);
+
+  const handleHoverCardLeave = useCallback(() => {
+    setHoverRect(null);
+  }, []);
+
   return (
     <div className="pl-9">
       <div
@@ -469,7 +567,9 @@ function HerdEventEntry({ header, activity }: { header: string; activity: string
               type="button"
               onClick={handleSessionClick}
               onKeyDown={handleSessionKeyDown}
-              className="shrink-0 rounded-sm font-mono-code text-blue-400 hover:text-blue-300 hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-cc-card"
+              onMouseEnter={handleSessionMouseEnter}
+              onMouseLeave={handleSessionMouseLeave}
+              className="shrink-0 rounded-sm font-mono-code text-amber-400 hover:text-amber-300 hover:underline decoration-dotted underline-offset-2 cursor-pointer focus-visible:outline-none focus-visible:text-amber-300 focus-visible:underline focus-visible:decoration-dotted focus-visible:ring-2 focus-visible:ring-amber-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-cc-card"
               aria-label={`Open session ${sessionLabel}`}
               title={`Open session ${sessionLabel}`}
             >
@@ -490,6 +590,19 @@ function HerdEventEntry({ header, activity }: { header: string; activity: string
           <path d="M6 3l5 5-5 5V3z" />
         </svg>
       </div>
+      {resolvedSessionId && sessionItem && hoverRect && (
+        <SessionHoverCard
+          session={sessionItem}
+          sessionName={sessionNames.get(resolvedSessionId)}
+          sessionPreview={sessionPreviews.get(resolvedSessionId)}
+          taskHistory={sessionTaskHistory.get(resolvedSessionId)}
+          sessionState={sessions.get(resolvedSessionId)}
+          cliSessionId={sdkInfo?.cliSessionId}
+          anchorRect={hoverRect}
+          onMouseEnter={handleHoverCardEnter}
+          onMouseLeave={handleHoverCardLeave}
+        />
+      )}
       {expanded && hasActivity && (
         <pre
           className="mt-1 ml-1 px-2.5 py-2 rounded-md border border-cc-border/20 bg-cc-card/30

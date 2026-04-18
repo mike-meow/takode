@@ -1249,6 +1249,38 @@ describe("HerdEventMessage", () => {
     }
   });
 
+  it("shows the standard session hover card when hovering the resolved session affordance", async () => {
+    const prevSdkSessions = useStore.getState().sdkSessions;
+    const prevSessionNames = useStore.getState().sessionNames;
+    useStore.setState({
+      sdkSessions: [
+        {
+          sessionId: "worker-8",
+          sessionNum: 8,
+          createdAt: 1,
+          cwd: "/repo",
+          state: "connected",
+        },
+      ],
+      sessionNames: new Map([["worker-8", "Auth Worker"]]),
+    });
+
+    try {
+      const msg = makeMessage({
+        role: "user",
+        content: "1 event from 1 session\n\n#8 | turn_end | ✓ 5.0s",
+        agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+      });
+      render(<HerdEventMessage message={msg} showTimestamp={false} />);
+
+      fireEvent.mouseEnter(screen.getByRole("button", { name: "Open session #8" }));
+
+      expect(await screen.findByText("Auth Worker")).toBeTruthy();
+    } finally {
+      useStore.setState({ sdkSessions: prevSdkSessions, sessionNames: prevSessionNames });
+    }
+  });
+
   it("activates the session-number affordance from the keyboard without expanding the chip", async () => {
     // Regression test for the nested interactive path: Enter and Space on the
     // #N button should route to the session and must not bubble into the
@@ -1319,7 +1351,11 @@ describe("HerdEventMessage", () => {
       render(<HerdEventMessage message={msg} showTimestamp={false} />);
 
       const sessionLink = screen.getByRole("button", { name: "Open session #8" });
+      expect(sessionLink.className).toContain("text-amber-400");
+      expect(sessionLink.className).toContain("hover:text-amber-300");
+      expect(sessionLink.className).toContain("focus-visible:text-amber-300");
       expect(sessionLink.className).toContain("focus-visible:ring-2");
+      expect(sessionLink.className).toContain("focus-visible:ring-amber-400/70");
       expect(sessionLink.className).toContain("focus-visible:ring-offset-1");
       expect(sessionLink.className).toContain("focus-visible:ring-offset-cc-card");
     } finally {

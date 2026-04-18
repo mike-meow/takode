@@ -4775,16 +4775,11 @@ export function Playground() {
             </Card>
             <Card label="Event chip with activity (click #8 to navigate, rest expands)">
               <div className="py-2">
-                <HerdEventMessage
-                  showTimestamp={false}
-                  message={{
-                    id: "herd-chip-demo",
-                    role: "user",
-                    content:
-                      '1 event from 1 session\n\n#8 | turn_end | ✓ 15.3s | tools: 5 | [169]-[172] | "Fixed login validation"\n  [169] user: "Fix the login bug in auth.ts"\n  [172] ✓ "Fixed the login validation logic"\nTool Calls not shown above: 2 Read, 1 Grep, 1 Edit, 1 Bash.',
-                    timestamp: Date.now(),
-                    agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
-                  }}
+                <PlaygroundHerdEventDemo
+                  id="herd-chip-demo"
+                  content={
+                    '1 event from 1 session\n\n#8 | turn_end | ✓ 15.3s | tools: 5 | [169]-[172] | "Fixed login validation"\n  [169] user: "Fix the login bug in auth.ts"\n  [172] ✓ "Fixed the login validation logic"\nTool Calls not shown above: 2 Read, 1 Grep, 1 Edit, 1 Bash.'
+                  }
                 />
               </div>
             </Card>
@@ -5651,6 +5646,50 @@ function CodexPlaygroundDemo() {
       <CodexRateLimitsSection sessionId={CODEX_DEMO_SESSION} />
       <CodexTokenDetailsSection sessionId={CODEX_DEMO_SESSION} />
     </div>
+  );
+}
+
+function PlaygroundHerdEventDemo({ id, content }: { id: string; content: string }) {
+  useEffect(() => {
+    const prevSdkSessions = useStore.getState().sdkSessions;
+    const prevSessionNames = useStore.getState().sessionNames;
+
+    useStore.setState({
+      sdkSessions: [
+        ...prevSdkSessions.filter((session) => session.sessionId !== "worker-alpha"),
+        {
+          sessionId: "worker-alpha",
+          sessionNum: 8,
+          createdAt: 1,
+          cwd: "/Users/stan/Dev/takode",
+          state: "running",
+          model: "gpt-5.4-mini",
+          backendType: "codex",
+          cliConnected: true,
+        },
+      ],
+      sessionNames: new Map(prevSessionNames).set("worker-alpha", "Worker Alpha"),
+    });
+
+    return () => {
+      useStore.setState({
+        sdkSessions: prevSdkSessions,
+        sessionNames: prevSessionNames,
+      });
+    };
+  }, []);
+
+  return (
+    <HerdEventMessage
+      showTimestamp={false}
+      message={{
+        id,
+        role: "user",
+        content,
+        timestamp: Date.now(),
+        agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+      }}
+    />
   );
 }
 
