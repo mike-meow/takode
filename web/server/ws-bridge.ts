@@ -3397,6 +3397,7 @@ export class WsBridge {
       const completed = this.moveBoardRowToCompleted(session, qid);
       if (completed) completedRows.push(completed);
     }
+    this.clearResolvedQuestWaitFor(session, questIds);
     const board = this.commitBoard(session);
     this.notifyBoardCompletion(session, completedRows);
     return board;
@@ -3410,7 +3411,10 @@ export class WsBridge {
       const hadCompleted = session.completedBoard.has(questId);
       if (hadActive) session.board.delete(questId);
       if (hadCompleted) session.completedBoard.delete(questId);
-      if (hadActive || hadCompleted) this.commitBoard(session);
+      if (hadActive || hadCompleted) {
+        this.clearResolvedQuestWaitFor(session, [questId]);
+        this.commitBoard(session);
+      }
     }
   }
 
@@ -3434,6 +3438,7 @@ export class WsBridge {
     if (currentIdx >= QUEST_JOURNEY_STATES.length - 1) {
       // At the final state -- move to completed
       const completed = this.moveBoardRowToCompleted(session, questId);
+      this.clearResolvedQuestWaitFor(session, [questId]);
       const board = this.commitBoard(session);
       this.notifyBoardCompletion(session, completed ? [completed] : []);
       return { board, removed: true, previousState, newState: undefined };
@@ -3481,6 +3486,18 @@ export class WsBridge {
     row.completedAt = Date.now();
     session.completedBoard.set(questId, row);
     return row;
+  }
+
+  /** Drop quest wait-for refs that were just resolved/removed from the board.
+   *  Session refs (#N) and unrelated quest refs remain untouched. */
+  private clearResolvedQuestWaitFor(session: Session, resolvedQuestIds: string[]): void {
+    const resolved = new Set(resolvedQuestIds.map((questId) => questId.toLowerCase()));
+    for (const row of session.board.values()) {
+      if (!row.waitFor || row.waitFor.length === 0) continue;
+      const nextWaitFor = row.waitFor.filter((dep) => !resolved.has(dep.toLowerCase()));
+      row.waitFor = nextWaitFor.length > 0 ? nextWaitFor : undefined;
+      session.board.set(row.questId, row);
+    }
   }
 
   /** Get board, broadcast update to browsers, and persist. */

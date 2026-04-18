@@ -20111,6 +20111,35 @@ describe("work board", () => {
     expect(row.waitFor).toEqual(["q-2"]);
   });
 
+  it("removeBoardRows clears waitFor refs that now point at completed quests while preserving unrelated deps", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", waitFor: ["q-2", "#5"] });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Dependency quest" });
+    bridge.upsertBoardRow("s1", { questId: "q-3", waitFor: ["q-2", "q-99"] });
+    bridge.upsertBoardRow("s1", { questId: "q-4", waitFor: ["q-2"] });
+
+    bridge.removeBoardRows("s1", ["q-2"]);
+
+    const rows = bridge.getBoard("s1");
+    expect(rows.find((row) => row.questId === "q-1")?.waitFor).toEqual(["#5"]);
+    expect(rows.find((row) => row.questId === "q-3")?.waitFor).toEqual(["q-99"]);
+    expect(rows.find((row) => row.questId === "q-4")?.waitFor).toBeUndefined();
+  });
+
+  it("removeBoardRowFromAll clears stale quest waitFor refs across active boards", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", waitFor: ["q-2", "#7"] });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Dependency quest" });
+
+    bridge.removeBoardRowFromAll("q-2");
+
+    expect(bridge.getBoard("s1")[0].waitFor).toEqual(["#7"]);
+  });
+
   // ─── field clearing ──────────────────────────────────────────────────────
 
   it("upsertBoardRow clears worker when given empty string", () => {
@@ -20434,6 +20463,35 @@ describe("work board", () => {
     const lastUpdate = boardUpdates[boardUpdates.length - 1];
     expect(lastUpdate.completedBoard).toHaveLength(1);
     expect(lastUpdate.completedBoard[0].questId).toBe("q-1");
+  });
+
+  it("board_updated broadcast includes active rows with stale quest waitFor refs removed", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", waitFor: ["q-2", "#9"] });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Dependency quest" });
+    browser.send.mockClear();
+
+    bridge.removeBoardRows("s1", ["q-2"]);
+
+    const boardUpdates = browser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((msg: any) => msg?.type === "board_updated");
+    const lastUpdate = boardUpdates[boardUpdates.length - 1];
+    expect(lastUpdate.board).toEqual([
+      expect.objectContaining({
+        questId: "q-1",
+        waitFor: ["#9"],
+      }),
+    ]);
+    expect(lastUpdate.completedBoard).toEqual([expect.objectContaining({ questId: "q-2" })]);
   });
 
   it("completedBoard survives persistence round-trip", async () => {
