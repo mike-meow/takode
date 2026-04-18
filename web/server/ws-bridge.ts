@@ -866,6 +866,8 @@ export class WsBridge {
   /** Per-session serialization chain for externally injected/browser-routed messages.
    *  Preserves send order across async image ingestion without blocking other sessions. */
   private sessionRouteChains = new Map<string, Promise<void>>();
+  /** Per-session serialization chain for Codex quest lifecycle reconciliation. */
+  private codexQuestLifecycleChains = new Map<string, Promise<void>>();
   private store: SessionStore | null = null;
   private recorder: RecorderManager | null = null;
   private timerManager: import("./timer-manager.js").TimerManager | null = null;
@@ -898,6 +900,7 @@ export class WsBridge {
     | ((sessionId: string, history: import("./session-types.js").BrowserIncomingMessage[], cwd: string) => void)
     | null = null;
   private onSessionNamedByQuest: ((sessionId: string, title: string) => void) | null = null;
+  private resolveQuestTitle: ((questId: string) => Promise<string | null>) | null = null;
   private userMsgCounter = 0;
   /** Per-project cache of slash commands, skills, and apps so new sessions get them
    *  before the CLI sends system/init (which only arrives after the first
@@ -1029,6 +1032,11 @@ export class WsBridge {
    *  cancel in-flight namer calls AND update the persistent name store. */
   onSessionNamedByQuestCallback(cb: (sessionId: string, title: string) => void): void {
     this.onSessionNamedByQuest = cb;
+  }
+
+  /** Register a callback to resolve a quest title from authoritative server state. */
+  setQuestTitleResolver(cb: (questId: string) => Promise<string | null>): void {
+    this.resolveQuestTitle = cb;
   }
 
   /** Register a callback for when git info is resolved and branch is known. */
@@ -3938,7 +3946,7 @@ export class WsBridge {
     }
 
     // Forward translated messages to browsers
-    adapter.onBrowserMessage((msg) => {
+    adapter.onBrowserMessage(async (msg) => {
       if (session.codexAdapter !== adapter) return;
       // Track Codex CLI activity for idle management and stuck detection
       this.launcher?.touchActivity(session.id);
@@ -4025,7 +4033,7 @@ export class WsBridge {
         );
         if (toolResults.length > 0) {
           for (const block of toolResults) {
-            this.reconcileCodexQuestToolResult(session, block);
+            await this.reconcileCodexQuestToolResult(session, block);
           }
           const completedToolStartTimes = this.collectCompletedToolStartTimes(session, toolResults);
           const previews = this.buildToolResultPreviews(session, toolResults);
@@ -5564,6 +5572,20 @@ export class WsBridge {
 
   private hasSessionRouteInFlight(sessionId: string): boolean {
     return this.sessionRouteChains.has(sessionId);
+  }
+
+  private enqueueCodexQuestLifecycle(session: Session, task: () => Promise<void>): Promise<void> {
+    const prior = this.codexQuestLifecycleChains.get(session.id);
+    const next = (prior ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => task());
+    const tracked = next.finally(() => {
+      if (this.codexQuestLifecycleChains.get(session.id) === tracked) {
+        this.codexQuestLifecycleChains.delete(session.id);
+      }
+    });
+    this.codexQuestLifecycleChains.set(session.id, tracked);
+    return tracked;
   }
 
   /** Send a user message into a session programmatically (no browser required).
@@ -9646,6 +9668,45 @@ export class WsBridge {
     this.broadcastToBrowsers(session, { type: "session_name_update", name, ...(source && { source }) });
   }
 
+  private isBareQuestIdTitle(title: string | null | undefined, questId?: string): boolean {
+    if (!title) return false;
+    const normalized = title.trim().toLowerCase();
+    if (!/^q-\d+$/.test(normalized)) return false;
+    return questId ? normalized === questId.toLowerCase() : true;
+  }
+
+  private async resolveQuestLifecycleTitle(
+    session: Session,
+    questId: string,
+    parsedTitle?: string,
+  ): Promise<string> {
+    const candidateTitle = parsedTitle?.trim();
+    if (candidateTitle && !this.isBareQuestIdTitle(candidateTitle, questId)) {
+      return candidateTitle;
+    }
+
+    const currentTitle =
+      session.state.claimedQuestId === questId && typeof session.state.claimedQuestTitle === "string"
+        ? session.state.claimedQuestTitle.trim()
+        : "";
+    if (currentTitle && !this.isBareQuestIdTitle(currentTitle, questId)) {
+      return currentTitle;
+    }
+
+    if (this.resolveQuestTitle) {
+      try {
+        const resolvedTitle = (await this.resolveQuestTitle(questId))?.trim();
+        if (resolvedTitle && !this.isBareQuestIdTitle(resolvedTitle, questId)) {
+          return resolvedTitle;
+        }
+      } catch (error) {
+        console.warn(`[ws-bridge] Failed to resolve quest title for ${questId}:`, error);
+      }
+    }
+
+    return currentTitle || candidateTitle || questId;
+  }
+
   /** Track quest lifecycle commands from Codex Bash tool_use blocks. */
   private trackCodexQuestCommands(session: Session, content: ContentBlock[]): void {
     for (const block of content) {
@@ -9662,54 +9723,56 @@ export class WsBridge {
   }
 
   /** Apply quest lifecycle updates from successful Codex Bash tool_result blocks. */
-  private reconcileCodexQuestToolResult(
+  private async reconcileCodexQuestToolResult(
     session: Session,
     toolResult: Extract<ContentBlock, { type: "tool_result" }>,
-  ): void {
-    const pending = session.pendingQuestCommands.get(toolResult.tool_use_id);
-    if (!pending) return;
-    session.pendingQuestCommands.delete(toolResult.tool_use_id);
-    if (toolResult.is_error) return;
+  ): Promise<void> {
+    await this.enqueueCodexQuestLifecycle(session, async () => {
+      const pending = session.pendingQuestCommands.get(toolResult.tool_use_id);
+      if (!pending) return;
+      session.pendingQuestCommands.delete(toolResult.tool_use_id);
+      if (toolResult.is_error) return;
 
-    const raw = typeof toolResult.content === "string" ? toolResult.content : JSON.stringify(toolResult.content);
-    const parsedResult = detectQuestEvent({ kind: "result", text: raw });
-    if (!parsedResult) return;
+      const raw = typeof toolResult.content === "string" ? toolResult.content : JSON.stringify(toolResult.content);
+      const parsedResult = detectQuestEvent({ kind: "result", text: raw });
+      if (!parsedResult) return;
 
-    const questId = parsedResult?.questId || pending.questId;
-    const status = parsedResult?.status || pending.targetStatus;
-    const title = parsedResult?.title || session.state.claimedQuestTitle || questId;
-    if (!questId || !status) return;
+      const questId = parsedResult?.questId || pending.questId;
+      const status = parsedResult?.status || pending.targetStatus;
+      if (!questId || !status) return;
+      const title = await this.resolveQuestLifecycleTitle(session, questId, parsedResult?.title);
 
-    if (status === "done") {
-      if (session.state.claimedQuestId === questId) {
-        this.setSessionClaimedQuest(session.id, null);
+      if (status === "done") {
+        if (session.state.claimedQuestId === questId) {
+          this.setSessionClaimedQuest(session.id, null);
+        }
+        return;
       }
-      return;
-    }
 
-    this.setSessionClaimedQuest(session.id, { id: questId, title, status });
+      this.setSessionClaimedQuest(session.id, { id: questId, title, status });
 
-    if (status !== "in_progress") return;
+      if (status !== "in_progress") return;
 
-    const alreadyTracked = session.taskHistory.some((entry) => entry.source === "quest" && entry.questId === questId);
-    if (alreadyTracked) return;
+      const alreadyTracked = session.taskHistory.some((entry) => entry.source === "quest" && entry.questId === questId);
+      if (alreadyTracked) return;
 
-    let triggerMsgId = `quest-${questId}`;
-    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
-      const msg = session.messageHistory[i];
-      if (msg.type === "user_message" && msg.id) {
-        triggerMsgId = msg.id;
-        break;
+      let triggerMsgId = `quest-${questId}`;
+      for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+        const msg = session.messageHistory[i];
+        if (msg.type === "user_message" && msg.id) {
+          triggerMsgId = msg.id;
+          break;
+        }
       }
-    }
 
-    this.addTaskEntry(session.id, {
-      title,
-      action: "new",
-      timestamp: Date.now(),
-      triggerMessageId: triggerMsgId,
-      source: "quest",
-      questId,
+      this.addTaskEntry(session.id, {
+        title,
+        action: "new",
+        timestamp: Date.now(),
+        triggerMessageId: triggerMsgId,
+        source: "quest",
+        questId,
+      });
     });
   }
 

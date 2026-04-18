@@ -34,7 +34,7 @@ import { generateFirstName, evaluateSessionName } from "./session-namer.js";
 import * as sessionNames from "./session-names.js";
 import * as sessionOrder from "./session-order.js";
 import * as groupOrder from "./group-order.js";
-import { getActiveQuestForSession } from "./quest-store.js";
+import { getActiveQuestForSession, getQuest } from "./quest-store.js";
 import { getServerId, getSettings, getServerName, initWithPort } from "./settings-manager.js";
 import { PushoverNotifier } from "./pushover.js";
 import { PRPoller } from "./pr-poller.js";
@@ -123,6 +123,7 @@ wsBridge.setTimerManager(timerManager);
 wsBridge.setPushoverNotifier(pushoverNotifier);
 wsBridge.setLauncher(launcher);
 wsBridge.setSessionNameGetter((sessionId) => sessionNames.getName(sessionId) || sessionId.slice(0, 8));
+wsBridge.setQuestTitleResolver(async (questId) => (await getQuest(questId))?.title ?? null);
 launcher.setStore(sessionStore);
 launcher.setRecorder(recorder);
 launcher.setEnvResolver(async (slug) => {
