@@ -69,4 +69,32 @@ describe("BoardTable", () => {
     expect(screen.getByRole("columnheader", { name: "Completed Time" })).toBeInTheDocument();
     expect(screen.getAllByText("\u2014").length).toBeGreaterThan(0);
   });
+
+  it("renders quest-journey labels with the approved text-only colors", () => {
+    const board: BoardRowData[] = [
+      { questId: "q-1", status: "QUEUED", updatedAt: 1 },
+      { questId: "q-2", status: "PLANNING", updatedAt: 2 },
+      { questId: "q-3", status: "IMPLEMENTING", updatedAt: 3 },
+      { questId: "q-4", status: "SKEPTIC_REVIEWING", updatedAt: 4 },
+      { questId: "q-5", status: "GROOM_REVIEWING", updatedAt: 5 },
+      { questId: "q-6", status: "PORTING", updatedAt: 6 },
+    ];
+
+    render(<BoardTable board={board} />);
+
+    expect(screen.getByText("Queued")).toHaveClass("text-cc-muted");
+    expect(screen.getByText("Planning")).toHaveClass("text-green-400");
+    expect(screen.getByText("Implementing")).toHaveClass("text-green-400");
+    expect(screen.getByText("Skeptic Review")).toHaveClass("text-violet-500");
+    expect(screen.getByText("Groom Review")).toHaveClass("text-violet-500");
+    expect(screen.getByText("Porting")).toHaveClass("text-blue-400");
+  });
+
+  it("falls back to the raw status for unknown values", () => {
+    const board: BoardRowData[] = [{ questId: "q-1", status: "CUSTOM_STATUS", updatedAt: 1 }];
+
+    render(<BoardTable board={board} />);
+
+    expect(screen.getByText("CUSTOM_STATUS")).toHaveClass("text-cc-muted");
+  });
 });

@@ -11,6 +11,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useStore } from "../store.js";
+import { getQuestJourneyPresentation } from "../../shared/quest-journey.js";
 import { BoardTable } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
@@ -18,15 +19,15 @@ import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 /**
  * Build a compact status summary for the collapsed board bar.
  * Groups rows by status and returns a comma-separated count string,
- * e.g. "2 IMPLEMENTING, 1 SKEPTIC_REVIEWING".
+ * e.g. "2 Implementing, 1 Skeptic Review".
  * Rows with no status are grouped as "unknown".
  */
 export function boardSummary(board: BoardRowData[], completedCount: number): string {
   if (board.length === 0 && completedCount === 0) return "Empty";
   const counts = new Map<string, number>();
   for (const row of board) {
-    const status = row.status ?? "unknown";
-    counts.set(status, (counts.get(status) ?? 0) + 1);
+    const label = row.status ? (getQuestJourneyPresentation(row.status)?.label ?? row.status) : "unknown";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
   }
   const parts = [...counts.entries()].map(([s, n]) => `${n} ${s}`);
   if (completedCount > 0) parts.push(`${completedCount} done`);

@@ -18,7 +18,7 @@ describe("boardSummary", () => {
       { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 },
       { questId: "q-2", status: "IMPLEMENTING", updatedAt: 2 },
     ];
-    expect(boardSummary(board, 0)).toBe("2 IMPLEMENTING");
+    expect(boardSummary(board, 0)).toBe("2 Implementing");
   });
 
   it("summarises multiple statuses", () => {
@@ -30,7 +30,7 @@ describe("boardSummary", () => {
     ];
     const result = boardSummary(board, 0);
     // Order follows Map insertion order (first occurrence of each status)
-    expect(result).toBe("2 IMPLEMENTING, 1 SKEPTIC_REVIEWING, 1 PORTING");
+    expect(result).toBe("2 Implementing, 1 Skeptic Review, 1 Porting");
   });
 
   it("groups rows with missing status as 'unknown'", () => {
@@ -40,12 +40,17 @@ describe("boardSummary", () => {
       { questId: "q-3", status: "QUEUED", updatedAt: 3 },
     ];
     const result = boardSummary(board, 0);
-    expect(result).toBe("2 unknown, 1 QUEUED");
+    expect(result).toBe("2 unknown, 1 Queued");
   });
 
   it("includes completed count in summary", () => {
     const board: BoardRowData[] = [{ questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 }];
-    expect(boardSummary(board, 3)).toBe("1 IMPLEMENTING, 3 done");
+    expect(boardSummary(board, 3)).toBe("1 Implementing, 3 done");
+  });
+
+  it("falls back to the raw status label for unknown states", () => {
+    const board: BoardRowData[] = [{ questId: "q-1", status: "CUSTOM_STATUS", updatedAt: 1 }];
+    expect(boardSummary(board, 0)).toBe("1 CUSTOM_STATUS");
   });
 });
 
@@ -126,7 +131,7 @@ describe("WorkBoardBar", () => {
     });
     const { getByText } = render(<WorkBoardBar sessionId="s1" />);
     // Summary text should show status counts
-    expect(getByText("1 IMPLEMENTING, 1 QUEUED")).toBeInTheDocument();
+    expect(getByText("1 Implementing, 1 Queued")).toBeInTheDocument();
     // Item count should show total
     expect(getByText("2 items")).toBeInTheDocument();
   });

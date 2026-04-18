@@ -8,6 +8,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo, type MouseEvent } from "react";
 import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession } from "../utils/routing.js";
+import { getQuestJourneyPresentation } from "../../shared/quest-journey.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
@@ -243,6 +244,17 @@ function WaitForRef({ depRef }: { depRef: string }) {
   return <QuestLink questId={depRef} />;
 }
 
+function StatusCell({ status }: { status?: string }) {
+  if (!status) return <span className="text-cc-muted">{"\u2014"}</span>;
+
+  const presentation = getQuestJourneyPresentation(status);
+  return (
+    <span className={`block max-w-full truncate ${presentation?.textClassName ?? "text-cc-muted"}`}>
+      {presentation?.label ?? status}
+    </span>
+  );
+}
+
 /** Shared board table -- renders the rows without any card chrome or collapse logic. */
 export const BoardTable = memo(function BoardTable({
   board,
@@ -307,7 +319,9 @@ export const BoardTable = memo(function BoardTable({
                   </>
                 )}
               </td>
-              <td className="px-3 py-1.5 text-cc-muted max-w-[250px] truncate">{row.status || "\u2014"}</td>
+              <td className="px-3 py-1.5 max-w-[250px]">
+                <StatusCell status={row.status} />
+              </td>
             </tr>
           ))}
         </tbody>
