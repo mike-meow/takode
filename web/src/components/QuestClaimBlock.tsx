@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
 import { Lightbox } from "./Lightbox.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import type { QuestImage, QuestVerificationItem } from "../types.js";
 
@@ -99,22 +99,15 @@ export function QuestClaimBlock({
       {quest.images && quest.images.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {quest.images.map((img) => (
-            <div
+            <QuestImageThumbnail
               key={img.id}
-              className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
-            >
-              <img
-                src={api.questImageUrl(img.id)}
-                alt={img.filename}
-                className="w-20 h-20 object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
-                onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
-                loading="lazy"
-                decoding="async"
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                {img.filename}
-              </div>
-            </div>
+              image={img}
+              onOpen={setLightboxSrc}
+              imageClassName="w-20 h-20 object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
+              showFilenameOverlay
+              loading="lazy"
+              decoding="async"
+            />
           ))}
         </div>
       )}

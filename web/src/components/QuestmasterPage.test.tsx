@@ -6,6 +6,7 @@ import type { QuestmasterTask } from "../types.js";
 const mockCreateQuest = vi.fn();
 const mockGetSettings = vi.fn();
 const mockUpdateSettings = vi.fn();
+const mockUploadStandaloneQuestImage = vi.fn();
 let promptSpy: ReturnType<typeof vi.spyOn>;
 
 vi.mock("../api.js", () => ({
@@ -13,6 +14,7 @@ vi.mock("../api.js", () => ({
     createQuest: (...args: unknown[]) => mockCreateQuest(...args),
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
     updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
+    uploadStandaloneQuestImage: (...args: unknown[]) => mockUploadStandaloneQuestImage(...args),
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
   },
 }));
@@ -177,6 +179,12 @@ beforeEach(() => {
   mockUpdateSettings.mockImplementation(async (input: { questmasterViewMode?: "cards" | "compact" }) => ({
     questmasterViewMode: input.questmasterViewMode ?? "cards",
   }));
+  mockUploadStandaloneQuestImage.mockResolvedValue({
+    id: "img-upload",
+    filename: "draft.png",
+    mimeType: "image/png",
+    path: "/tmp/draft.png",
+  });
   window.location.hash = "#/questmaster";
 });
 
@@ -655,6 +663,30 @@ describe("QuestmasterPage verification inbox", () => {
       expect(mockState.questOverlayId).toBe("q-3");
     });
     expect(screen.queryByPlaceholderText("Quest title")).toBeNull();
+  });
+
+  it("opens create-form image previews in a lightbox instead of a new tab", async () => {
+    renderQuestmaster();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    fireEvent.click(screen.getByRole("button", { name: /New Quest/i }));
+
+    const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement | null;
+    expect(fileInput).not.toBeNull();
+
+    const file = new File(["quest-image"], "draft.png", { type: "image/png" });
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(mockUploadStandaloneQuestImage).toHaveBeenCalledWith(file);
+    });
+
+    fireEvent.click(await screen.findByAltText("draft.png"));
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lightbox-image")).toHaveAttribute("src", "/api/quests/_images/img-upload");
+
+    openSpy.mockRestore();
   });
 
   it("toggles quest overlay closed when clicking an already-expanded quest card", () => {

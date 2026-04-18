@@ -22,6 +22,7 @@ import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { Lightbox } from "./Lightbox.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
 import { DiffViewer } from "./DiffViewer.js";
 import { buildQuestAssignDraft } from "./quest-assign.js";
 import { buildQuestReworkDraft } from "./quest-rework.js";
@@ -1016,28 +1017,21 @@ export function QuestDetailPanel() {
                 {quest.images && quest.images.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {quest.images.map((img: QuestImage) => (
-                      <div
+                      <QuestImageThumbnail
                         key={img.id}
-                        className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
-                      >
-                        <img
-                          src={api.questImageUrl(img.id)}
-                          alt={img.filename}
-                          className="w-24 h-24 object-cover cursor-zoom-in"
-                          onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
-                        />
-                        <button
-                          onClick={() => handleRemoveImage(quest.questId, img.id)}
-                          className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
-                        >
+                        image={img}
+                        onOpen={setLightboxSrc}
+                        imageClassName="w-24 h-24 object-cover cursor-zoom-in"
+                        showFilenameOverlay
+                        onRemove={(imageId) => handleRemoveImage(quest.questId, imageId)}
+                        removeButtonClassName="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
+                        removeLabel={`Remove image ${img.filename}`}
+                        removeContent={
                           <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-2.5 h-2.5">
                             <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
                           </svg>
-                        </button>
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                          {img.filename}
-                        </div>
-                      </div>
+                        }
+                      />
                     ))}
                   </div>
                 )}
@@ -1112,20 +1106,13 @@ export function QuestDetailPanel() {
               {quest.images && quest.images.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {quest.images.map((img: QuestImage) => (
-                    <div
+                    <QuestImageThumbnail
                       key={img.id}
-                      className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
-                    >
-                      <img
-                        src={api.questImageUrl(img.id)}
-                        alt={img.filename}
-                        className="w-20 h-20 object-cover cursor-zoom-in"
-                        onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
-                      />
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                        {img.filename}
-                      </div>
-                    </div>
+                      image={img}
+                      onOpen={setLightboxSrc}
+                      imageClassName="w-20 h-20 object-cover cursor-zoom-in"
+                      showFilenameOverlay
+                    />
                   ))}
                 </div>
               )}
@@ -1282,26 +1269,22 @@ export function QuestDetailPanel() {
                                     {editingFeedback.images.length > 0 && (
                                       <div className="flex flex-wrap gap-1">
                                         {editingFeedback.images.map((img) => (
-                                          <div key={img.id} className="relative group">
-                                            <img
-                                              src={api.questImageUrl(img.id)}
-                                              className="w-10 h-10 object-cover rounded cursor-pointer"
-                                              onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
-                                            />
-                                            <button
-                                              onClick={() =>
-                                                setEditingFeedback((prev) =>
-                                                  prev
-                                                    ? { ...prev, images: prev.images.filter((im) => im.id !== img.id) }
-                                                    : prev,
-                                                )
-                                              }
-                                              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                              aria-label={`Remove feedback image ${img.filename}`}
-                                            >
-                                              x
-                                            </button>
-                                          </div>
+                                          <QuestImageThumbnail
+                                            key={img.id}
+                                            image={img}
+                                            onOpen={setLightboxSrc}
+                                            frameClassName="relative group"
+                                            imageClassName="w-10 h-10 object-cover rounded cursor-pointer"
+                                            onRemove={() =>
+                                              setEditingFeedback((prev) =>
+                                                prev
+                                                  ? { ...prev, images: prev.images.filter((im) => im.id !== img.id) }
+                                                  : prev,
+                                              )
+                                            }
+                                            removeButtonClassName="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                            removeLabel={`Remove feedback image ${img.filename}`}
+                                          />
                                         ))}
                                       </div>
                                     )}
@@ -1345,12 +1328,13 @@ export function QuestDetailPanel() {
                                     {entry.images && entry.images.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mt-1">
                                         {entry.images.map((img) => (
-                                          <img
+                                          <QuestImageThumbnail
                                             key={img.id}
-                                            src={api.questImageUrl(img.id)}
-                                            className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                            image={img}
+                                            onOpen={setLightboxSrc}
+                                            frameClassName="relative"
+                                            imageClassName="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
                                             title={img.filename}
-                                            onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
                                           />
                                         ))}
                                       </div>
@@ -1390,19 +1374,16 @@ export function QuestDetailPanel() {
                       {feedbackImages.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {feedbackImages.map((img) => (
-                            <div key={img.id} className="relative group">
-                              <img
-                                src={api.questImageUrl(img.id)}
-                                className="w-10 h-10 object-cover rounded cursor-pointer"
-                                onClick={() => setLightboxSrc(api.questImageUrl(img.id))}
-                              />
-                              <button
-                                onClick={() => setFeedbackImages((prev) => prev.filter((im) => im.id !== img.id))}
-                                className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                              >
-                                x
-                              </button>
-                            </div>
+                            <QuestImageThumbnail
+                              key={img.id}
+                              image={img}
+                              onOpen={setLightboxSrc}
+                              frameClassName="relative group"
+                              imageClassName="w-10 h-10 object-cover rounded cursor-pointer"
+                              onRemove={() => setFeedbackImages((prev) => prev.filter((im) => im.id !== img.id))}
+                              removeButtonClassName="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              removeLabel={`Remove feedback image ${img.filename}`}
+                            />
                           ))}
                         </div>
                       )}

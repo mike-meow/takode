@@ -21,6 +21,8 @@ import {
   isVerificationInboxUnread,
   autoResizeTextarea,
 } from "../utils/quest-editor-helpers.js";
+import { Lightbox } from "./Lightbox.js";
+import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
 import type { QuestmasterViewMode } from "../api.js";
 import type { QuestmasterTask, QuestStatus, QuestFeedbackEntry, QuestImage } from "../types.js";
 
@@ -155,6 +157,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   // Create form images (uploaded but not yet attached to a quest)
   const [createImages, setCreateImages] = useState<QuestImage[]>([]);
   const [uploadingCreateImage, setUploadingCreateImage] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const createFileInputRef = useRef<HTMLInputElement>(null);
 
   // Error state
@@ -1130,28 +1133,22 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
               {createImages.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
                   {createImages.map((img) => (
-                    <div
+                    <QuestImageThumbnail
                       key={img.id}
-                      className="relative group rounded-lg overflow-hidden border border-cc-border bg-cc-input-bg"
-                    >
-                      <img
-                        src={api.questImageUrl(img.id)}
-                        alt={img.filename}
-                        className="w-16 h-16 object-cover cursor-zoom-in"
-                        onClick={() => window.open(api.questImageUrl(img.id), "_blank")}
-                      />
-                      <button
-                        onClick={() => removeCreateImage(img.id)}
-                        className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
-                      >
+                      image={img}
+                      onOpen={setLightboxSrc}
+                      imageClassName="w-16 h-16 object-cover cursor-zoom-in"
+                      showFilenameOverlay
+                      overlayClassName="absolute bottom-0 left-0 right-0 bg-black/50 px-0.5 py-px text-[8px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                      onRemove={removeCreateImage}
+                      removeButtonClassName="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center cursor-pointer"
+                      removeLabel={`Remove image ${img.filename}`}
+                      removeContent={
                         <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-2 h-2">
                           <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
                         </svg>
-                      </button>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-0.5 py-px text-[8px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                        {img.filename}
-                      </div>
-                    </div>
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -1424,6 +1421,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
           )}
         </div>
       </div>
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   );
 }
