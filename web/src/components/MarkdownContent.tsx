@@ -14,15 +14,13 @@ import Markdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { api } from "../api.js";
-import { useStore, countUserPermissions } from "../store.js";
-import { navigateToSession, navigateToSessionMessage, sessionHash } from "../utils/routing.js";
-import { SessionHoverCard } from "./SessionHoverCard.js";
+import { useStore } from "../store.js";
 import { QuestInlineLink } from "./QuestInlineLink.js";
-import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import { CodeCopyButton } from "./CodeCopyButton.js";
 import { highlightCode } from "../utils/syntax-highlighting.js";
 import { openFileWithEditorPreference, showEditorOpenError } from "../utils/vscode-bridge.js";
 import { HighlightedText } from "./HighlightedText.js";
+import { SessionInlineLink } from "./SessionInlineLink.js";
 
 function parseQuestIdFromHref(href?: string): string | null {
   if (!href) return null;
@@ -519,152 +517,16 @@ function SessionMarkdownLink({
   messageIndex?: number;
   children: ReactNode;
 }) {
-  const sessions = useStore((s) => s.sessions);
   const sdkSessions = useStore((s) => s.sdkSessions);
-  const sessionNames = useStore((s) => s.sessionNames);
-  const sessionPreviews = useStore((s) => s.sessionPreviews);
-  const sessionTaskHistory = useStore((s) => s.sessionTaskHistory);
-  const pendingPermissions = useStore((s) => s.pendingPermissions);
-  const cliConnected = useStore((s) => s.cliConnected);
-  const sessionStatus = useStore((s) => s.sessionStatus);
-  const askPermission = useStore((s) => s.askPermission);
-  const cliDisconnectReason = useStore((s) => s.cliDisconnectReason);
-
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-    },
-    [],
-  );
-
-  const sdkInfo = useMemo(
-    () => sdkSessions.find((session) => session.sessionNum === sessionNum),
+  const sessionId = useMemo(
+    () => sdkSessions.find((session) => session.sessionNum === sessionNum)?.sessionId ?? null,
     [sdkSessions, sessionNum],
   );
-  const sessionId = sdkInfo?.sessionId ?? null;
-
-  const sessionItem = useMemo<SessionItemType | null>(() => {
-    if (!sessionId) return null;
-
-    const bridgeState = sessions.get(sessionId);
-    const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
-    const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
-    const gitAhead =
-      bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
-    const gitBehind =
-      bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
-
-    return {
-      id: sessionId,
-      model: bridgeState?.model || sdkInfo?.model || "",
-      cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
-      gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
-      isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
-      gitAhead,
-      gitBehind,
-      linesAdded: bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0,
-      linesRemoved: bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0,
-      isConnected: cliConnected.get(sessionId) ?? sdkInfo?.cliConnected ?? false,
-      status: sessionStatus.get(sessionId) ?? null,
-      sdkState: sdkInfo?.state ?? null,
-      createdAt: sdkInfo?.createdAt ?? 0,
-      archived: sdkInfo?.archived ?? false,
-      archivedAt: sdkInfo?.archivedAt,
-      backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
-      repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
-      permCount: countUserPermissions(pendingPermissions.get(sessionId)),
-      cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
-      cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
-      isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
-      worktreeExists: sdkInfo?.worktreeExists,
-      worktreeDirty: sdkInfo?.worktreeDirty,
-      askPermission: askPermission.get(sessionId),
-      idleKilled: cliDisconnectReason.get(sessionId) === "idle_limit",
-      lastActivityAt: sdkInfo?.lastActivityAt,
-      isOrchestrator: sdkInfo?.isOrchestrator || false,
-      herdedBy: sdkInfo?.herdedBy,
-      sessionNum: sdkInfo?.sessionNum ?? null,
-    };
-  }, [
-    askPermission,
-    cliConnected,
-    cliDisconnectReason,
-    pendingPermissions,
-    sdkInfo,
-    sessionId,
-    sessionStatus,
-    sessions,
-  ]);
-
-  function handleLinkMouseEnter(e: MouseEvent<HTMLAnchorElement>) {
-    if (!sessionItem) return;
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-    setHoverRect(e.currentTarget.getBoundingClientRect());
-  }
-
-  function handleLinkMouseLeave() {
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-    hideHoverTimerRef.current = setTimeout(() => setHoverRect(null), 100);
-  }
-
-  function handleHoverCardEnter() {
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-  }
-
-  function handleHoverCardLeave() {
-    setHoverRect(null);
-  }
-
-  const href = sessionId
-    ? messageIndex != null
-      ? `${sessionHash(sessionId)}?msg=${messageIndex}`
-      : sessionHash(sessionId)
-    : "#";
-
-  const title = sessionId
-    ? messageIndex != null
-      ? `Open session #${sessionNum}, message ${messageIndex}`
-      : `Open session #${sessionNum}`
-    : `Session #${sessionNum} not found`;
 
   return (
-    <>
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault();
-          if (!sessionId) return;
-          if (messageIndex != null) {
-            navigateToSessionMessage(sessionId, messageIndex);
-          } else {
-            navigateToSession(sessionId);
-          }
-        }}
-        onMouseEnter={handleLinkMouseEnter}
-        onMouseLeave={handleLinkMouseLeave}
-        className={sessionId ? "text-cc-primary hover:underline" : "text-cc-muted"}
-        title={title}
-      >
+    <SessionInlineLink sessionId={sessionId} sessionNum={sessionNum} messageIndex={messageIndex}>
         {children}
-      </a>
-      {sessionId && sessionItem && hoverRect && (
-        <SessionHoverCard
-          session={sessionItem}
-          sessionName={sessionNames.get(sessionId)}
-          sessionPreview={sessionPreviews.get(sessionId)}
-          taskHistory={sessionTaskHistory.get(sessionId)}
-          sessionState={sessions.get(sessionId)}
-          cliSessionId={sdkInfo?.cliSessionId}
-          anchorRect={hoverRect}
-          onMouseEnter={handleHoverCardEnter}
-          onMouseLeave={handleHoverCardLeave}
-          messageIndex={messageIndex}
-        />
-      )}
-    </>
+    </SessionInlineLink>
   );
 }
 

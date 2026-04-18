@@ -3784,6 +3784,20 @@ export function Playground() {
           </div>
         </Section>
 
+        <Section
+          title="Hover Cross-links"
+          description="Quest and session markdown hovers now cross-link to each other through compact chips inside the existing hover cards."
+        >
+          <div className="max-w-3xl space-y-4">
+            <Card label="Quest hover shows owner session">
+              <PlaygroundHoverCrossLinkDemo text="Hover [q-418](quest:q-418) to see its owner session chip in the quest hover preview." />
+            </Card>
+            <Card label="Session hover shows active quest">
+              <PlaygroundHoverCrossLinkDemo text="Hover [#566](session:566) to see the worker's active quest chip in the session hover preview." />
+            </Card>
+          </div>
+        </Section>
+
         {/* ─── Composer — Voice Recording ──────────────────────────────── */}
         <Section
           title="Composer — Voice Recording"
@@ -5894,6 +5908,64 @@ function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {
 }
 
 // ─── Timer Modal Demo ────────────────────────────────────────────────────────
+
+function PlaygroundHoverCrossLinkDemo({ text }: { text: string }) {
+  useEffect(() => {
+    useStore.setState((state) => {
+      const nextSdkSessions = [...state.sdkSessions];
+      if (!nextSdkSessions.some((session) => session.sessionId === "playground-hover-worker")) {
+        nextSdkSessions.push({
+          sessionId: "playground-hover-worker",
+          state: "running",
+          cwd: "/Users/stan/Dev/takode",
+          createdAt: Date.now() - 120000,
+          sessionNum: 566,
+          cliConnected: true,
+          backendType: "codex",
+          model: "gpt-5.4-mini",
+          repoRoot: "/Users/stan/Dev/takode",
+        });
+      }
+
+      const nextSessionNames = new Map(state.sessionNames);
+      nextSessionNames.set("playground-hover-worker", "Worker Hover Demo");
+
+      const nextQuests = [...state.quests];
+      if (!nextQuests.some((quest) => quest.questId === "q-418")) {
+        nextQuests.push({
+          id: "q-418-v2",
+          questId: "q-418",
+          version: 2,
+          title: "Prefer plain-text Takode inspection",
+          status: "in_progress",
+          description: "Keep Takode inspection flows plain-text first.",
+          createdAt: Date.now() - 240000,
+          sessionId: "playground-hover-worker",
+          claimedAt: Date.now() - 180000,
+          tags: ["leader", "workflow", "documentation", "takode-cli", "improvement"],
+        });
+      }
+
+      return {
+        ...state,
+        sdkSessions: nextSdkSessions,
+        sessionNames: nextSessionNames,
+        quests: nextQuests,
+      };
+    });
+  }, []);
+
+  return (
+    <div className="space-y-2 p-3">
+      <div className="text-xs text-cc-muted">
+        Uses the [q-419](quest:q-419) corrected screenshot behavior: compact cross-link chips inside the hover preview.
+      </div>
+      <div className="rounded-xl border border-cc-border bg-cc-card/40 px-3 py-2.5">
+        <MarkdownContent text={text} />
+      </div>
+    </div>
+  );
+}
 
 function TimerModalDemo() {
   const [open, setOpen] = useState(false);

@@ -165,6 +165,43 @@ describe("MarkdownContent quest links", () => {
     expect(screen.getByText("bugfix")).toBeTruthy();
   });
 
+  it("shows the owner session cross-link when hovering a claimed quest link", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      quests: [
+        {
+          id: "q-42-v1",
+          questId: "q-42",
+          version: 1,
+          title: "Fix auth race condition",
+          createdAt: 1,
+          status: "in_progress",
+          description: "Ensure claim state updates atomically.",
+          sessionId: "session-abc",
+          claimedAt: 1,
+          tags: ["ui", "bugfix"],
+        },
+      ],
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+    }));
+
+    render(<MarkdownContent text="[q-42](quest:q-42)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "q-42" }));
+
+    expect(await screen.findByTestId("quest-hover-owner-session")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "#123" })).toBeTruthy();
+    expect(screen.getByText("Auth Worker")).toBeTruthy();
+  });
+
   it("keeps external links as normal web links", () => {
     render(<MarkdownContent text="[docs](https://example.com)" />);
 
@@ -236,6 +273,87 @@ describe("MarkdownContent quest links", () => {
     fireEvent.mouseEnter(screen.getByRole("link", { name: "#123" }));
 
     expect(await screen.findByText("Auth Worker")).toBeTruthy();
+  });
+
+  it("shows the active quest cross-link when hovering a session link", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+      quests: [
+        {
+          id: "q-42-v1",
+          questId: "q-42",
+          version: 1,
+          title: "Fix auth race condition",
+          createdAt: 1,
+          status: "in_progress",
+          description: "Ensure claim state updates atomically.",
+          sessionId: "session-abc",
+          claimedAt: 1,
+          tags: ["ui", "bugfix"],
+        },
+      ],
+    }));
+
+    render(<MarkdownContent text="[#123](session:123)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123" }));
+
+    expect(await screen.findByTestId("session-hover-active-quest")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "q-42" })).toBeTruthy();
+    expect(screen.getByText("Fix auth race condition")).toBeTruthy();
+  });
+
+  it("omits quest and session cross-link rows when no owner or active quest exists", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      quests: [
+        {
+          id: "q-42-v1",
+          questId: "q-42",
+          version: 1,
+          title: "Fix auth race condition",
+          createdAt: 1,
+          status: "refined",
+          description: "Ensure claim state updates atomically.",
+          tags: ["ui", "bugfix"],
+        },
+      ],
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+    }));
+
+    render(
+      <div>
+        <MarkdownContent text="[q-42](quest:q-42)" />
+        <MarkdownContent text="[#123](session:123)" />
+      </div>,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "q-42" }));
+    await screen.findByText("Fix auth race condition");
+    expect(screen.queryByTestId("quest-hover-owner-session")).toBeNull();
+    fireEvent.mouseLeave(screen.getByRole("link", { name: "q-42" }));
+
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123" }));
+    await screen.findByText("Auth Worker");
+    expect(screen.queryByTestId("session-hover-active-quest")).toBeNull();
   });
 
   it("opens file: links in VS Code using configured editor preference", async () => {

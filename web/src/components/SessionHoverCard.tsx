@@ -7,6 +7,7 @@ import { api } from "../api.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionPathSummary } from "./SessionPathSummary.js";
 import { SessionPayloadStats } from "./SessionPayloadStats.js";
+import { QuestInlineLink } from "./QuestInlineLink.js";
 
 interface SessionHoverCardProps {
   session: SessionItemType;
@@ -44,6 +45,7 @@ export function SessionHoverCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
   const zoomLevel = useStore((st) => st.zoomLevel ?? 1);
+  const quests = useStore((st) => st.quests);
 
   // Fetch message snippet for message-level links
   const [messageSnippet, setMessageSnippet] = useState<{ role: string; snippet: string } | null>(null);
@@ -119,6 +121,10 @@ export function SessionHoverCard({
     ...task,
     title: task.title.trim(),
   }));
+  const activeQuest = useMemo(
+    () => quests.find((quest) => quest.status === "in_progress" && "sessionId" in quest && quest.sessionId === s.id) ?? null,
+    [quests, s.id],
+  );
 
   // Stats from sessionState
   const turns = sessionState?.num_turns ?? sdkSessionMeta?.numTurns ?? 0;
@@ -267,6 +273,21 @@ export function SessionHoverCard({
                 sessionId={leaderSession}
                 className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 cursor-pointer transition-colors"
               />
+            </div>
+          </div>
+        )}
+        {activeQuest && (
+          <div data-testid="session-hover-active-quest" className="px-4 py-2 border-t border-cc-border/50">
+            <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Active quest</span>
+            <div className="mt-1 flex items-center gap-2 min-w-0">
+              <QuestInlineLink
+                questId={activeQuest.questId}
+                className="inline-flex shrink-0 items-center rounded-full border border-cc-primary/15 bg-cc-primary/10 px-2 py-0.5 text-[11px] font-medium text-cc-primary transition-colors hover:bg-cc-primary/20"
+                stopPropagation
+              >
+                {activeQuest.questId}
+              </QuestInlineLink>
+              <span className="min-w-0 truncate text-[11px] text-cc-muted">{activeQuest.title}</span>
             </div>
           </div>
         )}
