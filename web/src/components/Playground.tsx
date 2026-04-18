@@ -4788,7 +4788,7 @@ export function Playground() {
                   message={{
                     id: "herd-no-activity-demo",
                     role: "user",
-                    content: "1 event from 1 session\n\n#35 | session_archived | 2s ago",
+                    content: "1 event from 1 session\n\n#35 | session_archived (user-initiated) | 2s ago",
                     timestamp: Date.now(),
                     agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
                   }}

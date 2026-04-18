@@ -14,7 +14,7 @@ import * as groupOrderStore from "../group-order.js";
 import * as treeGroupStore from "../tree-group-store.js";
 import { recreateWorktreeIfMissing } from "../migration.js";
 import { containerManager, ContainerManager, type ContainerConfig, type ContainerInfo } from "../container-manager.js";
-import type { CreationStepId } from "../session-types.js";
+import type { CreationStepId, TakodeSessionArchivedEventData } from "../session-types.js";
 import { hasContainerClaudeAuth } from "../claude-container-auth.js";
 import { hasContainerCodexAuth } from "../codex-container-auth.js";
 import { getSettings, getClaudeUserDefaultModel } from "../settings-manager.js";
@@ -30,6 +30,10 @@ import type { RouteContext, OptionalAuthResult } from "./context.js";
 /** Extract the caller's session ID from an optional auth result, if available. */
 function getActorSessionId(auth: OptionalAuthResult): string | undefined {
   return auth && "callerId" in auth ? auth.callerId : undefined;
+}
+
+function getArchiveSource(actorSessionId?: string): TakodeSessionArchivedEventData["archive_source"] {
+  return actorSessionId ? "leader" : "user";
 }
 
 export function createSessionsRoutes(ctx: RouteContext) {
@@ -1768,7 +1772,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const sessionInfo = launcher.getSession(id);
     if (sessionInfo?.herdedBy && !sessionInfo.archived) {
       const actorId = getActorSessionId(authenticateCompanionCallerOptional(c));
-      wsBridge.emitTakodeEvent(id, "session_archived", {}, actorId);
+      wsBridge.emitTakodeEvent(id, "session_archived", { archive_source: getArchiveSource(actorId) }, actorId);
     }
 
     await launcher.kill(id);
@@ -1802,7 +1806,12 @@ export function createSessionsRoutes(ctx: RouteContext) {
     // Emit herd event before killing -- the leader needs to know a worker was archived.
     const archivedSessionInfo = launcher.getSession(id);
     if (archivedSessionInfo?.herdedBy) {
-      wsBridge.emitTakodeEvent(id, "session_archived", {}, actorSessionId);
+      wsBridge.emitTakodeEvent(
+        id,
+        "session_archived",
+        { archive_source: getArchiveSource(actorSessionId) },
+        actorSessionId,
+      );
     }
 
     await launcher.kill(id);
@@ -1843,7 +1852,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
           await sessionStore.setArchived(s.sessionId, true);
           // Emit after kill so the leader doesn't query a still-alive session
           if (s.herdedBy) {
-            wsBridge.emitTakodeEvent(s.sessionId, "session_archived", {});
+            wsBridge.emitTakodeEvent(s.sessionId, "session_archived", { archive_source: "cascade" });
           }
         }
       }

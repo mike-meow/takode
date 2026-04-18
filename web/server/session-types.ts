@@ -969,6 +969,11 @@ export interface TakodeSessionErrorEventData {
   error: string;
 }
 
+export interface TakodeSessionArchivedEventData {
+  /** Who initiated the archive flow: direct user action, a leader action, or automatic cascade. */
+  archive_source?: "user" | "leader" | "cascade" | "system" | "unknown";
+}
+
 export type TakodeSessionLifecycleEventData = Record<string, never>;
 
 export interface TakodeUserMessageEventData {
@@ -993,7 +998,7 @@ export interface TakodeEventDataByType {
   herd_reassigned: TakodeHerdReassignedEventData;
   session_disconnected: TakodeSessionDisconnectedEventData;
   session_error: TakodeSessionErrorEventData;
-  session_archived: TakodeSessionLifecycleEventData;
+  session_archived: TakodeSessionArchivedEventData;
   session_deleted: TakodeSessionLifecycleEventData;
   user_message: TakodeUserMessageEventData;
   notification_needs_input: TakodeNotificationNeedsInputEventData;

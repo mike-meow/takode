@@ -1752,7 +1752,12 @@ describe("DELETE /api/sessions/:id", () => {
     const res = await app.request("/api/sessions/s1", { method: "DELETE" });
 
     expect(res.status).toBe(200);
-    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("s1", "session_archived", {}, undefined);
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "session_archived",
+      { archive_source: "user" },
+      undefined,
+    );
   });
 
   it("skips herd event when deleting an already-archived session", async () => {
@@ -1774,6 +1779,14 @@ describe("DELETE /api/sessions/:id", () => {
 });
 
 describe("POST /api/sessions/:id/archive", () => {
+  function companionAuthHeaders(sessionId: string, token = "tok"): Record<string, string> {
+    return {
+      "x-companion-session-id": sessionId,
+      "x-companion-auth-token": token,
+      "Content-Type": "application/json",
+    };
+  }
+
   it("kills and archives the session", async () => {
     const res = await app.request("/api/sessions/s1/archive", {
       method: "POST",
@@ -1826,7 +1839,9 @@ describe("POST /api/sessions/:id/archive", () => {
     expect(launcher.setArchived).toHaveBeenCalledWith("reviewer-1", true);
     expect(sessionStore.setArchived).toHaveBeenCalledWith("reviewer-1", true);
     // Reviewer should emit session_archived (not session_deleted) since it's herded
-    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("reviewer-1", "session_archived", {});
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("reviewer-1", "session_archived", {
+      archive_source: "cascade",
+    });
     // Kill must happen BEFORE emit so the leader doesn't query a still-alive session
     const killOrder = launcher.kill.mock.invocationCallOrder.find(
       (_: number, i: number) => launcher.kill.mock.calls[i][0] === "reviewer-1",
@@ -1864,6 +1879,56 @@ describe("POST /api/sessions/:id/archive", () => {
     // Only the parent should be killed, not the already-archived reviewer
     expect(launcher.kill).toHaveBeenCalledTimes(1);
     expect(launcher.kill).toHaveBeenCalledWith("s1");
+  });
+
+  it("marks direct archive herd events as user-initiated when no actor session exists", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "connected",
+      cwd: "/test",
+      createdAt: Date.now(),
+      herdedBy: "leader-1",
+      archived: false,
+    });
+
+    const res = await app.request("/api/sessions/s1/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "session_archived",
+      { archive_source: "user" },
+      undefined,
+    );
+  });
+
+  it("marks authenticated archive herd events as leader-initiated and preserves actorSessionId", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "s1",
+      state: "connected",
+      cwd: "/test",
+      createdAt: Date.now(),
+      herdedBy: "leader-1",
+      archived: false,
+    });
+
+    const res = await app.request("/api/sessions/s1/archive", {
+      method: "POST",
+      headers: companionAuthHeaders("leader-1"),
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "session_archived",
+      { archive_source: "leader" },
+      "leader-1",
+    );
   });
 });
 

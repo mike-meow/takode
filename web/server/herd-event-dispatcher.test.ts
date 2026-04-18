@@ -873,6 +873,29 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("Test suite failed");
   });
 
+  it("formats user-initiated session_archived with explicit annotation", () => {
+    const events = [
+      makeEvent({
+        event: "session_archived",
+        data: { archive_source: "user" },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("session_archived (user-initiated)");
+  });
+
+  it("does not annotate non-user session_archived events", () => {
+    const events = [
+      makeEvent({
+        event: "session_archived",
+        data: { archive_source: "cascade" },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("session_archived");
+    expect(result).not.toContain("(user-initiated)");
+  });
+
   it("counts sessions correctly in header", () => {
     const events = [
       makeEvent({ sessionId: "w1", sessionNum: 5, sessionName: "auth" }),

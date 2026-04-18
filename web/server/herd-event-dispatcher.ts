@@ -636,6 +636,10 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       const reason = evt.data.reason;
       return `${label} | session_disconnected | ${reason}${ageSuffix}`;
     }
+    case "session_archived": {
+      const userInitiated = evt.data.archive_source === "user" ? " (user-initiated)" : "";
+      return `${label} | session_archived${userInitiated}${ageSuffix}`;
+    }
     case "user_message": {
       const content = truncate(evt.data.content, 80);
       // Show who sent the message: [User], [Agent #N name], or [Herd]
