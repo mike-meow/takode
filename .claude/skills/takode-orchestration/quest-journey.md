@@ -24,8 +24,8 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 - **Authorize one stage at a time.** Every leader-to-worker message should say what the worker is allowed to do now and what must wait.
 - **Initial dispatch = planning only.** The worker returns a plan and stops. Do not imply implementation is approved.
 - **Quest ownership stays with the worker.** The worker doing the job claims and completes the quest. The leader coordinates the journey but does not claim the quest on the worker's behalf.
-- **Plan approval = implement, update the quest summary comment, and stop.** Tell the worker to implement, add or refresh the final quest summary comment, report back, and wait. Do not let the worker infer review, porting, or quest transitions.
-- **Review/rework = do the named work, update the summary comment, and stop.** If you send reviewer findings, also tell the worker to refresh the quest summary comment before reporting back and waiting. Do not imply porting is authorized.
+- **Plan approval = implement, keep one substantive quest summary comment current, and stop.** Tell the worker to implement, add or refresh the final quest summary comment, report back, and wait. Do not let the worker infer review, porting, or quest transitions.
+- **Review/rework = do the named work, refresh that same summary comment, and stop.** If you send reviewer findings, also tell the worker to refresh the quest summary comment before reporting back and waiting. Do not imply porting is authorized.
 - **Porting requires an explicit instruction.** Only tell the worker to run `/port-changes` after the reviewer ACCEPTs and you are ready for porting.
 - **Investigation/design/no-code quests still need explicit boundaries.** Tell the worker what artifact to produce, have them stop afterward, and choose the next step yourself. Do not assume the worker should self-complete, self-transition, or self-port.
 
@@ -123,7 +123,7 @@ The `--reviewer` flag automatically:
 - Tell the worker to run `/port-changes` only when you are explicitly ready for porting. Do not assume they will self-port once review is done.
 - For investigation, design, or other no-code quests, give an explicit next-step instruction after the worker reports back. Do not ask them to self-complete or move the quest forward on their own.
 - Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote) **and include the ordered synced SHAs from the main repo as a dedicated `Synced SHAs: sha1,sha2` line**
-- Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`. Comments or feedback may summarize the port, but they are not a substitute for structured commit metadata.
+- Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`. Structured commit metadata should carry routine port information; add a second prose port comment only when something exceptional about the port is materially worth noting.
 - `takode board advance <quest-id>` -- this removes the row from the board
 - Run `takode notify review "<quest-id> ready for verification"` to alert the user that the quest is ready for verification
 

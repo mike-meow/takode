@@ -665,7 +665,7 @@ async function cmdComplete(): Promise<void> {
       } else {
         console.log(`Completed ${quest.questId} "${quest.title}" with ${items.length} verification items`);
         console.log(
-          `Reminder: add or update the final quest summary comment with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready.`,
+          `Reminder: keep one substantive quest summary comment up to date with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready. Use \`--commit/--commits\` structured metadata for routine port info; only add a second prose port comment when the port was exceptional.`,
         );
       }
       return;
@@ -688,7 +688,7 @@ async function cmdComplete(): Promise<void> {
     } else {
       console.log(`Completed ${quest.questId} "${quest.title}" with ${items.length} verification items`);
       console.log(
-        `Reminder: add or update the final quest summary comment with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready.`,
+        `Reminder: keep one substantive quest summary comment up to date with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready. Use \`--commit/--commits\` structured metadata for routine port info; only add a second prose port comment when the port was exceptional.`,
       );
     }
   } catch (e) {

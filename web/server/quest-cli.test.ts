@@ -512,8 +512,9 @@ describe("quest CLI completion reminder", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Completed q-1 "Quest" with 1 verification items');
-      expect(result.stdout).toContain("Reminder: add or update the final quest summary comment");
+      expect(result.stdout).toContain("Reminder: keep one substantive quest summary comment up to date");
       expect(result.stdout).toContain('quest feedback q-1 --text "Summary: <what was done>"');
+      expect(result.stdout).toContain("Use `--commit/--commits` structured metadata for routine port info");
     } finally {
       server.close();
       rmSync(tmp, { recursive: true, force: true });
@@ -625,8 +626,9 @@ describe("quest CLI completion reminder", () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Completed q-1 "Quest" with 1 verification items');
-      expect(result.stdout).toContain("Reminder: add or update the final quest summary comment");
+      expect(result.stdout).toContain("Reminder: keep one substantive quest summary comment up to date");
       expect(result.stdout).toContain('quest feedback q-1 --text "Summary: <what was done>"');
+      expect(result.stdout).toContain("Use `--commit/--commits` structured metadata for routine port info");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

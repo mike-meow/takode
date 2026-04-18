@@ -86,6 +86,8 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("Synced SHAs: sha1,sha2");
     expect(skill).toContain("Do not rely on log parsing or memory");
     expect(skill).toContain("Do not leave commit info only in comments");
+    expect(skill).toContain("one substantive quest-level prose summary");
+    expect(skill).toContain("Only add a second port-specific comment");
   });
 
   it("instructs agents to use quest directly before PATH fallbacks", async () => {

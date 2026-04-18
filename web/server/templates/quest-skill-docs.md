@@ -286,7 +286,9 @@ idea → refined → in_progress → needs_verification → done
 2. **Add a summary comment.** Before submitting, add a final feedback entry summarizing the work:
    - `quest feedback q-N --text "Summary: <what was done>"`
    - Briefly describe the changes made and why
-   - Include commit hashes or PR links if changes were ported (e.g., "Ported as commit abc1234")
+   - This should be the one substantive quest-level prose summary by default
+   - If the work was ported normally, rely on structured metadata (`commitShas` via `quest complete ... --commit/--commits ...`) for routine port information instead of adding a second long prose port comment
+   - Only add a second port-specific comment when the porting itself was exceptional and materially worth noting
    - The goal: someone reading only the quest (not the session conversation) should understand what happened
    - Treat this as a required worker deliverable before you report back that the quest is ready
 
