@@ -3804,6 +3804,78 @@ describe("CodexAdapter", () => {
     expect(progressMsg?.elapsed_time_seconds).toBeGreaterThanOrEqual(0);
   });
 
+  it("surfaces terminal polling interactions as visible write_stdin tool calls", async () => {
+    // q-426: Codex emits terminalInteraction notifications when the runtime
+    // polls or writes to a live unified-exec session. Those actions need to
+    // become transcript-visible tool calls instead of silently disappearing.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await initializeAdapter(stdout);
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: { type: "commandExecution", id: "cmd_live", command: "sleep 20", status: "inProgress" },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          itemId: "cmd_live",
+          processId: "59356",
+          stdin: "",
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const writeStdinUse = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } })
+        .message.content;
+      return content.some(
+        (b) =>
+          b.type === "tool_use" &&
+          b.name === "write_stdin" &&
+          b.input?.session_id === "59356" &&
+          b.input?.chars === "",
+      );
+    }) as
+      | {
+          message: { content: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }> };
+        }
+      | undefined;
+
+    expect(writeStdinUse).toBeDefined();
+
+    const syntheticToolUseId = writeStdinUse!.message.content.find(
+      (b) => b.type === "tool_use" && b.name === "write_stdin",
+    )?.id;
+    expect(syntheticToolUseId).toBeTruthy();
+
+    const writeStdinResult = messages.find((m) => {
+      if (m.type !== "assistant") return false;
+      const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string; content?: string }> } })
+        .message.content;
+      return content.some(
+        (b) =>
+          b.type === "tool_result" &&
+          b.tool_use_id === syntheticToolUseId &&
+          typeof b.content === "string" &&
+          b.content.includes('write_stdin(chars="")'),
+      );
+    });
+
+    expect(writeStdinResult).toBeDefined();
+  });
+
   it("maps turn/plan/updated into TodoWrite tool_use for checklist rendering", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });

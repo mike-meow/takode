@@ -853,6 +853,7 @@ export class CodexAdapter
   private commandStartTimes = new Map<string, number>();
   private commandOutputByItemId = new Map<string, string>();
   private planToolUseSeq = 0;
+  private terminalInteractionToolUseSeq = 0;
   private planSignatureByKey = new Map<string, string>();
 
   // Accumulate reasoning text by item ID so we can emit final thinking blocks.
@@ -1918,6 +1919,9 @@ export class CodexAdapter
           // can render live elapsed time and incremental terminal output.
           this.emitCommandProgress(params);
           break;
+        case "item/commandExecution/terminalInteraction":
+          this.handleTerminalInteraction(params);
+          break;
         case "item/fileChange/outputDelta":
           // Streaming file change output. Same as above.
           break;
@@ -2610,6 +2614,32 @@ export class CodexAdapter
   private handleItemUpdated(params: Record<string, unknown>): void {
     // item/updated is a general update — currently we handle streaming via the specific delta events
     // Could handle status updates for command_execution / file_change items here
+  }
+
+  private handleTerminalInteraction(params: Record<string, unknown>): void {
+    const itemId = toSafeText(params.itemId).trim();
+    const processId = toSafeText(params.processId).trim();
+    if (!itemId || !processId) return;
+
+    const stdin = typeof params.stdin === "string" ? params.stdin : "";
+    const parentToolUseId = this.resolveParentToolUseId(params, itemId);
+    const toolUseId = `${itemId}:terminal:${++this.terminalInteractionToolUseSeq}`;
+
+    this.emitToolUseTracked(
+      toolUseId,
+      "write_stdin",
+      {
+        session_id: processId,
+        chars: stdin,
+      },
+      { parentToolUseId },
+    );
+
+    const summary =
+      stdin.length === 0
+        ? `Polled session ${processId} via write_stdin(chars="").`
+        : `Sent stdin to session ${processId} via write_stdin.`;
+    this.emitToolResult(toolUseId, summary, false, parentToolUseId);
   }
 
   private handleRawResponseItemCompleted(params: Record<string, unknown>): void {
