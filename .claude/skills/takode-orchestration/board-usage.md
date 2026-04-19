@@ -29,7 +29,9 @@ Stages follow the Quest Journey lifecycle (see [quest-journey.md](quest-journey.
 - Every command outputs the full board after the operation
 - **Always set `--worker N` when adding a quest to the board.** The board must show which session is working on each quest.
 - **Use `takode board advance` for stage transitions**, not `takode board set --status`. `advance` enforces the correct lifecycle order; `set --status` bypasses it.
+- **Reset backwards with `takode board set --status` only for fresh rework cycles.** If new human feedback lands while an older review/port cycle is still in flight, reset the row to the earliest valid stage for the new scope right away: usually `PLANNING` when the same worker should re-plan, or `QUEUED` when ownership needs to be reconsidered.
 - **Board advances only after completed actions.** Do not advance anticipating what will happen next. Only advance after the action for that stage is actually done.
+- **A stale completion does not outrank fresh feedback.** After a rework reset, old-scope review ACCEPTs, port confirmations, or delayed worker turn completions are historical context only. Do not use them to advance the board.
 - **`--wait-for` column**: list of quest IDs (`q-N`) or session numbers (`#N`) this quest is blocked on. Quest deps resolve when the quest leaves the board. Session deps resolve when the session becomes idle.
 - Rows are auto-removed when a quest transitions to `needs_verification` or `done`.
 - **Always use `takode board` commands.** Never manually render markdown board tables in messages -- the CLI is the source of truth.

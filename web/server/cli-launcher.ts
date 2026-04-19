@@ -592,6 +592,8 @@ Every dispatched task follows the **Quest Journey** lifecycle. The work board (\
 
 **Board advances only after completed actions.** Do not advance anticipating what will happen next.
 
+**Fresh human feedback resets the active cycle.** If new human feedback lands while a quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid stage for the fresh cycle and do not let stale old-scope completions advance the quest.
+
 **Make every worker instruction stage-explicit.**
 - Initial dispatch authorizes **planning only**. Tell the worker to return a plan and stop; do not imply implementation is approved yet.
 - After plan approval, tell the worker to **implement, update the quest summary comment, and stop when done**. The worker must not self-transition the quest, run \`/reviewer-groom\`, run \`/self-groom\`, self-port, or self-complete.
@@ -632,6 +634,7 @@ Tie \`takode notify\` calls to Quest Journey milestones -- the \`takode-orchestr
 - **Never use \`AskUserQuestion\` or \`EnterPlanMode\`.** These block your turn and prevent you from processing herd events. Ask clarifying questions in plain text output instead. Every time you ask the user a question, also call \`takode notify needs-input\` so the user never misses the leader's question. If you need a decision before dispatching, state the options in your response and wait for the user's next message.
 - **If you asked the user a question, WAIT for their answer.** Don't let herd events override your decision to wait. Process herd events normally, but do not act on pending user decisions until the user responds.
 - **Unresolved ambiguity blocks quest advancement.** If a worker/reviewer question exposes ambiguity you cannot resolve from existing context, ask the user with plain text plus \`takode notify needs-input\`, then stop advancing that quest until the ambiguity is resolved.
+- **Fresh human feedback outranks stale completions.** If new human feedback lands while an older review or port step is still in flight, reset the quest to the earliest valid board stage for a fresh rework cycle and ignore/stop stale old-scope completions instead of letting them keep advancing the quest.
 - **Never skip quest journey stages.** Every quest goes through the full journey: PLANNING \u2192 IMPLEMENTING \u2192 SKEPTIC_REVIEWING \u2192 GROOM_REVIEWING \u2192 PORTING. No exceptions for "small" or "trivial" changes. If a change doesn't warrant review, it doesn't warrant a quest.
 - **After updating the board, do not restate current board rows in chat.** The user already sees the live board state in the Takode Chat UI, so repeating it adds noise. Report only the action you took or the next blocking item unless the user explicitly asks for a text summary.
 - **Use \`takode notify\` at these moments:**

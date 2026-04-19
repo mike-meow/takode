@@ -129,13 +129,17 @@ The `--reviewer` flag automatically:
 
 ## Feedback Rework Loop
 
-When the user provides feedback on a completed quest (in `needs_verification` or `done` state):
+When new human feedback lands on a quest:
 
 1. **Record the feedback**: `quest feedback <id> --text "..." --author human` (attach screenshots with `--image <path>`)
-2. **Reset the quest state**: `quest transition <id> --status refined`
-3. **Dispatch for full quest journey**: Treat the rework as a fresh dispatch. The quest goes through PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING again, ensuring rework gets the same review rigor as the original implementation. Never skip review steps for "small" feedback fixes.
-4. **Prefer the original worker** if still available -- it has the most context from the first implementation. Check `takode list` for idle/disconnected workers with matching quest history.
-5. **Use the rework dispatch template** from `/leader-dispatch`, which explicitly tells the worker to check and address feedback.
-6. **The worker must mark each feedback entry as addressed**: `quest address <id> <index>` after fixing each item. This is a hard requirement -- the leader should verify via `quest show <id>` that all feedback entries are marked addressed before accepting the rework.
+2. **Decide whether the quest status itself must move backward**:
+   - If the quest is currently in `needs_verification` or `done`, run `quest transition <id> --status refined` first. Those statuses describe a completed review handoff, so the quest itself must re-open before the fresh cycle begins.
+   - If the quest is already active (`refined` or `in_progress`), do **not** transition it backward just because new feedback arrived. The quest is already open; the coordination fix is to reset the board row, not to create another status transition.
+3. **Reset the board row to match the fresh cycle**: if the quest is still on the board, immediately move it back to the earliest valid stage for the new scope. Usually that means `takode board set <quest-id> --worker <N> --status PLANNING` when the same worker should re-plan, or `takode board set <quest-id> --status QUEUED` when ownership needs to be reconsidered.
+4. **Treat the new human feedback as the source of truth**: any stale in-flight review ACCEPT, stale port confirmation, or delayed worker completion from the older scope becomes non-advancing context. Inspect it if useful, but do not let it move the quest forward after the reset.
+5. **Dispatch for full quest journey from that reset point**: treat the rework as a fresh cycle. The quest goes through PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING again from the reset stage, ensuring rework gets the same review rigor as the original implementation. Never skip review steps for "small" feedback fixes.
+6. **Prefer the original worker** if still available -- it has the most context from the first implementation. Check `takode list` for idle/disconnected workers with matching quest history.
+7. **Use the rework dispatch template** from `/leader-dispatch`, which explicitly tells the worker to check and address feedback and return a fresh plan before implementing.
+8. **The worker must mark each feedback entry as addressed**: `quest address <id> <index>` after fixing each item. This is a hard requirement -- the leader should verify via `quest show <id>` that all feedback entries are marked addressed before accepting the rework.
 
 This loop can repeat multiple times. Each round is a full quest journey.

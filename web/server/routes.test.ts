@@ -5264,6 +5264,8 @@ describe("buildOrchestratorSystemPrompt", () => {
       "Delegate non-trivial implementation, investigation, and verification to worker sessions.",
     );
     expect(prompt).toContain("Archiving a worktree worker deletes its worktree and any uncommitted changes.");
+    expect(prompt).toContain("new source of truth");
+    expect(prompt).toContain("stale review/port completions from the older scope");
     // Link syntax instructions moved to system prompt (cli-launcher.ts) -- no longer in user message
     expect(prompt).not.toContain("CLAUDE.md");
     expect(prompt).not.toContain("sub-agent");

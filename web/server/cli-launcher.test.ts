@@ -2575,6 +2575,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("`commitShas`");
     expect(guardrails).toContain("Make every worker instruction stage-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Fresh human feedback resets the active cycle");
+    expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
     expect(guardrails).toContain("Leaders do not own worker quests");
     expect(guardrails).toContain("worker doing the job claims and completes the quest");
     expect(guardrails).toContain("Archiving a worktree worker removes its worktree and any uncommitted changes");
@@ -2593,6 +2595,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Every time you ask the user a question");
     expect(guardrails).toContain("also call `takode notify needs-input`");
     expect(guardrails).toContain("so the user never misses the leader's question");
+    expect(guardrails).toContain("Fresh human feedback outranks stale completions");
     expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");
     expect(guardrails).toContain("Takode already sends that review notification automatically");
     // Detailed content moved to sub-skill files, not inline
