@@ -1287,7 +1287,7 @@ Commands:
   list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--verification <scope>] [--json]
                                                          List quests with optional filters
   mine   [--json]                                        List quests owned by current session
-  grep   <pattern> [--count N] [--json]                  Search quest title, description, and feedback
+  grep   <pattern> [--count N] [--json]                  Search inside quest title, description, and feedback/comments with snippets
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history
   tags   [--json]                                        List all existing tags with counts
@@ -1319,7 +1319,11 @@ Auth fallback:
 Verification scopes:
   --verification inbox      needs_verification quests in Verification Inbox
   --verification reviewed   needs_verification quests in Verification (acknowledged)
-  --verification all        all needs_verification quests`);
+  --verification all        all needs_verification quests
+
+Search tips:
+  quest list --text "foo"   Filter quests broadly by text
+  quest grep "foo|bar"      Search inside quest text/comments with contextual snippets`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

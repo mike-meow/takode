@@ -2570,6 +2570,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("address reviewer-groom findings, update the quest summary comment, and stop");
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send a separate explicit port instruction when ready");
+    expect(guardrails).toContain("prefer `quest grep <pattern>` over manually scanning many `quest show` results");
+    expect(guardrails).toContain("Use `quest list --text` for broad list filtering and `quest grep`");
     expect(guardrails).toContain("takode notify");
     expect(guardrails).toContain("needs-input");
     expect(guardrails).toContain("review");

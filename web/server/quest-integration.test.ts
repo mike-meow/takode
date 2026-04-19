@@ -186,4 +186,20 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("`commitShas`");
     expect(skill).toContain("version-local metadata from `quest history`");
   });
+
+  it("documents quest grep as the preferred way to search inside quest text and comments", async () => {
+    await ensureQuestmasterIntegration(3456, "/repo/web");
+
+    const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
+      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+    );
+    expect(codexSkillWrite).toBeDefined();
+
+    const skill = String(codexSkillWrite?.[1] ?? "");
+    expect(skill).toContain("quest grep   <pattern> [--count N] [--json]");
+    expect(skill).toContain("Search quest title, description, and feedback/comments");
+    expect(skill).toContain("Use `quest grep` when you need to search **inside** quest titles");
+    expect(skill).toContain("Use `quest list --text` when you are broadly filtering the quest list");
+    expect(skill).toContain("prefer `quest grep <pattern>` over manually scanning `quest show` output");
+  });
 });

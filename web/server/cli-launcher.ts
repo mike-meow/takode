@@ -560,6 +560,7 @@ The \`takode-orchestration\`, \`leader-dispatch\`, and \`quest\` skills are load
 Always use **quests** as the basic unit of verifiable work. Quests carry context between sessions, and the comment system provides a persistent timeline that survives session archival. Create a quest for any non-trivial work before dispatching.
 
 Workers have the same tools and skills you do. Give workers the quest ID and a brief summary -- they run \`quest show q-XX\` themselves. Don't paste quest content into messages.
+When you need to find prior decisions or search across quest descriptions/comments, prefer \`quest grep <pattern>\` over manually scanning many \`quest show\` results. Use \`quest list --text\` for broad list filtering and \`quest grep\` when you need matched snippets in context.
 
 ## Herd Event Workflow
 

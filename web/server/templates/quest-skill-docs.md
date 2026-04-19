@@ -36,6 +36,7 @@ These are completely different systems. Do NOT confuse them.
 
 ```
 quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--verification <scope>] [--json]  List quests
+quest grep   <pattern> [--count N] [--json]                  Search quest title, description, and feedback/comments
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts
@@ -94,6 +95,14 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | `--text "query"` | Full-text search |
 | `--verification <scope>` | Filter verification split: `inbox`, `reviewed`, or `all` |
 | `--json` | Output JSON |
+
+### quest grep <pattern> [flags]
+| Flag | Description |
+|------|-------------|
+| `--count N` | Maximum matches to show (default 50) |
+| `--json` | Output JSON |
+
+Use `quest grep` when you need to search **inside** quest titles, descriptions, or feedback/comments and want contextual snippets showing where the match came from. Use `quest list --text` when you are broadly filtering the quest list rather than inspecting matched text in context.
 
 ### quest claim <id> [flags]
 | Flag | Description |
@@ -170,6 +179,9 @@ quest list --verification reviewed
 # Search quests by text
 quest list --text "sidebar"
 
+# Search inside quest descriptions and feedback with contextual snippets
+quest grep "sidebar|overflow"
+
 # Claim and start working on a quest
 quest claim q-12
 quest transition q-12 --status in_progress
@@ -201,6 +213,7 @@ quest cancel q-5 --notes "Superseded by q-12"
 When the user asks you to work on a quest — whether via the Companion "Assign" button or free-form text like "work on q-5" — follow this order:
 
 1. **Read and verify**: `quest show q-N` — understand the full scope. Prefer the plain-text form for normal reading and judgment; it is more scannable and token-efficient than `--json`. Use `--json` only when you need exact machine fields such as feedback `addressed` flags, `commitShas`, or version-local metadata from `quest history`. **Verify the title matches what you expect.** If the quest title/description doesn't match the task you were asked to work on, STOP — you may have the wrong quest ID. If the quest has a **Feedback** section, read it carefully — these are review comments from the human that must be addressed.
+   - When you need to search across many quests or within quest comments for prior decisions, prefer `quest grep <pattern>` over manually scanning `quest show` output or relying on `quest list --text`.
 2. **Claim immediately**: `quest claim q-N` — always claim first, regardless of the quest's current status. This links it to your session. If this fails because another session already claimed it, **STOP and tell the user** — do not proceed.
 3. **Polish metadata (required before coding)**:
    - Always do a quick metadata pass, even if it already looks good.

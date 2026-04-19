@@ -68,6 +68,23 @@ async function runQuest(
   return { status: code as number | null, stdout, stderr };
 }
 
+describe("quest CLI help", () => {
+  it("documents search tips for list filtering vs grep snippets", async () => {
+    // Guard the user-facing `quest --help` copy so the grep discoverability
+    // wording stays aligned with the CLI entrypoint, not just generated docs.
+    const result = await runQuest(["--help"], { ...process.env });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "grep   <pattern> [--count N] [--json]                  Search inside quest title, description, and feedback/comments with snippets",
+    );
+    expect(result.stdout).toContain('quest list --text "foo"   Filter quests broadly by text');
+    expect(result.stdout).toContain(
+      'quest grep "foo|bar"      Search inside quest text/comments with contextual snippets',
+    );
+  });
+});
+
 describe("quest CLI auth fallback", () => {
   it("uses centralized ~/.companion/session-auth/ for claim when env vars are missing", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "quest-auth-claim-"));
