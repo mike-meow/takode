@@ -7,6 +7,7 @@ const mockCreateQuest = vi.fn();
 const mockGetSettings = vi.fn();
 const mockUpdateSettings = vi.fn();
 const mockUploadStandaloneQuestImage = vi.fn();
+const mockClipboardWriteText = vi.fn();
 let promptSpy: ReturnType<typeof vi.spyOn>;
 
 vi.mock("../api.js", () => ({
@@ -147,6 +148,8 @@ function renderQuestmaster(props: { isActive?: boolean } = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   promptSpy = vi.spyOn(window, "prompt").mockReturnValue("");
+  mockClipboardWriteText.mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText: mockClipboardWriteText } });
   const inboxQuest = buildVerificationQuest({
     id: "q-1-v3",
     questId: "q-1",
@@ -347,6 +350,57 @@ describe("QuestmasterPage verification inbox", () => {
 
     expect(mockState.openQuestOverlay).toHaveBeenCalledWith("q-1", undefined);
     expect(mockState.questOverlayId).toBe("q-1");
+  });
+
+  it("copies the quest id from a card without opening the overlay", async () => {
+    renderQuestmaster();
+
+    fireEvent.click(screen.getByRole("button", { name: "q-1" }));
+
+    await waitFor(() => {
+      expect(mockClipboardWriteText).toHaveBeenCalledWith("q-1");
+    });
+    expect(mockState.openQuestOverlay).not.toHaveBeenCalled();
+    expect(mockState.questOverlayId).toBeNull();
+    expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+  });
+
+  it("copies the quest id from a compact row without opening the overlay", async () => {
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+
+    renderQuestmaster({ isActive: true });
+    await screen.findByRole("button", { name: /q-1 Inbox quest/ });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "q-1" })[0]);
+
+    await waitFor(() => {
+      expect(mockClipboardWriteText).toHaveBeenCalledWith("q-1");
+    });
+    expect(mockState.openQuestOverlay).not.toHaveBeenCalled();
+    expect(mockState.questOverlayId).toBeNull();
+  });
+
+  it("blocks compact row keyboard open when the quest id button is activated", async () => {
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+
+    renderQuestmaster({ isActive: true });
+    await screen.findByRole("button", { name: /q-1 Inbox quest/ });
+
+    const copyButton = screen.getAllByRole("button", { name: "q-1" })[0];
+
+    // JSDOM does not synthesize the native click from Enter, so assert the
+    // keydown does not bubble to the row, then emulate the activation click.
+    fireEvent.keyDown(copyButton, { key: "Enter" });
+    expect(mockState.openQuestOverlay).not.toHaveBeenCalled();
+    expect(mockState.questOverlayId).toBeNull();
+
+    fireEvent.click(copyButton);
+
+    await waitFor(() => {
+      expect(mockClipboardWriteText).toHaveBeenCalledWith("q-1");
+    });
+    expect(mockState.openQuestOverlay).not.toHaveBeenCalled();
+    expect(mockState.questOverlayId).toBeNull();
   });
 
   it("opens compact rows even when their Cards-mode section is collapsed", async () => {

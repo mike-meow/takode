@@ -1334,9 +1334,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
                                         )}
                                       </div>
                                       <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-[10px] text-cc-muted/50 shrink-0">
+                                        <CopyableQuestId questId={quest.questId} className="text-[10px] text-cc-muted/50 shrink-0">
                                           {renderSearchHighlight(quest.questId)}
-                                        </span>
+                                        </CopyableQuestId>
                                         {isInboxVerification && (
                                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cc-hover text-cc-muted border border-cc-border flex items-center gap-1">
                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -1481,9 +1481,15 @@ function CompactQuestTable({
                 }`}
               >
                 <td className="px-3 py-1.5 whitespace-nowrap align-middle">
-                  <span className="font-mono-code text-blue-400 group-hover:text-blue-300">
+                  <CopyableQuestId
+                    questId={quest.questId}
+                    className="font-mono-code text-blue-400 group-hover:text-blue-300"
+                    onClick={(e) => {
+                      e.preventDefault();
+                    }}
+                  >
                     {renderSearchHighlight(quest.questId)}
-                  </span>
+                  </CopyableQuestId>
                 </td>
                 <td className="px-3 py-1.5 align-middle">
                   <div

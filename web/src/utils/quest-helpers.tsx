@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { writeClipboardText } from "./copy-utils.js";
 import type { QuestmasterTask, QuestVerificationItem } from "../types.js";
 
@@ -46,13 +46,33 @@ export function getQuestOwnerSessionId(quest: QuestmasterTask): string | null {
 }
 
 /** Click-to-copy quest ID with brief visual confirmation. */
-export function CopyableQuestId({ questId, className }: { questId: string; className?: string }) {
+export function CopyableQuestId({
+  questId,
+  className,
+  children,
+  onClick,
+}: {
+  questId: string;
+  className?: string;
+  children?: ReactNode;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
   const [copied, setCopied] = useState(false);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.stopPropagation();
+    }
+  }
+
   return (
     <button
+      type="button"
       className={`cursor-pointer hover:text-cc-fg transition-colors ${className || "text-[10px] text-cc-muted/60"}`}
       title="Click to copy quest ID"
+      onKeyDown={handleKeyDown}
       onClick={(e) => {
+        onClick?.(e);
         e.stopPropagation();
         writeClipboardText(questId)
           .then(() => {
@@ -62,7 +82,7 @@ export function CopyableQuestId({ questId, className }: { questId: string; class
           .catch(console.error);
       }}
     >
-      {copied ? "Copied!" : questId}
+      {copied ? "Copied!" : (children ?? questId)}
     </button>
   );
 }
