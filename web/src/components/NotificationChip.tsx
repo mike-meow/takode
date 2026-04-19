@@ -1,14 +1,12 @@
-import { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect, type MouseEvent } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
-import { MarkdownContent } from "./MarkdownContent.js";
 import { QuestInlineLink } from "./QuestInlineLink.js";
-import type { SessionNotification, ChatMessage } from "../types.js";
+import type { SessionNotification } from "../types.js";
 import { getHighestNotificationUrgency } from "../utils/notification-urgency.js";
 
 const EMPTY: SessionNotification[] = [];
-const EMPTY_MESSAGES: ChatMessage[] = [];
 
 function useNotifications(sessionId: string) {
   const all = useStore((s) => s.sessionNotifications?.get(sessionId)) ?? EMPTY;
@@ -25,11 +23,6 @@ function formatRelativeTime(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function truncateContent(msg: ChatMessage, maxLen = 100): string {
-  const text = msg.content?.trim() || "";
-  return text.length > maxLen ? text.slice(0, maxLen) + "..." : text;
-}
-
 function parseSingleQuestSummary(summary?: string): { before: string; questId: string; after: string } | null {
   if (!summary) return null;
   const matches = Array.from(summary.matchAll(/\b(q-\d+)\b/gi));
@@ -44,113 +37,9 @@ function parseSingleQuestSummary(summary?: string): { before: string; questId: s
   };
 }
 
-// ─── Hover Preview Card ──────────────────────────────────────────────────────
-
-/** Shows 1 message before + the linked message + 1 message after from the session history. */
-function NotificationPreviewCard({
-  messageId,
-  sessionId,
-  anchorRect,
-  summary,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  messageId: string;
-  sessionId: string;
-  anchorRect: DOMRect;
-  summary?: string;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-}) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const messages = useStore((s) => s.messages.get(sessionId)) ?? EMPTY_MESSAGES;
-  const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
-
-  const targetIdx = useMemo(() => messages.findIndex((m) => m.id === messageId), [messages, messageId]);
-  const contextMessages = useMemo(() => {
-    if (targetIdx < 0) return [];
-    const start = Math.max(0, targetIdx - 1);
-    const end = Math.min(messages.length, targetIdx + 2);
-    return messages.slice(start, end).map((m) => ({ msg: m, isTarget: m.id === messageId }));
-  }, [messages, targetIdx, messageId]);
-
-  const cardWidth = 320;
-  const gap = 6;
-  // Position above the anchor element
-  const left = anchorRect.left;
-  const top = anchorRect.top - gap;
-
-  useLayoutEffect(() => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const el = cardRef.current;
-    // Flip above -> below if no space above
-    if (rect.top < 8) {
-      el.style.top = `${anchorRect.bottom + gap}px`;
-    } else {
-      el.style.top = `${anchorRect.top - rect.height - gap}px`;
-    }
-    if (rect.right > window.innerWidth - 8) {
-      el.style.left = `${Math.max(8, window.innerWidth - cardWidth - 8)}px`;
-    }
-  }, [anchorRect, cardWidth]);
-
-  // Message not found in store -- show summary fallback if available, otherwise hide
-  if (contextMessages.length === 0 && !summary) return null;
-
-  // Filter to messages with visible content (skip tool-only or empty messages)
-  const visibleMessages = contextMessages.filter(({ msg }) => {
-    const text = msg.content?.trim();
-    return text && text.length > 0;
-  });
-
-  const cardContent =
-    visibleMessages.length > 0 ? (
-      <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-        {visibleMessages.map(({ msg, isTarget }) => (
-          <div
-            key={msg.id}
-            className={`px-3 py-2 border-b border-cc-border/20 last:border-b-0 ${isTarget ? "bg-amber-500/10" : ""}`}
-          >
-            <div className="text-[11px] leading-relaxed line-clamp-3">
-              <MarkdownContent text={truncateContent(msg, 200)} size="sm" />
-            </div>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl overflow-hidden px-3 py-2">
-        <div className="text-[11px] leading-relaxed text-cc-muted">{summary}</div>
-      </div>
-    );
-
-  return createPortal(
-    <div
-      ref={cardRef}
-      className="fixed z-50 pointer-events-auto hidden-on-touch"
-      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "bottom left" }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {cardContent}
-    </div>,
-    document.body,
-  );
-}
-
 // ─── Notification Item ───────────────────────────────────────────────────────
 
 function NotificationItem({ notif, sessionId }: { notif: SessionNotification; sessionId: string }) {
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    },
-    [],
-  );
-
   const toggleDone = useCallback(() => {
     api.markNotificationDone(sessionId, notif.id, !notif.done).catch(() => {});
   }, [sessionId, notif.id, notif.done]);
@@ -162,24 +51,6 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
     store.setExpandAllInTurn(sessionId, notif.messageId);
     // Don't close panel -- user may want to click multiple notifications
   }, [sessionId, notif.messageId]);
-
-  function handleMouseEnter(e: MouseEvent<HTMLElement>) {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    setHoverRect(e.currentTarget.getBoundingClientRect());
-  }
-
-  function handleMouseLeave() {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => setHoverRect(null), 100);
-  }
-
-  function handleCardEnter() {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-  }
-
-  function handleCardLeave() {
-    setHoverRect(null);
-  }
 
   const isNeedsInput = notif.category === "needs-input";
   const label = notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review");
@@ -247,8 +118,6 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
               tabIndex={0}
               onClick={jumpToMessage}
               onKeyDown={handleJumpKeyDown}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
               className="min-w-0 flex-1 cursor-pointer"
             >
               <div className="text-[12px] text-left">{renderLabel()}</div>
@@ -259,18 +128,6 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
         </div>
         <div className="text-[10px] text-cc-muted/60 mt-0.5 pl-3">{formatRelativeTime(notif.timestamp)}</div>
       </div>
-
-      {/* Hover preview card */}
-      {notif.messageId && hoverRect && (
-        <NotificationPreviewCard
-          messageId={notif.messageId}
-          sessionId={sessionId}
-          anchorRect={hoverRect}
-          summary={notif.summary}
-          onMouseEnter={handleCardEnter}
-          onMouseLeave={handleCardLeave}
-        />
-      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ const mockStoreState: Record<string, any> = {
   sessionNotifications: mockNotifications,
   messages: new Map(),
   quests: [],
+  sessionNames: new Map(),
+  sdkSessions: [],
   zoomLevel: 1,
   requestScrollToMessage: mockRequestScrollToMessage,
   setExpandAllInTurn: mockSetExpandAllInTurn,
@@ -52,6 +54,8 @@ describe("NotificationChip", () => {
     mockNotifications.clear();
     mockStoreState.messages = new Map();
     mockStoreState.quests = [];
+    mockStoreState.sessionNames = new Map();
+    mockStoreState.sdkSessions = [];
     mockMarkNotificationDone.mockClear();
     mockMarkAllNotificationsDone.mockClear();
     mockRequestScrollToMessage.mockClear();
@@ -141,6 +145,67 @@ describe("NotificationChip", () => {
     fireEvent.click(questLink);
     expect(mockOpenQuestOverlay).toHaveBeenCalledWith("q-345");
     expect(mockRequestScrollToMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a message preview when hovering a notification row", () => {
+    mockStoreState.messages = new Map([
+      [
+        "s1",
+        [
+          {
+            id: "msg-123",
+            role: "assistant",
+            content: "Hidden hover preview body",
+          },
+        ],
+      ],
+    ]);
+    setNotifications("s1", [
+      {
+        id: "review-1",
+        category: "review",
+        summary: "q-345 ready for review",
+        timestamp: Date.now(),
+        messageId: "msg-123",
+        done: false,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /q-345 ready for review/i }));
+
+    expect(screen.queryByText("Hidden hover preview body")).toBeNull();
+    expect(screen.queryByTestId("message-link-hover-card")).toBeNull();
+  });
+
+  it("keeps the quest hover card behavior on the inline quest link", () => {
+    setQuests([
+      {
+        id: "q-345-v1",
+        questId: "q-345",
+        title: "Compress herd events more aggressively",
+        status: "needs_verification",
+        tags: ["ui", "notifications"],
+      },
+    ]);
+    setNotifications("s1", [
+      {
+        id: "review-1",
+        category: "review",
+        summary: "q-345 ready for review",
+        timestamp: Date.now(),
+        messageId: "msg-123",
+        done: false,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "q-345" }));
+
+    expect(screen.getByText("Compress herd events more aggressively")).toBeInTheDocument();
+    expect(screen.getByText("Verification")).toBeInTheDocument();
   });
 
   it("shows a Read All control and marks all active notifications done", () => {
