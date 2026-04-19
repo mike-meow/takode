@@ -21,6 +21,27 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
+async function waitFor(condition: () => boolean, timeoutMs = 1000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  expect(condition()).toBe(true);
+}
+
+async function waitForValue<T>(getter: () => Promise<T | null>, timeoutMs = 1000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await getter();
+    if (value != null) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const value = await getter();
+  expect(value).not.toBeNull();
+  return value as T;
+}
+
 describe("ImageStore", () => {
   // Tests that store() saves original (as JPEG for PNG input) and thumbnail files to disk,
   // returning a valid ImageRef with a unique imageId and converted media_type.
@@ -38,9 +59,9 @@ describe("ImageStore", () => {
     expect(existsSync(origPath!)).toBe(true);
 
     // Thumbnail should exist
-    const thumbPath = await store.getThumbnailPath("sess-1", ref.imageId);
-    expect(thumbPath).toBeTruthy();
+    const thumbPath = await waitForValue(() => store.getThumbnailPath("sess-1", ref.imageId));
     expect(thumbPath!.endsWith(".thumb.jpeg")).toBe(true);
+    await waitFor(() => existsSync(thumbPath!));
     expect(existsSync(thumbPath!)).toBe(true);
   });
 
@@ -60,6 +81,8 @@ describe("ImageStore", () => {
     expect(existsSync(join(tempDir, "sess-a"))).toBe(true);
     expect(existsSync(join(tempDir, "sess-b"))).toBe(true);
 
+    await waitFor(() => readdirSync(join(tempDir, "sess-a")).length === 2);
+    await waitFor(() => readdirSync(join(tempDir, "sess-b")).length === 2);
     // Each session dir should have 2 files (orig + thumb)
     expect(readdirSync(join(tempDir, "sess-a")).length).toBe(2);
     expect(readdirSync(join(tempDir, "sess-b")).length).toBe(2);

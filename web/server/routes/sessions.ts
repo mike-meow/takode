@@ -2074,10 +2074,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const thumbPath = await imageStore.getThumbnailPath(sessionId, imageId);
     const path = thumbPath || (await imageStore.getOriginalPath(sessionId, imageId));
     if (!path) return c.json({ error: "Image not found" }, 404);
-    return new Response(Bun.file(path), {
+    const file = Bun.file(path);
+    return new Response(file, {
       headers: {
-        "Content-Type": thumbPath ? "image/jpeg" : "application/octet-stream",
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": thumbPath ? "image/jpeg" : file.type || "application/octet-stream",
+        "Cache-Control": thumbPath ? "public, max-age=31536000, immutable" : "no-store",
       },
     });
   });

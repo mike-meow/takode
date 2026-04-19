@@ -1962,7 +1962,7 @@ describe("CodexAdapter", () => {
     expect((toolBlock as { input: { query: string } }).input.query).toBe("codex cli skills documentation");
   });
 
-  it("surfaces rawResponseItem/completed view_image function calls as tool_use blocks", async () => {
+  it("surfaces rawResponseItem/completed view_image function calls as completed tool blocks", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
@@ -1998,6 +1998,14 @@ describe("CodexAdapter", () => {
       toolMsg as { message: { content: Array<{ type: string; input?: { path?: string } }> } }
     ).message.content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { path?: string } }).input.path).toBe("/tmp/proof.png");
+
+    const resultMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_result" && b.tool_use_id === "call_view_image_1");
+      });
+    expect(resultMsg).toBeDefined();
   });
 
   it("deduplicates replayed rawResponseItem/completed view_image calls", async () => {
@@ -2033,7 +2041,7 @@ describe("CodexAdapter", () => {
     expect(toolUseMsgs).toHaveLength(1);
   });
 
-  it("surfaces imageView item started/completed notifications as a visible tool_use block", async () => {
+  it("surfaces imageView item started/completed notifications as a completed tool block", async () => {
     const messages: BrowserIncomingMessage[] = [];
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
     adapter.onBrowserMessage((msg) => messages.push(msg));
@@ -2079,6 +2087,70 @@ describe("CodexAdapter", () => {
       toolUseMsgs[0] as { message: { content: Array<{ type: string; input?: { path?: string } }> } }
     ).message.content.find((b) => b.type === "tool_use");
     expect((toolBlock as { input: { path?: string } }).input.path).toBe("/tmp/from-item-started.png");
+
+    const resultMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_result" && b.tool_use_id === "image-view-item-1");
+      });
+    expect(resultMsg).toBeDefined();
+  });
+
+  it("backfills imageView path on completion before emitting the final tool_result", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await initializeAdapter(stdout);
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            type: "imageView",
+            id: "image-view-item-2",
+            path: "",
+          },
+        },
+      }) + "\n",
+    );
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            type: "imageView",
+            id: "image-view-item-2",
+            path: "/tmp/from-completed.png",
+          },
+        },
+      }) + "\n",
+    );
+
+    await tick();
+
+    const lastToolUseMsg = messages
+      .filter((m) => m.type === "assistant")
+      .filter((m) => {
+        const content = (m as { message: { content: Array<{ type: string; id?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_use" && b.id === "image-view-item-2");
+      })
+      .at(-1);
+    expect(lastToolUseMsg).toBeDefined();
+    const toolBlock = (
+      lastToolUseMsg as { message: { content: Array<{ type: string; input?: { path?: string } }> } }
+    ).message.content.find((b) => b.type === "tool_use");
+    expect((toolBlock as { input: { path?: string } }).input.path).toBe("/tmp/from-completed.png");
+
+    const resultMsg = messages
+      .filter((m) => m.type === "assistant")
+      .find((m) => {
+        const content = (m as { message: { content: Array<{ type: string; tool_use_id?: string }> } }).message.content;
+        return content.some((b) => b.type === "tool_result" && b.tool_use_id === "image-view-item-2");
+      });
+    expect(resultMsg).toBeDefined();
   });
 
   it("calls onSessionMeta with thread ID after initialization", async () => {

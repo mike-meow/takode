@@ -867,6 +867,8 @@ export class CodexAdapter
   // When Codex auto-approves (approvalPolicy "never"), it may skip item/started
   // and only send item/completed — we need to emit tool_use before tool_result.
   private emittedToolUseIds = new Set<string>();
+  private emittedToolUseInputsById = new Map<string, Record<string, unknown>>();
+  private emittedToolResultIds = new Set<string>();
   private patchChangesByCallId = new Map<string, ToolFileChange[]>();
   private parentToolUseIdByThreadId = new Map<string, string>();
   private parentToolUseIdByItemId = new Map<string, string | null>();
@@ -2665,10 +2667,18 @@ export class CodexAdapter
     if (toolName !== "view_image") return;
 
     const toolUseId = toSafeText(item.call_id ?? item.callId ?? item.id).trim() || `raw-${randomUUID()}`;
-    if (this.emittedToolUseIds.has(toolUseId)) return;
-    this.emitToolUseTracked(toolUseId, toolName, parseToolArguments(item.arguments), {
-      parentToolUseId: this.resolveParentToolUseId(params, toolUseId),
-    });
+    const toolInput = parseToolArguments(item.arguments);
+    const parentToolUseId = this.resolveParentToolUseId(params, toolUseId);
+    this.ensureToolUseData(
+      toolUseId,
+      toolName,
+      toolInput,
+      {
+        parentToolUseId,
+      },
+      true,
+    );
+    this.emitToolResultOnce(toolUseId, this.buildImageViewResultText(toolInput.path), false, parentToolUseId);
   }
 
   private normalizePlanStatus(value: unknown): "pending" | "in_progress" | "completed" {
@@ -2918,7 +2928,9 @@ export class CodexAdapter
 
       case "imageView": {
         const imageView = item as CodexImageViewItem;
-        this.ensureToolUseEmitted(item.id, "view_image", { path: imageView.path || "" }, { parentToolUseId });
+        const toolInput = { path: imageView.path || "" };
+        this.ensureToolUseData(item.id, "view_image", toolInput, { parentToolUseId });
+        this.emitToolResultOnce(item.id, this.buildImageViewResultText(toolInput.path), false, parentToolUseId);
         break;
       }
 
@@ -3299,6 +3311,7 @@ export class CodexAdapter
     options?: { parentToolUseId?: string | null; timestamp?: number },
   ): void {
     this.emittedToolUseIds.add(toolUseId);
+    this.emittedToolUseInputsById.set(toolUseId, input);
     this.emitToolUse(toolUseId, toolName, input, options);
   }
 
@@ -3333,9 +3346,31 @@ export class CodexAdapter
     input: Record<string, unknown>,
     options?: { parentToolUseId?: string | null; timestamp?: number },
   ): void {
+    this.ensureToolUseData(toolUseId, toolName, input, options);
+  }
+
+  private ensureToolUseData(
+    toolUseId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    options?: { parentToolUseId?: string | null; timestamp?: number },
+    completedOnly = false,
+  ): void {
     if (!this.emittedToolUseIds.has(toolUseId)) {
-      this.emitToolUseStart(toolUseId, toolName, input, options);
+      if (completedOnly) {
+        this.emitToolUseTracked(toolUseId, toolName, input, options);
+      } else {
+        this.emitToolUseStart(toolUseId, toolName, input, options);
+      }
+      return;
     }
+
+    const previousInput = this.emittedToolUseInputsById.get(toolUseId) || {};
+    const mergedInput = this.mergeToolUseInput(previousInput, input);
+    if (JSON.stringify(previousInput) === JSON.stringify(mergedInput)) return;
+
+    this.emittedToolUseInputsById.set(toolUseId, mergedInput);
+    this.emitToolUse(toolUseId, toolName, mergedInput, options);
   }
 
   /** Emit an assistant message with a tool_result content block. */
@@ -3364,6 +3399,50 @@ export class CodexAdapter
       timestamp: completedAt,
     });
     this.markMessageFinished(completedAt);
+  }
+
+  private emitToolResultOnce(
+    toolUseId: string,
+    content: unknown,
+    isError: boolean,
+    parentToolUseId?: string | null,
+  ): void {
+    if (this.emittedToolResultIds.has(toolUseId)) return;
+    this.emittedToolResultIds.add(toolUseId);
+    this.emitToolResult(toolUseId, content, isError, parentToolUseId);
+  }
+
+  private mergeToolUseInput(
+    previous: Record<string, unknown>,
+    incoming: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const merged: Record<string, unknown> = { ...previous };
+    for (const [key, value] of Object.entries(incoming)) {
+      if (value == null) continue;
+      if (typeof value === "string") {
+        if (value.trim().length > 0 || !(key in merged)) merged[key] = value;
+        continue;
+      }
+      if (Array.isArray(value)) {
+        if (value.length > 0 || !(key in merged)) merged[key] = value;
+        continue;
+      }
+      if (typeof value === "object") {
+        const previousValue = merged[key];
+        if (previousValue && typeof previousValue === "object" && !Array.isArray(previousValue)) {
+          merged[key] = this.mergeToolUseInput(previousValue as Record<string, unknown>, value as Record<string, unknown>);
+        } else if (!(key in merged) || Object.keys(value as Record<string, unknown>).length > 0) {
+          merged[key] = value;
+        }
+        continue;
+      }
+      merged[key] = value;
+    }
+    return merged;
+  }
+
+  private buildImageViewResultText(path: unknown): string {
+    return typeof path === "string" && path.trim().length > 0 ? path : "Image viewed successfully.";
   }
 
   private makeMessageId(kind: string, sourceId?: string): string {

@@ -1058,6 +1058,36 @@ describe("ToolBlock", () => {
     useStore.setState({ toolResults: new Map() });
   });
 
+  it("shows image preview for completed view_image tool blocks", () => {
+    const toolResults = new Map();
+    const sessionResults = new Map();
+    sessionResults.set("tool-view-image", {
+      tool_use_id: "tool-view-image",
+      content: "/tmp/proof.png",
+      is_error: false,
+      total_size: 13,
+      is_truncated: false,
+      duration_seconds: 0.3,
+    });
+    toolResults.set("s-view-image", sessionResults);
+    useStore.setState({ toolResults });
+
+    render(
+      <ToolBlock
+        name="view_image"
+        input={{ path: "/tmp/proof.png" }}
+        toolUseId="tool-view-image"
+        sessionId="s-view-image"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    const img = screen.getByRole("img", { name: "/tmp/proof.png" });
+    expect(img).toBeTruthy();
+    expect(screen.getByText("Binary image output hidden.")).toBeTruthy();
+    useStore.setState({ toolResults: new Map() });
+  });
+
   it("renders JSON for unknown tools when expanded", () => {
     render(<ToolBlock name="CustomTool" input={{ foo: "bar", count: 42 }} toolUseId="tool-9" />);
 

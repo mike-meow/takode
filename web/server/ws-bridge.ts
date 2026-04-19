@@ -9317,11 +9317,9 @@ export class WsBridge {
 
     if (msg.images?.length && this.imageStore) {
       return (async () => {
-        const imageRefs: import("./image-store.js").ImageRef[] = [];
-        for (const img of msg.images || []) {
-          const ref = await this.imageStore!.store(session.id, img.data, img.media_type);
-          imageRefs.push(ref);
-        }
+        const imageRefs = await Promise.all(
+          (msg.images || []).map((img) => this.imageStore!.store(session.id, img.data, img.media_type)),
+        );
         return finalize(imageRefs);
       })();
     }

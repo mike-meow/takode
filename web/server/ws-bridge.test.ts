@@ -16376,6 +16376,54 @@ describe("Codex image transport", () => {
     });
   });
 
+  it("stores multiple image attachments concurrently before dispatching the Codex turn", async () => {
+    const adapter = makeCodexAdapterMock();
+    const firstImageGate = deferred<{ imageId: string; media_type: string }>();
+    const secondImageGate = deferred<{ imageId: string; media_type: string }>();
+    const mockImageStore = {
+      store: vi
+        .fn()
+        .mockReturnValueOnce(firstImageGate.promise)
+        .mockReturnValueOnce(secondImageGate.promise),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-concurrency" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "inspect both attachments",
+        images: [
+          { media_type: "image/png", data: "img-a" },
+          { media_type: "image/png", data: "img-b" },
+        ],
+      }),
+    );
+    await Promise.resolve();
+
+    expect(mockImageStore.store).toHaveBeenCalledTimes(2);
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+
+    firstImageGate.resolve({ imageId: "img-a", media_type: "image/png" });
+    await flush();
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+
+    secondImageGate.resolve({ imageId: "img-b", media_type: "image/png" });
+    await flush();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const firstDispatch = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(firstDispatch?.type).toBe("codex_start_pending");
+    expect(firstDispatch.inputs[0]?.content).toContain("Attachment 1:");
+    expect(firstDispatch.inputs[0]?.content).toContain("Attachment 2:");
+  });
+
   it("queues injected herd events behind an in-flight delayed image send", async () => {
     const adapter = makeCodexAdapterMock();
     const imageStoreGate = deferred<{ imageId: string; media_type: string }>();

@@ -728,6 +728,57 @@ describe("handleMessage: assistant", () => {
     expect(msgs[0].timestamp).toBe(2500);
   });
 
+  it("merges richer tool_use input for an existing assistant message instead of keeping the stale placeholder", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "assistant",
+      timestamp: 1000,
+      message: {
+        id: "msg-view-image-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [{ type: "tool_use", id: "view-image-1", name: "view_image", input: { path: "" } }],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    fireMessage({
+      type: "assistant",
+      timestamp: 1500,
+      message: {
+        id: "msg-view-image-1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5-codex",
+        content: [
+          {
+            type: "tool_use",
+            id: "view-image-1",
+            name: "view_image",
+            input: { path: "/tmp/final-screenshot.png" },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    const toolUse = msgs[0].contentBlocks?.find((block) => block.type === "tool_use");
+    expect(toolUse).toMatchObject({
+      type: "tool_use",
+      id: "view-image-1",
+      input: { path: "/tmp/final-screenshot.png" },
+    });
+  });
+
   it("updates turn duration when an existing assistant message is re-broadcast with duration", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });

@@ -376,6 +376,38 @@ function PlaygroundBoardWithOriginalCommand() {
   );
 }
 
+function PlaygroundCompletedViewImageTool() {
+  useEffect(() => {
+    const toolResults = new Map(useStore.getState().toolResults);
+    const sessionResults = new Map(toolResults.get("playground-view-image-session") || []);
+    sessionResults.set("tb-view-image", {
+      tool_use_id: "tb-view-image",
+      content: "/Users/stan/Dev/project/docs/bug-screenshot.png",
+      is_error: false,
+      is_truncated: false,
+      total_size: 41,
+      duration_seconds: 0.4,
+    });
+    toolResults.set("playground-view-image-session", sessionResults);
+    useStore.setState({ toolResults });
+
+    return () => {
+      const nextToolResults = new Map(useStore.getState().toolResults);
+      nextToolResults.delete("playground-view-image-session");
+      useStore.setState({ toolResults: nextToolResults });
+    };
+  }, []);
+
+  return (
+    <ToolBlock
+      name="view_image"
+      input={{ path: "/Users/stan/Dev/project/docs/bug-screenshot.png" }}
+      toolUseId="tb-view-image"
+      sessionId="playground-view-image-session"
+    />
+  );
+}
+
 function mockPermission(
   overrides: Partial<PermissionRequest> & { tool_name: string; input: Record<string, unknown> },
 ): PermissionRequest {
@@ -2086,11 +2118,7 @@ export function Playground() {
               toolUseId="tb-live"
               sessionId={MOCK_SESSION_ID}
             />
-            <ToolBlock
-              name="view_image"
-              input={{ path: "/Users/stan/Dev/project/docs/bug-screenshot.png" }}
-              toolUseId="tb-view-image"
-            />
+            <PlaygroundCompletedViewImageTool />
             <ToolBlock
               name="Read"
               input={{ file_path: "/Users/stan/Dev/project/src/index.ts", offset: 10, limit: 50 }}

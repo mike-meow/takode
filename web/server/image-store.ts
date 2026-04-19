@@ -107,16 +107,16 @@ export class ImageStore {
     const originalPath = join(dir, `${imageId}.orig.${ext}`);
     await writeFile(originalPath, buffer);
 
-    // Generate thumbnail -- fall back gracefully if sharp can't process
-    try {
-      await sharp(buffer)
-        .rotate()
-        .resize({ width: THUMB_MAX_DIM, height: THUMB_MAX_DIM, fit: "inside" })
-        .jpeg({ quality: THUMB_QUALITY })
-        .toFile(thumbPath);
-    } catch (err) {
-      console.warn(`[image-store] Failed to generate thumbnail for ${imageId}:`, err);
-    }
+    // Thumbnails are for browser previews only, so generate them off the
+    // critical user-send path. Backend delivery only needs the original file.
+    void sharp(buffer)
+      .rotate()
+      .resize({ width: THUMB_MAX_DIM, height: THUMB_MAX_DIM, fit: "inside" })
+      .jpeg({ quality: THUMB_QUALITY })
+      .toFile(thumbPath)
+      .catch((err) => {
+        console.warn(`[image-store] Failed to generate thumbnail for ${imageId}:`, err);
+      });
 
     return { imageId, media_type: actualMediaType };
   }

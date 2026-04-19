@@ -4159,6 +4159,86 @@ describe("PUT /api/settings", () => {
   });
 });
 
+describe("GET /api/images/:sessionId/:imageId/thumb", () => {
+  it("serves the real thumbnail with immutable caching when it exists", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "routes-thumb-"));
+    const thumbPath = join(tempRoot, "thumb.jpeg");
+    const origPath = join(tempRoot, "orig.png");
+    try {
+      await Bun.write(thumbPath, new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+      await Bun.write(origPath, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+
+      const imageStore = {
+        getThumbnailPath: vi.fn(async () => thumbPath),
+        getOriginalPath: vi.fn(async () => origPath),
+      } as any;
+
+      const imageApp = new Hono();
+      imageApp.route(
+        "/api",
+        createRoutes(
+          launcher,
+          bridge,
+          sessionStore,
+          tracker,
+          { getInfo: () => null, spawn: () => "", kill: () => {} } as any,
+          undefined,
+          recorder,
+          undefined,
+          timerManager,
+          imageStore,
+        ),
+      );
+
+      const res = await imageApp.request("/api/images/sess-1/img-1/thumb");
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+      expect(res.headers.get("Content-Type")).toBe("image/jpeg");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("serves the original without immutable caching when the thumbnail is still missing", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "routes-thumb-fallback-"));
+    const origPath = join(tempRoot, "orig.png");
+    try {
+      await Bun.write(origPath, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+
+      const imageStore = {
+        getThumbnailPath: vi.fn(async () => null),
+        getOriginalPath: vi.fn(async () => origPath),
+      } as any;
+
+      const imageApp = new Hono();
+      imageApp.route(
+        "/api",
+        createRoutes(
+          launcher,
+          bridge,
+          sessionStore,
+          tracker,
+          { getInfo: () => null, spawn: () => "", kill: () => {} } as any,
+          undefined,
+          recorder,
+          undefined,
+          timerManager,
+          imageStore,
+        ),
+      );
+
+      const res = await imageApp.request("/api/images/sess-1/img-1/thumb");
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(res.headers.get("Content-Type")).toBe("image/png");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── Git ─────────────────────────────────────────────────────────────────────
 
 describe("GET /api/git/repo-info", () => {
