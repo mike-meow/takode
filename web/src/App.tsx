@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useStore } from "./store.js";
 import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
@@ -53,16 +54,31 @@ function useHash() {
 }
 
 export default function App() {
-  const colorTheme = useStore((s) => s.colorTheme);
-  const darkMode = useStore((s) => s.darkMode);
-  const zoomLevel = useStore((s) => s.zoomLevel);
-  const currentSessionId = useStore((s) => s.currentSessionId);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const taskPanelOpen = useStore((s) => s.taskPanelOpen);
-  const activeTab = useStore((s) => s.activeTab);
-  const newSessionModalState = useStore((s) => s.newSessionModalState);
-  const serverRestarting = useStore((s) => s.serverRestarting);
-  const serverReachable = useStore((s) => s.serverReachable);
+  const {
+    colorTheme,
+    darkMode,
+    zoomLevel,
+    currentSessionId,
+    sidebarOpen,
+    taskPanelOpen,
+    activeTab,
+    newSessionModalState,
+    serverRestarting,
+    serverReachable,
+  } = useStore(
+    useShallow((s) => ({
+      colorTheme: s.colorTheme,
+      darkMode: s.darkMode,
+      zoomLevel: s.zoomLevel,
+      currentSessionId: s.currentSessionId,
+      sidebarOpen: s.sidebarOpen,
+      taskPanelOpen: s.taskPanelOpen,
+      activeTab: s.activeTab,
+      newSessionModalState: s.newSessionModalState,
+      serverRestarting: s.serverRestarting,
+      serverReachable: s.serverReachable,
+    })),
+  );
   const hash = useHash();
   const route = useMemo(() => parseHash(hash), [hash]);
   const isSettingsPage = route.page === "settings";

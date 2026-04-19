@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import { api, type GitHubPRInfo } from "../api.js";
@@ -974,19 +975,30 @@ export function HerdDiagnosticsSection({ sessionId }: { sessionId: string }) {
 }
 
 export function TaskPanel({ sessionId }: { sessionId: string }) {
-  const tasks = useStore((s) => s.sessionTasks.get(sessionId) || EMPTY_TASKS);
-  const session = useStore((s) => s.sessions.get(sessionId));
-  const sdkSession = useStore((s) => s.sdkSessions.find((x) => x.sessionId === sessionId));
-  const sessionVm = coalesceSessionViewModel(session, sdkSession);
-  const taskPanelOpen = useStore((s) => s.taskPanelOpen);
-  const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen);
+  const { tasks, taskPanelOpen, setTaskPanelOpen, backendType, cwd, repoRoot, isLeaderSession, hasSession } =
+    useStore(
+      useShallow((s) => {
+        const session = s.sessions.get(sessionId);
+        const sdkSession = s.sdkSessions.find((x) => x.sessionId === sessionId);
+        const sessionVm = coalesceSessionViewModel(session, sdkSession);
+        return {
+          tasks: s.sessionTasks.get(sessionId) || EMPTY_TASKS,
+          taskPanelOpen: s.taskPanelOpen,
+          setTaskPanelOpen: s.setTaskPanelOpen,
+          backendType: sessionVm?.backendType ?? null,
+          cwd: sessionVm?.cwd ?? null,
+          repoRoot: sessionVm?.repoRoot,
+          isLeaderSession: sdkSession?.isOrchestrator === true,
+          hasSession: !!session,
+        };
+      }),
+    );
 
   if (!taskPanelOpen) return null;
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
-  const isCodex = sessionVm?.backendType === "codex";
-  const showTasks = !!session;
-  const cwd = sessionVm?.cwd ?? null;
+  const isCodex = backendType === "codex";
+  const showTasks = hasSession;
 
   return (
     <aside className="w-[280px] h-full flex flex-col overflow-hidden bg-cc-card border-l border-cc-border">
@@ -1014,16 +1026,16 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
         <McpCollapsible sessionId={sessionId} />
 
         {/* CLAUDE.md files */}
-        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={sessionVm?.repoRoot} />}
+        {cwd && <ClaudeMdCollapsible cwd={cwd} repoRoot={repoRoot} />}
 
         {/* Session-level tasks recognized by the auto-namer */}
         {showTasks && <SessionTasksSection sessionId={sessionId} />}
 
         {/* Herded sessions — only for leader sessions */}
-        {sdkSession?.isOrchestrator && <HerdedSessionsSection sessionId={sessionId} />}
+        {isLeaderSession && <HerdedSessionsSection sessionId={sessionId} />}
 
         {/* Herd diagnostics — only for leader sessions */}
-        {sdkSession?.isOrchestrator && <HerdDiagnosticsSection sessionId={sessionId} />}
+        {isLeaderSession && <HerdDiagnosticsSection sessionId={sessionId} />}
 
         {/* Agent to-do items — hidden when empty or all completed */}
         {showTasks && tasks.length > 0 && completedCount < tasks.length && (

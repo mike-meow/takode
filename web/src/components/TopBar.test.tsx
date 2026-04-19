@@ -109,7 +109,7 @@ vi.mock("../store.js", () => ({
   }),
 }));
 
-import { TopBar } from "./TopBar.js";
+import { TopBar, getTopBarStatusSummary, splitAttentionSessionIdsKey } from "./TopBar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -118,6 +118,36 @@ beforeEach(() => {
 });
 
 describe("TopBar", () => {
+  it("derives attention summary counts from visible session state", () => {
+    resetStore({
+      sdkSessions: [
+        { sessionId: "s-archived", createdAt: 99, archived: true, cliConnected: true, state: "idle" },
+        { sessionId: "s-running", createdAt: 40, cliConnected: true, state: "running" },
+        { sessionId: "s-waiting", createdAt: 30, cliConnected: true, state: "idle" },
+        { sessionId: "s-unread", createdAt: 20, cliConnected: true, state: "idle" },
+      ],
+      sessionStatus: new Map([
+        ["s-running", "running"],
+        ["s-waiting", "idle"],
+        ["s-unread", "idle"],
+      ]),
+      cliConnected: new Map([
+        ["s-running", true],
+        ["s-waiting", true],
+        ["s-unread", true],
+      ]),
+      pendingPermissions: new Map([["s-waiting", new Map([["perm-1", {}]])]]),
+      sessionAttention: new Map([["s-unread", "review"]]),
+    });
+
+    const summary = getTopBarStatusSummary(storeState as unknown as Parameters<typeof getTopBarStatusSummary>[0]);
+
+    expect(summary.running).toBe(1);
+    expect(summary.waiting).toBe(1);
+    expect(summary.unread).toBe(1);
+    expect(splitAttentionSessionIdsKey(summary.attentionSessionIdsKey)).toEqual(["s-waiting", "s-unread"]);
+  });
+
   it("stops quest badge polling while the tab is hidden", async () => {
     vi.useFakeTimers();
     let visibilityState: DocumentVisibilityState = "hidden";

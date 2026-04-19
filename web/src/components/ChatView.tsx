@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useStore, getSessionSearchState } from "../store.js";
 import { api } from "../api.js";
 import { MessageFeed } from "./MessageFeed.js";
@@ -28,19 +29,34 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
 }
 
 export function ChatView({ sessionId }: { sessionId: string }) {
-  const sessionPerms = useStore((s) => s.pendingPermissions.get(sessionId));
-  const connStatus = useStore((s) => s.connectionStatus.get(sessionId) ?? "disconnected");
-  const backendState = useStore((s) => s.sessions.get(sessionId)?.backend_state ?? "disconnected");
-  const backendError = useStore((s) => s.sessions.get(sessionId)?.backend_error ?? null);
-  const cliConnected = useStore((s) => s.cliConnected.get(sessionId) ?? false);
-  const cliEverConnected = useStore((s) => s.cliEverConnected.get(sessionId) ?? false);
-  const cliDisconnectReason = useStore((s) => s.cliDisconnectReason.get(sessionId) ?? null);
-  const isArchived = useStore((s) => s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.archived ?? false);
+  const {
+    sessionPerms,
+    connStatus,
+    backendState,
+    backendError,
+    cliConnected,
+    cliEverConnected,
+    cliDisconnectReason,
+    isArchived,
+    searchIsOpen,
+    openSearch,
+  } = useStore(
+    useShallow((s) => ({
+      sessionPerms: s.pendingPermissions.get(sessionId),
+      connStatus: s.connectionStatus.get(sessionId) ?? "disconnected",
+      backendState: s.sessions.get(sessionId)?.backend_state ?? "disconnected",
+      backendError: s.sessions.get(sessionId)?.backend_error ?? null,
+      cliConnected: s.cliConnected.get(sessionId) ?? false,
+      cliEverConnected: s.cliEverConnected.get(sessionId) ?? false,
+      cliDisconnectReason: s.cliDisconnectReason.get(sessionId) ?? null,
+      isArchived: s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.archived ?? false,
+      searchIsOpen: getSessionSearchState(s, sessionId).isOpen,
+      openSearch: s.openSessionSearch,
+    })),
+  );
 
   // Within-session search
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchIsOpen = useStore((s) => getSessionSearchState(s, sessionId).isOpen);
-  const openSearch = useStore((s) => s.openSessionSearch);
   useSessionSearch(sessionId);
 
   // Global Cmd+F / Ctrl+F handler

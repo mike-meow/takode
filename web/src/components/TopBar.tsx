@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useSyncExternalStore } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useStore, countUserPermissions, getSessionSearchState } from "../store.js";
 import { api } from "../api.js";
 import { writeClipboardText } from "../utils/copy-utils.js";
@@ -8,8 +9,117 @@ import { parseHash } from "../utils/routing.js";
 import { navigateTo, navigateToSession } from "../utils/navigation.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
-import { coalesceSessionViewModel, toSessionViewModel } from "../utils/session-view-model.js";
+import { coalesceSessionViewModel, type SessionViewModel } from "../utils/session-view-model.js";
 import { questLabel } from "../utils/quest-helpers.js";
+
+const ATTENTION_SESSION_KEY_SEPARATOR = "\u001f";
+
+type TopBarState = ReturnType<typeof useStore.getState>;
+
+function countScopedChangedFiles(state: TopBarState, sessionId: string, sessionVm: SessionViewModel | null): number {
+  const files = state.changedFiles.get(sessionId);
+  if (!files) return 0;
+
+  const sessionCwd = sessionVm?.cwd;
+  if (!sessionCwd) return files.size;
+
+  // Use repo_root only when it's an ancestor of cwd (worktrees have a different root).
+  const scope = sessionVm?.repoRoot && sessionCwd.startsWith(sessionVm.repoRoot + "/") ? sessionVm.repoRoot : sessionCwd;
+  const prefix = `${scope}/`;
+  const scopedFiles = [...files].filter((fp) => fp === scope || fp.startsWith(prefix));
+  const stats = state.diffFileStats.get(sessionId);
+  if (!stats || stats.size === 0) return scopedFiles.length;
+
+  return scopedFiles.filter((fp) => {
+    const st = stats.get(fp);
+    return !st || st.additions > 0 || st.deletions > 0;
+  }).length;
+}
+
+export function getTopBarStatusSummary(state: TopBarState) {
+  let running = 0;
+  let waiting = 0;
+  let unread = 0;
+  const attentionSessionIds: Array<{ sessionId: string; createdAt: number }> = [];
+
+  for (const sdk of state.sdkSessions) {
+    if (sdk.archived) continue;
+
+    const visualStatus = deriveSessionStatus({
+      permCount: countUserPermissions(state.pendingPermissions.get(sdk.sessionId)),
+      isConnected: state.cliConnected.get(sdk.sessionId) ?? sdk.cliConnected ?? false,
+      sdkState: sdk.state ?? null,
+      status: state.sessionStatus.get(sdk.sessionId) ?? null,
+      hasUnread: !!state.sessionAttention.get(sdk.sessionId),
+      idleKilled: state.cliDisconnectReason.get(sdk.sessionId) === "idle_limit",
+    });
+
+    if (visualStatus === "running" || visualStatus === "compacting") running++;
+    else if (visualStatus === "permission") waiting++;
+    else if (visualStatus === "completed_unread") unread++;
+
+    if (visualStatus === "permission" || visualStatus === "completed_unread") {
+      attentionSessionIds.push({ sessionId: sdk.sessionId, createdAt: sdk.createdAt });
+    }
+  }
+
+  attentionSessionIds.sort((a, b) => b.createdAt - a.createdAt);
+
+  return {
+    running,
+    waiting,
+    unread,
+    attentionSessionIdsKey: attentionSessionIds.map((item) => item.sessionId).join(ATTENTION_SESSION_KEY_SEPARATOR),
+  };
+}
+
+export function splitAttentionSessionIdsKey(key: string): string[] {
+  return key ? key.split(ATTENTION_SESSION_KEY_SEPARATOR) : [];
+}
+
+export function getCurrentTopBarSessionState(state: TopBarState) {
+  const currentSessionId = state.currentSessionId;
+  if (!currentSessionId) {
+    return {
+      currentSessionId: null,
+      isConnected: false,
+      status: null,
+      currentPermCount: 0,
+      currentSdkState: null,
+      currentHasUnread: false,
+      sessionName: null,
+      sessionNum: null,
+      isQuestNamed: false,
+      questStatus: undefined,
+      cliSessionId: null,
+      idleKilled: false,
+      changedFilesCount: 0,
+    };
+  }
+
+  const currentSession = state.sessions.get(currentSessionId) ?? null;
+  const currentSdkSession = state.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId) ?? null;
+  const currentSessionVm = coalesceSessionViewModel(currentSession, currentSdkSession);
+
+  return {
+    currentSessionId,
+    isConnected: state.cliConnected.get(currentSessionId) ?? false,
+    status: state.sessionStatus.get(currentSessionId) ?? null,
+    currentPermCount: countUserPermissions(state.pendingPermissions.get(currentSessionId)),
+    currentSdkState: currentSessionVm?.state ?? null,
+    currentHasUnread: !!state.sessionAttention.get(currentSessionId),
+    sessionName:
+      state.sessionNames.get(currentSessionId) ||
+      currentSessionVm?.name ||
+      `Session ${currentSessionId.slice(0, 8)}`,
+    sessionNum: currentSessionVm?.sessionNum ?? null,
+    isQuestNamed: state.questNamedSessions.has(currentSessionId),
+    questStatus: currentSessionVm?.claimedQuestStatus,
+    cliSessionId: currentSessionVm?.cliSessionId ?? null,
+    idleKilled: state.cliDisconnectReason.get(currentSessionId) === "idle_limit",
+    changedFilesCount: countScopedChangedFiles(state, currentSessionId, currentSessionVm),
+  };
+}
 
 export function TopBar() {
   const hash = useSyncExternalStore(
@@ -22,26 +132,49 @@ export function TopBar() {
   const route = useMemo(() => parseHash(hash), [hash]);
   const isSessionView = route.page === "session" || route.page === "home";
   const isQuestmasterPage = route.page === "questmaster";
-  const currentSessionId = useStore((s) => s.currentSessionId);
-  const cliConnected = useStore((s) => s.cliConnected);
-  const sessionStatus = useStore((s) => s.sessionStatus);
-  const sessionNames = useStore((s) => s.sessionNames);
-  const sdkSessions = useStore((s) => s.sdkSessions);
-  const zoomLevel = useStore((s) => s.zoomLevel);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const setSidebarOpen = useStore((s) => s.setSidebarOpen);
-  const setSessionInfoOpenSessionId = useStore((s) => s.setSessionInfoOpenSessionId);
-  const activeTab = useStore((s) => s.activeTab);
-  const setActiveTab = useStore((s) => s.setActiveTab);
+  const {
+    currentSessionId,
+    zoomLevel,
+    sidebarOpen,
+    setSidebarOpen,
+    setSessionInfoOpenSessionId,
+    activeTab,
+    setActiveTab,
+    activeQuestCount,
+    refreshQuests,
+  } = useStore(
+    useShallow((s) => ({
+      currentSessionId: s.currentSessionId,
+      zoomLevel: s.zoomLevel,
+      sidebarOpen: s.sidebarOpen,
+      setSidebarOpen: s.setSidebarOpen,
+      setSessionInfoOpenSessionId: s.setSessionInfoOpenSessionId,
+      activeTab: s.activeTab,
+      setActiveTab: s.setActiveTab,
+      activeQuestCount: s.quests.reduce((count, quest) => count + (quest.status !== "done" ? 1 : 0), 0),
+      refreshQuests: s.refreshQuests,
+    })),
+  );
+  const {
+    isConnected,
+    status,
+    currentPermCount,
+    currentSdkState,
+    currentHasUnread,
+    sessionName,
+    sessionNum,
+    isQuestNamed,
+    questStatus,
+    cliSessionId,
+    idleKilled,
+    changedFilesCount,
+  } = useStore(useShallow(getCurrentTopBarSessionState));
+  const { running, waiting, unread, attentionSessionIdsKey } = useStore(useShallow(getTopBarStatusSummary));
   const [copiedCliId, setCopiedCliId] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const currentSession = useStore((s) => (currentSessionId ? (s.sessions.get(currentSessionId) ?? null) : null));
-  const currentSdkSession = useStore((s) =>
-    currentSessionId ? (s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId) ?? null) : null,
-  );
-  const currentSessionVm = useMemo(
-    () => coalesceSessionViewModel(currentSession, currentSdkSession),
-    [currentSession, currentSdkSession],
+  const attentionSessionIds = useMemo(
+    () => splitAttentionSessionIdsKey(attentionSessionIdsKey),
+    [attentionSessionIdsKey],
   );
 
   useEffect(() => {
@@ -49,10 +182,6 @@ export function TopBar() {
     setSessionInfoOpenSessionId(openSessionId);
     return () => setSessionInfoOpenSessionId(null);
   }, [infoOpen, isSessionView, currentSessionId, setSessionInfoOpenSessionId]);
-
-  // Count of active (non-done) quests for the quest toggle badge
-  const activeQuestCount = useStore((s) => s.quests.filter((q) => q.status !== "done").length);
-  const refreshQuests = useStore((s) => s.refreshQuests);
 
   // Load quests on mount and keep the badge count fresh. The quest_list_updated
   // WebSocket broadcast only reaches browsers with an active session WS connection,
@@ -93,9 +222,6 @@ export function TopBar() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [refreshQuests]);
-
-  const cliSessionId = currentSessionVm?.cliSessionId ?? null;
-
   const handleCopyCliSessionId = useCallback(() => {
     if (!cliSessionId) return;
     writeClipboardText(cliSessionId)
@@ -105,75 +231,6 @@ export function TopBar() {
       })
       .catch(console.error);
   }, [cliSessionId]);
-  const changedFilesCount = useStore((s) => {
-    if (!currentSessionId) return 0;
-    const session = s.sessions.get(currentSessionId);
-    const sdk = s.sdkSessions.find((item) => item.sessionId === currentSessionId);
-    const sessionVm = session ? toSessionViewModel(session) : sdk ? toSessionViewModel(sdk) : null;
-    const sessionCwd = sessionVm?.cwd;
-    const files = s.changedFiles.get(currentSessionId);
-    if (!files) return 0;
-    if (!sessionCwd) return files.size;
-    // Use repo_root only when it's an ancestor of cwd (worktrees have a different root)
-    const scope =
-      sessionVm?.repoRoot && sessionCwd.startsWith(sessionVm.repoRoot + "/") ? sessionVm.repoRoot : sessionCwd;
-    const prefix = `${scope}/`;
-    const scopedFiles = [...files].filter((fp) => fp === scope || fp.startsWith(prefix));
-    // Filter out files with +0/-0 diff stats (no actual changes vs base branch)
-    const stats = s.diffFileStats.get(currentSessionId);
-    if (!stats || stats.size === 0) return scopedFiles.length;
-    return scopedFiles.filter((fp) => {
-      const st = stats.get(fp);
-      return !st || st.additions > 0 || st.deletions > 0;
-    }).length;
-  });
-
-  const pendingPermissions = useStore((s) => s.pendingPermissions);
-  const sessionAttention = useStore((s) => s.sessionAttention);
-  const cliDisconnectReason = useStore((s) => s.cliDisconnectReason);
-
-  // Aggregate session status counts using the same priority logic as SessionStatusDot
-  // so that each session contributes to exactly one category, matching the visible dots.
-  const statusSummary = useMemo(() => {
-    let running = 0,
-      waiting = 0,
-      unread = 0;
-    for (const sdk of sdkSessions) {
-      if (sdk.archived) continue;
-      const vs = deriveSessionStatus({
-        permCount: countUserPermissions(pendingPermissions.get(sdk.sessionId)),
-        isConnected: cliConnected.get(sdk.sessionId) ?? sdk.cliConnected ?? false,
-        sdkState: sdk.state ?? null,
-        status: sessionStatus.get(sdk.sessionId) ?? null,
-        hasUnread: !!sessionAttention.get(sdk.sessionId),
-        idleKilled: cliDisconnectReason.get(sdk.sessionId) === "idle_limit",
-      });
-      if (vs === "running" || vs === "compacting") running++;
-      else if (vs === "permission") waiting++;
-      else if (vs === "completed_unread") unread++;
-    }
-    return { running, waiting, unread };
-  }, [sdkSessions, sessionStatus, pendingPermissions, sessionAttention, cliConnected, cliDisconnectReason]);
-
-  // Sessions needing attention (permission or unread), sorted newest-first
-  const attentionSessionIds = useMemo(() => {
-    return sdkSessions
-      .filter((sdk) => {
-        if (sdk.archived) return false;
-        const vs = deriveSessionStatus({
-          permCount: countUserPermissions(pendingPermissions.get(sdk.sessionId)),
-          isConnected: cliConnected.get(sdk.sessionId) ?? sdk.cliConnected ?? false,
-          sdkState: sdk.state ?? null,
-          status: sessionStatus.get(sdk.sessionId) ?? null,
-          hasUnread: !!sessionAttention.get(sdk.sessionId),
-          idleKilled: cliDisconnectReason.get(sdk.sessionId) === "idle_limit",
-        });
-        return vs === "permission" || vs === "completed_unread";
-      })
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .map((sdk) => sdk.sessionId);
-  }, [sdkSessions, sessionStatus, pendingPermissions, sessionAttention, cliConnected, cliDisconnectReason]);
-
   // Cycle through attention sessions on yarn ball click
   const cycleIndexRef = useRef(-1);
   const attentionKey = attentionSessionIds.join(",");
@@ -231,18 +288,6 @@ export function TopBar() {
     }
   }, [isQuestmasterPage]);
 
-  const isConnected = currentSessionId ? (cliConnected.get(currentSessionId) ?? false) : false;
-  const status = currentSessionId ? (sessionStatus.get(currentSessionId) ?? null) : null;
-  const currentPermCount = currentSessionId ? countUserPermissions(pendingPermissions.get(currentSessionId)) : 0;
-  const currentSdkState = currentSessionVm?.state ?? null;
-  const currentHasUnread = currentSessionId ? !!sessionAttention.get(currentSessionId) : false;
-  const sessionName = currentSessionId
-    ? sessionNames?.get(currentSessionId) || currentSessionVm?.name || `Session ${currentSessionId.slice(0, 8)}`
-    : null;
-  const sessionNum = currentSessionVm?.sessionNum ?? null;
-  const isQuestNamed = useStore((s) => (currentSessionId ? s.questNamedSessions.has(currentSessionId) : false));
-  const questStatus = currentSessionVm?.claimedQuestStatus;
-
   return (
     <header className="shrink-0 flex items-center justify-between px-2 sm:px-4 py-2 sm:py-2.5 bg-cc-card border-b border-cc-border">
       <div className="flex items-center gap-3 min-w-0">
@@ -274,7 +319,7 @@ export function TopBar() {
                   sdkState={currentSdkState}
                   status={status}
                   hasUnread={currentHasUnread}
-                  idleKilled={currentSessionId ? cliDisconnectReason.get(currentSessionId) === "idle_limit" : false}
+                  idleKilled={idleKilled}
                 />
               </div>
               {typeof sessionNum === "number" && (
@@ -328,27 +373,27 @@ export function TopBar() {
       {/* Right side */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-[12px] text-cc-muted">
         {/* Global session status summary — right-aligned so it stays in a fixed position */}
-        {(statusSummary.running > 0 || statusSummary.waiting > 0 || statusSummary.unread > 0) && (
+        {(running > 0 || waiting > 0 || unread > 0) && (
           <button
             onClick={handleAttentionCycle}
             className="flex items-center gap-1 text-[10px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
             title="Cycle through sessions needing attention"
           >
-            {statusSummary.running > 0 && (
+            {running > 0 && (
               <span className="text-cc-success flex items-center gap-0.5">
-                {statusSummary.running}
+                {running}
                 <YarnBallDot className="text-cc-success" />
               </span>
             )}
-            {statusSummary.waiting > 0 && (
+            {waiting > 0 && (
               <span className="text-cc-warning flex items-center gap-0.5">
-                {statusSummary.waiting}
+                {waiting}
                 <YarnBallDot className="text-cc-warning" />
               </span>
             )}
-            {statusSummary.unread > 0 && (
+            {unread > 0 && (
               <span className="text-blue-500 flex items-center gap-0.5">
-                {statusSummary.unread}
+                {unread}
                 <YarnBallDot className="text-blue-500" />
               </span>
             )}
@@ -428,9 +473,13 @@ export function TopBar() {
 }
 
 function SearchToggleButton({ sessionId }: { sessionId: string }) {
-  const isOpen = useStore((s) => getSessionSearchState(s, sessionId).isOpen);
-  const openSearch = useStore((s) => s.openSessionSearch);
-  const closeSearch = useStore((s) => s.closeSessionSearch);
+  const { isOpen, openSearch, closeSearch } = useStore(
+    useShallow((s) => ({
+      isOpen: getSessionSearchState(s, sessionId).isOpen,
+      openSearch: s.openSessionSearch,
+      closeSearch: s.closeSessionSearch,
+    })),
+  );
 
   return (
     <button
