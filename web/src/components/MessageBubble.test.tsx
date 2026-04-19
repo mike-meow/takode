@@ -883,6 +883,25 @@ describe("MessageBubble - assistant messages", () => {
     expect(screen.queryByText("Subagent")).toBeNull();
   });
 
+  it("does not render synthetic write_stdin polling tool_use blocks", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "",
+      contentBlocks: [
+        {
+          type: "tool_use",
+          id: "tu-write-stdin-1",
+          name: "write_stdin",
+          input: { session_id: "59356", chars: "" },
+        },
+      ],
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.queryByText("write_stdin")).toBeNull();
+    expect(screen.queryByText("59356")).toBeNull();
+  });
+
   it("renders thinking blocks with 'Thinking' label and char count", () => {
     const thinkingText = "Let me analyze this problem step by step...";
     const msg = makeMessage({

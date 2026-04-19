@@ -38,6 +38,20 @@ interface TaskInfo {
   input: Record<string, unknown>;
 }
 
+export function isToolHiddenFromChat(name: string): boolean {
+  return name === "write_stdin";
+}
+
+function filterHiddenToolUseBlocks(msg: ChatMessage): ChatMessage | null {
+  const blocks = msg.contentBlocks;
+  if (!blocks || blocks.length === 0) return msg;
+
+  const filtered = blocks.filter((b) => !(b.type === "tool_use" && isToolHiddenFromChat(b.name)));
+  if (filtered.length === blocks.length) return msg;
+  if (filtered.length === 0 && !msg.content.trim() && !msg.notification) return null;
+  return { ...msg, contentBlocks: filtered };
+}
+
 /**
  * Get the dominant tool name if this message is "tool-only"
  * (assistant message whose contentBlocks are ALL tool_use of the same name).
@@ -96,7 +110,9 @@ export const FILE_TOOL_NAMES = new Set(["Edit", "Write", "Read"]);
 function groupToolMessages(messages: ChatMessage[]): FeedEntry[] {
   const entries: FeedEntry[] = [];
 
-  for (const msg of messages) {
+  for (const originalMsg of messages) {
+    const msg = filterHiddenToolUseBlocks(originalMsg);
+    if (!msg) continue;
     const toolName = getToolOnlyName(msg);
 
     if (toolName) {

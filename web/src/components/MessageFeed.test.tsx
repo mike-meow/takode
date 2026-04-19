@@ -2610,6 +2610,32 @@ describe("MessageFeed - tool-only message detection", () => {
     expect(screen.getByText("/tmp/proof.png")).toBeTruthy();
   });
 
+  it("hides synthetic write_stdin polling actions from the chat feed", () => {
+    const sid = "test-hide-write-stdin";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a-poll",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-poll", name: "write_stdin", input: { session_id: "59356", chars: "" } },
+        ],
+      }),
+      makeMessage({
+        id: "a-visible",
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "pwd" } }],
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByText("59356")).toBeNull();
+    expect(screen.queryByText("write_stdin")).toBeNull();
+    expect(screen.getByText("pwd")).toBeTruthy();
+  });
+
   it("renders file-tool messages as standalone chips without grouping", () => {
     // Edit/Write/Read tools are never grouped at the feed level
     const sid = "test-tool-group";

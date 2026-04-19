@@ -16,7 +16,7 @@ import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { generateReplyPreview } from "../utils/reply-preview.js";
 import { parseReplyContext } from "../utils/reply-context.js";
-import { FILE_TOOL_NAMES } from "../hooks/use-feed-model.js";
+import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 
@@ -995,6 +995,7 @@ function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
     // appear twice: once as an inline Agent chip (SubagentContainer) and once
     // as a "Subagent" ToolBlock chip.
     if (block.type === "tool_use" && isSubagentToolName(block.name)) continue;
+    if (block.type === "tool_use" && isToolHiddenFromChat(block.name)) continue;
 
     if (block.type === "tool_use") {
       const last = groups[groups.length - 1];
@@ -1076,7 +1077,9 @@ function AssistantMessage({
       contentBlocks: blocksChanged ? strippedBlocks : message.contentBlocks,
     };
   }, [message]);
-  const blocks = displayMessage.contentBlocks || [];
+  const blocks = (displayMessage.contentBlocks || []).filter(
+    (block) => !(block.type === "tool_use" && isToolHiddenFromChat(block.name)),
+  );
 
   const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
@@ -1085,6 +1088,10 @@ function AssistantMessage({
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = displayMessage.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
+
+  if (blocks.length === 0 && !displayMessage.content.trim() && !message.notification) {
+    return null;
+  }
 
   if (blocks.length === 0 && displayMessage.content) {
     return (
