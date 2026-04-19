@@ -266,7 +266,7 @@ takode notify review "landing page copy draft is ready for review"
 
 ### `takode pending <session>`
 
-Show pending permission requests for a session (questions, plans awaiting approval).
+Show leader-answerable prompts for a session: `AskUserQuestion`, `ExitPlanMode`, and active `takode notify needs-input` questions.
 
 ## Orchestrator Commands
 
@@ -347,16 +347,18 @@ Interrupt a worker's current turn (sends SIGTERM).
 takode interrupt 2
 ```
 
-### `takode answer <session> <response>`
+### `takode answer <session> [--message <msg-id> | --target <id>] <response>`
 
-Answer a worker's pending question or plan approval request.
+Answer a worker's pending question, `needs-input` clarification prompt, or plan approval request.
 
 ```bash
-takode answer 2 1                          # pick option 1
-takode answer 2 "custom answer"            # free text
-takode answer 2 approve                    # approve a plan
-takode answer 2 reject "add error handling" # reject with feedback
+takode answer 2 --message 41 1                          # pick option 1 for msg [41]
+takode answer 2 --message 41 "custom answer"           # free text reply to msg [41]
+takode answer 2 --message 52 approve                   # approve the plan shown in msg [52]
+takode answer 2 --target req_abc reject "add error handling" # target an exact pending id
 ```
+
+Use this when a worker or reviewer asked a clarification question through `takode notify needs-input` and is waiting on you. If you can resolve the question from existing context, answer it directly. If the question reveals genuine ambiguity you cannot resolve, ask the user in plain text, pair it with `takode notify needs-input`, and do not advance that quest until the ambiguity is resolved.
 
 ### `takode board [show|set|advance|rm]`
 

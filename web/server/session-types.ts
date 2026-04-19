@@ -989,6 +989,9 @@ export interface TakodeUserMessageEventData {
 
 export interface TakodeNotificationNeedsInputEventData {
   summary?: string;
+  notificationId?: string;
+  messageId?: string | null;
+  msg_index?: number;
 }
 
 export interface TakodeBoardStalledEventData {

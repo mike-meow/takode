@@ -623,12 +623,13 @@ Archive a herded session.
 
 const PENDING_HELP = `Usage: takode pending <session> [--json]
 
-Show pending AskUserQuestion and ExitPlanMode requests for a herded session.
+Show leader-answerable questions for a herded session, including
+\`takode notify needs-input\` prompts and plan approvals.
 `;
 
-const ANSWER_HELP = `Usage: takode answer <session> <response> [--json]
+const ANSWER_HELP = `Usage: takode answer <session> [--message <msg-id> | --target <id>] <response> [--json]
 
-Answer a pending AskUserQuestion or approve/reject a pending plan.
+Answer a pending question, \`needs-input\` prompt, or approve/reject a pending plan.
 `;
 
 const SET_BASE_HELP = `Usage: takode set-base <session> <branch> [--json]
@@ -2678,9 +2679,12 @@ async function handlePending(base: string, args: string[]): Promise<void> {
 
   const result = (await apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/pending`)) as {
     pending: Array<{
-      request_id: string;
+      kind?: "permission" | "notification";
+      request_id?: string;
       tool_name: string;
       timestamp: number;
+      notification_id?: string;
+      summary?: string;
       msg_index?: number;
       questions?: Array<{
         header?: string;
@@ -2698,14 +2702,31 @@ async function handlePending(base: string, args: string[]): Promise<void> {
   }
 
   if (result.pending.length === 0) {
-    console.log("No pending questions or plans to answer.");
+    console.log("No pending questions, needs-input prompts, or plans to answer.");
     return;
   }
 
+  const buildAnswerTargetHint = (pendingItem: (typeof result.pending)[number]): string => {
+    if (typeof pendingItem.msg_index === "number") return ` --message ${pendingItem.msg_index}`;
+    if (typeof pendingItem.request_id === "string" && pendingItem.request_id) return ` --target ${pendingItem.request_id}`;
+    if (typeof pendingItem.notification_id === "string" && pendingItem.notification_id) {
+      return ` --target ${pendingItem.notification_id}`;
+    }
+    return "";
+  };
+
   for (const p of result.pending) {
     const msgRef = typeof p.msg_index === "number" ? ` [msg ${p.msg_index}]` : "";
+    const targetHint = buildAnswerTargetHint(p);
 
-    if (p.tool_name === "AskUserQuestion" && p.questions) {
+    if (p.kind === "notification" || p.tool_name === "takode.notify") {
+      const summary = p.summary?.trim() || "Needs input";
+      console.log(`\n[needs-input]${msgRef} ${formatInlineText(summary)}`);
+      if (msgRef) {
+        console.log(`\nFull message: takode read ${safeSessionRef} ${p.msg_index}`);
+      }
+      console.log(`Answer: takode answer ${safeSessionRef}${targetHint} <response>`);
+    } else if (p.tool_name === "AskUserQuestion" && p.questions) {
       for (const q of p.questions) {
         console.log(`\n[AskUserQuestion]${msgRef} ${formatInlineText(q.question)}`);
         if (q.options) {
@@ -2719,7 +2740,7 @@ async function handlePending(base: string, args: string[]): Promise<void> {
         if (msgRef) {
           console.log(`\nFull message: takode read ${safeSessionRef} ${p.msg_index}`);
         }
-        console.log(`Answer: takode answer ${safeSessionRef} <option-number-or-text>`);
+        console.log(`Answer: takode answer ${safeSessionRef}${targetHint} <option-number-or-text>`);
       }
     } else if (p.tool_name === "ExitPlanMode") {
       const planPreview = typeof p.plan === "string" ? p.plan.slice(0, TAKODE_PEEK_CONTENT_LIMIT) : "(no plan text)";
@@ -2731,35 +2752,65 @@ async function handlePending(base: string, args: string[]): Promise<void> {
       if (msgRef) {
         console.log(`\nFull plan: takode read ${safeSessionRef} ${p.msg_index}`);
       }
-      console.log(`Approve: takode answer ${safeSessionRef} approve`);
-      console.log(`Reject:  takode answer ${safeSessionRef} reject 'feedback here'`);
+      console.log(`Approve: takode answer ${safeSessionRef}${targetHint} approve`);
+      console.log(`Reject:  takode answer ${safeSessionRef}${targetHint} reject 'feedback here'`);
     }
   }
 }
 
 async function handleAnswer(base: string, args: string[]): Promise<void> {
-  const sessionRef = args.filter((a) => !a.startsWith("--"))[0];
-  const response = args
-    .filter((a) => !a.startsWith("--"))
-    .slice(1)
-    .join(" ");
-  const jsonMode = args.includes("--json");
+  const sessionRef = args[0];
+  const flags = parseFlags(args.slice(1));
+  const jsonMode = flags.json === true;
+  const targetId = typeof flags.target === "string" ? flags.target.trim() : "";
+  const msgIndexRaw = typeof flags.message === "string" ? flags.message.trim() : "";
+  const msgIndex = msgIndexRaw ? Number.parseInt(msgIndexRaw, 10) : undefined;
+  if (msgIndexRaw && !Number.isInteger(msgIndex)) {
+    err("Usage: takode answer <session> [--message <msg-id> | --target <id>] <response> [--json]");
+  }
+  if (!sessionRef || sessionRef.startsWith("--")) {
+    err("Usage: takode answer <session> [--message <msg-id> | --target <id>] <response> [--json]");
+  }
+  const responseParts: string[] = [];
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") continue;
+    if (arg === "--message" || arg === "--target") {
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--")) continue;
+    responseParts.push(arg);
+  }
+  const response = responseParts.join(" ");
 
-  if (!sessionRef || !response) err("Usage: takode answer <session> <response>");
+  if (!response) err("Usage: takode answer <session> [--message <msg-id> | --target <id>] <response> [--json]");
 
   const mySessionId = getCallerSessionId();
 
   const result = (await apiPost(base, `/sessions/${encodeURIComponent(sessionRef)}/answer`, {
     response,
     callerSessionId: mySessionId,
-  })) as { ok: boolean; tool_name: string; answer?: string; action?: string; feedback?: string; error?: string };
+    ...(targetId ? { targetId } : {}),
+    ...(msgIndex !== undefined ? { msgIndex } : {}),
+  })) as {
+    ok: boolean;
+    kind?: "permission" | "notification";
+    tool_name: string;
+    answer?: string;
+    action?: string;
+    feedback?: string;
+    error?: string;
+  };
 
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  if (result.tool_name === "AskUserQuestion") {
+  if (result.kind === "notification" || result.tool_name === "takode.notify") {
+    console.log(`[${formatTime(Date.now())}] \u2713 Answered needs-input prompt: "${formatInlineText(result.answer)}"`);
+  } else if (result.tool_name === "AskUserQuestion") {
     console.log(`[${formatTime(Date.now())}] \u2713 Answered: "${formatInlineText(result.answer)}"`);
   } else if (result.tool_name === "ExitPlanMode") {
     if (result.action === "approved") {

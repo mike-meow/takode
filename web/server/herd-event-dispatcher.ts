@@ -637,9 +637,42 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       // Include message index so the leader can run `takode read <session> <msg_index>`
       const msgRef = typeof evt.data.msg_index === "number" ? ` | msg [${evt.data.msg_index}]` : "";
       const header = `${label} | permission_request${userInitiated} | ${tool}${summary}${msgRef}${ageSuffix}`;
+      const answerTarget =
+        typeof evt.data.msg_index === "number"
+          ? ` --message ${evt.data.msg_index}`
+          : typeof evt.data.request_id === "string" && evt.data.request_id
+            ? ` --target ${evt.data.request_id}`
+            : "";
+      if (tool === "AskUserQuestion") {
+        const details: string[] = [];
+        if (typeof evt.data.question === "string" && evt.data.question.trim()) {
+          details.push(`Question: ${evt.data.question}`);
+        }
+        if (Array.isArray(evt.data.options)) {
+          for (let i = 0; i < evt.data.options.length; i++) {
+            details.push(`${i + 1}. ${evt.data.options[i]}`);
+          }
+        }
+        if (typeof evt.sessionNum === "number") {
+          details.push(`Answer: takode answer ${evt.sessionNum}${answerTarget} <option-number-or-text>`);
+          if (typeof evt.data.msg_index === "number") {
+            details.push(`Read: takode read ${evt.sessionNum} ${evt.data.msg_index}`);
+          }
+        }
+        if (details.length > 0) {
+          return `${header}\n${details.map((line) => `  ${line}`).join("\n")}`;
+        }
+      }
       // Include full plan content so leaders can review inline without extra tool calls
       if (typeof evt.data.planContent === "string" && evt.data.planContent.length > 0) {
-        return `${header}\n\n<plan>\n${evt.data.planContent}\n</plan>`;
+        const actions =
+          typeof evt.sessionNum === "number"
+            ? [
+                `Approve: takode answer ${evt.sessionNum}${answerTarget} approve`,
+                `Reject: takode answer ${evt.sessionNum}${answerTarget} reject "feedback here"`,
+              ]
+            : [];
+        return `${header}\n\n<plan>\n${evt.data.planContent}\n</plan>${actions.length > 0 ? `\n${actions.map((line) => `  ${line}`).join("\n")}` : ""}`;
       }
       return header;
     }
@@ -676,7 +709,20 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
     }
     case "notification_needs_input": {
       const summary = typeof evt.data.summary === "string" ? ` | "${truncate(evt.data.summary, 80)}"` : "";
-      return `${label} | notification_needs_input${summary}${ageSuffix}`;
+      const msgRef = typeof evt.data.msg_index === "number" ? ` | msg [${evt.data.msg_index}]` : "";
+      const header = `${label} | notification_needs_input${summary}${msgRef}${ageSuffix}`;
+      if (typeof evt.sessionNum !== "number") return header;
+      const answerTarget =
+        typeof evt.data.msg_index === "number"
+          ? ` --message ${evt.data.msg_index}`
+          : typeof evt.data.notificationId === "string" && evt.data.notificationId
+            ? ` --target ${evt.data.notificationId}`
+            : "";
+      const actions = [`Answer: takode answer ${evt.sessionNum}${answerTarget} <response>`];
+      if (typeof evt.data.msg_index === "number") {
+        actions.push(`Read: takode read ${evt.sessionNum} ${evt.data.msg_index}`);
+      }
+      return `${header}\n${actions.map((line) => `  ${line}`).join("\n")}`;
     }
     case "board_stalled": {
       const quest = evt.data.title ? `${evt.data.questId} ${truncate(evt.data.title, 40)}` : evt.data.questId;

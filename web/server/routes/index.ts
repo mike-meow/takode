@@ -58,6 +58,8 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `**Key disciplines**:\n` +
     `- If you asked the user a question, WAIT for their answer. Don't let herd events override your decision to wait.\n` +
     `- Be faithful to user's words. Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.\n` +
+    `- When workers or reviewers ask clarifying questions, answer from existing context when you can. Use \`takode answer <session> ...\` for pending question/plan prompts and \`needs-input\` herd events, or send a targeted follow-up message.\n` +
+    `- If a worker/reviewer question exposes ambiguity you cannot resolve, ask the user via plain text plus \`takode notify needs-input\` and do not keep advancing that quest until it is resolved.\n` +
     `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n` +
     `- Archiving a worktree worker deletes its worktree and any uncommitted changes. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.\n` +
     `- Don't echo board state as prose. \`takode board\` commands display the board with a special UI, and the user already sees the live board state in the Takode Chat UI -- don't repeat current board rows in markdown tables or summaries unless the user explicitly asks for a text summary.\n` +

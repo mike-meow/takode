@@ -21321,6 +21321,9 @@ describe("notifyUser herded session routing", () => {
     const needsInputEvents = capturedEvents.filter((e) => e.event === "notification_needs_input");
     expect(needsInputEvents).toHaveLength(1);
     expect(needsInputEvents[0].data.summary).toBe("Need decision on auth");
+    expect(needsInputEvents[0].data.notificationId).toBe("n-1");
+    expect(needsInputEvents[0].data.messageId).toBe("asst-1");
+    expect(needsInputEvents[0].data.msg_index).toBe(0);
 
     // Attention should NOT be set for herded session
     expect(session.attentionReason).toBeNull();

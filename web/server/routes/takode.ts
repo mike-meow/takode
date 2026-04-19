@@ -20,6 +20,7 @@ import type { RouteContext } from "./context.js";
 export function createTakodeRoutes(ctx: RouteContext) {
   const api = new Hono();
   const { launcher, wsBridge, authenticateTakodeCaller, resolveId, timerManager } = ctx;
+  type BridgeSession = NonNullable<ReturnType<typeof wsBridge.getSession>>;
   type BoardParticipantStatus = {
     sessionId: string;
     sessionNum?: number | null;
@@ -30,6 +31,31 @@ export function createTakodeRoutes(ctx: RouteContext) {
     worker?: BoardParticipantStatus;
     reviewer?: BoardParticipantStatus | null;
   };
+  type LeaderAnswerTarget =
+    | {
+        kind: "permission";
+        request_id: string;
+        tool_name: string;
+        timestamp: number;
+        msg_index?: number;
+        input: Record<string, unknown>;
+        questions?: unknown;
+        plan?: unknown;
+        allowedPrompts?: unknown;
+      }
+    | {
+        kind: "notification";
+        notification_id: string;
+        tool_name: "takode.notify";
+        timestamp: number;
+        msg_index?: number;
+        summary?: string;
+        messageId: string | null;
+      };
+  type LeaderAnswerTargetSelection =
+    | { kind: "oldest" }
+    | { kind: "msg_index"; msg_index: number }
+    | { kind: "target_id"; target_id: string };
 
   const resolveReportedPermissionMode = (
     launcherMode: string | undefined,
@@ -112,6 +138,15 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (session.archived) return "archived" as const;
     if (session.cliConnected) return session.state === "running" ? ("running" as const) : ("idle" as const);
     return "disconnected" as const;
+  };
+
+  const findMessageIndexById = (session: BridgeSession, messageId: string | null | undefined): number | undefined => {
+    if (!messageId) return undefined;
+    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+      const entry = session.messageHistory[i];
+      if (entry.type === "assistant" && entry.message?.id === messageId) return i;
+    }
+    return undefined;
   };
 
   const toBoardParticipantStatus = (
@@ -564,6 +599,87 @@ export function createTakodeRoutes(ctx: RouteContext) {
   /** Answerable tool names — tool permissions (can_use_tool) are human-only */
   const ANSWERABLE_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode"]);
 
+  const buildLeaderAnswerTargets = (session: BridgeSession): LeaderAnswerTarget[] => {
+    const targets: LeaderAnswerTarget[] = [];
+
+    for (const [, perm] of session.pendingPermissions) {
+      if (!ANSWERABLE_TOOLS.has(perm.tool_name)) continue;
+      let msg_index: number | undefined;
+      for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+        const entry = session.messageHistory[i] as { type?: string; request?: { request_id?: string } };
+        if (entry.type === "permission_request" && entry.request?.request_id === perm.request_id) {
+          msg_index = i;
+          break;
+        }
+      }
+      targets.push({
+        kind: "permission",
+        request_id: perm.request_id,
+        tool_name: perm.tool_name,
+        timestamp: perm.timestamp,
+        input: perm.input,
+        ...(msg_index !== undefined ? { msg_index } : {}),
+        ...(perm.tool_name === "AskUserQuestion" ? { questions: perm.input.questions } : {}),
+        ...(perm.tool_name === "ExitPlanMode"
+          ? { plan: perm.input.plan, allowedPrompts: perm.input.allowedPrompts }
+          : {}),
+      });
+    }
+
+    for (const notif of session.notifications) {
+      if (notif.done || notif.category !== "needs-input") continue;
+      const msg_index = findMessageIndexById(session, notif.messageId);
+      targets.push({
+        kind: "notification",
+        notification_id: notif.id,
+        tool_name: "takode.notify",
+        timestamp: notif.timestamp,
+        ...(msg_index !== undefined ? { msg_index } : {}),
+        ...(notif.summary ? { summary: notif.summary } : {}),
+        messageId: notif.messageId,
+      });
+    }
+
+    return targets.sort((a, b) => a.timestamp - b.timestamp);
+  };
+
+  const matchLeaderAnswerTarget = (
+    target: LeaderAnswerTarget,
+    selection: Exclude<LeaderAnswerTargetSelection, { kind: "oldest" }>,
+  ): boolean => {
+    if (selection.kind === "msg_index") return target.msg_index === selection.msg_index;
+    return target.kind === "permission"
+      ? target.request_id === selection.target_id
+      : target.notification_id === selection.target_id;
+  };
+
+  const selectLeaderAnswerTarget = (
+    targets: LeaderAnswerTarget[],
+    selection: LeaderAnswerTargetSelection,
+  ): { ok: true; target: LeaderAnswerTarget } | { ok: false; status: 404 | 409; error: string } => {
+    if (targets.length === 0) return { ok: false, status: 404, error: "No pending question or plan to answer" };
+
+    if (selection.kind === "oldest") {
+      if (targets.length > 1) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Multiple pending prompts; choose one with msgIndex/--message or targetId/--target",
+        };
+      }
+      return { ok: true, target: targets[0] };
+    }
+
+    const matches = targets.filter((target) => matchLeaderAnswerTarget(target, selection));
+    if (matches.length === 0) {
+      return { ok: false, status: 404, error: "Targeted pending prompt not found" };
+    }
+    if (matches.length > 1) {
+      return { ok: false, status: 409, error: "Target selector matched multiple pending prompts" };
+    }
+    return { ok: true, target: matches[0] };
+  };
+
   api.get("/sessions/:id/pending", (c) => {
     const auth = authenticateTakodeCaller(c, { requireOrchestrator: true });
     if ("response" in auth) return auth.response;
@@ -578,30 +694,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const session = wsBridge.getSession(id);
     if (!session) return c.json({ error: "Session not found in bridge" }, 404);
 
-    const pending = [];
-    for (const [, perm] of session.pendingPermissions) {
-      if (!ANSWERABLE_TOOLS.has(perm.tool_name)) continue;
-      // Find the message index in history so the leader can `takode read <session> <idx>`
-      let msg_index: number | undefined;
-      for (let i = session.messageHistory.length - 1; i >= 0; i--) {
-        const entry = session.messageHistory[i] as { type?: string; request?: { request_id?: string } };
-        if (entry.type === "permission_request" && entry.request?.request_id === perm.request_id) {
-          msg_index = i;
-          break;
-        }
-      }
-      pending.push({
-        request_id: perm.request_id,
-        tool_name: perm.tool_name,
-        timestamp: perm.timestamp,
-        ...(msg_index !== undefined ? { msg_index } : {}),
-        ...(perm.tool_name === "AskUserQuestion" ? { questions: perm.input.questions } : {}),
-        ...(perm.tool_name === "ExitPlanMode"
-          ? { plan: perm.input.plan, allowedPrompts: perm.input.allowedPrompts }
-          : {}),
-      });
-    }
-    return c.json({ pending });
+    return c.json({ pending: buildLeaderAnswerTargets(session) });
   });
 
   api.post("/sessions/:id/answer", async (c) => {
@@ -615,6 +708,24 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const body = await c.req.json().catch(() => ({}));
     const response = typeof body.response === "string" ? body.response : "";
+    if (!response.trim()) {
+      return c.json({ error: "response is required" }, 400);
+    }
+    const rawTargetId =
+      typeof body.targetId === "string"
+        ? body.targetId.trim()
+        : typeof body.target_id === "string"
+          ? body.target_id.trim()
+          : "";
+    const rawMsgIndex =
+      typeof body.msgIndex === "number"
+        ? body.msgIndex
+        : typeof body.msg_index === "number"
+          ? body.msg_index
+          : undefined;
+    if (rawMsgIndex !== undefined && !Number.isInteger(rawMsgIndex)) {
+      return c.json({ error: "msgIndex must be an integer" }, 400);
+    }
     if (
       typeof body.callerSessionId === "string" &&
       body.callerSessionId.trim() &&
@@ -631,15 +742,35 @@ export function createTakodeRoutes(ctx: RouteContext) {
       return c.json({ error: "Only the leader who herded this session can answer" }, 403);
     }
 
-    // Find the first answerable pending permission
-    let target: { request_id: string; tool_name: string; input: Record<string, unknown> } | null = null;
-    for (const [, perm] of session.pendingPermissions) {
-      if (ANSWERABLE_TOOLS.has(perm.tool_name)) {
-        target = perm;
-        break;
-      }
+    const targets = buildLeaderAnswerTargets(session);
+    const selection: LeaderAnswerTargetSelection =
+      rawMsgIndex !== undefined
+        ? { kind: "msg_index", msg_index: rawMsgIndex }
+        : rawTargetId
+          ? { kind: "target_id", target_id: rawTargetId }
+          : { kind: "oldest" };
+    const selected = selectLeaderAnswerTarget(targets, selection);
+    if (!selected.ok) return c.json({ error: selected.error }, selected.status);
+    const target = selected.target;
+
+    if (target.kind === "notification") {
+      const callerInfo = launcher.getSession(auth.callerId);
+      const sessionLabel = callerInfo?.sessionNum !== undefined ? `#${callerInfo.sessionNum}` : undefined;
+      const delivery = wsBridge.injectUserMessage(id, response, {
+        sessionId: auth.callerId,
+        ...(sessionLabel ? { sessionLabel } : {}),
+      });
+      if (delivery === "no_session") return c.json({ error: "Session not found in bridge" }, 404);
+      wsBridge.markNotificationDone(id, target.notification_id, true);
+      return c.json({
+        ok: true,
+        kind: "notification",
+        tool_name: target.tool_name,
+        action: "answered",
+        answer: response,
+        delivery,
+      });
     }
-    if (!target) return c.json({ error: "No pending question or plan to answer" }, 404);
 
     // Build the permission_response based on tool type
     if (target.tool_name === "AskUserQuestion") {
@@ -663,7 +794,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         },
         auth.callerId,
       );
-      return c.json({ ok: true, tool_name: target.tool_name, answer: answerValue });
+      return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, answer: answerValue });
     }
 
     if (target.tool_name === "ExitPlanMode") {
@@ -679,7 +810,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
           },
           auth.callerId,
         );
-        return c.json({ ok: true, tool_name: target.tool_name, action: "approved" });
+        return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, action: "approved" });
       } else {
         // "reject" or "reject: feedback text"
         const feedback = response.replace(/^reject:?\s*/i, "").trim() || "Rejected by leader";
@@ -693,7 +824,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
           },
           auth.callerId,
         );
-        return c.json({ ok: true, tool_name: target.tool_name, action: "rejected", feedback });
+        return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, action: "rejected", feedback });
       }
     }
 

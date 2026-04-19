@@ -972,6 +972,41 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("AskUserQuestion");
   });
 
+  it("includes answer hints for AskUserQuestion permission_request events", () => {
+    const events = [
+      makeEvent({
+        event: "permission_request",
+        data: {
+          tool_name: "AskUserQuestion",
+          summary: "Need clarification",
+          question: "Which rollout should I use?",
+          options: ["Staged", "Immediate"],
+          msg_index: 12,
+        },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("Question: Which rollout should I use?");
+    expect(result).toContain("1. Staged");
+    expect(result).toContain("2. Immediate");
+    expect(result).toContain("Answer: takode answer 5 --message 12 <option-number-or-text>");
+    expect(result).toContain("Read: takode read 5 12");
+  });
+
+  it("includes answer hints for notification_needs_input events", () => {
+    const events = [
+      makeEvent({
+        event: "notification_needs_input",
+        data: { summary: "Need decision on rollout", msg_index: 18 },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("notification_needs_input");
+    expect(result).toContain("msg [18]");
+    expect(result).toContain("Answer: takode answer 5 --message 18 <response>");
+    expect(result).toContain("Read: takode read 5 18");
+  });
+
   it("does not annotate leader-initiated permission_request with (user-initiated)", () => {
     const events = [
       makeEvent({

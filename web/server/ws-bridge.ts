@@ -3288,15 +3288,37 @@ export class WsBridge {
     const isHerded = !!launcherInfo?.herdedBy;
 
     // Find the last top-level assistant message
-    const lastAssistant = session.messageHistory.findLast(
+    const lastAssistantIndex = this.findLastAssistantMessageIndex(session);
+    const lastAssistant =
+      lastAssistantIndex !== undefined
+        ? (session.messageHistory[lastAssistantIndex] as
+            | (BrowserIncomingMessage & { type: "assistant"; message: { id: string } })
+            | undefined)
+        : undefined;
+    const lastTopLevelAssistant =
+      lastAssistant?.type === "assistant" && lastAssistant.parent_tool_use_id == null ? lastAssistant : undefined;
+    const anchoredAssistant =
+      lastTopLevelAssistant ??
+      (session.messageHistory.findLast(
       (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-    ) as (BrowserIncomingMessage & { type: "assistant"; message: { id: string } }) | undefined;
+      ) as (BrowserIncomingMessage & { type: "assistant"; message: { id: string } }) | undefined);
+    const anchoredAssistantIndex =
+      lastTopLevelAssistant && lastAssistantIndex !== undefined
+        ? lastAssistantIndex
+        : (() => {
+            if (!anchoredAssistant) return undefined;
+            for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+              const entry = session.messageHistory[i];
+              if (entry.type === "assistant" && entry.message?.id === anchoredAssistant.message.id) return i;
+            }
+            return undefined;
+          })();
 
-    const anchoredMessageId = lastAssistant?.message.id ?? null;
+    const anchoredMessageId = anchoredAssistant?.message.id ?? null;
 
     // Stamp notification onto the anchored message (always -- for peek/read visibility)
-    if (lastAssistant) {
-      (lastAssistant as Record<string, unknown>).notification = {
+    if (anchoredAssistant) {
+      (anchoredAssistant as Record<string, unknown>).notification = {
         category,
         timestamp: Date.now(),
         summary,
@@ -3324,6 +3346,9 @@ export class WsBridge {
       if (category === "needs-input") {
         this.emitTakodeEvent(sessionId, "notification_needs_input", {
           summary,
+          notificationId: notif.id,
+          messageId: anchoredMessageId,
+          ...(anchoredAssistantIndex !== undefined ? { msg_index: anchoredAssistantIndex } : {}),
         });
       }
       this.persistSession(session);

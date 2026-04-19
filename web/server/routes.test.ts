@@ -7819,6 +7819,164 @@ describe("Takode server-authoritative auth", () => {
     expect(bridge.markAllNotificationsDone).toHaveBeenCalledWith("orch-1", true);
   });
 
+  it("includes active needs-input notifications in takode pending output", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map(),
+      notifications: [
+        { id: "n-1", category: "needs-input", summary: "Need decision on rollout", timestamp: 1000, messageId: "asst-1", done: false },
+      ],
+      messageHistory: [{ type: "assistant", message: { id: "asst-1" } }],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/pending", {
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      pending: [
+        {
+          kind: "notification",
+          notification_id: "n-1",
+          tool_name: "takode.notify",
+          timestamp: 1000,
+          summary: "Need decision on rollout",
+          msg_index: 0,
+          messageId: "asst-1",
+        },
+      ],
+    });
+  });
+
+  it("takode answer replies to needs-input notifications and marks them done", async () => {
+    const sessions = setupTakodeSessions();
+    sessions["orch-1"].sessionNum = 7;
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map(),
+      notifications: [
+        { id: "n-1", category: "needs-input", summary: "Need decision on rollout", timestamp: 1000, messageId: "asst-1", done: false },
+      ],
+      messageHistory: [{ type: "assistant", message: { id: "asst-1" } }],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/answer", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ response: "Use the staged rollout." }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      kind: "notification",
+      tool_name: "takode.notify",
+      action: "answered",
+      answer: "Use the staged rollout.",
+      delivery: "sent",
+    });
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith("worker-1", "Use the staged rollout.", {
+      sessionId: "orch-1",
+      sessionLabel: "#7",
+    });
+    expect(bridge.markNotificationDone).toHaveBeenCalledWith("worker-1", "n-1", true);
+  });
+
+  it("requires an explicit selector when multiple pending prompts exist", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map([
+        [
+          "req-1",
+          {
+            request_id: "req-1",
+            tool_name: "AskUserQuestion",
+            timestamp: 1000,
+            input: { questions: [{ question: "Which rollout?", options: [{ label: "Staged" }, { label: "Immediate" }] }] },
+          },
+        ],
+      ]),
+      notifications: [
+        { id: "n-1", category: "needs-input", summary: "Need decision on logging", timestamp: 1100, messageId: "asst-2", done: false },
+      ],
+      messageHistory: [
+        { type: "permission_request", request: { request_id: "req-1" } },
+        { type: "assistant", message: { id: "asst-2" } },
+      ],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/answer", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ response: "Staged" }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Multiple pending prompts; choose one with msgIndex/--message or targetId/--target",
+    });
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
+    expect(bridge.routeExternalPermissionResponse).not.toHaveBeenCalled();
+  });
+
+  it("targets the selected pending permission by msgIndex when multiple prompts exist", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map([
+        [
+          "req-older",
+          {
+            request_id: "req-older",
+            tool_name: "AskUserQuestion",
+            timestamp: 1000,
+            input: { questions: [{ question: "Which rollout?", options: [{ label: "Staged" }, { label: "Immediate" }] }] },
+          },
+        ],
+        [
+          "req-target",
+          {
+            request_id: "req-target",
+            tool_name: "AskUserQuestion",
+            timestamp: 1100,
+            input: { questions: [{ question: "Which logger?", options: [{ label: "Structured" }, { label: "Plain" }] }] },
+          },
+        ],
+      ]),
+      notifications: [],
+      messageHistory: [
+        { type: "permission_request", request: { request_id: "req-older" } },
+        { type: "permission_request", request: { request_id: "req-target" } },
+      ],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/answer", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ response: "2", msgIndex: 1 }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      kind: "permission",
+      tool_name: "AskUserQuestion",
+      answer: "Plain",
+    });
+    expect(bridge.routeExternalPermissionResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ pendingPermissions: expect.any(Map) }),
+      {
+        type: "permission_response",
+        request_id: "req-target",
+        behavior: "allow",
+        updated_input: {
+          questions: [{ question: "Which logger?", options: [{ label: "Structured" }, { label: "Plain" }] }],
+          answers: { "0": "Plain" },
+        },
+      },
+      "orch-1",
+    );
+  });
+
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
     setupTakodeSessions();
     launcher.isAlive.mockReturnValue(true);

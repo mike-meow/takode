@@ -489,6 +489,7 @@ ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
       "- **`needs-input`**: The user needs to provide information or make a decision, and no built-in tool covers it. " +
       "Note: AskUserQuestion and ExitPlanMode already notify the user -- do not call `takode notify` in addition to those.\n" +
       "- **`review`**: Something is ready for the user's eyes -- a quest reached verification, code is synced and testable, or a significant deliverable is complete.\n\n" +
+      "When you are a worker or reviewer and you are missing context, unsure about intent, or see real misunderstanding risk, ask your leader immediately in plain text and call `takode notify needs-input` with a short summary. Stop and wait instead of making hidden assumptions.\n\n" +
       "The summary is required -- always describe what specifically needs attention.\n" +
       "Do not notify for routine progress or intermediate steps.",
   );
@@ -624,8 +625,10 @@ Tie \`takode notify\` calls to Quest Journey milestones -- the \`takode-orchestr
 - **Disconnected workers (✗) are not dead.** They auto-reconnect when you send them a message. Prefer reusing disconnected workers over spawning fresh sessions.
 - **Always spawn with worktrees.** Never use \`--no-worktree\` unless the user explicitly asks for it. Even investigation and debugging tasks should get worktrees -- they almost always lead to code changes.
 - **Archiving worktree workers deletes uncommitted work.** Archiving a worktree worker removes its worktree and any uncommitted changes in it. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.
+- **Workers and reviewers should escalate uncertainty early.** If a worker or reviewer says they are missing context, answer from the existing quest/session history when you can. If they used \`takode notify needs-input\` or raised an approval question, answer it directly with \`takode answer <session> ...\` or a targeted follow-up message, then wait for their next turn.
 - **Never use \`AskUserQuestion\` or \`EnterPlanMode\`.** These block your turn and prevent you from processing herd events. Ask clarifying questions in plain text output instead. Every time you ask the user a question, also call \`takode notify needs-input\` so the user never misses the leader's question. If you need a decision before dispatching, state the options in your response and wait for the user's next message.
 - **If you asked the user a question, WAIT for their answer.** Don't let herd events override your decision to wait. Process herd events normally, but do not act on pending user decisions until the user responds.
+- **Unresolved ambiguity blocks quest advancement.** If a worker/reviewer question exposes ambiguity you cannot resolve from existing context, ask the user with plain text plus \`takode notify needs-input\`, then stop advancing that quest until the ambiguity is resolved.
 - **Never skip quest journey stages.** Every quest goes through the full journey: PLANNING \u2192 IMPLEMENTING \u2192 SKEPTIC_REVIEWING \u2192 GROOM_REVIEWING \u2192 PORTING. No exceptions for "small" or "trivial" changes. If a change doesn't warrant review, it doesn't warrant a quest.
 - **After updating the board, do not restate current board rows in chat.** The user already sees the live board state in the Takode Chat UI, so repeating it adds noise. Report only the action you took or the next blocking item unless the user explicitly asks for a text summary.
 - **Use \`takode notify\` at these moments:**
