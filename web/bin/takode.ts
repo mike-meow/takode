@@ -2287,9 +2287,16 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   // and permissionMode for bypass inheritance.
   const leader = (await apiGet(base, `/sessions/${encodeURIComponent(leaderSessionId)}`)) as {
     sessionId: string;
+    sessionNum?: number | null;
+    name?: string | null;
     permissionMode?: string;
     backendType?: string;
   };
+  const leaderSessionLabel = leader.name
+    ? `#${leader.sessionNum ?? "?"} ${leader.name}`
+    : leader.sessionNum != null
+      ? `#${leader.sessionNum}`
+      : undefined;
 
   // Inherit backend from leader when --backend is not explicitly provided.
   const backendRaw = typeof flags.backend === "string" ? flags.backend : leader.backendType || "claude";
@@ -2422,7 +2429,10 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
     if (message) {
       await apiPost(base, `/sessions/${encodeURIComponent(created.sessionId)}/message`, {
         content: message,
-        agentSource: { sessionId: leaderSessionId },
+        agentSource: {
+          sessionId: leaderSessionId,
+          ...(leaderSessionLabel ? { sessionLabel: leaderSessionLabel } : {}),
+        },
       });
     }
 

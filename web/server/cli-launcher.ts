@@ -477,7 +477,7 @@ ${TAKODE_LINK_SYNTAX_INSTRUCTIONS}`);
     "## Message Source Tags\n\n" +
       "User messages are prefixed with a source tag: " +
       "`[User <time>]` = human operator, " +
-      "`[Leader <time>]` = orchestrator session managing this worker.",
+      "`[Leader <session> <time>]` = orchestrator session managing this worker, including the leader session number when available.",
   );
 
   // User notification instructions

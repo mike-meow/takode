@@ -4204,7 +4204,7 @@ describe("Browser message routing", () => {
     expect(userMessages).toHaveLength(1);
   });
 
-  it("user_message: herded worker gets [Leader HH:MM] for leader-forwarded messages", () => {
+  it("user_message: herded worker gets [Leader <session> HH:MM] for leader-forwarded messages", () => {
     // Make the session a herded worker
     bridge.setLauncher({
       touchActivity: vi.fn(),
@@ -4217,13 +4217,38 @@ describe("Browser message routing", () => {
       JSON.stringify({
         type: "user_message",
         content: "do the task",
-        agentSource: { sessionId: "leader-session-1", sessionLabel: "Leader" },
+        agentSource: { sessionId: "leader-session-1", sessionLabel: "#17 Orchestrator" },
       }),
     );
 
     const sentRaw = cli.send.mock.calls[0][0] as string;
     const sent = JSON.parse(sentRaw.trim());
-    expect(sent.message.content).toMatch(/^\[Leader (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/);
+    expect(sent.message.content).toMatch(
+      /^\[Leader #17 Orchestrator (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/,
+    );
+  });
+
+  it("user_message: herded worker falls back to leader session id when label is absent", () => {
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ herdedBy: "leader-session-1" })),
+    } as any);
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "do the task",
+        agentSource: { sessionId: "leader-session-1" },
+      }),
+    );
+
+    const sentRaw = cli.send.mock.calls[0][0] as string;
+    const sent = JSON.parse(sentRaw.trim());
+    expect(sent.message.content).toMatch(
+      /^\[Leader leader-s (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/,
+    );
   });
 
   it("user_message: herded worker gets [User HH:MM] for direct human messages", () => {
@@ -16996,8 +17021,8 @@ describe("Claude SDK adapter queue handoff", () => {
     expect(delivered[0].content).toMatch(/^\[User (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] hello sdk$/);
   });
 
-  it("tags user_message with [Leader HH:MM] in herded SDK session", () => {
-    // Verifies herded workers get [Leader] tag through the adapter path
+  it("tags user_message with [Leader <session> HH:MM] in herded SDK session", () => {
+    // Verifies herded workers get [Leader <session>] tag through the adapter path
     const bridge = new WsBridge();
     const sid = "sdk-ts-herded";
     bridge.getOrCreateSession(sid);
@@ -17025,12 +17050,12 @@ describe("Claude SDK adapter queue handoff", () => {
       JSON.stringify({
         type: "user_message",
         content: "do the task",
-        agentSource: { sessionId: "leader-1", sessionLabel: "Leader" },
+        agentSource: { sessionId: "leader-1", sessionLabel: "#22 Leader" },
       }),
     );
 
     expect(delivered).toHaveLength(1);
-    expect(delivered[0].content).toMatch(/^\[Leader (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/);
+    expect(delivered[0].content).toMatch(/^\[Leader #22 Leader (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/);
   });
 });
 // These are private static methods — access via `any` cast for testing.

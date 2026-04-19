@@ -1336,7 +1336,14 @@ describe("takode spawn", () => {
 
       if (method === "GET" && url === "/api/sessions/leader-2") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId: "leader-2", permissionMode: "bypassPermissions" }));
+        res.end(
+          JSON.stringify({
+            sessionId: "leader-2",
+            sessionNum: 12,
+            name: "Spawn Boss",
+            permissionMode: "bypassPermissions",
+          }),
+        );
         return;
       }
       if (method === "POST" && url === "/api/sessions/create") {
@@ -1420,14 +1427,14 @@ describe("takode spawn", () => {
         id: "worker-a",
         body: {
           content: "run smoke tests",
-          agentSource: { sessionId: "leader-2" },
+          agentSource: { sessionId: "leader-2", sessionLabel: "#12 Spawn Boss" },
         },
       },
       {
         id: "worker-b",
         body: {
           content: "run smoke tests",
-          agentSource: { sessionId: "leader-2" },
+          agentSource: { sessionId: "leader-2", sessionLabel: "#12 Spawn Boss" },
         },
       },
     ]);

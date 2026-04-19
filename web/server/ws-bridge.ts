@@ -6069,7 +6069,10 @@ export class WsBridge {
       return `[User ${timeWithDate}] `;
     }
     const isHerded = !!this.launcher?.getSession(sessionId)?.herdedBy;
-    if (isHerded && agentSource) return `[Leader ${timeWithDate}] `;
+    if (isHerded && agentSource) {
+      const label = agentSource.sessionLabel || agentSource.sessionId.slice(0, 8);
+      return `[Leader ${label} ${timeWithDate}] `;
+    }
     return `[User ${timeWithDate}] `;
   }
 
@@ -9344,7 +9347,7 @@ export class WsBridge {
     // Timestamp-tag every user message sent to the CLI so the model knows when
     // the human typed it. Orchestrator sessions get richer source tags ([User],
     // [Herd], [System], [Agent]); regular sessions just get [User HH:MM].
-    // Herded workers see [Leader HH:MM] for leader-forwarded messages.
+    // Herded workers see [Leader <session> HH:MM] for leader-forwarded messages.
     // History/browser keep original content -- tags are CLI-only.
     // Date is included only at date boundaries (first message or new calendar day).
     if (typeof content === "string") {
