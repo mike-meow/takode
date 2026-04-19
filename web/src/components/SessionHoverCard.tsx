@@ -1,9 +1,8 @@
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
 import type { SessionState, SessionTaskEntry } from "../../server/session-types.js";
-import { useRef, useLayoutEffect, useMemo, useEffect, useState } from "react";
+import { useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
-import { api } from "../api.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionPathSummary } from "./SessionPathSummary.js";
 import { SessionPayloadStats } from "./SessionPayloadStats.js";
@@ -20,8 +19,6 @@ interface SessionHoverCardProps {
   anchorRect: DOMRect;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
-  /** When set, the hover card shows a message snippet preview */
-  messageIndex?: number;
 }
 
 /** Format model name for display (e.g. "claude-sonnet-4-5-20250929" → "claude-sonnet-4-5") */
@@ -40,36 +37,11 @@ export function SessionHoverCard({
   anchorRect,
   onMouseEnter,
   onMouseLeave,
-  messageIndex,
 }: SessionHoverCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
   const zoomLevel = useStore((st) => st.zoomLevel ?? 1);
   const quests = useStore((st) => st.quests);
-
-  // Fetch message snippet for message-level links
-  const [messageSnippet, setMessageSnippet] = useState<{ role: string; snippet: string } | null>(null);
-  const snippetFetchedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (messageIndex == null || !s.id) return;
-    const cacheKey = `${s.id}:${messageIndex}`;
-    if (snippetFetchedRef.current === cacheKey) return;
-    snippetFetchedRef.current = cacheKey;
-
-    let cancelled = false;
-    api
-      .fetchMessageSnippet(s.id, messageIndex)
-      .then((result) => {
-        if (!cancelled && result) setMessageSnippet(result);
-      })
-      .catch(() => {
-        // Snippet fetch is best-effort; the hover card still shows session info
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [s.id, messageIndex]);
 
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);
@@ -232,23 +204,6 @@ export function SessionHoverCard({
             />
           )}
         </div>
-
-        {/* Message snippet — shown for message-level deep links (session:N:M) */}
-        {messageIndex != null && (
-          <div className="px-4 py-2 border-t border-cc-border/50">
-            <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">
-              Message {messageIndex}
-              {messageSnippet ? ` · ${messageSnippet.role}` : ""}
-            </span>
-            {messageSnippet ? (
-              <p className="text-[11px] text-cc-fg/80 leading-relaxed line-clamp-3 mt-0.5 pl-2 border-l-2 border-cc-primary/30 italic">
-                {messageSnippet.snippet.length >= 180 ? `${messageSnippet.snippet}...` : messageSnippet.snippet}
-              </p>
-            ) : (
-              <p className="text-[11px] text-cc-muted/60 italic mt-0.5">Loading...</p>
-            )}
-          </div>
-        )}
 
         {/* Herded sessions — shown for leader sessions */}
         {herdedSessions.length > 0 && (

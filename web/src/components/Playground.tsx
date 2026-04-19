@@ -3795,6 +3795,9 @@ export function Playground() {
             <Card label="Session hover shows active quest">
               <PlaygroundHoverCrossLinkDemo text="Hover [#566](session:566) to see the worker's active quest chip in the session hover preview." />
             </Card>
+            <Card label="Message link hover focuses the referenced message">
+              <PlaygroundMessageLinkHoverDemo />
+            </Card>
           </div>
         </Section>
 
@@ -5962,6 +5965,70 @@ function PlaygroundHoverCrossLinkDemo({ text }: { text: string }) {
       </div>
       <div className="rounded-xl border border-cc-border bg-cc-card/40 px-3 py-2.5">
         <MarkdownContent text={text} />
+      </div>
+    </div>
+  );
+}
+
+function PlaygroundMessageLinkHoverDemo() {
+  useEffect(() => {
+    useStore.setState((state) => {
+      const nextSdkSessions = [...state.sdkSessions];
+      if (!nextSdkSessions.some((session) => session.sessionId === "playground-hover-worker")) {
+        nextSdkSessions.push({
+          sessionId: "playground-hover-worker",
+          state: "running",
+          cwd: "/Users/stan/Dev/takode",
+          createdAt: Date.now() - 120000,
+          sessionNum: 566,
+          cliConnected: true,
+          backendType: "codex",
+          model: "gpt-5.4-mini",
+          repoRoot: "/Users/stan/Dev/takode",
+        });
+      }
+
+      const nextSessionNames = new Map(state.sessionNames);
+      nextSessionNames.set("playground-hover-worker", "Worker Hover Demo");
+
+      return {
+        ...state,
+        sdkSessions: nextSdkSessions,
+        sessionNames: nextSessionNames,
+      };
+    });
+
+    const originalFetchMessagePreview = api.fetchMessagePreview;
+    api.fetchMessagePreview = async (sessionId: string, messageIndex: number) => {
+      if (sessionId === "playground-hover-worker" && messageIndex === 212) {
+        return {
+          id: "playground-hover-message-212",
+          role: "assistant",
+          content: "The actual linked message renders here with the same message bubble primitives as chat.",
+          contentBlocks: [
+            {
+              type: "text",
+              text: "The actual linked message renders here with the same message bubble primitives as chat.",
+            },
+          ],
+          timestamp: Date.now() - 60000,
+        };
+      }
+      return originalFetchMessagePreview(sessionId, messageIndex);
+    };
+
+    return () => {
+      api.fetchMessagePreview = originalFetchMessagePreview;
+    };
+  }, []);
+
+  return (
+    <div className="space-y-2 p-3">
+      <div className="text-xs text-cc-muted">
+        Hover the message link to preview the referenced message with reduced session chrome.
+      </div>
+      <div className="rounded-xl border border-cc-border bg-cc-card/40 px-3 py-2.5">
+        <MarkdownContent text="Hover [#566 msg 212](session:566:212) to preview the linked message instead of a generic session summary." />
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession, navigateToSessionMessage, sessionHash } from "../utils/routing.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SessionItem as SessionItemType } from "../utils/project-grouping.js";
+import { MessageLinkHoverCard } from "./MessageLinkHoverCard.js";
 
 export function SessionInlineLink({
   sessionId,
@@ -158,18 +159,28 @@ export function SessionInlineLink({
         {children}
       </a>
       {resolvedSessionId && sessionItem && hoverRect && (
-        <SessionHoverCard
-          session={sessionItem}
-          sessionName={sessionNames.get(resolvedSessionId)}
-          sessionPreview={sessionPreviews.get(resolvedSessionId)}
-          taskHistory={sessionTaskHistory.get(resolvedSessionId)}
-          sessionState={sessions.get(resolvedSessionId)}
-          cliSessionId={sdkInfo?.cliSessionId}
-          anchorRect={hoverRect}
-          onMouseEnter={handleHoverCardEnter}
-          onMouseLeave={handleHoverCardLeave}
-          messageIndex={messageIndex}
-        />
+        messageIndex != null ? (
+          <MessageLinkHoverCard
+            session={sessionItem}
+            sessionName={sessionNames.get(resolvedSessionId)}
+            anchorRect={hoverRect}
+            messageIndex={messageIndex}
+            onMouseEnter={handleHoverCardEnter}
+            onMouseLeave={handleHoverCardLeave}
+          />
+        ) : (
+          <SessionHoverCard
+            session={sessionItem}
+            sessionName={sessionNames.get(resolvedSessionId)}
+            sessionPreview={sessionPreviews.get(resolvedSessionId)}
+            taskHistory={sessionTaskHistory.get(resolvedSessionId)}
+            sessionState={sessions.get(resolvedSessionId)}
+            cliSessionId={sdkInfo?.cliSessionId}
+            anchorRect={hoverRect}
+            onMouseEnter={handleHoverCardEnter}
+            onMouseLeave={handleHoverCardLeave}
+          />
+        )
       )}
     </>
   );

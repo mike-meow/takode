@@ -146,6 +146,8 @@ export interface TakodeReadResponse {
   contentBlocks?: unknown[];
   /** Disk paths of images attached to this message (user_message only). */
   images?: string[];
+  /** Original raw browser message for clients that need full render semantics. */
+  rawMessage?: BrowserIncomingMessage;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1165,6 +1167,7 @@ export function buildReadResponse(
     offset,
     limit,
     content: paginatedLines.join("\n"),
+    rawMessage: msg,
   };
 
   // Include raw content blocks for assistant messages

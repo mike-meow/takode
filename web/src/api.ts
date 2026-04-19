@@ -1,6 +1,7 @@
-import type { SdkSessionInfo, TreeGroup } from "./types.js";
+import type { SdkSessionInfo, TreeGroup, ChatMessage, BrowserIncomingMessage } from "./types.js";
 import { encodeLogQuery, type LogQuery, type LogQueryResponse } from "../shared/logging.js";
 import type { HerdSessionsResponse } from "../shared/herd-types.js";
+import { normalizeHistoryMessageToChatMessages } from "./utils/history-message-normalization.js";
 
 const BASE = "/api";
 const TRANSCRIPTION_REQUEST_BASE_TIMEOUT_MS = 45_000;
@@ -1297,6 +1298,28 @@ export const api = {
       const data = await res.json();
       const text: string = data.text || data.content || "";
       return { role: data.role || "unknown", snippet: text.slice(0, 200) };
+    } catch {
+      return null;
+    }
+  },
+
+  // Takode: fetch a single message payload for message-link hover previews
+  fetchMessagePreview: async (sessionId: string, messageIndex: number): Promise<ChatMessage | null> => {
+    try {
+      const data = await get<{
+        idx: number;
+        type: string;
+        ts: number;
+        content: string;
+        rawMessage?: BrowserIncomingMessage;
+      }>(`/takode/sessions/${encodeURIComponent(sessionId)}/messages/${messageIndex}?limit=1000`);
+
+      if (data.rawMessage) {
+        const normalized = normalizeHistoryMessageToChatMessages(data.rawMessage, messageIndex);
+        return normalized[0] ?? null;
+      }
+
+      return null;
     } catch {
       return null;
     }

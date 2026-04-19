@@ -5,12 +5,14 @@ import { useStore } from "../store.js";
 const mockGetSettings = vi.fn();
 const mockOpenVsCodeRemoteFile = vi.fn();
 const mockReadFile = vi.fn();
+const mockFetchMessagePreview = vi.fn();
 
 vi.mock("../api.js", () => ({
   api: {
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
     openVsCodeRemoteFile: (...args: unknown[]) => mockOpenVsCodeRemoteFile(...args),
     readFile: (...args: unknown[]) => mockReadFile(...args),
+    fetchMessagePreview: (...args: unknown[]) => mockFetchMessagePreview(...args),
   },
 }));
 
@@ -109,6 +111,7 @@ describe("MarkdownContent quest links", () => {
     mockGetSettings.mockReset();
     mockOpenVsCodeRemoteFile.mockReset();
     mockReadFile.mockReset();
+    mockFetchMessagePreview.mockReset();
     mockGetSettings.mockResolvedValue({ editorConfig: { editor: "none" } });
     mockReadFile.mockResolvedValue({ path: "/tmp/file", content: "" });
   });
@@ -254,6 +257,88 @@ describe("MarkdownContent quest links", () => {
     expect(link.getAttribute("title")).toBe("Open session #123, message 42");
   });
 
+  it("shows the referenced message in a dedicated hover preview for session:N:M links", async () => {
+    mockFetchMessagePreview.mockResolvedValue({
+      id: "hover-session-abc-42",
+      role: "assistant",
+      content: "The actual **message** preview.",
+      contentBlocks: [{ type: "text", text: "The actual **message** preview." }],
+      timestamp: 1000,
+    });
+
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+      sessionPreviews: new Map([["session-abc", "stale sidebar preview"]]),
+      sessionTaskHistory: new Map([
+        [
+          "session-abc",
+          [
+            {
+              title: "This task chrome should stay out of the message preview",
+              action: "new",
+              timestamp: 1,
+              triggerMessageId: "u1",
+            },
+          ],
+        ],
+      ]),
+    }));
+
+    render(<MarkdownContent text="[#123 msg 42](session:123:42)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123 msg 42" }));
+
+    expect(await screen.findByTestId("message-link-hover-card")).toBeTruthy();
+    expect(await screen.findByText("The actual", { exact: false })).toBeTruthy();
+    expect(screen.queryByText("Loading message…")).toBeNull();
+    expect(screen.queryByText("Tasks")).toBeNull();
+    expect(screen.queryByText("Last message")).toBeNull();
+    expect(mockFetchMessagePreview).toHaveBeenCalledWith("session-abc", 42);
+  });
+
+  it("renders non-assistant message-link previews with their chat variants intact", async () => {
+    mockFetchMessagePreview.mockResolvedValue({
+      id: "hover-session-abc-7",
+      role: "system",
+      content: "Approved Bash",
+      timestamp: 1000,
+      variant: "approved",
+      metadata: {
+        answers: [{ question: "Proceed?", answer: "Yes" }],
+      },
+    });
+
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+    }));
+
+    render(<MarkdownContent text="[#123 msg 7](session:123:7)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123 msg 7" }));
+
+    expect(await screen.findByTestId("message-link-hover-card")).toBeTruthy();
+    expect(screen.getByText("Proceed?")).toBeTruthy();
+    expect(screen.getByText("Yes")).toBeTruthy();
+  });
+
   it("shows SessionHoverCard content when hovering a session link", async () => {
     useStore.setState((state) => ({
       ...state,
@@ -273,6 +358,45 @@ describe("MarkdownContent quest links", () => {
     fireEvent.mouseEnter(screen.getByRole("link", { name: "#123" }));
 
     expect(await screen.findByText("Auth Worker")).toBeTruthy();
+  });
+
+  it("keeps normal session links on the existing session hover behavior", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Auth Worker"]]),
+      sessionPreviews: new Map([["session-abc", "Latest sidebar preview"]]),
+      sessionTaskHistory: new Map([
+        [
+          "session-abc",
+          [
+            {
+              title: "Keep existing session hover details",
+              action: "new",
+              timestamp: 1,
+              triggerMessageId: "u1",
+            },
+          ],
+        ],
+      ]),
+    }));
+
+    render(<MarkdownContent text="[#123](session:123)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123" }));
+
+    expect(await screen.findByText("Auth Worker")).toBeTruthy();
+    expect(screen.getByText("Tasks")).toBeTruthy();
+    expect(screen.getByText("Keep existing session hover details")).toBeTruthy();
+    expect(screen.queryByTestId("message-link-hover-card")).toBeNull();
+    expect(mockFetchMessagePreview).not.toHaveBeenCalled();
   });
 
   it("shows the active quest cross-link when hovering a session link", async () => {

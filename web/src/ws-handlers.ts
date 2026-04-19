@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import type { BrowserIncomingMessage, ContentBlock, ChatMessage, TaskItem } from "./types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound, playReviewSound, playNeedsInputSound } from "./utils/notification-sound.js";
+import { extractTextFromBlocks, normalizeHistoryMessageToChatMessages } from "./utils/history-message-normalization.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -194,17 +195,6 @@ function nextId(): string {
   return `msg-${Date.now()}-${++idCounter}`;
 }
 
-function extractTextFromBlocks(blocks: ContentBlock[]): string {
-  return blocks
-    .map((b) => {
-      if (b.type === "text") return b.text;
-      if (b.type === "thinking") return b.thinking;
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
 /** Merge content blocks from two versions of the same assistant message.
  *  Deduplicates tool_use blocks by their unique `id` and text/thinking
  *  blocks by content equality. Returns all unique blocks in order. */
@@ -253,37 +243,9 @@ function normalizeHistoryMessages(
   for (let i = 0; i < historyMessages.length; i++) {
     const histMsg = historyMessages[i];
     const historyIndex = startIndex + i;
-    if (histMsg.type === "user_message") {
-      chatMessages.push({
-        id: histMsg.id || `hist-user-${historyIndex}`,
-        role: "user",
-        content: histMsg.content,
-        timestamp: histMsg.timestamp,
-        ...(histMsg.images?.length ? { images: histMsg.images } : {}),
-        ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
-        ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
-      });
-    } else if (histMsg.type === "assistant") {
+    if (histMsg.type === "assistant") {
       const msg = histMsg.message;
-      const textContent = extractTextFromBlocks(msg.content);
-      chatMessages.push({
-        id: msg.id,
-        role: "assistant",
-        content: textContent,
-        contentBlocks: msg.content,
-        timestamp: histMsg.timestamp || Date.now(),
-        parentToolUseId: histMsg.parent_tool_use_id,
-        model: msg.model,
-        stopReason: msg.stop_reason,
-        cliUuid: (histMsg as Record<string, unknown>).uuid as string | undefined,
-        leaderUserAddressed: (histMsg as { leader_user_addressed?: boolean }).leader_user_addressed === true,
-        ...((histMsg as Record<string, unknown>).notification
-          ? { notification: (histMsg as Record<string, unknown>).notification as ChatMessage["notification"] }
-          : {}),
-        ...(typeof (histMsg as Record<string, unknown>).turn_duration_ms === "number"
-          ? { turnDurationMs: (histMsg as Record<string, unknown>).turn_duration_ms as number }
-          : {}),
-      });
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
       if (msg.content?.length) {
         extractTasksFromBlocks(sessionId, msg.content);
         extractChangedFilesFromBlocks(sessionId, msg.content);
@@ -294,31 +256,8 @@ function normalizeHistoryMessages(
       if (histToolStartTimes) {
         store.setToolStartTimestamps(sessionId, histToolStartTimes);
       }
-    } else if (histMsg.type === "compact_marker") {
-      chatMessages.push({
-        id: histMsg.id || `compact-${historyIndex}`,
-        role: "system",
-        content: histMsg.summary || "Conversation compacted",
-        timestamp: histMsg.timestamp,
-        variant: "info",
-      });
-    } else if (histMsg.type === "permission_denied") {
-      chatMessages.push({
-        id: histMsg.id,
-        role: "system",
-        content: histMsg.summary,
-        timestamp: histMsg.timestamp,
-        variant: "denied",
-      });
-    } else if (histMsg.type === "permission_approved") {
-      chatMessages.push({
-        id: histMsg.id,
-        role: "system",
-        content: histMsg.summary,
-        timestamp: histMsg.timestamp,
-        variant: "approved",
-        ...(histMsg.answers?.length ? { metadata: { answers: histMsg.answers } } : {}),
-      });
+    } else if (histMsg.type === "user_message") {
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
     } else if (histMsg.type === "tool_result_preview") {
       for (const preview of histMsg.previews) {
         store.setToolResult(sessionId, preview.tool_use_id, preview);
@@ -331,31 +270,14 @@ function normalizeHistoryMessages(
           summary: histMsg.summary,
         });
       }
-      // Replay: add visible system message for background task completion
-      if (histMsg.summary) {
-        chatMessages.push({
-          id: `task-notif-${histMsg.task_id || historyIndex}`,
-          role: "system",
-          content: histMsg.summary,
-          timestamp: Date.now(),
-          variant: "task_completed",
-        });
-      }
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
     } else if (histMsg.type === "result") {
-      const r = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
       store.setTasks(sessionId, []);
       store.setSessionTaskPreview(sessionId, null);
-      if (r.is_error && !histMsg.interrupted) {
-        const errorText = r.errors?.length ? r.errors.join(", ") : r.result || "An error occurred";
-        chatMessages.push({
-          id: `hist-error-${historyIndex}`,
-          role: "system",
-          content: `Error: ${errorText}`,
-          timestamp: Date.now(),
-          variant: "error",
-        });
-      }
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
       frozenCount = chatMessages.length;
+    } else if (histMsg.type === "compact_marker" || histMsg.type === "permission_denied" || histMsg.type === "permission_approved") {
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
     }
   }
 
