@@ -41,7 +41,7 @@ export function SessionHoverCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const taskHistoryScrollRef = useRef<HTMLDivElement>(null);
   const zoomLevel = useStore((st) => st.zoomLevel ?? 1);
-  const quests = useStore((st) => st.quests);
+  const quests = useStore((st) => st.quests) ?? [];
 
   // For leader sessions: find which sessions this leader is herding
   const sdkSessions = useStore((st) => st.sdkSessions);

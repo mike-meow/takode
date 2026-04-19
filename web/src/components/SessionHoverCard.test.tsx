@@ -53,6 +53,28 @@ function makeSession(overrides: Partial<SessionItemType> = {}): SessionItemType 
 }
 
 describe("SessionHoverCard", () => {
+  it("renders safely when the mocked store omits quests", () => {
+    // q-425 follow-up: generic session hovers should not assume the store mock
+    // includes a quests collection. Older tests and narrow mocks omit it.
+    render(
+      <SessionHoverCard
+        session={makeSession()}
+        sessionName="Safe Hover"
+        sessionPreview="Preview text"
+        taskHistory={undefined}
+        sessionState={undefined}
+        cliSessionId="cli-1"
+        anchorRect={new DOMRect(120, 80, 200, 40)}
+        onMouseEnter={() => {}}
+        onMouseLeave={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Safe Hover")).toBeInTheDocument();
+    expect(screen.getByText("Preview text")).toBeInTheDocument();
+    expect(screen.queryByTestId("session-hover-active-quest")).toBeNull();
+  });
+
   it("shows the max context window rounded to whole K tokens", () => {
     // q-291: live hover-card metrics should use the authoritative
     // sessionState message bytes plus Codex retained payload bytes from the server.
