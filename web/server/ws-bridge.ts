@@ -4255,6 +4255,12 @@ export class WsBridge {
       this.launcher?.touchActivity(session.id);
       session.lastCliMessageAt = Date.now();
       this.clearOptimisticRunningTimer(session, `codex_output:${msg.type}`);
+      if (
+        session.state.codex_image_send_stage &&
+        (msg.type === "stream_event" || msg.type === "assistant")
+      ) {
+        this.setCodexImageSendStage(session, "responding", { persist: false });
+      }
       let outgoing: BrowserIncomingMessage | null = msg;
 
       if (msg.type === "session_init") {
@@ -8285,6 +8291,23 @@ export class WsBridge {
     });
   }
 
+  private setCodexImageSendStage(
+    session: Session,
+    stage: SessionState["codex_image_send_stage"],
+    options?: { persist?: boolean },
+  ): void {
+    if (session.backendType !== "codex") return;
+    if ((session.state.codex_image_send_stage ?? null) === (stage ?? null)) return;
+    session.state.codex_image_send_stage = stage ?? null;
+    this.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { codex_image_send_stage: session.state.codex_image_send_stage ?? null },
+    });
+    if (options?.persist !== false) {
+      this.persistSession(session);
+    }
+  }
+
   // ── Browser message routing ─────────────────────────────────────────────
 
   private async routeBrowserMessage(session: Session, msg: BrowserOutgoingMessage, ws?: ServerWebSocket<SocketData>) {
@@ -8527,6 +8550,8 @@ export class WsBridge {
 
       let userImageRefs: import("./image-store.js").ImageRef[] | undefined;
       let codexUserMessageId: string | null = null;
+      let preMarkedImageRunning = false;
+      let wasGeneratingBeforeUserMessage = session.isGenerating;
       let ingested:
         | {
             timestamp: number;
@@ -8538,6 +8563,19 @@ export class WsBridge {
         | undefined;
 
       if (msg.type === "user_message") {
+        wasGeneratingBeforeUserMessage = session.isGenerating;
+        if (
+          session.backendType === "codex" &&
+          msg.images?.length &&
+          !session.isGenerating &&
+          session.state.backend_state !== "broken" &&
+          !this.isHerdEventSource(msg.agentSource)
+        ) {
+          session.lastUserMessage = (msg.content || "").slice(0, 80);
+          this.setCodexImageSendStage(session, "uploading", { persist: false });
+          this.markRunningFromUserDispatch(session, "user_message");
+          preMarkedImageRunning = true;
+        }
         try {
           const maybeIngested = this.ingestUserMessage(session, msg, "adapter", {
             commit: session.backendType !== "codex",
@@ -8545,6 +8583,12 @@ export class WsBridge {
           ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
         } catch (err) {
           if (msg.images?.length) {
+            if (preMarkedImageRunning) {
+              this.setCodexImageSendStage(session, null, { persist: false });
+              this.setGenerating(session, false, "image_send_failed");
+              this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+              this.persistSession(session);
+            }
             this.notifyImageSendFailure(session, err);
             return;
           }
@@ -8552,6 +8596,9 @@ export class WsBridge {
         }
         userImageRefs = ingested.imageRefs;
         codexUserMessageId = ingested.historyEntry.id || null;
+        if (session.backendType === "codex" && msg.images?.length) {
+          this.setCodexImageSendStage(session, "processing", { persist: false });
+        }
         // Trigger auto-naming evaluation (async, fire-and-forget) only after
         // the message is committed to authoritative history.
         if (this.onUserMessage && session.backendType !== "codex") {
@@ -8712,6 +8759,7 @@ export class WsBridge {
         session.state.backend_state !== "broken" &&
         !(session.backendType === "codex" && this.isHerdEventSource(msg.agentSource))
       ) {
+        const effectiveWasGenerating = preMarkedImageRunning ? wasGeneratingBeforeUserMessage : ingested.wasGenerating;
         // Mark session running for ALL user_message dispatches, not just
         // when the session was already generating. Without this, idle SDK
         // sessions stay visually idle until the CLI emits a status_change
@@ -8719,14 +8767,18 @@ export class WsBridge {
         // when wasGenerating was true (an actual interruption occurred).
         // Skip for broken sessions — they can't process messages until
         // the adapter relaunches.
-        const interruptSource = ingested.wasGenerating
+        const interruptSource = effectiveWasGenerating
           ? msg.agentSource
             ? this.isSystemSourceTag(msg.agentSource)
               ? "system"
               : "leader"
             : "user"
           : undefined;
-        pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource ?? null);
+        if (!preMarkedImageRunning) {
+          pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource ?? null);
+        } else {
+          pendingTurnTarget = "current";
+        }
         if (ingested.historyIndex >= 0) {
           this.trackUserMessageForTurn(session, ingested.historyIndex, pendingTurnTarget);
         }
@@ -8757,7 +8809,8 @@ export class WsBridge {
             this.rebuildQueuedCodexPendingStartBatch(session);
           }
         } else {
-          if (session.codexAdapter && ingested?.wasGenerating) {
+          const effectiveWasGenerating = preMarkedImageRunning ? wasGeneratingBeforeUserMessage : !!ingested?.wasGenerating;
+          if (session.codexAdapter && effectiveWasGenerating) {
             this.persistSession(session);
           } else {
             this.queueCodexPendingStartBatch(session, "browser_user_message");
@@ -11034,6 +11087,9 @@ export class WsBridge {
     // Recompute message history bytes at turn boundaries (when generation ends)
     // so the UI can show payload size without computing on every push.
     if (!generating) {
+      if (session.backendType === "codex" && session.state.codex_image_send_stage) {
+        this.setCodexImageSendStage(session, null, { persist: false });
+      }
       this.recomputeAndBroadcastHistoryBytes(session);
     }
   }

@@ -414,13 +414,68 @@ function FeedStatusPill({
   );
 }
 
-function PendingCodexInputList({ sessionId, inputs }: { sessionId: string; inputs: PendingCodexInput[] }) {
-  if (inputs.length === 0) return null;
+function getCodexImageStageMeta(stage: "uploading" | "processing" | "responding" | null): {
+  label: string;
+  detail: string;
+  dotClassName: string;
+} | null {
+  switch (stage) {
+    case "uploading":
+      return {
+        label: "Uploading image",
+        detail: "Sending the attached image to the server.",
+        dotClassName: "bg-sky-400",
+      };
+    case "processing":
+      return {
+        label: "Backend processing",
+        detail: "Preparing the image-backed turn for Codex.",
+        dotClassName: "bg-amber-400",
+      };
+    case "responding":
+      return {
+        label: "Model responding",
+        detail: "Codex is actively working on the image-backed request.",
+        dotClassName: "bg-emerald-400",
+      };
+    default:
+      return null;
+  }
+}
+
+function PendingCodexInputList({
+  sessionId,
+  inputs,
+  imageStage,
+}: {
+  sessionId: string;
+  inputs: PendingCodexInput[];
+  imageStage: "uploading" | "processing" | "responding" | null;
+}) {
+  const stageMeta = getCodexImageStageMeta(imageStage);
+  if (inputs.length === 0 && !stageMeta) return null;
 
   return (
     <div className="space-y-2" data-feed-block-id={getFooterFeedBlockId("pending-codex-inputs")}>
-      <div className="px-1 text-[10px] uppercase tracking-wider text-cc-muted/60">Pending delivery</div>
+      <div className="flex items-center gap-2 px-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
+        <span>Pending delivery</span>
+        {stageMeta && (
+          <>
+            <span className="text-cc-muted/40">•</span>
+            <span>{stageMeta.label}</span>
+          </>
+        )}
+      </div>
       <div className="flex flex-col gap-2">
+        {stageMeta && (
+          <div className="flex items-center gap-2 rounded-2xl border border-sky-500/20 bg-sky-500/8 px-3 py-2 text-sm text-cc-fg">
+            <span className={`inline-flex h-2 w-2 shrink-0 rounded-full ${stageMeta.dotClassName}`} />
+            <div className="min-w-0">
+              <div className="font-medium">{stageMeta.label}</div>
+              <div className="text-xs text-cc-muted">{stageMeta.detail}</div>
+            </div>
+          </div>
+        )}
         {inputs.map((input) => {
           const preview = input.content.trim().replace(/\s+/g, " ");
           const truncated = preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
@@ -2523,6 +2578,7 @@ export function MessageFeed({
   const historyWindow = useStore((s) => s.historyWindows.get(sessionId) ?? null);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
+  const codexImageSendStage = useStore((s) => s.sessions.get(sessionId)?.codex_image_send_stage ?? null);
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
   const toolResults = useStore((s) => s.toolResults.get(sessionId));
   const toolStartTimestamps = useStore((s) => s.toolStartTimestamps.get(sessionId));
@@ -3724,7 +3780,7 @@ export function MessageFeed({
     );
   }
 
-  if (messages.length === 0 && pendingCodexInputs.length === 0 && !streamingText) {
+  if (messages.length === 0 && pendingCodexInputs.length === 0 && !streamingText && !codexImageSendStage) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
         <SleepingCat className="w-20 h-14" />
@@ -3786,8 +3842,12 @@ export function MessageFeed({
                     </button>
                   </div>
                 )}
-                {isCodexSession && pendingCodexInputs.length > 0 && (
-                  <PendingCodexInputList sessionId={sessionId} inputs={pendingCodexInputs} />
+                {isCodexSession && (pendingCodexInputs.length > 0 || codexImageSendStage) && (
+                  <PendingCodexInputList
+                    sessionId={sessionId}
+                    inputs={pendingCodexInputs}
+                    imageStage={codexImageSendStage}
+                  />
                 )}
                 <FeedFooter sessionId={sessionId} />
                 <div

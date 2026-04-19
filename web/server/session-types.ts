@@ -769,6 +769,8 @@ export interface SessionState {
   claimedQuestTitle?: string;
   /** Questmaster: current status of the claimed quest */
   claimedQuestStatus?: string;
+  /** Codex-only visual stage for image-attached user sends. */
+  codex_image_send_stage?: "uploading" | "processing" | "responding" | null;
   /** Per-session notification inbox entries (server-only, never from CLI) */
   notifications?: SessionNotification[];
 }

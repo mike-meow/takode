@@ -275,6 +275,12 @@ function setStoreSessionBackend(sessionId: string, backend: "claude" | "codex") 
   mockStoreValues.sessions = map;
 }
 
+function setStoreSessionState(sessionId: string, session: Record<string, unknown>) {
+  const map = new Map();
+  map.set(sessionId, session);
+  mockStoreValues.sessions = map;
+}
+
 function setStoreStreamingStartedAt(sessionId: string, startedAt: number | undefined) {
   const map = new Map();
   if (startedAt !== undefined) map.set(sessionId, startedAt);
@@ -782,6 +788,38 @@ describe("MessageFeed - empty state", () => {
     expect(screen.getByText("Pending delivery")).toBeTruthy();
     expect(screen.getByText(/Steer the active turn toward auth fixes/)).toBeTruthy();
   });
+
+  it("shows an uploading-image stage instead of the empty state for Codex image sends", () => {
+    const sid = "test-uploading-image-stage";
+    setStoreMessages(sid, []);
+    setStoreSessionState(sid, { backend_type: "codex", codex_image_send_stage: "uploading" });
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getAllByText("Uploading image")).toHaveLength(2);
+    expect(screen.getByText("Sending the attached image to the server.")).toBeTruthy();
+  });
+
+  it("shows backend-processing stage for pending Codex image delivery", () => {
+    const sid = "test-processing-image-stage";
+    setStoreMessages(sid, []);
+    setStoreSessionState(sid, { backend_type: "codex", codex_image_send_stage: "processing" });
+    setStorePendingCodexInputs(sid, [
+      {
+        id: "pending-img-1",
+        content: "Inspect the attached screenshot",
+        timestamp: Date.now(),
+        cancelable: true,
+        draftImages: [{ name: "attachment-1.png", base64: "x", mediaType: "image/png" }],
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getAllByText("Backend processing")).toHaveLength(2);
+    expect(screen.getByText("Preparing the image-backed turn for Codex.")).toBeTruthy();
+  });
 });
 
 // ─── Message rendering ───────────────────────────────────────────────────────
@@ -812,6 +850,18 @@ describe("MessageFeed - message rendering", () => {
 
     expect(screen.getByText("Session restored")).toBeTruthy();
     expect(screen.getByText("Continue")).toBeTruthy();
+  });
+
+  it("shows model-responding stage while Codex is streaming an image-backed request", () => {
+    const sid = "test-responding-image-stage";
+    setStoreSessionState(sid, { backend_type: "codex", codex_image_send_stage: "responding" });
+    setStoreStatus(sid, "running");
+    setStoreStreaming(sid, "Inspecting the uploaded image");
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getAllByText("Model responding")).toHaveLength(2);
+    expect(screen.getByText("Codex is actively working on the image-backed request.")).toBeTruthy();
   });
 
   it("shows only a date marker for same-day messages, no minute marks", () => {

@@ -16340,6 +16340,12 @@ describe("Codex image transport", () => {
     );
     await Promise.resolve();
 
+    const earlyCalls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    const earlyRunning = earlyCalls.find((m: any) => m.type === "status_change" && m.status === "running");
+    expect(earlyRunning).toBeDefined();
+    expect(bridge.getSession("s1")!.isGenerating).toBe(true);
+    expect(bridge.getSession("s1")!.state.codex_image_send_stage).toBe("uploading");
+
     bridge.handleBrowserMessage(
       browser,
       JSON.stringify({
@@ -16361,6 +16367,7 @@ describe("Codex image transport", () => {
     expect(session.pendingCodexInputs[0]?.content).toBe("look at this screenshot");
     expect(session.pendingCodexInputs[1]?.content).toBe("follow-up text should stay behind the image");
     expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    expect(session.state.codex_image_send_stage).toBe("processing");
 
     const firstDispatch = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
     expect(firstDispatch?.type).toBe("codex_start_pending");
@@ -16374,6 +16381,47 @@ describe("Codex image transport", () => {
       status: "dispatched",
       userContent: expect.stringContaining("look at this screenshot"),
     });
+
+    adapter.emitBrowserMessage({
+      type: "stream_event",
+      event: {
+        type: "message_start",
+      },
+      parent_tool_use_id: null,
+    } as any);
+
+    expect(bridge.getSession("s1")!.state.codex_image_send_stage).toBe("responding");
+  });
+
+  it("reverts the immediate running state if image ingest fails before Codex dispatch", async () => {
+    const adapter = makeCodexAdapterMock();
+    const mockImageStore = {
+      store: vi.fn().mockRejectedValue(new Error("disk full")),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-fail-running" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "this image should fail to ingest",
+        images: [{ media_type: "image/png", data: "broken-image-data" }],
+      }),
+    );
+    await flush();
+
+    const calls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(calls.find((m: any) => m.type === "status_change" && m.status === "running")).toBeDefined();
+    expect(calls.find((m: any) => m.type === "status_change" && m.status === "idle")).toBeDefined();
+    expect(calls.find((m: any) => m.type === "error" && String(m.message).includes("Image failed to send"))).toBeDefined();
+    expect(bridge.getSession("s1")!.isGenerating).toBe(false);
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
   });
 
   it("stores multiple image attachments concurrently before dispatching the Codex turn", async () => {
