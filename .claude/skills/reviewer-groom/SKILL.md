@@ -64,16 +64,20 @@ Later, you may be asked to review the worker's follow-up changes and decide whet
 This workflow is mandatory.
 
 Do not do an informal "read a few files and give an impression" review.
+Do not jump straight to findings.
 
 You must:
 
 1. gather context first
 2. decide which review aspects are relevant for this specific change
-3. turn the relevant aspects into an explicit checklist or todo list
-4. review each chosen aspect one at a time in sequence
-5. make your final report reflect that checklist coverage
+3. turn the relevant aspects into a written checklist or todo artifact before judging the code
+4. mark non-relevant aspects explicitly as not relevant instead of silently skipping them
+5. review each chosen aspect one at a time in sequence
+6. make your final report reflect that checklist coverage directly
 
 The point is to force consistent coverage of all relevant review dimensions.
+Context and checklist creation happen before judgment.
+You must not write findings until the checklist exists and you have started working through it.
 
 ## Minimum Takode Context You Need
 
@@ -88,6 +92,26 @@ Takode tracks work in sessions.
 You do not need the full Takode workflow to use this skill.
 You only need enough context to identify the worker, inspect the diff, and review the code.
 
+## Prefer The Most Token-Efficient Takode View
+
+Reviewer work is primarily human judgment, not machine parsing.
+Default to the most compact Takode view that answers the current question.
+
+- Prefer plain-text `takode info <worker_session>` for reviewer work.
+- Use `takode info <worker_session> --json` only when you truly need exact structured fields, plan to pipe the result into another command, or need to confirm a field whose plain-text rendering is ambiguous.
+- Prefer a targeted `takode peek` window when the leader already gave you a message range or turn to inspect.
+- Use `takode read <worker_session> <msg_id>` when one specific leader instruction, worker report, or prior reviewer finding matters in full.
+- Use `--show-tools` only when the exact commands the worker ran are relevant to the review. Otherwise keep the peek output narrower.
+
+In practice, plain-text `takode info` usually gives you the only fields you need for reviewer-groom:
+
+- worktree path
+- repo root
+- actual branch and diff base
+- claimed quest
+
+The JSON form is often much larger because it includes fields such as the injected system prompt and task history, which are usually irrelevant to a code-quality review.
+
 ## Resolve The Scope First
 
 Before reviewing, resolve the concise scope string against the current conversation.
@@ -101,6 +125,9 @@ Usually the leader's message immediately before this skill invocation gives you 
 In practice, the best scope strings often name the quest, the worker, and the message range containing the worker's follow-up.
 
 If you cannot tell which worker or which change is being referenced, stop and ask for clarification instead of guessing.
+
+Scope resolution is still part of context gathering, not evaluation.
+Do not start writing findings during this step.
 
 ## What To Review
 
@@ -157,6 +184,7 @@ Look for issues such as:
 After you gather context and inspect the scope, decide which review aspects are relevant for this change.
 
 Then build an explicit checklist before you start judging the code.
+The checklist must exist as a written artifact, not just in your head.
 
 The checklist should include every relevant review aspect and omit only aspects that are genuinely not relevant.
 
@@ -174,6 +202,13 @@ Not every change needs all six, but every review must include an explicit releva
 If your environment supports TodoWrite or a comparable checklist mechanism, use it.
 If not, write the checklist explicitly in your own notes or response before proceeding.
 
+For each checklist item, capture enough structure that you can review it sequentially:
+
+- aspect name
+- relevance decision
+- evidence you expect to inspect
+- eventual outcome: pass, fail, or not relevant
+
 Examples:
 
 - code change with logic and tests:
@@ -188,6 +223,7 @@ Examples:
   - command/example accuracy
 
 Do not skip this step.
+Do not begin writing `Critical`, `Recommended`, or `Suggestions` findings until this checklist is written.
 
 ## Scope Discipline
 
@@ -195,9 +231,12 @@ Stay focused on the actual change named in the scope string.
 
 - Start with the diff.
 - Read changed files before reading unrelated code.
+- Treat the diff as the default review boundary.
 - Expand outward only when the diff raises a question you cannot answer locally.
 - Avoid broad codebase exploration unless it is clearly necessary.
 - Work through the checklist one item at a time instead of blending all review aspects together.
+
+If you leave the diff scope, do it for a concrete reason and keep the expansion narrow.
 
 ## Step-By-Step Workflow
 
@@ -208,8 +247,16 @@ Use the current conversation plus Takode metadata to identify the target worker.
 Start with:
 
 ```bash
-takode info <worker_session> --json
+takode info <worker_session>
 takode peek <worker_session>
+```
+
+If the scope already points to a specific window, prefer a bounded peek immediately instead of the broad default view:
+
+```bash
+takode peek <worker_session> --from <msg_id> --count <N>
+# or
+takode peek <worker_session> --turn <N>
 ```
 
 From `takode info`, find:
@@ -224,6 +271,8 @@ If the quest ID is available, read it:
 ```bash
 quest show <quest_id>
 ```
+
+Only fall back to `takode info <worker_session> --json` if you need exact structured fields that the plain-text view does not answer cleanly.
 
 ### Step 2: Check Status Before Diffing
 
@@ -255,6 +304,8 @@ git --no-optional-locks -C <worktree_path> diff <base_branch>
 
 If the base branch is unclear, inspect `takode info` output first and use the branch metadata it provides.
 
+At the end of this step, you should know what changed before you start judging whether it is good.
+
 ### Step 4: Focus The Review Using The Scope String
 
 Use the scope string to decide which parts of the diff matter most.
@@ -266,6 +317,16 @@ Example:
 
 The scope string narrows your attention.
 It does not replace reading the diff.
+This is still context gathering, not the point where you start writing findings.
+
+If the leader already gave you message links or a narrow range, prefer targeted Takode reads over a larger generic peek:
+
+```bash
+takode peek <worker_session> --from <msg_id> --count <N>
+takode read <worker_session> <msg_id>
+```
+
+Add `--show-tools` only when the worker's exact commands or test invocations matter to the checklist item you are reviewing.
 
 ### Step 5: Decide Relevance And Create The Checklist
 
@@ -276,10 +337,12 @@ Based on the scope, status output, diff, and surrounding context:
 3. mark any non-relevant aspects as intentionally not relevant
 
 Do not silently skip review aspects.
+Do not continue until the checklist exists in writing.
 
 ### Step 6: Review Each Aspect Sequentially
 
 Work through the checklist one aspect at a time.
+Finish one checklist item before moving to the next.
 
 For each checklist item:
 
@@ -288,6 +351,7 @@ For each checklist item:
 3. record any finding before moving to the next item
 
 Do not collapse all review dimensions into one blended impression.
+Do not write the final report until every checklist item has an outcome.
 
 ### Step 7: Produce The Initial Review
 
@@ -309,9 +373,11 @@ The `Coverage` section should explicitly summarize:
 
 - which aspects you reviewed
 - which aspects you marked not relevant
+- the order you reviewed them in
 - where the actual findings came from
 
 When referencing files, use Takode clickable file links such as [TopBar.tsx:162](file:web/src/components/TopBar.tsx:162).
+The `Coverage` section should read like a summary of the checklist you actually used, not a generic boilerplate sentence.
 
 ## Follow-Up Review
 
@@ -321,10 +387,11 @@ In that case:
 
 1. Re-read your prior `Critical` and `Recommended` findings.
 2. Read the worker's latest report and latest diff.
-3. Check whether each required finding was:
+3. Re-establish the checklist for the follow-up review, reusing prior relevant aspects and adding any new ones the follow-up diff introduces.
+4. Check whether each required finding was:
    - fixed, or
    - intentionally not fixed with a solid justification
-4. Ignore unresolved `Suggestions` unless they expose a deeper required issue.
+5. Ignore unresolved `Suggestions` unless they expose a deeper required issue.
 
 As part of that follow-up check, re-run:
 
@@ -341,6 +408,7 @@ Re-check the worker's response against the same checklist mindset:
 - each prior `Critical` must now pass or be explicitly justified
 - each prior `Recommended` must now pass or be explicitly justified
 - unresolved `Suggestions` are only blocking if they expose a deeper required issue
+- any newly introduced relevant review aspect must also be checked instead of being silently ignored
 
 For a follow-up review, return exactly one of:
 
@@ -359,6 +427,7 @@ For a follow-up review, return exactly one of:
 ### Coverage
 - Covered: repo instruction compliance, complexity/design quality, test coverage, correctness
 - Not relevant: performance, security
+- Review order: repo instruction compliance -> complexity/design quality -> test coverage -> correctness
 - Findings came from: test coverage, correctness
 
 ### Critical
@@ -380,8 +449,10 @@ For a follow-up review, return exactly one of:
 - Invoke the skill with a concise change description.
 - Use that description to focus the review, not to replace evidence gathering.
 - Build an explicit review checklist before judging the code.
+- Make that checklist a written artifact, not an informal mental list.
 - Make an explicit relevance decision for each major review aspect.
 - Review each selected aspect one at a time in sequence.
+- Gather context before judgment and do not jump straight to findings.
 - Make the final report reflect checklist coverage.
 - Stay diff-scoped unless deeper reading is clearly necessary.
 - Check `git status --short` before relying on diff output.
