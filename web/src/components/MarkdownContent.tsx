@@ -525,7 +525,7 @@ function SessionMarkdownLink({
 
   return (
     <SessionInlineLink sessionId={sessionId} sessionNum={sessionNum} messageIndex={messageIndex}>
-        {children}
+      {children}
     </SessionInlineLink>
   );
 }

@@ -28,9 +28,7 @@ export interface BoardRowData {
 
 export type BoardTableMode = "active" | "completed";
 
-const JOURNEY_STATUS_PRIORITY = new Map(
-  [...QUEST_JOURNEY_STATES].reverse().map((status, index) => [status, index]),
-);
+const JOURNEY_STATUS_PRIORITY = new Map([...QUEST_JOURNEY_STATES].reverse().map((status, index) => [status, index]));
 
 function statusPriority(status?: string): number {
   if (!status) return Number.MAX_SAFE_INTEGER - 1;

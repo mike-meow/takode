@@ -121,7 +121,9 @@ export function MessageLinkHoverCard({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="truncate text-[14px] font-semibold leading-snug text-cc-fg">{headerLabel}</span>
-                {session.sessionNum != null && <span className="shrink-0 text-[10px] font-mono text-cc-muted/60">#{session.sessionNum}</span>}
+                {session.sessionNum != null && (
+                  <span className="shrink-0 text-[10px] font-mono text-cc-muted/60">#{session.sessionNum}</span>
+                )}
               </div>
               <div className="mt-0.5 text-[11px] text-cc-muted">Message {messageIndex}</div>
             </div>
@@ -136,7 +138,11 @@ export function MessageLinkHoverCard({
           {loading ? (
             <div className="px-2 py-4 text-[12px] italic text-cc-muted/70">Loading message…</div>
           ) : message ? (
-            <div data-testid="message-link-hover-body" className="max-h-[360px] overflow-y-auto pr-1" style={{ scrollbarGutter: "stable both-edges" }}>
+            <div
+              data-testid="message-link-hover-body"
+              className="max-h-[360px] overflow-y-auto pr-1"
+              style={{ scrollbarGutter: "stable both-edges" }}
+            >
               <HidePawContext.Provider value={true}>
                 <MessageBubble message={message} sessionId={session.id} showTimestamp={false} />
               </HidePawContext.Provider>

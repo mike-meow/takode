@@ -2552,7 +2552,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("repeated `takode peek` / `takode scan` checks");
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Only inspect a worker after a herd event");
-    expect(guardrails).toContain("prefer the plain-text forms of `takode info`, `takode peek`, `takode scan`, and `quest show`");
+    expect(guardrails).toContain(
+      "prefer the plain-text forms of `takode info`, `takode peek`, `takode scan`, and `quest show`",
+    );
     expect(guardrails).toContain("Use `--json` only when you need exact structured fields");
     expect(guardrails).toContain("feedback `addressed` flags");
     expect(guardrails).toContain("`commitShas`");

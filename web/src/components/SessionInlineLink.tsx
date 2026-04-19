@@ -153,13 +153,17 @@ export function SessionInlineLink({
         }}
         onMouseEnter={handleLinkMouseEnter}
         onMouseLeave={handleLinkMouseLeave}
-        className={resolvedSessionId ? (className ?? "text-cc-primary hover:underline") : (missingClassName ?? "text-cc-muted")}
+        className={
+          resolvedSessionId ? (className ?? "text-cc-primary hover:underline") : (missingClassName ?? "text-cc-muted")
+        }
         title={title}
       >
         {children}
       </a>
-      {resolvedSessionId && sessionItem && hoverRect && (
-        messageIndex != null ? (
+      {resolvedSessionId &&
+        sessionItem &&
+        hoverRect &&
+        (messageIndex != null ? (
           <MessageLinkHoverCard
             session={sessionItem}
             sessionName={sessionNames.get(resolvedSessionId)}
@@ -180,8 +184,7 @@ export function SessionInlineLink({
             onMouseEnter={handleHoverCardEnter}
             onMouseLeave={handleHoverCardLeave}
           />
-        )
-      )}
+        ))}
     </>
   );
 }

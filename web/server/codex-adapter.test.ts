@@ -3838,14 +3838,12 @@ describe("CodexAdapter", () => {
 
     const writeStdinUse = messages.find((m) => {
       if (m.type !== "assistant") return false;
-      const content = (m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } })
-        .message.content;
+      const content = (
+        m as { message: { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> } }
+      ).message.content;
       return content.some(
         (b) =>
-          b.type === "tool_use" &&
-          b.name === "write_stdin" &&
-          b.input?.session_id === "59356" &&
-          b.input?.chars === "",
+          b.type === "tool_use" && b.name === "write_stdin" && b.input?.session_id === "59356" && b.input?.chars === "",
       );
     }) as
       | {

@@ -16,10 +16,12 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
   const cardRef = useRef<HTMLDivElement>(null);
   const statusTheme = getQuestStatusTheme(quest.status);
   const zoomLevel = useStore((state) => state.zoomLevel ?? 1);
-  const sessionName = useStore((state) => ("sessionId" in quest && quest.sessionId ? state.sessionNames.get(quest.sessionId) : undefined));
+  const sessionName = useStore((state) =>
+    "sessionId" in quest && quest.sessionId ? state.sessionNames.get(quest.sessionId) : undefined,
+  );
   const sessionNum = useStore((state) =>
     "sessionId" in quest && quest.sessionId
-      ? state.sdkSessions.find((session) => session.sessionId === quest.sessionId)?.sessionNum ?? null
+      ? (state.sdkSessions.find((session) => session.sessionId === quest.sessionId)?.sessionNum ?? null)
       : null,
   );
 

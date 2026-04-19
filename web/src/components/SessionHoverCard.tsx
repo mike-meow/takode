@@ -94,7 +94,9 @@ export function SessionHoverCard({
     title: task.title.trim(),
   }));
   const activeQuest = useMemo(
-    () => quests.find((quest) => quest.status === "in_progress" && "sessionId" in quest && quest.sessionId === s.id) ?? null,
+    () =>
+      quests.find((quest) => quest.status === "in_progress" && "sessionId" in quest && quest.sessionId === s.id) ??
+      null,
     [quests, s.id],
   );
 

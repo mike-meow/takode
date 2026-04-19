@@ -6,7 +6,9 @@ import { BoardBlock } from "./BoardBlock.js";
 import type { BoardRowData } from "./BoardTable.js";
 
 vi.mock("../store.js", () => ({
-  useStore: (selector: (state: { latestBoardToolUseId: Map<string, string>; setLatestBoardToolUseId: () => void }) => unknown) =>
+  useStore: (
+    selector: (state: { latestBoardToolUseId: Map<string, string>; setLatestBoardToolUseId: () => void }) => unknown,
+  ) =>
     selector({
       latestBoardToolUseId: new Map<string, string>(),
       setLatestBoardToolUseId: () => {},

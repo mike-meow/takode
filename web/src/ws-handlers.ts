@@ -276,7 +276,11 @@ function normalizeHistoryMessages(
       store.setSessionTaskPreview(sessionId, null);
       chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
       frozenCount = chatMessages.length;
-    } else if (histMsg.type === "compact_marker" || histMsg.type === "permission_denied" || histMsg.type === "permission_approved") {
+    } else if (
+      histMsg.type === "compact_marker" ||
+      histMsg.type === "permission_denied" ||
+      histMsg.type === "permission_approved"
+    ) {
       chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
     }
   }

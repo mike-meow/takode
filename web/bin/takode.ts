@@ -1167,7 +1167,9 @@ function printSessionLine(
   const activity = s.lastActivityAt ? formatRelativeTime(s.lastActivityAt) : "";
   const preview = s.lastMessagePreview ? `  "${truncate(s.lastMessagePreview, 50)}"` : "";
 
-  console.log(`${prefix}${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${timers}${reviewerSummary}${attention}`);
+  console.log(
+    `${prefix}${num.padEnd(5)} ${status} ${name}${role}${herd}${backend}${quest}${timers}${reviewerSummary}${attention}`,
+  );
   // Compact display for indented reviewer sessions: skip the detail line (cwd/branch)
   // since reviewers share the parent's worktree and the extra line is just noise
   if (!opts?.indent) {
@@ -2993,10 +2995,7 @@ function formatBoardParticipantStatus(
   return opts?.empty ?? "--";
 }
 
-function formatBoardWorkerReviewerSummary(
-  row: BoardRow,
-  rowStatus: BoardRowSessionStatus | undefined,
-): string {
+function formatBoardWorkerReviewerSummary(row: BoardRow, rowStatus: BoardRowSessionStatus | undefined): string {
   if (!row.worker && row.workerNum === undefined) return "--";
   const worker = formatBoardParticipantStatus(rowStatus?.worker, row.workerNum);
   const reviewer = rowStatus?.reviewer
