@@ -1422,7 +1422,10 @@ export class CodexAdapter
       await this.interruptAndWaitForTurnEnd();
     }
 
-    if (isCompactSlashCommand(msg.content) && !msg.images?.length && !msg.vscodeSelection) {
+    // VS Code selection metadata is ambient UI context, not explicit user
+    // content. A plain /compact must still reach Codex's compaction endpoint
+    // even when the composer attached selection metadata to the turn.
+    if (isCompactSlashCommand(msg.content) && !msg.images?.length) {
       try {
         await this.transport.call("thread/compact/start", {
           threadId: this.threadId,

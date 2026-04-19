@@ -927,6 +927,45 @@ describe("CodexAdapter", () => {
     expect(lines.find((line) => line.method === "turn/start")).toBeUndefined();
   });
 
+  it("uses thread/compact/start even when VS Code selection metadata is attached", async () => {
+    // Regression coverage for q-432: Codex /compact must stay a real compact
+    // command when the composer includes ambient VS Code selection context.
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+
+    await tick();
+    stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+    stdout.push(JSON.stringify({ id: 2, result: { thread: { id: "thr_123" } } }) + "\n");
+    await tick();
+
+    stdin.chunks = [];
+
+    adapter.sendBrowserMessage({
+      type: "user_message",
+      content: "/compact",
+      vscodeSelection: {
+        absolutePath: "/workspace/src/App.tsx",
+        relativePath: "src/App.tsx",
+        displayPath: "App.tsx",
+        startLine: 10,
+        endLine: 12,
+        lineCount: 3,
+      },
+    });
+
+    await tick();
+
+    const lines = stdin.chunks
+      .join("")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const compactStart = lines.find((line) => line.method === "thread/compact/start");
+    expect(compactStart).toBeDefined();
+    expect(compactStart.params.threadId).toBe("thr_123");
+    expect(lines.find((line) => line.method === "turn/start")).toBeUndefined();
+  });
+
   it("calls thread/rollback for Codex revert", async () => {
     const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
 
