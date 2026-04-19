@@ -2554,6 +2554,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
+    expect(guardrails).toContain("The 5-slot limit applies to workers only");
+    expect(guardrails).toContain("archiving reviewers does not free worker-slot capacity");
     // Skill references: /leader-dispatch for dispatch workflow, sub-files for quest-journey and board-usage
     expect(guardrails).toContain("/leader-dispatch");
     expect(guardrails).toContain("quest-journey.md");
@@ -2616,6 +2618,8 @@ describe("getOrchestratorGuardrails", () => {
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");
+    expect(guardrails).toContain("The 5-slot limit applies to workers only");
+    expect(guardrails).toContain("archiving reviewers does not free worker-slot capacity");
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Make every worker instruction stage-explicit");

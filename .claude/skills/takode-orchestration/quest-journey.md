@@ -92,7 +92,7 @@ The `--reviewer` flag automatically:
 - **Reuse within a quest**: keep the same reviewer for follow-up reviews and reviewer-groom follow-up checks on the same worker
 - **Archive after the quest is ported**: reviewers are one-off quality gates -- archive them once the quest journey is complete
 - **Auto-cleanup**: reviewer is automatically archived when its parent worker is archived
-- **Herd limit exempt**: reviewer sessions do NOT count toward the 5-session herd limit
+- **Worker-slot exempt**: reviewer sessions do NOT count toward the 5-worker-slot limit, and archiving a reviewer does NOT free a worker slot
 
 ## SKEPTIC_REVIEWING -> GROOM_REVIEWING
 

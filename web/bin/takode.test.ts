@@ -1638,6 +1638,88 @@ describe("takode spawn", () => {
     ]);
   });
 
+  it("warns about worker-slot overage without counting reviewers", async () => {
+    const createBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-slot-warning", isOrchestrator: true }));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/leader-slot-warning") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-slot-warning", permissionMode: "plan", backendType: "claude" }));
+        return;
+      }
+      if (method === "POST" && url === "/api/sessions/create") {
+        createBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-slot-6" }));
+        return;
+      }
+      if (method === "GET" && url === "/api/sessions/worker-slot-6/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-slot-6",
+            sessionNum: 36,
+            name: "Worker Slot 6",
+            state: "running",
+            backendType: "claude",
+            model: "",
+            cwd: "/tmp/slot-warning",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            isWorktree: true,
+          }),
+        );
+        return;
+      }
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify([
+            { sessionId: "worker-slot-1", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "worker-slot-2", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "worker-slot-3", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "worker-slot-4", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "worker-slot-5", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "worker-slot-6", herdedBy: "leader-slot-warning", archived: false },
+            { sessionId: "reviewer-slot-1", herdedBy: "leader-slot-warning", reviewerOf: 31, archived: false },
+          ]),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    const result = await runTakode(["spawn", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-slot-warning",
+      COMPANION_AUTH_TOKEN: "auth-slot-warning",
+    });
+
+    server.close();
+
+    expect(result.status).toBe(0);
+    expect(createBodies).toHaveLength(1);
+    expect(result.stdout).toContain("Worker slots used: 6/5.");
+    expect(result.stdout).toContain("Please archive 1 worker session least likely to be reused.");
+    expect(result.stdout).toContain(
+      "Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.",
+    );
+  });
+
   it("rejects unsupported spawn flags instead of ignoring them", async () => {
     const result = await runTakode(["spawn", "--unsupported-flag"], {
       ...process.env,
@@ -3498,6 +3580,100 @@ describe("takode list reviewer nesting", () => {
       // but the reviewer is rendered as an orphan inside printNestedSessions.
       expect(result.stdout).toMatch(/▸\s+other-project\s+0/);
       expect(result.stdout).toMatch(/↳.*Reviewer of #99/);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("shows worker-slot usage separately from the raw session total", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-slot-summary", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify([
+            {
+              sessionId: "leader-slot-summary",
+              sessionNum: 9,
+              name: "Leader Slot Summary",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 30_000,
+              lastActivityAt: Date.now() - 12_000,
+              cliConnected: true,
+              isOrchestrator: true,
+            },
+            {
+              sessionId: "worker-a",
+              sessionNum: 10,
+              name: "Fix tree view",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 20_000,
+              lastActivityAt: Date.now() - 5_000,
+              cliConnected: true,
+              herdedBy: "leader-slot-summary",
+            },
+            {
+              sessionId: "reviewer-a",
+              sessionNum: 11,
+              name: "Reviewer of #10",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 10_000,
+              lastActivityAt: Date.now() - 3_000,
+              cliConnected: true,
+              reviewerOf: 10,
+              herdedBy: "leader-slot-summary",
+            },
+            {
+              sessionId: "worker-b",
+              sessionNum: 12,
+              name: "Fix quest styling",
+              state: "idle",
+              archived: false,
+              cwd: "/repo/companion",
+              createdAt: Date.now() - 15_000,
+              lastActivityAt: Date.now() - 8_000,
+              cliConnected: true,
+              herdedBy: "leader-slot-summary",
+            },
+          ]),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["list", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-slot-summary",
+        COMPANION_AUTH_TOKEN: "auth-slot-summary",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("3 session(s) shown (2 workers, 1 reviewer)");
+      expect(result.stdout).toContain(
+        "Worker slots used: 2/5. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.",
+      );
     } finally {
       server.close();
     }

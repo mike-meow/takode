@@ -1005,6 +1005,14 @@ async function handleList(base: string, args: string[]): Promise<void> {
     return;
   }
 
+  const shownWorkerCount = filtered.filter((s) => s.reviewerOf === undefined).length;
+  const shownReviewerCount = filtered.length - shownWorkerCount;
+  const HERD_WORKER_SLOT_LIMIT = 5;
+  const activeHerdWorkerCount =
+    isOrchestrator && mySessionId
+      ? sessions.filter((s) => !s.archived && s.herdedBy === mySessionId && s.reviewerOf === undefined).length
+      : null;
+
   // Group sessions by project (repo root or cwd).
   // Reviewers are grouped with their parent worker so they don't create
   // separate single-session groups for each worktree.
@@ -1073,7 +1081,14 @@ async function handleList(base: string, args: string[]): Promise<void> {
     console.log("");
   }
 
-  console.log(`${total} session(s)${filterHint}`);
+  console.log(
+    `${total} session(s) shown (${shownWorkerCount} worker${shownWorkerCount === 1 ? "" : "s"}, ${shownReviewerCount} reviewer${shownReviewerCount === 1 ? "" : "s"})${filterHint}`,
+  );
+  if (activeHerdWorkerCount !== null) {
+    console.log(
+      `Worker slots used: ${activeHerdWorkerCount}/${HERD_WORKER_SLOT_LIMIT}. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.`,
+    );
+  }
   console.log(
     `Status: ● running  ○ idle  ✗ disconnected  ⊘ archived  ⚠ needs attention  📋 quest  ↑↓ commits ahead/behind`,
   );
@@ -2440,9 +2455,9 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
     spawned.push(await fetchSessionInfo(base, created.sessionId));
   }
 
-  // Check herd size and warn if over the limit
-  const HERD_SIZE_LIMIT = 5;
-  let herdWarning: { herdSize: number; excess: number; limit: number } | null = null;
+  // Check worker-slot usage and warn if over the limit.
+  const HERD_WORKER_SLOT_LIMIT = 5;
+  let herdWarning: { workerSlotsUsed: number; excessWorkers: number; limit: number } | null = null;
   try {
     const allSessions = (await apiGet(base, "/takode/sessions")) as Array<{
       sessionId: string;
@@ -2450,15 +2465,14 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       herdedBy?: string;
       reviewerOf?: number;
     }>;
-    // Reviewer sessions don't count toward the herd limit
-    const activeHerded = allSessions.filter(
+    const activeHerdWorkers = allSessions.filter(
       (s) => !s.archived && s.herdedBy === leaderSessionId && s.reviewerOf === undefined,
     );
-    if (activeHerded.length > HERD_SIZE_LIMIT) {
+    if (activeHerdWorkers.length > HERD_WORKER_SLOT_LIMIT) {
       herdWarning = {
-        herdSize: activeHerded.length,
-        excess: activeHerded.length - HERD_SIZE_LIMIT,
-        limit: HERD_SIZE_LIMIT,
+        workerSlotsUsed: activeHerdWorkers.length,
+        excessWorkers: activeHerdWorkers.length - HERD_WORKER_SLOT_LIMIT,
+        limit: HERD_WORKER_SLOT_LIMIT,
       };
     }
   } catch {
@@ -2493,7 +2507,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   }
   if (herdWarning) {
     console.log(
-      `\n\u26a0 Herd size is now ${herdWarning.herdSize} (limit: ${herdWarning.limit}). Please archive ${herdWarning.excess} session(s) least likely to be reused. Archived sessions' history remains readable via takode peek/read.`,
+      `\n\u26a0 Worker slots used: ${herdWarning.workerSlotsUsed}/${herdWarning.limit}. Please archive ${herdWarning.excessWorkers} worker session${herdWarning.excessWorkers === 1 ? "" : "s"} least likely to be reused. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity. Archived sessions' history remains readable via takode peek/read.`,
     );
   }
 }

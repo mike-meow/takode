@@ -604,6 +604,7 @@ Read \`quest-journey.md\` from the \`takode-orchestration\` skill for full stage
 ## Worker Selection
 
 Before dispatching any quest, invoke \`/leader-dispatch\`. It is the source of truth for reuse-vs-spawn decisions. Fresh worker is the default; reuse requires a real context advantage. Queue work on the board yourself with \`--wait-for\` when you intentionally want a busy worker's context later.
+Use the worker-slot summary from \`takode list\` / \`takode spawn\` directly. The 5-slot limit applies to workers only; reviewers do not use worker slots, and archiving reviewers does not free worker-slot capacity.
 
 ## Skeptic Review
 
