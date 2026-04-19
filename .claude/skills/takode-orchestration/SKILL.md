@@ -36,7 +36,7 @@ Read these files or invoke these skills when performing the corresponding operat
 - **Workers have the same tools you do.** Give them the quest ID; they run `quest show` themselves.
 - **One task at a time per worker.** Mid-task steering is fine; unrelated new tasks queue.
 - **User feedback triggers full rework.** When a user reports issues with a completed quest, record feedback, set the quest back to `refined`, and dispatch for a full quest journey. Never skip review steps for "small" fixes. See [quest-journey.md](quest-journey.md).
-- **Don't echo board state as prose.** `takode board` commands display the board in the terminal with a special UI. Never repeat that information as markdown tables or summaries -- just run the command and move on.
+- **Don't echo board state as prose.** `takode board` commands display the board in the terminal with a special UI, and the user already sees the live board state in the Takode Chat UI. Never repeat current board rows as markdown tables or summaries -- just run the command and move on unless the user explicitly asks for a text summary.
 - **Never skip quest journey stages.** Every quest gets the full lifecycle: PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING. No exceptions for "small" changes.
 - **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions in plain text output, or use `takode notify needs-input` for non-blocking user notifications.
 - **Use `takode notify` at these moments:** `needs-input` when a quest/worker is blocked and genuinely needs the user's decision before proceeding (e.g., scope unclear, design choice needed); `review` when a quest completes the full journey and is ported.

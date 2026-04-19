@@ -60,7 +60,7 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `- Be faithful to user's words. Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.\n` +
     `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n` +
     `- Archiving a worktree worker deletes its worktree and any uncommitted changes. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.\n` +
-    `- Don't echo board state as prose. \`takode board\` commands display the board with a special UI -- don't repeat it in markdown tables or summaries.\n` +
+    `- Don't echo board state as prose. \`takode board\` commands display the board with a special UI, and the user already sees the live board state in the Takode Chat UI -- don't repeat current board rows in markdown tables or summaries unless the user explicitly asks for a text summary.\n` +
     `- Update the board IMMEDIATELY when herd events change quest state -- before reviewing content or composing responses.\n\n` +
     `**On startup**: Load the \`takode-orchestration\` and \`quest\` skills for full CLI references. Then acknowledge you're ready and wait for the user's instructions. Do NOT automatically herd sessions or run commands until the user tells you what to do.`
   );
