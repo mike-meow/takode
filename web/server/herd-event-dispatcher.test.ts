@@ -274,7 +274,7 @@ describe("HerdEventDispatcher", () => {
     triggerEvent(
       makeEvent({
         event: "session_disconnected",
-        data: { reason: "adapter_disconnect" },
+        data: { reason: "adapter_disconnect", wasGenerating: false },
       }),
     );
     vi.advanceTimersByTime(600);
