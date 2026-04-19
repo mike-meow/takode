@@ -125,7 +125,7 @@ The `--reviewer` flag automatically:
 - Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote) **and include the ordered synced SHAs from the main repo as a dedicated `Synced SHAs: sha1,sha2` line**
 - Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`. Structured commit metadata should carry routine port information; add a second prose port comment only when something exceptional about the port is materially worth noting.
 - `takode board advance <quest-id>` -- this removes the row from the board
-- Run `takode notify review "<quest-id> ready for verification"` to alert the user that the quest is ready for verification
+- Do **not** run `takode notify review` for quest completion -- when the work board item is completed, Takode already fires the review notification automatically. Sending another one duplicates the quest-completion notification.
 
 ## Feedback Rework Loop
 

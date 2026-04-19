@@ -2573,6 +2573,11 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("takode notify");
     expect(guardrails).toContain("needs-input");
     expect(guardrails).toContain("review");
+    expect(guardrails).toContain("Every time you ask the user a question");
+    expect(guardrails).toContain("also call `takode notify needs-input`");
+    expect(guardrails).toContain("so the user never misses the leader's question");
+    expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");
+    expect(guardrails).toContain("Takode already sends that review notification automatically");
     // Detailed content moved to sub-skill files, not inline
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("takode peek <session> [--from N]");
@@ -2609,6 +2614,11 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("address reviewer-groom findings, update the quest summary comment, and stop");
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send a separate explicit port instruction when ready");
+    expect(guardrails).toContain("Every time you ask the user a question");
+    expect(guardrails).toContain("also call `takode notify needs-input`");
+    expect(guardrails).toContain("so the user never misses the leader's question");
+    expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");
+    expect(guardrails).toContain("Takode already sends that review notification automatically");
     // No verbose CLI command docs
     expect(guardrails).not.toContain("takode list [--active] [--all]");
     expect(guardrails).not.toContain("CLAUDE.md");

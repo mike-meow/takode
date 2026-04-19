@@ -38,8 +38,8 @@ Read these files or invoke these skills when performing the corresponding operat
 - **User feedback triggers full rework.** When a user reports issues with a completed quest, record feedback, set the quest back to `refined`, and dispatch for a full quest journey. Never skip review steps for "small" fixes. See [quest-journey.md](quest-journey.md).
 - **Don't echo board state as prose.** `takode board` commands display the board in the terminal with a special UI, and the user already sees the live board state in the Takode Chat UI. Never repeat current board rows as markdown tables or summaries -- just run the command and move on unless the user explicitly asks for a text summary.
 - **Never skip quest journey stages.** Every quest gets the full lifecycle: PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING. No exceptions for "small" changes.
-- **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions in plain text output, or use `takode notify needs-input` for non-blocking user notifications.
-- **Use `takode notify` at these moments:** `needs-input` when a quest/worker is blocked and genuinely needs the user's decision before proceeding (e.g., scope unclear, design choice needed); `review` when a quest completes the full journey and is ported.
+- **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions in plain text output instead. Every time you ask the user a question, also call `takode notify needs-input` so the user never misses the leader's question.
+- **Use `takode notify` at these moments:** `needs-input` every time you ask the user a question or need a decision before work can continue, because that keeps the user from missing the leader's question; `review` only for significant non-quest deliverables that are ready for the user's eyes, not for quest completion.
 - **Prefer plain-text inspection by default.** When using `takode info`, `takode peek`, `takode scan`, or `quest show` to read for judgment, scanability, or general situational awareness, use the normal plain-text output first. It is usually more token-efficient and easier to reason about than `--json`.
 - **Use `--json` only when exact machine fields matter.** Reach for JSON when you need precise structured data such as feedback `addressed` flags, `commitShas`, version-local quest metadata from `quest history`, exact IDs, or machine-oriented filtering/branching.
 
@@ -86,8 +86,8 @@ Three distinct operations -- never confuse them:
 ## User Notifications
 
 Tie `takode notify` calls to Quest Journey events:
-- **`takode notify review "q-42 ready for verification"`**: when a quest completes the full Journey (removed from board and transitioned to `needs_verification`)
-- **`takode notify needs-input "need decision on auth approach for q-42"`**: when the user needs to make a decision or provide information and no built-in tool covers it
+- **`takode notify needs-input "need decision on auth approach for q-42"`**: every time you ask the user a question or need a decision before work can continue. Always pair the question with `takode notify needs-input` so the user never misses the leader's question.
+- **Do not call `takode notify review` for quest completion**: when a work board item is completed, Takode already fires the review notification automatically. Sending another one creates duplicate quest-completion notifications.
 
 Do not notify for routine progress or intermediate steps.
 
@@ -260,8 +260,8 @@ Alert the user when they need to take action. Available to all sessions (not orc
 Categories: `needs-input`, `review`
 
 ```bash
-takode notify review "q-42 ready for verification"
 takode notify needs-input "need decision on auth approach for q-42"
+takode notify review "landing page copy draft is ready for review"
 ```
 
 ### `takode pending <session>`
