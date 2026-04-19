@@ -3425,6 +3425,9 @@ export function Playground() {
                 <PlaygroundReviewNotificationMarker summary="q-131: takode notify fixes ready" />
               </div>
             </Card>
+            <Card label="deduped same-message authoritative + tool-use state">
+              <PlaygroundDedupedNotificationMessage />
+            </Card>
           </div>
         </Section>
 
@@ -5836,6 +5839,57 @@ function PlaygroundReviewNotificationMarker({ summary }: { summary?: string }) {
       onToggleDone={() => setDone((prev) => !prev)}
       showReplyAction={false}
     />
+  );
+}
+
+function PlaygroundDedupedNotificationMessage() {
+  useEffect(() => {
+    const previous = useStore.getState().sessionNotifications;
+    const next = new Map(previous);
+    next.set("playground-dedup-notify", [
+      {
+        id: "playground-dedup-notif-1",
+        category: "review",
+        timestamp: Date.now() - 15_000,
+        messageId: "playground-dedup-msg",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: next });
+
+    return () => {
+      useStore.setState({ sessionNotifications: previous });
+    };
+  }, []);
+
+  const message: ChatMessage = {
+    id: "playground-dedup-msg",
+    role: "assistant",
+    content: "I have the result. I'll send the notification summary and then give you the exact observed behavior.",
+    timestamp: Date.now() - 15_000,
+    contentBlocks: [
+      {
+        type: "tool_use",
+        id: "playground-dedup-tool",
+        name: "Bash",
+        input: { command: 'TAKODE_API_PORT=3455 takode notify review "Async command experiment finished"' },
+      },
+    ],
+    notification: {
+      category: "review",
+      timestamp: Date.now() - 15_000,
+      summary: "Async command experiment finished",
+    },
+  };
+
+  return (
+    <div className="p-3">
+      <p className="mb-3 text-xs text-cc-muted">
+        Same-message dedupe: the authoritative notification marker stays visible, while the matching `takode notify`
+        tool-use in the same assistant message does not render a second chip.
+      </p>
+      <MessageBubble message={message} sessionId="playground-dedup-notify" showTimestamp={false} />
+    </div>
   );
 }
 

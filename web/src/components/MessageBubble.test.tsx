@@ -808,6 +808,45 @@ describe("MessageBubble - assistant messages", () => {
     }
   });
 
+  it("does not render a duplicate tool-derived notification marker when authoritative notification metadata exists", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-dedup",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-dedup",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-dedup",
+        role: "assistant",
+        content: "I have the result. Sending the notification now.",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-review-dedup",
+            name: "Bash",
+            input: { command: 'TAKODE_API_PORT=3455 takode notify review "Ready for review"' },
+          },
+        ],
+        notification: { category: "review", timestamp: Date.now(), summary: "Ready for review" },
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getAllByText("Ready for review")).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("renders completed review notifications with the undo label and done styling", () => {
     const prevNotifications = useStore.getState().sessionNotifications;
     const nextNotifications = new Map(prevNotifications);

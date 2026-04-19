@@ -242,6 +242,7 @@ interface ToolBlockProps {
   hideLabel?: boolean;
   defaultOpen?: boolean;
   disableInlineSpecialCases?: boolean;
+  suppressNotificationMarker?: boolean;
 }
 
 /** Public ToolBlock: wraps the inner implementation in an error boundary so that
@@ -264,6 +265,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
   hideLabel = false,
   defaultOpen,
   disableInlineSpecialCases = false,
+  suppressNotificationMarker = false,
 }: ToolBlockProps) {
   const [open, setOpen] = useState(() => {
     if (defaultOpen !== undefined) return defaultOpen;
@@ -328,7 +330,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
   // takode notify: render inline notification chip instead of terminal block.
   const notifyMatch =
     !disableInlineSpecialCases && name === "Bash" ? parseTakodeNotifyCommand(String(input.command || "")) : null;
-  if (notifyMatch) {
+  if (notifyMatch && !suppressNotificationMarker) {
     return <NotificationMarker category={notifyMatch.category} sessionId={sessionId} messageId={parentMessageId} />;
   }
 

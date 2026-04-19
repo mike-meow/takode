@@ -1085,6 +1085,7 @@ function AssistantMessage({
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
   const hasThinkingBlock = blocks.some((b) => b.type === "thinking" && b.thinking.trim().length > 0);
   const shouldRenderContentFallback = displayMessage.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
+  const suppressToolNotificationMarker = !!displayMessage.notification;
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = displayMessage.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
@@ -1141,6 +1142,7 @@ function AssistantMessage({
                 block={group.block}
                 sessionId={sessionId}
                 searchHighlight={searchHighlight}
+                suppressNotificationMarker={suppressToolNotificationMarker}
               />
             );
           }
@@ -1155,6 +1157,7 @@ function AssistantMessage({
                 toolUseId={item.id}
                 sessionId={sessionId}
                 parentMessageId={message.id}
+                suppressNotificationMarker={suppressToolNotificationMarker}
               />
             );
           }
@@ -1166,6 +1169,7 @@ function AssistantMessage({
               items={group.items}
               sessionId={sessionId}
               parentMessageId={message.id}
+              suppressNotificationMarker={suppressToolNotificationMarker}
             />
           );
         })}
@@ -1412,10 +1416,12 @@ function ContentBlockRenderer({
   block,
   sessionId,
   searchHighlight,
+  suppressNotificationMarker = false,
 }: {
   block: ContentBlock;
   sessionId?: string;
   searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
+  suppressNotificationMarker?: boolean;
 }) {
   const isCodex = useStore((s) => (sessionId ? s.sessions.get(sessionId)?.backend_type === "codex" : false));
 
@@ -1428,7 +1434,14 @@ function ContentBlockRenderer({
   }
 
   if (block.type === "tool_use") {
-    return <ToolBlock name={block.name} input={block.input} toolUseId={block.id} />;
+    return (
+      <ToolBlock
+        name={block.name}
+        input={block.input}
+        toolUseId={block.id}
+        suppressNotificationMarker={suppressNotificationMarker}
+      />
+    );
   }
 
   if (block.type === "tool_result") {
@@ -1453,11 +1466,13 @@ function ToolGroupBlock({
   items,
   sessionId,
   parentMessageId,
+  suppressNotificationMarker = false,
 }: {
   name: string;
   items: ToolGroupItem[];
   sessionId?: string;
   parentMessageId?: string;
+  suppressNotificationMarker?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const headerRef = useRef<HTMLButtonElement>(null);
@@ -1477,6 +1492,7 @@ function ToolGroupBlock({
             toolUseId={item.id}
             sessionId={sessionId}
             parentMessageId={parentMessageId}
+            suppressNotificationMarker={suppressNotificationMarker}
           />
         ))}
       </div>
@@ -1515,6 +1531,7 @@ function ToolGroupBlock({
               sessionId={sessionId}
               parentMessageId={parentMessageId}
               hideLabel={name === "Bash"}
+              suppressNotificationMarker={suppressNotificationMarker}
             />
           ))}
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
