@@ -107,18 +107,53 @@ export function sendMcpSetServers(sessionId: string, servers: Record<string, Mcp
   sendToSession(sessionId, { type: "mcp_set_servers", servers });
 }
 
-// ── Page visibility: reconnect disconnected sessions when tab becomes visible ──
-if (typeof document !== "undefined") {
+const FORCE_RECONNECT_AFTER_HIDDEN_MS = 60_000;
+
+function ensureActiveSessionConnection(options?: { forceReconnect?: boolean }) {
+  const store = useStore.getState();
+  const currentSessionId = store.currentSessionId;
+  if (!currentSessionId) return;
+
+  const sdkSession = store.sdkSessions.find((s) => s.sessionId === currentSessionId);
+  if (!sdkSession || sdkSession.archived) return;
+
+  const socketState = transport.getSocketState(currentSessionId);
+  if (options?.forceReconnect) {
+    transport.reconnectSession(currentSessionId);
+    return;
+  }
+
+  if (socketState === WebSocket.OPEN || socketState === WebSocket.CONNECTING) {
+    return;
+  }
+
+  connectSession(currentSessionId);
+}
+
+// ── Page visibility/mobile resume: recover from background-stale sockets ──
+if (typeof document !== "undefined" && typeof window !== "undefined") {
+  let hiddenAt: number | null = document.visibilityState === "hidden" ? Date.now() : null;
+
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      const store = useStore.getState();
-      const currentSessionId = store.currentSessionId;
-      if (!currentSessionId) return;
-      const sdkSession = store.sdkSessions.find((s) => s.sessionId === currentSessionId);
-      if (sdkSession && !sdkSession.archived && !transport.hasSocket(currentSessionId)) {
-        connectSession(currentSessionId);
-      }
+    if (document.visibilityState === "hidden") {
+      hiddenAt = Date.now();
+      return;
     }
+
+    const hiddenDuration = hiddenAt == null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    ensureActiveSessionConnection({
+      forceReconnect: hiddenDuration >= FORCE_RECONNECT_AFTER_HIDDEN_MS,
+    });
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    const persisted = "persisted" in event && event.persisted === true;
+    ensureActiveSessionConnection({ forceReconnect: persisted });
+  });
+
+  window.addEventListener("online", () => {
+    ensureActiveSessionConnection({ forceReconnect: true });
   });
 }
 

@@ -51,6 +51,7 @@ export interface WsTransportCallbacks {
 
 export interface WsTransport {
   connectSession: (sessionId: string) => void;
+  reconnectSession: (sessionId: string) => void;
   disconnectSession: (sessionId: string) => void;
   disconnectAll: () => void;
   connectAllSessions: (sessions: SdkSessionInfo[]) => void;
@@ -59,6 +60,7 @@ export interface WsTransport {
   sendGlobalMessage: (msg: BrowserOutgoingMessage, preferredSessionId?: string | null) => boolean;
   requestFullHistorySync: (sessionId: string) => boolean;
   hasSocket: (sessionId: string) => boolean;
+  getSocketState: (sessionId: string) => number | null;
   closeAllForUnload: () => void;
 }
 
@@ -76,7 +78,9 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
   const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const reconnectAttempts = new Map<string, number>();
   const heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
+  const heartbeatOwners = new Map<string, WebSocket>();
   const lastSeqBySession = new Map<string, number>();
+  const intentionalCloseSockets = new WeakSet<WebSocket>();
 
   let clientMsgCounter = 0;
   let suppressCloseHandling = false;
@@ -190,8 +194,40 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     reconnectTimers.set(sessionId, timer);
   }
 
+  function clearSocketState(sessionId: string, targetWs?: WebSocket): WebSocket | undefined {
+    const currentWs = sockets.get(sessionId);
+    const ws = targetWs ?? currentWs;
+
+    if (!targetWs) {
+      const timer = reconnectTimers.get(sessionId);
+      if (timer) {
+        clearTimeout(timer);
+        reconnectTimers.delete(sessionId);
+      }
+    }
+
+    const hb = heartbeatIntervals.get(sessionId);
+    const hbOwner = heartbeatOwners.get(sessionId);
+    if (hb && (!targetWs || hbOwner === ws)) {
+      clearInterval(hb);
+      heartbeatIntervals.delete(sessionId);
+      heartbeatOwners.delete(sessionId);
+    }
+
+    if (ws && currentWs === ws) {
+      sockets.delete(sessionId);
+    }
+    return ws;
+  }
+
   function connectSession(sessionId: string): void {
-    if (sockets.has(sessionId)) return;
+    const existing = sockets.get(sessionId);
+    if (existing) {
+      if (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING) {
+        return;
+      }
+      clearSocketState(sessionId);
+    }
 
     // Clear in-memory seq cache so we use localStorage as source of truth on reconnect
     lastSeqBySession.delete(sessionId);
@@ -219,6 +255,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
         }
       }, HEARTBEAT_INTERVAL_MS);
       heartbeatIntervals.set(sessionId, hb);
+      heartbeatOwners.set(sessionId, ws);
     };
 
     ws.onmessage = (event) => {
@@ -231,13 +268,9 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     };
 
     ws.onclose = () => {
-      sockets.delete(sessionId);
-      const hb = heartbeatIntervals.get(sessionId);
-      if (hb) {
-        clearInterval(hb);
-        heartbeatIntervals.delete(sessionId);
-      }
+      clearSocketState(sessionId, ws);
       if (suppressCloseHandling) return;
+      if (intentionalCloseSockets.has(ws)) return;
       callbacks.onDisconnected?.(sessionId);
       scheduleReconnect(sessionId);
     };
@@ -247,24 +280,21 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     };
   }
 
-  function disconnectSession(sessionId: string): void {
-    const timer = reconnectTimers.get(sessionId);
-    if (timer) {
-      clearTimeout(timer);
-      reconnectTimers.delete(sessionId);
-    }
-    reconnectAttempts.delete(sessionId);
-
-    const hb = heartbeatIntervals.get(sessionId);
-    if (hb) {
-      clearInterval(hb);
-      heartbeatIntervals.delete(sessionId);
-    }
-
-    const ws = sockets.get(sessionId);
+  function reconnectSession(sessionId: string): void {
+    const ws = clearSocketState(sessionId);
     if (ws) {
+      intentionalCloseSockets.add(ws);
       ws.close();
-      sockets.delete(sessionId);
+    }
+    connectSession(sessionId);
+  }
+
+  function disconnectSession(sessionId: string): void {
+    reconnectAttempts.delete(sessionId);
+    const ws = clearSocketState(sessionId);
+    if (ws) {
+      intentionalCloseSockets.add(ws);
+      ws.close();
     }
   }
 
@@ -355,17 +385,14 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     return sockets.has(sessionId);
   }
 
+  function getSocketState(sessionId: string): number | null {
+    return sockets.get(sessionId)?.readyState ?? null;
+  }
+
   function closeAllForUnload(): void {
     suppressCloseHandling = true;
     for (const [sessionId, ws] of sockets) {
-      const hb = heartbeatIntervals.get(sessionId);
-      if (hb) clearInterval(hb);
-      heartbeatIntervals.delete(sessionId);
-
-      const timer = reconnectTimers.get(sessionId);
-      if (timer) clearTimeout(timer);
-      reconnectTimers.delete(sessionId);
-
+      clearSocketState(sessionId);
       ws.close();
     }
     sockets.clear();
@@ -373,6 +400,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
 
   return {
     connectSession,
+    reconnectSession,
     disconnectSession,
     disconnectAll,
     connectAllSessions,
@@ -381,6 +409,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     sendGlobalMessage,
     requestFullHistorySync,
     hasSocket,
+    getSocketState,
     closeAllForUnload,
   };
 }

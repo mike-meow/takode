@@ -308,6 +308,89 @@ describe("visibility reconnect", () => {
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0]?.url).toBe("ws://localhost:3456/ws/browser/s2");
   });
+
+  it("reconnects the current session when resume finds a closed socket still tracked", () => {
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", cwd: "/tmp/s1", createdAt: Date.now(), archived: false, state: "exited" },
+    ]);
+    useStore.getState().setCurrentSession("s1");
+    wsModule.connectSession("s1");
+    lastWs.readyState = MockWebSocket.CLOSED;
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(MockWebSocket.instances).toHaveLength(2);
+    expect(MockWebSocket.instances[1]?.url).toBe("ws://localhost:3456/ws/browser/s1");
+  });
+
+  it("force-refreshes the current session after a long hidden interval", () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", cwd: "/tmp/s1", createdAt: Date.now(), archived: false, state: "connected" },
+    ]);
+    useStore.getState().setCurrentSession("s1");
+    wsModule.connectSession("s1");
+    const firstSocket = lastWs;
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(60_001);
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(firstSocket.close).toHaveBeenCalled();
+    expect(MockWebSocket.instances.length).toBeGreaterThan(1);
+    expect(MockWebSocket.instances.at(-1)).not.toBe(firstSocket);
+    expect(MockWebSocket.instances.at(-1)?.url).toBe("ws://localhost:3456/ws/browser/s1");
+  });
+
+  it("keeps the replacement socket tracked when the old intentional close arrives late", () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState,
+    });
+
+    useStore.getState().setSdkSessions([
+      { sessionId: "s1", cwd: "/tmp/s1", createdAt: Date.now(), archived: false, state: "connected" },
+    ]);
+    useStore.getState().setCurrentSession("s1");
+    wsModule.connectSession("s1");
+    const firstSocket = lastWs;
+    firstSocket.onopen?.(new Event("open"));
+
+    visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(60_001);
+
+    visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    const replacementSocket = lastWs;
+    replacementSocket.onopen?.(new Event("open"));
+    replacementSocket.send.mockClear();
+
+    firstSocket.onclose?.();
+
+    expect(wsModule.sendToSession("s1", { type: "interrupt" })).toBe(true);
+    expect(replacementSocket.send).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(replacementSocket.send.mock.calls[0][0]).type).toBe("interrupt");
+
+    replacementSocket.send.mockClear();
+    vi.advanceTimersByTime(30_000);
+    expect(replacementSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: "ping" }));
+  });
 });
 
 // ===========================================================================
