@@ -59,6 +59,7 @@ export default function App() {
     darkMode,
     zoomLevel,
     currentSessionId,
+    currentSessionConnectionStatus,
     sidebarOpen,
     taskPanelOpen,
     activeTab,
@@ -71,6 +72,7 @@ export default function App() {
       darkMode: s.darkMode,
       zoomLevel: s.zoomLevel,
       currentSessionId: s.currentSessionId,
+      currentSessionConnectionStatus: s.currentSessionId ? (s.connectionStatus.get(s.currentSessionId) ?? null) : null,
       sidebarOpen: s.sidebarOpen,
       taskPanelOpen: s.taskPanelOpen,
       activeTab: s.activeTab,
@@ -90,6 +92,13 @@ export default function App() {
   const isSessionView = route.page === "session" || route.page === "home";
   const isDesktopShell = isDesktopShellLayout(zoomLevel);
   const isDesktopTaskPanel = isDesktopTaskPanelLayout(zoomLevel);
+  const suppressServerUnreachableBanner =
+    route.page === "session" &&
+    activeTab === "chat" &&
+    !!currentSessionId &&
+    !isPendingId(currentSessionId) &&
+    currentSessionConnectionStatus === "connected";
+  const showServerUnreachableBanner = !serverReachable && !suppressServerUnreachableBanner;
 
   useEffect(() => {
     const el = document.documentElement;
@@ -318,7 +327,7 @@ export default function App() {
         <TopBar />
         <div className="flex-1 overflow-hidden relative">
           {/* Server unreachable banner — overlays content to avoid layout shift */}
-          {!serverReachable && (
+          {showServerUnreachableBanner && (
             <div className="absolute top-0 left-0 right-0 z-10 px-4 py-2 bg-red-500/10 border-b border-red-500/20 backdrop-blur-sm text-center flex items-center justify-center gap-2">
               <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse shrink-0" />
               <span className="text-xs text-red-400 font-medium">Server unreachable</span>

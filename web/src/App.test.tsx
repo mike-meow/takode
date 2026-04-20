@@ -7,6 +7,7 @@ interface MockStoreState {
   darkMode: boolean;
   zoomLevel: number;
   currentSessionId: string | null;
+  connectionStatus: Map<string, "connecting" | "connected" | "disconnected">;
   sidebarOpen: boolean;
   taskPanelOpen: boolean;
   activeTab: "chat" | "diff";
@@ -29,6 +30,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     darkMode: true,
     zoomLevel: 1,
     currentSessionId: "s1",
+    connectionStatus: new Map([["s1", "connected"]]),
     sidebarOpen: false,
     taskPanelOpen: false,
     activeTab: "chat",
@@ -174,5 +176,31 @@ describe("App hidden panels", () => {
 
     expect(screen.getByTestId("active-timers-page")).toBeInTheDocument();
     expect(screen.queryByTestId("chat-view")).toBeNull();
+  });
+
+  it("suppresses the server unreachable banner while the active chat session is connected", () => {
+    resetStore({
+      serverReachable: false,
+      activeTab: "chat",
+      currentSessionId: "s1",
+      connectionStatus: new Map([["s1", "connected"]]),
+    });
+
+    render(<App />);
+
+    expect(screen.queryByText("Server unreachable")).toBeNull();
+  });
+
+  it("keeps the server unreachable banner on non-chat views even if the session transport is connected", () => {
+    resetStore({
+      serverReachable: false,
+      activeTab: "diff",
+      currentSessionId: "s1",
+      connectionStatus: new Map([["s1", "connected"]]),
+    });
+
+    render(<App />);
+
+    expect(screen.getByText("Server unreachable")).toBeInTheDocument();
   });
 });
