@@ -32,11 +32,15 @@ import {
 } from "../utils/vscode-context.js";
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
-import type { CodexAppReference, CodexSkillReference } from "../types.js";
+import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
 
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
 const EMPTY_APP_REFERENCES: CodexAppReference[] = [];
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_QUESTS: QuestmasterTask[] = [];
+const EMPTY_SDK_SESSIONS: SdkSessionInfo[] = [];
+const EMPTY_SESSION_NAMES = new Map<string, string>();
 
 function PaperPlaneIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -172,6 +176,113 @@ interface CommandItem {
 }
 
 const DOLLAR_QUERY_PATTERN = /^[A-Za-z][A-Za-z0-9._:-]*$/;
+const REFERENCE_QUERY_PATTERN = /^\d*$/;
+const REFERENCE_MENU_LIMIT = 8;
+
+interface ReferenceSuggestion {
+  key: string;
+  kind: "quest" | "session";
+  rawRef: string;
+  preview: string;
+  insertText: string;
+  searchText: string;
+  recentBoost: number;
+  tieBreaker: number;
+}
+
+interface ReferenceTriggerMatch {
+  kind: "quest" | "session";
+  query: string;
+  replacementStart: number;
+}
+
+function getPathTail(path: string | null | undefined): string | null {
+  const trimmed = path?.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/[\\/]+$/, "");
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? normalized;
+}
+
+function buildQuestLinkInsertText(questId: string): string {
+  return `[${questId}](quest:${questId})`;
+}
+
+function buildSessionLinkInsertText(sessionNum: number): string {
+  return `[#${sessionNum}](session:${sessionNum})`;
+}
+
+function getSessionSuggestionPreview(session: SdkSessionInfo, sessionName: string | undefined): string {
+  const explicitName = sessionName?.trim() || session.name?.trim();
+  if (explicitName) return explicitName;
+  return getPathTail(session.cwd) || `Session ${session.sessionNum ?? ""}`.trim();
+}
+
+function computeRecentReferenceBoosts(messages: ChatMessage[]): {
+  questBoosts: Map<string, number>;
+  sessionBoosts: Map<number, number>;
+} {
+  const questBoosts = new Map<string, number>();
+  const sessionBoosts = new Map<number, number>();
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const content = message?.content ?? "";
+    if (!content) continue;
+
+    const recencyWeight = index + 1;
+    const questMatches = new Set<string>();
+    const sessionMatches = new Set<number>();
+
+    for (const match of content.matchAll(/\bquest:(q-\d+)\b/gi)) {
+      questMatches.add(match[1]!.toLowerCase());
+    }
+    for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])(q-\d+)\b/gi)) {
+      questMatches.add(match[1]!.toLowerCase());
+    }
+    for (const match of content.matchAll(/\bsession:(?:\/\/)?(\d+)(?::\d+)?\b/gi)) {
+      sessionMatches.add(Number.parseInt(match[1]!, 10));
+    }
+    for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])#(\d+)\b/g)) {
+      sessionMatches.add(Number.parseInt(match[1]!, 10));
+    }
+
+    for (const questId of questMatches) {
+      if (!questBoosts.has(questId)) questBoosts.set(questId, recencyWeight);
+    }
+    for (const sessionNum of sessionMatches) {
+      if (!Number.isFinite(sessionNum) || sessionBoosts.has(sessionNum)) continue;
+      sessionBoosts.set(sessionNum, recencyWeight);
+    }
+  }
+
+  return { questBoosts, sessionBoosts };
+}
+
+function detectReferenceTrigger(inputText: string, cursorPos: number): ReferenceTriggerMatch | null {
+  for (let i = cursorPos - 1; i >= 0; i -= 1) {
+    const ch = inputText[i];
+    if (ch === " " || ch === "\n" || ch === "\t") break;
+
+    const prevChar = inputText[i - 1] ?? "";
+    const isAllowedBoundary = i === 0 || /[\s([{]/.test(prevChar);
+    const replacementStart = i > 0 && /[[({]/.test(prevChar) ? i - 1 : i;
+
+    if (ch === "#" && isAllowedBoundary) {
+      const query = inputText.slice(i + 1, cursorPos);
+      if (!REFERENCE_QUERY_PATTERN.test(query)) return null;
+      return { kind: "session", query, replacementStart };
+    }
+
+    if (ch === "q" && inputText[i + 1] === "-" && isAllowedBoundary) {
+      const query = inputText.slice(i + 2, cursorPos);
+      if (!REFERENCE_QUERY_PATTERN.test(query)) return null;
+      return { kind: "quest", query, replacementStart };
+    }
+  }
+
+  return null;
+}
 
 function toAppMentionSlug(name: string): string {
   const normalized = name
@@ -290,6 +401,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const [dollarMenuOpen, setDollarMenuOpen] = useState(false);
   const [dollarMenuIndex, setDollarMenuIndex] = useState(0);
   const [dollarQuery, setDollarQuery] = useState("");
+  const [referenceMenuOpen, setReferenceMenuOpen] = useState(false);
+  const [referenceMenuIndex, setReferenceMenuIndex] = useState(0);
+  const [referenceQuery, setReferenceQuery] = useState("");
+  const [referenceKind, setReferenceKind] = useState<"quest" | "session" | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showCodexReasoningDropdown, setShowCodexReasoningDropdown] = useState(false);
   const [showAskConfirm, setShowAskConfirm] = useState(false);
@@ -319,7 +434,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const imageDragDepthRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const dollarMenuRef = useRef<HTMLDivElement>(null);
+  const referenceMenuRef = useRef<HTMLDivElement>(null);
   const dollarAnchorRef = useRef<number>(-1);
+  const referenceAnchorRef = useRef<number>(-1);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const codexReasoningDropdownRef = useRef<HTMLDivElement>(null);
   const askConfirmRef = useRef<HTMLDivElement>(null);
@@ -553,6 +670,26 @@ export function Composer({ sessionId }: { sessionId: string }) {
     }),
   );
   const vscodeSelectionState = useStore((s) => s.vscodeSelectionContext);
+  const quests = useStore((s) =>
+    referenceMenuOpen && referenceKind === "quest" ? (s.quests ?? EMPTY_QUESTS) : EMPTY_QUESTS,
+  );
+  const sessionReferenceData = useStore(
+    useShallow((s) => {
+      if (!referenceMenuOpen || referenceKind !== "session") {
+        return {
+          sdkSessions: EMPTY_SDK_SESSIONS,
+          sessionNames: EMPTY_SESSION_NAMES,
+        };
+      }
+      return {
+        sdkSessions: s.sdkSessions ?? EMPTY_SDK_SESSIONS,
+        sessionNames: s.sessionNames,
+      };
+    }),
+  );
+  const sessionMessages = useStore((s) =>
+    referenceMenuOpen ? (s.messages.get(sessionId) ?? EMPTY_CHAT_MESSAGES) : EMPTY_CHAT_MESSAGES,
+  );
 
   const isConnected = sessionView.isConnected;
   const currentMode = sessionView.permissionMode;
@@ -590,6 +727,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
     vscodeSelectionState?.selection && currentVsCodeSelectionKey !== dismissedVsCodeSelectionKey
       ? resolveVsCodeSelectionForSession(vscodeSelectionState.selection, sessionSelectionRoot)
       : null;
+  const sdkSessions = sessionReferenceData.sdkSessions;
+  const sessionNames = sessionReferenceData.sessionNames;
+  const recentReferenceBoosts = useMemo(() => computeRecentReferenceBoosts(sessionMessages), [sessionMessages]);
 
   useEffect(() => {
     if (!isCodex) return;
@@ -856,6 +996,120 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [dollarMenuOpen]);
 
+  const filteredReferenceSuggestions = useMemo<ReferenceSuggestion[]>(() => {
+    if (!referenceMenuOpen || referenceKind == null) return [];
+
+    if (referenceKind === "quest") {
+      const fullQuery = `q-${referenceQuery}`.toLowerCase();
+      return quests
+        .filter((quest) => referenceQuery === "" || quest.questId.toLowerCase().startsWith(fullQuery))
+        .map((quest) => ({
+          key: quest.questId,
+          kind: "quest" as const,
+          rawRef: quest.questId,
+          preview: quest.title,
+          insertText: buildQuestLinkInsertText(quest.questId),
+          searchText: `${quest.questId} ${quest.title}`.toLowerCase(),
+          recentBoost: recentReferenceBoosts.questBoosts.get(quest.questId.toLowerCase()) ?? 0,
+          tieBreaker: Number.parseInt(quest.questId.replace(/^q-/, ""), 10) || 0,
+        }))
+        .sort((left, right) => {
+          const leftExact = Number(left.rawRef.toLowerCase() === fullQuery);
+          const rightExact = Number(right.rawRef.toLowerCase() === fullQuery);
+          if (leftExact !== rightExact) return rightExact - leftExact;
+          if (left.recentBoost !== right.recentBoost) return right.recentBoost - left.recentBoost;
+          return right.tieBreaker - left.tieBreaker;
+        })
+        .slice(0, REFERENCE_MENU_LIMIT);
+    }
+
+    const seenSessionNums = new Set<number>();
+    const normalizedQuery = referenceQuery.toLowerCase();
+    return sdkSessions
+      .filter((session) => session.sessionNum != null)
+      .filter((session) => {
+        const sessionNum = session.sessionNum!;
+        if (seenSessionNums.has(sessionNum)) return false;
+        seenSessionNums.add(sessionNum);
+        return true;
+      })
+      .map((session) => {
+        const sessionNum = session.sessionNum!;
+        const rawRef = `#${sessionNum}`;
+        const preview = getSessionSuggestionPreview(session, sessionNames.get(session.sessionId));
+        return {
+          key: session.sessionId,
+          kind: "session" as const,
+          rawRef,
+          preview,
+          insertText: buildSessionLinkInsertText(sessionNum),
+          searchText: `${rawRef} ${preview}`.toLowerCase(),
+          recentBoost: recentReferenceBoosts.sessionBoosts.get(sessionNum) ?? 0,
+          tieBreaker: session.lastActivityAt ?? session.createdAt ?? sessionNum,
+        };
+      })
+      .filter((session) => normalizedQuery === "" || session.rawRef.slice(1).startsWith(normalizedQuery))
+      .sort((left, right) => {
+        const leftExact = Number(left.rawRef.slice(1).toLowerCase() === normalizedQuery);
+        const rightExact = Number(right.rawRef.slice(1).toLowerCase() === normalizedQuery);
+        if (leftExact !== rightExact) return rightExact - leftExact;
+        if (left.recentBoost !== right.recentBoost) return right.recentBoost - left.recentBoost;
+        return right.tieBreaker - left.tieBreaker;
+      })
+      .slice(0, REFERENCE_MENU_LIMIT);
+  }, [quests, recentReferenceBoosts, referenceKind, referenceMenuOpen, referenceQuery, sdkSessions, sessionNames]);
+
+  const detectReferenceQuery = useCallback((inputText: string, cursorPos: number) => {
+    const match = detectReferenceTrigger(inputText, cursorPos);
+    if (!match) {
+      setReferenceMenuOpen(false);
+      setReferenceKind(null);
+      setReferenceQuery("");
+      referenceAnchorRef.current = -1;
+      return;
+    }
+
+    referenceAnchorRef.current = match.replacementStart;
+    setReferenceKind(match.kind);
+    setReferenceQuery(match.query);
+    setReferenceMenuIndex(0);
+    setReferenceMenuOpen(true);
+  }, []);
+
+  useEffect(() => {
+    const cursorPos = textareaRef.current?.selectionStart ?? text.length;
+    detectReferenceQuery(text, cursorPos);
+  }, [detectReferenceQuery, text]);
+
+  useEffect(() => {
+    if (referenceMenuIndex >= filteredReferenceSuggestions.length) {
+      setReferenceMenuIndex(Math.max(0, filteredReferenceSuggestions.length - 1));
+    }
+  }, [filteredReferenceSuggestions.length, referenceMenuIndex]);
+
+  useEffect(() => {
+    if (!referenceMenuRef.current || !referenceMenuOpen) return;
+    const items = referenceMenuRef.current.querySelectorAll("[data-reference-index]");
+    const selected = items[referenceMenuIndex];
+    if (selected) {
+      selected.scrollIntoView({ block: "nearest" });
+    }
+  }, [referenceMenuIndex, referenceMenuOpen]);
+
+  useEffect(() => {
+    if (!referenceMenuOpen) return;
+    function handlePointerDown(e: PointerEvent) {
+      if (referenceMenuRef.current && !referenceMenuRef.current.contains(e.target as Node)) {
+        setReferenceMenuOpen(false);
+        setReferenceKind(null);
+        setReferenceQuery("");
+        referenceAnchorRef.current = -1;
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [referenceMenuOpen]);
+
   // ─── @ mention file search ─────────────────────────────────────
 
   // Derive the search root from session state (repo_root preferred, cwd fallback)
@@ -1029,6 +1283,28 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [showAskConfirm]);
 
+  const selectReference = useCallback(
+    (suggestion: ReferenceSuggestion) => {
+      const anchor = referenceAnchorRef.current;
+      if (anchor === -1) return;
+      const cursorPos = textareaRef.current?.selectionStart ?? text.length;
+      const before = text.slice(0, anchor);
+      const after = text.slice(cursorPos);
+      const inserted = `${suggestion.insertText} `;
+      setText(before + inserted + after);
+      setReferenceMenuOpen(false);
+      setReferenceKind(null);
+      setReferenceQuery("");
+      referenceAnchorRef.current = -1;
+      requestAnimationFrame(() => {
+        const newPos = before.length + inserted.length;
+        textareaRef.current?.setSelectionRange(newPos, newPos);
+        textareaRef.current?.focus();
+      });
+    },
+    [setText, text],
+  );
+
   const selectCommand = useCallback(
     (cmd: CommandItem) => {
       if (cmd.trigger === "$") {
@@ -1098,6 +1374,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
       setDollarMenuOpen(false);
       setDollarQuery("");
       dollarAnchorRef.current = -1;
+      setReferenceMenuOpen(false);
+      setReferenceKind(null);
+      setReferenceQuery("");
+      referenceAnchorRef.current = -1;
       if (textareaRef.current) textareaRef.current.style.height = "auto";
       if (isTouchDevice()) textareaRef.current?.blur();
       else textareaRef.current?.focus();
@@ -1131,6 +1411,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
         setDollarMenuOpen(false);
         setDollarQuery("");
         dollarAnchorRef.current = -1;
+        setReferenceMenuOpen(false);
+        setReferenceKind(null);
+        setReferenceQuery("");
+        referenceAnchorRef.current = -1;
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         if (isTouchDevice()) textareaRef.current?.blur();
         else textareaRef.current?.focus();
@@ -1174,6 +1458,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
     setDollarMenuOpen(false);
     setDollarQuery("");
     dollarAnchorRef.current = -1;
+    setReferenceMenuOpen(false);
+    setReferenceKind(null);
+    setReferenceQuery("");
+    referenceAnchorRef.current = -1;
     setMentionMenuOpen(false);
     setMentionResults([]);
 
@@ -1322,6 +1610,38 @@ export function Composer({ sessionId }: { sessionId: string }) {
       return;
     }
 
+    // Quest/session reference menu navigation
+    if (referenceMenuOpen && filteredReferenceSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setReferenceMenuIndex((i) => (i + 1) % filteredReferenceSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setReferenceMenuIndex((i) => (i - 1 + filteredReferenceSuggestions.length) % filteredReferenceSuggestions.length);
+        return;
+      }
+      if (e.key === "Tab" && !e.shiftKey) {
+        e.preventDefault();
+        selectReference(filteredReferenceSuggestions[referenceMenuIndex]);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
+        e.preventDefault();
+        selectReference(filteredReferenceSuggestions[referenceMenuIndex]);
+        return;
+      }
+    }
+    if (referenceMenuOpen && e.key === "Escape") {
+      e.preventDefault();
+      setReferenceMenuOpen(false);
+      setReferenceKind(null);
+      setReferenceQuery("");
+      referenceAnchorRef.current = -1;
+      return;
+    }
+
     // @ mention menu navigation
     if (mentionMenuOpen && mentionResults.length > 0) {
       if (e.key === "ArrowDown") {
@@ -1387,6 +1707,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // Trigger @ mention detection at current cursor position
     detectMentionQuery(newText, cursorPos);
     detectDollarQuery(newText, cursorPos);
+    detectReferenceQuery(newText, cursorPos);
   }
 
   function handleInterrupt() {
@@ -1872,8 +2193,57 @@ export function Composer({ sessionId }: { sessionId: string }) {
               </div>
             )}
 
+            {/* Quest/session reference menu */}
+            {referenceMenuOpen && !slashMenuOpen && !dollarMenuOpen && (
+              <div
+                ref={referenceMenuRef}
+                className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"
+              >
+                {filteredReferenceSuggestions.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[12px] text-cc-muted">
+                    No {referenceKind === "quest" ? "quests" : "sessions"} found for "
+                    {referenceKind === "quest" ? `q-${referenceQuery}` : `#${referenceQuery}`}"
+                  </div>
+                ) : (
+                  filteredReferenceSuggestions.map((suggestion, i) => (
+                    <button
+                      key={suggestion.key}
+                      data-reference-index={i}
+                      onClick={() => selectReference(suggestion)}
+                      className={`w-full px-3 py-2 text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
+                        i === referenceMenuIndex ? "bg-cc-hover" : "hover:bg-cc-hover/50"
+                      }`}
+                    >
+                      <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
+                        {suggestion.kind === "quest" ? (
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                            <path d="M5 3.5h6" strokeLinecap="round" />
+                            <path d="M5 8h6" strokeLinecap="round" />
+                            <path d="M5 12.5h4" strokeLinecap="round" />
+                            <rect x="2.5" y="1.75" width="11" height="12.5" rx="2" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                            <circle cx="8" cy="8" r="5.5" />
+                            <path d="M8 5v3l2 1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[13px] font-medium text-cc-fg">{suggestion.rawRef}</span>
+                          <span className="shrink-0 text-[11px] text-cc-muted">{suggestion.kind}</span>
+                        </div>
+                        <div className="mt-0.5 truncate text-[11px] text-cc-muted">{suggestion.preview}</div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
             {/* @ mention file search menu */}
-            {mentionMenuOpen && !slashMenuOpen && !dollarMenuOpen && (
+            {mentionMenuOpen && !slashMenuOpen && !dollarMenuOpen && !referenceMenuOpen && (
               <div
                 ref={mentionMenuRef}
                 className="absolute left-2 right-2 bottom-full mb-1 max-h-[240px] overflow-y-auto bg-cc-card border border-cc-border rounded-[10px] shadow-lg z-20 py-1"

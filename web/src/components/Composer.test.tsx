@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Profiler } from "react";
-import { render, screen, fireEvent, createEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, createEvent, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionState } from "../../server/session-types.js";
+import type { ChatMessage, QuestmasterTask, SdkSessionInfo } from "../types.js";
 
 // Polyfill scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn();
@@ -201,6 +202,45 @@ function makeSession(overrides: Partial<SessionState> = {}): SessionState {
   };
 }
 
+function makeQuest(overrides: Partial<QuestmasterTask> & { questId: string; title: string }): QuestmasterTask {
+  const { questId, title, ...rest } = overrides;
+  return {
+    id: `${questId}-v1`,
+    version: 1,
+    questId,
+    title,
+    description: "",
+    status: "refined",
+    tags: [],
+    createdAt: 1,
+    updatedAt: 1,
+    ...rest,
+  } as QuestmasterTask;
+}
+
+function makeSdkSession(overrides: Partial<SdkSessionInfo> & { sessionId: string; sessionNum: number }): SdkSessionInfo {
+  const { sessionId, sessionNum, ...rest } = overrides;
+  return {
+    sessionId,
+    sessionNum,
+    state: "connected",
+    cwd: "/test",
+    createdAt: 1,
+    ...rest,
+  };
+}
+
+function makeMessage(overrides: Partial<ChatMessage> & { id: string; content: string }): ChatMessage {
+  const { id, content, ...rest } = overrides;
+  return {
+    id,
+    role: "user",
+    content,
+    timestamp: 1,
+    ...rest,
+  };
+}
+
 function setupMockStore(
   overrides: {
     isConnected?: boolean;
@@ -209,6 +249,10 @@ function setupMockStore(
     draftText?: string;
     zoomLevel?: number;
     sdkSessionTotals?: { added: number; removed: number };
+    sdkSessions?: SdkSessionInfo[];
+    quests?: QuestmasterTask[];
+    sessionNames?: Map<string, string>;
+    messages?: ChatMessage[];
     vscodeSelectionContext?: {
       selection: {
         absolutePath: string;
@@ -230,6 +274,10 @@ function setupMockStore(
     draftText = "",
     zoomLevel = 1,
     sdkSessionTotals,
+    sdkSessions = [],
+    quests = [],
+    sessionNames = new Map(),
+    messages = [],
     vscodeSelectionContext = null,
   } = overrides;
 
@@ -265,15 +313,21 @@ function setupMockStore(
     zoomLevel,
     vscodeSelectionContext,
     dismissedVsCodeSelectionKey: null,
-    sdkSessions: sdkSessionTotals
-      ? [
-          {
-            sessionId: "s1",
-            totalLinesAdded: sdkSessionTotals.added,
-            totalLinesRemoved: sdkSessionTotals.removed,
-          },
-        ]
-      : [],
+    sdkSessions:
+      sdkSessions.length > 0
+        ? sdkSessions
+        : sdkSessionTotals
+          ? [
+              {
+                sessionId: "s1",
+                totalLinesAdded: sdkSessionTotals.added,
+                totalLinesRemoved: sdkSessionTotals.removed,
+              },
+            ]
+          : [],
+    quests,
+    sessionNames,
+    messages: new Map(messages.length > 0 ? [["s1", messages]] : []),
     setComposerDraft: vi.fn((sessionId: string, draft: { text: string; images: unknown[] }) => {
       (mockStoreState.composerDrafts as Map<string, unknown>).set(sessionId, draft);
       notifyMockStore();
@@ -1684,6 +1738,129 @@ describe("Composer dollar mention menu", () => {
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
     expect(textarea.value).toBe("Use [$google-drive](app://connector_google_drive) ");
+  });
+});
+
+describe("Composer quest/session reference autocomplete", () => {
+  it("shows quest title previews and inserts Takode quest links", () => {
+    setupMockStore({
+      quests: [makeQuest({ questId: "q-41", title: "Autocomplete ranking polish" })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "Please check q-4", selectionStart: "Please check q-4".length },
+    });
+
+    expect(screen.getByText("q-41")).toBeTruthy();
+    expect(screen.getByText("Autocomplete ranking polish")).toBeTruthy();
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("Please check [q-41](quest:q-41) ");
+  });
+
+  it("shows session label previews and inserts Takode session links", () => {
+    setupMockStore({
+      sdkSessions: [makeSdkSession({ sessionId: "worker-1", sessionNum: 687 })],
+      sessionNames: new Map([["worker-1", "Frontend worker"]]),
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "Hand off to #6", selectionStart: "Hand off to #6".length },
+    });
+
+    expect(screen.getByText("#687")).toBeTruthy();
+    expect(screen.getByText("Frontend worker")).toBeTruthy();
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("Hand off to [#687](session:687) ");
+  });
+
+  it("replaces delimiter-prefixed quest triggers without leaving a stray leading bracket", () => {
+    setupMockStore({
+      quests: [makeQuest({ questId: "q-41", title: "Autocomplete ranking polish" })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "[q-4", selectionStart: "[q-4".length },
+    });
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("[q-41](quest:q-41) ");
+  });
+
+  it("replaces delimiter-prefixed session triggers without leaving a stray leading bracket", () => {
+    setupMockStore({
+      sdkSessions: [makeSdkSession({ sessionId: "worker-1", sessionNum: 687 })],
+      sessionNames: new Map([["worker-1", "Frontend worker"]]),
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "[#6", selectionStart: "[#6".length },
+    });
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("[#687](session:687) ");
+  });
+
+  it("boosts recently mentioned quests above newer ids", () => {
+    setupMockStore({
+      quests: [
+        makeQuest({ questId: "q-12", title: "Recent quest" }),
+        makeQuest({ questId: "q-88", title: "Higher numeric quest" }),
+      ],
+      messages: [
+        makeMessage({ id: "m1", content: "Older reference to q-88" }),
+        makeMessage({ id: "m2", content: "Most recent reference to [q-12](quest:q-12)" }),
+      ],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "Track q-", selectionStart: "Track q-".length },
+    });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("q-12")).toBeTruthy();
+  });
+
+  it("boosts recently mentioned sessions above more active ones", () => {
+    setupMockStore({
+      sdkSessions: [
+        makeSdkSession({ sessionId: "worker-recent", sessionNum: 12, lastActivityAt: 10 }),
+        makeSdkSession({ sessionId: "worker-busy", sessionNum: 88, lastActivityAt: 1000 }),
+      ],
+      sessionNames: new Map([
+        ["worker-recent", "Recent worker"],
+        ["worker-busy", "Busy worker"],
+      ]),
+      messages: [
+        makeMessage({ id: "m1", content: "Please sync with [#12](session:12) before merging." }),
+      ],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: { value: "Ping #", selectionStart: "Ping #".length },
+    });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("#12")).toBeTruthy();
   });
 });
 
