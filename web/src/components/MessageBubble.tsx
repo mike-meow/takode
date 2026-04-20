@@ -3,6 +3,7 @@ import type { ChatMessage, ContentBlock } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
+import { HighlightedText } from "./HighlightedText.js";
 import { CollapseFooter } from "./CollapseFooter.js";
 import { Lightbox } from "./Lightbox.js";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
@@ -237,6 +238,18 @@ export const MessageBubble = memo(function MessageBubble({
     return <HerdEventMessage message={message} showTimestamp={showTimestamp} />;
   }
 
+  // Timer events: render as compact expandable cards instead of normal user bubbles.
+  if (message.role === "user" && message.agentSource?.sessionId?.startsWith("timer:")) {
+    return (
+      <TimerMessage
+        message={message}
+        sessionId={sessionId}
+        showTimestamp={showTimestamp}
+        searchHighlight={searchHighlight}
+      />
+    );
+  }
+
   if (message.role === "user") {
     return (
       <UserMessage
@@ -326,7 +339,8 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
   const label = source.sessionLabel || source.sessionId.slice(0, 8);
   const isCron = source.sessionId.startsWith("cron:");
   const isSystem = source.sessionId === "system" || source.sessionId.startsWith("system:");
-  const hasOpenableSession = !isCron && !isSystem;
+  const isTimer = source.sessionId.startsWith("timer:");
+  const hasOpenableSession = !isCron && !isSystem && !isTimer;
 
   const toggle = useCallback(() => {
     if (menuPos) {
@@ -371,6 +385,134 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
         <span className="font-mono-code">via {label}</span>
       </button>
       {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
+    </div>
+  );
+}
+
+function TimerSourceLabel({
+  source,
+  searchHighlight,
+}: {
+  source: { sessionId: string; sessionLabel?: string };
+  searchHighlight?: SearchHighlightInfo;
+}) {
+  const label = source.sessionLabel || source.sessionId.slice(0, 8);
+  return (
+    <div className="mb-2 flex items-center gap-1 text-[10px] text-cc-muted/70 font-mono-code">
+      <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 text-orange-400/60 shrink-0">
+        <path d="M9.5 2L3 9.5h5L6.5 14l7.5-7.5h-5L9.5 2z" />
+      </svg>
+      <span>
+        via{" "}
+        {searchHighlight?.query ? (
+          <HighlightedText
+            text={label}
+            query={searchHighlight.query}
+            mode={searchHighlight.mode}
+            isCurrent={searchHighlight.isCurrent}
+          />
+        ) : (
+          label
+        )}
+      </span>
+    </div>
+  );
+}
+
+function parseTimerMessageContent(content: string): { title: string; description: string } {
+  const trimmed = content.trim();
+  const parts = trimmed.split(/\n{2,}/);
+  const header = parts[0]?.trim() ?? "";
+  const description = parts.slice(1).join("\n\n").trim();
+  const match = header.match(/^\[[^\]]+\]\s*(.*)$/);
+  const title = (match?.[1] ?? header).trim();
+  return {
+    title: title || trimmed,
+    description,
+  };
+}
+
+function TimerMessage({
+  message,
+  sessionId,
+  showTimestamp,
+  searchHighlight,
+}: {
+  message: ChatMessage;
+  sessionId?: string;
+  showTimestamp: boolean;
+  searchHighlight?: SearchHighlightInfo;
+}) {
+  const { title, description } = useMemo(() => parseTimerMessageContent(message.content), [message.content]);
+  const [expanded, setExpanded] = useState(false);
+  const hasDescription = description.length > 0;
+
+  return (
+    <div className="pl-9 animate-[fadeSlideIn_0.2s_ease-out]">
+      <div className="max-w-3xl rounded-[22px] border border-cc-border/30 bg-cc-card/75 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+        {message.agentSource && <TimerSourceLabel source={message.agentSource} searchHighlight={searchHighlight} />}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            {hasDescription ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                aria-label={expanded ? "Collapse timer description" : "Expand timer description"}
+                className="w-full text-left cursor-pointer"
+              >
+                <div className="flex items-start gap-2">
+                  <p className="min-w-0 flex-1 text-[15px] font-medium leading-snug text-cc-fg break-words">
+                    {searchHighlight?.query ? (
+                      <HighlightedText
+                        text={title}
+                        query={searchHighlight.query}
+                        mode={searchHighlight.mode}
+                        isCurrent={searchHighlight.isCurrent}
+                      />
+                    ) : (
+                      title
+                    )}
+                  </p>
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-cc-muted/50 transition-transform ${
+                      expanded ? "rotate-90" : ""
+                    }`}
+                  >
+                    <path d="M6 3l5 5-5 5V3z" />
+                  </svg>
+                </div>
+              </button>
+            ) : (
+              <p className="text-[15px] font-medium leading-snug text-cc-fg break-words">
+                {searchHighlight?.query ? (
+                  <HighlightedText
+                    text={title}
+                    query={searchHighlight.query}
+                    mode={searchHighlight.mode}
+                    isCurrent={searchHighlight.isCurrent}
+                  />
+                ) : (
+                  title
+                )}
+              </p>
+            )}
+            {expanded && hasDescription && (
+              <div className="mt-3 rounded-2xl border border-cc-border/20 bg-cc-card/45 px-3 py-2.5">
+                <MarkdownContent
+                  text={description}
+                  variant="conservative"
+                  sessionId={sessionId}
+                  searchHighlight={searchHighlight}
+                />
+              </div>
+            )}
+          </div>
+          {showTimestamp && <MessageTimestamp timestamp={message.timestamp} />}
+        </div>
+      </div>
     </div>
   );
 }

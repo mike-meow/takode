@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ReactNode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatMessage, ContentBlock } from "../types.js";
@@ -14,7 +15,18 @@ vi.mock("../api.js", () => ({
 
 // Mock react-markdown to avoid ESM/parsing issues in tests
 vi.mock("react-markdown", () => ({
-  default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
+  default: ({
+    children,
+    components,
+  }: {
+    children: string;
+    components?: { p?: (props: { children: string }) => ReactNode };
+  }) => {
+    if (components?.p) {
+      return <div data-testid="markdown">{components.p({ children })}</div>;
+    }
+    return <div data-testid="markdown">{children}</div>;
+  },
 }));
 
 vi.mock("remark-gfm", () => ({
@@ -517,6 +529,124 @@ describe("MessageBubble - agent source badge", () => {
     fireEvent.click(badge);
 
     expect(screen.queryByText("Open session")).toBeNull();
+  });
+
+  it("does not render the generic interactive badge for timer sources", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Timer ping",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.queryByTestId("agent-source-badge")).toBeNull();
+    expect(screen.getByText("via Timer t2")).toBeTruthy();
+  });
+});
+
+describe("MessageBubble - timer messages", () => {
+  it("renders timer title prominently and keeps the description collapsed by default", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs and report shard status.",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+    render(<MessageBubble message={msg} showTimestamp={false} />);
+
+    expect(screen.getByText("via Timer t2")).toBeTruthy();
+    expect(screen.getByText("Monitor RTG datagen")).toBeTruthy();
+    expect(screen.queryByText(/Check squeue for RTG jobs/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Expand timer description" })).toBeTruthy();
+  });
+
+  it("expands and collapses timer descriptions on click", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs and report shard status.",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+    render(<MessageBubble message={msg} showTimestamp={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand timer description" }));
+    expect(screen.getByText(/Check squeue for RTG jobs/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse timer description" }));
+    expect(screen.queryByText(/Check squeue for RTG jobs/)).toBeNull();
+  });
+
+  it("preserves search highlighting for timer title and description content", () => {
+    const prevSessionSearch = useStore.getState().sessionSearch;
+    const msg = makeMessage({
+      id: "timer-search-msg",
+      role: "user",
+      content: "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs and report shard status.",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+
+    useStore.setState({
+      sessionSearch: new Map(prevSessionSearch).set("timer-search-session", {
+        query: "Monitor report",
+        isOpen: true,
+        mode: "fuzzy",
+        category: "all",
+        matches: [{ messageId: msg.id }],
+        currentMatchIndex: 0,
+      }),
+    });
+
+    try {
+      const { container } = render(<MessageBubble message={msg} sessionId="timer-search-session" showTimestamp={false} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Expand timer description" }));
+
+      const marks = Array.from(container.querySelectorAll("mark")).map((node) => node.textContent);
+      expect(marks).toContain("Monitor");
+      expect(marks).toContain("report");
+    } finally {
+      useStore.setState({ sessionSearch: prevSessionSearch });
+    }
+  });
+
+  it("preserves search highlighting for the visible timer source label when the query matches the timer header", () => {
+    const prevSessionSearch = useStore.getState().sessionSearch;
+    const msg = makeMessage({
+      id: "timer-source-search-msg",
+      role: "user",
+      content: "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs and report shard status.",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+
+    useStore.setState({
+      sessionSearch: new Map(prevSessionSearch).set("timer-search-session", {
+        query: "Timer t2",
+        isOpen: true,
+        mode: "strict",
+        category: "all",
+        matches: [{ messageId: msg.id }],
+        currentMatchIndex: 0,
+      }),
+    });
+
+    try {
+      const { container } = render(<MessageBubble message={msg} sessionId="timer-search-session" showTimestamp={false} />);
+
+      const marks = Array.from(container.querySelectorAll("mark")).map((node) => node.textContent);
+      expect(marks).toContain("Timer t2");
+    } finally {
+      useStore.setState({ sessionSearch: prevSessionSearch });
+    }
+  });
+
+  it("renders timer messages without descriptions as compact static cards", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "[⏰ Timer t2 cancelled] Monitor RTG datagen",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+    render(<MessageBubble message={msg} showTimestamp={false} />);
+
+    expect(screen.getByText("Monitor RTG datagen")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /timer description/i })).toBeNull();
   });
 });
 

@@ -5302,6 +5302,42 @@ export function Playground() {
             </Card>
           </div>
         </Section>
+        <Section
+          title="Timer Messages"
+          description="Timer injections render as compact left-side cards: the timer title stays visible while the description remains collapsed until expanded."
+        >
+          <div className="space-y-4 max-w-3xl">
+            <Card label="Timer with collapsed description">
+              <div className="py-2">
+                <MessageBubble
+                  showTimestamp={false}
+                  message={{
+                    id: "timer-message-demo",
+                    role: "user",
+                    content:
+                      "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs, inspect flush progress, report shard-level status, and relaunch stalled shards when needed.",
+                    timestamp: Date.now(),
+                    agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+                  }}
+                />
+              </div>
+            </Card>
+            <Card label="Timer without description">
+              <div className="py-2">
+                <MessageBubble
+                  showTimestamp={false}
+                  message={{
+                    id: "timer-message-cancelled-demo",
+                    role: "user",
+                    content: "[⏰ Timer t2 cancelled] Monitor RTG datagen",
+                    timestamp: Date.now(),
+                    agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+                  }}
+                />
+              </div>
+            </Card>
+          </div>
+        </Section>
 
         {/* ─── Diff Viewer ──────────────────────────────── */}
         <Section
