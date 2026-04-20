@@ -1160,6 +1160,7 @@ describe("GET /api/sessions", () => {
         keywords: [],
         claimedQuestId: null,
         claimedQuestStatus: null,
+        pendingTimerCount: 0,
       },
       {
         sessionId: "s2",
@@ -1183,8 +1184,44 @@ describe("GET /api/sessions", () => {
         keywords: [],
         claimedQuestId: null,
         claimedQuestStatus: null,
+        pendingTimerCount: 0,
       },
     ]);
+  });
+
+  it("includes pendingTimerCount in regular session snapshots", async () => {
+    // Sidebar rows for non-selected sessions rely on the polled /api/sessions
+    // snapshot, so timer counts must be present even without a live session socket.
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s1", state: "running", cwd: "/a" },
+      { sessionId: "s2", state: "connected", cwd: "/b" },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    timerManager.listTimers.mockImplementation((sessionId: string) => (sessionId === "s2" ? [{ id: "t1" }] : []));
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json[0]).toMatchObject({ sessionId: "s1", pendingTimerCount: 0 });
+    expect(json[1]).toMatchObject({ sessionId: "s2", pendingTimerCount: 1 });
+  });
+
+  it("preserves pendingTimerCount when regular session enrichment falls back after an error", async () => {
+    // Regression: a bridge read failure must not strip the timer signal that the
+    // sidebar uses to highlight idle sessions waiting on scheduled work.
+    launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a" }]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    timerManager.listTimers.mockImplementation((sessionId: string) => (sessionId === "s1" ? [{ id: "t7" }] : []));
+    bridge.getSession.mockImplementation(() => {
+      throw new Error("bridge read failed");
+    });
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json[0]).toMatchObject({ sessionId: "s1", pendingTimerCount: 1 });
   });
 
   it("enriches sessions with git data from bridge state", async () => {

@@ -13,6 +13,7 @@ const mockStoreState = {
   sessionAttention: new Map<string, "action" | "error" | "review" | null>(),
   sessionNotifications: new Map<string, Array<any>>(),
   sessionTimers: new Map<string, Array<{ id: string }>>(),
+  currentSessionId: "s1",
 };
 
 vi.mock("../store.js", () => ({
@@ -239,6 +240,7 @@ describe("SessionItem herd role badges", () => {
 describe("SessionItem status dot", () => {
   beforeEach(() => {
     mockStoreState.sessionTimers.clear();
+    mockStoreState.currentSessionId = "s1";
   });
 
   it("shows a breathing green dot while running", () => {
@@ -320,6 +322,34 @@ describe("SessionItem status dot", () => {
 
     const timerIcon = screen.getByTestId("session-status-timer-icon");
     expect(timerIcon).toHaveAttribute("title", "1 scheduled timer");
+  });
+
+  it("uses the polled session snapshot timer count for non-selected rows", () => {
+    // Non-current sidebar rows do not keep a live socket open, so they should
+    // still advertise scheduled work from the server-polled session snapshot.
+    mockStoreState.currentSessionId = "other-session";
+
+    renderSessionItem({
+      session: makeSession({ pendingTimerCount: 1 }),
+      permCount: 0,
+    });
+
+    const timerIcon = screen.getByTestId("session-status-timer-icon");
+    expect(timerIcon).toHaveAttribute("title", "1 scheduled timer");
+  });
+
+  it("prefers the live current-session timer state over a stale snapshot count", () => {
+    // When viewing the session directly, the live timer store must win so a
+    // cancelled timer clears immediately instead of waiting for the next poll.
+    mockStoreState.currentSessionId = "s1";
+
+    const { container } = renderSessionItem({
+      session: makeSession({ pendingTimerCount: 2 }),
+      permCount: 0,
+    });
+
+    expect(container.querySelector('[data-testid="session-status-timer-icon"]')).toBeNull();
+    expect(screen.getByTestId("session-status-dot")).toHaveAttribute("data-status", "idle");
   });
 });
 

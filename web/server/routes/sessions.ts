@@ -1017,6 +1017,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const heavyRepoModeEnabled = getSettings().heavyRepoModeEnabled;
     return Promise.all(
       pool.map(async (s) => {
+        const pendingTimerCount = ctx.timerManager?.listTimers(s.sessionId).length ?? 0;
         try {
           const { sessionAuthToken: _token, injectedSystemPrompt: _prompt, ...safeSession } = s;
           const bridgeSession = wsBridge.getSession(s.sessionId);
@@ -1061,6 +1062,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
             keywords: wsBridge.getSessionKeywords(s.sessionId),
             claimedQuestId: bridge?.claimedQuestId ?? null,
             claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
+            pendingTimerCount,
             ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
             // Worktree liveness status for archived worktree sessions
             // Only check existence (one async access() call), skip expensive git status
@@ -1079,7 +1081,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
           };
         } catch (e) {
           console.warn(`[routes] Failed to enrich session ${s.sessionId}:`, e);
-          return { ...s, name: names[s.sessionId] ?? s.name };
+          return { ...s, name: names[s.sessionId] ?? s.name, pendingTimerCount };
         }
       }),
     );

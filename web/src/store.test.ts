@@ -333,6 +333,39 @@ describe("Session management", () => {
     expect(useStore.getState().sdkSessions).toBe(previousRef);
   });
 
+  it("setSdkSessions: updates sdkSessions when only pendingTimerCount changes", () => {
+    // Non-selected sidebar rows derive timer visibility from the polled
+    // sdkSessions snapshot, so a timer-count-only change must not be treated
+    // as semantically unchanged by the store equality guard.
+    useStore.getState().setCurrentSession("current");
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "worker",
+        state: "connected",
+        cwd: "/repo",
+        createdAt: 123,
+        cliConnected: true,
+        pendingTimerCount: 0,
+      },
+    ]);
+    const previousRef = useStore.getState().sdkSessions;
+
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "worker",
+        state: "connected",
+        cwd: "/repo",
+        createdAt: 123,
+        cliConnected: true,
+        pendingTimerCount: 1,
+      },
+    ]);
+
+    const state = useStore.getState();
+    expect(state.sdkSessions).not.toBe(previousRef);
+    expect(state.sdkSessions[0]?.pendingTimerCount).toBe(1);
+  });
+
   it("setSessionTaskHistory: preserves the existing map when tasks are unchanged", () => {
     const tasks = [{ title: "Task", action: "new", timestamp: 1, triggerMessageId: "m1" }] as const;
     useStore.getState().setSessionTaskHistory("s1", [...tasks]);

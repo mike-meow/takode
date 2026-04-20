@@ -159,6 +159,8 @@ export interface SdkSessionInfo {
   cronJobId?: string;
   /** Human-readable name of the cron job that spawned this session */
   cronJobName?: string;
+  /** Number of active timers currently waiting on this session. */
+  pendingTimerCount?: number;
   /** Truncated preview of the last user message */
   lastMessagePreview?: string;
   /** Whether the CLI process is currently connected (from REST API) */

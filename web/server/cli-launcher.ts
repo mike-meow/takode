@@ -331,6 +331,8 @@ export interface SdkSessionInfo {
   cronJobId?: string;
   /** Human-readable name of the cron job that spawned this session */
   cronJobName?: string;
+  /** Number of active timers currently waiting on this session. */
+  pendingTimerCount?: number;
   /** Set by idle manager before killing — lets the UI show a less alarming indicator */
   killedByIdleManager?: boolean;
   /** Whether --resume has already been retried once after a fast exit */

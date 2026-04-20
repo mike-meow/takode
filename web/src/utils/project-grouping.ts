@@ -21,6 +21,7 @@ export interface SessionItem {
   backendType: "claude" | "codex" | "claude-sdk";
   repoRoot: string;
   permCount: number;
+  pendingTimerCount?: number;
   cronJobId?: string;
   cronJobName?: string;
   isWorktree?: boolean;

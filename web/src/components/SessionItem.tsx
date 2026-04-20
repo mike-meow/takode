@@ -258,6 +258,8 @@ export function SessionItem({
     reviewerSession ? st.sessionAttention.get(reviewerSession.id) : undefined,
   );
   const inboxUrgency = useNotificationUrgency(s.id);
+  const currentSessionId = useStore((st) => st.currentSessionId);
+  const liveTimerCount = useStore((st) => st.sessionTimers?.get(s.id)?.length ?? 0);
   const canSwipeToArchive = !archived && !reorderMode;
 
   // Long-press to open context menu on touch devices
@@ -409,7 +411,7 @@ export function SessionItem({
     hasUnread,
     idleKilled: s.idleKilled,
   });
-  const timerCount = useStore((st) => st.sessionTimers?.get(s.id)?.length ?? 0);
+  const timerCount = s.id === currentSessionId ? liveTimerCount : (s.pendingTimerCount ?? 0);
   const showScheduledTimerIcon =
     !archived && visualStatus === "idle" && permCount === 0 && !attention && timerCount > 0 && inboxUrgency !== "needs-input";
   const statusColorClass = showScheduledTimerIcon ? "bg-emerald-500" : STATUS_DOT_CLASS[visualStatus];

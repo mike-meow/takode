@@ -79,6 +79,7 @@ const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName:
       backendType: "codex",
       repoRoot: "/Users/stan/Dev/takode",
       permCount: 0,
+      pendingTimerCount: 1,
       isOrchestrator: true,
       sessionNum: 7,
     },
