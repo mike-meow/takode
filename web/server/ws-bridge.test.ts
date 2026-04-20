@@ -9983,6 +9983,173 @@ describe("Tool call duration tracking", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not duplicate assistant text when the same Claude message ID replays overlapping snapshots", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-overlap",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "Now spawning all subagents in parallel." }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u1",
+        session_id: "cli-123",
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-overlap",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            { type: "text", text: "Now spawning all subagents in parallel." },
+            { type: "tool_use", id: "task-1", name: "Task", input: { description: "Check worker A" } },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 12, output_tokens: 7, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-overlap",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "Now spawning all subagents in parallel." }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 12, output_tokens: 7, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u3",
+        session_id: "cli-123",
+      }),
+    );
+
+    const session = bridge.getOrCreateSession("s1");
+    const assistant = session.messageHistory.find((entry) => entry.type === "assistant") as
+      | {
+          type: "assistant";
+          message: { content: Array<{ type: string; text?: string; id?: string }> };
+        }
+      | undefined;
+
+    expect(assistant?.message.content).toEqual([
+      { type: "text", text: "Now spawning all subagents in parallel." },
+      { type: "tool_use", id: "task-1", name: "Task", input: { description: "Check worker A" } },
+    ]);
+
+    const assistantBroadcasts = browser.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((message: any) => message.type === "assistant");
+    expect(assistantBroadcasts).toHaveLength(3);
+    expect(assistantBroadcasts[2].message.content).toEqual([
+      { type: "text", text: "Now spawning all subagents in parallel." },
+      { type: "tool_use", id: "task-1", name: "Task", input: { description: "Check worker A" } },
+    ]);
+  });
+
+  it("preserves a legitimate repeated trailing block appended by a later Claude snapshot", () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    browser.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-repeat-tail",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "echo" }],
+          stop_reason: null,
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u1",
+        session_id: "cli-123",
+      }),
+    );
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id: "msg-repeat-tail",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [
+            { type: "text", text: "echo" },
+            { type: "text", text: "echo" },
+          ],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 12, output_tokens: 7, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        uuid: "u2",
+        session_id: "cli-123",
+      }),
+    );
+
+    const session = bridge.getOrCreateSession("s1");
+    const assistant = session.messageHistory.find((entry) => entry.type === "assistant") as
+      | {
+          type: "assistant";
+          message: { content: Array<{ type: string; text?: string }> };
+        }
+      | undefined;
+
+    expect(assistant?.message.content).toEqual([
+      { type: "text", text: "echo" },
+      { type: "text", text: "echo" },
+    ]);
+
+    const assistantBroadcasts = browser.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .filter((message: any) => message.type === "assistant");
+    expect(assistantBroadcasts).toHaveLength(2);
+    expect(assistantBroadcasts[1].message.content).toEqual([
+      { type: "text", text: "echo" },
+      { type: "text", text: "echo" },
+    ]);
+  });
 });
 
 // ─── Diff stats computation and dirty flag ──────────────────────────────────

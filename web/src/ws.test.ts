@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { SessionState, PermissionRequest, ContentBlock } from "./types.js";
+import type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage } from "./types.js";
 import { computeHistoryMessagesSyncHash } from "../shared/history-sync-hash.js";
 import { HISTORY_WINDOW_SECTION_TURN_COUNT, HISTORY_WINDOW_VISIBLE_SECTION_COUNT } from "../shared/history-window.js";
 
@@ -1824,7 +1824,7 @@ describe("handleMessage: message_history", () => {
   });
 
   it("keeps history sync hashes stable when deprecated leader_user_addressed metadata appears", () => {
-    const baseHistory = [
+    const baseHistory: BrowserIncomingMessage[] = [
       {
         type: "assistant",
         message: {
@@ -1839,14 +1839,14 @@ describe("handleMessage: message_history", () => {
         parent_tool_use_id: null,
         timestamp: 1000,
       },
-    ] as const;
+    ];
 
     const deprecatedHistory = [
       {
-        ...baseHistory[0],
+        ...(baseHistory[0] as Extract<BrowserIncomingMessage, { type: "assistant" }>),
         leader_user_addressed: true,
       },
-    ] as const;
+    ] as unknown as BrowserIncomingMessage[];
 
     expect(computeHistoryMessagesSyncHash(baseHistory)).toEqual(computeHistoryMessagesSyncHash(deprecatedHistory));
   });
@@ -1976,6 +1976,80 @@ describe("handleMessage: message_history", () => {
     expect(msgs[0].content).toBe("new message");
     // Old message should NOT be present
     expect(msgs.find((m) => m.content === "old message")).toBeUndefined();
+  });
+
+  it("trims replay-style duplicated assistant text tails inside authoritative history replay", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "assistant",
+          message: {
+            id: "msg-dup-history",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [
+              { type: "text", text: "Noted VIP Ben results." },
+              { type: "tool_use", id: "task-1", name: "Task", input: { description: "Check Ben" } },
+              { type: "text", text: "Noted VIP Ben results." },
+              { type: "text", text: "Noted VIP Ben results." },
+            ],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 2000,
+        },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe("Noted VIP Ben results.");
+    expect(msgs[0].contentBlocks).toEqual([
+      { type: "text", text: "Noted VIP Ben results." },
+      { type: "tool_use", id: "task-1", name: "Task", input: { description: "Check Ben" } },
+    ]);
+  });
+
+  it("preserves legitimate repeated assistant text blocks when no replay-style tool overlap is present", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "message_history",
+      messages: [
+        {
+          type: "assistant",
+          message: {
+            id: "msg-legit-repeat",
+            type: "message",
+            role: "assistant",
+            model: "claude-opus-4-20250514",
+            content: [
+              { type: "text", text: "echo" },
+              { type: "text", text: "echo" },
+            ],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 5, output_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 2000,
+        },
+      ],
+    });
+
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe("echo\necho");
+    expect(msgs[0].contentBlocks).toEqual([
+      { type: "text", text: "echo" },
+      { type: "text", text: "echo" },
+    ]);
   });
 
   it("preserves original timestamps from history instead of using Date.now()", () => {

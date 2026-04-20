@@ -7038,19 +7038,20 @@ export class WsBridge {
       // Collect new blocks to merge, avoiding in-place mutation of the content
       // array. The event buffer holds a reference to the same historyEntry
       // object, so push() would retroactively corrupt the original event.
-      const newBlocks: typeof msg.message.content = [];
-      for (const block of msg.message.content) {
-        if (block.type === "tool_use" && block.id) {
-          if (acc.contentBlockIds.has(block.id)) continue;
-          acc.contentBlockIds.add(block.id);
-          if (!session.toolStartTimes.has(block.id)) {
-            session.toolStartTimes.set(block.id, Date.now());
-          }
-          session.toolProgressOutput.delete(block.id);
-        }
-        newBlocks.push(block);
-      }
+      const newBlocks = this.getAssistantContentAppendBlocks(
+        historyEntry.message.content,
+        msg.message.content,
+        acc.contentBlockIds,
+      );
       if (newBlocks.length > 0) {
+        for (const block of newBlocks) {
+          if (block.type === "tool_use" && block.id) {
+            if (!session.toolStartTimes.has(block.id)) {
+              session.toolStartTimes.set(block.id, Date.now());
+            }
+            session.toolProgressOutput.delete(block.id);
+          }
+        }
         historyEntry.message.content = [...historyEntry.message.content, ...newBlocks];
       }
 
@@ -7113,6 +7114,75 @@ export class WsBridge {
 
     this.maybeUpdateContextUsedPercentFromAssistantUsage(session, msg.message.usage, msg.message.model);
     this.persistSession(session);
+  }
+
+  private getAssistantContentAppendBlocks(
+    existing: CLIAssistantMessage["message"]["content"],
+    incoming: CLIAssistantMessage["message"]["content"],
+    seenToolUseIds: Set<string>,
+  ): CLIAssistantMessage["message"]["content"] {
+    if (incoming.length === 0) return [];
+
+    const existingSignatures = existing.map((block) => this.getAssistantContentBlockSignature(block));
+    const incomingSignatures = incoming.map((block) => this.getAssistantContentBlockSignature(block));
+
+    // Resume/reconnect can resend a full or partial snapshot for the same
+    // assistant message. If we already have the exact sequence anywhere in the
+    // accumulated content, there is nothing new to append.
+    if (this.hasAssistantContentSequence(existingSignatures, incomingSignatures)) {
+      return [];
+    }
+
+    const overlap = this.getAssistantContentOverlapLength(existingSignatures, incomingSignatures);
+    const append: CLIAssistantMessage["message"]["content"] = [];
+
+    for (let index = overlap; index < incoming.length; index++) {
+      const block = incoming[index]!;
+      if (block.type === "tool_use" && block.id) {
+        if (seenToolUseIds.has(block.id)) continue;
+        seenToolUseIds.add(block.id);
+      }
+      append.push(block);
+    }
+
+    return append;
+  }
+
+  private getAssistantContentBlockSignature(block: CLIAssistantMessage["message"]["content"][number]): string {
+    return JSON.stringify(block);
+  }
+
+  private hasAssistantContentSequence(haystack: string[], needle: string[]): boolean {
+    if (needle.length === 0) return true;
+    if (needle.length > haystack.length) return false;
+
+    for (let start = 0; start <= haystack.length - needle.length; start++) {
+      let matches = true;
+      for (let offset = 0; offset < needle.length; offset++) {
+        if (haystack[start + offset] !== needle[offset]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return true;
+    }
+
+    return false;
+  }
+
+  private getAssistantContentOverlapLength(existing: string[], incoming: string[]): number {
+    const maxOverlap = Math.min(existing.length, incoming.length);
+    for (let size = maxOverlap; size > 0; size--) {
+      let matches = true;
+      for (let offset = 0; offset < size; offset++) {
+        if (existing[existing.length - size + offset] !== incoming[offset]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return size;
+    }
+    return 0;
   }
 
   private maybeUpdateContextUsedPercentFromAssistantUsage(

@@ -17,6 +17,50 @@ export function extractTextFromBlocks(blocks: ContentBlock[]): string {
     .join("\n");
 }
 
+function dedupeAssistantContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const seenToolIds = new Set<string>();
+  const result: ContentBlock[] = [];
+
+  for (const block of blocks) {
+    if (block.type === "tool_use" && block.id) {
+      if (seenToolIds.has(block.id)) continue;
+      seenToolIds.add(block.id);
+    }
+    result.push(block);
+  }
+
+  if (!result.some((block) => block.type === "tool_use")) return result;
+
+  while (result.length > 1 && isReplayDuplicatedAssistantTail(result)) {
+    result.pop();
+  }
+
+  return result;
+}
+
+function getReplaySensitiveBlockSignature(block: ContentBlock): string | null {
+  if (block.type === "text") return `text:${block.text}`;
+  if (block.type === "thinking") return `thinking:${block.thinking}`;
+  return null;
+}
+
+function isReplayDuplicatedAssistantTail(blocks: ContentBlock[]): boolean {
+  const tailIndex = blocks.length - 1;
+  const tailSignature = getReplaySensitiveBlockSignature(blocks[tailIndex]!);
+  if (!tailSignature) return false;
+
+  for (let index = tailIndex - 1; index >= 0; index--) {
+    const candidateSignature = getReplaySensitiveBlockSignature(blocks[index]!);
+    if (candidateSignature !== tailSignature) continue;
+
+    for (let between = index + 1; between < tailIndex; between++) {
+      if (blocks[between]?.type === "tool_use") return true;
+    }
+  }
+
+  return false;
+}
+
 export function normalizeHistoryMessageToChatMessages(
   histMsg: BrowserIncomingMessage,
   historyIndex: number,
@@ -44,12 +88,13 @@ export function normalizeHistoryMessageToChatMessages(
 
   if (histMsg.type === "assistant") {
     const msg = histMsg.message;
+    const normalizedContent = dedupeAssistantContentBlocks(msg.content);
     return [
       {
         id: msg.id,
         role: "assistant",
-        content: extractTextFromBlocks(msg.content),
-        contentBlocks: msg.content,
+        content: extractTextFromBlocks(normalizedContent),
+        contentBlocks: normalizedContent,
         timestamp: histMsg.timestamp || Date.now(),
         parentToolUseId: histMsg.parent_tool_use_id,
         model: msg.model,
