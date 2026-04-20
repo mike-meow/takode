@@ -6008,26 +6008,16 @@ export class WsBridge {
     }
 
     // If the backend is dead, request a relaunch so queued messages will
-    // eventually be flushed.  routeBrowserMessage already handles this for
-    // Codex / Claude SDK (adapter-based) sessions, but the traditional
-    // Claude Code (NDJSON) path only queues without triggering relaunch
-    // because its relaunch normally fires from handleCLIClose or
+    // eventually be flushed. routeBrowserMessage already handles adapter-based
+    // backends (Codex / Claude SDK). Re-requesting Codex recovery here would
+    // enqueue a redundant trailing relaunch via RelaunchQueue, which can later
+    // interrupt the freshly recovered turn mid-flight.
+    // The traditional Claude Code (NDJSON) path still needs explicit relaunch
+    // here because its restart normally fires from handleCLIClose or
     // handleBrowserOpen — neither of which run for REST-injected messages.
     if (!backendLive && this.onCLIRelaunchNeeded) {
       const launcherInfo = this.launcher?.getSession(sessionId);
-      if (session.backendType === "codex") {
-        if (session.state.backend_state !== "broken" && launcherInfo && launcherInfo.state !== "starting") {
-          if (launcherInfo.killedByIdleManager) {
-            launcherInfo.killedByIdleManager = false;
-            console.log(`[ws-bridge] Clearing idle-killed flag for session ${sessionTag(sessionId)} (message inject)`);
-          }
-          session.consecutiveAdapterFailures = 0;
-          console.log(
-            `[ws-bridge] Injected message queued for adapter-missing Codex session ${sessionTag(sessionId)}, requesting relaunch`,
-          );
-          this.requestCodexAutoRecovery(session, "inject_user_message_adapter_missing");
-        }
-      } else if (launcherInfo && launcherInfo.state === "exited" && session.state.backend_state !== "broken") {
+      if (launcherInfo && launcherInfo.state === "exited" && session.state.backend_state !== "broken") {
         // Clear killedByIdleManager so the relaunch callback proceeds.
         // Sending a message is an explicit intent to wake the session,
         // matching how wakeIdleKilledSession() works for herd events.

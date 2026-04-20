@@ -12603,9 +12603,10 @@ describe("injectUserMessage triggers relaunch for exited sessions (q-15)", () =>
     expect(relaunchCb).not.toHaveBeenCalled();
   });
 
-  it("requests relaunch when injectUserMessage targets an adapter-missing Codex session whose launcher still says connected", () => {
+  it("requests relaunch when injectUserMessage targets an adapter-missing Codex session whose launcher still says connected", async () => {
     const sid = "s-inject-codex-missing-adapter";
     const relaunchCb = vi.fn();
+    const recoverySpy = vi.spyOn(bridge as any, "requestCodexAutoRecovery");
     bridge.onCLIRelaunchNeededCallback(relaunchCb);
     bridge.setLauncher({
       touchActivity: vi.fn(),
@@ -12618,11 +12619,16 @@ describe("injectUserMessage triggers relaunch for exited sessions (q-15)", () =>
     session.state.backend_type = "codex";
 
     const delivery = bridge.injectUserMessage(sid, "inject wake missing adapter");
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(delivery).toBe("queued");
+    expect(recoverySpy).toHaveBeenCalledTimes(1);
+    expect(relaunchCb).toHaveBeenCalledTimes(1);
     expect(relaunchCb).toHaveBeenCalledWith(sid);
     expect(session.state.backend_state).toBe("recovering");
     expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("inject wake missing adapter");
+    recoverySpy.mockRestore();
   });
 
   it("wakes idle-killed SDK session when browser sends user_message (adapter path)", async () => {
