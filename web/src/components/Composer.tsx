@@ -1608,7 +1608,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
   return (
     <div
       ref={composerRootRef}
-      data-work-board-ignore-outside-click="true"
       className={`shrink-0 border-t border-cc-border bg-cc-card ${isCollapsed ? "" : "px-2 sm:px-4 py-2 sm:py-3"}`}
     >
       {/* Collapsed bar — shown on mobile when idle */}

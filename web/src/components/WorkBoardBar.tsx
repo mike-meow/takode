@@ -3,13 +3,14 @@
  *
  * Positioned between TodoStatusLine and Composer in ChatView. Shows a thin
  * summary bar (collapsed, default) that expands on click to show the full
- * board table. Only visible for orchestrator sessions with a non-empty board
- * (active or completed items).
+ * board table. Once opened, it stays open until the user explicitly collapses
+ * it. Only visible for orchestrator sessions with a non-empty board (active
+ * or completed items).
  *
  * Follows the TodoStatusLine pattern: shrink-0 at the bottom of the flex
  * column, outside the scrollable message feed.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
 import { getQuestJourneyPresentation } from "../../shared/quest-journey.js";
 import { BoardTable, orderBoardRows } from "./BoardTable.js";
@@ -52,7 +53,6 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
 
   const [expanded, setExpanded] = useState(() => readExpandedState(sessionId));
   const [completedExpanded, setCompletedExpanded] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setExpanded(readExpandedState(sessionId));
@@ -62,22 +62,6 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     scopedSetItem(workBoardExpandedKey(sessionId), expanded ? "1" : "0");
   }, [sessionId, expanded]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!expanded) return;
-    const handler = (e: MouseEvent) => {
-      const targetEl = e.target instanceof Element ? e.target : null;
-      if (targetEl?.closest("[data-work-board-ignore-outside-click='true']")) {
-        return;
-      }
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setExpanded(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [expanded]);
 
   // Close on Escape
   useEffect(() => {
@@ -96,7 +80,7 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
   if (!isOrchestrator || (activeCount === 0 && completedCount === 0)) return null;
 
   return (
-    <div ref={containerRef} className="shrink-0 flex flex-col min-h-0">
+    <div className="shrink-0 flex flex-col min-h-0">
       {/* Expanded board table -- inline, pushes chat content up */}
       {expanded && (
         <div className="border-t border-cc-border bg-cc-card max-h-[40dvh] overflow-y-auto">

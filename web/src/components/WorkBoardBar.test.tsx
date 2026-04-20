@@ -220,7 +220,7 @@ describe("WorkBoardBar", () => {
     expect(remounted.getByTestId("board-table")).toBeInTheDocument();
   });
 
-  it("does not collapse when clicking inside the composer root", () => {
+  it("does not collapse on outside click", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
@@ -229,27 +229,7 @@ describe("WorkBoardBar", () => {
     fireEvent.click(getByRole("button"));
     expect(getByTestId("board-table")).toBeInTheDocument();
 
-    const composerRoot = document.createElement("div");
-    composerRoot.setAttribute("data-work-board-ignore-outside-click", "true");
-    document.body.appendChild(composerRoot);
-    try {
-      fireEvent.mouseDown(composerRoot);
-      expect(getByTestId("board-table")).toBeInTheDocument();
-    } finally {
-      composerRoot.remove();
-    }
-  });
-
-  it("still collapses on normal outside click", () => {
-    resetStore({
-      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
-      sessionBoards: new Map([["s1", BOARD_DATA]]),
-    });
-    const { getByRole, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
-    fireEvent.click(getByRole("button"));
-    expect(queryByTestId("board-table")).toBeInTheDocument();
-
     fireEvent.mouseDown(document.body);
-    expect(queryByTestId("board-table")).not.toBeInTheDocument();
+    expect(getByTestId("board-table")).toBeInTheDocument();
   });
 });
