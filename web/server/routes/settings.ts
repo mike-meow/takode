@@ -394,32 +394,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
           : undefined,
     });
 
-<<<<<<< HEAD
     return c.json(buildSettingsResponse(settings));
-=======
-    return c.json({
-      serverName: getServerName(),
-      serverId: getServerId(),
-      pushoverConfigured: !!(settings.pushoverUserKey.trim() && settings.pushoverApiToken.trim()),
-      pushoverEnabled: settings.pushoverEnabled,
-      pushoverDelaySeconds: settings.pushoverDelaySeconds,
-      pushoverBaseUrl: settings.pushoverBaseUrl,
-      claudeBinary: settings.claudeBinary,
-      codexBinary: settings.codexBinary,
-      maxKeepAlive: settings.maxKeepAlive,
-      heavyRepoModeEnabled: settings.heavyRepoModeEnabled,
-      autoApprovalEnabled: settings.autoApprovalEnabled,
-      autoApprovalModel: settings.autoApprovalModel,
-      namerConfig: maskNamerConfig(settings.namerConfig),
-      autoNamerEnabled: settings.autoNamerEnabled,
-      transcriptionConfig: maskTranscriptionConfig(settings.transcriptionConfig),
-      editorConfig: settings.editorConfig,
-      defaultClaudeBackend: settings.defaultClaudeBackend,
-      sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
-      sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
-      questmasterViewMode: normalizeQuestmasterViewMode(settings.questmasterViewMode),
-    });
->>>>>>> 428007ee (fix(sidebar): remove legacy linear session view)
   });
 
   // ─── Binary test ──────────────────────────────────────────────────
