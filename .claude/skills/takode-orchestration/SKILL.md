@@ -366,7 +366,7 @@ Quest Journey work board. See [board-usage.md](board-usage.md) for full usage an
 
 ```bash
 takode board show
-takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,#Y]
+takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,#Y,free-worker]
 takode board advance <quest-id>
 takode board rm <quest-id> [<quest-id> ...]
 ```

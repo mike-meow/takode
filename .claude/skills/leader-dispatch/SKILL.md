@@ -89,9 +89,14 @@ When doing that inspection yourself, prefer the plain-text CLI output first. Rea
 
 **Prefer link-based handoffs over paraphrase.** If the old worker writes a context note, pass the specific session message link rather than rewriting the note yourself. This preserves source fidelity and lets the fresh worker inspect the original wording directly.
 
-**Queue** when you intentionally want a specific busy worker's context later. Add the quest to the board yourself as `QUEUED` with `--wait-for #N` (session) or `--wait-for q-N` (quest). Do not ask workers to "queue" work.
+**Queue** only with an explicit reason. Add the quest to the board yourself as `QUEUED` with:
+- `--wait-for #N` when you intentionally want a specific busy worker's context later
+- `--wait-for q-N` when another queued/active quest must clear first
+- `--wait-for free-worker` when the only blocker is herd worker-slot capacity
 
-Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots used: 5/5`. First distinguish active worker slots (quests still on the active board) from reclaimable completed workers. If the quest is otherwise ready and only reclaimable completed workers are consuming capacity, archive one and dispatch now. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N` or `--wait-for q-N` dependency.
+Do not ask workers to "queue" work, and do not leave a `QUEUED` row without `--wait-for`.
+
+Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots used: 5/5`. First distinguish active worker slots (quests still on the active board) from reclaimable completed workers. If the quest is otherwise ready and only reclaimable completed workers are consuming capacity, archive one and dispatch now. Otherwise, if you truly need to wait on capacity, make that explicit with `--wait-for free-worker`. If the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N` or `--wait-for q-N` dependency.
 
 **Spawn fresh** when there is no strong context advantage for reuse, or when the context can be recovered safely from artifacts and history. Point the new worker to relevant quests or past sessions for context:
 

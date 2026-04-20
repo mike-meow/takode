@@ -20517,7 +20517,7 @@ describe("work board", () => {
     expect(row.waitFor).toEqual(["q-2"]);
   });
 
-  it("removeBoardRows clears waitFor refs that now point at completed quests while preserving unrelated deps", () => {
+  it("removeBoardRows keeps queued quest waitFor refs visible after the dependency completes", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -20529,9 +20529,9 @@ describe("work board", () => {
     bridge.removeBoardRows("s1", ["q-2"]);
 
     const rows = bridge.getBoard("s1");
-    expect(rows.find((row) => row.questId === "q-1")?.waitFor).toEqual(["#5"]);
-    expect(rows.find((row) => row.questId === "q-3")?.waitFor).toEqual(["q-99"]);
-    expect(rows.find((row) => row.questId === "q-4")?.waitFor).toBeUndefined();
+    expect(rows.find((row) => row.questId === "q-1")?.waitFor).toEqual(["q-2", "#5"]);
+    expect(rows.find((row) => row.questId === "q-3")?.waitFor).toEqual(["q-2", "q-99"]);
+    expect(rows.find((row) => row.questId === "q-4")?.waitFor).toEqual(["q-2"]);
   });
 
   it("removeBoardRowFromAll clears stale quest waitFor refs across active boards", () => {
@@ -20609,6 +20609,17 @@ describe("work board", () => {
     expect(result!.previousState).toBe("QUEUED");
     expect(result!.newState).toBe("PLANNING");
     expect(result!.board[0].status).toBe("PLANNING");
+  });
+
+  it("advanceBoardRow clears waitFor when moving a queued row into active work", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", status: "QUEUED", waitFor: ["q-2", "#9"] });
+    const result = bridge.advanceBoardRow("s1", "q-1");
+
+    expect(result?.newState).toBe("PLANNING");
+    expect(result?.board[0].waitFor).toBeUndefined();
   });
 
   it("upsertBoardRow does not send review notifications for non-completion edits", () => {
@@ -20957,7 +20968,7 @@ describe("work board", () => {
     expect(lastUpdate.completedBoard[0].questId).toBe("q-1");
   });
 
-  it("board_updated broadcast includes active rows with stale quest waitFor refs removed", () => {
+  it("board_updated broadcast keeps resolved quest waitFor refs so queued rows stay explainable", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -20980,7 +20991,7 @@ describe("work board", () => {
     expect(lastUpdate.board).toEqual([
       expect.objectContaining({
         questId: "q-1",
-        waitFor: ["#9"],
+        waitFor: ["q-2", "#9"],
       }),
     ]);
     expect(lastUpdate.completedBoard).toEqual([expect.objectContaining({ questId: "q-2" })]);
@@ -21168,7 +21179,7 @@ describe("board stall warnings", () => {
       ...(opts?.blocked ? { waitFor: ["#9"] } : {}),
       updatedAt: now - 5 * 60_000,
     });
-    return { leaderId, dispatcher };
+    return { leaderId, dispatcher, launcherSessions };
   }
 
   it("emits a one-shot herd warning for a stalled implementing row", async () => {
@@ -21225,6 +21236,254 @@ describe("board stall warnings", () => {
 
     const herdCalls = injectSpy.mock.calls.filter(
       ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
+    );
+    expect(herdCalls).toHaveLength(0);
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("emits a one-shot dispatchable nudge when a queued quest's wait-for quest is already complete", async () => {
+    const { leaderId, dispatcher } = setupBoardStallHarness();
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+    const leaderSession = (bridge as any).sessions.get(leaderId);
+
+    leaderSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "leader-board-note", content: [{ type: "text", text: "Queued follow-up noted." }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-2",
+      title: "Follow-up quest",
+      status: "QUEUED",
+      waitFor: ["q-1"],
+      updatedAt: Date.now() - 60_000,
+    });
+    bridge.removeBoardRows(leaderId, ["q-1"]); // q-1 -> completed board
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    const herdCalls = injectSpy.mock.calls.filter(
+      ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
+    );
+    expect(herdCalls).toHaveLength(1);
+    expect(herdCalls[0][1]).toContain("board_dispatchable");
+    expect(herdCalls[0][1]).toContain("q-2");
+    expect(herdCalls[0][1]).toContain("wait-for resolved");
+    expect(leaderSession.attentionReason).toBe("action");
+    expect(leaderSession.notifications.at(-1)?.summary).toContain("q-2 can be dispatched now");
+
+    vi.advanceTimersByTime(60_000);
+    await Promise.resolve();
+    const repeated = injectSpy.mock.calls.filter(
+      ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
+    );
+    expect(repeated).toHaveLength(1);
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("clears the dispatchable needs-input notification once the queued row is dispatched", async () => {
+    const { leaderId, dispatcher } = setupBoardStallHarness();
+    const leaderSession = (bridge as any).sessions.get(leaderId);
+
+    leaderSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "leader-board-note-2", content: [{ type: "text", text: "Queued follow-up noted." }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-2",
+      title: "Follow-up quest",
+      status: "QUEUED",
+      waitFor: ["q-1"],
+      updatedAt: Date.now() - 60_000,
+    });
+    bridge.removeBoardRows(leaderId, ["q-1"]);
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    const dispatchNotif = leaderSession.notifications.find((notif: any) => notif.summary.includes("q-2 can be dispatched now"));
+    expect(dispatchNotif?.done).toBe(false);
+    expect(leaderSession.attentionReason).toBe("action");
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-2",
+      worker: "worker-board-stall",
+      workerNum: 2,
+      status: "PLANNING",
+    });
+
+    const updatedNotif = leaderSession.notifications.find((notif: any) => notif.id === dispatchNotif.id);
+    expect(updatedNotif?.done).toBe(true);
+    expect(leaderSession.attentionReason).toBeNull();
+
+    dispatcher.destroy();
+  });
+
+  it("still creates the leader notification when a resolved quest dependency has no source session to attribute", async () => {
+    const { leaderId, dispatcher } = setupBoardStallHarness();
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+    const leaderSession = (bridge as any).sessions.get(leaderId);
+
+    leaderSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "leader-board-note-3", content: [{ type: "text", text: "Queued follow-up noted." }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-3",
+      title: "Quest without source worker",
+      status: "QUEUED",
+      waitFor: ["q-99"],
+      updatedAt: Date.now() - 60_000,
+    });
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-99",
+      title: "Completed dependency without worker",
+      status: "PORTING",
+      updatedAt: Date.now() - 120_000,
+    });
+    bridge.removeBoardRows(leaderId, ["q-99"]);
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-3 can be dispatched now"))).toBe(true);
+    const herdCalls = injectSpy.mock.calls.filter(
+      ([sessionId, content, source]) =>
+        sessionId === leaderId && source?.sessionId === "herd-events" && String(content).includes("q-3"),
+    );
+    expect(herdCalls).toHaveLength(0);
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("retires a dispatchable notification when watchdog re-evaluation finds the row blocked again", async () => {
+    const { leaderId, dispatcher, launcherSessions } = setupBoardStallHarness();
+    const leaderSession = (bridge as any).sessions.get(leaderId);
+    const workerCli = makeCliSocket("worker-board-stall");
+
+    bridge.handleCLIOpen(workerCli, "worker-board-stall");
+    bridge.handleCLIMessage(workerCli, makeInitMsg({ session_id: "cli-worker-board-stall" }));
+
+    leaderSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "leader-board-note-4", content: [{ type: "text", text: "Queued follow-up noted." }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-4",
+      title: "Capacity-sensitive follow-up",
+      status: "QUEUED",
+      waitFor: ["#2"],
+      updatedAt: Date.now() - 60_000,
+    });
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    const dispatchNotif = leaderSession.notifications.find((notif: any) => notif.summary.includes("q-4 can be dispatched now"));
+    expect(dispatchNotif?.done).toBe(false);
+    expect(leaderSession.attentionReason).toBe("action");
+
+    const workerSession = bridge.getSession("worker-board-stall")!;
+    workerSession.isGenerating = true;
+    launcherSessions.get("worker-board-stall").lastActivityAt = Date.now();
+
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    const updatedNotif = leaderSession.notifications.find((notif: any) => notif.id === dispatchNotif.id);
+    expect(updatedNotif?.done).toBe(true);
+    expect(leaderSession.attentionReason).toBeNull();
+
+    dispatcher.destroy();
+  });
+
+  it("does not create automatic nudges for free-worker rows even when board output would mark them dispatchable", async () => {
+    const { leaderId, dispatcher, launcherSessions } = setupBoardStallHarness();
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+    const leaderSession = (bridge as any).sessions.get(leaderId);
+
+    leaderSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "leader-board-note-5", content: [{ type: "text", text: "Queued free-worker follow-up noted." }] },
+      timestamp: Date.now(),
+    });
+
+    launcherSessions.set("worker-extra-1", {
+      sessionId: "worker-extra-1",
+      sessionNum: 4,
+      herdedBy: leaderId,
+      backendType: "codex",
+      cwd: "/repo",
+      lastActivityAt: Date.now(),
+    });
+    launcherSessions.set("worker-extra-2", {
+      sessionId: "worker-extra-2",
+      sessionNum: 5,
+      herdedBy: leaderId,
+      backendType: "codex",
+      cwd: "/repo",
+      lastActivityAt: Date.now(),
+    });
+    launcherSessions.set("worker-extra-3", {
+      sessionId: "worker-extra-3",
+      sessionNum: 6,
+      herdedBy: leaderId,
+      backendType: "codex",
+      cwd: "/repo",
+      lastActivityAt: Date.now(),
+    });
+    launcherSessions.set("worker-extra-4", {
+      sessionId: "worker-extra-4",
+      sessionNum: 7,
+      herdedBy: leaderId,
+      backendType: "codex",
+      cwd: "/repo",
+      lastActivityAt: Date.now(),
+    });
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-5",
+      title: "Free-worker-only row",
+      status: "QUEUED",
+      waitFor: ["free-worker"],
+      updatedAt: Date.now() - 60_000,
+    });
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-5 can be dispatched now"))).toBe(
+      false,
+    );
+
+    launcherSessions.delete("worker-extra-4"); // 4/5 used now, so board output would read as dispatchable
+    vi.advanceTimersByTime(31_000);
+    await Promise.resolve();
+
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-5 can be dispatched now"))).toBe(
+      false,
+    );
+    const herdCalls = injectSpy.mock.calls.filter(
+      ([sessionId, content, source]) =>
+        sessionId === leaderId && source?.sessionId === "herd-events" && String(content).includes("q-5"),
     );
     expect(herdCalls).toHaveLength(0);
 

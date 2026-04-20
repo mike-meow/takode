@@ -14,7 +14,7 @@ import {
   type LogQueryResponse,
   type ServerLogEntry,
 } from "../shared/logging.js";
-import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
+import { HERD_WORKER_SLOT_LIMIT, TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.js";
 import {
   getSessionAuthDir,
   getSessionAuthFilePrefixes,
@@ -662,13 +662,14 @@ Subcommands:
 Examples:
   takode board show
   takode board set q-12 --status PLANNING
+  takode board set q-12 --status QUEUED --wait-for ${FREE_WORKER_WAIT_FOR_TOKEN}
   takode board set q-12 --worker 5 --wait-for q-7,#9
   takode board advance q-12
   takode board rm q-12
 `;
 
-const BOARD_SET_HELP = `Usage: takode board set <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y] [--json]
-       takode board add <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y] [--json]
+const BOARD_SET_HELP = `Usage: takode board set <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--json]
+       takode board add <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--json]
 
 Add or update a board row for a quest.
 `;
@@ -1007,7 +1008,6 @@ async function handleList(base: string, args: string[]): Promise<void> {
 
   const shownWorkerCount = filtered.filter((s) => s.reviewerOf === undefined).length;
   const shownReviewerCount = filtered.length - shownWorkerCount;
-  const HERD_WORKER_SLOT_LIMIT = 5;
   const activeHerdWorkerCount =
     isOrchestrator && mySessionId
       ? sessions.filter((s) => !s.archived && s.herdedBy === mySessionId && s.reviewerOf === undefined).length
@@ -2456,7 +2456,6 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   }
 
   // Check worker-slot usage and warn if over the limit.
-  const HERD_WORKER_SLOT_LIMIT = 5;
   let herdWarning: { workerSlotsUsed: number; excessWorkers: number; limit: number } | null = null;
   try {
     const allSessions = (await apiGet(base, "/takode/sessions")) as Array<{
@@ -3042,8 +3041,12 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
 // ─── Board ─────────────────────────────────────────────────────────────────
 
 import {
+  FREE_WORKER_WAIT_FOR_TOKEN,
+  formatWaitForRefLabel,
+  type BoardQueueWarning,
   QUEST_JOURNEY_STATES,
   QUEST_JOURNEY_HINTS,
+  getWaitForRefKind,
   isValidQuestId,
   isValidWaitForRef,
 } from "../shared/quest-journey.js";
@@ -3091,6 +3094,13 @@ function formatBoardWorkerReviewerSummary(row: BoardRow, rowStatus: BoardRowSess
   return `${worker} / ${reviewer}`;
 }
 
+function formatBoardQueueWarnings(queueWarnings: BoardQueueWarning[] | undefined): string[] {
+  if (!queueWarnings || queueWarnings.length === 0) return [];
+  return queueWarnings.map((warning) =>
+    warning.action ? `- ${warning.summary} Next: ${warning.action}` : `- ${warning.summary}`,
+  );
+}
+
 /** Format board output as JSON with a marker for frontend detection. */
 function formatBoardOutput(
   board: BoardRow[],
@@ -3099,14 +3109,18 @@ function formatBoardOutput(
     completedCount?: number;
     completedBoard?: BoardRow[];
     rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+    queueWarnings?: BoardQueueWarning[];
+    workerSlotUsage?: { used: number; limit: number };
   },
 ): string {
-  const { operation, completedCount, completedBoard, rowSessionStatuses } = opts ?? {};
+  const { operation, completedCount, completedBoard, rowSessionStatuses, queueWarnings, workerSlotUsage } = opts ?? {};
   return JSON.stringify(
     {
       __takode_board__: true,
       board,
       ...(rowSessionStatuses ? { rowSessionStatuses } : {}),
+      ...(queueWarnings ? { queueWarnings } : {}),
+      ...(workerSlotUsage ? { workerSlotUsage } : {}),
       ...(operation ? { operation } : {}),
       ...(completedCount != null ? { completedCount } : {}),
       ...(completedBoard ? { completedBoard } : {}),
@@ -3123,6 +3137,7 @@ function printBoardText(
     allBoardRows?: BoardRow[];
     resolvedSessionDeps?: Set<string>;
     rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+    workerSlotUsage?: { used: number; limit: number };
   },
 ): void {
   if (board.length === 0) {
@@ -3131,7 +3146,7 @@ function printBoardText(
   }
 
   // Build a set of active quest IDs on the board (for resolving wait-for status)
-  const { allBoardRows, resolvedSessionDeps, rowSessionStatuses } = opts ?? {};
+  const { allBoardRows, resolvedSessionDeps, rowSessionStatuses, workerSlotUsage } = opts ?? {};
   const activeQuestIds = new Set((allBoardRows || board).map((r) => r.questId));
 
   console.log("");
@@ -3158,14 +3173,17 @@ function printBoardText(
     // Wait-for column: distinguish "no deps", "blocked", and "all resolved"
     const allDeps = row.waitFor || [];
     const blockedDeps = allDeps.filter((wf) => {
-      if (wf.startsWith("#")) return !resolvedSessionDeps?.has(wf); // session: blocked if NOT idle
-      return activeQuestIds.has(wf); // quest: blocked if still on board
+      const kind = getWaitForRefKind(wf);
+      if (kind === "session") return !resolvedSessionDeps?.has(wf);
+      if (kind === "quest") return activeQuestIds.has(wf);
+      if (kind === "free-worker") return (workerSlotUsage?.used ?? workerSlotUsage?.limit ?? 0) >= (workerSlotUsage?.limit ?? 0);
+      return true;
     });
     let waitForStr: string;
     if (blockedDeps.length > 0) {
-      waitForStr = `wait ${blockedDeps.join(", ")}`;
+      waitForStr = `wait ${blockedDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
     } else if (allDeps.length > 0) {
-      waitForStr = `clear ${allDeps.join(", ")}`;
+      waitForStr = `clear ${allDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
     } else {
       waitForStr = "--";
     }
@@ -3174,7 +3192,7 @@ function printBoardText(
     // Next action hint: if blocked, show "blocked"; otherwise show state hint
     let nextAction: string;
     if (blockedDeps.length > 0) {
-      nextAction = `wait for ${blockedDeps.join(", ")}`;
+      nextAction = `wait for ${blockedDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
     } else {
       nextAction = QUEST_JOURNEY_HINTS[row.status || ""] || "--";
     }
@@ -3194,23 +3212,28 @@ function outputBoard(
     completedCount?: number;
     completedBoard?: BoardRow[];
     rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+    queueWarnings?: BoardQueueWarning[];
+    workerSlotUsage?: { used: number; limit: number };
   },
 ): void {
-  const { operation, resolvedSessionDeps, completedCount, completedBoard, rowSessionStatuses } = opts ?? {};
+  const { operation, resolvedSessionDeps, completedCount, completedBoard, rowSessionStatuses, queueWarnings, workerSlotUsage } = opts ?? {};
   if (jsonMode) {
-    console.log(formatBoardOutput(board, { operation, completedCount, completedBoard, rowSessionStatuses }));
+    console.log(formatBoardOutput(board, { operation, completedCount, completedBoard, rowSessionStatuses, queueWarnings, workerSlotUsage }));
     return;
   }
 
-  printBoardText(board, { allBoardRows: board, resolvedSessionDeps, rowSessionStatuses });
+  printBoardText(board, { allBoardRows: board, resolvedSessionDeps, rowSessionStatuses, workerSlotUsage });
   // Print completed items table when --all flag includes them
   if (completedBoard && completedBoard.length > 0) {
     console.log("── Completed ──────────────────────────────────────────");
-    printBoardText(completedBoard, { rowSessionStatuses });
+    printBoardText(completedBoard, { rowSessionStatuses, workerSlotUsage });
   }
   // Always show a footer count when completed items exist
   if (completedCount && completedCount > 0 && !completedBoard) {
     console.log(`${completedCount} quest${completedCount === 1 ? "" : "s"} completed`);
+  }
+  for (const line of formatBoardQueueWarnings(queueWarnings)) {
+    console.log(line);
   }
 }
 
@@ -3229,6 +3252,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       completedBoard?: BoardRow[];
       resolvedSessionDeps?: string[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+      queueWarnings?: BoardQueueWarning[];
+      workerSlotUsage?: { used: number; limit: number };
     };
     const resolvedSessionDeps = new Set(result.resolvedSessionDeps ?? []);
     outputBoard(result.board, flags.json === true, {
@@ -3236,6 +3261,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       completedCount: result.completedCount,
       completedBoard: includeCompleted ? result.completedBoard : undefined,
       rowSessionStatuses: result.rowSessionStatuses,
+      queueWarnings: result.queueWarnings,
+      workerSlotUsage: result.workerSlotUsage,
     });
     return;
   }
@@ -3244,7 +3271,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const questId = args[1];
     if (!questId)
       err(
-        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y] [--json]`,
+        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--json]`,
       );
     if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
@@ -3259,7 +3286,9 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
         .filter(Boolean);
       const invalid = waitFor.filter((ref) => !isValidWaitForRef(ref));
       if (invalid.length > 0)
-        err(`Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests or #N for sessions`);
+        err(
+          `Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests, #N for sessions, or ${FREE_WORKER_WAIT_FOR_TOKEN}`,
+        );
       body.waitFor = waitFor;
     }
     if (typeof flags.worker === "string") {
@@ -3293,12 +3322,16 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       board: BoardRow[];
       resolvedSessionDeps?: string[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+      queueWarnings?: BoardQueueWarning[];
+      workerSlotUsage?: { used: number; limit: number };
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
     outputBoard(result.board, flags.json === true, {
       operation: `set ${questId}`,
       resolvedSessionDeps: resolved,
       rowSessionStatuses: result.rowSessionStatuses,
+      queueWarnings: result.queueWarnings,
+      workerSlotUsage: result.workerSlotUsage,
     });
     return;
   }
@@ -3320,6 +3353,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       completedCount?: number;
       resolvedSessionDeps?: string[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+      queueWarnings?: BoardQueueWarning[];
+      workerSlotUsage?: { used: number; limit: number };
     };
 
     let operation: string;
@@ -3338,6 +3373,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       resolvedSessionDeps: resolved,
       completedCount: result.completedCount,
       rowSessionStatuses: result.rowSessionStatuses,
+      queueWarnings: result.queueWarnings,
+      workerSlotUsage: result.workerSlotUsage,
     });
     return;
   }
@@ -3355,6 +3392,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       completedCount?: number;
       resolvedSessionDeps?: string[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+      queueWarnings?: BoardQueueWarning[];
+      workerSlotUsage?: { used: number; limit: number };
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
     outputBoard(result.board, flags.json === true, {
@@ -3362,6 +3401,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       resolvedSessionDeps: resolved,
       completedCount: result.completedCount,
       rowSessionStatuses: result.rowSessionStatuses,
+      queueWarnings: result.queueWarnings,
+      workerSlotUsage: result.workerSlotUsage,
     });
     return;
   }

@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { formatQuestJourneyText, isValidQuestId, isValidWaitForRef } from "./quest-journey.js";
+import {
+  FREE_WORKER_WAIT_FOR_TOKEN,
+  formatQuestJourneyText,
+  formatWaitForRefLabel,
+  getWaitForRefKind,
+  isValidQuestId,
+  isValidWaitForRef,
+} from "./quest-journey.js";
 
 describe("isValidQuestId", () => {
   it.each(["q-1", "q-42", "q-999", "Q-1"])("accepts valid quest ID: %j", (id) => {
@@ -22,9 +29,32 @@ describe("isValidWaitForRef", () => {
     expect(isValidWaitForRef(ref)).toBe(true);
   });
 
+  it.each([FREE_WORKER_WAIT_FOR_TOKEN, "FREE-WORKER"])("accepts free-worker ref: %j", (ref) => {
+    expect(isValidWaitForRef(ref)).toBe(true);
+  });
+
   // Invalid refs
   it.each(["42", "foo", "q-", "#", "#abc", "session-5", "", "q-1,#5"])("rejects invalid wait-for ref: %j", (ref) => {
     expect(isValidWaitForRef(ref)).toBe(false);
+  });
+});
+
+describe("getWaitForRefKind", () => {
+  it.each([
+    ["q-9", "quest"],
+    ["#22", "session"],
+    [FREE_WORKER_WAIT_FOR_TOKEN, "free-worker"],
+    ["oops", "invalid"],
+  ])("classifies %j as %j", (ref, expected) => {
+    expect(getWaitForRefKind(ref)).toBe(expected);
+  });
+});
+
+describe("formatWaitForRefLabel", () => {
+  it("humanizes the free-worker token while preserving other refs", () => {
+    expect(formatWaitForRefLabel(FREE_WORKER_WAIT_FOR_TOKEN)).toBe("free worker");
+    expect(formatWaitForRefLabel("q-12")).toBe("q-12");
+    expect(formatWaitForRefLabel("#4")).toBe("#4");
   });
 });
 

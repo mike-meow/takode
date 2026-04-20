@@ -3417,6 +3417,71 @@ describe("takode board output modes", () => {
       server.close();
     }
   });
+
+  it("shows queue warnings for dispatchable queued rows, including free-worker readiness", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-warning", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-board-warning/board?resolve=true") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            board: [
+              {
+                questId: "q-88",
+                title: "Dispatch queued follow-up",
+                status: "QUEUED",
+                waitFor: ["free-worker"],
+                createdAt: 1,
+                updatedAt: 2,
+              },
+            ],
+            queueWarnings: [
+              {
+                questId: "q-88",
+                kind: "dispatchable",
+                summary: "q-88 can be dispatched now: worker slots are available (3/5 used).",
+                action: "Dispatch it now or replace QUEUED with the next active board stage.",
+              },
+            ],
+            workerSlotUsage: { used: 3, limit: 5 },
+            rowSessionStatuses: {},
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "show", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-warning",
+        COMPANION_AUTH_TOKEN: "auth-board-warning",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("clear free work");
+      expect(result.stdout).toContain("dispatch to a worker");
+      expect(result.stdout).toContain("q-88 can be dispatched now");
+      expect(result.stdout).toContain("Next: Dispatch it now or replace QUEUED");
+    } finally {
+      server.close();
+    }
+  });
 });
 
 describe("takode list reviewer nesting", () => {
@@ -3680,9 +3745,9 @@ describe("takode list reviewer nesting", () => {
   });
 });
 
-describe("takode board --wait-for validation (q-N and #N formats)", () => {
-  // CLI-side validation: --wait-for accepts q-N (quest) and #N (session) refs,
-  // rejects bare numbers and arbitrary strings.
+describe("takode board --wait-for validation (q-N, #N, and free-worker)", () => {
+  // CLI-side validation: --wait-for accepts q-N (quest), #N (session), and
+  // free-worker refs, rejects bare numbers and arbitrary strings.
 
   let server: ReturnType<typeof createServer>;
   let port: number;
@@ -3743,6 +3808,18 @@ describe("takode board --wait-for validation (q-N and #N formats)", () => {
     expect(capturedBodies[0].waitFor).toEqual(["q-1", "#5"]);
   });
 
+  it("accepts --wait-for free-worker", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--wait-for", "free-worker", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].waitFor).toEqual(["free-worker"]);
+  });
+
   it.each(["42", "foo", "q-", "#", "#abc", "session-5"])("rejects invalid --wait-for value: %j", async (badRef) => {
     const result = await runTakode(["board", "set", "q-1", "--wait-for", badRef, "--port", String(port)], {
       ...process.env,
@@ -3754,6 +3831,7 @@ describe("takode board --wait-for validation (q-N and #N formats)", () => {
     expect(result.stderr).toContain("Invalid wait-for");
     expect(result.stderr).toContain("q-N");
     expect(result.stderr).toContain("#N");
+    expect(result.stderr).toContain("free-worker");
     // No POST should have been made
     expect(capturedBodies).toHaveLength(0);
   });
@@ -3768,5 +3846,18 @@ describe("takode board --wait-for validation (q-N and #N formats)", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("42");
     expect(capturedBodies).toHaveLength(0);
+  });
+
+  it("defaults a new wait-for-only row to QUEUED on the server", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--wait-for", "free-worker", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].status).toBeUndefined();
+    expect(result.stdout).toContain("QUEUED");
   });
 });

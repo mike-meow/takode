@@ -9,6 +9,13 @@ import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../shared/history-sync-hash.js";
 import { findTurnBoundaries } from "./takode-messages.js";
 import { getHistoryWindowTurnCount } from "../shared/history-window.js";
+import {
+  FREE_WORKER_WAIT_FOR_TOKEN,
+  formatWaitForRefLabel,
+  getWaitForRefKind,
+  type BoardQueueWarning,
+} from "../shared/quest-journey.js";
+import { HERD_WORKER_SLOT_LIMIT } from "../shared/takode-constants.js";
 
 const execPromise = promisify(execCb);
 const TOOL_PROGRESS_OUTPUT_LIMIT = 12_000;
@@ -466,6 +473,8 @@ interface Session {
   completedBoard: Map<string, BoardRow>;
   /** Per-row stall tracking for board warnings (not persisted). */
   boardStallStates: Map<string, { signature: string; stalledSince: number; warnedAt: number | null }>;
+  /** Per-row queued dispatchability tracking for one-shot nudges (not persisted). */
+  boardDispatchStates: Map<string, { signature: string; warnedAt: number | null; notificationId?: string | null }>;
   /** Per-session notification inbox entries from `takode notify`. */
   notifications: SessionNotification[];
   /** Monotonic counter for notification IDs (survives deletion without collisions). */
@@ -513,6 +522,14 @@ interface BoardStallCandidate {
   stalledSince: number;
   reason: string;
   action: string;
+}
+
+interface BoardDispatchableCandidate {
+  signature: string;
+  questId: string;
+  title?: string;
+  summary: string;
+  action?: string;
 }
 
 const BOARD_STALL_THRESHOLD_MS = 3 * 60_000;
@@ -1481,6 +1498,7 @@ export class WsBridge {
       }
 
       this.sweepBoardStallWarnings(now);
+      this.sweepBoardDispatchableWarnings(now);
     }, CHECK_INTERVAL_MS);
     if (timer.unref) timer.unref();
   }
@@ -1955,6 +1973,27 @@ export class WsBridge {
     return this.buildBoardStallCandidate(session, row)?.signature ?? null;
   }
 
+  getBoardDispatchableSignature(sessionId: string, questId: string): string | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const row = session.board.get(questId);
+    if (!row) return null;
+    return this.buildBoardDispatchableCandidate(session, row)?.signature ?? null;
+  }
+
+  getBoardQueueWarnings(sessionId: string): BoardQueueWarning[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+    return this.getQueuedBoardWarnings(session);
+  }
+
+  getBoardWorkerSlotUsage(sessionId: string): { used: number; limit: number } {
+    return {
+      used: this.getLeaderWorkerSlotUsage(sessionId),
+      limit: HERD_WORKER_SLOT_LIMIT,
+    };
+  }
+
   /** Check if a session is actively generating or has pending permission requests. */
   isSessionBusy(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
@@ -2087,6 +2126,7 @@ export class WsBridge {
           Array.isArray(p.completedBoard) ? p.completedBoard.map((row: BoardRow) => [row.questId, row]) : [],
         ),
         boardStallStates: new Map(),
+        boardDispatchStates: new Map(),
         notifications: Array.isArray(p.notifications) ? p.notifications : [],
         notificationCounter: Array.isArray(p.notifications)
           ? p.notifications.reduce((max: number, n: SessionNotification) => {
@@ -2739,7 +2779,8 @@ export class WsBridge {
         keywords: [],
         board: new Map(),
         completedBoard: new Map(),
-        boardStallStates: new Map(),
+          boardStallStates: new Map(),
+          boardDispatchStates: new Map(),
         notifications: [],
         notificationCounter: 0,
         diffStatsDirty: true,
@@ -3202,7 +3243,7 @@ export class WsBridge {
     sessionId: string,
     category: "needs-input" | "review",
     summary: string,
-  ): { ok: true; anchoredMessageId: string | null } | { ok: false; error: string } {
+  ): { ok: true; anchoredMessageId: string | null; notificationId: string } | { ok: false; error: string } {
     const session = this.sessions.get(sessionId);
     if (!session) return { ok: false, error: "Session not found" };
 
@@ -3274,7 +3315,7 @@ export class WsBridge {
         });
       }
       this.persistSession(session);
-      return { ok: true, anchoredMessageId };
+      return { ok: true, anchoredMessageId, notificationId: notif.id };
     }
 
     // Non-herded sessions: notify user directly
@@ -3316,7 +3357,7 @@ export class WsBridge {
     }
 
     this.persistSession(session);
-    return { ok: true, anchoredMessageId };
+    return { ok: true, anchoredMessageId, notificationId: notif.id };
   }
 
   /** Toggle the done state of a notification and broadcast the update. */
@@ -3327,6 +3368,7 @@ export class WsBridge {
     if (!notif) return false;
     notif.done = done;
     this.broadcastToBrowsers(session, { type: "notification_update", notifications: session.notifications });
+    if (done) this.clearActionAttentionIfNoNotifications(session);
     this.persistSession(session);
     return true;
   }
@@ -3343,6 +3385,7 @@ export class WsBridge {
     }
     if (count > 0) {
       this.broadcastToBrowsers(session, { type: "notification_update", notifications: session.notifications });
+      if (done) this.clearActionAttentionIfNoNotifications(session);
       this.persistSession(session);
     }
     return count;
@@ -3351,6 +3394,15 @@ export class WsBridge {
   /** Get the notifications array for a session. */
   getNotifications(sessionId: string): SessionNotification[] {
     return this.sessions.get(sessionId)?.notifications ?? [];
+  }
+
+  private clearActionAttentionIfNoNotifications(session: Session): void {
+    if (session.pendingPermissions.size > 0) return;
+    const hasOpenNeedsInput = session.notifications.some((notif) => !notif.done && notif.category === "needs-input");
+    if (!hasOpenNeedsInput && session.attentionReason === "action") {
+      session.attentionReason = null;
+      this.broadcastToBrowsers(session, { type: "session_update", session: { attentionReason: null } });
+    }
   }
 
   // ─── Work Board ──────────────────────────────────────────────────────────
@@ -3387,6 +3439,9 @@ export class WsBridge {
       createdAt: existing?.createdAt ?? now,
       updatedAt: row.updatedAt ?? now,
     };
+    if (row.status !== undefined && (merged.status || "").trim() !== "QUEUED" && row.waitFor === undefined) {
+      merged.waitFor = undefined;
+    }
     session.board.set(row.questId, merged);
     return this.commitBoard(session);
   }
@@ -3400,7 +3455,6 @@ export class WsBridge {
       const completed = this.moveBoardRowToCompleted(session, qid);
       if (completed) completedRows.push(completed);
     }
-    this.clearResolvedQuestWaitFor(session, questIds);
     const board = this.commitBoard(session);
     this.notifyBoardCompletion(session, completedRows);
     return board;
@@ -3441,7 +3495,6 @@ export class WsBridge {
     if (currentIdx >= QUEST_JOURNEY_STATES.length - 1) {
       // At the final state -- move to completed
       const completed = this.moveBoardRowToCompleted(session, questId);
-      this.clearResolvedQuestWaitFor(session, [questId]);
       const board = this.commitBoard(session);
       this.notifyBoardCompletion(session, completed ? [completed] : []);
       return { board, removed: true, previousState, newState: undefined };
@@ -3449,6 +3502,7 @@ export class WsBridge {
 
     // Advance: unrecognized state resets to QUEUED, otherwise move to next
     row.status = currentIdx === -1 ? QUEST_JOURNEY_STATES[0] : QUEST_JOURNEY_STATES[currentIdx + 1];
+    if (row.status !== "QUEUED") row.waitFor = undefined;
     row.updatedAt = Date.now();
     session.board.set(questId, row);
     const board = this.commitBoard(session);
@@ -3505,11 +3559,32 @@ export class WsBridge {
 
   /** Get board, broadcast update to browsers, and persist. */
   private commitBoard(session: Session): BoardRow[] {
+    this.reconcileBoardDispatchStates(session);
     const board = this.getBoard(session.id);
     const completedBoard = this.getCompletedBoard(session.id);
     this.broadcastToBrowsers(session, { type: "board_updated", board, completedBoard });
     this.persistSession(session);
     return board;
+  }
+
+  private reconcileBoardDispatchStates(session: Session): void {
+    for (const [questId] of [...session.boardDispatchStates.entries()]) {
+      const row = session.board.get(questId);
+      const candidate = row ? this.buildBoardDispatchableCandidate(session, row) : null;
+      if (!row || !candidate) {
+        this.retireBoardDispatchState(session, questId);
+        continue;
+      }
+      const state = session.boardDispatchStates.get(questId);
+      if (state && candidate.signature !== state.signature) this.retireBoardDispatchState(session, questId);
+    }
+  }
+
+  private retireBoardDispatchState(session: Session, questId: string): void {
+    const state = session.boardDispatchStates.get(questId);
+    if (!state) return;
+    if (state.notificationId) this.markNotificationDone(session.id, state.notificationId, true);
+    session.boardDispatchStates.delete(questId);
   }
 
   private resolveBoardSessionId(sessionId: string | undefined, sessionNum: number | undefined): string | undefined {
@@ -3525,6 +3600,13 @@ export class WsBridge {
     if (workerNum === undefined) return undefined;
     const sessions = this.launcher?.listSessions?.() ?? [];
     return sessions.find((candidate: any) => candidate.reviewerOf === workerNum && !candidate.archived)?.sessionId;
+  }
+
+  private getLeaderWorkerSlotUsage(sessionId: string): number {
+    const sessions = this.launcher?.listSessions?.() ?? [];
+    return sessions.filter(
+      (candidate: any) => !candidate.archived && candidate.herdedBy === sessionId && candidate.reviewerOf === undefined,
+    ).length;
   }
 
   private getBoardParticipantRuntime(sessionId: string | undefined): {
@@ -3552,15 +3634,100 @@ export class WsBridge {
   private getBlockedBoardDeps(session: Session, row: BoardRow): string[] {
     const activeQuestIds = new Set(session.board.keys());
     const blocked: string[] = [];
+    const workerSlotsUsed = this.getLeaderWorkerSlotUsage(session.id);
     for (const dep of row.waitFor ?? []) {
-      if (dep.startsWith("#")) {
-        const sessionId = this.launcher?.resolveSessionId?.(dep.slice(1));
-        if (!sessionId || !this.isSessionIdle(sessionId)) blocked.push(dep);
-      } else if (activeQuestIds.has(dep)) {
-        blocked.push(dep);
+      switch (getWaitForRefKind(dep)) {
+        case "session": {
+          const sessionId = this.launcher?.resolveSessionId?.(dep.slice(1));
+          if (!sessionId || !this.isSessionIdle(sessionId)) blocked.push(dep);
+          break;
+        }
+        case "quest":
+          if (activeQuestIds.has(dep)) blocked.push(dep);
+          break;
+        case "free-worker":
+          if (workerSlotsUsed >= HERD_WORKER_SLOT_LIMIT) blocked.push(dep);
+          break;
+        default:
+          blocked.push(dep);
+          break;
       }
     }
     return blocked;
+  }
+
+  private buildQueuedBoardWarning(session: Session, row: BoardRow): BoardQueueWarning | null {
+    if ((row.status || "").trim() !== "QUEUED") return null;
+    const waitFor = row.waitFor ?? [];
+    const title = row.title?.trim() || undefined;
+
+    if (waitFor.length === 0) {
+      return {
+        questId: row.questId,
+        title,
+        kind: "missing_wait_for",
+        summary: `${row.questId} is QUEUED without an explicit wait-for reason.`,
+        action: `Set --wait-for q-N, #N, or ${FREE_WORKER_WAIT_FOR_TOKEN}.`,
+      };
+    }
+
+    const blockedDeps = this.getBlockedBoardDeps(session, row);
+    if (blockedDeps.length > 0) return null;
+
+    const labels = waitFor.map((dep) => formatWaitForRefLabel(dep));
+    const workerSlotsUsed = this.getLeaderWorkerSlotUsage(session.id);
+    const hasFreeWorkerWait = waitFor.some((dep) => getWaitForRefKind(dep) === "free-worker");
+    const summary = hasFreeWorkerWait
+      ? `${row.questId} can be dispatched now: worker slots are available (${workerSlotsUsed}/${HERD_WORKER_SLOT_LIMIT} used).`
+      : `${row.questId} can be dispatched now: wait-for resolved (${labels.join(", ")}).`;
+    return {
+      questId: row.questId,
+      title,
+      kind: "dispatchable",
+      summary,
+      action: "Dispatch it now or replace QUEUED with the next active board stage.",
+    };
+  }
+
+  private getQueuedBoardWarnings(session: Session): BoardQueueWarning[] {
+    return this.getBoard(session.id)
+      .map((row) => this.buildQueuedBoardWarning(session, row))
+      .filter((warning): warning is BoardQueueWarning => warning !== null);
+  }
+
+  private resolveCompletedQuestWorkerSessionId(session: Session, questId: string): string | undefined {
+    const completedRow = session.completedBoard.get(questId);
+    return this.resolveBoardSessionId(completedRow?.worker, completedRow?.workerNum);
+  }
+
+  private findBoardDispatchSourceSessionId(session: Session, row: BoardRow): string | undefined {
+    return (row.waitFor ?? [])
+      .map((dep) => {
+        const kind = getWaitForRefKind(dep);
+        if (kind === "session") return this.launcher?.resolveSessionId?.(dep.slice(1)) ?? undefined;
+        if (kind === "quest") return this.resolveCompletedQuestWorkerSessionId(session, dep);
+        return undefined;
+      })
+      .find((sessionId): sessionId is string => typeof sessionId === "string" && sessionId.length > 0);
+  }
+
+  private buildBoardDispatchableCandidate(session: Session, row: BoardRow): BoardDispatchableCandidate | null {
+    const warning = this.buildQueuedBoardWarning(session, row);
+    if (!warning || warning.kind !== "dispatchable") return null;
+    const waitFor = row.waitFor ?? [];
+    const actionableDeps = waitFor.filter((dep) => {
+      const kind = getWaitForRefKind(dep);
+      return kind === "quest" || kind === "session";
+    });
+    if (actionableDeps.length === 0) return null;
+
+    return {
+      signature: `${row.questId}|dispatchable|${actionableDeps.map((dep) => dep.toLowerCase()).sort().join(",")}`,
+      questId: row.questId,
+      title: row.title?.trim() || undefined,
+      summary: warning.summary,
+      action: warning.action,
+    };
   }
 
   private buildBoardStallCandidate(session: Session, row: BoardRow): BoardStallCandidate | null {
@@ -3703,6 +3870,52 @@ export class WsBridge {
           action: candidate.action,
         });
         existing.warnedAt = now;
+      }
+    }
+  }
+
+  private sweepBoardDispatchableWarnings(now: number): void {
+    for (const session of this.sessions.values()) {
+      const launcherInfo = this.launcher?.getSession?.(session.id);
+      if (!launcherInfo?.isOrchestrator) continue;
+
+      const activeQuestIds = new Set(session.board.keys());
+      for (const questId of [...session.boardDispatchStates.keys()]) {
+        if (!activeQuestIds.has(questId)) this.retireBoardDispatchState(session, questId);
+      }
+
+      for (const row of session.board.values()) {
+        const candidate = this.buildBoardDispatchableCandidate(session, row);
+        if (!candidate) {
+          this.retireBoardDispatchState(session, row.questId);
+          continue;
+        }
+
+        const existing = session.boardDispatchStates.get(row.questId);
+        if (!existing || existing.signature !== candidate.signature) {
+          this.retireBoardDispatchState(session, row.questId);
+          session.boardDispatchStates.set(row.questId, {
+            signature: candidate.signature,
+            warnedAt: null,
+            notificationId: null,
+          });
+        }
+
+        const current = session.boardDispatchStates.get(row.questId);
+        if (!current || current.warnedAt) continue;
+        const notifResult = this.notifyUser(session.id, "needs-input", candidate.summary);
+        if (notifResult.ok) current.notificationId = notifResult.notificationId;
+        const sourceSessionId = this.findBoardDispatchSourceSessionId(session, row);
+        if (sourceSessionId) {
+          this.emitTakodeEvent(sourceSessionId, "board_dispatchable", {
+            questId: candidate.questId,
+            ...(candidate.title ? { title: candidate.title } : {}),
+            signature: candidate.signature,
+            summary: candidate.summary,
+            ...(candidate.action ? { action: candidate.action } : {}),
+          });
+        }
+        current.warnedAt = now;
       }
     }
   }

@@ -3,7 +3,7 @@ import { access as accessAsync } from "node:fs/promises";
 import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
-import { isValidQuestId, isValidWaitForRef } from "../../shared/quest-journey.js";
+import { FREE_WORKER_WAIT_FOR_TOKEN, isValidQuestId, isValidWaitForRef } from "../../shared/quest-journey.js";
 import {
   buildPeekResponse,
   buildPeekDefault,
@@ -1050,6 +1050,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       board,
       completedCount: wsBridge.getCompletedBoardCount(id),
       rowSessionStatuses,
+      queueWarnings: wsBridge.getBoardQueueWarnings(id),
+      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
       ...(includeCompleted ? { completedBoard } : {}),
       ...(resolve ? { resolvedSessionDeps: resolveSessionDeps(board) } : {}),
     });
@@ -1099,18 +1101,42 @@ export function createTakodeRoutes(ctx: RouteContext) {
       waitFor = parsed;
     }
 
+    const existingRow = wsBridge.getBoardRow(id, questId);
+    const implicitQueuedStatus =
+      typeof body.status !== "string" &&
+      typeof body.worker !== "string" &&
+      waitFor !== undefined &&
+      !existingRow?.status
+        ? "QUEUED"
+        : undefined;
+    const mergedStatus =
+      typeof body.status === "string"
+        ? body.status.trim() || undefined
+        : (implicitQueuedStatus ?? existingRow?.status?.trim() ?? undefined);
+    const mergedWaitFor = waitFor !== undefined ? waitFor : existingRow?.waitFor;
+    if (mergedStatus === "QUEUED" && (!mergedWaitFor || mergedWaitFor.length === 0)) {
+      return c.json(
+        {
+          error: `Queued rows require an explicit wait-for reason -- use q-N, #N, or ${FREE_WORKER_WAIT_FOR_TOKEN}`,
+        },
+        400,
+      );
+    }
+
     const board = wsBridge.upsertBoardRow(id, {
       questId,
       title,
       worker: typeof body.worker === "string" ? body.worker : undefined,
       workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
-      status: typeof body.status === "string" ? body.status : undefined,
+      status: typeof body.status === "string" ? body.status : implicitQueuedStatus,
       waitFor,
     });
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
     return c.json({
       board,
       rowSessionStatuses: await buildBoardRowSessionStatuses(board),
+      queueWarnings: wsBridge.getBoardQueueWarnings(id),
+      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
       resolvedSessionDeps: resolveSessionDeps(board),
     });
   });
@@ -1145,6 +1171,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       board,
       completedCount: wsBridge.getCompletedBoardCount(id),
       rowSessionStatuses: await buildBoardRowSessionStatuses(board),
+      queueWarnings: wsBridge.getBoardQueueWarnings(id),
+      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
       resolvedSessionDeps: resolveSessionDeps(board),
     });
   });
@@ -1171,6 +1199,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       ...result,
       completedCount: wsBridge.getCompletedBoardCount(id),
       rowSessionStatuses: await buildBoardRowSessionStatuses(result.board),
+      queueWarnings: wsBridge.getBoardQueueWarnings(id),
+      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
       resolvedSessionDeps: resolveSessionDeps(result.board),
     });
   });

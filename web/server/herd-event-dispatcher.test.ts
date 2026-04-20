@@ -77,6 +77,7 @@ function createMocks() {
     getSessionMessages: vi.fn(() => null),
     getBoardRow: vi.fn(() => ({ status: "IMPLEMENTING" })),
     getBoardStallSignature: vi.fn(() => "sig-1"),
+    getBoardDispatchableSignature: vi.fn(() => "dispatchable-sig-1"),
   };
   const launcher: LauncherHandle = {
     getHerdedSessions: vi.fn(() => [{ sessionId: "worker-1" }, { sessionId: "worker-2" }]),
@@ -793,6 +794,64 @@ describe("HerdEventDispatcher", () => {
 
     vi.mocked(bridge.getBoardRow!).mockReturnValue({ status: "IMPLEMENTING" });
     vi.mocked(bridge.getBoardStallSignature!).mockReturnValue(null);
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
+
+    dispatcher.destroy();
+  });
+
+  it("delivers board_dispatchable events with a leader-actionable summary", () => {
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        event: "board_dispatchable",
+        data: {
+          questId: "q-77",
+          title: "Dispatch the queued follow-up",
+          summary: "q-77 can be dispatched now: wait-for resolved (q-76).",
+          action: "Dispatch it now or replace QUEUED with the next active board stage.",
+        },
+      }),
+    );
+
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
+    expect(content).toContain("board_dispatchable");
+    expect(content).toContain("q-77");
+    expect(content).toContain("can be dispatched now");
+    expect(content).toContain("next: Dispatch it now");
+
+    dispatcher.destroy();
+  });
+
+  it("drops queued board_dispatchable events when the row is no longer dispatchable", () => {
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(false);
+    triggerEvent(
+      makeEvent({
+        event: "board_dispatchable",
+        data: {
+          questId: "q-77",
+          title: "Dispatch the queued follow-up",
+          signature: "dispatchable-sig-1",
+          summary: "q-77 can be dispatched now: wait-for resolved (q-76).",
+        },
+      }),
+    );
+
+    vi.mocked(bridge.getBoardRow!).mockReturnValue({ status: "QUEUED" });
+    vi.mocked(bridge.getBoardDispatchableSignature!).mockReturnValue(null);
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
     dispatcher.onOrchestratorTurnEnd("orch-1");
 

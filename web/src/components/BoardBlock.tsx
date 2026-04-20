@@ -3,7 +3,7 @@ import { CollapseFooter } from "./CollapseFooter.js";
 import { useStore } from "../store.js";
 import { BoardTable } from "./BoardTable.js";
 import { ToolBlock } from "./ToolBlock.js";
-import { formatQuestJourneyText } from "../../shared/quest-journey.js";
+import { formatQuestJourneyText, type BoardQueueWarning } from "../../shared/quest-journey.js";
 
 // Re-export for backward compatibility (ToolBlock imports BoardRowData from here)
 export type { BoardRowData } from "./BoardTable.js";
@@ -12,6 +12,7 @@ import type { BoardRowData } from "./BoardTable.js";
 interface BoardBlockProps {
   board: BoardRowData[];
   operation?: string;
+  queueWarnings?: BoardQueueWarning[];
   toolUseId?: string;
   sessionId?: string;
   originalCommand?: string;
@@ -31,6 +32,7 @@ interface BoardBlockProps {
 export const BoardBlock = memo(function BoardBlock({
   board,
   operation,
+  queueWarnings,
   toolUseId,
   sessionId,
   originalCommand,
@@ -134,6 +136,19 @@ export const BoardBlock = memo(function BoardBlock({
 
       {open && (
         <div className="border-t border-cc-border">
+          {queueWarnings && queueWarnings.length > 0 && (
+            <div className="border-b border-cc-border px-3 py-2 bg-amber-500/10">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-amber-300/80">Queue Warnings</div>
+              <div className="mt-1 space-y-1">
+                {queueWarnings.map((warning) => (
+                  <div key={`${warning.questId}:${warning.kind}`} className="text-xs text-amber-100/90">
+                    {warning.summary}
+                    {warning.action ? ` Next: ${warning.action}` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {showOriginalCommand && canShowOriginalCommand && (
             <div className="border-b border-cc-border px-3 py-3 bg-cc-bg/30">
               <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-cc-muted">

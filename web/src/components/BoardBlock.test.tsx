@@ -32,4 +32,26 @@ describe("BoardBlock", () => {
     expect(screen.getByText("-- advanced q-42 to Addressing Skeptic")).toBeInTheDocument();
     expect(screen.queryByText(/SKEPTIC_REVIEWING/)).toBeNull();
   });
+
+  it("renders queue warnings when present", () => {
+    const board: BoardRowData[] = [{ questId: "q-42", title: "Quest", updatedAt: 1 }];
+
+    render(
+      <BoardBlock
+        board={board}
+        queueWarnings={[
+          {
+            questId: "q-42",
+            kind: "dispatchable",
+            summary: "q-42 can be dispatched now: wait-for resolved (q-9).",
+            action: "Dispatch it now.",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Queue Warnings")).toBeInTheDocument();
+    expect(screen.getByText(/q-42 can be dispatched now/i)).toBeInTheDocument();
+    expect(screen.getByText(/Next: Dispatch it now\./i)).toBeInTheDocument();
+  });
 });

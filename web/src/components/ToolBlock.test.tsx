@@ -1912,4 +1912,18 @@ describe("parseBoardFromResult", () => {
     const result = parseBoardFromResult(json);
     expect(result).toEqual({ board, operation: "advanced q-42 to PORTING" });
   });
+
+  it("extracts queue warnings when present", () => {
+    const board = [{ questId: "q-42", title: "Test", updatedAt: 100 }];
+    const queueWarnings = [
+      {
+        questId: "q-42",
+        kind: "dispatchable",
+        summary: "q-42 can be dispatched now: wait-for resolved (q-9).",
+      },
+    ];
+    const json = JSON.stringify({ __takode_board__: true, board, queueWarnings });
+    const result = parseBoardFromResult(json);
+    expect(result).toEqual({ board, operation: undefined, queueWarnings });
+  });
 });

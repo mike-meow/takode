@@ -44,6 +44,8 @@ export interface WsBridgeHandle {
   getBoardRow?(sessionId: string, questId: string): { status?: string } | null;
   /** Current live stall signature for a leader board row, if it is still stalled. */
   getBoardStallSignature?(sessionId: string, questId: string): string | null;
+  /** Current live dispatchable signature for a queued leader board row, if it is still dispatchable. */
+  getBoardDispatchableSignature?(sessionId: string, questId: string): string | null;
 }
 
 export interface LauncherHandle {
@@ -70,6 +72,7 @@ const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "session_archived",
   "session_deleted",
   "board_stalled",
+  "board_dispatchable",
   "notification_needs_input",
 ]);
 
@@ -479,16 +482,20 @@ export class HerdEventDispatcher {
     return this.getPendingEntries(inbox).length;
   }
 
-  /** Drop queued board_stalled events that no longer match the leader's active board. */
+  /** Drop queued board_stalled/board_dispatchable events that no longer match the leader's active board. */
   private pruneStaleBoardStallEntries(orchId: string, inbox: HerdInbox): void {
     if (!this.wsBridge.getBoardRow) return;
     inbox.entries = inbox.entries.filter((entry) => {
-      if (entry.event.event !== "board_stalled") return true;
+      if (entry.event.event !== "board_stalled" && entry.event.event !== "board_dispatchable") return true;
       const current = this.wsBridge.getBoardRow!(orchId, entry.event.data.questId);
       if (!current) return false;
-      if (entry.event.data.stage && current.status !== entry.event.data.stage) return false;
-      if (!this.wsBridge.getBoardStallSignature || !entry.event.data.signature) return true;
-      return this.wsBridge.getBoardStallSignature(orchId, entry.event.data.questId) === entry.event.data.signature;
+      if (entry.event.event === "board_stalled") {
+        if (entry.event.data.stage && current.status !== entry.event.data.stage) return false;
+        if (!this.wsBridge.getBoardStallSignature || !entry.event.data.signature) return true;
+        return this.wsBridge.getBoardStallSignature(orchId, entry.event.data.questId) === entry.event.data.signature;
+      }
+      if (!this.wsBridge.getBoardDispatchableSignature || !entry.event.data.signature) return true;
+      return this.wsBridge.getBoardDispatchableSignature(orchId, entry.event.data.questId) === entry.event.data.signature;
     });
   }
 
@@ -730,6 +737,11 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       const stalledForMins = Math.max(1, Math.round(evt.data.stalledForMs / 60_000));
       const action = typeof evt.data.action === "string" ? ` | next: ${truncate(evt.data.action, 80)}` : "";
       return `${label} | board_stalled | ${quest}${stage} | ${evt.data.reason} | stalled ${stalledForMins}m${action}${ageSuffix}`;
+    }
+    case "board_dispatchable": {
+      const quest = evt.data.title ? `${evt.data.questId} ${truncate(evt.data.title, 40)}` : evt.data.questId;
+      const action = typeof evt.data.action === "string" ? ` | next: ${truncate(evt.data.action, 80)}` : "";
+      return `${label} | board_dispatchable | ${quest} | ${truncate(evt.data.summary, 120)}${action}${ageSuffix}`;
     }
     default:
       return `${label} | ${evt.event}${ageSuffix}`;

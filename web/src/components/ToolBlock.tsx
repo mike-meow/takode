@@ -12,6 +12,7 @@ import { BoardBlock, type BoardRowData } from "./BoardBlock.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
+import type { BoardQueueWarning } from "../../shared/quest-journey.js";
 import {
   openFileWithEditorPreference,
   resolveEmbeddedVsCodePath,
@@ -318,6 +319,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
       <BoardBlock
         board={parsedBoard.board}
         operation={parsedBoard.operation}
+        queueWarnings={parsedBoard.queueWarnings}
         toolUseId={toolUseId}
         sessionId={sessionId ?? undefined}
         originalToolName={name}
@@ -514,6 +516,7 @@ function useBoardData(
 export interface ParsedBoardResult {
   board: BoardRowData[];
   operation?: string;
+  queueWarnings?: BoardQueueWarning[];
 }
 
 export function parseBoardFromResult(resultContent: string | undefined): ParsedBoardResult | null {
@@ -526,6 +529,7 @@ export function parseBoardFromResult(resultContent: string | undefined): ParsedB
       return {
         board: parsed.board,
         operation: typeof parsed.operation === "string" ? parsed.operation : undefined,
+        queueWarnings: Array.isArray(parsed.queueWarnings) ? parsed.queueWarnings : undefined,
       };
     }
   } catch {

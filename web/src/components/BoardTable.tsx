@@ -8,7 +8,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo, type MouseEvent } from "react";
 import { useStore, countUserPermissions } from "../store.js";
 import { navigateToSession } from "../utils/routing.js";
-import { QUEST_JOURNEY_STATES, getQuestJourneyPresentation } from "../../shared/quest-journey.js";
+import { QUEST_JOURNEY_STATES, formatWaitForRefLabel, getQuestJourneyPresentation, getWaitForRefKind } from "../../shared/quest-journey.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
@@ -313,7 +313,7 @@ export function WorkerLink({ sessionId, sessionNum }: { sessionId: string; sessi
 function WaitForRef({ depRef }: { depRef: string }) {
   const sdkSessions = useStore((s) => s.sdkSessions);
 
-  if (depRef.startsWith("#")) {
+  if (getWaitForRefKind(depRef) === "session") {
     const num = parseInt(depRef.slice(1), 10);
     const session = sdkSessions.find((s) => s.sessionNum === num);
     if (session) {
@@ -322,7 +322,10 @@ function WaitForRef({ depRef }: { depRef: string }) {
     // Session not found in store -- render as plain text
     return <span className="font-mono-code text-cc-muted">{depRef}</span>;
   }
-  return <QuestLink questId={depRef} />;
+  if (getWaitForRefKind(depRef) === "quest") {
+    return <QuestLink questId={depRef} />;
+  }
+  return <span className="text-cc-muted">{formatWaitForRefLabel(depRef)}</span>;
 }
 
 function StatusCell({ status }: { status?: string }) {

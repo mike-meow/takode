@@ -891,6 +891,7 @@ export type TakodeEventType =
   | "session_deleted"
   | "user_message"
   | "board_stalled"
+  | "board_dispatchable"
   | "notification_needs_input";
 
 export interface TakodeTurnEndMsgRange {
@@ -1006,6 +1007,15 @@ export interface TakodeBoardStalledEventData {
   action?: string;
 }
 
+export interface TakodeBoardDispatchableEventData {
+  questId: string;
+  title?: string;
+  /** Internal stability key used to drop stale queued dispatchable warnings. */
+  signature?: string;
+  summary: string;
+  action?: string;
+}
+
 export interface TakodeEventDataByType {
   turn_end: TakodeTurnEndEventData;
   turn_start: TakodeTurnStartEventData;
@@ -1020,6 +1030,7 @@ export interface TakodeEventDataByType {
   session_deleted: TakodeSessionLifecycleEventData;
   user_message: TakodeUserMessageEventData;
   board_stalled: TakodeBoardStalledEventData;
+  board_dispatchable: TakodeBoardDispatchableEventData;
   notification_needs_input: TakodeNotificationNeedsInputEventData;
 }
 

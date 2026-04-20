@@ -3663,6 +3663,14 @@ export function Playground() {
             <Card label="Board with items">
               <BoardBlock
                 operation="advanced q-42 to IMPLEMENTING"
+                queueWarnings={[
+                  {
+                    questId: "q-61",
+                    kind: "dispatchable",
+                    summary: "q-61 can be dispatched now: wait-for resolved (q-50, #8).",
+                    action: "Dispatch it now or replace QUEUED with the next active board stage.",
+                  },
+                ]}
                 board={[
                   {
                     questId: "q-42",

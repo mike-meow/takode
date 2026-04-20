@@ -268,6 +268,9 @@ function createMockBridge() {
     updateQuestTaskEntries: vi.fn(),
     removeBoardRowFromAll: vi.fn(),
     getBoard: vi.fn(() => []),
+    getBoardRow: vi.fn(() => null),
+    getBoardQueueWarnings: vi.fn(() => []),
+    getBoardWorkerSlotUsage: vi.fn(() => ({ used: 0, limit: 5 })),
     getCompletedBoard: vi.fn(() => []),
     getCompletedBoardCount: vi.fn(() => 0),
     upsertBoardRow: vi.fn(() => []),
@@ -8120,6 +8123,8 @@ describe("Takode server-authoritative auth", () => {
       { questId: "q-1", worker: "worker-1", workerNum: 11, status: "IMPLEMENTING", createdAt: 1, updatedAt: 1 },
       { questId: "q-2", worker: "worker-2", workerNum: 22, status: "PLANNING", createdAt: 2, updatedAt: 2 },
     ]);
+    bridge.getBoardQueueWarnings.mockReturnValue([]);
+    bridge.getBoardWorkerSlotUsage.mockReturnValue({ used: 2, limit: 5 });
 
     const res = await app.request("/api/sessions/orch-1/board?resolve=true", {
       method: "GET",
@@ -8132,6 +8137,8 @@ describe("Takode server-authoritative auth", () => {
         { questId: "q-1", worker: "worker-1", workerNum: 11, status: "IMPLEMENTING" },
         { questId: "q-2", worker: "worker-2", workerNum: 22, status: "PLANNING" },
       ],
+      queueWarnings: [],
+      workerSlotUsage: { used: 2, limit: 5 },
       rowSessionStatuses: {
         "q-1": {
           worker: { sessionId: "worker-1", sessionNum: 11, status: "running" },
@@ -8142,6 +8149,21 @@ describe("Takode server-authoritative auth", () => {
           reviewer: null,
         },
       },
+    });
+  });
+
+  it("rejects queued board rows without an explicit wait-for reason", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ questId: "q-9", status: "QUEUED" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("Queued rows require an explicit wait-for reason"),
     });
   });
 

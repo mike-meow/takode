@@ -12,11 +12,37 @@ export function isValidQuestId(id: string): boolean {
 }
 
 /** Regex pattern for valid wait-for references: q-NNN (quest) or #NNN (session). */
-export const WAIT_FOR_REF_PATTERN = /^(q-\d+|#\d+)$/i;
+export const FREE_WORKER_WAIT_FOR_TOKEN = "free-worker";
+
+/** Regex pattern for valid wait-for references: q-NNN (quest), #NNN (session), or free-worker. */
+export const WAIT_FOR_REF_PATTERN = /^(q-\d+|#\d+|free-worker)$/i;
 
 /** Returns true if the string is a valid wait-for dependency reference (q-N or #N). */
 export function isValidWaitForRef(ref: string): boolean {
   return WAIT_FOR_REF_PATTERN.test(ref);
+}
+
+export type WaitForRefKind = "quest" | "session" | "free-worker" | "invalid";
+
+/** Classify a wait-for dependency reference for CLI/server/UI handling. */
+export function getWaitForRefKind(ref: string): WaitForRefKind {
+  if (/^q-\d+$/i.test(ref)) return "quest";
+  if (/^#\d+$/i.test(ref)) return "session";
+  if (ref.toLowerCase() === FREE_WORKER_WAIT_FOR_TOKEN) return "free-worker";
+  return "invalid";
+}
+
+/** Human-facing label for a wait-for dependency reference. */
+export function formatWaitForRefLabel(ref: string): string {
+  return getWaitForRefKind(ref) === "free-worker" ? "free worker" : ref;
+}
+
+export interface BoardQueueWarning {
+  questId: string;
+  title?: string;
+  kind: "dispatchable" | "missing_wait_for";
+  summary: string;
+  action?: string;
 }
 
 /**
