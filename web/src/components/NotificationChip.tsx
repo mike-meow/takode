@@ -136,6 +136,7 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
 
 function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const { active, done } = useNotifications(sessionId);
+  const questOverlayId = useStore((s) => s.questOverlayId);
   const [showDone, setShowDone] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const markAllRead = useCallback(() => {
@@ -145,6 +146,7 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
   // Escape to close
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (questOverlayId) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
@@ -152,11 +154,12 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
     };
     document.addEventListener("keydown", handler, { capture: true });
     return () => document.removeEventListener("keydown", handler, { capture: true });
-  }, [onClose]);
+  }, [onClose, questOverlayId]);
 
   // Click-outside to close (mousedown for early dismissal)
   useEffect(() => {
     const handler = (e: globalThis.MouseEvent) => {
+      if (questOverlayId) return;
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -167,7 +170,7 @@ function NotificationPopover({ sessionId, onClose }: { sessionId: string; onClos
       clearTimeout(timer);
       document.removeEventListener("mousedown", handler);
     };
-  }, [onClose]);
+  }, [onClose, questOverlayId]);
 
   return createPortal(
     <div

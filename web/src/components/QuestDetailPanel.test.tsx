@@ -11,6 +11,8 @@ const mockAddQuestFeedback = vi.fn();
 const mockEditQuestFeedback = vi.fn();
 const mockDeleteQuestFeedback = vi.fn();
 const mockGetQuestCommit = vi.fn();
+const mockMarkNotificationDone = vi.fn();
+const mockMarkAllNotificationsDone = vi.fn();
 vi.mock("../api.js", () => ({
   api: {
     questImageUrl: (id: string) => `/api/quests/_images/${id}`,
@@ -24,6 +26,8 @@ vi.mock("../api.js", () => ({
     editQuestFeedback: (...args: unknown[]) => mockEditQuestFeedback(...args),
     deleteQuestFeedback: (...args: unknown[]) => mockDeleteQuestFeedback(...args),
     getQuestCommit: (...args: unknown[]) => mockGetQuestCommit(...args),
+    markNotificationDone: (...args: unknown[]) => mockMarkNotificationDone(...args),
+    markAllNotificationsDone: (...args: unknown[]) => mockMarkAllNotificationsDone(...args),
   },
 }));
 
@@ -32,6 +36,7 @@ const mockNavigateToSession = vi.fn();
 vi.mock("../utils/routing.js", () => ({
   navigateToSession: (...args: unknown[]) => mockNavigateToSession(...args),
   withoutQuestIdInHash: (hash: string) => hash.replace(/[?&]quest=[^&]+/, ""),
+  withQuestIdInHash: (_hash: string, questId: string) => `#/?quest=${questId}`,
 }));
 
 // Mock quest-assign and quest-rework
@@ -43,6 +48,7 @@ vi.mock("./quest-rework.js", () => ({
 }));
 
 import { QuestDetailPanel } from "./QuestDetailPanel.js";
+import { NotificationChip } from "./NotificationChip.js";
 import type { QuestmasterTask, QuestVerificationItem } from "../types.js";
 
 // Minimal quest fixtures for testing
@@ -104,6 +110,8 @@ describe("QuestDetailPanel", () => {
     mockEditQuestFeedback.mockReset();
     mockDeleteQuestFeedback.mockReset();
     mockGetQuestCommit.mockReset();
+    mockMarkNotificationDone.mockReset();
+    mockMarkAllNotificationsDone.mockReset();
     document.body.style.overflow = "";
   });
 
@@ -165,6 +173,124 @@ describe("QuestDetailPanel", () => {
 
     fireEvent.click(screen.getByTestId("quest-detail-panel-close"));
     expect(useStore.getState().questOverlayId).toBeNull();
+  });
+
+  it("keeps the notifications popover open after closing the quest modal from its close button", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({
+      quests: [quest],
+      questOverlayId: null,
+      sessionNotifications: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "notif-1",
+              category: "review",
+              summary: "q-42 ready for review",
+              timestamp: Date.now(),
+              messageId: "msg-1",
+              done: false,
+            },
+          ],
+        ],
+      ]),
+    });
+
+    render(
+      <>
+        <NotificationChip sessionId="s1" />
+        <QuestDetailPanel />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("quest-detail-panel-close"));
+
+    expect(useStore.getState().questOverlayId).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Notification inbox" })).toBeTruthy();
+  });
+
+  it("keeps the notifications popover open after closing the quest modal from the backdrop", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({
+      quests: [quest],
+      questOverlayId: null,
+      sessionNotifications: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "notif-1",
+              category: "review",
+              summary: "q-42 ready for review",
+              timestamp: Date.now(),
+              messageId: "msg-1",
+              done: false,
+            },
+          ],
+        ],
+      ]),
+    });
+
+    render(
+      <>
+        <NotificationChip sessionId="s1" />
+        <QuestDetailPanel />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
+
+    fireEvent.mouseDown(screen.getByTestId("quest-detail-panel-backdrop"));
+    fireEvent.click(screen.getByTestId("quest-detail-panel-backdrop"));
+
+    expect(useStore.getState().questOverlayId).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Notification inbox" })).toBeTruthy();
+  });
+
+  it("keeps the notifications popover open after closing the quest modal with Escape", () => {
+    const quest = makeVerificationQuest();
+    useStore.setState({
+      quests: [quest],
+      questOverlayId: null,
+      sessionNotifications: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "notif-1",
+              category: "review",
+              summary: "q-42 ready for review",
+              timestamp: Date.now(),
+              messageId: "msg-1",
+              done: false,
+            },
+          ],
+        ],
+      ]),
+    });
+
+    render(
+      <>
+        <NotificationChip sessionId="s1" />
+        <QuestDetailPanel />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /1 notification/i }));
+    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(useStore.getState().questOverlayId).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Notification inbox" })).toBeTruthy();
   });
 
   it("shows description rendered as markdown", () => {
