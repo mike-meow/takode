@@ -1,5 +1,11 @@
 import type { BrowserIncomingMessage, ContentBlock, ChatMessage } from "../types.js";
 
+interface NormalizeHistoryMessageOptions {
+  includeSuccessfulResult?: boolean;
+  resultRole?: ChatMessage["role"];
+  fallbackTimestamp?: number;
+}
+
 export function extractTextFromBlocks(blocks: ContentBlock[]): string {
   return blocks
     .map((block) => {
@@ -14,7 +20,14 @@ export function extractTextFromBlocks(blocks: ContentBlock[]): string {
 export function normalizeHistoryMessageToChatMessages(
   histMsg: BrowserIncomingMessage,
   historyIndex: number,
+  options: NormalizeHistoryMessageOptions = {},
 ): ChatMessage[] {
+  const {
+    includeSuccessfulResult = false,
+    resultRole = "assistant",
+    fallbackTimestamp,
+  } = options;
+
   if (histMsg.type === "user_message") {
     return [
       {
@@ -105,7 +118,18 @@ export function normalizeHistoryMessageToChatMessages(
 
   if (histMsg.type === "result") {
     const result = histMsg.data as { is_error?: boolean; errors?: string[]; result?: string };
-    if (!result.is_error || histMsg.interrupted) return [];
+    if (!result.is_error) {
+      if (!includeSuccessfulResult || histMsg.interrupted || !result.result) return [];
+      return [
+        {
+          id: `hist-result-${historyIndex}`,
+          role: resultRole,
+          content: result.result,
+          timestamp: fallbackTimestamp ?? Date.now(),
+        },
+      ];
+    }
+    if (histMsg.interrupted) return [];
     const errorText = result.errors?.length ? result.errors.join(", ") : result.result || "An error occurred";
     return [
       {

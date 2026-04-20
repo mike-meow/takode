@@ -3,6 +3,49 @@ import type { BrowserIncomingMessage } from "../types.js";
 import { normalizeHistoryMessageToChatMessages } from "./history-message-normalization.js";
 
 describe("normalizeHistoryMessageToChatMessages", () => {
+  it("can expose successful result messages for preview-only callers", () => {
+    // Preview callers opt into this path so hover cards can show successful
+    // `result` text while the main session feed still omits non-error results.
+    const now = vi.spyOn(Date, "now").mockReturnValue(123456);
+    const message: BrowserIncomingMessage = {
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "Linked result body",
+        duration_ms: 10,
+        duration_api_ms: 5,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: null,
+        usage: {
+          input_tokens: 1,
+          output_tokens: 2,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "result-1",
+        session_id: "session-1",
+      },
+    };
+
+    const normalized = normalizeHistoryMessageToChatMessages(message, 9, {
+      includeSuccessfulResult: true,
+      fallbackTimestamp: 999,
+    });
+
+    expect(normalized).toEqual([
+      {
+        id: "hist-result-9",
+        role: "assistant",
+        content: "Linked result body",
+        timestamp: 999,
+      },
+    ]);
+    now.mockRestore();
+  });
+
   it("preserves approved variant metadata for permission_approved messages", () => {
     const message: BrowserIncomingMessage = {
       type: "permission_approved",

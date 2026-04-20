@@ -1335,7 +1335,10 @@ export const api = {
       }>(`/takode/sessions/${encodeURIComponent(sessionId)}/messages/${messageIndex}?limit=1000`);
 
       if (data.rawMessage) {
-        const normalized = normalizeHistoryMessageToChatMessages(data.rawMessage, messageIndex);
+        const normalized = normalizeHistoryMessageToChatMessages(data.rawMessage, messageIndex, {
+          includeSuccessfulResult: true,
+          fallbackTimestamp: data.ts,
+        });
         return normalized[0] ?? null;
       }
 

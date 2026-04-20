@@ -337,6 +337,39 @@ describe("MarkdownContent quest links", () => {
     expect(mockFetchMessagePreview).toHaveBeenCalledWith("session-abc", 42);
   });
 
+  it("shows successful result message content in a dedicated hover preview for session:N:M links", async () => {
+    // Guards the q-468 regression: message-link hovers must render successful
+    // `result` history entries instead of falling back to "Message unavailable."
+    mockFetchMessagePreview.mockResolvedValue({
+      id: "hover-session-abc-337",
+      role: "assistant",
+      content: "All 4 datasets now active.",
+      timestamp: 1000,
+    });
+
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+      sessionNames: new Map([["session-abc", "Leader 12"]]),
+    }));
+
+    render(<MarkdownContent text="[#123 msg 337](session:123:337)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "#123 msg 337" }));
+
+    expect(await screen.findByTestId("message-link-hover-card")).toBeTruthy();
+    expect(await screen.findByText("All 4 datasets now active.", { exact: false })).toBeTruthy();
+    expect(screen.queryByText("Message unavailable.")).toBeNull();
+    expect(mockFetchMessagePreview).toHaveBeenCalledWith("session-abc", 337);
+  });
+
   it("renders non-assistant message-link previews with their chat variants intact", async () => {
     mockFetchMessagePreview.mockResolvedValue({
       id: "hover-session-abc-7",
