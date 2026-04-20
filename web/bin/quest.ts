@@ -734,14 +734,20 @@ async function cmdClaim(): Promise<void> {
 }
 
 async function cmdComplete(): Promise<void> {
-  validateFlags(["items", "commit", "commits", "json"]);
+  validateFlags(["items", "commit", "commits", "no-code", "json"]);
   const id = positional(0);
   if (!id) {
-    die('Usage: quest complete <questId> [--items "check1,check2"] [--commit <sha>] [--commits "sha1,sha2"]');
+    die(
+      'Usage: quest complete <questId> [--items "check1,check2"] [--no-code] [--commit <sha>] [--commits "sha1,sha2"]',
+    );
   }
 
   const itemsStr = option("items");
   const commitShas = parseCommitShasFromFlags();
+  const noCode = flag("no-code");
+  if (noCode && commitShas.length > 0) {
+    die("--no-code cannot be combined with --commit/--commits");
+  }
   let items: { text: string; checked: boolean }[] = [];
   if (itemsStr) {
     items = itemsStr
@@ -778,9 +784,7 @@ async function cmdComplete(): Promise<void> {
         out(quest);
       } else {
         console.log(`Completed ${quest.questId} "${quest.title}" with ${items.length} verification items`);
-        console.log(
-          `Reminder: keep one substantive quest summary comment up to date with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready. Use \`--commit/--commits\` structured metadata for routine port info; only add a second prose port comment when the port was exceptional.`,
-        );
+        console.log(formatCompletionReminder(quest.questId, { noCode }));
       }
       return;
     } catch (e) {
@@ -801,13 +805,27 @@ async function cmdComplete(): Promise<void> {
       out(quest);
     } else {
       console.log(`Completed ${quest.questId} "${quest.title}" with ${items.length} verification items`);
-      console.log(
-        `Reminder: keep one substantive quest summary comment up to date with \`quest feedback ${quest.questId} --text "Summary: <what was done>"\` before reporting that the quest is ready. Use \`--commit/--commits\` structured metadata for routine port info; only add a second prose port comment when the port was exceptional.`,
-      );
+      console.log(formatCompletionReminder(quest.questId, { noCode }));
     }
   } catch (e) {
     die((e as Error).message);
   }
+}
+
+function formatCompletionReminder(questId: string, options: { noCode: boolean }): string {
+  const summaryLine =
+    `Reminder: keep one substantive quest summary comment up to date with ` +
+    `\`quest feedback ${questId} --text "Summary: <what was done>"\` before reporting that the quest is ready.`;
+  if (options.noCode) {
+    return (
+      summaryLine +
+      " You used `--no-code` for this local CLI handoff, so do not add port commentary or synced SHA placeholders."
+    );
+  }
+  return (
+    summaryLine +
+    " Use `--commit/--commits` structured metadata for routine port info; only add a second prose port comment when the port was exceptional."
+  );
 }
 
 async function cmdDone(): Promise<void> {

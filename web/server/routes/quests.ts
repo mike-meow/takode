@@ -7,6 +7,7 @@ import type { RouteContext } from "./context.js";
 
 const DIFF_MAX_BUFFER = 10 * 1024 * 1024;
 const MAX_DIFF_BYTES = 512 * 1024;
+const SUMMARY_FEEDBACK_PREFIXES = ["summary:", "refreshed summary:"];
 
 function normalizeRequestedCommitSha(value: string): string | null {
   const sha = value.trim().toLowerCase();
@@ -25,6 +26,20 @@ function parseNumstatTotals(output: string): { additions: number; deletions: num
   }
 
   return { additions, deletions };
+}
+
+function isAgentSummaryFeedback(text: string): boolean {
+  const normalized = text.trimStart().toLowerCase();
+  return SUMMARY_FEEDBACK_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+function findLatestAgentSummaryFeedbackIndex(entries: QuestFeedbackEntry[]): number {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.author !== "agent") continue;
+    if (isAgentSummaryFeedback(entry.text)) return index;
+  }
+  return -1;
 }
 
 function questRepoCandidates(quest: QuestmasterTask, launcher: RouteContext["launcher"]): string[] {
@@ -465,8 +480,26 @@ export function createQuestRoutes(ctx: RouteContext) {
           : [];
       const entry: import("../quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
       if (authorSessionId) entry.authorSessionId = authorSessionId;
+      const hasImagesField = body.images !== undefined;
       if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
-      const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: [...existing, entry] });
+
+      let nextFeedback = [...existing, entry];
+      if (author === "agent" && isAgentSummaryFeedback(entry.text)) {
+        const summaryIndex = findLatestAgentSummaryFeedbackIndex(existing);
+        if (summaryIndex !== -1) {
+          nextFeedback = [...existing];
+          const previousEntry = nextFeedback[summaryIndex]!;
+          nextFeedback[summaryIndex] = {
+            ...previousEntry,
+            text: entry.text,
+            ts: entry.ts,
+            ...(authorSessionId ? { authorSessionId } : {}),
+            ...(hasImagesField ? { images: entry.images } : {}),
+          };
+        }
+      }
+
+      const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: nextFeedback });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       broadcastQuestUpdate(wsBridge);
       return c.json(quest);

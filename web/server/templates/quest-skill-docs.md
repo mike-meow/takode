@@ -42,7 +42,7 @@ quest history <id> [--json]                                   Show version histo
 quest tags   [--json]                                         List all existing tags with counts
 quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
-quest complete <id> --items "c1,c2" [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
+quest complete <id> --items "c1,c2" [--no-code] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
 quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
 quest transition <id> --status <s> [--desc "..."] [--json]    Change status
 quest later  <id> [--json]                                    Move quest out of Verification Inbox
@@ -135,6 +135,7 @@ quest feedback q-12 --text "$msg"
 | Flag | Description |
 |------|-------------|
 | `--items "i1,i2"` | Comma-separated verification checklist items (REQUIRED) |
+| `--no-code` | Local CLI reminder switch for zero-code / artifact-only handoffs; it suppresses port-noise reminders but does not persist quest metadata |
 | `--commit <sha>` | Attach one synced commit SHA (repeatable) |
 | `--commits "s1,s2"` | Attach multiple synced commit SHAs in order |
 | `--json` | Output JSON |
@@ -284,6 +285,7 @@ idea → refined → in_progress → needs_verification → done
 - Is the implementation actually complete?
 - Run tests, typecheck, linting yourself first.
 - **Worktree sessions:** If you made the change in a git worktree, finish the full sync-to-main workflow first (rebase/cherry-pick/push/reset/post-reset verification) before running `quest complete` or describing the work as ready for verification.
+- **If the quest produced zero code changes** (investigation, reporting, design artifact, or similar), complete it with artifact-focused verification items and no placeholder port notes or synced SHA lines. If you are using the CLI locally and want the completion reminder to omit port noise, pass `quest complete ... --no-code`; that flag is only a local reminder switch and does not persist quest metadata.
 - **If the work was ported/synced:** attach the ordered synced SHAs during the verification handoff with `quest complete q-N --items "..." --commits "sha1,sha2"`. Use the merged/cherry-picked SHAs from the main repo, not the pre-port worktree-only SHAs.
 - **If a leader controls the handoff:** report the ordered synced SHAs explicitly on a dedicated `Synced SHAs: sha1,sha2` line so the later `quest complete` call can attach them. Do not rely on log parsing or memory.
 - **Do not leave commit info only in comments:** summary comments and quest feedback can describe the port, but the verification handoff must still attach those SHAs as structured commit metadata with `--commit`/`--commits`.
@@ -300,6 +302,7 @@ idea → refined → in_progress → needs_verification → done
    - `quest feedback q-N --text "Summary: <what was done>"`
    - Briefly describe the changes made and why
    - This should be the one substantive quest-level prose summary by default
+   - Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`) updates the latest agent summary comment instead of appending another near-duplicate summary entry
    - If the work was ported normally, rely on structured metadata (`commitShas` via `quest complete ... --commit/--commits ...`) for routine port information instead of adding a second long prose port comment
    - Only add a second port-specific comment when the porting itself was exceptional and materially worth noting
    - The goal: someone reading only the quest (not the session conversation) should understand what happened

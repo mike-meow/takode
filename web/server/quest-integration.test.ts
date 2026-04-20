@@ -87,7 +87,11 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("Do not rely on log parsing or memory");
     expect(skill).toContain("Do not leave commit info only in comments");
     expect(skill).toContain("one substantive quest-level prose summary");
+    expect(skill).toContain("Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`)");
     expect(skill).toContain("Only add a second port-specific comment");
+    expect(skill).toContain("pass `quest complete ... --no-code`");
+    expect(skill).toContain("only a local reminder switch");
+    expect(skill).toContain("no placeholder port notes or synced SHA lines");
   });
 
   it("instructs agents to use quest directly before PATH fallbacks", async () => {

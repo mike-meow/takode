@@ -595,13 +595,14 @@ Every dispatched task follows the **Quest Journey** lifecycle. The work board (\
 **Board advances only after completed actions.** Do not advance anticipating what will happen next.
 
 **Fresh human feedback resets the active cycle.** If new human feedback lands while a quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid stage for the fresh cycle and do not let stale old-scope completions advance the quest.
+**Zero-code quests do not need port noise.** Skeptic review still applies, but if the accepted result truly produced zero code changes, finish it without \`/port-changes\`, synced SHA placeholders, or fake port-summary comments. If you use \`quest complete ... --no-code\`, treat it only as a local CLI reminder switch, not durable quest metadata.
 
 **Make every worker instruction stage-explicit.**
 - Initial dispatch authorizes **planning only**. Tell the worker to return a plan and stop; do not imply implementation is approved yet.
 - After plan approval, tell the worker to **implement, update the quest summary comment, and stop when done**. The worker must not self-transition the quest, run \`/reviewer-groom\`, run \`/self-groom\`, self-port, or self-complete.
 - During review/rework, tell the worker exactly what to do **for this stage only**. For example: address reviewer-groom findings, update the quest summary comment, and stop. Do **not** tell the worker to port yet.
 - Only after reviewer ACCEPT should you send an explicit **port now** instruction. Never assume the worker will self-port because review is complete.
-- For investigation, design, or other no-code quests, explicitly tell the worker what artifact to produce and to stop afterward. Do not assume the worker should self-complete, self-transition, or self-port.
+- For investigation, design, or other no-code quests, explicitly tell the worker what artifact to produce and to stop afterward. Do not assume the worker should self-complete, self-transition, or self-port. If the accepted result has zero code changes, complete it without porting or synced-SHA commentary; \`--no-code\` only affects the local CLI reminder text.
 
 Read \`quest-journey.md\` from the \`takode-orchestration\` skill for full stage transition details, rules, dispatch templates, and skeptic review workflow.
 

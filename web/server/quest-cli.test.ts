@@ -722,6 +722,77 @@ describe("quest CLI completion reminder", () => {
     }
   });
 
+  it("prints the no-code completion reminder only when --no-code is set", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-no-code-http-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const seenBodies: JsonObject[] = [];
+
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/complete") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "needs_verification",
+            verificationItems: [{ text: "Review artifact", checked: false }],
+          }),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items", "Review artifact", "--no-code"],
+        {
+          ...process.env,
+          COMPANION_PORT: String(port),
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        verificationItems: [{ text: "Review artifact", checked: false }],
+      });
+      expect(result.stdout).toContain("You used `--no-code` for this local CLI handoff");
+      expect(result.stdout).not.toContain("Use `--commit/--commits` structured metadata for routine port info");
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects combining --no-code with commit metadata", async () => {
+    const result = await runQuest(["complete", "q-1", "--items", "Review artifact", "--no-code", "--commit", "abc1234"], {
+      ...process.env,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("--no-code cannot be combined with --commit/--commits");
+  });
+
   it("forwards explicit commit SHAs during HTTP completion", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "quest-complete-commits-http-"));
     const authDir = getSessionAuthDir(tmp);

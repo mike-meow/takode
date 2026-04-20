@@ -7029,6 +7029,139 @@ describe("POST /api/quests/:questId/feedback", () => {
       text: "Addressed",
     });
   });
+
+  it("upserts the latest agent summary comment instead of appending a near-duplicate summary entry", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "session-1",
+      state: "running",
+      cwd: "/test",
+      archived: false,
+    });
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 2000, addressed: false },
+        { author: "agent", text: "Addressed: tightened spacing", ts: Date.now() - 1500, authorSessionId: "session-1" },
+        { author: "agent", text: "Summary: initial summary", ts: Date.now() - 1000, authorSessionId: "session-1" },
+      ],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 2000, addressed: false },
+        { author: "agent", text: "Addressed: tightened spacing", ts: Date.now() - 1500, authorSessionId: "session-1" },
+        { author: "agent", text: "Summary: revised summary", ts: Date.now(), authorSessionId: "session-1" },
+      ],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Summary: revised summary", author: "agent", sessionId: "session-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchSpy).toHaveBeenCalledWith(
+      "q-1",
+      expect.objectContaining({
+        feedback: [
+          expect.objectContaining({ author: "human", text: "Please verify spacing" }),
+          expect.objectContaining({ author: "agent", text: "Addressed: tightened spacing" }),
+          expect.objectContaining({
+            author: "agent",
+            authorSessionId: "session-1",
+            text: "Summary: revised summary",
+          }),
+        ],
+      }),
+    );
+    const feedback = (patchSpy.mock.calls[0]?.[1] as { feedback: Array<{ text: string }> }).feedback;
+    expect(feedback).toHaveLength(3);
+  });
+
+  it("upserts the latest refreshed summary comment instead of appending a duplicate refreshed summary entry", async () => {
+    launcher.getSession.mockReturnValue({
+      sessionId: "session-1",
+      state: "running",
+      cwd: "/test",
+      archived: false,
+    });
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 2000, addressed: false },
+        {
+          author: "agent",
+          text: "Refreshed summary: initial refreshed summary",
+          ts: Date.now() - 1000,
+          authorSessionId: "session-1",
+        },
+      ],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "needs_verification",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [
+        { author: "human", text: "Please verify spacing", ts: Date.now() - 2000, addressed: false },
+        {
+          author: "agent",
+          text: "Refreshed summary: updated refreshed summary",
+          ts: Date.now(),
+          authorSessionId: "session-1",
+        },
+      ],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "Refreshed summary: updated refreshed summary",
+        author: "agent",
+        sessionId: "session-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const feedback = (patchSpy.mock.calls[0]?.[1] as { feedback: Array<{ text: string }> }).feedback;
+    expect(feedback).toHaveLength(2);
+    expect(feedback[1]?.text).toBe("Refreshed summary: updated refreshed summary");
+  });
 });
 
 describe("PATCH /api/quests/:questId/feedback/:index", () => {

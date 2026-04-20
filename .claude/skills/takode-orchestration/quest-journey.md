@@ -17,7 +17,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 
 **Update the board immediately.** When a herd event arrives that changes quest state (turn_end, permission_request, etc.), update the board as your FIRST action -- before reviewing content, reading messages, or composing responses. The board must always reflect real-time state.
 
-**Mandatory stages:** Skeptic review and groom review are mandatory for ALL quests with code changes -- no exceptions for "small" or "trivial" changes. The default groom path is reviewer-owned via `/reviewer-groom`. `/self-groom` is an escalation path, not the default. Investigation or other no-code quests may skip reviewer-groom only when they truly produce zero code changes.
+**Mandatory stages:** Skeptic review and groom review are mandatory for ALL quests with code changes -- no exceptions for "small" or "trivial" changes. The default groom path is reviewer-owned via `/reviewer-groom`. `/self-groom` is an escalation path, not the default. Investigation or other no-code quests may skip reviewer-groom only when they truly produce zero code changes, but they still need a clear explicit completion path and must not grow fake port noise.
 
 ## Stage-Explicit Worker Steering
 
@@ -28,6 +28,7 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 - **Review/rework = do the named work, refresh that same summary comment, and stop.** If you send reviewer findings, also tell the worker to refresh the quest summary comment before reporting back and waiting. Do not imply porting is authorized.
 - **Porting requires an explicit instruction.** Only tell the worker to run `/port-changes` after the reviewer ACCEPTs and you are ready for porting.
 - **Investigation/design/no-code quests still need explicit boundaries.** Tell the worker what artifact to produce, have them stop afterward, and choose the next step yourself. Do not assume the worker should self-complete, self-transition, or self-port.
+- **Zero-code quests complete without porting.** If the accepted result is an investigation/report/design artifact with zero code changes, complete it directly with artifact-focused verification items. Do not invent synced SHA lines or port-summary comments. If you use `quest complete ... --no-code`, treat it only as a local CLI reminder switch, not durable quest metadata.
 
 ## Refine (before QUEUED)
 
@@ -121,7 +122,7 @@ The `--reviewer` flag automatically:
 ## PORTING -> (removed)
 
 - Tell the worker to run `/port-changes` only when you are explicitly ready for porting. Do not assume they will self-port once review is done.
-- For investigation, design, or other no-code quests, give an explicit next-step instruction after the worker reports back. Do not ask them to self-complete or move the quest forward on their own.
+- Zero-code quests do not enter `PORTING`. After the accepted artifact is ready, complete them directly with verification items about the artifact/result and without `/port-changes`, synced SHAs, or port-summary noise. If you pass `--no-code`, use it only to suppress the local CLI's port reminder noise.
 - Wait for the worker to confirm sync is complete (commits landed, tests passed, pushed to remote) **and include the ordered synced SHAs from the main repo as a dedicated `Synced SHAs: sha1,sha2` line**
 - Only after port is confirmed: transition the quest to `needs_verification` and attach those SHAs explicitly with `quest complete q-N --items "..." --commits "sha1,sha2"`. Structured commit metadata should carry routine port information; add a second prose port comment only when something exceptional about the port is materially worth noting.
 - `takode board advance <quest-id>` -- this removes the row from the board
