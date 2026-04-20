@@ -182,6 +182,7 @@ import * as gitUtils from "./git-utils.js";
 import * as questStore from "./quest-store.js";
 import * as sessionNames from "./session-names.js";
 import * as settingsManager from "./settings-manager.js";
+import * as transcriptionEnhancer from "./transcription-enhancer.js";
 import { containerManager } from "./container-manager.js";
 
 // ─── Mock factories ──────────────────────────────────────────────────────────
@@ -2872,6 +2873,61 @@ describe("POST /api/transcribe", () => {
     expect(uploadedFile).toBeInstanceOf(File);
     expect((uploadedFile as File).type).toBe("audio/mp4");
     expect((uploadedFile as File).name).toBe("recording.mp4");
+  });
+
+  it("records pre-stream upload time separately from STT timing", async () => {
+    vi.mocked(settingsManager.getSettings).mockReturnValue({
+      serverName: "",
+      serverId: "",
+      pushoverUserKey: "",
+      pushoverApiToken: "",
+      pushoverDelaySeconds: 30,
+      pushoverEnabled: true,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
+      autoApprovalEnabled: false,
+      autoApprovalModel: "haiku",
+      autoApprovalMaxConcurrency: 4,
+      autoApprovalTimeoutSeconds: 45,
+      namerConfig: { backend: "claude" },
+      autoNamerEnabled: true,
+      transcriptionConfig: {
+        apiKey: "transcription-secret",
+        baseUrl: "https://api.openai.com/v1",
+        enhancementEnabled: false,
+        enhancementModel: "gpt-5-mini",
+      },
+      editorConfig: { editor: "none" },
+      defaultClaudeBackend: "claude",
+      sleepInhibitorEnabled: false,
+      sleepInhibitorDurationMinutes: 5,
+      updatedAt: 123,
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "timed transcript" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const form = new FormData();
+    form.append("audio", new File([new Uint8Array([0x52, 0x49, 0x46, 0x46])], "recording.wav", { type: "audio/wav" }));
+    form.append("backend", "openai");
+
+    const res = await app.request("/api/transcribe", { method: "POST", body: form });
+
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(transcriptionEnhancer.getTranscriptionLogIndex()[0]).toEqual(
+      expect.objectContaining({
+        uploadDurationMs: expect.any(Number),
+        sttDurationMs: expect.any(Number),
+        rawTranscript: "timed transcript",
+      }),
+    );
   });
 
   it("supports voice-edit mode by transcribing the instruction then applying it to the current draft", async () => {

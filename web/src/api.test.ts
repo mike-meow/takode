@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { api, getTranscriptionRequestTimeoutMs, resolveAudioUploadFilename } from "./api.js";
+import type { VoiceTranscriptionResult } from "./api.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -350,6 +351,49 @@ describe("transcribe", () => {
     }
   });
 
+  it("surfaces uploading before the SSE response opens, then switches to transcribing", async () => {
+    // q-485: mobile upload time happens before the server can open the SSE
+    // stream, so the client must expose that pre-response window separately
+    // instead of labeling the whole wait as "Transcribing...".
+    const encoder = new TextEncoder();
+    let resolveResponse: ((value: Response | PromiseLike<Response>) => void) | undefined;
+    mockFetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+
+    const onPhase = vi.fn();
+    const pending = api.transcribe(new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" }), { onPhase });
+
+    expect(onPhase.mock.calls).toEqual([["uploading"]]);
+
+    if (!resolveResponse) throw new Error("transcription response resolver was not initialized");
+    resolveResponse(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `event: result\ndata: ${JSON.stringify({
+                  text: "hello",
+                  backend: "openai",
+                  enhanced: false,
+                } satisfies VoiceTranscriptionResult)}\n\n`,
+              ),
+            );
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+
+    await pending;
+    expect(onPhase.mock.calls).toEqual([["uploading"], ["transcribing"]]);
+  });
+
   it("uploads short audio and parses the SSE transcription result", async () => {
     // Keep the normal short-dictation path working: the client should still
     // POST multipart audio, surface phase changes, and return the final result.
@@ -385,7 +429,7 @@ describe("transcribe", () => {
       onPhase,
     });
 
-    expect(onPhase).toHaveBeenCalledWith("editing");
+    expect(onPhase.mock.calls).toEqual([["uploading"], ["transcribing"], ["editing"]]);
     expect(result).toEqual({
       text: "- first\n- second",
       rawText: "turn this into bullets",

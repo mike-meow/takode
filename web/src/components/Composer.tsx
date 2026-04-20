@@ -513,7 +513,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     cursorContext: { before: string; after: string },
   ) {
     setIsTranscribing(true);
-    setTranscriptionPhase("transcribing");
+    setTranscriptionPhase("uploading");
     try {
       if (mode === "edit") {
         const {
@@ -1917,13 +1917,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
     (isPreparing
       ? "Preparing microphone..."
       : isTranscribing
-        ? transcriptionPhase === "editing"
-          ? "Editing..."
-          : transcriptionPhase === "appending"
-            ? "Appending..."
-            : transcriptionPhase === "enhancing"
-              ? "Enhancing..."
-              : "Transcribing..."
+        ? transcriptionPhase === "uploading"
+          ? "Uploading..."
+          : transcriptionPhase === "editing"
+            ? "Editing..."
+            : transcriptionPhase === "appending"
+              ? "Appending..."
+              : transcriptionPhase === "enhancing"
+                ? "Enhancing..."
+                : "Transcribing..."
         : isRecording
           ? "Stop recording"
           : voiceEditProposal
@@ -2362,7 +2364,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
               <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
                 <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
                 <span>
-                  {transcriptionPhase === "editing"
+                  {transcriptionPhase === "uploading"
+                    ? "Uploading..."
+                    : transcriptionPhase === "editing"
                     ? "Editing..."
                     : transcriptionPhase === "appending"
                       ? "Appending..."

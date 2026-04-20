@@ -110,7 +110,9 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
   });
 
   api.post("/transcribe", async (c) => {
+    const requestStart = Date.now();
     const body = await c.req.parseBody();
+    const uploadDurationMs = Date.now() - requestStart;
     const audioFile = body["audio"];
     if (!audioFile || typeof audioFile === "string") {
       return c.json({ error: "audio field is required (multipart)" }, 400);
@@ -155,7 +157,8 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     const buf = Buffer.from(await audioFile.arrayBuffer());
     const uploadFormat = resolveAudioUploadFormat(buf, audioFile.type, audioFile.name);
 
-    // Stream SSE events so the client can show phase transitions (Transcribing → Enhancing)
+    // Multipart upload + parse must finish before we can open the SSE stream, so
+    // the client treats this pre-response window as a distinct "uploading" phase.
     return streamSSE(c, async (stream: SSEStreamingApi) => {
       try {
         let rawText: string;
@@ -269,6 +272,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           addTranscriptionLogEntry({
             sessionId: sessionId ?? null,
             mode,
+            uploadDurationMs,
             sttModel,
             sttDurationMs,
             sttPrompt,
@@ -321,6 +325,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           addTranscriptionLogEntry({
             sessionId: sessionId ?? null,
             mode,
+            uploadDurationMs,
             sttModel,
             sttDurationMs,
             sttPrompt,
@@ -368,6 +373,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           addTranscriptionLogEntry({
             sessionId: sessionId!,
             mode,
+            uploadDurationMs,
             sttModel,
             sttDurationMs,
             sttPrompt,
@@ -402,6 +408,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         addTranscriptionLogEntry({
           sessionId: sessionId ?? null,
           mode,
+          uploadDurationMs,
           sttModel,
           sttDurationMs,
           sttPrompt,

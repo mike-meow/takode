@@ -1051,6 +1051,8 @@ export interface TranscriptionLogEntry {
   timestamp: number;
   sessionId: string | null;
   mode?: "dictation" | "edit" | "append";
+  /** Browser upload + server multipart parse time before the SSE response opens. */
+  uploadDurationMs: number;
   /** STT phase */
   sttModel: string;
   sttDurationMs: number;

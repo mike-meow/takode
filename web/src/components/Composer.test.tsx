@@ -4,6 +4,7 @@ import { Profiler } from "react";
 import { render, screen, fireEvent, createEvent, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionState } from "../../server/session-types.js";
+import type { VoiceTranscriptionResult } from "../api.js";
 import type { ChatMessage, QuestmasterTask, SdkSessionInfo } from "../types.js";
 
 // Polyfill scrollIntoView for jsdom
@@ -715,6 +716,31 @@ describe("Composer voice edit mode", () => {
     });
     const options = mockTranscribe.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(options?.composerText).toBeUndefined();
+  });
+
+  it("shows an uploading state before the transcription stream switches to STT", async () => {
+    // q-485: keep the pre-response wait visible as an upload step instead of
+    // immediately claiming transcription is already in progress.
+    let resolveTranscription: ((value: VoiceTranscriptionResult) => void) | undefined;
+    mockTranscribe.mockImplementationOnce(
+      () =>
+        new Promise<VoiceTranscriptionResult>((resolve) => {
+          resolveTranscription = resolve;
+        }),
+    );
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uploading...")).toBeTruthy();
+    });
+
+    if (!resolveTranscription) throw new Error("mock transcription resolver was not initialized");
+    resolveTranscription({ mode: "dictation", text: "done", backend: "openai", enhanced: false });
+    await waitFor(() => {
+      expect(screen.queryByText("Uploading...")).toBeNull();
+    });
   });
 
   it("uses voice edit mode for non-empty drafts and makes the edit explicit and reversible", async () => {

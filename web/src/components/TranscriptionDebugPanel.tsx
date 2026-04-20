@@ -143,6 +143,7 @@ export function TranscriptionDebugPanel() {
                     className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-cc-hover transition-colors cursor-pointer ${expandedId === entry.id ? "bg-cc-hover" : ""}`}
                   >
                     <span className="text-cc-muted shrink-0 w-16">{timeAgo(entry.timestamp)}</span>
+                    <span className="text-cc-muted shrink-0">Up {formatDuration(entry.uploadDurationMs)}</span>
                     <span className="text-cc-fg shrink-0 font-mono text-[10px]">{entry.sttModel}</span>
                     <span className="text-cc-muted shrink-0">{formatDuration(entry.sttDurationMs)}</span>
                     <span className={`flex-1 truncate ${enhancementColor(entry)}`}>{enhancementLabel(entry)}</span>
@@ -193,7 +194,8 @@ export function TranscriptionDebugPanel() {
                         {enhancementLabel(selectedIndexEntry)}
                       </span>
                       <span className="text-xs text-cc-muted">
-                        {timeAgo(selectedIndexEntry.timestamp)} &middot; STT{" "}
+                        {timeAgo(selectedIndexEntry.timestamp)} &middot; Up{" "}
+                        {formatDuration(selectedIndexEntry.uploadDurationMs)} &middot; STT{" "}
                         {formatDuration(selectedIndexEntry.sttDurationMs)}
                         {selectedIndexEntry.enhancement && !selectedIndexEntry.enhancement.skipReason
                           ? ` &middot; Enh ${formatDuration(selectedIndexEntry.enhancement.durationMs)}`
@@ -223,9 +225,12 @@ export function TranscriptionDebugPanel() {
                   <>
                     {/* STT info */}
                     <div className="text-xs text-cc-muted">
-                      STT Model: <span className="text-cc-fg font-medium font-mono">{expandedEntry.sttModel}</span>
+                      Upload: <span className="text-cc-fg">{formatDuration(expandedEntry.uploadDurationMs)}</span>
                       <span className="ml-3">
-                        Duration: <span className="text-cc-fg">{formatDuration(expandedEntry.sttDurationMs)}</span>
+                        STT Model: <span className="text-cc-fg font-medium font-mono">{expandedEntry.sttModel}</span>
+                      </span>
+                      <span className="ml-3">
+                        STT: <span className="text-cc-fg">{formatDuration(expandedEntry.sttDurationMs)}</span>
                       </span>
                       <span className="ml-3">
                         Audio: <span className="text-cc-fg">{formatBytes(expandedEntry.audioSizeBytes)}</span>

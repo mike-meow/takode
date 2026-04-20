@@ -494,7 +494,9 @@ export interface TranscriptionLogIndexEntry {
   id: number;
   timestamp: number;
   sessionId: string | null;
-  mode?: "dictation" | "edit";
+  mode?: "dictation" | "edit" | "append";
+  /** Browser upload + server multipart parse time before SSE begins. */
+  uploadDurationMs: number;
   sttModel: string;
   sttDurationMs: number;
   rawTranscript: string;
@@ -520,7 +522,7 @@ export interface TranscriptionLogEntry extends TranscriptionLogIndexEntry {
 }
 
 export type VoiceTranscriptionMode = "dictation" | "edit" | "append";
-export type VoiceTranscriptionPhase = "transcribing" | "enhancing" | "editing" | "appending";
+export type VoiceTranscriptionPhase = "uploading" | "transcribing" | "enhancing" | "editing" | "appending";
 
 export interface VoiceTranscriptionResult {
   mode?: VoiceTranscriptionMode;
@@ -989,6 +991,7 @@ export const api = {
     const timeoutMs = getTranscriptionRequestTimeoutMs(audio.size);
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
+    options?.onPhase?.("uploading");
     try {
       res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form, signal: controller.signal });
     } catch (err) {
@@ -1008,6 +1011,7 @@ export const api = {
 
     // Parse SSE stream for phase-aware progress
     if (!res.body) throw new Error("No response body");
+    options?.onPhase?.("transcribing");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
