@@ -21,6 +21,25 @@ function formatRelativeTime(epochMs: number): string {
   return `${hours}h ${remainMins}m`;
 }
 
+/** Compact countdown label for the collapsed chip.
+ *  < 1 hour: M:SS
+ *  < 24 hours: Xh
+ *  >= 24 hours: Xd */
+function formatCompactRelativeTime(epochMs: number): string {
+  const diffMs = epochMs - Date.now();
+  if (diffMs <= 0) return "firing...";
+  const totalSeconds = Math.ceil(diffMs / 1_000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    const seconds = totalSeconds % 60;
+    return `${totalMinutes}:${String(seconds).padStart(2, "0")}`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours}h`;
+  const totalDays = Math.ceil(totalHours / 24);
+  return `${totalDays}d`;
+}
+
 // ─── Shared hooks ────────────────────────────────────────────────────────────
 
 /** Read session timers from the store, sorted by soonest-first. Auto-refresh countdown every 10s. */
@@ -182,7 +201,7 @@ export function TimerChip({ sessionId }: { sessionId: string }) {
   const closeModal = useCallback(() => setModalOpen(false), []);
 
   if (timers.length === 0) return null;
-  const primaryLabel = `${timers.length} timer${timers.length !== 1 ? "s" : ""}`;
+  const primaryLabel = `${timers.length} ⏰ in ${formatCompactRelativeTime(sorted[0].nextFireAt)}`;
 
   return (
     <>
@@ -191,9 +210,7 @@ export function TimerChip({ sessionId }: { sessionId: string }) {
         className="pointer-events-auto relative inline-flex max-w-[min(18rem,calc(100vw-2.75rem))] items-center gap-1.5 overflow-hidden rounded-[18px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-2.5 py-1 text-[11px] text-cc-muted font-mono-code shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-md cursor-pointer hover:border-white/15 transition-colors"
       >
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_55%)]" />
-        <span className="relative">⏰</span>
         <span className="relative truncate text-cc-fg/90">{primaryLabel}</span>
-        <span className="relative text-cc-muted/75">next in {formatRelativeTime(sorted[0].nextFireAt)}</span>
       </button>
 
       {modalOpen && <TimerModal sessionId={sessionId} onClose={closeModal} />}

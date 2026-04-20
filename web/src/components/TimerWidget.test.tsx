@@ -69,18 +69,19 @@ describe("TimerChip", () => {
   });
 
   it("renders a compact single-timer chip with count and next fire time", () => {
-    // The collapsed chip should stay small: show count plus next-fire timing,
-    // not the timer title itself.
+    // The collapsed chip should stay small: collapse count and countdown into
+    // one short label, not the verbose "N timers" plus a second timing segment.
     resetStore({
       sessionTimers: new Map([["s1", [makeTimer()]]]),
     });
     render(<TimerChip sessionId="s1" />);
-    expect(screen.getByText("1 timer")).toBeInTheDocument();
-    expect(screen.getByText(/next in/)).toBeInTheDocument();
+    expect(screen.getByText(/1 ⏰ in/)).toBeInTheDocument();
+    expect(screen.queryByText("1 timer")).toBeNull();
+    expect(screen.queryByText(/next in/)).toBeNull();
     expect(screen.queryByText("Check the build status")).toBeNull();
   });
 
-  it("pluralises 'timers' for multiple entries", () => {
+  it("uses the compact count-plus-icon label for multiple timers too", () => {
     resetStore({
       sessionTimers: new Map([
         [
@@ -93,7 +94,7 @@ describe("TimerChip", () => {
       ]),
     });
     render(<TimerChip sessionId="s1" />);
-    expect(screen.getByText("2 timers")).toBeInTheDocument();
+    expect(screen.getByText(/2 ⏰ in/)).toBeInTheDocument();
   });
 
   it("shows next fire time from the soonest timer", () => {
@@ -110,7 +111,49 @@ describe("TimerChip", () => {
     });
     render(<TimerChip sessionId="s1" />);
     // New M:SS format: 120s = "2:00"
-    expect(screen.getByText(/next in 2:00/)).toBeInTheDocument();
+    expect(screen.getByText(/2 ⏰ in 2:00/)).toBeInTheDocument();
+  });
+
+  it("uses an hour-only compact label for multi-hour waits", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T09:00:00Z"));
+    resetStore({
+      sessionTimers: new Map([["s1", [makeTimer({ nextFireAt: Date.now() + 7_200_000 })]]]),
+    });
+    render(<TimerChip sessionId="s1" />);
+    expect(screen.getByText(/1 ⏰ in 2h/)).toBeInTheDocument();
+    expect(screen.queryByText(/2h 0m/)).toBeNull();
+  });
+
+  it("uses a day-only compact label for multi-day waits", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T09:00:00Z"));
+    resetStore({
+      sessionTimers: new Map([["s1", [makeTimer({ nextFireAt: Date.now() + 172_800_000 })]]]),
+    });
+    render(<TimerChip sessionId="s1" />);
+    expect(screen.getByText(/1 ⏰ in 2d/)).toBeInTheDocument();
+    expect(screen.queryByText(/48h/)).toBeNull();
+    expect(screen.queryByText(/2d 0h/)).toBeNull();
+  });
+
+  it("keeps sub-24-hour waits in the hour bucket instead of rounding up to a day", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T09:00:00Z"));
+    resetStore({
+      sessionTimers: new Map([
+        [
+          "s1",
+          [
+            makeTimer({ id: "t1", nextFireAt: Date.now() + (23 * 60 + 1) * 60_000 }),
+            makeTimer({ id: "t2", nextFireAt: Date.now() + (23 * 60 + 59) * 60_000 }),
+          ],
+        ],
+      ]),
+    });
+    render(<TimerChip sessionId="s1" />);
+    expect(screen.getByText(/2 ⏰ in 23h/)).toBeInTheDocument();
+    expect(screen.queryByText(/1d/)).toBeNull();
   });
 
   it("opens the modal on click", () => {
