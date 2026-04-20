@@ -282,7 +282,26 @@ function setupMockStore(
       (mockStoreState.composerDrafts as Map<string, unknown>).delete(sessionId);
       notifyMockStore();
     }),
-    setReplyContext: vi.fn(),
+    setReplyContext: vi.fn(
+      (
+        sessionId: string,
+        context: {
+          messageId: string;
+          previewText: string;
+        } | null,
+      ) => {
+        const replyContexts = mockStoreState.replyContexts as Map<
+          string,
+          { messageId: string; previewText: string }
+        >;
+        if (context) {
+          replyContexts.set(sessionId, context);
+        } else {
+          replyContexts.delete(sessionId);
+        }
+        notifyMockStore();
+      },
+    ),
     dismissVsCodeSelection: vi.fn((key: string | null) => {
       mockStoreState.dismissedVsCodeSelectionKey = key;
       notifyMockStore();
@@ -553,6 +572,75 @@ describe("Composer basic rendering", () => {
 
     expect(screen.getByTitle("Voice needs HTTPS")).toBeTruthy();
     expect(screen.queryByText("Voice input requires HTTPS or localhost in this browser.")).toBeNull();
+  });
+
+  it("reveals and keeps the mobile composer open while replying to a message", () => {
+    setViewportWidth(500);
+    mediaState.touchDevice = true;
+
+    render(<Composer sessionId="s1" />);
+
+    // Regression coverage for q-463: a reply picked from the message actions
+    // must force the full composer open and keep the reply target visible.
+    expect(screen.getByText("Type a message...")).toBeTruthy();
+
+    act(() => {
+      (
+        mockStoreState.setReplyContext as (
+          sessionId: string,
+          context: { messageId: string; previewText: string } | null,
+        ) => void
+      )("s1", {
+        messageId: "msg-1",
+        previewText: "Good plan from #618. One thing to clarify before approving.",
+      });
+    });
+
+    expect(screen.queryByText("Type a message...")).toBeNull();
+    expect(screen.getByText("Good plan from #618. One thing to clarify before approving.")).toBeTruthy();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByText("Type a message...")).toBeNull();
+    expect(screen.getByText("Good plan from #618. One thing to clarify before approving.")).toBeTruthy();
+  });
+
+  it("allows the mobile composer to collapse again after a notification reply is cleared", () => {
+    vi.useFakeTimers();
+    try {
+      setViewportWidth(500);
+      mediaState.touchDevice = true;
+
+      render(<Composer sessionId="s1" />);
+
+      // Notification replies also use replyContext; clearing that context should
+      // release the expansion lock and restore the compact idle bar.
+      act(() => {
+        (
+          mockStoreState.setReplyContext as (
+            sessionId: string,
+            context: { messageId: string; previewText: string } | null,
+          ) => void
+        )("s1", {
+          messageId: "notif-1",
+          previewText: "Approve q-460 plan? Re-run all 4 datasets before review.",
+        });
+      });
+
+      expect(screen.queryByText("Type a message...")).toBeNull();
+      expect(screen.getByText("Approve q-460 plan? Re-run all 4 datasets before review.")).toBeTruthy();
+
+      fireEvent.click(screen.getByLabelText("Cancel reply"));
+
+      act(() => {
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(screen.getByText("Type a message...")).toBeTruthy();
+      expect(screen.queryByText("Approve q-460 plan? Re-run all 4 datasets before review.")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

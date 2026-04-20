@@ -1523,33 +1523,45 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const isRunning = useStore((s) => s.sessionStatus.get(sessionId) === "running");
   const canSend = (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal;
   const isVoiceInteractionActive = isPreparing || isRecording || isTranscribing;
+  const hasActiveReplyContext = !!replyContext;
 
   // Mobile collapsible composer — keep voice capture visible even when the draft is empty.
   const isCollapsed =
     usesTouchKeyboard &&
     isNarrowLayout &&
     !composerExpanded &&
+    !hasActiveReplyContext &&
     !isVoiceInteractionActive &&
     !text.trim() &&
     images.length === 0;
 
+  // Replying should immediately reveal the full composer on mobile so the
+  // reply target context stays visible instead of falling back to the compact bar.
+  useEffect(() => {
+    if (!usesTouchKeyboard || !isNarrowLayout || !hasActiveReplyContext) return;
+    setComposerExpanded(true);
+  }, [usesTouchKeyboard, isNarrowLayout, hasActiveReplyContext]);
+
   // Auto-collapse when composer becomes empty (after send clears text), but
-  // never hide the voice UI while the capture/transcription flow is active.
+  // never hide the voice UI while the capture/transcription flow is active or
+  // while a reply target is still active.
   useEffect(() => {
     if (!usesTouchKeyboard || !isNarrowLayout) return;
+    if (hasActiveReplyContext) return;
     if (isVoiceInteractionActive) return;
     if (!text.trim() && images.length === 0) {
       const timer = setTimeout(() => setComposerExpanded(false), 300);
       return () => clearTimeout(timer);
     }
-  }, [usesTouchKeyboard, isNarrowLayout, isVoiceInteractionActive, text, images.length]);
+  }, [usesTouchKeyboard, isNarrowLayout, hasActiveReplyContext, isVoiceInteractionActive, text, images.length]);
 
   // Collapse on tap outside the composer when empty
   const composerRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed || isVoiceInteractionActive) return;
+    if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed || isVoiceInteractionActive || hasActiveReplyContext) return;
     const handler = (e: MouseEvent | TouchEvent) => {
       if (
+        !hasActiveReplyContext &&
         !isVoiceInteractionActive &&
         !text.trim() &&
         images.length === 0 &&
@@ -1565,7 +1577,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  }, [usesTouchKeyboard, isNarrowLayout, isCollapsed, isVoiceInteractionActive, text, images.length]);
+  }, [usesTouchKeyboard, isNarrowLayout, isCollapsed, hasActiveReplyContext, isVoiceInteractionActive, text, images.length]);
 
   const expandComposer = useCallback(() => {
     textareaRef.current?.focus(); // synchronous focus triggers mobile virtual keyboard
