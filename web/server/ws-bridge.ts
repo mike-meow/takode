@@ -329,6 +329,9 @@ interface Session {
   frozenCount: number;
   /** Messages queued while waiting for CLI to connect */
   pendingMessages: string[];
+  /** True after Takode has queued a forced `/compact` and is waiting for the
+   *  relaunched Claude session to actually begin the real compaction cycle. */
+  forceCompactPending: boolean;
   /** Authoritative Codex outbound user-turn queue (persisted across disconnect/relaunch). */
   pendingCodexTurns: CodexOutboundTurn[];
   /** Codex inputs accepted by Takode but not yet delivered to Codex. */
@@ -2119,6 +2122,10 @@ export class WsBridge {
             ? Math.max(0, Math.min(p._frozenCount, (p.messageHistory || []).length))
             : 0,
         pendingMessages: p.pendingMessages || [],
+        forceCompactPending:
+          typeof (p as { forceCompactPending?: unknown }).forceCompactPending === "boolean"
+            ? ((p as { forceCompactPending: boolean }).forceCompactPending ?? false)
+            : false,
         pendingCodexTurns: restoredCodexTurns,
         pendingCodexInputs: Array.isArray(p.pendingCodexInputs) ? p.pendingCodexInputs : [],
         pendingCodexRollback:
@@ -2267,6 +2274,7 @@ export class WsBridge {
       state: session.state,
       messageHistory: session.messageHistory,
       pendingMessages: session.pendingMessages,
+      forceCompactPending: session.forceCompactPending,
       pendingCodexTurns: session.pendingCodexTurns,
       pendingCodexInputs: session.pendingCodexInputs,
       pendingCodexRollback: session.pendingCodexRollback,
@@ -2298,6 +2306,7 @@ export class WsBridge {
       state: session.state,
       messageHistory: session.messageHistory,
       pendingMessages: session.pendingMessages,
+      forceCompactPending: session.forceCompactPending,
       pendingCodexTurns: session.pendingCodexTurns,
       pendingCodexInputs: session.pendingCodexInputs,
       pendingCodexRollback: session.pendingCodexRollback,
@@ -2782,6 +2791,7 @@ export class WsBridge {
         messageHistory: [],
         frozenCount: 0,
         pendingMessages: [],
+        forceCompactPending: false,
         pendingCodexTurns: [],
         pendingCodexInputs: [],
         pendingCodexRollback: null,
@@ -2900,6 +2910,7 @@ export class WsBridge {
     session.awaitingCompactSummary = false;
     session.claudeCompactBoundarySeen = false;
     session.compactedDuringTurn = false;
+    session.forceCompactPending = false;
     if (session.state) session.state.is_compacting = false;
 
     if (options?.clearCodexState) {
@@ -4984,14 +4995,19 @@ export class WsBridge {
           session.cliResuming = false;
           console.log(`[ws-bridge] cliResuming cleared for SDK session ${sessionTag(session.id)} — replay done`);
           // Replayed status_change:"compacting" may have set this true during
-          // replay. Reset it now — otherwise the browser shows a permanent
-          // compaction indicator after replay ends.
-          session.state.is_compacting = false;
+          // replay. Reset it now unless a real /compact is still queued for
+          // delivery after replay.
+          const compactPending = this.hasPendingForceCompact(session);
+          session.forceCompactPending = compactPending;
+          session.state.is_compacting = compactPending;
           // Clear stale compaction flags that may have been set by replayed
           // events during resume. Without this, a stale awaitingCompactSummary
           // could eat the first real user message as a compact summary (q-227).
           session.awaitingCompactSummary = false;
           session.compactedDuringTurn = false;
+          if (compactPending) {
+            this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
+          }
           // Flush messages deferred during replay.
           if (session.pendingMessages.length > 0) {
             console.log(
@@ -5180,9 +5196,14 @@ export class WsBridge {
       if (msg.type === "status_change") {
         const newStatus = (msg as any).status;
         const wasCompacting = session.state.is_compacting;
+        const forceCompactPending = session.forceCompactPending;
         session.state.is_compacting = newStatus === "compacting";
+        const enteringCompacting = newStatus === "compacting" && (!wasCompacting || forceCompactPending);
+        if (newStatus === "compacting") {
+          session.forceCompactPending = false;
+        }
 
-        if (newStatus === "compacting" && !wasCompacting && !session.cliResuming) {
+        if (enteringCompacting && !session.cliResuming) {
           session.compactedDuringTurn = true;
           this.emitTakodeEvent(session.id, "compaction_started", {
             ...(typeof session.state.context_used_percent === "number"
@@ -6560,10 +6581,16 @@ export class WsBridge {
           console.log(
             `[revert] cliResuming cleared for session ${session.id.slice(0, 8)} — replay done. Final historyLen=${session.messageHistory.length}`,
           );
-          // Reset stale compaction state now that replay is truly done.
-          session.state.is_compacting = false;
+          // Reset stale replay compaction state unless a real /compact is
+          // still queued for delivery after replay.
+          const compactPending = this.hasPendingForceCompact(session);
+          session.forceCompactPending = compactPending;
+          session.state.is_compacting = compactPending;
           session.awaitingCompactSummary = false;
           session.claudeCompactBoundarySeen = false;
+          if (compactPending) {
+            this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
+          }
           // Flush messages deferred from system.init during replay. The CLI
           // silently drops user messages received mid-replay, so we wait until
           // the last replayed system.init + 2s debounce before delivering.
@@ -6690,8 +6717,13 @@ export class WsBridge {
       this.onSessionActivityStateChanged(session.id, "system_init");
     } else if (msg.subtype === "status") {
       const wasCompacting = session.state.is_compacting;
+      const forceCompactPending = session.forceCompactPending;
       session.state.is_compacting = msg.status === "compacting";
-      if (msg.status === "compacting" && !wasCompacting && session.backendType === "claude") {
+      const enteringCompacting = msg.status === "compacting" && (!wasCompacting || forceCompactPending);
+      if (msg.status === "compacting") {
+        session.forceCompactPending = false;
+      }
+      if (enteringCompacting && session.backendType === "claude") {
         session.claudeCompactBoundarySeen = false;
       }
       // Guard: only emit compaction_started for NEW compaction transitions (not
@@ -6702,7 +6734,7 @@ export class WsBridge {
       // generation lifecycle mid-turn means the actual result at end of turn
       // is a no-op (isGenerating already false), leaving the session stuck as
       // idle while still actively working.
-      if (msg.status === "compacting" && !wasCompacting && !session.cliResuming) {
+      if (enteringCompacting && !session.cliResuming) {
         session.compactedDuringTurn = true;
         this.emitTakodeEvent(session.id, "compaction_started", {
           ...(typeof session.state.context_used_percent === "number"
@@ -9479,6 +9511,69 @@ export class WsBridge {
     return knownCommands.some((cmd) => cmd.toLowerCase() === commandWord);
   }
 
+  private hasQueuedCompactRequest(session: Session): boolean {
+    return session.pendingMessages.some((raw) => {
+      try {
+        const parsed = JSON.parse(raw) as
+          | { type?: string; content?: unknown; message?: { role?: string; content?: unknown } }
+          | undefined;
+        if (parsed?.type === "user_message") {
+          return typeof parsed.content === "string" && parsed.content.trim().toLowerCase() === "/compact";
+        }
+        if (parsed?.type === "user") {
+          return (
+            parsed.message?.role === "user" &&
+            typeof parsed.message.content === "string" &&
+            parsed.message.content.trim().toLowerCase() === "/compact"
+          );
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    });
+  }
+
+  private hasPendingForceCompact(session: Session): boolean {
+    return session.forceCompactPending || this.hasQueuedCompactRequest(session);
+  }
+
+  private markForceCompactPending(session: Session): void {
+    session.forceCompactPending = true;
+    session.state.is_compacting = true;
+    this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
+    this.persistSession(session);
+  }
+
+  private queueForceCompactPendingMessage(session: Session): void {
+    // SDK sessions flush pendingMessages through adapter.sendBrowserMessage()
+    // which expects browser-format messages (type: "user_message").
+    // WebSocket sessions flush through sendToCLI() which expects NDJSON
+    // (type: "user"). Use the correct format for each backend type.
+    if (session.backendType === "claude-sdk") {
+      session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
+    } else {
+      const cliSessionId = this.launcher?.getSession(session.id)?.cliSessionId || "";
+      session.pendingMessages.push(
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "/compact" },
+          parent_tool_use_id: null,
+          session_id: cliSessionId,
+        }),
+      );
+    }
+    this.markForceCompactPending(session);
+  }
+
+  queueForceCompactForRelaunch(sessionId: string): { ok: true } | { ok: false; error: string } {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+    if (session.backendType === "codex") return { ok: false, error: "Force compact not supported for Codex" };
+    this.queueForceCompactPendingMessage(session);
+    return { ok: true };
+  }
+
   /** Forward a CLI-native slash command directly to the CLI without timestamp
    *  tagging. Unlike /compact, no relaunch is needed -- the CLI processes
    *  these inline and emits results as assistant messages. */
@@ -9547,26 +9642,10 @@ export class WsBridge {
     this.launcher?.touchUserMessage(session.id);
     this.broadcastToBrowsers(session, userHistoryEntry);
 
-    // Queue /compact for the relaunched CLI process.
-    // SDK sessions flush pendingMessages through adapter.sendBrowserMessage()
-    // which expects browser-format messages (type: "user_message").
-    // WebSocket sessions flush through sendToCLI() which expects NDJSON
-    // (type: "user"). Use the correct format for each backend type.
-    if (session.backendType === "claude-sdk") {
-      session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
-    } else {
-      const cliSessionId = this.launcher?.getSession(sessionId)?.cliSessionId || "";
-      session.pendingMessages.push(
-        JSON.stringify({
-          type: "user",
-          message: { role: "user", content: "/compact" },
-          parent_tool_use_id: null,
-          session_id: cliSessionId,
-        }),
-      );
-    }
-
-    this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
+    // Queue /compact for the relaunched CLI process and keep the session in
+    // authoritative compacting state until the resumed CLI starts the real
+    // compaction lifecycle.
+    this.queueForceCompactPendingMessage(session);
     if (this.onCLIRelaunchNeeded) {
       this.onCLIRelaunchNeeded(sessionId);
     }

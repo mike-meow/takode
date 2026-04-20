@@ -69,6 +69,7 @@ export interface PersistedSession {
   state: SessionState;
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
+  forceCompactPending?: boolean;
   pendingCodexTurns?: CodexOutboundTurn[];
   pendingCodexInputs?: PendingCodexInput[];
   pendingCodexRollback?: { numTurns: number; truncateIdx: number; clearCodexState: boolean } | null;

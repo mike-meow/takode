@@ -17662,6 +17662,8 @@ describe("SDK disconnect auto-relaunch", () => {
     const session = bridge.getSession(sid)!;
     const userMsg = session.messageHistory.find((m) => m.type === "user_message" && (m as any).content === "/compact");
     expect(userMsg).toBeTruthy();
+    expect(session.state.is_compacting).toBe(true);
+    expect(session.forceCompactPending).toBe(true);
 
     // Should have queued /compact in browser format for the SDK adapter flush
     expect(session.pendingMessages.length).toBe(1);
@@ -17701,6 +17703,8 @@ describe("SDK disconnect auto-relaunch", () => {
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "compacting" }));
+    expect(session.state.is_compacting).toBe(true);
+    expect(session.forceCompactPending).toBe(true);
 
     // WebSocket sessions queue NDJSON format for sendToCLI flush
     expect(session.pendingMessages.length).toBe(1);
@@ -17711,6 +17715,34 @@ describe("SDK disconnect auto-relaunch", () => {
       parent_tool_use_id: null,
       session_id: "cli-sess-456",
     });
+  });
+
+  it("queueForceCompactForRelaunch reuses the shared force-compact preparation", () => {
+    const sid = "s-compact-route";
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ cliSessionId: "cli-sess-route" })),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid);
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    expect(bridge.queueForceCompactForRelaunch(sid)).toEqual({ ok: true });
+
+    expect(session.state.is_compacting).toBe(true);
+    expect(session.forceCompactPending).toBe(true);
+    expect(session.pendingMessages).toHaveLength(1);
+    expect(JSON.parse(session.pendingMessages[0])).toEqual({
+      type: "user",
+      message: { role: "user", content: "/compact" },
+      parent_tool_use_id: null,
+      session_id: "cli-sess-route",
+    });
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "compacting" }));
   });
 });
 
@@ -18203,6 +18235,57 @@ describe("cliResuming debounce prevents false compaction events on --resume repl
     expect(calls.filter((m: any) => m.type === "compact_summary")).toHaveLength(1);
 
     injectSpy.mockRestore();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("preserves compacting state across Claude WebSocket resume when /compact is queued for post-replay flush", () => {
+    // Regression for q-456: a queued /compact must keep the authoritative
+    // session status at compacting while resume replay drains, otherwise the
+    // UI snaps back to idle before the compact request is actually sent.
+    vi.useFakeTimers();
+
+    const session = bridge.getOrCreateSession("s1");
+    session.messageHistory.push({ role: "assistant", content: "previous turn" } as any);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ cliSessionId: "cli-session-for-resume" })),
+    } as any);
+    session.pendingMessages.push(
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: "/compact" },
+        parent_tool_use_id: null,
+        session_id: "cli-123",
+      }),
+    );
+    session.state.is_compacting = true;
+
+    const cli = makeCliSocket("s1");
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    bridge.handleCLIOpen(cli, "s1");
+    bridge.handleCLIMessage(cli, makeInitMsg());
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    vi.advanceTimersByTime(2100);
+
+    expect(session.cliResuming).toBe(false);
+    expect(session.state.is_compacting).toBe(true);
+    expect(session.pendingMessages).toHaveLength(0);
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "compacting" }));
+
+    const sentCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg.trim()));
+    expect(sentCalls).toContainEqual(
+      expect.objectContaining({
+        type: "user",
+        message: { role: "user", content: "/compact" },
+      }),
+    );
+
     vi.clearAllTimers();
     vi.useRealTimers();
   });
@@ -21247,6 +21330,90 @@ describe("SDK resume stall: cliResuming guards (q-220)", () => {
       expect.objectContaining({ type: "user_message", content: "hello" }),
     );
     expect(session.pendingMessages).toHaveLength(0);
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("preserves compacting state across SDK replay when /compact is queued for post-replay flush", () => {
+    // Regression for q-456: SDK replay cleanup must not clear compacting when
+    // the queued /compact has not been delivered yet.
+    vi.useFakeTimers();
+
+    createResumedSdkSession("s1");
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = bridge.getSession("s1")!;
+    session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
+    session.state.is_compacting = true;
+
+    browser.send.mockClear();
+    adapter.sendBrowserMessage.mockClear();
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "running" });
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    vi.advanceTimersByTime(2100);
+
+    expect(session.cliResuming).toBe(false);
+    expect(session.state.is_compacting).toBe(true);
+    expect(session.pendingMessages).toHaveLength(0);
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "user_message", content: "/compact" }),
+    );
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "compacting" }));
+
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("preserves the real SDK post-compaction marker flow after replay when /compact was pending", () => {
+    // Regression for q-456: keeping authoritative compacting state through
+    // replay must not suppress the real SDK compact-start transition, because
+    // non-leader SDK sessions rely on that transition to synthesize the chat
+    // marker and capture the compact summary.
+    vi.useFakeTimers();
+
+    createResumedSdkSession("s1");
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter("s1", adapter as any);
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const session = bridge.getSession("s1")!;
+    session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
+    session.forceCompactPending = true;
+    session.state.is_compacting = true;
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "running" });
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+    vi.advanceTimersByTime(2100);
+
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    adapter.emitBrowserMessage({
+      type: "user",
+      message: { role: "user", content: "Compaction summary after replay" },
+      parent_tool_use_id: null,
+      session_id: "cli-session-for-resume",
+    } as any);
+    adapter.emitBrowserMessage({ type: "status_change", status: null });
+
+    const markers = session.messageHistory.filter((m) => m.type === "compact_marker");
+    expect(markers).toHaveLength(1);
+    expect((markers[0] as any).summary).toBe("Compaction summary after replay");
+    expect(session.forceCompactPending).toBe(false);
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.filter((m: any) => m.type === "compact_boundary")).toHaveLength(1);
+    expect(calls).toContainEqual(expect.objectContaining({ type: "compact_summary", summary: "Compaction summary after replay" }));
 
     vi.clearAllTimers();
     vi.useRealTimers();
