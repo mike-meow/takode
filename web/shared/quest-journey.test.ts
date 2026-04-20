@@ -30,8 +30,8 @@ describe("isValidWaitForRef", () => {
 
 describe("formatQuestJourneyText", () => {
   it("replaces embedded enum tokens with human-facing quest journey labels", () => {
-    expect(formatQuestJourneyText("advanced q-42 to SKEPTIC_REVIEWING")).toBe("advanced q-42 to Skeptic Review");
-    expect(formatQuestJourneyText("moved from GROOM_REVIEWING to PORTING")).toBe("moved from Groom Review to Porting");
+    expect(formatQuestJourneyText("advanced q-42 to SKEPTIC_REVIEWING")).toBe("advanced q-42 to Addressing Skeptic");
+    expect(formatQuestJourneyText("moved from GROOM_REVIEWING to PORTING")).toBe("moved from Grooming to Porting");
   });
 
   it("leaves unrelated text unchanged", () => {

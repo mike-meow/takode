@@ -98,6 +98,13 @@ function makeDoneQuest(): QuestmasterTask {
   } as QuestmasterTask;
 }
 
+function advanceQuestUpdate<T extends QuestmasterTask>(quest: T, deltaMs = 1): T {
+  return {
+    ...quest,
+    updatedAt: (quest.updatedAt ?? quest.completedAt ?? quest.createdAt ?? Date.now()) + deltaMs,
+  } as T;
+}
+
 describe("QuestDetailPanel", () => {
   beforeEach(() => {
     useStore.getState().reset();
@@ -320,12 +327,14 @@ describe("QuestDetailPanel", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
-    const updatedQuest = makeVerificationQuest({
-      verificationItems: [
-        { text: "Sidebar no overflow on iPhone SE", checked: true },
-        { text: "Scroll works", checked: true },
-      ],
-    });
+    const updatedQuest = advanceQuestUpdate(
+      makeVerificationQuest({
+        verificationItems: [
+          { text: "Sidebar no overflow on iPhone SE", checked: true },
+          { text: "Scroll works", checked: true },
+        ],
+      }),
+    );
     mockCheckQuestVerification.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
@@ -396,17 +405,19 @@ describe("QuestDetailPanel", () => {
     // Editing should persist the agent reply through the API and refresh the quest overlay state.
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-    const updatedQuest = makeVerificationQuest({
-      feedback: [
-        { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
-        {
-          author: "agent",
-          text: "Updated agent summary.",
-          ts: Date.now() - 3600000,
-          authorSessionId: "session-abc",
-        },
-      ],
-    });
+    const updatedQuest = advanceQuestUpdate(
+      makeVerificationQuest({
+        feedback: [
+          { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
+          {
+            author: "agent",
+            text: "Updated agent summary.",
+            ts: Date.now() - 3600000,
+            authorSessionId: "session-abc",
+          },
+        ],
+      }),
+    );
     mockEditQuestFeedback.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
@@ -445,17 +456,19 @@ describe("QuestDetailPanel", () => {
       ],
     });
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-    const updatedQuest = makeVerificationQuest({
-      feedback: [
-        { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
-        {
-          author: "agent",
-          text: "Confirmed working on iPad mini.",
-          ts: Date.now() - 3600000,
-          authorSessionId: "session-abc",
-        },
-      ],
-    });
+    const updatedQuest = advanceQuestUpdate(
+      makeVerificationQuest({
+        feedback: [
+          { author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true },
+          {
+            author: "agent",
+            text: "Confirmed working on iPad mini.",
+            ts: Date.now() - 3600000,
+            authorSessionId: "session-abc",
+          },
+        ],
+      }),
+    );
     mockEditQuestFeedback.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
@@ -473,9 +486,11 @@ describe("QuestDetailPanel", () => {
   it("requires explicit confirmation before deleting agent feedback", async () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
-    const updatedQuest = makeVerificationQuest({
-      feedback: [{ author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true }],
-    });
+    const updatedQuest = advanceQuestUpdate(
+      makeVerificationQuest({
+        feedback: [{ author: "human", text: "Check iPad mini too", ts: Date.now() - 7200000, addressed: true }],
+      }),
+    );
     mockDeleteQuestFeedback.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
@@ -544,10 +559,10 @@ describe("QuestDetailPanel", () => {
     // normal feedback path and refresh the quest thread in store.
     const quest = makeDoneQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-99" });
-    const updatedQuest = {
+    const updatedQuest = advanceQuestUpdate({
       ...makeDoneQuest(),
       feedback: [{ author: "human", text: "Please note the migration impact.", ts: Date.now() }],
-    } as QuestmasterTask;
+    } as QuestmasterTask);
     mockAddQuestFeedback.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
@@ -783,12 +798,14 @@ describe("QuestDetailPanel", () => {
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
 
     // Mock API to return quest with item 0 now unchecked
-    const updatedQuest = makeVerificationQuest({
-      verificationItems: [
-        { text: "Sidebar no overflow on iPhone SE", checked: false },
-        { text: "Scroll works", checked: false },
-      ],
-    });
+    const updatedQuest = advanceQuestUpdate(
+      makeVerificationQuest({
+        verificationItems: [
+          { text: "Sidebar no overflow on iPhone SE", checked: false },
+          { text: "Scroll works", checked: false },
+        ],
+      }),
+    );
     mockCheckQuestVerification.mockResolvedValue(updatedQuest);
 
     render(<QuestDetailPanel />);
