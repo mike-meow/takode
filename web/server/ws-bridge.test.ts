@@ -10515,6 +10515,35 @@ describe("Diff stats computation", () => {
     ).toBe(true);
   });
 
+  it("refreshWorktreeGitStateForSnapshot clears worktree diff totals when the session is not ahead", async () => {
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1\n";
+      if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/jiayi-wt-1\n";
+      if (cmd.includes("--show-toplevel")) return "/repo\n";
+      if (cmd.includes("rev-parse HEAD")) return "same-head-sha\n";
+      if (cmd.includes("--left-right --count")) return "2\t0\n";
+      if (cmd.includes("merge-base")) return "same-head-sha\n";
+      if (cmd.includes("diff --numstat")) return "37\t2\ttracked.py\n6\t0\tother.py\n";
+      return "";
+    });
+
+    bridge.markWorktree("s1", "/repo", "/tmp/wt", "jiayi");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = "/tmp/wt";
+    session.state.git_head_sha = "same-head-sha";
+    session.state.diff_base_start_sha = "same-head-sha";
+    session.state.total_lines_added = 43;
+    session.state.total_lines_removed = 2;
+    session.diffStatsDirty = false;
+
+    await bridge.refreshWorktreeGitStateForSnapshot("s1", { broadcastUpdate: true });
+
+    expect(session.state.git_ahead).toBe(0);
+    expect(session.state.git_behind).toBe(2);
+    expect(session.state.total_lines_added).toBe(0);
+    expect(session.state.total_lines_removed).toBe(0);
+  });
+
   it("refreshWorktreeGitStateForSnapshot skips git work when the worktree fingerprint is unchanged", async () => {
     const worktreeCwd = join(tempDir, "wt");
     const worktreeGitDir = join(tempDir, "repo.git", "worktrees", "wt-1");
@@ -10529,7 +10558,7 @@ describe("Diff stats computation", () => {
       if (cmd.includes("--git-dir")) return `${worktreeGitDir}\n`;
       if (cmd.includes("--git-common-dir")) return `${join(tempDir, "repo.git")}\n`;
       if (cmd.includes("rev-parse HEAD")) return "same-head-sha\n";
-      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("--left-right --count")) return "0\t1\n";
       if (cmd.includes("merge-base")) return "same-head-sha\n";
       if (cmd.includes("diff --numstat")) return "10\t3\tfile.ts\n";
       return "";
@@ -10574,7 +10603,7 @@ describe("Diff stats computation", () => {
       else if (cmd.includes("--git-dir")) stdout = `${worktreeGitDir}\n`;
       else if (cmd.includes("--git-common-dir")) stdout = `${join(tempDir, "repo.git")}\n`;
       else if (cmd.includes("rev-parse HEAD")) stdout = "same-head-sha\n";
-      else if (cmd.includes("--left-right --count")) stdout = "0\t0\n";
+      else if (cmd.includes("--left-right --count")) stdout = "0\t1\n";
       else if (cmd.includes("merge-base")) stdout = "same-head-sha\n";
       callback?.(null, { stdout, stderr: "" });
     });

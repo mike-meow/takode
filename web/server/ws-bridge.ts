@@ -2631,11 +2631,13 @@ export class WsBridge {
 
     try {
       let diffBase = "";
+      let worktreeBaseIsExplicitCommit = false;
       if (session.state.is_worktree) {
         const selectedBase = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
         if (selectedBase && GIT_SHA_REF_RE.test(selectedBase)) {
           // Explicit commit selection in DiffPanel.
           diffBase = selectedBase;
+          worktreeBaseIsExplicitCommit = true;
         } else {
           // Worktree metric: branch-local changes since merge-base anchor.
           diffBase = session.state.diff_base_start_sha?.trim() || session.state.git_head_sha?.trim() || "";
@@ -2649,6 +2651,20 @@ export class WsBridge {
         diffBase = (session.state.diff_base_branch || session.state.git_default_branch || "").trim();
       }
       if (!diffBase) return false;
+
+      // Worktree session badges should reflect changes backed by ahead commits.
+      // After port/reset, a worktree can be 0 ahead but still dirty due to
+      // unrelated local edits or restored stashes; those should not keep the
+      // session-side +/- chip positive unless the user explicitly selected a
+      // commit SHA to inspect in the DiffPanel.
+      if (session.state.is_worktree && !worktreeBaseIsExplicitCommit && (session.state.git_ahead || 0) <= 0) {
+        session.state.total_lines_added = 0;
+        session.state.total_lines_removed = 0;
+        if (cwd) {
+          session.worktreeStateFingerprint = (await readWorktreeStateFingerprint(cwd)) || "";
+        }
+        return true;
+      }
 
       // For worktree sessions, diffBase is already a fixed SHA anchor (diff_base_start_sha
       // or git_head_sha), so a direct diff is correct -- it only shows the session's own work.
