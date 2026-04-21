@@ -36,6 +36,8 @@ const mockTranscribe = vi
   .fn()
   .mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
 const mockGetBackendModels = vi.fn().mockResolvedValue([]);
+const mockGetSettings = vi.fn().mockResolvedValue({ claudeDefaultModel: "" });
+const mockUpdateSettings = vi.fn().mockResolvedValue({});
 const mockRefreshSessionSkills = vi.fn().mockResolvedValue({ ok: true, skills: [] });
 const mockPrepareUserMessageImages = vi.fn();
 
@@ -50,7 +52,8 @@ vi.mock("../api.js", () => ({
   api: {
     gitPull: vi.fn().mockResolvedValue({ success: true, output: "", git_ahead: 0, git_behind: 0 }),
     getBackendModels: (...args: unknown[]) => mockGetBackendModels(...args),
-    getSettings: vi.fn().mockResolvedValue({ claudeDefaultModel: "" }),
+    getSettings: (...args: unknown[]) => mockGetSettings(...args),
+    updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
     refreshSessionSkills: (...args: unknown[]) => mockRefreshSessionSkills(...args),
     prepareUserMessageImages: (...args: unknown[]) => mockPrepareUserMessageImages(...args),
     transcribe: (...args: unknown[]) => mockTranscribe(...args),
@@ -465,6 +468,8 @@ beforeEach(() => {
   mockVoiceState.cancelRecording.mockReset();
   mockTranscribe.mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
   mockGetBackendModels.mockResolvedValue([]);
+  mockGetSettings.mockResolvedValue({ claudeDefaultModel: "" });
+  mockUpdateSettings.mockResolvedValue({});
   mockRefreshSessionSkills.mockResolvedValue({ ok: true, skills: [] });
   mockPrepareUserMessageImages.mockReset();
   mockRequestBottomAlignOnNextUserMessage.mockReset();
@@ -512,7 +517,7 @@ describe("Composer basic rendering", () => {
     expect(textarea?.getAttribute("spellcheck")).toBe("false");
   });
 
-  it("does not rerender for unrelated sessions and sdkSessions churn", () => {
+  it("does not rerender for unrelated sessions and sdkSessions churn", async () => {
     setupMockStore({
       session: { git_branch: "main", model: "claude-sonnet-4-5-20250929" },
       sdkSessionTotals: { added: 5, removed: 2 },
@@ -537,7 +542,15 @@ describe("Composer basic rendering", () => {
       </Profiler>,
     );
 
-    expect(composerCommits).toBe(1);
+    // Let mount-time async hydration settle before capturing the baseline.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // After mount-time hydration settles, unrelated session churn must not
+    // commit the active Composer subtree at all.
+    const baselineCommits = composerCommits;
+    expect(baselineCommits).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("main")).toBeTruthy();
     expect(screen.getByText("sonnet-4.5")).toBeTruthy();
 
@@ -560,7 +573,7 @@ describe("Composer basic rendering", () => {
       notifyMockStore();
     });
 
-    expect(composerCommits).toBe(1);
+    expect(composerCommits).toBe(baselineCommits);
     expect(screen.getByText("main")).toBeTruthy();
     expect(screen.getByText("sonnet-4.5")).toBeTruthy();
     expect(screen.queryByText("+99")).toBeNull();
@@ -772,6 +785,93 @@ describe("Composer voice edit mode", () => {
     });
     const options = mockTranscribe.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(options?.composerText).toBeUndefined();
+  });
+
+  it("waits for the initial settings fetch before the first non-empty recording so the persisted mode wins", async () => {
+    setupMockStore({ draftText: "Keep this draft" });
+    const settingsLoad = deferred<{ claudeDefaultModel: string; transcriptionConfig: { voiceCaptureMode: "append" } }>();
+    mockGetSettings.mockReturnValueOnce(settingsLoad.promise);
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    expect(mockVoiceState.toggleRecording).not.toHaveBeenCalled();
+
+    settingsLoad.resolve({
+      claudeDefaultModel: "",
+      transcriptionConfig: { voiceCaptureMode: "append" },
+    });
+
+    await waitFor(() => {
+      expect(mockVoiceState.toggleRecording).toHaveBeenCalledTimes(1);
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "append",
+          sessionId: "s1",
+          composerText: "Keep this draft",
+        }),
+      );
+    });
+    expect(mockGetSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores repeated pre-hydration mic clicks so only one recording start survives", async () => {
+    setupMockStore({ draftText: "Keep this draft" });
+    const settingsLoad = deferred<{ claudeDefaultModel: string; transcriptionConfig: { voiceCaptureMode: "append" } }>();
+    mockGetSettings.mockReturnValueOnce(settingsLoad.promise);
+
+    render(<Composer sessionId="s1" />);
+    const voiceButton = screen.getByLabelText("Voice input");
+    fireEvent.click(voiceButton);
+    fireEvent.click(voiceButton);
+
+    expect(mockVoiceState.toggleRecording).not.toHaveBeenCalled();
+
+    settingsLoad.resolve({
+      claudeDefaultModel: "",
+      transcriptionConfig: { voiceCaptureMode: "append" },
+    });
+
+    await waitFor(() => {
+      expect(mockVoiceState.toggleRecording).toHaveBeenCalledTimes(1);
+      expect(mockTranscribe).toHaveBeenCalledTimes(1);
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "append",
+          sessionId: "s1",
+          composerText: "Keep this draft",
+        }),
+      );
+    });
+    expect(mockGetSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("hydrates the persisted voice mode for Codex sessions too", async () => {
+    setupMockStore({
+      draftText: "Codex should respect append",
+      session: { backend_type: "codex" },
+    });
+    mockGetSettings.mockResolvedValueOnce({
+      claudeDefaultModel: "",
+      transcriptionConfig: { voiceCaptureMode: "append" },
+    });
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "append",
+          sessionId: "s1",
+          composerText: "Codex should respect append",
+        }),
+      );
+    });
+    expect(mockGetSettings).toHaveBeenCalledTimes(1);
   });
 
   it("shows an uploading state before the transcription stream switches to STT", async () => {
