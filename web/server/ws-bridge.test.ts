@@ -21466,6 +21466,68 @@ describe("board stall warnings", () => {
     return { leaderId, dispatcher, launcherSessions };
   }
 
+  function setupCodexLeaderBoardStallHarness() {
+    const leaderId = "orch-board-stall-codex";
+    const workerId = "worker-board-stall-codex";
+    const now = Date.now();
+    const launcherSessions = new Map<string, any>([
+      [
+        leaderId,
+        {
+          sessionId: leaderId,
+          sessionNum: 11,
+          isOrchestrator: true,
+          backendType: "codex",
+          cwd: "/repo",
+          lastActivityAt: now,
+        },
+      ],
+      [
+        workerId,
+        {
+          sessionId: workerId,
+          sessionNum: 12,
+          herdedBy: leaderId,
+          backendType: "codex",
+          cwd: "/repo",
+          lastActivityAt: now - 5 * 60_000,
+        },
+      ],
+    ]);
+
+    const launcherMock = {
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn((id: string) => launcherSessions.get(id)),
+      getHerdedSessions: vi.fn((id: string) => (id === leaderId ? [{ sessionId: workerId }] : [])),
+      getSessionNum: vi.fn((id: string) => launcherSessions.get(id)?.sessionNum),
+      listSessions: vi.fn(() => Array.from(launcherSessions.values())),
+      resolveSessionId: vi.fn((ref: string) => (ref === "12" ? workerId : null)),
+    };
+    bridge.setLauncher(launcherMock as any);
+    bridge.setTimerManager({ listTimers: vi.fn(() => []) } as any);
+
+    const dispatcher = new HerdEventDispatcher(bridge as any, launcherMock as any);
+    bridge.setHerdEventDispatcher(dispatcher);
+    dispatcher.setupForOrchestrator(leaderId);
+
+    const adapter = makeCodexAdapterMock();
+    vi.mocked(adapter.isConnected).mockReturnValue(false);
+    bridge.attachCodexAdapter(leaderId, adapter as any);
+
+    bridge.getOrCreateSession(workerId);
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-1",
+      title: "Investigate delayed stall drop",
+      worker: workerId,
+      workerNum: 12,
+      status: "IMPLEMENTING",
+      updatedAt: now - 5 * 60_000,
+    });
+
+    return { leaderId, dispatcher, adapter };
+  }
+
   it("emits a one-shot herd warning for a stalled implementing row", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness();
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
@@ -21507,6 +21569,142 @@ describe("board stall warnings", () => {
     expect(herdCalls).toHaveLength(0);
 
     injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("drops queued board_stalled herd inputs for Codex leaders once the board has already moved on", async () => {
+    const { leaderId, dispatcher, adapter } = setupCodexLeaderBoardStallHarness();
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(61_000);
+    await Promise.resolve();
+
+    const queuedBeforeReconnect = bridge.getSession(leaderId)!;
+    expect(queuedBeforeReconnect.pendingCodexInputs).toHaveLength(1);
+    expect(queuedBeforeReconnect.pendingCodexInputs[0]?.content).toContain("board_stalled");
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-1",
+      status: "PORTING",
+      updatedAt: Date.now(),
+    });
+
+    vi.mocked(adapter.isConnected).mockReturnValue(true);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-board-stall-codex-drop" });
+    await Promise.resolve();
+
+    expect(
+      adapter.sendBrowserMessage.mock.calls.some(
+        ([msg]) => msg?.type === "codex_start_pending" && msg.inputs?.[0]?.content?.includes("board_stalled"),
+      ),
+    ).toBe(false);
+
+    const sessionAfterReconnect = bridge.getSession(leaderId)!;
+    expect(sessionAfterReconnect.pendingCodexInputs).toHaveLength(0);
+    expect(sessionAfterReconnect.pendingCodexTurns).toHaveLength(0);
+
+    dispatcher.destroy();
+  });
+
+  it("delivers queued board_stalled herd inputs for Codex leaders when the row is still stalled", async () => {
+    const { leaderId, dispatcher, adapter } = setupCodexLeaderBoardStallHarness();
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(61_000);
+    await Promise.resolve();
+
+    vi.mocked(adapter.isConnected).mockReturnValue(true);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-board-stall-codex-deliver" });
+    await Promise.resolve();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: [expect.objectContaining({ content: expect.stringContaining("board_stalled") })],
+      }),
+    );
+
+    const sessionAfterReconnect = bridge.getSession(leaderId)!;
+    expect(sessionAfterReconnect.pendingCodexInputs).toHaveLength(1);
+    expect(sessionAfterReconnect.pendingCodexTurns[0]).toMatchObject({
+      status: "dispatched",
+      userContent: expect.stringContaining("board_stalled"),
+    });
+
+    dispatcher.destroy();
+  });
+
+  it("drops stale board_stalled herd batches before codex_steer_pending when a Codex leader already has an active turn", async () => {
+    const { leaderId, dispatcher, adapter } = setupCodexLeaderBoardStallHarness();
+    const browser = makeBrowserSocket(leaderId);
+
+    vi.mocked(adapter.isConnected).mockReturnValue(true);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-board-stall-codex-steer-drop" });
+    bridge.handleBrowserOpen(browser, leaderId);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "leader is already handling the next step",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-board-stall-active");
+    await Promise.resolve();
+    adapter.sendBrowserMessage.mockClear();
+
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-1",
+      status: "PORTING",
+      updatedAt: Date.now(),
+    });
+
+    bridge.injectUserMessage(
+      leaderId,
+      "1 event from 1 session\n\n#12 | board_stalled | q-1 Investigate delayed stall drop | IMPLEMENTING | worker disconnected | stalled 4m",
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [
+          {
+            id: 1,
+            event: "board_stalled",
+            sessionId: "worker-board-stall-codex",
+            sessionNum: 12,
+            sessionName: "worker-board-stall-codex",
+            ts: Date.now(),
+            data: {
+              questId: "q-1",
+              title: "Investigate delayed stall drop",
+              stage: "IMPLEMENTING",
+              signature: "q-1|IMPLEMENTING|disconnected",
+              workerStatus: "disconnected",
+              reviewerStatus: "missing",
+              stalledForMs: 240_000,
+              reason: "worker disconnected",
+              action: "inspect worker; resume or re-dispatch before review",
+            },
+          } as any,
+        ],
+        renderedLines: [
+          "#12 | board_stalled | q-1 Investigate delayed stall drop | IMPLEMENTING | worker disconnected | stalled 4m",
+        ],
+      },
+    );
+    await Promise.resolve();
+
+    expect(adapter.sendBrowserMessage.mock.calls.some(([msg]) => msg?.type === "codex_steer_pending")).toBe(false);
+
+    const sessionAfterInject = bridge.getSession(leaderId)!;
+    expect(sessionAfterInject.pendingCodexInputs).toHaveLength(0);
+    expect(sessionAfterInject.pendingCodexTurns).toHaveLength(1);
+    expect(sessionAfterInject.pendingCodexTurns[0]).toMatchObject({
+      turnId: "turn-board-stall-active",
+    });
+
     dispatcher.destroy();
   });
 

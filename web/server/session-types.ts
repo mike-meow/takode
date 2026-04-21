@@ -329,6 +329,7 @@ export interface PendingCodexInput {
   draftImages?: PendingCodexInputImageDraft[];
   deliveryContent?: string;
   agentSource?: { sessionId: string; sessionLabel?: string };
+  takodeHerdBatch?: TakodeHerdBatchSnapshot;
   vscodeSelection?: VsCodeSelectionMetadata;
 }
 
@@ -350,6 +351,8 @@ export type BrowserOutgoingMessage =
       client_msg_id?: string;
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
       agentSource?: { sessionId: string; sessionLabel?: string };
+      /** Server-only metadata for rebuilding/pruning queued herd batches before delivery. */
+      takodeHerdBatch?: TakodeHerdBatchSnapshot;
     }
   | {
       type: "codex_start_pending";
@@ -1014,6 +1017,11 @@ export interface TakodeBoardDispatchableEventData {
   signature?: string;
   summary: string;
   action?: string;
+}
+
+export interface TakodeHerdBatchSnapshot {
+  events: TakodeEvent[];
+  renderedLines: string[];
 }
 
 export interface TakodeEventDataByType {

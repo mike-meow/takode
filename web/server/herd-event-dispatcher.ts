@@ -20,7 +20,12 @@
  * state that survives any CLI disconnect/reconnect cycle.
  */
 
-import type { TakodeEvent, TakodeEventType, BrowserIncomingMessage } from "./session-types.js";
+import type {
+  TakodeEvent,
+  TakodeEventType,
+  BrowserIncomingMessage,
+  TakodeHerdBatchSnapshot,
+} from "./session-types.js";
 import { formatActivitySummaryDetailed } from "./herd-activity-formatter.js";
 
 // ─── Interfaces (for testability — avoids importing full WsBridge/CliLauncher) ──
@@ -31,6 +36,7 @@ export interface WsBridgeHandle {
     sessionId: string,
     content: string,
     agentSource?: { sessionId: string; sessionLabel?: string },
+    takodeHerdBatch?: TakodeHerdBatchSnapshot,
   ): "sent" | "queued" | "no_session";
   isSessionIdle(sessionId: string): boolean;
   /** Wake a session that was stopped by idle-manager. Clears the killedByIdleManager
@@ -348,13 +354,18 @@ export class HerdEventDispatcher {
 
     const events = pending.map((e) => e.event);
     const surfacedUserMsgIdxs = new Map<string, Set<number>>();
-    const content = formatHerdEventBatch(events, {
+    const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => this.wsBridge.getSessionMessages(sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
       seenUserMsgIdxs: inbox.seenUserMsgIdxs,
       surfacedUserMsgIdxs,
     });
-    const delivery = this.wsBridge.injectUserMessage(orchId, content, HERD_AGENT_SOURCE);
+    const delivery = this.wsBridge.injectUserMessage(
+      orchId,
+      renderedBatch.content,
+      HERD_AGENT_SOURCE,
+      snapshotHerdBatch(events, renderedBatch.renderedLines),
+    );
     if (delivery !== "sent") {
       if (delivery === "queued") {
         this.scheduleRetry(orchId);
@@ -431,13 +442,18 @@ export class HerdEventDispatcher {
     // Format and inject
     const events = pending.map((e) => e.event);
     const surfacedUserMsgIdxs = new Map<string, Set<number>>();
-    const content = formatHerdEventBatch(events, {
+    const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => this.wsBridge.getSessionMessages(sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
       seenUserMsgIdxs: inbox.seenUserMsgIdxs,
       surfacedUserMsgIdxs,
     });
-    const delivery = this.wsBridge.injectUserMessage(orchId, content, HERD_AGENT_SOURCE);
+    const delivery = this.wsBridge.injectUserMessage(
+      orchId,
+      renderedBatch.content,
+      HERD_AGENT_SOURCE,
+      snapshotHerdBatch(events, renderedBatch.renderedLines),
+    );
     if (delivery !== "sent") {
       if (delivery === "queued") {
         this.scheduleRetry(orchId);
@@ -580,15 +596,29 @@ export interface FormatBatchOptions {
   surfacedUserMsgIdxs?: Map<string, Set<number>>;
 }
 
+export interface RenderedHerdEventBatch {
+  content: string;
+  renderedLines: string[];
+}
+
 /** Format a batch of events into a compact, scannable summary. */
 export function formatHerdEventBatch(events: TakodeEvent[], options?: FormatBatchOptions): string {
+  return renderHerdEventBatch(events, options).content;
+}
+
+export function renderHerdEventBatch(events: TakodeEvent[], options?: FormatBatchOptions): RenderedHerdEventBatch {
   const nowTs = options?.nowTs ?? Date.now();
-  // Count unique sessions
+  const renderedLines = events.map((event) => formatSingleEvent(event, nowTs, options));
+  return {
+    content: formatRenderedHerdEventBatch(events, renderedLines),
+    renderedLines,
+  };
+}
+
+export function formatRenderedHerdEventBatch(events: TakodeEvent[], renderedLines: string[]): string {
   const sessionIds = new Set(events.map((e) => e.sessionId));
   const header = `${events.length} event${events.length === 1 ? "" : "s"} from ${sessionIds.size} session${sessionIds.size === 1 ? "" : "s"}`;
-
-  const lines = events.map((event) => formatSingleEvent(event, nowTs, options));
-  return `${header}\n\n${lines.join("\n")}`;
+  return `${header}\n\n${renderedLines.join("\n")}`;
 }
 
 function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatchOptions): string {
@@ -799,6 +829,11 @@ function mergeSurfacedUserMsgIdxs(target: Map<string, Set<number>>, surfaced: Ma
     for (const idx of idxs) existing.add(idx);
     target.set(sessionId, existing);
   }
+}
+
+function snapshotHerdBatch(events: TakodeEvent[], renderedLines: string[]): TakodeHerdBatchSnapshot | undefined {
+  if (!events.some((event) => event.event === "board_stalled")) return undefined;
+  return { events, renderedLines };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────

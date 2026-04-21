@@ -73,6 +73,7 @@ import type {
   TakodeTurnEndEventData,
   BoardRow,
   SessionNotification,
+  TakodeHerdBatchSnapshot,
 } from "./session-types.js";
 import {
   TOOL_RESULT_PREVIEW_LIMIT,
@@ -99,6 +100,7 @@ import {
   isSensitiveBashCommand as isSensitiveBashCommandPolicy,
   isSensitiveConfigPath as isSensitiveConfigPathPolicy,
 } from "./bridge/permission-pipeline.js";
+import { formatRenderedHerdEventBatch } from "./herd-event-dispatcher.js";
 
 // `takode board` output is compact, high-signal state that agents routinely
 // reason about. A 300-char tail preview can hide dependent rows and make the
@@ -4249,6 +4251,7 @@ export class WsBridge {
     if (!adapter) return;
     if (session.codexAdapter !== adapter) return;
     if (session.state.backend_state !== "connected" || !adapter.isConnected()) return;
+    this.pruneStalePendingCodexHerdInputs(session, `${reason}_before_dispatch`);
 
     const head = this.getCodexHeadTurn(session);
     if (!head) return;
@@ -6071,6 +6074,7 @@ export class WsBridge {
     sessionId: string,
     content: string,
     agentSource?: { sessionId: string; sessionLabel?: string },
+    takodeHerdBatch?: TakodeHerdBatchSnapshot,
   ): "sent" | "queued" | "no_session" {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -6098,6 +6102,7 @@ export class WsBridge {
           type: "user_message",
           content,
           ...(agentSource ? { agentSource } : {}),
+          ...(takodeHerdBatch ? { takodeHerdBatch } : {}),
         }),
       );
     } else {
@@ -6105,6 +6110,7 @@ export class WsBridge {
         type: "user_message",
         content,
         ...(agentSource ? { agentSource } : {}),
+        ...(takodeHerdBatch ? { takodeHerdBatch } : {}),
       });
       if (this.isHerdEventSource(agentSource) && session.backendType === "codex") {
         const pending = session.pendingCodexInputs
@@ -6146,6 +6152,76 @@ export class WsBridge {
 
   private isHerdEventSource(agentSource: { sessionId: string; sessionLabel?: string } | undefined): boolean {
     return agentSource?.sessionId === "herd-events";
+  }
+
+  private isLiveBoardStalledEvent(session: Session, event: TakodeEvent): boolean {
+    if (event.event !== "board_stalled") return true;
+    const row = session.board.get(event.data.questId);
+    if (!row) return false;
+    if (event.data.stage && row.status !== event.data.stage) return false;
+    if (!event.data.signature) return true;
+    return this.buildBoardStallCandidate(session, row)?.signature === event.data.signature;
+  }
+
+  private pruneStaleBoardStalledHerdBatch(
+    session: Session,
+    batch: TakodeHerdBatchSnapshot | undefined,
+  ): { batch?: TakodeHerdBatchSnapshot; content?: string; changed: boolean } {
+    if (!batch || batch.events.length === 0) return { batch, changed: false };
+
+    const keptEvents: TakodeEvent[] = [];
+    const keptRenderedLines: string[] = [];
+    let changed = false;
+
+    for (let i = 0; i < batch.events.length; i++) {
+      const event = batch.events[i];
+      const renderedLine = batch.renderedLines[i] ?? "";
+      if (!this.isLiveBoardStalledEvent(session, event)) {
+        changed = true;
+        continue;
+      }
+      keptEvents.push(event);
+      keptRenderedLines.push(renderedLine);
+    }
+
+    if (!changed) return { batch, changed: false };
+    if (keptEvents.length === 0) return { changed: true };
+
+    return {
+      changed: true,
+      batch: { events: keptEvents, renderedLines: keptRenderedLines },
+      content: formatRenderedHerdEventBatch(keptEvents, keptRenderedLines),
+    };
+  }
+
+  private pruneStalePendingCodexHerdInputs(session: Session, reason: string): boolean {
+    let changed = false;
+    const nextInputs: PendingCodexInput[] = [];
+
+    for (const input of session.pendingCodexInputs) {
+      const pruned = this.pruneStaleBoardStalledHerdBatch(session, input.takodeHerdBatch);
+      if (!pruned.changed) {
+        nextInputs.push(input);
+        continue;
+      }
+
+      changed = true;
+      if (!pruned.batch || !pruned.content) continue;
+
+      input.content = pruned.content;
+      if (input.deliveryContent) input.deliveryContent = pruned.content;
+      input.takodeHerdBatch = pruned.batch;
+      nextInputs.push(input);
+    }
+
+    if (!changed) return false;
+
+    session.pendingCodexInputs = nextInputs;
+    this.broadcastPendingCodexInputs(session);
+    this.rebuildQueuedCodexPendingStartBatch(session);
+    this.persistSession(session);
+    console.log(`[ws-bridge] Pruned stale queued board_stalled herd input(s) for session ${sessionTag(session.id)} (${reason})`);
+    return true;
   }
 
   private sameAgentSource(
@@ -8949,7 +9025,10 @@ export class WsBridge {
       // For image-bearing user turns, always convert them into server-stored
       // attachment paths and append those paths to the text prompt. Backend
       // delivery stays text-only across Codex and Claude SDK.
-      let adapterMsg: BrowserOutgoingMessage = msg;
+      let adapterMsg: BrowserOutgoingMessage =
+        msg.type === "user_message" && msg.takodeHerdBatch
+          ? (({ takodeHerdBatch: _takodeHerdBatch, ...rest }) => rest)(msg)
+          : msg;
       if (msg.type === "user_message" && msg.images?.length) {
         let annotatedContent = msg.content || "";
         let resolvedPaths: string[] | null = null;
@@ -9018,6 +9097,7 @@ export class WsBridge {
             ...(msg.images?.length ? { draftImages: buildPendingCodexImageDrafts(msg.images) } : {}),
             ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
             ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+            ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),
             ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
           });
           this.emitTakodeEvent(session.id, "user_message", {
@@ -10809,6 +10889,7 @@ export class WsBridge {
     if (session.codexFreshTurnRequiredUntilTurnId) {
       this.clearCodexFreshTurnRequirement(session, `${reason}_active_turn_changed`);
     }
+    this.pruneStalePendingCodexHerdInputs(session, `${reason}_before_steer`);
     const deliverable = this.getCancelablePendingCodexInputs(session);
     if (deliverable.length === 0) return false;
     const ids = deliverable.map((input) => input.id);
