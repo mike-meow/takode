@@ -32,17 +32,21 @@ import {
 } from "../utils/vscode-context.js";
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
-import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
-import {
-  clearPendingUserUploadController,
-  registerPendingUserUploadController,
-} from "../pending-user-upload-manager.js";
+import type {
+  ChatMessage,
+  CodexAppReference,
+  CodexSkillReference,
+  PendingUserUpload,
+  QuestmasterTask,
+  SdkSessionInfo,
+} from "../types.js";
+import { clearPendingUserUploadController, registerPendingUserUploadController } from "../pending-user-upload-manager.js";
 
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
 const EMPTY_APP_REFERENCES: CodexAppReference[] = [];
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
-const EMPTY_PENDING_USER_UPLOADS: never[] = [];
+const EMPTY_PENDING_USER_UPLOADS: PendingUserUpload[] = [];
 const EMPTY_QUESTS: QuestmasterTask[] = [];
 const EMPTY_SDK_SESSIONS: SdkSessionInfo[] = [];
 const EMPTY_SESSION_NAMES = new Map<string, string>();
@@ -457,6 +461,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const voiceEditBaseTextRef = useRef("");
   // Persisted preference for voice capture mode when composer has text (loaded from server settings)
   const preferredVoiceModeRef = useRef<"edit" | "append">("edit");
+  const persistedSettingsRef = useRef<Awaited<ReturnType<typeof api.getSettings>> | null>(null);
+  const persistedSettingsLoadedRef = useRef(false);
+  const persistedSettingsRequestRef = useRef<Promise<Awaited<ReturnType<typeof api.getSettings>> | null> | null>(null);
+  const voiceStartPendingRef = useRef(false);
+  const voiceStartPendingReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // UI state mirror of voiceCaptureModeRef -- drives re-renders for the mode toggle
   const [voiceCaptureMode, setVoiceCaptureMode] = useState<"dictation" | "edit" | "append">("dictation");
 
@@ -487,13 +496,93 @@ export function Composer({ sessionId }: { sessionId: string }) {
     },
   });
   const [voiceUnsupportedInfoOpen, setVoiceUnsupportedInfoOpen] = useState(false);
+  const isRecordingRef = useRef(isRecording);
+  const isPreparingRef = useRef(isPreparing);
 
-  const handleMicClick = useCallback(() => {
+  const clearPendingVoiceStart = useCallback(() => {
+    if (voiceStartPendingReleaseTimerRef.current) {
+      clearTimeout(voiceStartPendingReleaseTimerRef.current);
+      voiceStartPendingReleaseTimerRef.current = null;
+    }
+    voiceStartPendingRef.current = false;
+  }, []);
+
+  const deferPendingVoiceStartRelease = useCallback(() => {
+    if (voiceStartPendingReleaseTimerRef.current) {
+      clearTimeout(voiceStartPendingReleaseTimerRef.current);
+    }
+    voiceStartPendingReleaseTimerRef.current = setTimeout(() => {
+      voiceStartPendingReleaseTimerRef.current = null;
+      voiceStartPendingRef.current = false;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+    isPreparingRef.current = isPreparing;
+    if (isRecording || isPreparing) {
+      clearPendingVoiceStart();
+    }
+  }, [clearPendingVoiceStart, isPreparing, isRecording]);
+
+  useEffect(() => clearPendingVoiceStart, [clearPendingVoiceStart]);
+
+  const applyPersistedVoicePreference = useCallback((settings: Awaited<ReturnType<typeof api.getSettings>> | null) => {
+    persistedSettingsRef.current = settings;
+    persistedSettingsLoadedRef.current = true;
+    const savedVoiceMode = settings?.transcriptionConfig?.voiceCaptureMode;
+    preferredVoiceModeRef.current = savedVoiceMode === "edit" || savedVoiceMode === "append" ? savedVoiceMode : "edit";
+    return settings;
+  }, []);
+
+  const loadPersistedSettings = useCallback(() => {
+    if (persistedSettingsLoadedRef.current) {
+      return Promise.resolve(persistedSettingsRef.current);
+    }
+    if (persistedSettingsRequestRef.current) {
+      return persistedSettingsRequestRef.current;
+    }
+    const request = api
+      .getSettings()
+      .catch(() => null)
+      .then((settings) => applyPersistedVoicePreference(settings))
+      .finally(() => {
+        persistedSettingsRequestRef.current = null;
+      });
+    persistedSettingsRequestRef.current = request;
+    return request;
+  }, [applyPersistedVoicePreference]);
+
+  const persistPreferredVoiceMode = useCallback((mode: "edit" | "append") => {
+    preferredVoiceModeRef.current = mode;
+    if (persistedSettingsRef.current) {
+      persistedSettingsRef.current = {
+        ...persistedSettingsRef.current,
+        transcriptionConfig: {
+          ...persistedSettingsRef.current.transcriptionConfig,
+          voiceCaptureMode: mode,
+        },
+      };
+    }
+    api.updateSettings({ transcriptionConfig: { voiceCaptureMode: mode } }).catch(() => {});
+  }, []);
+
+  const handleMicClick = useCallback(async () => {
     if (!voiceSupported) {
       setVoiceError(voiceUnsupportedMessage ?? "Voice input is unavailable.");
       return;
     }
-    if (!isRecording) {
+    if (isRecordingRef.current) {
+      clearPendingVoiceStart();
+      toggleRecording();
+      return;
+    }
+    if (isPreparingRef.current || voiceStartPendingRef.current) {
+      return;
+    }
+
+    voiceStartPendingRef.current = true;
+    try {
       // Clear any saved failed transcription -- new recording supersedes old
       setFailedTranscription(null);
       // Always capture cursor position for potential append mode
@@ -504,6 +593,13 @@ export function Composer({ sessionId }: { sessionId: string }) {
         after: text.slice(cursorPos),
       };
       if (text.trim().length > 0) {
+        if (!persistedSettingsLoadedRef.current) {
+          await loadPersistedSettings();
+        }
+        if (isRecordingRef.current || isPreparingRef.current) {
+          clearPendingVoiceStart();
+          return;
+        }
         const mode = preferredVoiceModeRef.current;
         voiceCaptureModeRef.current = mode;
         setVoiceCaptureMode(mode);
@@ -513,9 +609,22 @@ export function Composer({ sessionId }: { sessionId: string }) {
         voiceCaptureModeRef.current = "dictation";
         setVoiceCaptureMode("dictation");
       }
+      toggleRecording();
+      deferPendingVoiceStartRelease();
+    } catch (error) {
+      clearPendingVoiceStart();
+      throw error;
     }
-    toggleRecording();
-  }, [isRecording, setVoiceError, text, toggleRecording, voiceSupported, voiceUnsupportedMessage]);
+  }, [
+    clearPendingVoiceStart,
+    deferPendingVoiceStartRelease,
+    loadPersistedSettings,
+    setVoiceError,
+    text,
+    toggleRecording,
+    voiceSupported,
+    voiceUnsupportedMessage,
+  ]);
 
   /** Transcribe an audio blob and apply the result based on mode. Used by both initial recording and retry. */
   async function performTranscription(
@@ -746,6 +855,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!isCodex) return;
     let cancelled = false;
+    void loadPersistedSettings();
     api
       .getBackendModels("codex")
       .then((models) => {
@@ -758,7 +868,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [isCodex]);
+  }, [isCodex, loadPersistedSettings]);
 
   useEffect(() => {
     if (isCodex) return;
@@ -766,15 +876,10 @@ export function Composer({ sessionId }: { sessionId: string }) {
     // Fetch dynamic models and the user's configured default in parallel
     Promise.all([
       api.getBackendModels("claude").catch(() => [] as { value: string; label: string; description: string }[]),
-      api.getSettings().catch(() => null),
+      loadPersistedSettings(),
     ]).then(([models, settings]) => {
       if (cancelled) return;
       const options = models.length > 0 ? toModelOptions(models) : [];
-      // Load persisted voice capture mode preference
-      const savedVoiceMode = settings?.transcriptionConfig?.voiceCaptureMode;
-      if (savedVoiceMode === "edit" || savedVoiceMode === "append") {
-        preferredVoiceModeRef.current = savedVoiceMode;
-      }
       // If the user has a default model configured in ~/.claude/settings.json,
       // prepend a "Default (model)" option that sends the actual model ID
       // instead of an empty string (which would hide the model selector).
@@ -798,7 +903,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [isCodex]);
+  }, [isCodex, loadPersistedSettings]);
 
   // Build slash-command menu items from session data
   const allCommands = useMemo<CommandItem[]>(() => {
@@ -2441,8 +2546,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       onClick={() => {
                         voiceCaptureModeRef.current = "edit";
                         setVoiceCaptureMode("edit");
-                        preferredVoiceModeRef.current = "edit";
-                        api.updateSettings({ transcriptionConfig: { voiceCaptureMode: "edit" } }).catch(() => {});
+                        persistPreferredVoiceMode("edit");
                       }}
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
                         voiceCaptureMode === "edit" ? "bg-cc-primary text-white" : "text-cc-muted hover:text-cc-fg"
@@ -2456,8 +2560,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                       onClick={() => {
                         voiceCaptureModeRef.current = "append";
                         setVoiceCaptureMode("append");
-                        preferredVoiceModeRef.current = "append";
-                        api.updateSettings({ transcriptionConfig: { voiceCaptureMode: "append" } }).catch(() => {});
+                        persistPreferredVoiceMode("append");
                       }}
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
                         voiceCaptureMode === "append" ? "bg-cc-primary text-white" : "text-cc-muted hover:text-cc-fg"
