@@ -33,12 +33,16 @@ import {
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
 import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
-import { clearPendingUserUploadController, registerPendingUserUploadController } from "../pending-user-upload-manager.js";
+import {
+  clearPendingUserUploadController,
+  registerPendingUserUploadController,
+} from "../pending-user-upload-manager.js";
 
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
 const EMPTY_APP_REFERENCES: CodexAppReference[] = [];
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_PENDING_USER_UPLOADS: never[] = [];
 const EMPTY_QUESTS: QuestmasterTask[] = [];
 const EMPTY_SDK_SESSIONS: SdkSessionInfo[] = [];
 const EMPTY_SESSION_NAMES = new Map<string, string>();
@@ -379,7 +383,7 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
 
 export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
-  const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId) ?? []);
+  const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId)) ?? EMPTY_PENDING_USER_UPLOADS;
   const replyContext = useStore((s) => s.replyContexts.get(sessionId));
   const text = draft?.text ?? "";
   const images = draft?.images ?? [];
@@ -1698,7 +1702,9 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setReferenceMenuIndex((i) => (i - 1 + filteredReferenceSuggestions.length) % filteredReferenceSuggestions.length);
+        setReferenceMenuIndex(
+          (i) => (i - 1 + filteredReferenceSuggestions.length) % filteredReferenceSuggestions.length,
+        );
         return;
       }
       if (e.key === "Tab" && !e.shiftKey) {
@@ -1921,12 +1927,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
   });
 
   const isRunning = useStore((s) => s.sessionStatus.get(sessionId) === "running");
-  const activePendingUserUpload = pendingUserUploads.find((upload) => upload.stage === "uploading" || upload.stage === "delivering");
+  const activePendingUserUpload = pendingUserUploads.find(
+    (upload) => upload.stage === "uploading" || upload.stage === "delivering",
+  );
   const canSend =
-    (text.trim().length > 0 || images.length > 0) &&
-    isConnected &&
-    !voiceEditProposal &&
-    !activePendingUserUpload;
+    (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal && !activePendingUserUpload;
   const isVoiceInteractionActive = isPreparing || isRecording || isTranscribing;
   const hasActiveReplyContext = !!replyContext;
 
@@ -1963,7 +1968,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   // Collapse on tap outside the composer when empty
   const composerRootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed || isVoiceInteractionActive || hasActiveReplyContext) return;
+    if (!usesTouchKeyboard || !isNarrowLayout || isCollapsed || isVoiceInteractionActive || hasActiveReplyContext)
+      return;
     const handler = (e: MouseEvent | TouchEvent) => {
       if (
         !hasActiveReplyContext &&
@@ -1982,7 +1988,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
       document.removeEventListener("mousedown", handler);
       document.removeEventListener("touchstart", handler);
     };
-  }, [usesTouchKeyboard, isNarrowLayout, isCollapsed, hasActiveReplyContext, isVoiceInteractionActive, text, images.length]);
+  }, [
+    usesTouchKeyboard,
+    isNarrowLayout,
+    isCollapsed,
+    hasActiveReplyContext,
+    isVoiceInteractionActive,
+    text,
+    images.length,
+  ]);
 
   const expandComposer = useCallback(() => {
     textareaRef.current?.focus(); // synchronous focus triggers mobile virtual keyboard
@@ -2302,14 +2316,26 @@ export function Composer({ sessionId }: { sessionId: string }) {
                     >
                       <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cc-hover text-cc-muted shrink-0">
                         {suggestion.kind === "quest" ? (
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            className="w-3.5 h-3.5"
+                          >
                             <path d="M5 3.5h6" strokeLinecap="round" />
                             <path d="M5 8h6" strokeLinecap="round" />
                             <path d="M5 12.5h4" strokeLinecap="round" />
                             <rect x="2.5" y="1.75" width="11" height="12.5" rx="2" />
                           </svg>
                         ) : (
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            className="w-3.5 h-3.5"
+                          >
                             <circle cx="8" cy="8" r="5.5" />
                             <path d="M8 5v3l2 1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
@@ -2451,12 +2477,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
                   {transcriptionPhase === "uploading"
                     ? "Uploading..."
                     : transcriptionPhase === "editing"
-                    ? "Editing..."
-                    : transcriptionPhase === "appending"
-                      ? "Appending..."
-                      : transcriptionPhase === "enhancing"
-                        ? "Enhancing..."
-                        : "Transcribing..."}
+                      ? "Editing..."
+                      : transcriptionPhase === "appending"
+                        ? "Appending..."
+                        : transcriptionPhase === "enhancing"
+                          ? "Enhancing..."
+                          : "Transcribing..."}
                 </span>
               </div>
             )}
