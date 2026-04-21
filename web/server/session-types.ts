@@ -347,6 +347,9 @@ export type BrowserOutgoingMessage =
       content: string;
       session_id?: string;
       images?: { media_type: string; data: string }[];
+      imageRefs?: import("./image-store.js").ImageRef[];
+      draftImages?: PendingCodexInputImageDraft[];
+      deliveryContent?: string;
       vscodeSelection?: VsCodeSelectionMetadata;
       client_msg_id?: string;
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
@@ -506,6 +509,7 @@ export type BrowserIncomingMessageBase =
       content: string;
       timestamp: number;
       id?: string;
+      client_msg_id?: string;
       cliUuid?: string;
       images?: import("./image-store.js").ImageRef[];
       agentSource?: { sessionId: string; sessionLabel?: string };

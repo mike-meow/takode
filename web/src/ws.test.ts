@@ -3984,6 +3984,90 @@ describe("agentSource propagation", () => {
     expect(msgs[0].agentSource).toBeUndefined();
   });
 
+  it("replaces a pending local upload with the authoritative user message while preserving local image previews", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    useStore.getState().addPendingUserUpload("s1", {
+      id: "pending-upload-1",
+      content: "Inspect this screenshot",
+      timestamp: 1000,
+      stage: "delivering",
+      images: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      prepared: {
+        deliveryContent:
+          "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+        draftImages: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      },
+    });
+
+    fireMessage({
+      type: "user_message",
+      content: "Inspect this screenshot",
+      timestamp: 1001,
+      id: "user-1001-0",
+      client_msg_id: "pending-upload-1",
+      images: [{ imageId: "img-1", media_type: "image/png" }],
+    });
+
+    expect(useStore.getState().pendingUserUploads.get("s1")).toBeUndefined();
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].images).toEqual([{ imageId: "img-1", media_type: "image/png" }]);
+    expect(msgs[0].localImages).toEqual([
+      { name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" },
+    ]);
+    expect(msgs[0].clientMsgId).toBe("pending-upload-1");
+  });
+
+  it("preserves local image previews when history_sync replaces the hot tail for a pending upload", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    useStore.getState().addPendingUserUpload("s1", {
+      id: "pending-upload-2",
+      content: "Inspect this screenshot",
+      timestamp: 1000,
+      stage: "delivering",
+      images: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      prepared: {
+        deliveryContent:
+          "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
+        imageRefs: [{ imageId: "img-2", media_type: "image/png" }],
+        draftImages: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      },
+    });
+
+    fireMessage({
+      type: "history_sync",
+      frozen_base_count: 0,
+      frozen_delta: [],
+      hot_messages: [
+        {
+          type: "user_message",
+          content: "Inspect this screenshot",
+          timestamp: 1001,
+          id: "user-1001-1",
+          client_msg_id: "pending-upload-2",
+          images: [{ imageId: "img-2", media_type: "image/png" }],
+        },
+      ],
+      frozen_count: 0,
+      expected_frozen_hash: "hash-frozen",
+      expected_full_hash: "hash-full",
+    });
+
+    expect(useStore.getState().pendingUserUploads.get("s1")).toBeUndefined();
+    const msgs = useStore.getState().messages.get("s1")!;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].images).toEqual([{ imageId: "img-2", media_type: "image/png" }]);
+    expect(msgs[0].localImages).toEqual([
+      { name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" },
+    ]);
+    expect(msgs[0].clientMsgId).toBe("pending-upload-2");
+  });
+
   it("does not treat user message metadata as the authoritative VS Code selection state", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });

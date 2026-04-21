@@ -33,6 +33,7 @@ import {
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { injectReplyContext } from "../utils/reply-context.js";
 import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
+import { clearPendingUserUploadController, registerPendingUserUploadController } from "../pending-user-upload-manager.js";
 
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
@@ -54,6 +55,12 @@ interface ImageAttachment {
   name: string;
   base64: string;
   mediaType: string;
+}
+
+function nextPendingUploadId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return uuid;
+  return `pending-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** Chip shown above the composer textarea when replying to a specific assistant message. */
@@ -372,6 +379,7 @@ function CollapseAllButton({ sessionId }: { sessionId: string }) {
 
 export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
+  const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId) ?? []);
   const replyContext = useStore((s) => s.replyContexts.get(sessionId));
   const text = draft?.text ?? "";
   const images = draft?.images ?? [];
@@ -1348,6 +1356,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }, [setText, voiceEditProposal]);
 
   async function handleSend() {
+    const store = useStore.getState();
     const msg = text.trim();
     if ((!msg && images.length === 0) || !isConnected || voiceEditProposal) return;
 
@@ -1368,8 +1377,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
         behavior: "allow",
         updated_input: { ...pendingAskUserPerm.input, answers },
       });
-      useStore.getState().removePermission(sessionId, pendingAskUserPerm.request_id);
-      useStore.getState().clearComposerDraft(sessionId);
+      store.removePermission(sessionId, pendingAskUserPerm.request_id);
+      store.clearComposerDraft(sessionId);
       setSlashMenuOpen(false);
       setDollarMenuOpen(false);
       setDollarQuery("");
@@ -1394,7 +1403,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         behavior: "deny",
         message: "Plan rejected — user sent a new message",
       });
-      useStore.getState().removePermission(sessionId, pendingPlanPerm.request_id);
+      store.removePermission(sessionId, pendingPlanPerm.request_id);
     }
 
     // Codex local slash shortcuts for mode switching.
@@ -1406,7 +1415,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         const cliMode = resolveCodexCliMode(targetMode.uiMode, targetAsk);
         const switched = sendToSession(sessionId, { type: "set_permission_mode", mode: cliMode });
         if (!switched) return;
-        useStore.getState().clearComposerDraft(sessionId);
+        store.clearComposerDraft(sessionId);
         setSlashMenuOpen(false);
         setDollarMenuOpen(false);
         setDollarQuery("");
@@ -1428,54 +1437,124 @@ export function Composer({ sessionId }: { sessionId: string }) {
       ? injectReplyContext(currentReplyContext.previewText, msg, currentReplyContext.messageId)
       : msg;
 
+    const clearComposerUi = () => {
+      setSlashMenuOpen(false);
+      setDollarMenuOpen(false);
+      setDollarQuery("");
+      dollarAnchorRef.current = -1;
+      setReferenceMenuOpen(false);
+      setReferenceKind(null);
+      setReferenceQuery("");
+      referenceAnchorRef.current = -1;
+      setMentionMenuOpen(false);
+      setMentionResults([]);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+      if (isTouchDevice()) {
+        textareaRef.current?.blur();
+      } else {
+        textareaRef.current?.focus();
+      }
+
+      setSendPressing(true);
+      setTimeout(() => setSendPressing(false), 500);
+    };
+
+    const finalizeReplyNotification = () => {
+      if (!currentReplyContext?.messageId) return;
+      const notifications = useStore.getState().sessionNotifications.get(sessionId);
+      const notif = notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
+      if (notif) {
+        api.markNotificationDone(sessionId, notif.id, true).catch(() => {});
+      }
+    };
+
+    if (images.length > 0) {
+      const pendingId = nextPendingUploadId();
+      const uploadController = new AbortController();
+      registerPendingUserUploadController(pendingId, uploadController);
+      store.addPendingUserUpload(sessionId, {
+        id: pendingId,
+        content: finalContent,
+        images,
+        timestamp: Date.now(),
+        stage: "uploading",
+        ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
+      });
+      store.clearComposerDraft(sessionId);
+      store.setReplyContext(sessionId, null);
+      clearComposerUi();
+
+      try {
+        const prepared = await api.prepareUserMessageImages(
+          sessionId,
+          images.map((img) => ({ mediaType: img.mediaType, data: img.base64 })),
+          uploadController.signal,
+        );
+        clearPendingUserUploadController(pendingId);
+        const draftImages = images.map((img) => ({
+          name: img.name,
+          base64: img.base64,
+          mediaType: img.mediaType,
+        }));
+        const deliveryContent = `${finalContent}${prepared.attachmentAnnotation}`;
+        const sent = sendToSession(sessionId, {
+          type: "user_message",
+          content: finalContent,
+          deliveryContent,
+          imageRefs: prepared.imageRefs,
+          draftImages,
+          session_id: sessionId,
+          client_msg_id: pendingId,
+          ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
+        });
+
+        store.requestBottomAlignOnNextUserMessage(sessionId);
+        finalizeReplyNotification();
+        store.updatePendingUserUpload(sessionId, pendingId, (upload) => ({
+          ...upload,
+          stage: sent ? "delivering" : "failed",
+          error: sent ? undefined : "Connection lost before delivery.",
+          prepared: {
+            deliveryContent,
+            imageRefs: prepared.imageRefs,
+            draftImages,
+          },
+        }));
+        return;
+      } catch (err) {
+        clearPendingUserUploadController(pendingId);
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        const message = err instanceof Error ? err.message : "Image upload failed";
+        store.updatePendingUserUpload(sessionId, pendingId, (upload) => ({
+          ...upload,
+          stage: "failed",
+          error: message,
+        }));
+        return;
+      }
+    }
+
     const sent = sendToSession(sessionId, {
       type: "user_message",
       content: finalContent,
       session_id: sessionId,
       ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
-      images: images.length > 0 ? images.map((img) => ({ media_type: img.mediaType, data: img.base64 })) : undefined,
     });
 
     if (!sent) return; // WebSocket not open — keep draft so user can retry
 
     // User message will appear in the feed when the server broadcasts it back
     // (server-authoritative model — browsers never add user messages locally)
-    useStore.getState().requestBottomAlignOnNextUserMessage(sessionId);
-    useStore.getState().clearComposerDraft(sessionId);
+    store.requestBottomAlignOnNextUserMessage(sessionId);
+    store.clearComposerDraft(sessionId);
+    finalizeReplyNotification();
+    store.setReplyContext(sessionId, null);
 
-    // Auto-mark notification as done when the user replies to a notification message.
-    // Must run before clearing reply context since we need the messageId.
-    if (currentReplyContext?.messageId) {
-      const notifications = useStore.getState().sessionNotifications.get(sessionId);
-      const notif = notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
-      if (notif) {
-        api.markNotificationDone(sessionId, notif.id, true).catch(() => {});
-      }
-    }
-    useStore.getState().setReplyContext(sessionId, null);
-
-    setSlashMenuOpen(false);
-    setDollarMenuOpen(false);
-    setDollarQuery("");
-    dollarAnchorRef.current = -1;
-    setReferenceMenuOpen(false);
-    setReferenceKind(null);
-    setReferenceQuery("");
-    referenceAnchorRef.current = -1;
-    setMentionMenuOpen(false);
-    setMentionResults([]);
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-    if (isTouchDevice()) {
-      textareaRef.current?.blur();
-    } else {
-      textareaRef.current?.focus();
-    }
-
-    setSendPressing(true);
-    setTimeout(() => setSendPressing(false), 500);
+    clearComposerUi();
   }
 
   // Voice recording keyboard shortcuts:
@@ -1842,7 +1921,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
   });
 
   const isRunning = useStore((s) => s.sessionStatus.get(sessionId) === "running");
-  const canSend = (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal;
+  const activePendingUserUpload = pendingUserUploads.find((upload) => upload.stage === "uploading" || upload.stage === "delivering");
+  const canSend =
+    (text.trim().length > 0 || images.length > 0) &&
+    isConnected &&
+    !voiceEditProposal &&
+    !activePendingUserUpload;
   const isVoiceInteractionActive = isPreparing || isRecording || isTranscribing;
   const hasActiveReplyContext = !!replyContext;
 
@@ -2905,7 +2989,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                         ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
                         : "bg-cc-hover text-cc-muted cursor-not-allowed"
                     } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
-                    title="Send message"
+                    title={activePendingUserUpload?.stage === "uploading" ? "Uploading image" : "Send message"}
                   >
                     {sendPressing ? (
                       <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />

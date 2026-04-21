@@ -24,6 +24,7 @@ import { GIT_CMD_TIMEOUT } from "../constants.js";
 import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import type { RouteContext, OptionalAuthResult } from "./context.js";
+import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
 
 /** Extract the caller's session ID from an optional auth result, if available. */
 function getActorSessionId(auth: OptionalAuthResult): string | undefined {
@@ -2011,6 +2012,35 @@ export function createSessionsRoutes(ctx: RouteContext) {
   });
 
   // ─── Image serving ─────────────────────────────────────────
+
+  api.post("/sessions/:id/images/prepare-user-message", async (c) => {
+    if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+
+    const body = await c.req.json().catch(() => null);
+    const images = Array.isArray((body as { images?: unknown[] } | null)?.images)
+      ? ((body as { images: Array<{ mediaType?: unknown; data?: unknown }> }).images ?? [])
+      : [];
+    if (images.length === 0) {
+      return c.json({ error: "images must be a non-empty array" }, 400);
+    }
+
+    const invalidImage = images.find(
+      (img) => typeof img?.mediaType !== "string" || typeof img?.data !== "string" || !img.mediaType || !img.data,
+    );
+    if (invalidImage) {
+      return c.json({ error: "Each image must include mediaType and data" }, 400);
+    }
+
+    const imageRefs = await Promise.all(images.map((img) => imageStore.store(id, img.data as string, img.mediaType as string)));
+    const paths = deriveAttachmentPaths(id, imageRefs);
+    return c.json({
+      imageRefs,
+      paths,
+      attachmentAnnotation: formatAttachmentPathAnnotation(paths),
+    });
+  });
 
   api.get("/images/:sessionId/:imageId/thumb", async (c) => {
     if (!imageStore) return c.json({ error: "Image store not configured" }, 503);

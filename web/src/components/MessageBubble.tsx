@@ -989,6 +989,16 @@ function UserMessage({
   // Parse reply-to context from message content (display only -- raw text still goes to assistant)
   const replyContext = useMemo(() => parseReplyContext(message.content), [message.content]);
   const displayContent = replyContext ? replyContext.userMessage : message.content;
+  const localImageEntries = message.localImages ?? [];
+  const remoteImageEntries = message.images ?? [];
+  const pendingLabel =
+    message.pendingState === "uploading"
+      ? "Uploading image…"
+      : message.pendingState === "delivering"
+        ? "Sending…"
+        : message.pendingState === "failed"
+          ? message.pendingError || "Upload failed"
+          : null;
 
   return (
     <div className="flex justify-end items-start gap-1 group/msg animate-[fadeSlideIn_0.2s_ease-out]">
@@ -1011,9 +1021,28 @@ function UserMessage({
             </div>
           </div>
         )}
-        {message.images && message.images.length > 0 && sessionId && (
+        {localImageEntries.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2">
-            {message.images.map((img) => {
+            {localImageEntries.map((img, idx) => {
+              const src = `data:${img.mediaType};base64,${img.base64}`;
+              return (
+                <img
+                  key={`${img.name}-${idx}`}
+                  src={src}
+                  alt={img.name || "attachment"}
+                  className="max-w-[150px] sm:max-w-[200px] max-h-[120px] sm:max-h-[150px] rounded-lg object-cover cursor-zoom-in hover:opacity-80 transition-opacity"
+                  onClick={() => setLightboxSrc(src)}
+                  loading="lazy"
+                  decoding="async"
+                  data-testid="image-thumbnail"
+                />
+              );
+            })}
+          </div>
+        )}
+        {localImageEntries.length === 0 && remoteImageEntries.length > 0 && sessionId && (
+          <div className="flex gap-2 flex-wrap mb-2">
+            {remoteImageEntries.map((img) => {
               const thumbSrc = `/api/images/${sessionId}/${img.imageId}/thumb`;
               const fullSrc = `/api/images/${sessionId}/${img.imageId}/full`;
               return (
@@ -1031,6 +1060,7 @@ function UserMessage({
             })}
           </div>
         )}
+        {pendingLabel && <div className="mb-2 text-[11px] text-cc-muted/80 font-mono-code">{pendingLabel}</div>}
         <CollapsibleContent>
           <MarkdownContent
             text={displayContent}
@@ -1041,7 +1071,9 @@ function UserMessage({
         </CollapsibleContent>
         {showTimestamp && <MessageTimestamp timestamp={message.timestamp} />}
       </div>
-      <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} isCodex={isCodex} />
+      {!message.pendingState && (
+        <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} isCodex={isCodex} />
+      )}
       {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
     </div>
   );

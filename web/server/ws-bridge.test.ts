@@ -16545,6 +16545,47 @@ describe("Codex image transport", () => {
     expect((session?.pendingCodexInputs[0] as any)?.localImagePaths).toBeUndefined();
   });
 
+  it("treats pre-uploaded image refs as a normal text-only user message path", async () => {
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-preuploaded-image-paths" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "describe this screenshot",
+        deliveryContent:
+          "describe this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\n" +
+          `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-1.orig.png")}]`,
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+        draftImages: [{ name: "attachment-1.png", base64: "draft-image-data", mediaType: "image/png" }],
+      }),
+    );
+    await flush();
+
+    const sentMsg = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(sentMsg.type).toBe("codex_start_pending");
+    expect(sentMsg.inputs[0]?.content).toContain(`Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-1.orig.png")}`);
+    expect(sentMsg.images).toBeUndefined();
+
+    const session = bridge.getSession("s1")!;
+    expect(session.pendingCodexInputs[0]).toMatchObject({
+      content: "describe this screenshot",
+      deliveryContent: expect.stringContaining("Attachment 1:"),
+      imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+      draftImages: [{ name: "attachment-1.png", base64: "draft-image-data", mediaType: "image/png" }],
+    });
+    expect(
+      session.messageHistory.some(
+        (msg: any) => msg.type === "user_message" && msg.content === "describe this screenshot",
+      ),
+    ).toBe(false);
+  });
+
   it("preserves browser send order when an image message is delayed by async storage", async () => {
     const adapter = makeCodexAdapterMock();
     const imageStoreGate = deferred<{ imageId: string; media_type: string }>();
@@ -16866,6 +16907,109 @@ describe("Codex image transport", () => {
     expect(queuedDispatch.inputs[0]?.content).toContain("inspect this screenshot once you're done");
     expect(queuedDispatch.inputs[0]?.content).toContain(
       `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-lost-turn-id.orig.png")}`,
+    );
+  });
+
+  it("does not go idle when an image-bearing follow-up is still queued behind the current Codex turn", async () => {
+    const sid = "codex-image-no-idle-gap";
+    const adapter = makeCodexAdapterMock();
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      if (msg.type === "codex_steer_pending") return false;
+      return true;
+    });
+    const mockImageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-no-idle-gap", media_type: "image/png" }),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-no-idle-gap" });
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "start the current response",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-current");
+
+    browser.send.mockClear();
+    adapter.sendBrowserMessage.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "then inspect this screenshot before you finish",
+        images: [{ media_type: "image/png", data: "queued-image-data" }],
+      }),
+    );
+    await flush();
+
+    const sessionBeforeResult = bridge.getSession(sid)!;
+    expect(sessionBeforeResult.pendingCodexTurns).toHaveLength(2);
+    expect(sessionBeforeResult.pendingCodexTurns[1]).toMatchObject({
+      status: "queued",
+      turnId: null,
+      turnTarget: null,
+      userContent: expect.stringContaining("then inspect this screenshot before you finish"),
+    });
+
+    adapter.sendBrowserMessage.mockClear();
+    browser.send.mockClear();
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "completed current turn body",
+        duration_ms: 200,
+        duration_api_ms: 200,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+        uuid: "codex-image-no-idle-gap-result",
+        session_id: sid,
+        codex_turn_id: "turn-current",
+      },
+    } as any);
+    await flush();
+
+    const sessionAfterResult = bridge.getSession(sid)!;
+    expect(sessionAfterResult.isGenerating).toBe(true);
+    expect(sessionAfterResult.pendingCodexTurns).toHaveLength(1);
+    expect(getPendingCodexTurn(sessionAfterResult)).toMatchObject({
+      status: "dispatched",
+      turnId: null,
+      userContent: expect.stringContaining("then inspect this screenshot before you finish"),
+    });
+
+    const resultPhaseCalls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(resultPhaseCalls.find((m: any) => m.type === "status_change" && m.status === "idle")).toBeUndefined();
+    expect(resultPhaseCalls.find((m: any) => m.type === "status_change" && m.status === "running")).toBeDefined();
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        inputs: [
+          expect.objectContaining({
+            content: expect.stringContaining(
+              `Attachment 1: ${join(homedir(), ".companion", "images", sid, "img-no-idle-gap.orig.png")}`,
+            ),
+          }),
+        ],
+      }),
     );
   });
 

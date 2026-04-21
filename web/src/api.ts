@@ -234,6 +234,12 @@ export interface ActiveTimerSession {
   timers: import("./types.js").SessionTimer[];
 }
 
+export interface PreparedUserMessageImages {
+  imageRefs: import("./types.js").ImageRef[];
+  paths: string[];
+  attachmentAnnotation: string;
+}
+
 export interface GitRepoInfo {
   repoRoot: string;
   repoName: string;
@@ -677,6 +683,24 @@ export const api = {
     post<{ ok: boolean; error?: string }>(`/sessions/${encodeURIComponent(sessionId)}/downgrade-transport`),
 
   forceCompact: (sessionId: string) => post(`/sessions/${encodeURIComponent(sessionId)}/force-compact`),
+
+  prepareUserMessageImages: async (
+    sessionId: string,
+    images: Array<{ mediaType: string; data: string }>,
+    signal?: AbortSignal,
+  ) => {
+    const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/images/prepare-user-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json() as Promise<PreparedUserMessageImages>;
+  },
 
   revertToMessage: (sessionId: string, messageId: string) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/revert`, { messageId }),

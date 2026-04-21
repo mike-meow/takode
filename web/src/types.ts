@@ -82,6 +82,7 @@ export interface ChatMessage {
   content: string;
   contentBlocks?: ContentBlock[];
   images?: ImageRef[];
+  localImages?: Array<{ name: string; base64: string; mediaType: string }>;
   timestamp: number;
   parentToolUseId?: string | null;
   isStreaming?: boolean;
@@ -115,6 +116,25 @@ export interface ChatMessage {
   notification?: { category: "needs-input" | "review"; timestamp: number; summary?: string };
   /** Browser-only message not present in server messageHistory; excluded from sync hash verification. */
   ephemeral?: boolean;
+  /** Browser-only pending upload/send state for local user messages. */
+  pendingState?: "uploading" | "delivering" | "failed";
+  pendingError?: string;
+  clientMsgId?: string;
+}
+
+export interface PendingUserUpload {
+  id: string;
+  content: string;
+  images: Array<{ name: string; base64: string; mediaType: string }>;
+  timestamp: number;
+  stage: "uploading" | "delivering" | "failed";
+  error?: string;
+  vscodeSelection?: VsCodeSelectionMetadata;
+  prepared?: {
+    deliveryContent: string;
+    imageRefs: ImageRef[];
+    draftImages: Array<{ name: string; base64: string; mediaType: string }>;
+  };
 }
 
 export interface TaskItem {

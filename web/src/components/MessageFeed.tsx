@@ -17,7 +17,7 @@ import { ToolBlock, getPreview, getToolIcon, getToolLabel, ToolIcon, formatDurat
 import { MarkdownContent } from "./MarkdownContent.js";
 import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
-import type { ChatMessage, ContentBlock, PendingCodexInput } from "../types.js";
+import type { ChatMessage, ContentBlock, PendingCodexInput, PendingUserUpload } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
@@ -28,6 +28,7 @@ import { TimerChip } from "./TimerWidget.js";
 import { NotificationChip } from "./NotificationChip.js";
 import { useTextSelection } from "../hooks/useTextSelection.js";
 import { SelectionContextMenu } from "./SelectionContextMenu.js";
+import { abortPendingUserUpload } from "../pending-user-upload-manager.js";
 import {
   HISTORY_WINDOW_SECTION_TURN_COUNT,
   HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
@@ -142,6 +143,7 @@ function createDefaultCodexTerminalInspectorLayout(
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_PENDING_CODEX_INPUTS: PendingCodexInput[] = [];
+const EMPTY_PENDING_USER_UPLOADS: PendingUserUpload[] = [];
 
 function escapeSelectorValue(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -504,6 +506,108 @@ function PendingCodexInputList({
                   <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
                 </svg>
               </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PendingUserUploadList({
+  sessionId,
+  uploads,
+}: {
+  sessionId: string;
+  uploads: PendingUserUpload[];
+}) {
+  if (uploads.length === 0) return null;
+
+  return (
+    <div className="space-y-2" data-feed-block-id={getFooterFeedBlockId("pending-user-uploads")}>
+      <div className="flex items-center gap-2 px-1 text-[10px] uppercase tracking-wider text-cc-muted/60">
+        <span>Pending upload</span>
+      </div>
+      <div className="flex flex-col gap-3">
+        {uploads.map((upload) => {
+          const msg: ChatMessage = {
+            id: `pending-upload-${upload.id}`,
+            role: "user",
+            content: upload.content,
+            localImages: upload.images,
+            timestamp: upload.timestamp,
+            ...(upload.vscodeSelection ? { metadata: { vscodeSelection: upload.vscodeSelection } } : {}),
+            ephemeral: true,
+            pendingState: upload.stage === "uploading" ? "uploading" : upload.stage === "delivering" ? "delivering" : "failed",
+            pendingError: upload.error,
+            clientMsgId: upload.id,
+          };
+
+          const handleRestoreToDraft = () => {
+            const store = useStore.getState();
+            store.removePendingUserUpload(sessionId, upload.id);
+            store.setComposerDraft(sessionId, { text: upload.content, images: upload.images });
+            store.focusComposer();
+          };
+
+          const handleRetry = () => {
+            if (!upload.prepared) return;
+            const sent = sendToSession(sessionId, {
+              type: "user_message",
+              content: upload.content,
+              deliveryContent: upload.prepared.deliveryContent,
+              imageRefs: upload.prepared.imageRefs,
+              draftImages: upload.prepared.draftImages,
+              ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
+              session_id: sessionId,
+              client_msg_id: upload.id,
+            });
+            useStore
+              .getState()
+              .updatePendingUserUpload(sessionId, upload.id, (current) =>
+                sent
+                  ? { ...current, stage: "delivering", error: undefined }
+                  : { ...current, stage: "failed", error: "Connection lost before delivery." },
+              );
+          };
+
+          return (
+            <div key={upload.id} className="space-y-1.5">
+              <MessageBubble message={msg} sessionId={sessionId} showTimestamp={true} />
+              <div className="flex justify-end gap-2 pr-10 text-xs">
+                {upload.stage === "uploading" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      abortPendingUserUpload(upload.id);
+                      handleRestoreToDraft();
+                    }}
+                    className="rounded-full border border-cc-border bg-cc-card px-3 py-1 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg cursor-pointer"
+                  >
+                    Cancel upload
+                  </button>
+                )}
+                {upload.stage === "failed" && (
+                  <>
+                    {upload.prepared && (
+                      <button
+                        type="button"
+                        onClick={handleRetry}
+                        className="rounded-full border border-cc-primary/30 bg-cc-card px-3 py-1 text-cc-primary transition-colors hover:bg-cc-hover cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleRestoreToDraft}
+                      className="rounded-full border border-cc-border bg-cc-card px-3 py-1 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
@@ -2552,6 +2656,7 @@ export function MessageFeed({
   onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
 }) {
   const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId) ?? EMPTY_PENDING_USER_UPLOADS);
   const pendingCodexInputs = useStore((s) => s.pendingCodexInputs.get(sessionId) ?? EMPTY_PENDING_CODEX_INPUTS);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
@@ -3771,7 +3876,13 @@ export function MessageFeed({
     );
   }
 
-  if (messages.length === 0 && pendingCodexInputs.length === 0 && !streamingText && !codexImageSendStage) {
+  if (
+    messages.length === 0 &&
+    pendingUserUploads.length === 0 &&
+    pendingCodexInputs.length === 0 &&
+    !streamingText &&
+    !codexImageSendStage
+  ) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
         <SleepingCat className="w-20 h-14" />
@@ -3832,6 +3943,12 @@ export function MessageFeed({
                       Load newer section
                     </button>
                   </div>
+                )}
+                {pendingUserUploads.length > 0 && (
+                  <PendingUserUploadList
+                    sessionId={sessionId}
+                    uploads={pendingUserUploads}
+                  />
                 )}
                 {isCodexSession && (pendingCodexInputs.length > 0 || codexImageSendStage) && (
                   <PendingCodexInputList

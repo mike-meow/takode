@@ -170,7 +170,7 @@ import { Hono } from "hono";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildOrchestratorSystemPrompt, createRoutes } from "./routes.js";
 import { _resetModelCache } from "./routes/system.js";
@@ -4417,6 +4417,49 @@ describe("GET /api/images/:sessionId/:imageId/thumb", () => {
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("POST /api/sessions/:id/images/prepare-user-message", () => {
+  it("stores uploaded images and returns canonical refs plus attachment annotation", async () => {
+    const imageStore = {
+      store: vi.fn().mockResolvedValue({ imageId: "img-1", media_type: "image/png" }),
+    } as any;
+
+    const imageApp = new Hono();
+    imageApp.route(
+      "/api",
+      createRoutes(
+        launcher,
+        bridge,
+        sessionStore,
+        tracker,
+        { getInfo: () => null, spawn: () => "", kill: () => {} } as any,
+        undefined,
+        recorder,
+        undefined,
+        timerManager,
+        imageStore,
+      ),
+    );
+
+    const sid = "sess-upload-1";
+    bridge.getOrCreateSession(sid, "codex");
+
+    const res = await imageApp.request(`/api/sessions/${sid}/images/prepare-user-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        images: [{ mediaType: "image/png", data: "abc123base64" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(imageStore.store).toHaveBeenCalledWith(sid, "abc123base64", "image/png");
+    const json = await res.json();
+    expect(json.imageRefs).toEqual([{ imageId: "img-1", media_type: "image/png" }]);
+    expect(json.paths).toEqual([join(homedir(), ".companion", "images", sid, "img-1.orig.png")]);
+    expect(json.attachmentAnnotation).toContain(`Attachment 1: ${join(homedir(), ".companion", "images", sid, "img-1.orig.png")}`);
   });
 });
 

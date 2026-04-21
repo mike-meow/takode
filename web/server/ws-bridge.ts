@@ -27,7 +27,6 @@ function yieldToEventLoop(): Promise<void> {
 
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve, join } from "node:path";
-import { homedir } from "node:os";
 import type { PushoverNotifier } from "./pushover.js";
 import { getTrafficMessageType, trafficStats, type TrafficStatsSnapshot } from "./traffic-stats.js";
 import type {
@@ -92,6 +91,7 @@ import * as gitUtils from "./git-utils.js";
 import { sessionTag } from "./session-tag.js";
 import { evaluatePermission, type RecentToolCall } from "./auto-approver.js";
 import type { AutoApprovalConfig } from "./auto-approval-store.js";
+import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "./attachment-paths.js";
 import type { PerfTracer } from "./perf-tracer.js";
 import {
   NEVER_AUTO_APPROVE,
@@ -196,27 +196,6 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/heic": "heic",
   "image/heif": "heif",
 };
-
-type ImageRefForAttachmentPath = { imageId: string; media_type: string };
-
-function deriveAttachmentPaths(sessionId: string, imageRefs: ImageRefForAttachmentPath[]): string[] {
-  const imgDir = join(homedir(), ".companion", "images", sessionId);
-  return imageRefs.map((ref) => {
-    const ext = MIME_TO_EXT[ref.media_type] || "bin";
-    return join(imgDir, `${ref.imageId}.orig.${ext}`);
-  });
-}
-
-/**
- * Annotation that instructs Claude to use the Read tool to view image attachments
- * from disk. Used by all backends (CLI/WebSocket, SDK, and Codex) to avoid
- * embedding base64 image data in the API request body.
- */
-function formatAttachmentPathAnnotation(paths: string[]): string {
-  if (paths.length === 0) return "";
-  const numbered = paths.map((path, idx) => `Attachment ${idx + 1}: ${path}`).join("\n");
-  return `\n[📎 Image attachments -- read these files with the Read tool before responding:\n${numbered}]`;
-}
 
 function buildPendingCodexImageDrafts(
   images: { media_type: string; data: string }[] | undefined,
@@ -9029,7 +9008,14 @@ export class WsBridge {
         msg.type === "user_message" && msg.takodeHerdBatch
           ? (({ takodeHerdBatch: _takodeHerdBatch, ...rest }) => rest)(msg)
           : msg;
-      if (msg.type === "user_message" && msg.images?.length) {
+      if (msg.type === "user_message" && typeof msg.deliveryContent === "string") {
+        const delivered = { ...adapterMsg, content: msg.deliveryContent } as BrowserOutgoingMessage;
+        delete (delivered as { images?: unknown }).images;
+        delete (delivered as { imageRefs?: unknown }).imageRefs;
+        delete (delivered as { draftImages?: unknown }).draftImages;
+        delete (delivered as { deliveryContent?: unknown }).deliveryContent;
+        adapterMsg = delivered;
+      } else if (msg.type === "user_message" && msg.images?.length) {
         let annotatedContent = msg.content || "";
         let resolvedPaths: string[] | null = null;
 
@@ -9050,6 +9036,9 @@ export class WsBridge {
           // reads attached image paths itself via normal file-reading tools.
           const stripped = { ...adapterMsg, content: annotatedContent } as BrowserOutgoingMessage;
           delete (stripped as { images?: unknown }).images;
+          delete (stripped as { imageRefs?: unknown }).imageRefs;
+          delete (stripped as { draftImages?: unknown }).draftImages;
+          delete (stripped as { deliveryContent?: unknown }).deliveryContent;
           adapterMsg = stripped;
         }
       }
@@ -9094,7 +9083,11 @@ export class WsBridge {
             timestamp: ingested.timestamp,
             cancelable: true,
             ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
-            ...(msg.images?.length ? { draftImages: buildPendingCodexImageDrafts(msg.images) } : {}),
+            ...(msg.draftImages?.length
+              ? { draftImages: msg.draftImages }
+              : msg.images?.length
+                ? { draftImages: buildPendingCodexImageDrafts(msg.images) }
+                : {}),
             ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
             ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
             ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),
@@ -9619,8 +9612,11 @@ export class WsBridge {
       type: "user_message";
       content: string;
       images?: { media_type: string; data: string }[];
+      imageRefs?: import("./image-store.js").ImageRef[];
+      deliveryContent?: string;
       agentSource?: { sessionId: string; sessionLabel?: string };
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+      client_msg_id?: string;
     },
     source: "adapter" | "cli",
     options?: { commit?: boolean },
@@ -9649,6 +9645,7 @@ export class WsBridge {
         timestamp: ts,
         id: `user-${ts}-${this.userMsgCounter++}`,
         ...(imageRefs?.length ? { images: imageRefs } : {}),
+        ...(msg.client_msg_id ? { client_msg_id: msg.client_msg_id } : {}),
         ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
         ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
       };
@@ -9677,6 +9674,10 @@ export class WsBridge {
       };
     };
 
+    if (msg.imageRefs?.length) {
+      return finalize(msg.imageRefs);
+    }
+
     if (msg.images?.length && this.imageStore) {
       return (async () => {
         const imageRefs = await Promise.all(
@@ -9696,8 +9697,11 @@ export class WsBridge {
       content: string;
       session_id?: string;
       images?: { media_type: string; data: string }[];
+      imageRefs?: import("./image-store.js").ImageRef[];
+      deliveryContent?: string;
       agentSource?: { sessionId: string; sessionLabel?: string };
       vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
+      client_msg_id?: string;
     },
   ) {
     const maybeIngested = this.ingestUserMessage(session, msg, "cli");
@@ -9711,7 +9715,14 @@ export class WsBridge {
     // resolves images from disk on demand.
     const selectionText = msg.vscodeSelection ? this.formatVsCodeSelectionPrompt(msg.vscodeSelection) : null;
     let content: string | unknown[];
-    if (msg.images?.length && imageRefs?.length) {
+    if (typeof msg.deliveryContent === "string" && msg.deliveryContent.length > 0) {
+      content = selectionText
+        ? [
+            { type: "text", text: msg.deliveryContent },
+            { type: "text", text: selectionText },
+          ]
+        : msg.deliveryContent;
+    } else if (msg.images?.length && imageRefs?.length) {
       const paths = deriveAttachmentPaths(session.id, imageRefs);
       const textContent = (msg.content || "") + formatAttachmentPathAnnotation(paths);
       content = selectionText
@@ -11236,13 +11247,26 @@ export class WsBridge {
       }
     }
 
-    const rebuiltEntries = liveTurns
-      .filter((turn) => turn.turnTarget === "queued")
-      .map((turn, idx) => ({
-        reason: nextEntries[idx]?.reason ?? "queued_user_message",
-        userMessageIds: nextEntries[idx]?.userMessageIds ?? (turn.historyIndex >= 0 ? [turn.historyIndex] : []),
-        interruptSource: nextEntries[idx]?.interruptSource ?? null,
-      }));
+    const rebuiltEntries: Array<{
+      reason: string;
+      userMessageIds: number[];
+      interruptSource: InterruptSource | null;
+    }> = [];
+    let nextEntryIdx = 0;
+    for (const turn of liveTurns) {
+      const isExplicitQueuedTurn = turn.turnTarget === "queued";
+      const isQueuedPendingBatchWithoutTarget =
+        turn.turnTarget == null && turn.adapterMsg.type === "codex_start_pending" && turn.turnId == null;
+      if (!isExplicitQueuedTurn && !(isQueuedPendingBatchWithoutTarget && nextEntryIdx < nextEntries.length)) {
+        continue;
+      }
+      rebuiltEntries.push({
+        reason: nextEntries[nextEntryIdx]?.reason ?? "queued_user_message",
+        userMessageIds: nextEntries[nextEntryIdx]?.userMessageIds ?? (turn.historyIndex >= 0 ? [turn.historyIndex] : []),
+        interruptSource: nextEntries[nextEntryIdx]?.interruptSource ?? null,
+      });
+      nextEntryIdx += 1;
+    }
 
     const lifecycleChanged =
       JSON.stringify(previousEntries) !== JSON.stringify(rebuiltEntries) ||

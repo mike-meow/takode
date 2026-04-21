@@ -4,6 +4,7 @@ interface NormalizeHistoryMessageOptions {
   includeSuccessfulResult?: boolean;
   resultRole?: ChatMessage["role"];
   fallbackTimestamp?: number;
+  pendingLocalImagesByClientMsgId?: Map<string, Array<{ name: string; base64: string; mediaType: string }>>;
 }
 
 export function extractTextFromBlocks(blocks: ContentBlock[]): string {
@@ -70,9 +71,12 @@ export function normalizeHistoryMessageToChatMessages(
     includeSuccessfulResult = false,
     resultRole = "assistant",
     fallbackTimestamp,
+    pendingLocalImagesByClientMsgId,
   } = options;
 
   if (histMsg.type === "user_message") {
+    const localImages =
+      typeof histMsg.client_msg_id === "string" ? pendingLocalImagesByClientMsgId?.get(histMsg.client_msg_id) : undefined;
     return [
       {
         id: histMsg.id || `hist-user-${historyIndex}`,
@@ -80,6 +84,8 @@ export function normalizeHistoryMessageToChatMessages(
         content: histMsg.content,
         timestamp: histMsg.timestamp,
         ...(histMsg.images?.length ? { images: histMsg.images } : {}),
+        ...(localImages?.length ? { localImages } : {}),
+        ...(typeof histMsg.client_msg_id === "string" ? { clientMsgId: histMsg.client_msg_id } : {}),
         ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
         ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
       },

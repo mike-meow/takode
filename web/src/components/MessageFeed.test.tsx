@@ -95,6 +95,7 @@ vi.mock("../store.js", () => {
       clearExpandAllInTurn: vi.fn(),
       bottomAlignNextUserMessage: mockStoreValues.bottomAlignNextUserMessage ?? new Set(),
       sessionTaskHistory: mockStoreValues.sessionTaskHistory ?? new Map(),
+      pendingUserUploads: mockStoreValues.pendingUserUploads ?? new Map(),
       pendingCodexInputs: mockStoreValues.pendingCodexInputs ?? new Map(),
       activeTaskTurnId: mockStoreValues.activeTaskTurnId ?? new Map(),
       setActiveTaskTurnId: mockSetActiveTaskTurnId,
@@ -116,6 +117,9 @@ vi.mock("../store.js", () => {
     keepTurnExpanded: mockKeepTurnExpanded,
     clearBottomAlignOnNextUserMessage: mockClearBottomAlignOnNextUserMessage,
     setComposerDraft: mockSetComposerDraft,
+    removePendingUserUpload: vi.fn(),
+    updatePendingUserUpload: vi.fn(),
+    focusComposer: vi.fn(),
   });
   return {
     useStore,
@@ -240,6 +244,12 @@ function setStorePendingCodexInputs(sessionId: string, inputs: Array<Record<stri
   const map = new Map();
   map.set(sessionId, inputs);
   mockStoreValues.pendingCodexInputs = map;
+}
+
+function setStorePendingUserUploads(sessionId: string, uploads: Array<Record<string, unknown>>) {
+  const map = new Map();
+  map.set(sessionId, uploads);
+  mockStoreValues.pendingUserUploads = map;
 }
 
 function setStoreNotifications(sessionId: string, notifications: Array<Record<string, unknown>>) {
@@ -835,6 +845,28 @@ describe("MessageFeed - empty state", () => {
     expect(screen.queryByText("Pending delivery")).toBeNull();
     expect(screen.getByText("uploading image")).toBeTruthy();
     expect(screen.queryByText("Sending the attached image to the server.")).toBeNull();
+  });
+
+  it("renders pending local upload messages with immediate local image previews", () => {
+    const sid = "test-pending-local-upload";
+    setStoreMessages(sid, []);
+    setStorePendingUserUploads(sid, [
+      {
+        id: "pending-upload-1",
+        content: "Inspect this screenshot",
+        timestamp: Date.now(),
+        stage: "uploading",
+        images: [{ name: "attachment-1.png", base64: "ZmFrZQ==", mediaType: "image/png" }],
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getByText("Pending upload")).toBeTruthy();
+    expect(screen.getByText("Uploading image…")).toBeTruthy();
+    const image = screen.getByAltText("attachment-1.png") as HTMLImageElement;
+    expect(image.src).toContain("data:image/png;base64,ZmFrZQ==");
   });
 
   it("shows backend-processing stage for pending Codex image delivery", () => {

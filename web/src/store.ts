@@ -10,6 +10,7 @@ import type {
   SessionTaskEntry,
   HistoryWindowState,
   PendingCodexInput,
+  PendingUserUpload,
   QuestmasterTask,
   VsCodeSelectionState,
 } from "./types.js";
@@ -697,6 +698,11 @@ interface AppState {
     draft: { text: string; images: Array<{ name: string; base64: string; mediaType: string }> },
   ) => void;
   clearComposerDraft: (sessionId: string) => void;
+  pendingUserUploads: Map<string, PendingUserUpload[]>;
+  addPendingUserUpload: (sessionId: string, upload: PendingUserUpload) => void;
+  updatePendingUserUpload: (sessionId: string, uploadId: string, updater: (upload: PendingUserUpload) => PendingUserUpload) => void;
+  removePendingUserUpload: (sessionId: string, uploadId: string) => void;
+  consumePendingUserUpload: (sessionId: string, uploadId: string) => PendingUserUpload | null;
 
   // Per-session reply context (which assistant message the user is replying to)
   replyContexts: Map<string, { messageId: string; previewText: string }>;
@@ -989,6 +995,7 @@ export const useStore = create<AppState>((set) => ({
   dismissedVsCodeSelectionKey: null,
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
+  pendingUserUploads: new Map(),
   replyContexts: new Map(),
   focusComposerTrigger: 0,
   turnActivityOverrides: new Map(),
@@ -2402,6 +2409,61 @@ export const useStore = create<AppState>((set) => ({
       return { composerDrafts };
     }),
 
+  addPendingUserUpload: (sessionId, upload) =>
+    set((s) => {
+      const pendingUserUploads = new Map(s.pendingUserUploads);
+      const existing = pendingUserUploads.get(sessionId) ?? [];
+      pendingUserUploads.set(sessionId, [...existing, upload]);
+      return { pendingUserUploads };
+    }),
+
+  updatePendingUserUpload: (sessionId, uploadId, updater) =>
+    set((s) => {
+      const existing = s.pendingUserUploads.get(sessionId);
+      if (!existing?.length) return s;
+      const nextItems = existing.map((upload) => (upload.id === uploadId ? updater(upload) : upload));
+      if (nextItems === existing) return s;
+      const pendingUserUploads = new Map(s.pendingUserUploads);
+      pendingUserUploads.set(sessionId, nextItems);
+      return { pendingUserUploads };
+    }),
+
+  removePendingUserUpload: (sessionId, uploadId) =>
+    set((s) => {
+      const existing = s.pendingUserUploads.get(sessionId);
+      if (!existing?.length) return s;
+      const nextItems = existing.filter((upload) => upload.id !== uploadId);
+      const pendingUserUploads = new Map(s.pendingUserUploads);
+      if (nextItems.length > 0) {
+        pendingUserUploads.set(sessionId, nextItems);
+      } else {
+        pendingUserUploads.delete(sessionId);
+      }
+      return { pendingUserUploads };
+    }),
+
+  consumePendingUserUpload: (sessionId, uploadId) => {
+    let consumed: PendingUserUpload | null = null;
+    set((s) => {
+      const existing = s.pendingUserUploads.get(sessionId);
+      if (!existing?.length) return s;
+      const nextItems = existing.filter((upload) => {
+        if (upload.id !== uploadId) return true;
+        consumed = upload;
+        return false;
+      });
+      if (!consumed) return s;
+      const pendingUserUploads = new Map(s.pendingUserUploads);
+      if (nextItems.length > 0) {
+        pendingUserUploads.set(sessionId, nextItems);
+      } else {
+        pendingUserUploads.delete(sessionId);
+      }
+      return { pendingUserUploads };
+    });
+    return consumed;
+  },
+
   setReplyContext: (sessionId, context) =>
     set((s) => {
       const replyContexts = new Map(s.replyContexts);
@@ -2552,6 +2614,7 @@ export const useStore = create<AppState>((set) => ({
       diffPanelSelectedFile: new Map(),
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
+      pendingUserUploads: new Map(),
       replyContexts: new Map(),
       focusComposerTrigger: 0,
       turnActivityOverrides: new Map(),

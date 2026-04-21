@@ -37,6 +37,7 @@ const mockTranscribe = vi
   .mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
 const mockGetBackendModels = vi.fn().mockResolvedValue([]);
 const mockRefreshSessionSkills = vi.fn().mockResolvedValue({ ok: true, skills: [] });
+const mockPrepareUserMessageImages = vi.fn();
 
 // Build a controllable mock store state
 let mockStoreState: Record<string, unknown> = {};
@@ -51,6 +52,7 @@ vi.mock("../api.js", () => ({
     getBackendModels: (...args: unknown[]) => mockGetBackendModels(...args),
     getSettings: vi.fn().mockResolvedValue({ claudeDefaultModel: "" }),
     refreshSessionSkills: (...args: unknown[]) => mockRefreshSessionSkills(...args),
+    prepareUserMessageImages: (...args: unknown[]) => mockPrepareUserMessageImages(...args),
     transcribe: (...args: unknown[]) => mockTranscribe(...args),
   },
 }));
@@ -311,6 +313,7 @@ function setupMockStore(
     setSessionPreview: mockSetSessionPreview,
     setAskPermission: mockSetAskPermission,
     requestBottomAlignOnNextUserMessage: mockRequestBottomAlignOnNextUserMessage,
+    pendingUserUploads: new Map(),
     zoomLevel,
     vscodeSelectionContext,
     dismissedVsCodeSelectionKey: null,
@@ -336,6 +339,47 @@ function setupMockStore(
     clearComposerDraft: vi.fn((sessionId: string) => {
       (mockStoreState.composerDrafts as Map<string, unknown>).delete(sessionId);
       notifyMockStore();
+    }),
+    addPendingUserUpload: vi.fn((sessionId: string, upload: unknown) => {
+      const pending = (mockStoreState.pendingUserUploads as Map<string, unknown[]>) ?? new Map();
+      const current = pending.get(sessionId) ?? [];
+      pending.set(sessionId, [...current, upload]);
+      mockStoreState.pendingUserUploads = pending;
+      notifyMockStore();
+    }),
+    updatePendingUserUpload: vi.fn((sessionId: string, uploadId: string, updater: (upload: any) => any) => {
+      const pending = (mockStoreState.pendingUserUploads as Map<string, any[]>) ?? new Map();
+      const current = pending.get(sessionId) ?? [];
+      pending.set(
+        sessionId,
+        current.map((upload) => (upload.id === uploadId ? updater(upload) : upload)),
+      );
+      mockStoreState.pendingUserUploads = pending;
+      notifyMockStore();
+    }),
+    removePendingUserUpload: vi.fn((sessionId: string, uploadId: string) => {
+      const pending = (mockStoreState.pendingUserUploads as Map<string, any[]>) ?? new Map();
+      const current = pending.get(sessionId) ?? [];
+      const next = current.filter((upload) => upload.id !== uploadId);
+      if (next.length > 0) pending.set(sessionId, next);
+      else pending.delete(sessionId);
+      mockStoreState.pendingUserUploads = pending;
+      notifyMockStore();
+    }),
+    consumePendingUserUpload: vi.fn((sessionId: string, uploadId: string) => {
+      const pending = (mockStoreState.pendingUserUploads as Map<string, any[]>) ?? new Map();
+      const current = pending.get(sessionId) ?? [];
+      let consumed: any = null;
+      const next = current.filter((upload) => {
+        if (upload.id !== uploadId) return true;
+        consumed = upload;
+        return false;
+      });
+      if (next.length > 0) pending.set(sessionId, next);
+      else pending.delete(sessionId);
+      mockStoreState.pendingUserUploads = pending;
+      notifyMockStore();
+      return consumed;
     }),
     setReplyContext: vi.fn(
       (
@@ -367,6 +411,7 @@ function setupMockStore(
     pendingPermissions: new Map(),
     removePermission: vi.fn(),
     diffFileStats: new Map(),
+    focusComposer: vi.fn(),
   };
 }
 
@@ -381,6 +426,16 @@ function setViewportWidth(width: number) {
 
 function makeImageFile(name: string, type = "image/png") {
   return new File(["fake-image-bytes"], name, { type });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 function makeImageDataTransfer(file: File) {
@@ -411,6 +466,7 @@ beforeEach(() => {
   mockTranscribe.mockResolvedValue({ mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false });
   mockGetBackendModels.mockResolvedValue([]);
   mockRefreshSessionSkills.mockResolvedValue({ ok: true, skills: [] });
+  mockPrepareUserMessageImages.mockReset();
   mockRequestBottomAlignOnNextUserMessage.mockReset();
   mediaState.touchDevice = false;
   setViewportWidth(1024);
@@ -1032,6 +1088,75 @@ describe("Composer sending messages", () => {
       expect.objectContaining({
         type: "user_message",
         content: "click send",
+      }),
+    );
+  });
+
+  it("uploads image-attached messages first and only then sends the final text-only user message", async () => {
+    const prepared = deferred<{
+      imageRefs: Array<{ imageId: string; media_type: string }>;
+      paths: string[];
+      attachmentAnnotation: string;
+    }>();
+    mockPrepareUserMessageImages.mockReturnValue(prepared.promise);
+
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(textarea, { target: { value: "inspect this screenshot" } });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [makeImageFile("screenshot.png")] } });
+    });
+    await waitFor(() => {
+      expect(screen.getByAltText("screenshot.png")).toBeTruthy();
+    });
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockPrepareUserMessageImages).toHaveBeenCalledWith(
+      "s1",
+      [
+        expect.objectContaining({
+          mediaType: "image/png",
+          data: expect.any(String),
+        }),
+      ],
+      expect.any(AbortSignal),
+    );
+    expect(mockSendToSession).not.toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+      }),
+    );
+
+    await act(async () => {
+      prepared.resolve({
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+        paths: ["/Users/test/.companion/images/s1/img-1.orig.png"],
+        attachmentAnnotation:
+          '\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /Users/test/.companion/images/s1/img-1.orig.png]',
+      });
+      await prepared.promise;
+    });
+
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "inspect this screenshot",
+        deliveryContent: expect.stringContaining("Attachment 1: /Users/test/.companion/images/s1/img-1.orig.png"),
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+        draftImages: [
+          expect.objectContaining({
+            name: "screenshot.png",
+            base64: expect.any(String),
+            mediaType: "image/png",
+          }),
+        ],
+        session_id: "s1",
+        client_msg_id: expect.any(String),
       }),
     );
   });

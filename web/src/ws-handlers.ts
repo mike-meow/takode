@@ -285,6 +285,12 @@ function normalizeHistoryMessages(
   startIndex = 0,
 ): { chatMessages: ChatMessage[]; frozenCount: number } {
   const store = useStore.getState();
+  const pendingUploads = store.pendingUserUploads.get(sessionId) ?? [];
+  const pendingLocalImagesByClientMsgId = new Map(
+    pendingUploads
+      .filter((upload) => upload.images.length > 0)
+      .map((upload) => [upload.id, upload.images] as const),
+  );
   const chatMessages: ChatMessage[] = [];
   let frozenCount = 0;
 
@@ -305,7 +311,11 @@ function normalizeHistoryMessages(
         store.setToolStartTimestamps(sessionId, histToolStartTimes);
       }
     } else if (histMsg.type === "user_message") {
-      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
+      chatMessages.push(
+        ...normalizeHistoryMessageToChatMessages(histMsg, historyIndex, {
+          pendingLocalImagesByClientMsgId,
+        }),
+      );
     } else if (histMsg.type === "tool_result_preview") {
       for (const preview of histMsg.previews) {
         store.setToolResult(sessionId, preview.tool_use_id, preview);
@@ -349,6 +359,19 @@ function updateSessionPreviewFromHistory(
       store.setSessionPreview(sessionId, msg.content.slice(0, 80));
       break;
     }
+  }
+}
+
+function clearPendingUploadsCoveredByHistory(sessionId: string, historyMessages: BrowserIncomingMessage[]): void {
+  const pendingIds = new Set<string>();
+  for (const msg of historyMessages) {
+    if (msg.type !== "user_message" || typeof msg.client_msg_id !== "string") continue;
+    pendingIds.add(msg.client_msg_id);
+  }
+  if (pendingIds.size === 0) return;
+  const store = useStore.getState();
+  for (const pendingId of pendingIds) {
+    store.removePendingUserUpload(sessionId, pendingId);
   }
 }
 
@@ -870,12 +893,18 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     case "user_message": {
       // Server-authoritative: user messages are broadcast by the server to all
       // browsers. The browser never adds user messages to the store locally.
+      const pendingUpload =
+        typeof data.client_msg_id === "string"
+          ? useStore.getState().consumePendingUserUpload(sessionId, data.client_msg_id)
+          : null;
       const userMsg: ChatMessage = {
         id: data.id || nextId(),
         role: "user",
         content: data.content,
         timestamp: data.timestamp || Date.now(),
         ...(data.images?.length ? { images: data.images } : {}),
+        ...(pendingUpload?.images?.length ? { localImages: pendingUpload.images } : {}),
+        ...(typeof data.client_msg_id === "string" ? { clientMsgId: data.client_msg_id } : {}),
         ...(data.vscodeSelection ? { metadata: { vscodeSelection: data.vscodeSelection } } : {}),
         ...(data.agentSource ? { agentSource: data.agentSource } : {}),
       };
@@ -1303,6 +1332,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       resetAuthoritativeHistoryState(sessionId);
       const { chatMessages, frozenCount } = normalizeHistoryMessages(sessionId, data.messages);
       store.setMessages(sessionId, chatMessages, { frozenCount });
+      clearPendingUploadsCoveredByHistory(sessionId, data.messages);
       store.setHistoryWindow(sessionId, null);
       store.setHistoryLoading(sessionId, false);
       if (chatMessages.length > 0) {
@@ -1340,6 +1370,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         frozenCount: nextFrozenCount,
         frozenHash: data.expected_frozen_hash,
       });
+      clearPendingUploadsCoveredByHistory(sessionId, [...data.frozen_delta, ...data.hot_messages]);
       store.setHistoryWindow(sessionId, null);
       store.setHistoryLoading(sessionId, false);
       if (mergedMessages.length > 0) {
@@ -1356,6 +1387,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       resetAuthoritativeHistoryState(sessionId);
       const { chatMessages, frozenCount } = normalizeHistoryMessages(sessionId, data.messages);
       store.setMessages(sessionId, chatMessages, { frozenCount });
+      clearPendingUploadsCoveredByHistory(sessionId, data.messages);
       store.setHistoryWindow(sessionId, data.window);
       store.setHistoryLoading(sessionId, false);
       if (chatMessages.length > 0) {
