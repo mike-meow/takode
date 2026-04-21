@@ -46,7 +46,7 @@ function formatChipAriaLabel({
   return `Notification inbox: ${parts.join(", ")}`;
 }
 
-function NotificationCountBadge({ category, count }: { category: NotificationCategory; count: number }) {
+function NotificationCountInline({ category, count }: { category: NotificationCategory; count: number }) {
   const isNeedsInput = category === "needs-input";
   const iconClassName = isNeedsInput ? "text-amber-400" : "text-blue-500";
   const label = isNeedsInput ? "Needs input" : "Review";
@@ -54,10 +54,11 @@ function NotificationCountBadge({ category, count }: { category: NotificationCat
   return (
     <span
       data-testid={`notification-chip-${category}`}
-      className="relative inline-flex items-center gap-1 rounded-full border border-white/8 bg-black/10 px-1.5 py-0.5"
+      className="inline-flex items-center gap-1 whitespace-nowrap"
       aria-hidden="true"
       title={`${label}: ${count}`}
     >
+      <span className="text-cc-fg/95">{count}</span>
       <svg
         className={`h-3.5 w-3.5 shrink-0 ${iconClassName}`}
         viewBox="0 0 16 16"
@@ -69,7 +70,6 @@ function NotificationCountBadge({ category, count }: { category: NotificationCat
         <path d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5c0 2.5-1.5 4-1.5 4h12s-1.5-1.5-1.5-4A4.5 4.5 0 0 0 8 1.5z" />
         <path d="M6 12a2 2 0 0 0 4 0" />
       </svg>
-      <span className="min-w-[0.5rem] text-center text-cc-fg/95">{count}</span>
     </span>
   );
 }
@@ -347,6 +347,14 @@ export function NotificationChip({ sessionId }: { sessionId: string }) {
   const [open, setOpen] = useState(false);
   const { needsInput, review } = useMemo(() => getNotificationBreakdown(active), [active]);
   const ariaLabel = useMemo(() => formatChipAriaLabel({ needsInput, review }), [needsInput, review]);
+  const visibleSegments = useMemo(
+    () =>
+      [
+        review > 0 ? { category: "review" as const, count: review } : null,
+        needsInput > 0 ? { category: "needs-input" as const, count: needsInput } : null,
+      ].filter((segment): segment is { category: NotificationCategory; count: number } => segment !== null),
+    [needsInput, review],
+  );
 
   const toggle = useCallback(() => setOpen((p) => !p), []);
   const close = useCallback(() => setOpen(false), []);
@@ -358,12 +366,17 @@ export function NotificationChip({ sessionId }: { sessionId: string }) {
       <button
         onClick={toggle}
         aria-label={ariaLabel}
-        className="pointer-events-auto relative inline-flex max-w-[min(18rem,calc(100vw-2.75rem))] items-center gap-1.5 overflow-hidden rounded-[18px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-2.5 py-1 text-[11px] text-cc-muted font-mono-code shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-md cursor-pointer hover:border-white/15 transition-colors"
+        className="pointer-events-auto relative inline-flex max-w-[min(18rem,calc(100vw-2.75rem))] items-center gap-1 overflow-hidden rounded-[18px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-2.5 py-1 text-[11px] text-cc-muted font-mono-code shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-md cursor-pointer hover:border-white/15 transition-colors"
       >
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.10),transparent_55%)]" />
-        <span className="relative inline-flex items-center gap-1">
-          {needsInput > 0 && <NotificationCountBadge category="needs-input" count={needsInput} />}
-          {review > 0 && <NotificationCountBadge category="review" count={review} />}
+        <span className="relative inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
+          {visibleSegments.map((segment, index) => (
+            <span key={segment.category} className="inline-flex items-center gap-1">
+              {index > 0 && <span className="text-cc-muted/70">,</span>}
+              <NotificationCountInline category={segment.category} count={segment.count} />
+            </span>
+          ))}
+          <span className="text-cc-muted/85">unreads</span>
         </span>
       </button>
 
