@@ -4687,10 +4687,12 @@ export class WsBridge {
       if (!steeredPending) {
         const headWasBlockedRecovery = this.getCodexHeadTurn(session)?.status === "blocked_broken_session";
         this.dispatchQueuedCodexTurns(session, "session_meta");
+        this.reconcileRecoveredQueuedTurnLifecycle(session, "session_meta_dispatch");
         const currentTurnId = adapter.getCurrentTurnId?.() ?? null;
         const hasPendingLocalInputs = this.getCancelablePendingCodexInputs(session).length > 0;
         if (!headWasBlockedRecovery && (!session.isGenerating || (!currentTurnId && hasPendingLocalInputs))) {
           this.queueCodexPendingStartBatch(session, "session_meta");
+          this.reconcileRecoveredQueuedTurnLifecycle(session, "session_meta_pending_batch");
         }
       }
       this.flushQueuedMessagesToCodexAdapter(session, adapter, "session_meta");
@@ -11080,9 +11082,10 @@ export class WsBridge {
       session.lastAdapterFailureAt = null;
       this.completeCodexTurn(session, pending);
       this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_recovered_messages");
-      this.persistSession(session);
       this.dispatchQueuedCodexTurns(session, "codex_resume_recovered_messages");
+      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_recovered_messages_dispatched");
       this.maybeFlushQueuedCodexMessages(session, "codex_resume_recovered_messages");
+      this.persistSession(session);
       return;
     }
 
@@ -11091,9 +11094,10 @@ export class WsBridge {
       session.lastAdapterFailureAt = null;
       this.completeCodexTurn(session, pending);
       this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_synthesized_results");
-      this.persistSession(session);
       this.dispatchQueuedCodexTurns(session, "codex_resume_synthesized_results");
+      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_synthesized_results_dispatched");
       this.maybeFlushQueuedCodexMessages(session, "codex_resume_synthesized_results");
+      this.persistSession(session);
       return;
     }
 
@@ -11108,6 +11112,7 @@ export class WsBridge {
     this.completeCodexTurn(session, pending);
     this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_non_retryable");
     this.dispatchQueuedCodexTurns(session, "codex_resume_non_retryable");
+    this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_non_retryable_dispatched");
     this.maybeFlushQueuedCodexMessages(session, "codex_resume_non_retryable");
     console.warn(
       `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} has non-user items but no recoverable agentMessage text; skipping auto-retry to avoid duplicate side effects`,
@@ -11270,7 +11275,11 @@ export class WsBridge {
     for (const turn of liveTurns) {
       const isExplicitQueuedTurn = turn.turnTarget === "queued";
       const isQueuedPendingBatchWithoutTarget =
-        turn.turnTarget == null && turn.adapterMsg.type === "codex_start_pending" && turn.turnId == null;
+        turn.status !== "dispatched" &&
+        turn.status !== "backend_acknowledged" &&
+        turn.turnTarget == null &&
+        turn.adapterMsg.type === "codex_start_pending" &&
+        turn.turnId == null;
       if (!isExplicitQueuedTurn && !(isQueuedPendingBatchWithoutTarget && nextEntryIdx < nextEntries.length)) {
         continue;
       }

@@ -2962,10 +2962,15 @@ describe("cat herding", () => {
 
       vi.advanceTimersByTime(600);
 
-      expect(bridge.injectUserMessage).toHaveBeenCalledWith("orch-1", expect.stringContaining("herd_reassigned"), {
-        sessionId: "herd-events",
-        sessionLabel: "Herd Events",
-      });
+      expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+        "orch-1",
+        expect.stringContaining("herd_reassigned"),
+        {
+          sessionId: "herd-events",
+          sessionLabel: "Herd Events",
+        },
+        undefined,
+      );
 
       dispatcher.onOrchestratorTurnEnd("orch-1");
       expect(dispatcher._getInbox("orch-1")).toBeUndefined();

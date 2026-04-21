@@ -1283,6 +1283,8 @@ describe("CLI handlers", () => {
   it("setDiffBaseBranch recomputes diff stats even without a CLI connection", async () => {
     // Regression: changing diff base from the UI left stale line stats when
     // no CLI was connected, because recomputeDiffIfDirty's guard skipped idle sessions.
+    // Current worktree semantics intentionally zero the session badge when
+    // there are no ahead commits relative to the selected base.
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1234\n";
       if (cmd.includes("--git-dir")) return "/home/user/companion/.git/worktrees/jiayi-wt-1234\n";
@@ -1308,9 +1310,9 @@ describe("CLI handlers", () => {
 
     // Wait for async diff computation to complete
     await vi.waitFor(() => {
-      expect(session.state.total_lines_added).toBe(42);
+      expect(session.state.total_lines_added).toBe(0);
     });
-    expect(session.state.total_lines_removed).toBe(17);
+    expect(session.state.total_lines_removed).toBe(0);
 
     // Verify the updated stats were broadcast to the browser
     const calls = (browserWs.send as ReturnType<typeof vi.fn>).mock.calls;
@@ -1319,8 +1321,8 @@ describe("CLI handlers", () => {
       expect.objectContaining({
         type: "session_update",
         session: expect.objectContaining({
-          total_lines_added: 42,
-          total_lines_removed: 17,
+          total_lines_added: 0,
+          total_lines_removed: 0,
         }),
       }),
     );
@@ -10173,7 +10175,7 @@ describe("Diff stats computation", () => {
       if (cmd.includes("rev-parse HEAD")) return "head-sha-1\n";
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/feat-wt-1234\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
-      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("--left-right --count")) return "0\t2\n";
       if (cmd.includes("merge-base jiayi HEAD")) return "wt-anchor-sha\n";
       if (cmd.includes("diff --numstat wt-anchor-sha")) return "7\t2\tsrc/file.ts\n";
       return "";
@@ -10221,6 +10223,7 @@ describe("Diff stats computation", () => {
     const session = bridge.getSession("s1")!;
     session.state.cwd = "/tmp/wt";
     session.state.diff_base_start_sha = "base-start-sha";
+    session.state.git_ahead = 2;
     session.diffStatsDirty = true;
     (session as any).backendSocket = { send: vi.fn() };
 
@@ -10238,7 +10241,7 @@ describe("Diff stats computation", () => {
       if (cmd.includes("rev-parse HEAD")) return "new-head-sha\n";
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/feat-rebased\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
-      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("--left-right --count")) return "0\t1\n";
       if (cmd.includes("merge-base jiayi HEAD")) return "rebased-anchor-sha\n";
       if (cmd.includes("diff --numstat rebased-anchor-sha")) return "3\t1\tsrc/rebased.ts\n";
       return "";
@@ -10282,7 +10285,7 @@ describe("Diff stats computation", () => {
       if (cmd.includes("--abbrev-ref HEAD")) return "feat-wt-1234\n";
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/feat-wt-1234\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
-      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("--left-right --count")) return "0\t2\n";
       if (cmd.includes("merge-base")) return "abc123\n";
       if (cmd.includes("diff --numstat")) return "10\t3\tfile1.ts\n5\t2\tfile2.ts\n-\t-\timage.png\n";
       return "";
@@ -10369,7 +10372,7 @@ describe("Diff stats computation", () => {
       if (cmd.includes("--git-dir")) return "/repo/.git/worktrees/main-wt-1\n";
       if (cmd.includes("--git-common-dir")) return "/repo/.git\n";
       if (cmd.includes("--show-toplevel")) return "/repo\n";
-      if (cmd.includes("--left-right --count")) return "0\t0\n";
+      if (cmd.includes("--left-right --count")) return "0\t1\n";
       if (cmd.includes("merge-base")) return "abc123\n";
       if (cmd.includes("diff --numstat")) return "10\t3\tfile.ts\n";
       return "";
@@ -10378,6 +10381,7 @@ describe("Diff stats computation", () => {
     bridge.markWorktree("s1", "/repo", "/tmp/wt", "main");
     const session = bridge.getSession("s1")!;
     session.state.cwd = "/tmp/wt";
+    session.state.git_ahead = 1;
     // Ensure the session has a CLI socket so refreshGitInfo/recomputeDiffIfDirty don't skip
     (session as any).backendSocket = { send: vi.fn() };
     const browserWs = makeBrowserSocket("s1");
