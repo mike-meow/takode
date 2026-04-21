@@ -16781,6 +16781,94 @@ describe("Codex image transport", () => {
     });
   });
 
+  it("keeps an image-bearing follow-up queued if active streaming loses its turn id before image ingest completes", async () => {
+    const adapter = makeCodexAdapterMock();
+    const imageStoreGate = deferred<{ imageId: string; media_type: string }>();
+    const mockImageStore = {
+      store: vi.fn().mockReturnValue(imageStoreGate.promise),
+    };
+    bridge.setImageStore(mockImageStore as any);
+    bridge.attachCodexAdapter("s1", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-image-lost-turn-id" });
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "keep streaming the current turn",
+      }),
+    );
+    await Promise.resolve();
+    adapter.emitTurnStarted("turn-current");
+
+    adapter.sendBrowserMessage.mockClear();
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "inspect this screenshot once you're done",
+        images: [{ media_type: "image/png", data: "lost-turn-image-data" }],
+      }),
+    );
+    await Promise.resolve();
+
+    adapter.getCurrentTurnId.mockReturnValue(null);
+    imageStoreGate.resolve({ imageId: "img-lost-turn-id", media_type: "image/png" });
+    await flush();
+
+    const sessionWhileStreaming = bridge.getSession("s1")!;
+    expect(sessionWhileStreaming.isGenerating).toBe(true);
+    expect(sessionWhileStreaming.pendingCodexInputs).toHaveLength(1);
+    expect(sessionWhileStreaming.pendingCodexInputs[0]?.content).toBe("inspect this screenshot once you're done");
+    expect(sessionWhileStreaming.pendingCodexTurns).toHaveLength(2);
+    expect(sessionWhileStreaming.pendingCodexTurns[0]).toMatchObject({
+      userContent: "keep streaming the current turn",
+      status: "backend_acknowledged",
+      turnId: "turn-current",
+    });
+    expect(sessionWhileStreaming.pendingCodexTurns[1]).toMatchObject({
+      status: "queued",
+      turnId: null,
+      userContent: expect.stringContaining("inspect this screenshot once you're done"),
+    });
+    expect(sessionWhileStreaming.pendingCodexTurns[1]?.userContent).toContain(
+      `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-lost-turn-id.orig.png")}`,
+    );
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+
+    adapter.emitBrowserMessage({
+      type: "result",
+      data: {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "done",
+        duration_ms: 900,
+        duration_api_ms: 900,
+        num_turns: 1,
+        total_cost_usd: 0,
+        stop_reason: "completed",
+        usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        uuid: "codex-lost-turn-id-result",
+        session_id: "s1",
+        codex_turn_id: "turn-current",
+      },
+    } as any);
+    await flush();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const queuedDispatch = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(queuedDispatch?.type).toBe("codex_start_pending");
+    expect(queuedDispatch.inputs[0]?.content).toContain("inspect this screenshot once you're done");
+    expect(queuedDispatch.inputs[0]?.content).toContain(
+      `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-lost-turn-id.orig.png")}`,
+    );
+  });
+
   it("queues injected herd events behind an in-flight delayed image send", async () => {
     const adapter = makeCodexAdapterMock();
     const imageStoreGate = deferred<{ imageId: string; media_type: string }>();

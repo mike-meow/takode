@@ -9034,6 +9034,12 @@ export class WsBridge {
         } else {
           const effectiveWasGenerating = preMarkedImageRunning ? wasGeneratingBeforeUserMessage : !!ingested?.wasGenerating;
           if (session.codexAdapter && effectiveWasGenerating && session.isGenerating) {
+            // Async image ingest can finish after Codex has already dropped the
+            // active turn ID but before the old turn has fully settled. Keep a
+            // queued follow-up turn in bridge state so the image-attached
+            // message is recoverable and will dispatch as soon as the current
+            // turn actually completes.
+            this.rebuildQueuedCodexPendingStartBatch(session);
             this.persistSession(session);
           } else {
             this.queueCodexPendingStartBatch(session, "browser_user_message");
