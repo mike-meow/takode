@@ -62,7 +62,7 @@ Use \`/port-changes\` when asked to port, sync, or push commits to the main repo
     parts.push(
       "## Responding to Leaders\n\n" +
         "When you receive a message from a leader (tagged `[Leader ...]`), reply in your **normal assistant response text**. " +
-        "Do NOT use `SendMessage`, `SendMessageToLeader`, `Agent`, or any other tool to \"send a message back\" to the leader. " +
+        'Do NOT use `SendMessage`, `SendMessageToLeader`, `Agent`, or any other tool to "send a message back" to the leader. ' +
         "Those tool-originated messages are never delivered to the leader. " +
         "Your turn output is automatically delivered to the leader via herd events -- no extra tool call is needed.",
     );

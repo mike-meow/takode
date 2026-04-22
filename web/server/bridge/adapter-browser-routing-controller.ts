@@ -18,6 +18,7 @@ import { sessionTag } from "../session-tag.js";
 import type { BrowserTransportSessionLike, BrowserTransportSocketLike } from "./browser-transport-controller.js";
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
+import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
 import {
   handlePermissionRequest as handlePermissionRequestPipeline,
   type PermissionPipelineResult,
@@ -191,6 +192,11 @@ export interface AdapterBrowserRoutingDeps {
   ) => void;
   requestCodexAutoRecovery: (session: AdapterBrowserRoutingSessionLike, reason: string) => boolean;
   requestCliRelaunch?: (sessionId: string) => void;
+  injectUserMessage: (
+    sessionId: string,
+    content: string,
+    agentSource?: { sessionId: string; sessionLabel?: string },
+  ) => "sent" | "queued" | "no_session";
   handleSetModel: (session: AdapterBrowserRoutingSessionLike, model: string) => void;
   handleCodexSetModel: (session: AdapterBrowserRoutingSessionLike, model: string) => void;
   handleSetPermissionMode: (session: AdapterBrowserRoutingSessionLike, mode: string) => void;
@@ -318,6 +324,88 @@ function schedulePermissionNotification(
   deps.sessionNotificationDeps.schedulePermissionNotification?.(session, request);
 }
 
+function routeImmediateDenyToBackend(
+  session: AdapterBrowserRoutingSessionLike,
+  requestId: string,
+  message: string,
+  deps: Pick<AdapterBrowserRoutingDeps, "sendToCLI">,
+): void {
+  if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+    session.claudeSdkAdapter.sendBrowserMessage({
+      type: "permission_response",
+      request_id: requestId,
+      behavior: "deny",
+      message,
+    });
+    return;
+  }
+  if (session.backendType === "codex" && session.codexAdapter) {
+    session.codexAdapter.sendBrowserMessage({
+      type: "permission_response",
+      request_id: requestId,
+      behavior: "deny",
+      message,
+    });
+    return;
+  }
+  deps.sendToCLI(
+    session,
+    JSON.stringify({
+      type: "control_response",
+      response: {
+        subtype: "success",
+        request_id: requestId,
+        response: {
+          behavior: "deny",
+          message,
+        },
+      },
+    }),
+  );
+}
+
+function appendImmediateDeniedHistory(
+  session: AdapterBrowserRoutingSessionLike,
+  request: PermissionRequest,
+  deps: Pick<AdapterBrowserRoutingDeps, "broadcastToBrowsers">,
+): void {
+  const deniedMsg: BrowserIncomingMessage = {
+    type: "permission_denied",
+    id: `denial-${request.request_id}`,
+    request_id: request.request_id,
+    tool_name: request.tool_name,
+    tool_use_id: request.tool_use_id,
+    summary: getDenialSummary(request.tool_name, request.input),
+    timestamp: Date.now(),
+  };
+  session.messageHistory.push(deniedMsg);
+  deps.broadcastToBrowsers(session, deniedMsg);
+}
+
+function injectLongSleepReminder(
+  session: AdapterBrowserRoutingSessionLike,
+  deps: Pick<AdapterBrowserRoutingDeps, "injectUserMessage">,
+  reminder = LONG_SLEEP_REMINDER_TEXT,
+): void {
+  deps.injectUserMessage(session.id, reminder, {
+    sessionId: "system:long-sleep-guard",
+    sessionLabel: "System",
+  });
+}
+
+function applyHardDeniedPermission(
+  session: AdapterBrowserRoutingSessionLike,
+  result: Extract<PermissionPipelineResult, { kind: "hard_denied" }>,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.onSessionActivityStateChanged(session.id, "permission_hard_denied");
+  routeImmediateDenyToBackend(session, result.request.request_id, result.message, deps);
+  appendImmediateDeniedHistory(session, result.request, deps);
+  emitTakodePermissionResolved(session.id, result.request.tool_name, "denied", deps);
+  injectLongSleepReminder(session, deps, result.reminder);
+  deps.persistSession(session);
+}
+
 function broadcastAutoApproval(
   session: AdapterBrowserRoutingSessionLike,
   request: PermissionRequest,
@@ -440,6 +528,10 @@ export function handleControlRequest(
   if (msg.request.subtype !== "can_use_tool") return;
   const toolName = msg.request.tool_name;
   const applyResult = (result: PermissionPipelineResult): void => {
+    if (result.kind === "hard_denied") {
+      applyHardDeniedPermission(session, result, deps);
+      return;
+    }
     if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
       deps.sendToCLI(
         session,
@@ -508,6 +600,10 @@ export function handleSdkPermissionRequest(
   deps: AdapterBrowserRoutingDeps,
 ): void | Promise<void> {
   const applyResult = (result: PermissionPipelineResult): void => {
+    if (result.kind === "hard_denied") {
+      applyHardDeniedPermission(session, result, deps);
+      return;
+    }
     if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
       if (session.claudeSdkAdapter) {
         session.claudeSdkAdapter.sendBrowserMessage({
@@ -556,6 +652,10 @@ export function handleCodexPermissionRequest(
   deps: AdapterBrowserRoutingDeps,
 ): void | Promise<void> {
   const applyResult = (result: PermissionPipelineResult): void => {
+    if (result.kind === "hard_denied") {
+      applyHardDeniedPermission(session, result, deps);
+      return;
+    }
     if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
       if (session.codexAdapter) {
         session.codexAdapter.sendBrowserMessage({

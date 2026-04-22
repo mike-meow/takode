@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   extractActivityPreview,
   getAssistantContentAppendBlocks,
+  handleAssistantMessageWithRuntime,
   type AssistantMessageSessionLike,
 } from "./claude-message-controller.js";
 
 function makeSession(): AssistantMessageSessionLike {
   return {
+    id: "s-assistant",
     backendType: "claude",
     cliResuming: false,
     isGenerating: false,
@@ -78,5 +80,61 @@ describe("assistant-message-controller", () => {
       },
     ]);
     expect(session.lastActivityPreview).toBe("Finishing the next ws-bridge controller slice");
+  });
+
+  it("notifies runtime deps only for newly observed tool_use blocks", () => {
+    const session = makeSession();
+    const observed: string[] = [];
+    const deps = {
+      hasAssistantReplay: () => false,
+      broadcastToBrowsers: () => {},
+      persistSession: () => {},
+      setGenerating: () => {},
+      broadcastStatusRunning: () => {},
+      onToolUseObserved: (_session: AssistantMessageSessionLike, block: { id?: string }) => {
+        if (block.id) observed.push(block.id);
+      },
+    };
+
+    handleAssistantMessageWithRuntime(
+      session,
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "tool_use", id: "tool-1", name: "Bash", input: { command: "sleep 61" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      } as any,
+      deps,
+    );
+
+    handleAssistantMessageWithRuntime(
+      session,
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-1",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "sleep 61" } },
+            { type: "tool_use", id: "tool-2", name: "Read", input: { file_path: "a.ts" } },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      } as any,
+      deps,
+    );
+
+    expect(observed).toEqual(["tool-1", "tool-2"]);
   });
 });

@@ -97,6 +97,7 @@ interface SystemMessageDeps {
 }
 
 export interface AssistantMessageSessionLike {
+  id: string;
   backendType: BackendType;
   cliResuming: boolean;
   isGenerating: boolean;
@@ -120,6 +121,10 @@ interface HandleAssistantMessageDeps {
     options?: BroadcastOptions,
   ) => void;
   persistSession: (session: AssistantMessageSessionLike) => void;
+  onToolUseObserved?: (
+    session: AssistantMessageSessionLike,
+    toolUse: Extract<ContentBlock, { type: "tool_use" }>,
+  ) => void;
 }
 
 interface HandleAssistantRuntimeDeps extends HandleAssistantMessageDeps {
@@ -330,6 +335,7 @@ export function handleAssistantMessage(
   }
 
   const acc = session.assistantAccumulator.get(msgId);
+  const newlyObservedToolUses: Array<Extract<ContentBlock, { type: "tool_use" }>> = [];
   if (!acc) {
     if (deps.hasAssistantReplay(session, msgId)) return;
 
@@ -344,6 +350,7 @@ export function handleAssistantMessage(
         }
         session.toolProgressOutput.delete(block.id);
         toolStartTimesMap[block.id] = session.toolStartTimes.get(block.id)!;
+        newlyObservedToolUses.push(block);
       }
     }
 
@@ -382,6 +389,7 @@ export function handleAssistantMessage(
             session.toolStartTimes.set(block.id, Date.now());
           }
           session.toolProgressOutput.delete(block.id);
+          newlyObservedToolUses.push(block);
         }
       }
       historyEntry.message.content = [...historyEntry.message.content, ...newBlocks];
@@ -429,6 +437,9 @@ export function handleAssistantMessage(
     msg.message.model,
     deps.broadcastToBrowsers,
   );
+  for (const toolUse of newlyObservedToolUses) {
+    deps.onToolUseObserved?.(session, toolUse);
+  }
   deps.persistSession(session);
 }
 
@@ -721,7 +732,7 @@ export function createClaudeMessageHandlers(
   deps: SystemMessageDeps &
     Pick<
       HandleAssistantRuntimeDeps,
-      "hasAssistantReplay" | "broadcastToBrowsers" | "persistSession" | "setGenerating"
+      "hasAssistantReplay" | "broadcastToBrowsers" | "persistSession" | "setGenerating" | "onToolUseObserved"
     > &
     ResultMessageDeps &
     ClaudeCliUserMessageDeps,
@@ -760,6 +771,7 @@ export function createClaudeMessageHandlers(
     broadcastToBrowsers: deps.broadcastToBrowsers,
     persistSession: deps.persistSession,
     setGenerating: deps.setGenerating,
+    onToolUseObserved: deps.onToolUseObserved,
     broadcastStatusRunning: (session) =>
       deps.broadcastToBrowsers(session, { type: "status_change", status: "running" }),
   };

@@ -57,6 +57,7 @@ import {
   isSensitiveBashCommand as isSensitiveBashCommandPolicy,
   isSensitiveConfigPath as isSensitiveConfigPathPolicy,
 } from "./bridge/permission-pipeline.js";
+import { detectLongSleepBashCommand, LONG_SLEEP_REMINDER_TEXT } from "./bridge/bash-sleep-policy.js";
 import { getApprovalSummary, getDenialSummary } from "./bridge/permission-summaries.js";
 import {
   cleanupBranchState as cleanupBranchStateIndex,
@@ -1357,6 +1358,8 @@ export class WsBridge {
       stuckGenerationThresholdMs: STUCK_GENERATION_THRESHOLD_MS,
       hasAssistantReplay: (targetSession: unknown, messageId: string) =>
         this.hasAssistantReplay(targetSession as Session, messageId),
+      onToolUseObserved: (targetSession: unknown, toolUse: Extract<ContentBlock, { type: "tool_use" }>) =>
+        this.handleObservedLongSleepBashToolUse(targetSession as Session, toolUse),
       hasResultReplay: (targetSession: unknown, resultUuid: string) =>
         this.hasResultReplay(targetSession as Session, resultUuid),
       reconcileReplayState: (targetSession: unknown) =>
@@ -1470,6 +1473,44 @@ export class WsBridge {
   /** Downgrade "action" attention to null when all pending permissions are resolved. */
   private clearActionAttentionIfNoPermissions(session: Session): void {
     clearActionAttentionIfNoPermissionsController(session, this.getSessionNotificationDeps());
+  }
+
+  private injectLongSleepReminder(session: Session): void {
+    this.injectUserMessage(session.id, LONG_SLEEP_REMINDER_TEXT, {
+      sessionId: "system:long-sleep-guard",
+      sessionLabel: "System",
+    });
+  }
+
+  private handleObservedLongSleepBashToolUse(
+    session: Session,
+    toolUse: Extract<ContentBlock, { type: "tool_use" }>,
+  ): void {
+    if (session.backendType !== "claude" || toolUse.name !== "Bash") return;
+    const command = typeof toolUse.input?.command === "string" ? toolUse.input.command : "";
+    if (!detectLongSleepBashCommand(command)) return;
+
+    const denialId = `sleep-guard-${toolUse.id || randomUUID()}`;
+    const alreadyDenied = session.messageHistory.some(
+      (entry) => entry.type === "permission_denied" && (entry as { id?: string }).id === denialId,
+    );
+    if (alreadyDenied) return;
+
+    this.onSessionActivityStateChanged(session.id, "long_sleep_tool_use_denied");
+    const deniedMsg: BrowserIncomingMessage = {
+      type: "permission_denied",
+      id: denialId,
+      tool_name: "Bash",
+      tool_use_id: toolUse.id || "",
+      summary: getDenialSummary("Bash", { command }),
+      timestamp: Date.now(),
+    };
+    session.messageHistory.push(deniedMsg);
+    this.broadcastToBrowsers(session, deniedMsg);
+    this.emitTakodeEvent(session.id, "permission_resolved", { tool_name: "Bash", outcome: "denied" });
+    handleInterruptController(session, "system", this.getBrowserRoutingDeps());
+    this.injectLongSleepReminder(session);
+    this.persistSession(session);
   }
 
   private syncBackendTypeFromLauncher(session: Session, reason: string): void {
@@ -2297,6 +2338,11 @@ export class WsBridge {
       requestCliRelaunch: this.onCLIRelaunchNeeded
         ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId)
         : undefined,
+      injectUserMessage: (
+        sessionId: string,
+        content: string,
+        agentSource?: { sessionId: string; sessionLabel?: string },
+      ) => this.injectUserMessage(sessionId, content, agentSource),
       handleSetModel: (targetSession: unknown, model: string) =>
         handleSetModelController(targetSession as Session, model, this.getBrowserRoutingDeps()),
       handleCodexSetModel: (targetSession: unknown, model: string) =>

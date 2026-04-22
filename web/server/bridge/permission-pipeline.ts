@@ -4,6 +4,7 @@ import { shouldAttemptAutoApproval } from "../auto-approver.js";
 import type { AutoApprovalConfig } from "../auto-approval-store.js";
 import type { BackendType, PermissionRequest, PermissionUpdate } from "../session-types.js";
 import { isClaudeFamily } from "../session-types.js";
+import { detectLongSleepBashCommand, LONG_SLEEP_DENY_MESSAGE, LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
 import { shouldSettingsRuleApprove } from "./settings-rule-matcher.js";
 
 export type PermissionRequestBackend = "claude-ws" | "claude-sdk" | "codex";
@@ -59,6 +60,12 @@ export type PermissionPipelineResult =
       kind: "queued_for_llm_auto_approval";
       request: PermissionRequest;
       autoApprovalConfig: AutoApprovalConfig;
+    }
+  | {
+      kind: "hard_denied";
+      request: PermissionRequest;
+      message: string;
+      reminder: string;
     }
   | {
       kind: "pending_human";
@@ -176,6 +183,20 @@ function toPermissionRequest(request: IncomingPermissionRequest): PermissionRequ
   };
 }
 
+function getHardDeniedPermission(
+  perm: PermissionRequest,
+): Extract<PermissionPipelineResult, { kind: "hard_denied" }> | null {
+  if (perm.tool_name !== "Bash") return null;
+  const command = String(perm.input.command ?? "");
+  if (!detectLongSleepBashCommand(command)) return null;
+  return {
+    kind: "hard_denied",
+    request: perm,
+    message: LONG_SLEEP_DENY_MESSAGE,
+    reminder: LONG_SLEEP_REMINDER_TEXT,
+  };
+}
+
 export function handlePermissionRequest<S extends PermissionPipelineSession>(
   session: S,
   request: IncomingPermissionRequest,
@@ -188,6 +209,9 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
   const llmAutoApproveEnabled = options.enableLlmAutoApproval !== false;
   const toolName = perm.tool_name;
   const input = perm.input;
+
+  const hardDenied = getHardDeniedPermission(perm);
+  if (hardDenied) return hardDenied;
 
   const complete = (autoApprovalConfig: AutoApprovalConfig | null): PermissionPipelineResult => {
     if (autoApprovalConfig) {

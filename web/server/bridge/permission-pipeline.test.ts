@@ -218,4 +218,119 @@ describe("permission pipeline takode event emission (q-205)", () => {
     expect(result.kind).toBe("settings_rule_approved");
     expect(deps.emitTakodePermissionRequest).not.toHaveBeenCalled();
   });
+
+  it("hard-denies long sleep Bash commands before any auto-approval path", () => {
+    const session = makeSession({
+      state: { permissionMode: "bypassPermissions", cwd: "/tmp/test" },
+    });
+    const deps = makeDeps();
+
+    const result = handlePermissionRequest(
+      session,
+      {
+        request_id: "req-sleep-deny",
+        tool_name: "Bash",
+        input: { command: "echo hi && sleep 61" },
+        tool_use_id: "tu-sleep-deny",
+      },
+      "claude-sdk",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect((result as { kind: string }).kind).toBe("hard_denied");
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(deps.emitTakodePermissionRequest).not.toHaveBeenCalled();
+  });
+
+  it("hard-denies backgrounded long sleep Bash commands", () => {
+    const session = makeSession({
+      state: { permissionMode: "bypassPermissions", cwd: "/tmp/test" },
+    });
+    const deps = makeDeps();
+
+    const result = handlePermissionRequest(
+      session,
+      {
+        request_id: "req-sleep-background",
+        tool_name: "Bash",
+        input: { command: "env FOO=bar sleep 61 &" },
+        tool_use_id: "tu-sleep-background",
+      },
+      "claude-sdk",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect((result as { kind: string }).kind).toBe("hard_denied");
+    expect(session.pendingPermissions.size).toBe(0);
+  });
+
+  it("hard-denies wrapper-option long sleep Bash commands", () => {
+    const session = makeSession({
+      state: { permissionMode: "bypassPermissions", cwd: "/tmp/test" },
+    });
+    const deps = makeDeps();
+
+    const result = handlePermissionRequest(
+      session,
+      {
+        request_id: "req-sleep-wrapper",
+        tool_name: "Bash",
+        input: { command: "env -i sleep 61" },
+        tool_use_id: "tu-sleep-wrapper",
+      },
+      "claude-sdk",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect((result as { kind: string }).kind).toBe("hard_denied");
+    expect(session.pendingPermissions.size).toBe(0);
+  });
+
+  it("allows sleep 60 and shorter to continue through the normal pipeline", async () => {
+    const session = makeSession();
+    const deps = makeDeps();
+
+    const result = await handlePermissionRequest(
+      session,
+      {
+        request_id: "req-sleep-allow",
+        tool_name: "Bash",
+        input: { command: "sleep 60" },
+        tool_use_id: "tu-sleep-allow",
+      },
+      "claude-ws",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result.kind).toBe("pending_human");
+    expect(session.pendingPermissions.has("req-sleep-allow")).toBe(true);
+  });
+
+  it("allows short sleep commands with file-descriptor redirections", async () => {
+    const session = makeSession();
+    const deps = makeDeps();
+
+    const result = await handlePermissionRequest(
+      session,
+      {
+        request_id: "req-sleep-redirect",
+        tool_name: "Bash",
+        input: { command: "sleep 60 2>&1" },
+        tool_use_id: "tu-sleep-redirect",
+      },
+      "claude-ws",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result.kind).toBe("pending_human");
+    expect(session.pendingPermissions.has("req-sleep-redirect")).toBe(true);
+  });
 });

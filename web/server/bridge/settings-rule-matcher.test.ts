@@ -109,13 +109,17 @@ describe("splitShellCommand", () => {
     expect(splitShellCommand("echo a; echo b")).toEqual(["echo a", "echo b"]);
   });
 
+  it("splits on background operator &", () => {
+    expect(splitShellCommand("sleep 61 & echo hi")).toEqual(["sleep 61", "echo hi"]);
+  });
+
   it("splits on |", () => {
     expect(splitShellCommand("cat file | grep foo")).toEqual(["cat file", "grep foo"]);
   });
 
   it("splits on | with COMMAND_SPLIT_OPS keeps pipe intact", () => {
     // When using COMMAND_SPLIT_OPS (no pipes), the pipe stays as part of the command
-    const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";"]);
+    const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";", "&"]);
     expect(splitShellCommand("cat file | grep foo", COMMAND_SPLIT_OPS)).toEqual(["cat file | grep foo"]);
   });
 
@@ -154,8 +158,14 @@ describe("splitShellCommand", () => {
   });
 
   it("handles multiple operators with COMMAND_SPLIT_OPS (pipes preserved)", () => {
-    const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";"]);
+    const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";", "&"]);
     const result = splitShellCommand("a && b | c && d", COMMAND_SPLIT_OPS);
+    expect(result).toEqual(["a", "b | c", "d"]);
+  });
+
+  it("handles background operators with COMMAND_SPLIT_OPS while preserving pipes", () => {
+    const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";", "&"]);
+    const result = splitShellCommand("a & b | c & d", COMMAND_SPLIT_OPS);
     expect(result).toEqual(["a", "b | c", "d"]);
   });
 });

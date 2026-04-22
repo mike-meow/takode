@@ -4403,6 +4403,245 @@ describe("CLI message routing", () => {
     expect(approvedMsg.tool_name).toBe("Bash");
   });
 
+  it("control_request (can_use_tool): hard-denies long sleep Bash commands and injects reminder", async () => {
+    const session = bridge.getSession("s1")!;
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    const msg = JSON.stringify({
+      type: "control_request",
+      request_id: "req-long-sleep",
+      request: {
+        subtype: "can_use_tool",
+        tool_name: "Bash",
+        input: { command: "sleep 61 && echo late" },
+        description: "Wait before checking again",
+        tool_use_id: "tu-long-sleep",
+      },
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(session.pendingPermissions.has("req-long-sleep")).toBe(false);
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const controlResp = cliCalls.find(
+      (c: any) => c.type === "control_response" && c.response?.request_id === "req-long-sleep",
+    );
+    expect(controlResp).toBeDefined();
+    expect(controlResp.response.response.behavior).toBe("deny");
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.request_id === "req-long-sleep"),
+    ).toBeDefined();
+    expect(
+      browserCalls.find(
+        (c: any) =>
+          c.type === "user_message" &&
+          typeof c.content === "string" &&
+          c.content.includes("Use `takode timer` instead"),
+      ),
+    ).toBeDefined();
+  });
+
+  it("control_request (can_use_tool): hard-denies backgrounded long sleep Bash commands", async () => {
+    const session = bridge.getSession("s1")!;
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    const msg = JSON.stringify({
+      type: "control_request",
+      request_id: "req-background-sleep",
+      request: {
+        subtype: "can_use_tool",
+        tool_name: "Bash",
+        input: { command: "sleep 61 & echo hi" },
+        description: "Background wait",
+        tool_use_id: "tu-background-sleep",
+      },
+    });
+
+    bridge.handleCLIMessage(cli, msg);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(session.pendingPermissions.has("req-background-sleep")).toBe(false);
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const controlResp = cliCalls.find(
+      (c: any) => c.type === "control_response" && c.response?.request_id === "req-background-sleep",
+    );
+    expect(controlResp).toBeDefined();
+    expect(controlResp.response.response.behavior).toBe("deny");
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.request_id === "req-background-sleep"),
+    ).toBeDefined();
+    expect(
+      browserCalls.find(
+        (c: any) =>
+          c.type === "user_message" &&
+          typeof c.content === "string" &&
+          c.content.includes("Use `takode timer` instead"),
+      ),
+    ).toBeDefined();
+  });
+
+  it("interrupts Claude WS long sleep tool_use observed after bypassed permissions and injects reminder", async () => {
+    const session = bridge.getSession("s1")!;
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-long-sleep",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "tool_use", id: "cmd-sleep", name: "Bash", input: { command: "sleep 600" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(cliCalls.find((c: any) => c.type === "control_request" && c.request?.subtype === "interrupt")).toBeDefined();
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.tool_use_id === "cmd-sleep"),
+    ).toBeDefined();
+    expect(
+      browserCalls.find(
+        (c: any) =>
+          c.type === "user_message" &&
+          typeof c.content === "string" &&
+          c.content.includes("Use `takode timer` instead"),
+      ),
+    ).toBeDefined();
+    expect(
+      session.messageHistory.some(
+        (entry: any) => entry.type === "permission_denied" && entry.tool_use_id === "cmd-sleep",
+      ),
+    ).toBe(true);
+  });
+
+  it("interrupts Claude WS backgrounded long sleep tool_use observed after bypassed permissions", async () => {
+    const session = bridge.getSession("s1")!;
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-background-sleep",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "tool_use", id: "cmd-bg-sleep", name: "Bash", input: { command: "sleep 61 & echo hi" } }],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(cliCalls.find((c: any) => c.type === "control_request" && c.request?.subtype === "interrupt")).toBeDefined();
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.tool_use_id === "cmd-bg-sleep"),
+    ).toBeDefined();
+    expect(
+      browserCalls.find(
+        (c: any) =>
+          c.type === "user_message" &&
+          typeof c.content === "string" &&
+          c.content.includes("Use `takode timer` instead"),
+      ),
+    ).toBeDefined();
+  });
+
+  it("interrupts Claude WS wrapper-option long sleep tool_use observed after bypassed permissions", async () => {
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-wrapper-sleep",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            { type: "tool_use", id: "cmd-wrapper-sleep", name: "Bash", input: { command: "sudo -u root sleep 61" } },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(cliCalls.find((c: any) => c.type === "control_request" && c.request?.subtype === "interrupt")).toBeDefined();
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.tool_use_id === "cmd-wrapper-sleep"),
+    ).toBeDefined();
+  });
+
+  it("does not interrupt Claude WS short sleep tool_use with file-descriptor redirection", async () => {
+    browser.send.mockClear();
+    cli.send.mockClear();
+
+    bridge.handleCLIMessage(
+      cli,
+      JSON.stringify({
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-short-sleep-redirect",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            { type: "tool_use", id: "cmd-short-sleep-redirect", name: "Bash", input: { command: "sleep 60 2>&1" } },
+          ],
+          stop_reason: "tool_use",
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cliCalls = cli.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      cliCalls.find((c: any) => c.type === "control_request" && c.request?.subtype === "interrupt"),
+    ).toBeUndefined();
+
+    const browserCalls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(
+      browserCalls.find((c: any) => c.type === "permission_denied" && c.tool_use_id === "cmd-short-sleep-redirect"),
+    ).toBeUndefined();
+  });
+
   it("tool_progress: broadcasts", () => {
     const msg = JSON.stringify({
       type: "tool_progress",

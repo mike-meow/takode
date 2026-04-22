@@ -12,8 +12,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { parse } from "shell-quote";
 import { NEVER_AUTO_APPROVE, isSensitiveBashCommand, isSensitiveConfigPath } from "./permission-pipeline.js";
+import { COMMAND_SPLIT_OPS, ALL_SPLIT_OPS, splitShellCommand } from "./shell-command-utils.js";
+
+export { COMMAND_SPLIT_OPS, ALL_SPLIT_OPS, splitShellCommand } from "./shell-command-utils.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -105,65 +107,6 @@ export function parseToolRule(rule: string): ParsedToolRule | null {
 
   if (ruleContent === "" || ruleContent === "*") return { toolName };
   return { toolName, ruleContent };
-}
-
-// ─── Shell Command Splitting (via shell-quote) ──────────────────────────────
-
-/** Operators that separate independent commands (NOT pipes — pipes are data flow). */
-const COMMAND_SPLIT_OPS = new Set(["&&", "||", ";"]);
-
-/** All operators including pipes — used for security scanning of every segment. */
-const ALL_SPLIT_OPS = new Set(["&&", "||", ";", "|"]);
-
-/**
- * Split a Bash command on shell operators while respecting quoting and
- * comments. Delegates to `shell-quote` for tokenization.
- *
- * @param splitOps — which operators to split on (default: all including pipes).
- *   Use `COMMAND_SPLIT_OPS` for rule matching (keeps pipes as part of the
- *   command so `Bash(ls *)` matches `ls foo | head`), and `ALL_SPLIT_OPS`
- *   for security scanning (inspects every pipe segment independently).
- */
-export function splitShellCommand(command: string, splitOps = ALL_SPLIT_OPS): string[] {
-  let tokens: ReturnType<typeof parse>;
-  try {
-    tokens = parse(command);
-  } catch {
-    // If shell-quote can't parse (malformed input), return the whole command.
-    // Narrow rules won't match → safe fallthrough to LLM/human.
-    return [command.trim()].filter(Boolean);
-  }
-
-  const parts: string[] = [];
-  let current: string[] = [];
-
-  for (const token of tokens) {
-    if (typeof token === "string") {
-      current.push(token);
-    } else if (token && typeof token === "object") {
-      if ("op" in token && splitOps.has(token.op)) {
-        // Operator token — flush current subcommand
-        if (current.length > 0) {
-          parts.push(current.join(" "));
-          current = [];
-        }
-      } else if ("op" in token) {
-        // Non-splitting operator (e.g. >, >>, <, etc.) — include in current subcommand
-        current.push(token.op);
-      } else if ("comment" in token) {
-        // Comment — ignore (shell-quote already stripped it from the token stream)
-      } else if ("pattern" in token) {
-        // Glob pattern — include as-is
-        current.push(String(token.pattern));
-      }
-    }
-  }
-
-  if (current.length > 0) {
-    parts.push(current.join(" "));
-  }
-
-  return parts;
 }
 
 // ─── Bash Rule Matching ─────────────────────────────────────────────────────

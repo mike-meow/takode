@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  handleCodexPermissionRequest,
+  handleControlRequest,
   handlePermissionResponse,
+  handleSdkPermissionRequest,
   routeAdapterBrowserMessage,
   type AdapterBrowserRoutingDeps,
   type AdapterBrowserRoutingSessionLike,
 } from "./adapter-browser-routing-controller.js";
+import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
 import type { PermissionRequest } from "../session-types.js";
 
 function makeSession(): AdapterBrowserRoutingSessionLike {
@@ -87,6 +91,7 @@ function makeDeps(): AdapterBrowserRoutingDeps {
     sendControlRequest: vi.fn(),
     requestCodexAutoRecovery: vi.fn(() => false),
     requestCliRelaunch: vi.fn(),
+    injectUserMessage: vi.fn((): "sent" => "sent"),
     handleSetModel: vi.fn(),
     handleCodexSetModel: vi.fn(),
     handleSetPermissionMode: vi.fn(),
@@ -291,5 +296,198 @@ describe("permission response handling in browser routing", () => {
       { tool_name: "Bash", outcome: "denied" },
       "leader-9",
     );
+  });
+
+  it("immediately denies long sleep can_use_tool requests and injects the timer reminder", () => {
+    const session = makeSession();
+    const deps = makeDeps();
+
+    handleControlRequest(
+      session,
+      {
+        type: "control_request",
+        request_id: "req-sleep",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "echo hi && sleep 61" },
+          tool_use_id: "tool-sleep",
+        },
+      } as any,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+    expect(deps.sendToCLI).toHaveBeenCalledWith(session, expect.stringContaining('"behavior":"deny"'));
+    expect(deps.injectUserMessage).toHaveBeenCalledWith("s1", LONG_SLEEP_REMINDER_TEXT, {
+      sessionId: "system:long-sleep-guard",
+      sessionLabel: "System",
+    });
+  });
+
+  it("immediately denies backgrounded long sleep can_use_tool requests", () => {
+    const session = makeSession();
+    const deps = makeDeps();
+
+    handleControlRequest(
+      session,
+      {
+        type: "control_request",
+        request_id: "req-sleep-background",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          input: { command: "sleep 61 & echo hi" },
+          tool_use_id: "tool-sleep-background",
+        },
+      } as any,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+    expect(deps.sendToCLI).toHaveBeenCalledWith(session, expect.stringContaining('"behavior":"deny"'));
+    expect(deps.injectUserMessage).toHaveBeenCalledWith("s1", LONG_SLEEP_REMINDER_TEXT, {
+      sessionId: "system:long-sleep-guard",
+      sessionLabel: "System",
+    });
+  });
+
+  it("immediately denies long sleep SDK permission requests", () => {
+    const session = makeSession();
+    session.backendType = "claude-sdk";
+    session.claudeSdkAdapter = {
+      sendBrowserMessage: vi.fn(() => true),
+      isConnected: vi.fn(() => true),
+    };
+    const deps = makeDeps();
+
+    handleSdkPermissionRequest(
+      session,
+      {
+        request_id: "req-sdk-sleep",
+        tool_name: "Bash",
+        input: { command: "sleep 61" },
+        tool_use_id: "tool-sdk-sleep",
+        timestamp: Date.now(),
+      },
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+    expect(session.claudeSdkAdapter?.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-sdk-sleep",
+        behavior: "deny",
+      }),
+    );
+    expect(deps.injectUserMessage).toHaveBeenCalledWith("s1", LONG_SLEEP_REMINDER_TEXT, {
+      sessionId: "system:long-sleep-guard",
+      sessionLabel: "System",
+    });
+  });
+
+  it("immediately denies wrapper-option long sleep SDK permission requests", () => {
+    const session = makeSession();
+    session.backendType = "claude-sdk";
+    session.claudeSdkAdapter = {
+      sendBrowserMessage: vi.fn(() => true),
+      isConnected: vi.fn(() => true),
+    };
+    const deps = makeDeps();
+
+    handleSdkPermissionRequest(
+      session,
+      {
+        request_id: "req-sdk-sleep-wrapper",
+        tool_name: "Bash",
+        input: { command: "time -p sleep 61" },
+        tool_use_id: "tool-sdk-sleep-wrapper",
+        timestamp: Date.now(),
+      },
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+    expect(session.claudeSdkAdapter?.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-sdk-sleep-wrapper",
+        behavior: "deny",
+      }),
+    );
+  });
+
+  it("does not deny short sleep SDK permission requests with file-descriptor redirections", async () => {
+    const session = makeSession();
+    session.backendType = "claude-sdk";
+    session.claudeSdkAdapter = {
+      sendBrowserMessage: vi.fn(() => true),
+      isConnected: vi.fn(() => true),
+    };
+    const deps = makeDeps();
+
+    await handleSdkPermissionRequest(
+      session,
+      {
+        request_id: "req-sdk-sleep-redirect",
+        tool_name: "Bash",
+        input: { command: "sleep 60 2>/tmp/err" },
+        tool_use_id: "tool-sdk-sleep-redirect",
+        timestamp: Date.now(),
+      },
+      deps,
+    );
+
+    expect(session.pendingPermissions.has("req-sdk-sleep-redirect")).toBe(true);
+    expect(session.messageHistory.some((entry) => entry.type === "permission_denied")).toBe(false);
+    expect(session.claudeSdkAdapter?.sendBrowserMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-sdk-sleep-redirect",
+        behavior: "deny",
+      }),
+    );
+  });
+
+  it("immediately denies long sleep Codex permission requests", () => {
+    const session = makeSession();
+    session.backendType = "codex";
+    session.codexAdapter = {
+      sendBrowserMessage: vi.fn(() => true),
+      getCurrentTurnId: vi.fn(() => "turn-codex"),
+      isConnected: vi.fn(() => true),
+    };
+    const deps = makeDeps();
+
+    handleCodexPermissionRequest(
+      session,
+      {
+        request_id: "req-codex-sleep",
+        tool_name: "Bash",
+        input: { command: "sleep 1m 1s" },
+        tool_use_id: "tool-codex-sleep",
+        timestamp: Date.now(),
+      },
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+    expect(session.codexAdapter?.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-codex-sleep",
+        behavior: "deny",
+      }),
+    );
+    expect(deps.injectUserMessage).toHaveBeenCalledWith("s1", LONG_SLEEP_REMINDER_TEXT, {
+      sessionId: "system:long-sleep-guard",
+      sessionLabel: "System",
+    });
   });
 });
