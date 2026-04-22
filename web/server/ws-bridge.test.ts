@@ -19964,15 +19964,12 @@ describe("Claude SDK interactive tool permissions", () => {
       }),
     );
 
-    // Step 3: Verify response was forwarded to SDK adapter
-    // Note: the response may be sent twice (once by the SDK-specific handler
-    // in routeBrowserMessage, once by the generic adapter dispatch fallthrough).
-    // The adapter's dispatchOutgoing handles dedup — the second call is a no-op.
+    // Step 3: Verify response was forwarded exactly once to the SDK adapter.
     const adapterCalls = adapter.sendBrowserMessage.mock.calls;
     const permResponses = adapterCalls
       .map((args: any[]) => args[0])
       .filter((m: any) => m.type === "permission_response");
-    expect(permResponses.length).toBeGreaterThanOrEqual(1);
+    expect(permResponses).toHaveLength(1);
     expect(permResponses[0].request_id).toBe("perm-exit-plan-2");
     expect(permResponses[0].behavior).toBe("allow");
 

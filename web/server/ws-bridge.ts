@@ -5,9 +5,6 @@ import { promisify } from "node:util";
 import { GIT_CMD_TIMEOUT, SERVER_GIT_CMD } from "./constants.js";
 import { computeSessionPayloadMetrics } from "./session-payload-metrics.js";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
-import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../shared/history-sync-hash.js";
-import { findTurnBoundaries } from "./takode-messages.js";
-import { getHistoryWindowTurnCount } from "../shared/history-window.js";
 import {
   FREE_WORKER_WAIT_FOR_TOKEN,
   formatWaitForRefLabel,
@@ -18,11 +15,6 @@ import { HERD_WORKER_SLOT_LIMIT } from "../shared/takode-constants.js";
 
 const execPromise = promisify(execCb);
 const TOOL_PROGRESS_OUTPUT_LIMIT = 12_000;
-
-/** Yield to the event loop so pending I/O, pings, and other handlers can run. */
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
 import { resolve } from "node:path";
@@ -37,7 +29,6 @@ import type {
   CLIStreamEventMessage,
   CLIToolProgressMessage,
   CLIToolUseSummaryMessage,
-  CLIControlRequestMessage,
   CLIControlResponseMessage,
   CLIControlCancelRequestMessage,
   CLIAuthStatusMessage,
@@ -88,27 +79,19 @@ import type { ImageStore } from "./image-store.js";
 import type { CliLauncher } from "./cli-launcher.js";
 import * as gitUtils from "./git-utils.js";
 import { sessionTag } from "./session-tag.js";
-import { evaluatePermission, type RecentToolCall } from "./auto-approver.js";
-import type { AutoApprovalConfig } from "./auto-approval-store.js";
-import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "./attachment-paths.js";
 import type { PerfTracer } from "./perf-tracer.js";
 import {
   LEADER_COMPACTION_RECOVERY_PROMPT,
   STANDARD_COMPACTION_RECOVERY_PROMPT,
-  extractAskUserAnswers,
 } from "./bridge/compaction-recovery.js";
 import {
-  NEVER_AUTO_APPROVE,
   handlePermissionRequest as handlePermissionRequestPipeline,
   type PermissionPipelineResult,
   isSensitiveBashCommand as isSensitiveBashCommandPolicy,
   isSensitiveConfigPath as isSensitiveConfigPathPolicy,
 } from "./bridge/permission-pipeline.js";
 import {
-  NOTABLE_APPROVALS,
-  buildPendingCodexImageDrafts,
   getApprovalSummary,
-  getAutoApprovalSummary,
   getDenialSummary,
 } from "./bridge/permission-summaries.js";
 import { formatRenderedHerdEventBatch } from "./herd-event-dispatcher.js";
@@ -131,9 +114,68 @@ import {
   removeCompletedCodexTurns as removeCompletedCodexTurnsState,
 } from "./bridge/codex-turn-queue.js";
 import { handleAssistantMessage as handleAssistantMessageController } from "./bridge/assistant-message-controller.js";
+import {
+  clampFrozenCount as clampFrozenCountController,
+  freezeHistoryThroughCurrentTail as freezeHistoryThroughCurrentTailController,
+  handleSessionAck as handleSessionAckController,
+  handleSessionSubscribe as handleSessionSubscribeController,
+  normalizeKnownFrozenCount as normalizeKnownFrozenCountController,
+  sendHistoryWindowSync as sendHistoryWindowSyncController,
+} from "./bridge/history-sync-subscription-controller.js";
 import { handleSystemMessage as handleSystemMessageController } from "./bridge/system-message-controller.js";
 import { handleResultMessage as handleResultMessageController } from "./bridge/result-message-controller.js";
 import { handlePermissionResponse as handlePermissionResponseController } from "./bridge/permission-response-controller.js";
+import {
+  handleCliSlashCommand as handleCliSlashCommandController,
+  handleForceCompact as handleForceCompactController,
+  handleUserMessage as handleUserMessageController,
+  hasPendingForceCompact as hasPendingForceCompactController,
+  isCliSlashCommand as isCliSlashCommandController,
+  queueForceCompactPendingMessage as queueForceCompactPendingMessageController,
+  routeAdapterBrowserMessage as routeAdapterBrowserMessageController,
+} from "./bridge/adapter-browser-routing-controller.js";
+import {
+  commitPendingCodexInputs as commitPendingCodexInputsController,
+  extractUserTextFromResumedTurn as extractUserTextFromResumedTurnController,
+  getCancelablePendingCodexInputs as getCancelablePendingCodexInputsController,
+  getPendingCodexInputsByIds as getPendingCodexInputsByIdsController,
+  queueCodexPendingStartBatch as queueCodexPendingStartBatchController,
+  rearmRecoveredQueuedHeadTurn as rearmRecoveredQueuedHeadTurnController,
+  rebuildQueuedCodexPendingStartBatch as rebuildQueuedCodexPendingStartBatchController,
+  reconcileCodexResumedTurn as reconcileCodexResumedTurnController,
+  reconcileRecoveredQueuedTurnLifecycle as reconcileRecoveredQueuedTurnLifecycleController,
+  recordSteeredCodexTurn as recordSteeredCodexTurnController,
+  removePendingCodexInput as removePendingCodexInputController,
+  retryPendingCodexTurn as retryPendingCodexTurnController,
+  setPendingCodexInputCancelable as setPendingCodexInputCancelableController,
+  setPendingCodexInputsCancelable as setPendingCodexInputsCancelableController,
+  trySteerPendingCodexInputs as trySteerPendingCodexInputsController,
+} from "./bridge/codex-recovery-orchestrator.js";
+import {
+  handleControlRequest as handleControlRequestController,
+  handleInterrupt as handleInterruptController,
+  handleMcpGetStatus as handleMcpGetStatusController,
+  handleMcpReconnect as handleMcpReconnectController,
+  handleMcpSetServers as handleMcpSetServersController,
+  handleMcpToggle as handleMcpToggleController,
+  handleSdkPermissionRequest as handleSdkPermissionRequestController,
+  handleSetAskPermission as handleSetAskPermissionController,
+  handleSetPermissionMode as handleSetPermissionModeController,
+  handleCodexSetPermissionMode as handleCodexSetPermissionModeController,
+  tryLlmAutoApproval as tryLlmAutoApprovalController,
+} from "./bridge/browser-control-routing-controller.js";
+import {
+  buildToolResultPreviews as buildToolResultPreviewsController,
+  finalizeOrphanedTerminalToolsOnResult as finalizeOrphanedTerminalToolsOnResultController,
+  finalizeRecoveredDisconnectedTerminalTools as finalizeRecoveredDisconnectedTerminalToolsController,
+  getIndexedToolResult,
+  getToolResultPreviewLimit as getToolResultPreviewLimitController,
+  pruneToolResultsForCurrentHistory as pruneToolResultsForCurrentHistoryController,
+  recoverToolStartTimesFromHistory as recoverToolStartTimesFromHistoryController,
+  scheduleCodexToolResultWatchdogs as scheduleCodexToolResultWatchdogsController,
+  shouldDeferCodexToolResultWatchdog as shouldDeferCodexToolResultWatchdogController,
+  synthesizeCodexToolResultsFromResumedTurn as synthesizeCodexToolResultsFromResumedTurnController,
+} from "./bridge/tool-result-recovery-controller.js";
 
 // `takode board` output is compact, high-signal state that agents routinely
 // reason about. A 300-char tail preview can hide dependent rows and make the
@@ -2548,10 +2590,6 @@ export class WsBridge {
     );
   }
 
-  // ─── Attention state (server-authoritative read/unread) ───────────────────
-
-  private static readonly ATTENTION_PRIORITY: Record<string, number> = { action: 3, error: 2, review: 1 };
-
   /**
    * Codex can replay prior assistant messages after reconnect. Deduplicate only
    * when the canonical assistant ID matches, or when timestamp + content +
@@ -2727,8 +2765,8 @@ export class WsBridge {
   ): void {
     if (this.isHerdedWorkerSession(session) && !options?.allowHerdedWorker) return;
     const current = session.attentionReason;
-    const pri = WsBridge.ATTENTION_PRIORITY;
-    if (current && pri[current] >= pri[reason]) return; // already equal or higher
+    const pri = { action: 3, error: 2, review: 1 } as const;
+    if (current && pri[current] >= pri[reason]) return;
     session.attentionReason = reason;
     this.broadcastToBrowsers(session, {
       type: "session_update",
@@ -2764,7 +2802,6 @@ export class WsBridge {
     const launcherInfo = this.launcher?.getSession(sessionId);
     const isHerded = !!launcherInfo?.herdedBy;
 
-    // Find the last top-level assistant message
     const lastAssistantIndex = this.findLastAssistantMessageIndex(session);
     const lastAssistant =
       lastAssistantIndex !== undefined
@@ -2792,8 +2829,6 @@ export class WsBridge {
           })();
 
     const anchoredMessageId = anchoredAssistant?.message.id ?? null;
-
-    // Stamp notification onto the anchored message (always -- for peek/read visibility)
     if (anchoredAssistant) {
       (anchoredAssistant as Record<string, unknown>).notification = {
         category,
@@ -2802,7 +2837,6 @@ export class WsBridge {
       };
     }
 
-    // Persist notification to inbox (always -- leader can see via takode peek)
     const notif: SessionNotification = {
       id: `n-${++session.notificationCounter}`,
       category,
@@ -2814,12 +2848,6 @@ export class WsBridge {
     session.notifications.push(notif);
 
     if (isHerded) {
-      // Herded sessions: route through leader, not directly to user.
-      // Notification is persisted to the inbox (above) for server-side visibility
-      // via takode peek, but NOT broadcast to browsers -- no sidebar markers,
-      // no sounds, no attention badges. The leader handles escalation.
-      // Review notifications are silenced entirely. Needs-input notifications
-      // are emitted as herd events so the leader can decide what to do.
       if (category === "needs-input") {
         this.emitTakodeEvent(sessionId, "notification_needs_input", {
           summary,
@@ -2832,36 +2860,25 @@ export class WsBridge {
       return { ok: true, anchoredMessageId, notificationId: notif.id };
     }
 
-    // Non-herded sessions: notify user directly
-
-    // Broadcast notification inbox to browsers (drives sidebar markers and sounds)
     this.broadcastToBrowsers(session, {
       type: "notification_update",
       notifications: session.notifications,
     });
 
-    // Set attention
     const reason = category === "needs-input" ? ("action" as const) : ("review" as const);
     this.setAttention(session, reason);
 
-    // Fire Pushover -- explicit user notification, so bypass the read-check.
-    // Without skipReadCheck, the browser's auto-read (triggered by the setAttention
-    // broadcast above when the user is viewing this session) would set lastReadAt
-    // to now, causing the Pushover fire() to see lastRead >= createdAt and silently
-    // skip the notification.
     if (this.pushoverNotifier) {
       const eventType = category === "needs-input" ? ("question" as const) : ("completed" as const);
       const detail = summary;
       this.pushoverNotifier.scheduleNotification(sessionId, eventType, detail, undefined, { skipReadCheck: true });
     }
 
-    // Broadcast attention to browsers
     this.broadcastToBrowsers(session, {
       type: "session_update",
       session: { attentionReason: session.attentionReason },
     });
 
-    // Also broadcast the notification stamp on the message so browsers can render the marker
     if (lastAssistant) {
       this.broadcastToBrowsers(session, {
         type: "notification_anchored",
@@ -3685,7 +3702,11 @@ export class WsBridge {
     const outcome = completeCodexTurnsForResultState(session, msg, updatedAt);
     if (outcome.codexTurnId) {
       if (outcome.matched) {
-        this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_result_turn_id_completed");
+        reconcileRecoveredQueuedTurnLifecycleController(
+          session,
+          "codex_result_turn_id_completed",
+          this.getCodexRecoveryOrchestratorDeps(),
+        );
         return true;
       }
       console.warn(
@@ -3721,7 +3742,8 @@ export class WsBridge {
     const outcome = dispatchQueuedCodexTurnsState(session, reason, {
       pruneStalePendingCodexHerdInputs: (dispatchReason) =>
         this.pruneStalePendingCodexHerdInputs(session, dispatchReason),
-      setPendingCodexInputsCancelable: (ids) => this.setPendingCodexInputsCancelable(session, ids, false),
+      setPendingCodexInputsCancelable: (ids) =>
+        setPendingCodexInputsCancelableController(session, ids, false, this.getCodexRecoveryOrchestratorDeps()),
       persistSession: () => this.persistSession(session),
     });
     if (outcome.status !== "dispatched" || !outcome.head) return;
@@ -4006,7 +4028,7 @@ export class WsBridge {
         // post-turn state refresh (git + diff stats + attention) as Claude.
         this.handleResultMessage(session, outgoing.data);
         if (!session.isGenerating) {
-          this.queueCodexPendingStartBatch(session, "codex_turn_completed");
+          queueCodexPendingStartBatchController(session, "codex_turn_completed", this.getCodexRecoveryOrchestratorDeps());
         }
         this.dispatchQueuedCodexTurns(session, "codex_turn_completed");
         this.maybeFlushQueuedCodexMessages(session, "codex_turn_completed_non_user");
@@ -4034,7 +4056,13 @@ export class WsBridge {
           }
 
           if (result.kind === "queued_for_llm_auto_approval") {
-            this.tryLlmAutoApproval(session, result.request.request_id, result.request, result.autoApprovalConfig);
+            void tryLlmAutoApprovalController(
+              session,
+              result.request.request_id,
+              result.request,
+              result.autoApprovalConfig,
+              this.getBrowserControlRoutingDeps(),
+            );
           }
         };
 
@@ -4102,7 +4130,7 @@ export class WsBridge {
       const pendingRollback = session.pendingCodexRollback;
       if (meta.resumeSnapshot && !pendingRollback) {
         this.hydrateCodexResumedHistory(session, meta.resumeSnapshot);
-        this.reconcileCodexResumedTurn(session, meta.resumeSnapshot);
+        reconcileCodexResumedTurnController(session, meta.resumeSnapshot, this.getCodexRecoveryOrchestratorDeps());
       }
       this.setBackendState(session, "connected", null);
       if (meta.model) {
@@ -4139,16 +4167,28 @@ export class WsBridge {
         this.persistSession(session);
         return;
       }
-      const steeredPending = this.trySteerPendingCodexInputs(session, "session_meta");
+      const steeredPending = trySteerPendingCodexInputsController(
+        session,
+        "session_meta",
+        this.getCodexRecoveryOrchestratorDeps(),
+      );
       if (!steeredPending) {
         const headWasBlockedRecovery = this.getCodexHeadTurn(session)?.status === "blocked_broken_session";
         this.dispatchQueuedCodexTurns(session, "session_meta");
-        this.reconcileRecoveredQueuedTurnLifecycle(session, "session_meta_dispatch");
+        reconcileRecoveredQueuedTurnLifecycleController(
+          session,
+          "session_meta_dispatch",
+          this.getCodexRecoveryOrchestratorDeps(),
+        );
         const currentTurnId = adapter.getCurrentTurnId?.() ?? null;
-        const hasPendingLocalInputs = this.getCancelablePendingCodexInputs(session).length > 0;
+        const hasPendingLocalInputs = getCancelablePendingCodexInputsController(session).length > 0;
         if (!headWasBlockedRecovery && (!session.isGenerating || (!currentTurnId && hasPendingLocalInputs))) {
-          this.queueCodexPendingStartBatch(session, "session_meta");
-          this.reconcileRecoveredQueuedTurnLifecycle(session, "session_meta_pending_batch");
+          queueCodexPendingStartBatchController(session, "session_meta", this.getCodexRecoveryOrchestratorDeps());
+          reconcileRecoveredQueuedTurnLifecycleController(
+            session,
+            "session_meta_pending_batch",
+            this.getCodexRecoveryOrchestratorDeps(),
+          );
         }
       }
       this.flushQueuedMessagesToCodexAdapter(session, adapter, "session_meta");
@@ -4161,9 +4201,10 @@ export class WsBridge {
       if (session.codexAdapter !== adapter) return;
       const pending = this.getCodexTurnAwaitingAck(session);
       if (!pending) return;
-      const committedHistoryIndexes = this.commitPendingCodexInputs(
+      const committedHistoryIndexes = commitPendingCodexInputsController(
         session,
         pending.pendingInputIds ?? [pending.userMessageId],
+        this.getCodexRecoveryOrchestratorDeps(),
       );
       if (committedHistoryIndexes.length > 0) {
         pending.historyIndex = committedHistoryIndexes[0];
@@ -4179,7 +4220,12 @@ export class WsBridge {
       pending.acknowledgedAt = Date.now();
       pending.updatedAt = pending.acknowledgedAt;
       if (pending.turnTarget === "queued" && !session.isGenerating) {
-        this.rearmRecoveredQueuedHeadTurn(session, pending, "codex_turn_started_recovered");
+        rearmRecoveredQueuedHeadTurnController(
+          session,
+          pending,
+          "codex_turn_started_recovered",
+          this.getCodexRecoveryOrchestratorDeps(),
+        );
       }
       if (pending.turnTarget === null) {
         const target = session.isGenerating
@@ -4195,22 +4241,37 @@ export class WsBridge {
         }
       }
       this.persistSession(session);
-      this.trySteerPendingCodexInputs(session, "codex_turn_started");
+      trySteerPendingCodexInputsController(session, "codex_turn_started", this.getCodexRecoveryOrchestratorDeps());
     });
 
     adapter.onTurnSteered((turnId, pendingInputIds) => {
       if (session.codexAdapter !== adapter) return;
-      const steeredInputs = this.getPendingCodexInputsByIds(session, pendingInputIds);
-      const committedHistoryIndexes = this.commitPendingCodexInputs(session, pendingInputIds);
-      this.recordSteeredCodexTurn(session, turnId, steeredInputs, committedHistoryIndexes);
+      const steeredInputs = getPendingCodexInputsByIdsController(session, pendingInputIds);
+      const committedHistoryIndexes = commitPendingCodexInputsController(
+        session,
+        pendingInputIds,
+        this.getCodexRecoveryOrchestratorDeps(),
+      );
+      recordSteeredCodexTurnController(
+        session,
+        turnId,
+        steeredInputs,
+        committedHistoryIndexes,
+        this.getCodexRecoveryOrchestratorDeps(),
+      );
       this.persistSession(session);
-      this.trySteerPendingCodexInputs(session, "codex_turn_steered");
+      trySteerPendingCodexInputsController(session, "codex_turn_steered", this.getCodexRecoveryOrchestratorDeps());
     });
 
     adapter.onTurnSteerFailed((pendingInputIds) => {
       if (session.codexAdapter !== adapter) return;
-      this.setPendingCodexInputsCancelable(session, pendingInputIds, true);
-      this.rebuildQueuedCodexPendingStartBatch(session);
+      setPendingCodexInputsCancelableController(
+        session,
+        pendingInputIds,
+        true,
+        this.getCodexRecoveryOrchestratorDeps(),
+      );
+      rebuildQueuedCodexPendingStartBatchController(session, this.getCodexRecoveryOrchestratorDeps());
       this.dispatchQueuedCodexTurns(session, "codex_turn_steer_failed");
     });
 
@@ -4229,7 +4290,12 @@ export class WsBridge {
         pending.status = "blocked_broken_session";
         pending.lastError = error;
         pending.updatedAt = Date.now();
-        this.setPendingCodexInputsCancelable(session, pending.pendingInputIds ?? [pending.userMessageId], true);
+        setPendingCodexInputsCancelableController(
+          session,
+          pending.pendingInputIds ?? [pending.userMessageId],
+          true,
+          this.getCodexRecoveryOrchestratorDeps(),
+        );
       }
       this.setBackendState(session, "broken", error);
       this.setAttention(session, "error");
@@ -4266,12 +4332,13 @@ export class WsBridge {
       this.onSessionActivityStateChanged(session.id, "codex_disconnect_permissions_cleared");
       session.pendingQuestCommands.clear();
       session.codexAdapter = null;
-      this.setPendingCodexInputsCancelable(
+      setPendingCodexInputsCancelableController(
         session,
         session.pendingCodexInputs.map((input) => input.id),
         true,
+        this.getCodexRecoveryOrchestratorDeps(),
       );
-      this.rebuildQueuedCodexPendingStartBatch(session);
+      rebuildQueuedCodexPendingStartBatchController(session, this.getCodexRecoveryOrchestratorDeps());
       this.setBackendState(session, "disconnected", null);
       if (!intentionalRelaunch) {
         if (
@@ -4383,7 +4450,12 @@ export class WsBridge {
           pending.turnId = null;
           pending.updatedAt = Date.now();
           pending.lastError = "turn/start failed before acknowledgement";
-          this.setPendingCodexInputsCancelable(session, pending.pendingInputIds ?? [pending.userMessageId], true);
+          setPendingCodexInputsCancelableController(
+            session,
+            pending.pendingInputIds ?? [pending.userMessageId],
+            true,
+            this.getCodexRecoveryOrchestratorDeps(),
+          );
         }
         this.dispatchQueuedCodexTurns(session, "turn_start_failed");
       } else {
@@ -4711,7 +4783,7 @@ export class WsBridge {
       // before broadcasting to browser. This mirrors the NDJSON permission flow.
       if (msg.type === "permission_request") {
         const permMsg = msg as { type: "permission_request"; request: PermissionRequest };
-        const maybe = this.handleSdkPermissionRequest(session, permMsg.request);
+        const maybe = handleSdkPermissionRequestController(session, permMsg.request, this.getBrowserControlRoutingDeps());
         if (maybe instanceof Promise) {
           void maybe.catch((err) => {
             console.error(`[ws-bridge] SDK auto-approval error for session ${sessionTag(session.id)}:`, err);
@@ -5354,7 +5426,10 @@ export class WsBridge {
       .catch((err) => {
         console.warn("[ws-bridge] failed to send tree group state on connect:", err);
       });
-    this.sendVsCodeSelectionState(ws);
+      this.sendToBrowser(ws, {
+        type: "vscode_selection_state",
+        state: this.vscodeSelectionState,
+      });
 
     // History replay and pending permissions are sent by handleSessionSubscribe
     // (triggered when the browser sends session_subscribe after onopen).
@@ -5528,7 +5603,11 @@ export class WsBridge {
       const existing = this.findMatchingPendingCodexInput(session, content, agentSource);
       if (existing) {
         if (existing.cancelable) {
-          this.queueCodexPendingStartBatch(session, "inject_herd_event_retry");
+          queueCodexPendingStartBatchController(
+            session,
+            "inject_herd_event_retry",
+            this.getCodexRecoveryOrchestratorDeps(),
+          );
         }
         return this.getPendingCodexInputDeliveryState(session, existing.id);
       }
@@ -5665,7 +5744,7 @@ export class WsBridge {
 
     session.pendingCodexInputs = nextInputs;
     this.broadcastPendingCodexInputs(session);
-    this.rebuildQueuedCodexPendingStartBatch(session);
+    rebuildQueuedCodexPendingStartBatchController(session, this.getCodexRecoveryOrchestratorDeps());
     this.persistSession(session);
     console.log(
       `[ws-bridge] Pruned stale queued board_stalled herd input(s) for session ${sessionTag(session.id)} (${reason})`,
@@ -5923,15 +6002,6 @@ export class WsBridge {
     return ranked[0]?.window ?? null;
   }
 
-  private getVsCodeOpenQueue(sourceId: string): VsCodeOpenFileCommand[] {
-    let queue = this.vscodeOpenFileQueues.get(sourceId);
-    if (!queue) {
-      queue = [];
-      this.vscodeOpenFileQueues.set(sourceId, queue);
-    }
-    return queue;
-  }
-
   getVsCodeWindowStates(): VsCodeWindowState[] {
     return this.getActiveVsCodeWindows()
       .map((window) => this.cloneVsCodeWindowState(window))
@@ -6024,7 +6094,12 @@ export class WsBridge {
       },
       createdAt: Date.now(),
     };
-    this.getVsCodeOpenQueue(sourceWindow.sourceId).push(command);
+    let queue = this.vscodeOpenFileQueues.get(sourceWindow.sourceId);
+    if (!queue) {
+      queue = [];
+      this.vscodeOpenFileQueues.set(sourceWindow.sourceId, queue);
+    }
+    queue.push(command);
 
     const timeoutMs = options?.timeoutMs ?? WsBridge.VSCODE_OPEN_FILE_TIMEOUT_MS;
     const completion = new Promise<void>((resolve, reject) => {
@@ -6073,7 +6148,7 @@ export class WsBridge {
         break;
 
       case "control_request":
-        void this.handleControlRequest(session, msg);
+        void handleControlRequestController(session, msg, this.getBrowserControlRoutingDeps());
         break;
 
       case "tool_progress":
@@ -6346,367 +6421,6 @@ export class WsBridge {
     }
 
     this.persistSession(session);
-  }
-
-  private handleControlRequest(session: Session, msg: CLIControlRequestMessage): void {
-    if (msg.request.subtype !== "can_use_tool") return;
-    const toolName = msg.request.tool_name;
-    const applyResult = (result: PermissionPipelineResult): void => {
-      if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
-        const ndjson = JSON.stringify({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: result.request.request_id,
-            response: {
-              behavior: "allow",
-              updatedInput: result.request.input,
-            },
-          },
-        });
-        this.sendToCLI(session, ndjson);
-        this.broadcastAutoApproval(session, result.request);
-        return;
-      }
-
-      if (result.kind === "queued_for_llm_auto_approval") {
-        this.tryLlmAutoApproval(session, result.request.request_id, result.request, result.autoApprovalConfig);
-      }
-
-      // Trigger auto-naming when agent pauses for plan approval — the agent
-      // has done meaningful work and the plan provides rich naming context.
-      if (toolName === "ExitPlanMode" && this.onAgentPaused) {
-        this.onAgentPaused(session.id, [...session.messageHistory], session.state.cwd);
-      }
-    };
-
-    const resultOrPromise = handlePermissionRequestPipeline(
-      session,
-      {
-        request_id: msg.request_id,
-        tool_name: toolName,
-        input: msg.request.input,
-        permission_suggestions: msg.request.permission_suggestions,
-        description: msg.request.description,
-        tool_use_id: msg.request.tool_use_id,
-        agent_id: msg.request.agent_id,
-      },
-      "claude-ws",
-      {
-        onSessionActivityStateChanged: (sessionId, reason) => this.onSessionActivityStateChanged(sessionId, reason),
-        broadcastPermissionRequest: (targetSession, perm) =>
-          this.broadcastToBrowsers(targetSession, {
-            type: "permission_request",
-            request: perm,
-          }),
-        persistSession: (targetSession) => this.persistSession(targetSession),
-        setAttentionAction: (targetSession) => this.setAttention(targetSession, "action"),
-        emitTakodePermissionRequest: (targetSession, perm) =>
-          this.emitTakodeEvent(targetSession.id, "permission_request", {
-            tool_name: perm.tool_name,
-            request_id: perm.request_id,
-            summary: perm.description || perm.tool_name,
-            ...this.buildPermissionPreview(perm),
-            turn_source: this.getCurrentTurnTriggerSource(targetSession),
-            msg_index: this.findLastAssistantMessageIndex(targetSession),
-          }),
-        schedulePermissionNotification: (targetSession, perm) => {
-          if (!this.pushoverNotifier) return;
-          const eventType = perm.tool_name === "AskUserQuestion" ? ("question" as const) : ("permission" as const);
-          const detail = perm.tool_name + (perm.description ? `: ${perm.description}` : "");
-          this.pushoverNotifier.scheduleNotification(targetSession.id, eventType, detail, perm.request_id);
-        },
-      },
-      { activityReason: "permission_request" },
-    );
-
-    if (resultOrPromise instanceof Promise) {
-      void resultOrPromise
-        .then((result) => {
-          applyResult(result);
-        })
-        .catch((err) => {
-          console.error(`[ws-bridge] Failed to process control_request for session ${sessionTag(session.id)}:`, err);
-        });
-      return;
-    }
-
-    applyResult(resultOrPromise);
-  }
-
-  /**
-   * Asynchronously evaluate a permission request via LLM auto-approver.
-   * Fire-and-forget: the caller does not await this. Race conditions are
-   * handled by checking `session.pendingPermissions.has(requestId)` before
-   * acting on the LLM result.
-   */
-  /** Extract the last N tool_use inputs from messageHistory (no outputs, inputs only). */
-  private extractRecentToolCalls(session: Session, limit = 10): RecentToolCall[] {
-    const calls: RecentToolCall[] = [];
-    // Walk backwards through messageHistory to find assistant messages with tool_use blocks
-    for (let i = session.messageHistory.length - 1; i >= 0 && calls.length < limit; i--) {
-      const msg = session.messageHistory[i];
-      if (msg.type === "assistant" && msg.message?.content) {
-        const blocks = msg.message.content;
-        // Iterate blocks in reverse to get most recent first
-        for (let j = blocks.length - 1; j >= 0 && calls.length < limit; j--) {
-          const block = blocks[j];
-          if (block.type === "tool_use") {
-            calls.push({
-              toolName: block.name,
-              input: block.input as Record<string, unknown>,
-            });
-          }
-        }
-      }
-    }
-    // Reverse so oldest is first (chronological order)
-    return calls.reverse();
-  }
-
-  /**
-   * Handle a permission request from the Claude SDK adapter.
-   * Routes through the auto-approver (same logic as NDJSON sessions),
-   * then broadcasts to browsers. If auto-approved, sends the response
-   * directly back to the SDK adapter.
-   */
-  private handleSdkPermissionRequest(session: Session, perm: PermissionRequest): void | Promise<void> {
-    const applyResult = (result: PermissionPipelineResult): void => {
-      if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
-        // Auto-approve: send response directly back to the SDK adapter
-        if (session.claudeSdkAdapter) {
-          session.claudeSdkAdapter.sendBrowserMessage({
-            type: "permission_response",
-            request_id: result.request.request_id,
-            behavior: "allow",
-            updated_input: result.request.input,
-          } as any);
-        }
-        this.broadcastAutoApproval(session, result.request);
-        return;
-      }
-
-      if (result.kind === "queued_for_llm_auto_approval") {
-        this.tryLlmAutoApproval(session, result.request.request_id, result.request, result.autoApprovalConfig);
-      }
-    };
-
-    const resultOrPromise = handlePermissionRequestPipeline(
-      session,
-      perm,
-      "claude-sdk",
-      {
-        onSessionActivityStateChanged: (sessionId, reason) => this.onSessionActivityStateChanged(sessionId, reason),
-        broadcastPermissionRequest: (targetSession, request) =>
-          this.broadcastToBrowsers(targetSession, {
-            type: "permission_request",
-            request,
-          }),
-        persistSession: (targetSession) => this.persistSession(targetSession),
-        setAttentionAction: (targetSession) => this.setAttention(targetSession, "action"),
-        emitTakodePermissionRequest: (targetSession, request) =>
-          this.emitTakodeEvent(targetSession.id, "permission_request", {
-            tool_name: request.tool_name,
-            request_id: request.request_id,
-            summary: request.description || request.tool_name,
-            ...this.buildPermissionPreview(request),
-            turn_source: this.getCurrentTurnTriggerSource(targetSession),
-            msg_index: this.findLastAssistantMessageIndex(targetSession),
-          }),
-        schedulePermissionNotification: (targetSession, request) => {
-          if (!this.pushoverNotifier) return;
-          const eventType = request.tool_name === "AskUserQuestion" ? ("question" as const) : ("permission" as const);
-          const detail = request.tool_name + (request.description ? `: ${request.description}` : "");
-          this.pushoverNotifier.scheduleNotification(targetSession.id, eventType, detail, request.request_id);
-        },
-      },
-      { activityReason: "sdk_permission_request" },
-    );
-
-    if (resultOrPromise instanceof Promise) {
-      return resultOrPromise.then((result) => {
-        applyResult(result);
-      });
-    }
-
-    applyResult(resultOrPromise);
-  }
-
-  private async tryLlmAutoApproval(
-    session: Session,
-    requestId: string,
-    perm: PermissionRequest,
-    config: AutoApprovalConfig,
-  ): Promise<void> {
-    const abort = new AbortController();
-    session.evaluatingAborts.set(requestId, abort);
-
-    // Collect last 10 tool call inputs for context
-    const recentToolCalls = this.extractRecentToolCalls(session);
-
-    try {
-      const result = await evaluatePermission(
-        session.id,
-        perm.tool_name,
-        perm.input,
-        perm.description,
-        session.state.cwd,
-        config,
-        abort.signal,
-        recentToolCalls,
-        session.state.model,
-        // onAcquired: transition from "queued" → "evaluating" in browser
-        () => {
-          if (!session.pendingPermissions.has(requestId)) return;
-          perm.evaluating = "evaluating";
-          this.broadcastToBrowsers(session, {
-            type: "permission_evaluating_status",
-            request_id: requestId,
-            evaluating: "evaluating",
-            timestamp: Date.now(),
-          });
-        },
-      );
-
-      // Clean up abort controller
-      session.evaluatingAborts.delete(requestId);
-
-      // Race condition guard: user/CLI may have already handled this permission
-      if (!session.pendingPermissions.has(requestId)) return;
-
-      if (result?.decision === "approve") {
-        // LLM approved — auto-approve the permission
-        session.pendingPermissions.delete(requestId);
-        this.onSessionActivityStateChanged(session.id, "auto_approved_permission");
-        this.pushoverNotifier?.cancelPermission(session.id, requestId);
-        this.clearActionAttentionIfNoPermissions(session);
-
-        const ndjson = JSON.stringify({
-          type: "control_response",
-          response: {
-            subtype: "success",
-            request_id: requestId,
-            response: {
-              behavior: "allow",
-              updatedInput: perm.input,
-            },
-          },
-        });
-        // Route approval through the correct backend
-        if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
-          session.claudeSdkAdapter.sendBrowserMessage({
-            type: "permission_response",
-            request_id: requestId,
-            behavior: "allow",
-            updated_input: perm.input,
-          } as any);
-        } else if (session.backendType === "codex" && session.codexAdapter) {
-          session.codexAdapter.sendBrowserMessage({
-            type: "permission_response",
-            request_id: requestId,
-            behavior: "allow",
-            updated_input: perm.input,
-          } as any);
-        } else {
-          this.sendToCLI(session, ndjson);
-        }
-
-        this.broadcastToBrowsers(session, {
-          type: "permission_auto_approved",
-          request_id: requestId,
-          tool_name: perm.tool_name,
-          tool_use_id: perm.tool_use_id,
-          reason: result.reason,
-          summary: getAutoApprovalSummary(perm.tool_name, perm.input),
-          timestamp: Date.now(),
-        });
-
-        // Takode: permission_resolved for herd visibility (q-205).
-        // Without this, auto-approved permissions are invisible to the leader.
-        this.emitTakodeEvent(session.id, "permission_resolved", {
-          tool_name: perm.tool_name,
-          outcome: "approved",
-        });
-
-        console.log(
-          `[auto-approver] Auto-approved ${perm.tool_name} for session ${sessionTag(session.id)}: ${result.reason}`,
-        );
-        this.persistSession(session);
-      } else {
-        // LLM denied or failed (null) — transition to normal pending state.
-        // Clear the evaluating flag so the browser shows full approval UI.
-        // Set deferralReason so the browser can explain WHY the permission needs human review.
-        const deferralReason =
-          result?.decision === "defer"
-            ? result.reason || "Auto-approver deferred to human"
-            : "Auto-approval evaluation failed or timed out";
-        perm.evaluating = undefined;
-        perm.deferralReason = deferralReason;
-
-        this.broadcastToBrowsers(session, {
-          type: "permission_needs_attention",
-          request_id: requestId,
-          timestamp: Date.now(),
-          reason: deferralReason,
-        });
-
-        // Takode: emit permission_request NOW — auto-approval deferred, human needs to act
-        this.emitTakodeEvent(session.id, "permission_request", {
-          tool_name: perm.tool_name,
-          request_id: perm.request_id,
-          summary: perm.description || perm.tool_name,
-          ...this.buildPermissionPreview(perm),
-          turn_source: this.getCurrentTurnTriggerSource(session),
-          msg_index: this.findLastAssistantMessageIndex(session),
-        });
-
-        // NOW set attention and schedule notifications
-        this.setAttention(session, "action");
-        if (this.pushoverNotifier) {
-          const eventType = perm.tool_name === "AskUserQuestion" ? ("question" as const) : ("permission" as const);
-          const detail = perm.tool_name + (perm.description ? `: ${perm.description}` : "");
-          this.pushoverNotifier.scheduleNotification(session.id, eventType, detail, requestId);
-        }
-
-        if (result?.decision === "defer") {
-          console.log(
-            `[auto-approver] LLM deferred ${perm.tool_name} for session ${sessionTag(session.id)}: ${result.reason}`,
-          );
-        } else {
-          console.log(
-            `[auto-approver] LLM evaluation failed/timed out for ${perm.tool_name} in session ${sessionTag(session.id)}, deferring to user`,
-          );
-        }
-        this.persistSession(session);
-      }
-    } catch (err) {
-      session.evaluatingAborts.delete(requestId);
-
-      // Fail-safe: if anything goes wrong, transition to normal pending
-      if (session.pendingPermissions.has(requestId)) {
-        const errorReason = "Auto-approval evaluation encountered an error";
-        perm.evaluating = undefined;
-        perm.deferralReason = errorReason;
-        this.broadcastToBrowsers(session, {
-          type: "permission_needs_attention",
-          request_id: requestId,
-          timestamp: Date.now(),
-          reason: errorReason,
-        });
-        // Takode: emit permission_request on fail-safe escalation too
-        this.emitTakodeEvent(session.id, "permission_request", {
-          tool_name: perm.tool_name,
-          request_id: perm.request_id,
-          summary: perm.description || perm.tool_name,
-          ...this.buildPermissionPreview(perm),
-          turn_source: this.getCurrentTurnTriggerSource(session),
-          msg_index: this.findLastAssistantMessageIndex(session),
-        });
-        this.setAttention(session, "action");
-        this.persistSession(session);
-      }
-      console.warn(`[auto-approver] Error evaluating ${perm.tool_name} for session ${sessionTag(session.id)}:`, err);
-    }
   }
 
   /** Abort any in-flight LLM auto-approval evaluation for a given request. */
@@ -6997,155 +6711,52 @@ export class WsBridge {
     return this.findToolUseBlockInHistory(session, toolUseId)?.name ?? null;
   }
 
+  private getToolResultRecoveryDeps() {
+    return {
+      getToolUseBlockInHistory: (targetSession: unknown, toolUseId: string) =>
+        this.findToolUseBlockInHistory(targetSession as Session, toolUseId),
+      clearCodexToolResultWatchdog: (targetSession: unknown, toolUseId: string) =>
+        this.clearCodexToolResultWatchdog(targetSession as Session, toolUseId),
+      emitSyntheticToolResultPreview: (
+        targetSession: unknown,
+        toolUseId: string,
+        content: string,
+        isError: boolean,
+        reason: string,
+      ) => this.emitSyntheticToolResultPreview(targetSession as Session, toolUseId, content, isError, reason),
+      getCodexTurnInRecovery: (targetSession: unknown) => this.getCodexTurnInRecovery(targetSession as Session),
+      codexToolResultWatchdogMs: CODEX_TOOL_RESULT_WATCHDOG_MS,
+      takodeBoardResultPreviewLimit: TAKODE_BOARD_RESULT_PREVIEW_LIMIT,
+      defaultToolResultPreviewLimit: TOOL_RESULT_PREVIEW_LIMIT,
+    };
+  }
+
   private getToolResultPreviewLimit(session: Session, toolUseId: string): number {
-    const block = this.findToolUseBlockInHistory(session, toolUseId);
-    if (!block || block.name !== "Bash") return TOOL_RESULT_PREVIEW_LIMIT;
-    const command = typeof block.input.command === "string" ? block.input.command.trim() : "";
-    if (/^takode\s+board(?:\s|$)/.test(command)) {
-      return TAKODE_BOARD_RESULT_PREVIEW_LIMIT;
-    }
-    return TOOL_RESULT_PREVIEW_LIMIT;
+    return getToolResultPreviewLimitController(session, toolUseId, this.getToolResultRecoveryDeps());
   }
 
   private pruneToolResultsForCurrentHistory(session: Session): void {
-    if (session.toolResults.size === 0) return;
-    const reachableToolUseIds = new Set<string>();
-
-    for (const msg of session.messageHistory) {
-      if (msg.type !== "tool_result_preview") continue;
-      for (const preview of msg.previews || []) {
-        reachableToolUseIds.add(preview.tool_use_id);
-      }
-    }
-
-    const nextToolResults = new Map(
-      [...session.toolResults.entries()].filter(([toolUseId]) => reachableToolUseIds.has(toolUseId)),
-    );
-    if (nextToolResults.size === session.toolResults.size) {
-      const membershipUnchanged = [...session.toolResults.keys()].every((toolUseId) => nextToolResults.has(toolUseId));
-      if (membershipUnchanged) return;
-    }
-    session.toolResults = nextToolResults;
-  }
-
-  private collectUnresolvedToolStartTimesFromHistory(session: Session): Map<string, number> {
-    const starts = new Map<string, number>();
-    const resolved = new Set<string>();
-
-    for (const msg of session.messageHistory) {
-      if (msg.type === "assistant") {
-        const raw = (msg as Record<string, unknown>).tool_start_times;
-        if (raw && typeof raw === "object") {
-          for (const [toolUseId, ts] of Object.entries(raw as Record<string, unknown>)) {
-            if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
-            const prev = starts.get(toolUseId);
-            if (prev == null || ts < prev) starts.set(toolUseId, ts);
-          }
-        }
-      } else if (msg.type === "tool_result_preview") {
-        for (const preview of msg.previews || []) {
-          if (typeof preview.tool_use_id === "string") {
-            resolved.add(preview.tool_use_id);
-          }
-        }
-      }
-    }
-
-    for (const toolUseId of resolved) {
-      starts.delete(toolUseId);
-    }
-    return starts;
+    pruneToolResultsForCurrentHistoryController(session);
   }
 
   private recoverToolStartTimesFromHistory(session: Session): void {
-    const unresolved = this.collectUnresolvedToolStartTimesFromHistory(session);
-    if (unresolved.size === 0) return;
-    for (const [toolUseId, startedAt] of unresolved) {
-      if (!session.toolStartTimes.has(toolUseId)) {
-        session.toolStartTimes.set(toolUseId, startedAt);
-      }
-    }
+    recoverToolStartTimesFromHistoryController(session);
   }
 
   private finalizeRecoveredDisconnectedTerminalTools(session: Session, reason: string): void {
-    if (session.backendType !== "codex") return;
-
-    const now = Date.now();
-    for (const [toolUseId, startedAt] of session.toolStartTimes) {
-      if (this.shouldDeferCodexToolResultWatchdog(session, toolUseId)) continue;
-      if (now - startedAt < CODEX_TOOL_RESULT_WATCHDOG_MS) continue;
-      const toolName = this.findToolUseNameInHistory(session, toolUseId);
-      if (toolName !== "Bash") continue;
-      this.emitSyntheticToolResultPreview(
-        session,
-        toolUseId,
-        "Terminal command was interrupted while backend was disconnected; final output was not recovered.",
-        true,
-        reason,
-      );
-    }
+    finalizeRecoveredDisconnectedTerminalToolsController(session, reason, this.getToolResultRecoveryDeps());
   }
 
   private finalizeOrphanedTerminalToolsOnResult(session: Session, msg: CLIResultMessage): void {
-    if (session.backendType !== "codex") return;
-    if (session.toolStartTimes.size === 0) return;
-
-    const stopReason = typeof msg.stop_reason === "string" ? msg.stop_reason.toLowerCase() : "";
-    const interrupted = stopReason.includes("interrupt") || stopReason.includes("cancel");
-    const failed = !!msg.is_error || interrupted;
-
-    for (const toolUseId of [...session.toolStartTimes.keys()]) {
-      const toolName = this.findToolUseNameInHistory(session, toolUseId);
-      if (toolName !== "Bash") continue;
-
-      const content = interrupted
-        ? "Terminal command was interrupted before the final tool result was delivered."
-        : failed
-          ? "Terminal command failed before the final tool result was delivered."
-          : "Terminal command completed, but no output was captured.";
-      this.emitSyntheticToolResultPreview(session, toolUseId, content, failed, "result_orphaned_terminal");
-    }
+    finalizeOrphanedTerminalToolsOnResultController(session, msg, this.getToolResultRecoveryDeps());
   }
 
   private scheduleCodexToolResultWatchdogs(session: Session, reason: string): void {
-    if (session.backendType !== "codex") return;
-    for (const toolUseId of session.toolStartTimes.keys()) {
-      if (session.codexToolResultWatchdogs.has(toolUseId)) continue;
-      const timer = setTimeout(() => {
-        session.codexToolResultWatchdogs.delete(toolUseId);
-        if (!session.toolStartTimes.has(toolUseId)) return;
-
-        if (this.shouldDeferCodexToolResultWatchdog(session, toolUseId)) {
-          this.scheduleCodexToolResultWatchdogs(session, "backend_connected");
-          return;
-        }
-
-        this.emitSyntheticToolResultPreview(
-          session,
-          toolUseId,
-          "Tool call was interrupted by backend disconnect; final result was not recovered.",
-          true,
-          reason,
-        );
-      }, CODEX_TOOL_RESULT_WATCHDOG_MS);
-      session.codexToolResultWatchdogs.set(toolUseId, timer);
-    }
+    scheduleCodexToolResultWatchdogsController(session, reason, this.getToolResultRecoveryDeps());
   }
 
   private shouldDeferCodexToolResultWatchdog(session: Session, toolUseId: string): boolean {
-    if (!session.codexAdapter?.isConnected()) return false;
-
-    const pending = this.getCodexTurnInRecovery(session);
-    if (!pending) return true;
-    if (pending.resumeConfirmedAt == null) return true;
-    if (pending.disconnectedAt == null) return true;
-
-    const startedAt = session.toolStartTimes.get(toolUseId);
-    if (typeof startedAt !== "number") return true;
-
-    // Only time out tools that were already running before the disconnect and
-    // remained unresolved after Codex confirmed the resumed turn.
-    return startedAt > pending.disconnectedAt;
+    return shouldDeferCodexToolResultWatchdogController(session, toolUseId, this.getToolResultRecoveryDeps());
   }
 
   private synthesizeCodexToolResultsFromResumedTurn(
@@ -7153,106 +6764,12 @@ export class WsBridge {
     turn: CodexResumeTurnSnapshot,
     pending: CodexOutboundTurn,
   ): number {
-    const turnStatus = typeof turn.status === "string" ? turn.status : null;
-    if (!turnStatus || turnStatus === "inProgress") return 0;
-
-    const disconnectedAt = pending.disconnectedAt ?? Date.now();
-    const unresolvedToolIds = new Set<string>();
-    for (const [toolUseId, startedAt] of session.toolStartTimes) {
-      if (startedAt <= disconnectedAt) unresolvedToolIds.add(toolUseId);
-    }
-    if (unresolvedToolIds.size === 0) return 0;
-
-    let synthesized = 0;
-    const firstNonEmptyString = (obj: Record<string, unknown>, fields: string[]): string => {
-      for (const field of fields) {
-        const value = obj[field];
-        if (typeof value === "string" && value.trim().length > 0) return value.trim();
-      }
-      return "";
-    };
-
-    for (const rawItem of turn.items) {
-      if (!rawItem || typeof rawItem !== "object") continue;
-      const item = rawItem as Record<string, unknown>;
-      const itemId = typeof item.id === "string" ? item.id : "";
-      if (!itemId || !unresolvedToolIds.has(itemId)) continue;
-
-      const itemType = typeof item.type === "string" ? item.type : "";
-      const itemStatus = typeof item.status === "string" ? item.status : turnStatus;
-      let isError = itemStatus === "failed" || itemStatus === "declined";
-      let content = "";
-
-      if (itemType === "commandExecution") {
-        const output = firstNonEmptyString(item, [
-          "stdout",
-          "aggregatedOutput",
-          "aggregated_output",
-          "formatted_output",
-          "output",
-        ]);
-        const stderr = firstNonEmptyString(item, ["stderr", "errorOutput", "error_output"]);
-        const combinedOutput = [output, stderr].filter(Boolean).join("\n").trim();
-        const exitCode = typeof item.exitCode === "number" ? item.exitCode : null;
-        if (exitCode !== null && exitCode !== 0) isError = true;
-        if (combinedOutput) {
-          content = combinedOutput;
-          if (exitCode !== null && exitCode !== 0) {
-            content = `${content}\nExit code: ${exitCode}`;
-          }
-        } else if (exitCode !== null) {
-          content = `Command ${isError ? "failed" : "completed"} before reconnect recovery finished.\nExit code: ${exitCode}`;
-        } else {
-          content = `Command ${isError ? "failed" : "completed"} before reconnect recovery finished.`;
-        }
-      } else {
-        content = `Tool call ${isError ? "failed" : "completed"} before reconnect recovery finished.`;
-      }
-
-      this.emitSyntheticToolResultPreview(session, itemId, content, isError, "resume_snapshot");
-      unresolvedToolIds.delete(itemId);
-      synthesized++;
-    }
-
-    // Fallback: if the resumed turn is terminal but omitted item details, do not
-    // leave tool_use cards running forever in the UI.
-    for (const toolUseId of unresolvedToolIds) {
-      this.emitSyntheticToolResultPreview(
-        session,
-        toolUseId,
-        `Tool call ${turnStatus} before reconnect recovery finished; final output was not recovered.`,
-        turnStatus === "failed" || turnStatus === "declined",
-        "resume_snapshot_fallback",
-      );
-      synthesized++;
-    }
-
-    return synthesized;
-  }
-
-  /**
-   * Strip duplicated stderr output from Claude Code CLI error results.
-   *
-   * The CLI captures stdout and stderr separately and concatenates both into the
-   * tool_result content. For failed commands this produces:
-   *   "Exit code N\n<output>\n\n<output>"
-   * where <output> (the combined stdout+stderr) appears twice, separated by a
-   * blank line. We detect this pattern and keep only the first copy.
-   */
-  private static deduplicateCliErrorOutput(content: string): string {
-    const nlIdx = content.indexOf("\n");
-    if (nlIdx < 0 || !content.startsWith("Exit code ")) return content;
-
-    const body = content.slice(nlIdx + 1);
-    // Scan for a "\n\n" separator where the text before and after are identical
-    let sepIdx = body.indexOf("\n\n");
-    while (sepIdx >= 0) {
-      if (body.slice(0, sepIdx) === body.slice(sepIdx + 2)) {
-        return content.slice(0, nlIdx + 1) + body.slice(0, sepIdx);
-      }
-      sepIdx = body.indexOf("\n\n", sepIdx + 1);
-    }
-    return content;
+    return synthesizeCodexToolResultsFromResumedTurnController(
+      session,
+      turn,
+      pending,
+      this.getToolResultRecoveryDeps(),
+    );
   }
 
   /**
@@ -7263,47 +6780,7 @@ export class WsBridge {
     session: Session,
     toolResults: Array<Extract<ContentBlock, { type: "tool_result" }>>,
   ): ToolResultPreview[] {
-    const previews: ToolResultPreview[] = [];
-
-    for (const block of toolResults) {
-      let resultContent = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
-
-      // Claude Code CLI duplicates stderr in error results: the content arrives
-      // as "Exit code N\n<body>\n\n<body>" where <body> is repeated verbatim.
-      // Strip the duplicate second half so the UI shows the error only once.
-      if (block.is_error && typeof block.content === "string") {
-        resultContent = WsBridge.deduplicateCliErrorOutput(resultContent);
-      }
-
-      const previewLimit = this.getToolResultPreviewLimit(session, block.tool_use_id);
-      const totalSize = Buffer.byteLength(resultContent, "utf-8");
-      const isTruncated = resultContent.length > previewLimit;
-
-      // Compute wall-clock duration from tool_use start time
-      const startTime = session.toolStartTimes.get(block.tool_use_id);
-      const durationSeconds = startTime != null ? Math.round((Date.now() - startTime) / 100) / 10 : undefined;
-      this.clearCodexToolResultWatchdog(session, block.tool_use_id);
-      session.toolStartTimes.delete(block.tool_use_id);
-      session.toolProgressOutput.delete(block.tool_use_id);
-
-      // Store full result for lazy fetch
-      session.toolResults.set(block.tool_use_id, {
-        content: resultContent,
-        is_error: !!block.is_error,
-        timestamp: Date.now(),
-      });
-
-      previews.push({
-        tool_use_id: block.tool_use_id,
-        content: isTruncated ? resultContent.slice(-previewLimit) : resultContent,
-        is_error: !!block.is_error,
-        total_size: totalSize,
-        is_truncated: isTruncated,
-        duration_seconds: durationSeconds,
-      });
-    }
-
-    return previews;
+    return buildToolResultPreviewsController(session, toolResults, this.getToolResultRecoveryDeps());
   }
 
   /** Look up a full tool result by tool_use_id for lazy fetch via REST. */
@@ -7316,13 +6793,7 @@ export class WsBridge {
   } | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
-
-    const indexed = session.toolResults.get(toolUseId);
-    if (indexed) {
-      return { content: indexed.content, is_error: indexed.is_error };
-    }
-
-    return null;
+    return getIndexedToolResult(session, toolUseId);
   }
 
   private handleAuthStatus(session: Session, msg: CLIAuthStatusMessage) {
@@ -7378,31 +6849,42 @@ export class WsBridge {
 
   private async routeBrowserMessage(session: Session, msg: BrowserOutgoingMessage, ws?: ServerWebSocket<SocketData>) {
     if (msg.type === "session_subscribe") {
-      await this.handleSessionSubscribe(
+      await handleSessionSubscribeController(
         session,
-        ws,
+        ws as unknown as { data: { subscribed?: boolean; lastAckSeq?: number } } | undefined,
         msg.last_seq,
-        msg.known_frozen_count,
+        msg.known_frozen_count ?? 0,
         msg.known_frozen_hash,
         msg.history_window_section_turn_count,
         msg.history_window_visible_section_count,
+        this.getHistorySyncDeps(),
       );
       return;
     }
 
     if (msg.type === "history_window_request") {
       if (!ws) return;
-      this.sendHistoryWindowSync(session, ws, {
-        fromTurn: msg.from_turn,
-        turnCount: msg.turn_count,
-        sectionTurnCount: msg.section_turn_count,
-        visibleSectionCount: msg.visible_section_count,
-      });
+      sendHistoryWindowSyncController(
+        session,
+        ws as unknown as { data: { subscribed?: boolean; lastAckSeq?: number } },
+        {
+          fromTurn: msg.from_turn,
+          turnCount: msg.turn_count,
+          sectionTurnCount: msg.section_turn_count,
+          visibleSectionCount: msg.visible_section_count,
+        },
+        this.getHistorySyncDeps(),
+      );
       return;
     }
 
     if (msg.type === "session_ack") {
-      this.handleSessionAck(session, ws, msg.last_seq);
+      handleSessionAckController(
+        session,
+        ws as unknown as { data: { subscribed?: boolean; lastAckSeq?: number } } | undefined,
+        msg.last_seq,
+        this.getHistorySyncDeps(),
+      );
       return;
     }
 
@@ -7489,7 +6971,7 @@ export class WsBridge {
       !msg.images?.length &&
       session.backendType !== "codex"
     ) {
-      this.handleForceCompact(session);
+      handleForceCompactController(session, this.getAdapterBrowserRoutingDeps());
       return;
     }
 
@@ -7503,504 +6985,15 @@ export class WsBridge {
       typeof msg.content === "string" &&
       !msg.images?.length &&
       session.backendType !== "codex" &&
-      this.isCliSlashCommand(session, msg.content.trim())
+      isCliSlashCommandController(session, msg.content.trim())
     ) {
-      this.handleCliSlashCommand(session, msg.content.trim());
+      handleCliSlashCommandController(session, msg.content.trim(), this.getAdapterBrowserRoutingDeps());
       return;
     }
 
-    // For Codex/Claude SDK sessions, route CLI-bound messages through the adapter,
-    // while ws-bridge still owns cross-cutting session state/history/permissions.
-    if (session.backendType === "codex" || session.backendType === "claude-sdk") {
-      // Clean up ws-bridge permission tracking for SDK sessions when browser resolves
-      if (msg.type === "permission_response" && session.backendType === "claude-sdk") {
-        const requestId = (msg as any).request_id;
-        const behavior = (msg as any).behavior;
-        const pending = session.pendingPermissions.get(requestId);
-        if (pending) {
-          const actor = (msg as Extract<BrowserOutgoingMessage, { type: "permission_response" }>).actorSessionId;
-          session.pendingPermissions.delete(requestId);
-
-          // Forward the response to the SDK adapter so it can resolve the
-          // canUseTool Promise that the CLI is blocking on. Without this,
-          // the CLI hangs forever waiting for a response that never arrives.
-          if (session.claudeSdkAdapter) {
-            session.claudeSdkAdapter.sendBrowserMessage({
-              type: "permission_response",
-              request_id: requestId,
-              behavior,
-              updated_input: behavior === "allow" ? (msg as any).updated_input || pending.input : undefined,
-              message: behavior !== "allow" ? (msg as any).message || "Denied by user" : undefined,
-            } as any);
-          }
-
-          this.onSessionActivityStateChanged(session.id, "sdk_permission_response");
-          this.pushoverNotifier?.cancelPermission(session.id, requestId);
-          this.clearActionAttentionIfNoPermissions(session);
-
-          // Emit takode event for herd monitoring
-          this.emitTakodeEvent(
-            session.id,
-            "permission_resolved",
-            {
-              tool_name: pending.tool_name,
-              outcome: behavior === "allow" ? "approved" : "denied",
-            },
-            actor,
-          );
-
-          // Record in message history
-          if (behavior === "allow") {
-            const approvedMsg: BrowserIncomingMessage = {
-              type: "permission_approved",
-              id: `approval-${requestId}`,
-              request_id: requestId,
-              tool_name: pending.tool_name,
-              tool_use_id: pending.tool_use_id,
-              summary: `Approved: ${pending.tool_name}${pending.description ? ` — ${pending.description}` : ""}`,
-              timestamp: Date.now(),
-            };
-            session.messageHistory.push(approvedMsg);
-            this.broadcastToBrowsers(session, approvedMsg);
-          } else {
-            const deniedMsg: BrowserIncomingMessage = {
-              type: "permission_denied",
-              id: `denial-${requestId}`,
-              request_id: requestId,
-              tool_name: pending.tool_name,
-              tool_use_id: pending.tool_use_id,
-              summary: `Denied: ${pending.tool_name}${pending.description ? ` — ${pending.description}` : ""}`,
-              timestamp: Date.now(),
-            };
-            session.messageHistory.push(deniedMsg);
-            this.broadcastToBrowsers(session, deniedMsg);
-          }
-
-          // ExitPlanMode post-approval: transition out of plan mode
-          // (mirrors handlePermissionResponse logic for regular Claude sessions)
-          if (behavior === "allow" && pending.tool_name === "ExitPlanMode") {
-            const askPerm = session.state.askPermission !== false;
-            const postPlanMode = askPerm ? "acceptEdits" : "bypassPermissions";
-            this.handleSetPermissionMode(session, postPlanMode);
-            this.setGenerating(session, true, "exit_plan_mode");
-            this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-            console.log(
-              `[ws-bridge] ExitPlanMode approved for SDK session ${sessionTag(session.id)}, switching to ${postPlanMode} (askPermission=${askPerm})`,
-            );
-          }
-
-          // EnterPlanMode post-approval: sync UI to plan mode so the button
-          // reflects the agent's actual state.
-          if (behavior === "allow" && pending.tool_name === "EnterPlanMode") {
-            this.handleSetPermissionMode(session, "plan");
-            console.log(
-              `[ws-bridge] EnterPlanMode approved for SDK session ${sessionTag(session.id)}, switching to plan mode`,
-            );
-          }
-
-          // ExitPlanMode denial: interrupt the SDK session
-          if (behavior === "deny" && pending.tool_name === "ExitPlanMode") {
-            const interruptSource = this.getInterruptSourceFromActorSessionId(actor);
-            this.markTurnInterrupted(session, interruptSource);
-            if (session.claudeSdkAdapter) {
-              session.claudeSdkAdapter.sendBrowserMessage({ type: "interrupt", interruptSource } as any);
-            } else {
-              this.handleInterrupt(session, interruptSource);
-            }
-            console.log(`[ws-bridge] ExitPlanMode denied for SDK session ${sessionTag(session.id)}, sending interrupt`);
-          }
-
-          this.persistSession(session);
-        }
-      }
-
-      let userImageRefs: import("./image-store.js").ImageRef[] | undefined;
-      let codexUserMessageId: string | null = null;
-      let preMarkedImageRunning = false;
-      let wasGeneratingBeforeUserMessage = session.isGenerating;
-      let ingested:
-        | {
-            timestamp: number;
-            historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
-            historyIndex: number;
-            imageRefs?: import("./image-store.js").ImageRef[];
-            wasGenerating: boolean;
-          }
-        | undefined;
-
-      if (msg.type === "user_message") {
-        wasGeneratingBeforeUserMessage = session.isGenerating;
-        if (
-          session.backendType === "codex" &&
-          msg.images?.length &&
-          !session.isGenerating &&
-          session.state.backend_state !== "broken" &&
-          !this.isHerdEventSource(msg.agentSource)
-        ) {
-          session.lastUserMessage = (msg.content || "").slice(0, 80);
-          this.setCodexImageSendStage(session, "uploading", { persist: false });
-          this.markRunningFromUserDispatch(session, "user_message");
-          preMarkedImageRunning = true;
-        }
-        try {
-          const maybeIngested = this.ingestUserMessage(session, msg, "adapter", {
-            commit: session.backendType !== "codex",
-          });
-          ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
-        } catch (err) {
-          if (msg.images?.length) {
-            if (preMarkedImageRunning) {
-              this.setCodexImageSendStage(session, null, { persist: false });
-              this.setGenerating(session, false, "image_send_failed");
-              this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
-              this.persistSession(session);
-            }
-            this.notifyImageSendFailure(session, err);
-            return;
-          }
-          throw err;
-        }
-        userImageRefs = ingested.imageRefs;
-        codexUserMessageId = ingested.historyEntry.id || null;
-        if (session.backendType === "codex" && msg.images?.length) {
-          this.setCodexImageSendStage(session, "processing", { persist: false });
-        }
-        // Trigger auto-naming evaluation (async, fire-and-forget) only after
-        // the message is committed to authoritative history.
-        if (this.onUserMessage && session.backendType !== "codex") {
-          this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, ingested.wasGenerating);
-        }
-      }
-      if (msg.type === "permission_response") {
-        const pending = session.pendingPermissions.get(msg.request_id);
-        session.pendingPermissions.delete(msg.request_id);
-        this.onSessionActivityStateChanged(session.id, "codex_permission_response");
-        if (msg.behavior === "allow" && pending && NOTABLE_APPROVALS.has(pending.tool_name)) {
-          const answers =
-            pending.tool_name === "AskUserQuestion"
-              ? extractAskUserAnswers(pending.input, msg.updated_input)
-              : undefined;
-          // Skip AskUserQuestion if we couldn't extract answers (avoids redundant chip)
-          if (pending.tool_name !== "AskUserQuestion" || answers) {
-            const approvedMsg: BrowserIncomingMessage = {
-              type: "permission_approved",
-              id: `approval-${msg.request_id}`,
-              tool_name: pending.tool_name,
-              tool_use_id: pending.tool_use_id,
-              summary: getApprovalSummary(pending.tool_name, pending.input),
-              timestamp: Date.now(),
-              ...(answers ? { answers } : {}),
-            };
-            session.messageHistory.push(approvedMsg);
-            this.broadcastToBrowsers(session, approvedMsg);
-          }
-        }
-        if (msg.behavior === "deny" && pending) {
-          const deniedMsg: BrowserIncomingMessage = {
-            type: "permission_denied",
-            id: `denial-${msg.request_id}`,
-            tool_name: pending.tool_name,
-            tool_use_id: pending.tool_use_id,
-            summary: getDenialSummary(pending.tool_name, pending.input),
-            timestamp: Date.now(),
-          };
-          session.messageHistory.push(deniedMsg);
-          this.broadcastToBrowsers(session, deniedMsg);
-        }
-        if (msg.behavior === "deny" && pending?.tool_name === "ExitPlanMode") {
-          const interruptSource = this.getInterruptSourceFromActorSessionId(msg.actorSessionId);
-          this.markTurnInterrupted(session, interruptSource);
-          const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-          if (activeTurnId) {
-            this.armCodexFreshTurnRequirement(session, activeTurnId, "exit_plan_mode_denied");
-          } else {
-            this.clearCodexFreshTurnRequirement(session, "exit_plan_mode_denied_without_active_turn");
-          }
-          session.codexAdapter?.sendBrowserMessage({ type: "interrupt", interruptSource } as any);
-          console.log(`[ws-bridge] ExitPlanMode denied for Codex session ${sessionTag(session.id)}, sending interrupt`);
-        }
-        // Takode: permission_resolved (Codex path)
-        if (pending) {
-          this.emitTakodeEvent(session.id, "permission_resolved", {
-            tool_name: pending.tool_name,
-            outcome: msg.behavior === "allow" ? "approved" : "denied",
-          });
-        }
-        this.persistSession(session);
-      }
-
-      if (session.backendType === "codex" && msg.type === "cancel_pending_codex_input") {
-        const pendingInput = session.pendingCodexInputs.find((input) => input.id === msg.id);
-        if (!pendingInput?.cancelable) return;
-        const cancelableHeadId = this.getCancelablePendingCodexInputs(session)[0]?.id ?? null;
-        const cancelledHeadPendingInput = cancelableHeadId === msg.id;
-        const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-        session.pendingCodexTurns = activeTurnId
-          ? session.pendingCodexTurns.filter((turn) => turn.turnId === activeTurnId)
-          : session.pendingCodexTurns.filter((turn) => turn.status === "queued" && turn.turnId == null).slice(0, 1);
-        replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
-        const removed = this.removePendingCodexInput(session, msg.id);
-        const remainingCancelableInputs = this.getCancelablePendingCodexInputs(session);
-        if (!activeTurnId && remainingCancelableInputs.length === 0) {
-          session.pendingCodexTurns = [];
-        } else if (remainingCancelableInputs.length > 0) {
-          // Cancelling a newer pending item must not silently dispatch an older
-          // stranded item. Only auto-advance the queue when the cancelled item
-          // was itself the current head pending input.
-          if (!activeTurnId && cancelledHeadPendingInput) {
-            this.queueCodexPendingStartBatch(session, "cancel_pending_codex_input");
-          } else {
-            this.rebuildQueuedCodexPendingStartBatch(session);
-          }
-        }
-        if (removed && ws) {
-          this.sendToBrowser(ws, { type: "codex_pending_input_cancelled", input: removed });
-        }
-        this.persistSession(session);
-        return;
-      }
-
-      if (msg.type === "set_model") {
-        if (session.backendType === "claude-sdk") {
-          // SDK sessions: forward model change to CLI subprocess via the adapter.
-          this.handleSetModel(session, msg.model);
-        } else {
-          this.handleCodexSetModel(session, msg.model);
-        }
-        return;
-      }
-      if (msg.type === "set_permission_mode") {
-        if (session.backendType === "claude-sdk") {
-          // SDK sessions: use the same handler as ExitPlanMode, which forwards
-          // the mode change to the CLI subprocess via the adapter (query.setPermissionMode).
-          // Codex sessions need a full relaunch since mode is set at process spawn.
-          this.handleSetPermissionMode(session, msg.mode);
-        } else {
-          this.handleCodexSetPermissionMode(session, msg.mode);
-        }
-        return;
-      }
-      if (msg.type === "set_codex_reasoning_effort") {
-        this.handleCodexSetReasoningEffort(session, msg.effort);
-        return;
-      }
-      if (msg.type === "set_ask_permission") {
-        this.handleSetAskPermission(session, msg.askPermission);
-        return;
-      }
-
-      // For image-bearing user turns, always convert them into server-stored
-      // attachment paths and append those paths to the text prompt. Backend
-      // delivery stays text-only across Codex and Claude SDK.
-      let adapterMsg: BrowserOutgoingMessage =
-        msg.type === "user_message" && msg.takodeHerdBatch
-          ? (({ takodeHerdBatch: _takodeHerdBatch, ...rest }) => rest)(msg)
-          : msg;
-      if (msg.type === "user_message" && typeof msg.deliveryContent === "string") {
-        const delivered = { ...adapterMsg, content: msg.deliveryContent } as BrowserOutgoingMessage;
-        delete (delivered as { images?: unknown }).images;
-        delete (delivered as { imageRefs?: unknown }).imageRefs;
-        delete (delivered as { draftImages?: unknown }).draftImages;
-        delete (delivered as { deliveryContent?: unknown }).deliveryContent;
-        adapterMsg = delivered;
-      } else if (msg.type === "user_message" && msg.images?.length) {
-        let annotatedContent = msg.content || "";
-        let resolvedPaths: string[] | null = null;
-
-        if (userImageRefs?.length === msg.images.length) {
-          resolvedPaths = deriveAttachmentPaths(session.id, userImageRefs);
-        } else {
-          this.notifyImageSendFailure(session, new Error("uploaded images missing from image store"));
-          return;
-        }
-
-        if (resolvedPaths?.length) {
-          annotatedContent += formatAttachmentPathAnnotation(resolvedPaths);
-        }
-        adapterMsg = { ...msg, content: annotatedContent } as BrowserOutgoingMessage;
-
-        if (session.backendType === "claude-sdk" || session.backendType === "codex") {
-          // Adapter-backed sessions receive text-only user messages. The model
-          // reads attached image paths itself via normal file-reading tools.
-          const stripped = { ...adapterMsg, content: annotatedContent } as BrowserOutgoingMessage;
-          delete (stripped as { images?: unknown }).images;
-          delete (stripped as { imageRefs?: unknown }).imageRefs;
-          delete (stripped as { draftImages?: unknown }).draftImages;
-          delete (stripped as { deliveryContent?: unknown }).deliveryContent;
-          adapterMsg = stripped;
-        }
-      }
-
-      let pendingTurnTarget: UserDispatchTurnTarget | null = null;
-      if (
-        msg.type === "user_message" &&
-        ingested &&
-        session.state.backend_state !== "broken" &&
-        !(session.backendType === "codex" && this.isHerdEventSource(msg.agentSource))
-      ) {
-        const effectiveWasGenerating = preMarkedImageRunning ? wasGeneratingBeforeUserMessage : ingested.wasGenerating;
-        // Mark session running for ALL user_message dispatches, not just
-        // when the session was already generating. Without this, idle SDK
-        // sessions stay visually idle until the CLI emits a status_change
-        // event — creating a flicker gap. The interruptSource is only set
-        // when wasGenerating was true (an actual interruption occurred).
-        // Skip for broken sessions — they can't process messages until
-        // the adapter relaunches.
-        const interruptSource = effectiveWasGenerating
-          ? msg.agentSource
-            ? this.isSystemSourceTag(msg.agentSource)
-              ? "system"
-              : "leader"
-            : "user"
-          : undefined;
-        if (!preMarkedImageRunning) {
-          pendingTurnTarget = this.markRunningFromUserDispatch(session, "user_message", interruptSource ?? null);
-        } else {
-          pendingTurnTarget = "current";
-        }
-        if (ingested.historyIndex >= 0) {
-          this.trackUserMessageForTurn(session, ingested.historyIndex, pendingTurnTarget);
-        }
-      }
-
-      if (session.backendType === "codex" && msg.type === "user_message") {
-        if (ingested?.historyEntry.id) {
-          this.addPendingCodexInput(session, {
-            id: ingested.historyEntry.id,
-            content: ingested.historyEntry.content,
-            timestamp: ingested.timestamp,
-            cancelable: true,
-            ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
-            ...(msg.draftImages?.length
-              ? { draftImages: msg.draftImages }
-              : msg.images?.length
-                ? { draftImages: buildPendingCodexImageDrafts(msg.images) }
-                : {}),
-            ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
-            ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-            ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),
-            ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
-          });
-          this.emitTakodeEvent(session.id, "user_message", {
-            content: (ingested.historyEntry.content || "").slice(0, 120),
-            ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-          });
-        }
-        const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-        if (currentTurnId) {
-          const steeredPending = this.trySteerPendingCodexInputs(session, "browser_user_message");
-          if (!steeredPending) {
-            this.rebuildQueuedCodexPendingStartBatch(session);
-          }
-        } else {
-          const effectiveWasGenerating = preMarkedImageRunning
-            ? wasGeneratingBeforeUserMessage
-            : !!ingested?.wasGenerating;
-          if (session.codexAdapter && effectiveWasGenerating && session.isGenerating) {
-            // Async image ingest can finish after Codex has already dropped the
-            // active turn ID but before the old turn has fully settled. Keep a
-            // queued follow-up turn in bridge state so the image-attached
-            // message is recoverable and will dispatch as soon as the current
-            // turn actually completes.
-            this.rebuildQueuedCodexPendingStartBatch(session);
-            this.persistSession(session);
-          } else {
-            this.queueCodexPendingStartBatch(session, "browser_user_message");
-          }
-        }
-
-        if (session.state.backend_state === "broken") {
-          this.broadcastToBrowsers(session, {
-            type: "error",
-            message: "Codex session is broken. Your message was queued and will run after relaunch.",
-          });
-        }
-
-        if (!session.codexAdapter) {
-          console.log(
-            `[ws-bridge] Codex adapter not yet attached for session ${sessionTag(session.id)}, queued user_message`,
-          );
-          const launcherInfo = this.launcher?.getSession(session.id);
-          if (session.state.backend_state !== "broken" && launcherInfo && launcherInfo.state !== "starting") {
-            if (launcherInfo.killedByIdleManager) {
-              launcherInfo.killedByIdleManager = false;
-              console.log(
-                `[ws-bridge] Clearing idle-killed flag for session ${sessionTag(session.id)} (codex user_message)`,
-              );
-            }
-            session.consecutiveAdapterFailures = 0;
-            console.log(
-              `[ws-bridge] User message queued for adapter-missing ${session.backendType} session ${sessionTag(session.id)}, requesting relaunch`,
-            );
-            this.requestCodexAutoRecovery(session, "queued_user_message_adapter_missing");
-          }
-        }
-        return;
-      }
-
-      // Mark the turn as interrupted for adapter sessions so the result
-      // handler's turnWasInterrupted guard works correctly. Without this,
-      // SDK/Codex sessions never set interruptedDuringTurn because the
-      // adapter path bypasses handleInterrupt (which only runs for
-      // WebSocket sessions in the switch block below).
-      if (msg.type === "interrupt") {
-        this.markTurnInterrupted(session, msg.interruptSource ?? "user");
-      }
-
-      // Timestamp-tag user messages in the adapter path (SDK/Codex sessions).
-      // Same logic as handleUserMessage but applied to adapterMsg before send.
-      // Date is included only at date boundaries (first message or new calendar day).
-      if (msg.type === "user_message" && typeof (adapterMsg as { content?: unknown }).content === "string") {
-        const msgTs = ingested?.timestamp ?? Date.now();
-        const tag = this.buildTimestampTag(session, msgTs, msg.agentSource);
-        const typed = adapterMsg as { content: string };
-        adapterMsg = { ...adapterMsg, content: tag + typed.content } as BrowserOutgoingMessage;
-      }
-
-      const adapter = session.codexAdapter || session.claudeSdkAdapter;
-      const raw = JSON.stringify(adapterMsg);
-      const queueAdapterMessage = () => {
-        const alreadyQueued = session.pendingMessages.some((queued) => queued === raw);
-        if (!alreadyQueued) {
-          session.pendingMessages.push(raw);
-        }
-      };
-
-      if (adapter) {
-        const accepted = adapter.sendBrowserMessage(adapterMsg);
-        if (!accepted) {
-          const sdkQueuedInternally = session.claudeSdkAdapter === adapter && !adapter.isConnected();
-          if (!sdkQueuedInternally) {
-            queueAdapterMessage();
-          }
-        }
-        this.persistSession(session);
-      } else {
-        console.log(`[ws-bridge] Adapter not yet attached for session ${sessionTag(session.id)}, queuing ${msg.type}`);
-        queueAdapterMessage();
-
-        if (msg.type === "user_message" && this.onCLIRelaunchNeeded) {
-          const launcherInfo = this.launcher?.getSession(session.id);
-          if (session.state.backend_state !== "broken" && launcherInfo && launcherInfo.state !== "starting") {
-            if (launcherInfo.killedByIdleManager) {
-              launcherInfo.killedByIdleManager = false;
-              console.log(
-                `[ws-bridge] Clearing idle-killed flag for session ${sessionTag(session.id)} (adapter user_message)`,
-              );
-            }
-            session.consecutiveAdapterFailures = 0;
-            console.log(
-              `[ws-bridge] User message queued for adapter-missing ${session.backendType} session ${sessionTag(session.id)}, requesting relaunch`,
-            );
-            if (session.backendType === "codex") {
-              this.requestCodexAutoRecovery(session, "queued_user_message_adapter_missing");
-            } else {
-              this.onCLIRelaunchNeeded(session.id);
-            }
-          }
-        }
-        this.persistSession(session);
-      }
+    const maybeAdapterRouted = this.routeAdapterBrowserMessage(session, msg, ws);
+    const adapterRouted = maybeAdapterRouted instanceof Promise ? await maybeAdapterRouted : maybeAdapterRouted;
+    if (adapterRouted) {
       return;
     }
 
@@ -8008,7 +7001,7 @@ export class WsBridge {
     switch (msg.type) {
       case "user_message":
         try {
-          await this.handleUserMessage(session, msg);
+          await handleUserMessageController(session, msg, this.getAdapterBrowserRoutingDeps());
         } catch (err) {
           if (msg.images?.length) {
             this.notifyImageSendFailure(session, err);
@@ -8039,19 +7032,19 @@ export class WsBridge {
         break;
 
       case "mcp_get_status":
-        this.handleMcpGetStatus(session);
+        handleMcpGetStatusController(session, this.getBrowserControlRoutingDeps());
         break;
 
       case "mcp_toggle":
-        this.handleMcpToggle(session, msg.serverName, msg.enabled);
+        handleMcpToggleController(session, msg.serverName, msg.enabled, this.getBrowserControlRoutingDeps());
         break;
 
       case "mcp_reconnect":
-        this.handleMcpReconnect(session, msg.serverName);
+        handleMcpReconnectController(session, msg.serverName, this.getBrowserControlRoutingDeps());
         break;
 
       case "mcp_set_servers":
-        this.handleMcpSetServers(session, msg.servers);
+        handleMcpSetServersController(session, msg.servers, this.getBrowserControlRoutingDeps());
         break;
 
       case "set_ask_permission":
@@ -8078,641 +7071,294 @@ export class WsBridge {
   }
 
   private normalizeKnownFrozenCount(knownFrozenCount: number | undefined): number {
-    if (!Number.isFinite(knownFrozenCount)) return 0;
-    return Math.max(0, Math.floor(knownFrozenCount ?? 0));
+    return normalizeKnownFrozenCountController(knownFrozenCount);
   }
 
   private clampFrozenCount(session: Session): void {
-    session.frozenCount = Math.max(0, Math.min(session.frozenCount, session.messageHistory.length));
+    clampFrozenCountController(session);
   }
 
   private freezeHistoryThroughCurrentTail(session: Session): void {
-    session.frozenCount = session.messageHistory.length;
+    freezeHistoryThroughCurrentTailController(session);
   }
 
-  private async sendHistorySync(
-    session: Session,
-    ws: ServerWebSocket<SocketData>,
-    knownFrozenCount: number,
-    knownFrozenHash?: string,
-  ): Promise<void> {
-    const synced = await this.sendHistorySyncAttempt(session, ws, knownFrozenCount, knownFrozenHash);
-    if (!synced && knownFrozenCount > 0) {
-      // Frozen prefix mismatch or invalid count -- fall back to full history
-      // delivery so the browser rebuilds its frozen state from scratch.
-      await this.sendHistorySyncAttempt(session, ws, 0, undefined);
-    }
-  }
-
-  private async sendHistorySyncAttempt(
-    session: Session,
-    ws: ServerWebSocket<SocketData>,
-    knownFrozenCount: number,
-    knownFrozenHash?: string,
-  ): Promise<boolean> {
-    const normalizedKnownFrozenCount = this.normalizeKnownFrozenCount(knownFrozenCount);
-    this.clampFrozenCount(session);
-    const frozenCount = session.frozenCount;
-    const frozenHistory = session.messageHistory.slice(0, frozenCount);
-    const frozenPrefix = computeHistoryMessagesSyncHash(frozenHistory);
-    if (normalizedKnownFrozenCount > frozenPrefix.renderedCount) {
-      console.warn(
-        `[history-sync] Invalid known_frozen_count=${normalizedKnownFrozenCount} ` +
-          `for session ${sessionTag(session.id)} authoritativeFrozen=${frozenPrefix.renderedCount}; refusing sync`,
-      );
-      return false;
-    }
-    if (session.messageHistory.length === 0) {
-      return true;
-    }
-    if (normalizedKnownFrozenCount > 0 && typeof knownFrozenHash === "string") {
-      const expectedPrefix = computeHistoryPrefixSyncHash(frozenHistory, normalizedKnownFrozenCount);
-      if (expectedPrefix.hash !== knownFrozenHash) {
-        console.warn(
-          `[history-sync] Frozen prefix hash mismatch for session ${sessionTag(session.id)} ` +
-            `(count=${normalizedKnownFrozenCount}) expected=${expectedPrefix.hash} actual=${knownFrozenHash}; ` +
-            `refusing sync`,
-        );
-        return false;
-      }
-    }
-
-    // Snapshot the full message history before any yields so that hash
-    // computation and array slicing operate on the same data even if new
-    // messages arrive during a yield.
-    const historySnapshot = session.messageHistory.slice();
-    const isLargeHistory = historySnapshot.length > 500;
-
-    // Yield to event loop before expensive hash computation on large histories
-    if (isLargeHistory) await yieldToEventLoop();
-
-    const fullHistory = computeHistoryMessagesSyncHash(historySnapshot);
-    const frozenDelta = historySnapshot.slice(normalizedKnownFrozenCount, frozenCount);
-    const hotMessages = historySnapshot.slice(frozenCount);
-
-    if (isLargeHistory) await yieldToEventLoop();
-
-    // Pre-serialize arrays once -- reused for both traffic stats and the send.
-    // This eliminates the redundant JSON.stringify that previously happened in
-    // both recordHistorySyncBreakdown (for byte counting) and sendToBrowser.
-    const frozenDeltaJson = JSON.stringify(frozenDelta);
-    const hotMessagesJson = JSON.stringify(hotMessages);
-
-    trafficStats.recordHistorySyncBreakdown({
-      sessionId: session.id,
-      frozenDeltaBytes: Buffer.byteLength(frozenDeltaJson, "utf-8"),
-      hotMessagesBytes: Buffer.byteLength(hotMessagesJson, "utf-8"),
-      frozenDeltaMessages: frozenDelta.length,
-      hotMessagesCount: hotMessages.length,
-    });
-
-    if (isLargeHistory) await yieldToEventLoop();
-
-    // Build the full payload JSON by splicing pre-serialized arrays, avoiding
-    // a third JSON.stringify of the entire message object.
-    const payloadJson =
-      `{"type":"history_sync"` +
-      `,"frozen_base_count":${normalizedKnownFrozenCount}` +
-      `,"frozen_delta":${frozenDeltaJson}` +
-      `,"hot_messages":${hotMessagesJson}` +
-      `,"frozen_count":${frozenCount}` +
-      `,"expected_frozen_hash":${JSON.stringify(frozenPrefix.hash)}` +
-      `,"expected_full_hash":${JSON.stringify(fullHistory.hash)}}`;
-
-    this.sendToBrowserRaw(ws, payloadJson, "history_sync");
-    return true;
-  }
-
-  private sendHistoryWindowSync(
-    session: Session,
-    ws: ServerWebSocket<SocketData>,
-    options: {
-      fromTurn: number;
-      turnCount: number;
-      sectionTurnCount: number;
-      visibleSectionCount: number;
-    },
-  ): void {
-    const normalizedSectionTurnCount = Math.max(1, Math.floor(options.sectionTurnCount));
-    const normalizedVisibleSectionCount = Math.max(1, Math.floor(options.visibleSectionCount));
-    const normalizedTurnCount = Math.max(
-      1,
-      Math.floor(
-        options.turnCount || getHistoryWindowTurnCount(normalizedVisibleSectionCount, normalizedSectionTurnCount),
-      ),
-    );
-    const turns = findTurnBoundaries(session.messageHistory);
-    const totalTurns = turns.length;
-
-    let fromTurn = 0;
-    let turnCount = 0;
-    let messages: BrowserIncomingMessage[] = session.messageHistory.slice();
-
-    if (totalTurns > 0) {
-      fromTurn = Math.max(0, Math.min(Math.floor(options.fromTurn), totalTurns - 1));
-      const endTurnExclusive = Math.min(totalTurns, fromTurn + normalizedTurnCount);
-      turnCount = Math.max(0, endTurnExclusive - fromTurn);
-      const startIdx = turns[fromTurn]?.startIdx ?? 0;
-      const lastTurn = turns[endTurnExclusive - 1];
-      const endIdx =
-        lastTurn && lastTurn.endIdx >= 0 ? lastTurn.endIdx : Math.max(0, session.messageHistory.length - 1);
-      messages = session.messageHistory.slice(startIdx, endIdx + 1);
-    }
-
-    this.sendToBrowser(ws, {
-      type: "history_window_sync",
-      messages,
-      window: {
-        from_turn: fromTurn,
-        turn_count: totalTurns === 0 ? 0 : turnCount,
-        total_turns: totalTurns,
-        section_turn_count: normalizedSectionTurnCount,
-        visible_section_count: normalizedVisibleSectionCount,
-      },
-    });
-  }
-
-  private async handleSessionSubscribe(
-    session: Session,
-    ws: ServerWebSocket<SocketData> | undefined,
-    lastSeq: number,
-    knownFrozenCount = 0,
-    knownFrozenHash?: string,
-    historyWindowSectionTurnCount?: number,
-    historyWindowVisibleSectionCount?: number,
-  ) {
-    if (!ws) return;
-    const data = ws.data as BrowserSocketData;
-    data.subscribed = true;
-    const lastAckSeq = Number.isFinite(lastSeq) ? Math.max(0, Math.floor(lastSeq)) : 0;
-    data.lastAckSeq = lastAckSeq;
-    this.recoverToolStartTimesFromHistory(session);
-    this.finalizeRecoveredDisconnectedTerminalTools(session, "session_subscribe");
-    this.scheduleCodexToolResultWatchdogs(session, "session_subscribe");
-
-    // Clean up stale pendingPermissions that were already resolved in
-    // messageHistory. This handles the case where the server crashed before
-    // the debounced persist flushed the removal.
-    const resolvedIds = new Set<string>();
-    for (const msg of session.messageHistory) {
-      if (msg.type === "permission_approved" || msg.type === "permission_denied") {
-        const rec = msg as Record<string, unknown>;
-        // request_id may be a direct field, or embedded in id as "approval-{rid}" / "denial-{rid}"
-        const rid = rec.request_id as string | undefined;
-        if (rid) {
-          resolvedIds.add(rid);
-        } else if (typeof rec.id === "string") {
-          const m = (rec.id as string).match(/^(?:approval|denial)-(.+)$/);
-          if (m) resolvedIds.add(m[1]);
-        }
-      }
-    }
-    let cleanedStale = false;
-    for (const reqId of session.pendingPermissions.keys()) {
-      if (resolvedIds.has(reqId)) {
-        session.pendingPermissions.delete(reqId);
-        cleanedStale = true;
-      }
-    }
-    if (cleanedStale) this.persistSession(session);
-
-    // Fresh connection (no prior state) — send full history.
-    // This is the single source of truth for initial state delivery (previously
-    // also done in handleBrowserOpen, causing double delivery).
-    if (lastAckSeq === 0) {
-      if (session.messageHistory.length > 0) {
-        if (
-          typeof historyWindowSectionTurnCount === "number" &&
-          historyWindowSectionTurnCount > 0 &&
-          typeof historyWindowVisibleSectionCount === "number" &&
-          historyWindowVisibleSectionCount > 0
-        ) {
-          this.sendHistoryWindowSync(session, ws, {
-            fromTurn: Math.max(
-              0,
-              findTurnBoundaries(session.messageHistory).length -
-                getHistoryWindowTurnCount(historyWindowVisibleSectionCount, historyWindowSectionTurnCount),
-            ),
-            turnCount: getHistoryWindowTurnCount(historyWindowVisibleSectionCount, historyWindowSectionTurnCount),
-            sectionTurnCount: historyWindowSectionTurnCount,
-            visibleSectionCount: historyWindowVisibleSectionCount,
-          });
-        } else {
-          await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
-        }
-      }
-      // Also replay any buffered events so transient messages (stream_event,
-      // tool_progress, status_change, etc.) are caught up
-      if (session.eventBuffer.length > 0) {
-        const transient = session.eventBuffer.filter((evt) => !this.isHistoryBackedEvent(evt.message));
-        if (transient.length > 0) {
-          this.sendToBrowser(ws, {
-            type: "event_replay",
-            events: transient,
-          });
-        }
-      }
-    } else if (lastAckSeq < session.nextEventSeq - 1) {
-      // Browser is behind — determine what was missed.
-      const earliest = session.eventBuffer[0]?.seq ?? session.nextEventSeq;
-      const hasGap = session.eventBuffer.length === 0 || lastAckSeq < earliest - 1;
-
-      const missedEvents = session.eventBuffer.filter((evt) => evt.seq > lastAckSeq);
-      const hasMissedHistoryBacked = missedEvents.some((evt) => this.isHistoryBackedEvent(evt.message));
-
-      if (hasGap || hasMissedHistoryBacked) {
-        // Gap in buffer coverage OR missed history-backed events: send
-        // authoritative history state so the browser can rebuild its feed.
-        // Prefer frozen-delta + hot-tail sync. If the frozen prefix hash
-        // mismatches, fall back to full history delivery.
-        if (session.messageHistory.length > 0) {
-          await this.sendHistorySync(session, ws, knownFrozenCount, knownFrozenHash);
-        }
-        const transientMissed = missedEvents.filter((evt) => !this.isHistoryBackedEvent(evt.message));
-        if (transientMissed.length > 0) {
-          this.sendToBrowser(ws, {
-            type: "event_replay",
-            events: transientMissed,
-          });
-        }
-      } else {
-        // No gap and only transient events missed — browser already has all
-        // chat messages. Replay the missed transient events directly.
-        if (missedEvents.length > 0) {
-          this.sendToBrowser(ws, {
-            type: "event_replay",
-            events: missedEvents,
-          });
-        }
-      }
-    }
-
-    // Always replay pending permissions regardless of which path above was
-    // taken. Previously, permissions were only replayed in the fresh (lastAckSeq=0)
-    // and gap paths, but the no-gap and empty-buffer paths skipped them — causing
-    // plan approval and tool permission prompts to be invisible after server
-    // restarts. Permission requests are idempotent (browser stores by request_id).
-    if (session.pendingPermissions.size > 0) {
-      for (const perm of session.pendingPermissions.values()) {
-        this.sendToBrowser(ws, { type: "permission_request", request: perm });
-      }
-    }
-
-    // Send task history so the browser always has the full list on reconnect
-    if (session.taskHistory.length > 0) {
-      this.sendToBrowser(ws, {
-        type: "session_task_history",
-        tasks: session.taskHistory,
-      });
-    }
-
-    // Send active timers for this session so the browser can display them.
-    if (this.timerManager) {
-      const timers = this.timerManager.listTimers(session.id);
-      if (timers.length > 0) {
-        this.sendToBrowser(ws, { type: "timer_update", timers });
-      }
-    }
-
-    // Ensure message history bytes is fresh before sending state to the browser.
-    this.recomputeAndBroadcastHistoryBytes(session);
-
-    // Always send authoritative state snapshot last — ensures transient state
-    // (session status, CLI connection, permission mode) is correct regardless
-    // of which events the browser may have missed.
-    this.sendStateSnapshot(session, ws);
-  }
-
-  private handleSessionAck(session: Session, ws: ServerWebSocket<SocketData> | undefined, lastSeq: number) {
-    const normalized = Number.isFinite(lastSeq) ? Math.max(0, Math.floor(lastSeq)) : 0;
-    if (ws) {
-      const data = ws.data as BrowserSocketData;
-      const prior = typeof data.lastAckSeq === "number" ? data.lastAckSeq : 0;
-      data.lastAckSeq = Math.max(prior, normalized);
-    }
-    if (normalized > session.lastAckSeq) {
-      session.lastAckSeq = normalized;
-      this.persistSession(session);
-    }
-  }
-
-  private ingestUserMessage(
-    session: Session,
-    msg: {
-      type: "user_message";
-      content: string;
-      images?: { media_type: string; data: string }[];
-      imageRefs?: import("./image-store.js").ImageRef[];
-      deliveryContent?: string;
-      agentSource?: { sessionId: string; sessionLabel?: string };
-      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
-      client_msg_id?: string;
-    },
-    source: "adapter" | "cli",
-    options?: { commit?: boolean },
-  ):
-    | {
-        timestamp: number;
-        historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
-        historyIndex: number;
-        imageRefs?: import("./image-store.js").ImageRef[];
-        wasGenerating: boolean;
-      }
-    | Promise<{
-        timestamp: number;
-        historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
-        historyIndex: number;
-        imageRefs?: import("./image-store.js").ImageRef[];
-        wasGenerating: boolean;
-      }> {
-    const ts = Date.now();
-    const commit = options?.commit !== false;
-
-    const finalize = (imageRefs?: import("./image-store.js").ImageRef[]) => {
-      const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
-        type: "user_message",
-        content: msg.content,
-        timestamp: ts,
-        id: `user-${ts}-${this.userMsgCounter++}`,
-        ...(imageRefs?.length ? { images: imageRefs } : {}),
-        ...(msg.client_msg_id ? { client_msg_id: msg.client_msg_id } : {}),
-        ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
-        ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-      };
-      let userMsgHistoryIdx = -1;
-      if (commit) {
-        session.messageHistory.push(userHistoryEntry);
-        userMsgHistoryIdx = session.messageHistory.length - 1;
-        session.lastUserMessage = (msg.content || "").slice(0, 80);
-        this.launcher?.touchUserMessage(session.id);
-
-        // Server-authoritative user message fan-out: browsers render only what ws-bridge broadcasts.
-        this.broadcastToBrowsers(session, userHistoryEntry);
-        this.emitTakodeEvent(session.id, "user_message", {
-          content: (msg.content || "").slice(0, 120),
-          ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-        });
-      }
-
-      const wasGenerating = session.isGenerating;
-      return {
-        timestamp: ts,
-        historyEntry: userHistoryEntry,
-        historyIndex: userMsgHistoryIdx,
-        imageRefs,
-        wasGenerating,
-      };
+  private getHistorySyncDeps() {
+    return {
+      sendToBrowser: (ws: unknown, msg: Record<string, unknown>) =>
+        this.sendToBrowser(ws as ServerWebSocket<SocketData>, msg as BrowserIncomingMessage),
+      sendToBrowserRaw: (ws: unknown, json: string, messageType: string) =>
+        this.sendToBrowserRaw(ws as ServerWebSocket<SocketData>, json, messageType),
+      persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
+      recoverToolStartTimesFromHistory: (targetSession: unknown) =>
+        this.recoverToolStartTimesFromHistory(targetSession as Session),
+      finalizeRecoveredDisconnectedTerminalTools: (targetSession: unknown, reason: string) =>
+        this.finalizeRecoveredDisconnectedTerminalTools(targetSession as Session, reason),
+      scheduleCodexToolResultWatchdogs: (targetSession: unknown, reason: string) =>
+        this.scheduleCodexToolResultWatchdogs(targetSession as Session, reason),
+      isHistoryBackedEvent: (msg: BrowserIncomingMessage) => this.isHistoryBackedEvent(msg as ReplayableBrowserIncomingMessage),
+      recomputeAndBroadcastHistoryBytes: (targetSession: unknown) =>
+        this.recomputeAndBroadcastHistoryBytes(targetSession as Session),
+      sendStateSnapshot: (targetSession: unknown, ws: unknown) =>
+        this.sendStateSnapshot(targetSession as Session, ws as ServerWebSocket<SocketData>),
+      listTimers: (sessionId: string) => this.timerManager?.listTimers(sessionId) ?? [],
     };
-
-    if (msg.imageRefs?.length) {
-      return finalize(msg.imageRefs);
-    }
-
-    if (msg.images?.length && this.imageStore) {
-      return (async () => {
-        const imageRefs = await Promise.all(
-          (msg.images || []).map((img) => this.imageStore!.store(session.id, img.data, img.media_type)),
-        );
-        return finalize(imageRefs);
-      })();
-    }
-
-    return finalize();
   }
 
-  private async handleUserMessage(
+  private getBrowserControlRoutingDeps() {
+    return {
+      sendToCLI: (targetSession: unknown, ndjson: string) => this.sendToCLI(targetSession as Session, ndjson),
+      broadcastToBrowsers: (targetSession: unknown, browserMsg: BrowserIncomingMessage) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg),
+      persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
+      onSessionActivityStateChanged: (sessionId: string, reason: string) => this.onSessionActivityStateChanged(sessionId, reason),
+      setAttentionAction: (targetSession: unknown) => this.setAttention(targetSession as Session, "action"),
+      clearActionAttentionIfNoPermissions: (targetSession: unknown) =>
+        this.clearActionAttentionIfNoPermissions(targetSession as Session),
+      emitTakodePermissionRequest: (targetSession: unknown, request: PermissionRequest) =>
+        this.emitTakodeEvent((targetSession as Session).id, "permission_request", {
+          tool_name: request.tool_name,
+          request_id: request.request_id,
+          summary: request.description || request.tool_name,
+          ...this.buildPermissionPreview(request),
+          turn_source: this.getCurrentTurnTriggerSource(targetSession as Session),
+          msg_index: this.findLastAssistantMessageIndex(targetSession as Session),
+        }),
+      emitTakodePermissionResolved: (sessionId: string, toolName: string, outcome: "approved" | "denied") =>
+        this.emitTakodeEvent(sessionId, "permission_resolved", { tool_name: toolName, outcome }),
+      schedulePermissionNotification: (targetSession: unknown, request: PermissionRequest) => {
+        if (!this.pushoverNotifier) return;
+        const eventType = request.tool_name === "AskUserQuestion" ? ("question" as const) : ("permission" as const);
+        const detail = request.tool_name + (request.description ? `: ${request.description}` : "");
+        this.pushoverNotifier.scheduleNotification((targetSession as Session).id, eventType, detail, request.request_id);
+      },
+      cancelPermissionNotification: (sessionId: string, requestId: string) =>
+        this.pushoverNotifier?.cancelPermission(sessionId, requestId),
+      broadcastAutoApproval: (targetSession: unknown, request: PermissionRequest) =>
+        this.broadcastAutoApproval(targetSession as Session, request),
+      onAgentPaused: this.onAgentPaused
+        ? (sessionId: string, history: Session["messageHistory"], cwd: string) => this.onAgentPaused?.(sessionId, history, cwd)
+        : undefined,
+      getCurrentTurnTriggerSource: (targetSession: unknown) => this.getCurrentTurnTriggerSource(targetSession as Session),
+      buildPermissionPreview: (request: PermissionRequest) => this.buildPermissionPreview(request),
+      findLastAssistantMessageIndex: (targetSession: unknown) =>
+        this.findLastAssistantMessageIndex(targetSession as Session),
+      abortAutoApproval: (targetSession: unknown, requestId: string) =>
+        this.abortAutoApproval(targetSession as Session, requestId),
+      getInterruptSourceFromActorSessionId: (actorSessionId: string | undefined) =>
+        this.getInterruptSourceFromActorSessionId(actorSessionId),
+      preInterrupt: (targetSession: unknown, source: InterruptSource) => {
+        const session = targetSession as Session;
+        if (session.backendType === "codex" && source === "user") {
+          if (session.pendingCodexTurns.length > 1) {
+            const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+            const preservedTurn = activeTurnId
+              ? (session.pendingCodexTurns.find((turn) => turn.turnId === activeTurnId) ?? null)
+              : null;
+            session.pendingCodexTurns = preservedTurn ? [preservedTurn] : [];
+          }
+          replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
+          this.persistSession(session);
+        }
+      },
+      markTurnInterrupted: (targetSession: unknown, source: InterruptSource) =>
+        this.markTurnInterrupted(targetSession as Session, source),
+      setGenerating: (targetSession: unknown, generating: boolean, reason: string) =>
+        this.setGenerating(targetSession as Session, generating, reason),
+      broadcastStatusChange: (
+        targetSession: unknown,
+        status: "idle" | "running" | "compacting" | "reverting" | null,
+      ) =>
+        this.broadcastToBrowsers(targetSession as Session, { type: "status_change", status }),
+      getLauncherSessionInfo: (sessionId: string) => this.launcher?.getSession(sessionId),
+      requestCodexIntentionalRelaunch: (targetSession: unknown, reason: string, delayMs?: number) =>
+        this.requestCodexIntentionalRelaunch(targetSession as Session, reason, delayMs),
+      onPermissionModeChanged: this.onPermissionModeChanged
+        ? (sessionId: string, newMode: string) => this.onPermissionModeChanged?.(sessionId, newMode)
+        : undefined,
+      sendControlRequest: (
+        targetSession: unknown,
+        request: Record<string, unknown>,
+        onResponse?: { subtype: string; resolve: (response: unknown) => void },
+      ) => this.sendControlRequest(targetSession as Session, request, onResponse),
+    };
+  }
+
+  private getAdapterBrowserRoutingDeps() {
+    return {
+      broadcastToBrowsers: (targetSession: unknown, browserMsg: BrowserIncomingMessage) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg),
+      emitTakodeEvent: (
+        sessionId: string,
+        type: string,
+        data: Record<string, unknown>,
+        actorSessionId?: string,
+      ) => this.emitTakodeEvent(sessionId, type as TakodeEventType, data as Record<string, unknown>, actorSessionId),
+      persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
+      touchUserMessage: (sessionId: string) => this.launcher?.touchUserMessage(sessionId),
+      formatVsCodeSelectionPrompt: (selection: import("./session-types.js").VsCodeSelectionMetadata) =>
+        this.formatVsCodeSelectionPrompt(selection),
+      buildTimestampTag: (targetSession: unknown, ts: number, agentSource?: { sessionId: string; sessionLabel?: string }) =>
+        this.buildTimestampTag(targetSession as Session, ts, agentSource),
+      sendToCLI: (targetSession: unknown, ndjson: string, opts?: { deferUntilCliReady?: boolean; skipUserDispatchLifecycle?: boolean }) =>
+        this.sendToCLI(targetSession as Session, ndjson, opts),
+      getCliSessionId: (targetSession: unknown) => {
+        const session = targetSession as Session;
+        return this.launcher?.getSession(session.id)?.cliSessionId || session.state.session_id || "";
+      },
+      nextUserMessageId: (ts: number) => `user-${ts}-${this.userMsgCounter++}`,
+      storeImage: this.imageStore
+        ? (sessionId: string, data: string, mediaType: string) => this.imageStore!.store(sessionId, data, mediaType)
+        : undefined,
+      onUserMessage: this.onUserMessage
+        ? (
+            sessionId: string,
+            history: Session["messageHistory"],
+            cwd: string,
+            wasGenerating: boolean,
+          ) => this.onUserMessage?.(sessionId, history, cwd, wasGenerating)
+        : undefined,
+      markRunningFromUserDispatch: (targetSession: unknown, reason: string, interruptSource?: InterruptSource | null) =>
+        this.markRunningFromUserDispatch(targetSession as Session, reason, interruptSource),
+      trackUserMessageForTurn: (targetSession: unknown, historyIndex: number, turnTarget: UserDispatchTurnTarget) =>
+        this.trackUserMessageForTurn(targetSession as Session, historyIndex, turnTarget),
+      setGenerating: (targetSession: unknown, generating: boolean, reason: string) =>
+        this.setGenerating(targetSession as Session, generating, reason),
+      broadcastStatusChange: (
+        targetSession: unknown,
+        status: "idle" | "running" | "compacting" | "reverting" | null,
+      ) => this.broadcastToBrowsers(targetSession as Session, { type: "status_change", status }),
+      setCodexImageSendStage: (
+        targetSession: unknown,
+        stage: SessionState["codex_image_send_stage"],
+        options?: { persist?: boolean },
+      ) => this.setCodexImageSendStage(targetSession as Session, stage, options),
+      notifyImageSendFailure: (targetSession: unknown, err?: unknown) =>
+        this.notifyImageSendFailure(targetSession as Session, err),
+      isHerdEventSource: (agentSource: { sessionId: string; sessionLabel?: string } | undefined) =>
+        this.isHerdEventSource(agentSource),
+      isSystemSourceTag: (agentSource: { sessionId: string; sessionLabel?: string } | undefined) =>
+        this.isSystemSourceTag(agentSource),
+      onSessionActivityStateChanged: (sessionId: string, reason: string) => this.onSessionActivityStateChanged(sessionId, reason),
+      clearActionAttentionIfNoPermissions: (targetSession: unknown) =>
+        this.clearActionAttentionIfNoPermissions(targetSession as Session),
+      cancelPermissionNotification: (sessionId: string, requestId: string) =>
+        this.pushoverNotifier?.cancelPermission(sessionId, requestId),
+      getInterruptSourceFromActorSessionId: (actorSessionId: string | undefined) =>
+        this.getInterruptSourceFromActorSessionId(actorSessionId),
+      markTurnInterrupted: (targetSession: unknown, source: InterruptSource) =>
+        this.markTurnInterrupted(targetSession as Session, source),
+      armCodexFreshTurnRequirement: (targetSession: unknown, turnId: string, reason: string) =>
+        this.armCodexFreshTurnRequirement(targetSession as Session, turnId, reason),
+      clearCodexFreshTurnRequirement: (targetSession: unknown, reason: string) =>
+        this.clearCodexFreshTurnRequirement(targetSession as Session, reason),
+      addPendingCodexInput: (targetSession: unknown, input: PendingCodexInput) =>
+        this.addPendingCodexInput(targetSession as Session, input),
+      getCancelablePendingCodexInputs: (targetSession: unknown) => getCancelablePendingCodexInputsController(targetSession as Session),
+      removePendingCodexInput: (targetSession: unknown, id: string) =>
+        removePendingCodexInputController(targetSession as Session, id, this.getCodexRecoveryOrchestratorDeps()),
+      clearQueuedTurnLifecycleEntries: (targetSession: unknown) =>
+        replaceQueuedTurnLifecycleEntriesLifecycle(targetSession as Session, []),
+      queueCodexPendingStartBatch: (targetSession: unknown, reason: string) =>
+        queueCodexPendingStartBatchController(targetSession as Session, reason, this.getCodexRecoveryOrchestratorDeps()),
+      rebuildQueuedCodexPendingStartBatch: (targetSession: unknown) =>
+        rebuildQueuedCodexPendingStartBatchController(targetSession as Session, this.getCodexRecoveryOrchestratorDeps()),
+      trySteerPendingCodexInputs: (targetSession: unknown, reason: string) =>
+        trySteerPendingCodexInputsController(targetSession as Session, reason, this.getCodexRecoveryOrchestratorDeps()),
+      sendToBrowser: (ws: unknown, browserMsg: BrowserIncomingMessage) =>
+        this.sendToBrowser(ws as ServerWebSocket<SocketData>, browserMsg),
+      getLauncherSessionInfo: (sessionId: string) => this.launcher?.getSession(sessionId),
+      requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
+        this.requestCodexAutoRecovery(targetSession as Session, reason),
+      requestCliRelaunch: this.onCLIRelaunchNeeded ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId) : undefined,
+      handleSetModel: (targetSession: unknown, model: string) => this.handleSetModel(targetSession as Session, model),
+      handleCodexSetModel: (targetSession: unknown, model: string) =>
+        this.handleCodexSetModel(targetSession as Session, model),
+      handleSetPermissionMode: (targetSession: unknown, mode: string) =>
+        this.handleSetPermissionMode(targetSession as Session, mode),
+      handleCodexSetPermissionMode: (targetSession: unknown, mode: string) =>
+        this.handleCodexSetPermissionMode(targetSession as Session, mode),
+      handleCodexSetReasoningEffort: (targetSession: unknown, effort: string) =>
+        this.handleCodexSetReasoningEffort(targetSession as Session, effort),
+      handleSetAskPermission: (targetSession: unknown, askPermission: boolean) =>
+        this.handleSetAskPermission(targetSession as Session, askPermission),
+      handleInterruptFallback: (targetSession: unknown, source: InterruptSource) =>
+        this.handleInterrupt(targetSession as Session, source),
+    };
+  }
+
+  private getCodexRecoveryOrchestratorDeps() {
+    return {
+      codexAssistantReplayScanLimit: WsBridge.CODEX_ASSISTANT_REPLAY_SCAN_LIMIT,
+      formatVsCodeSelectionPrompt: (selection: import("./session-types.js").VsCodeSelectionMetadata) =>
+        this.formatVsCodeSelectionPrompt(selection),
+      broadcastPendingCodexInputs: (targetSession: unknown) =>
+        this.broadcastPendingCodexInputs(targetSession as Session),
+      broadcastToBrowsers: (targetSession: unknown, browserMsg: BrowserIncomingMessage) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg),
+      persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
+      touchUserMessage: (sessionId: string) => this.launcher?.touchUserMessage(sessionId),
+      onUserMessage: this.onUserMessage
+        ? (
+            sessionId: string,
+            history: Session["messageHistory"],
+            cwd: string,
+            wasGenerating: boolean,
+          ) => this.onUserMessage?.(sessionId, history, cwd, wasGenerating)
+        : undefined,
+      enqueueCodexTurn: (targetSession: unknown, turn: CodexOutboundTurn) =>
+        this.enqueueCodexTurn(targetSession as Session, turn),
+      getCodexHeadTurn: (targetSession: unknown) => this.getCodexHeadTurn(targetSession as Session),
+      getCodexTurnInRecovery: (targetSession: unknown) => this.getCodexTurnInRecovery(targetSession as Session),
+      completeCodexTurn: (targetSession: unknown, turn: CodexOutboundTurn | null) =>
+        this.completeCodexTurn(targetSession as Session, turn),
+      clearCodexFreshTurnRequirement: (
+        targetSession: unknown,
+        reason: string,
+        options?: { completedTurnId?: string | null },
+      ) => this.clearCodexFreshTurnRequirement(targetSession as Session, reason, options),
+      dispatchQueuedCodexTurns: (targetSession: unknown, reason: string) =>
+        this.dispatchQueuedCodexTurns(targetSession as Session, reason),
+      maybeFlushQueuedCodexMessages: (targetSession: unknown, reason: string) =>
+        this.maybeFlushQueuedCodexMessages(targetSession as Session, reason),
+      pruneStalePendingCodexHerdInputs: (targetSession: unknown, reason: string) =>
+        this.pruneStalePendingCodexHerdInputs(targetSession as Session, reason),
+      synthesizeCodexToolResultsFromResumedTurn: (
+        targetSession: unknown,
+        turn: CodexResumeTurnSnapshot,
+        pending: CodexOutboundTurn,
+      ) => this.synthesizeCodexToolResultsFromResumedTurn(targetSession as Session, turn, pending),
+      trackUserMessageForTurn: (targetSession: unknown, historyIndex: number, target: UserDispatchTurnTarget) =>
+        this.trackUserMessageForTurn(targetSession as Session, historyIndex, target),
+      markRunningFromUserDispatch: (
+        targetSession: unknown,
+        reason: string,
+        queuedInterruptSource?: InterruptSource | null,
+      ) => this.markRunningFromUserDispatch(targetSession as Session, reason, queuedInterruptSource),
+      promoteNextQueuedTurn: (targetSession: unknown) =>
+        promoteNextQueuedTurnLifecycle(this.getGenerationLifecycleDeps(), targetSession as Session),
+    };
+  }
+
+  private routeAdapterBrowserMessage(
     session: Session,
-    msg: {
-      type: "user_message";
-      content: string;
-      session_id?: string;
-      images?: { media_type: string; data: string }[];
-      imageRefs?: import("./image-store.js").ImageRef[];
-      deliveryContent?: string;
-      agentSource?: { sessionId: string; sessionLabel?: string };
-      vscodeSelection?: import("./session-types.js").VsCodeSelectionMetadata;
-      client_msg_id?: string;
-    },
-  ) {
-    const maybeIngested = this.ingestUserMessage(session, msg, "cli");
-    const ingested = maybeIngested instanceof Promise ? await maybeIngested : maybeIngested;
-    const ts = ingested.timestamp;
-    const imageRefs = ingested.imageRefs;
-    const userMsgHistoryIdx = ingested.historyIndex;
-
-    // Build content: if images are present, send file path annotations instead of
-    // inline base64 to avoid bloating the API request body. The CLI's Read tool
-    // resolves images from disk on demand.
-    const selectionText = msg.vscodeSelection ? this.formatVsCodeSelectionPrompt(msg.vscodeSelection) : null;
-    let content: string | unknown[];
-    if (typeof msg.deliveryContent === "string" && msg.deliveryContent.length > 0) {
-      content = selectionText
-        ? [
-            { type: "text", text: msg.deliveryContent },
-            { type: "text", text: selectionText },
-          ]
-        : msg.deliveryContent;
-    } else if (msg.images?.length && imageRefs?.length) {
-      const paths = deriveAttachmentPaths(session.id, imageRefs);
-      const textContent = (msg.content || "") + formatAttachmentPathAnnotation(paths);
-      content = selectionText
-        ? [
-            { type: "text", text: textContent },
-            { type: "text", text: selectionText },
-          ]
-        : textContent;
-    } else {
-      content = selectionText
-        ? [
-            { type: "text", text: msg.content },
-            { type: "text", text: selectionText },
-          ]
-        : msg.content;
-    }
-
-    // Timestamp-tag every user message sent to the CLI so the model knows when
-    // the human typed it. Orchestrator sessions get richer source tags ([User],
-    // [Herd], [System], [Agent]); regular sessions just get [User HH:MM].
-    // Herded workers see [Leader <session> HH:MM] for leader-forwarded messages.
-    // History/browser keep original content -- tags are CLI-only.
-    // Date is included only at date boundaries (first message or new calendar day).
-    if (typeof content === "string") {
-      content = this.buildTimestampTag(session, ts, msg.agentSource) + content;
-    }
-
-    const ndjson = JSON.stringify({
-      type: "user",
-      message: { role: "user", content },
-      parent_tool_use_id: null,
-      session_id: msg.session_id || session.state.session_id || "",
-    });
-    const turnTarget = this.sendToCLI(session, ndjson, {
-      deferUntilCliReady: this.isHerdEventSource(msg.agentSource),
-    });
-    this.trackUserMessageForTurn(session, userMsgHistoryIdx, turnTarget ?? "current");
-    // Track the outbound user message so we can re-queue it if the CLI
-    // disconnects mid-turn (before sending a result). On --resume reconnect,
-    // the CLI's internal checkpoint won't include the in-flight message.
-    session.lastOutboundUserNdjson = ndjson;
-
-    // Trigger auto-naming evaluation (async, fire-and-forget)
-    if (this.onUserMessage) {
-      this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, ingested.wasGenerating);
-    }
-  }
-
-  /** Check if a trimmed message is a CLI-native slash command.
-   *  Matches against session.state.slash_commands (reported by the CLI at init).
-   *  The command name is the first word after "/", e.g. "/context foo" → "context".
-   *  /compact is excluded since it has its own dedicated handler. */
-  private isCliSlashCommand(session: Session, trimmed: string): boolean {
-    if (!trimmed.startsWith("/")) return false;
-    const commandWord = trimmed.slice(1).split(/\s/)[0].toLowerCase();
-    if (!commandWord || commandWord === "compact") return false;
-    const knownCommands = session.state.slash_commands;
-    if (!knownCommands?.length) return false;
-    return knownCommands.some((cmd) => cmd.toLowerCase() === commandWord);
-  }
-
-  private hasQueuedCompactRequest(session: Session): boolean {
-    return session.pendingMessages.some((raw) => {
-      try {
-        const parsed = JSON.parse(raw) as
-          | { type?: string; content?: unknown; message?: { role?: string; content?: unknown } }
-          | undefined;
-        if (parsed?.type === "user_message") {
-          return typeof parsed.content === "string" && parsed.content.trim().toLowerCase() === "/compact";
-        }
-        if (parsed?.type === "user") {
-          return (
-            parsed.message?.role === "user" &&
-            typeof parsed.message.content === "string" &&
-            parsed.message.content.trim().toLowerCase() === "/compact"
-          );
-        }
-      } catch {
-        return false;
-      }
-      return false;
-    });
+    msg: BrowserOutgoingMessage,
+    ws?: ServerWebSocket<SocketData>,
+  ): Promise<boolean> | boolean {
+    return routeAdapterBrowserMessageController(session, msg, ws, this.getAdapterBrowserRoutingDeps());
   }
 
   private hasPendingForceCompact(session: Session): boolean {
-    return session.forceCompactPending || this.hasQueuedCompactRequest(session);
-  }
-
-  private markForceCompactPending(session: Session): void {
-    session.forceCompactPending = true;
-    session.state.is_compacting = true;
-    this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
-    this.persistSession(session);
-  }
-
-  private queueForceCompactPendingMessage(session: Session): void {
-    // SDK sessions flush pendingMessages through adapter.sendBrowserMessage()
-    // which expects browser-format messages (type: "user_message").
-    // WebSocket sessions flush through sendToCLI() which expects NDJSON
-    // (type: "user"). Use the correct format for each backend type.
-    if (session.backendType === "claude-sdk") {
-      session.pendingMessages.push(JSON.stringify({ type: "user_message", content: "/compact" }));
-    } else {
-      const cliSessionId = this.launcher?.getSession(session.id)?.cliSessionId || "";
-      session.pendingMessages.push(
-        JSON.stringify({
-          type: "user",
-          message: { role: "user", content: "/compact" },
-          parent_tool_use_id: null,
-          session_id: cliSessionId,
-        }),
-      );
-    }
-    this.markForceCompactPending(session);
+    return hasPendingForceCompactController(session);
   }
 
   queueForceCompactForRelaunch(sessionId: string): { ok: true } | { ok: false; error: string } {
     const session = this.sessions.get(sessionId);
     if (!session) return { ok: false, error: "Session not found" };
     if (session.backendType === "codex") return { ok: false, error: "Force compact not supported for Codex" };
-    this.queueForceCompactPendingMessage(session);
+    queueForceCompactPendingMessageController(session, this.getAdapterBrowserRoutingDeps());
     return { ok: true };
   }
 
-  /** Forward a CLI-native slash command directly to the CLI without timestamp
-   *  tagging. Unlike /compact, no relaunch is needed -- the CLI processes
-   *  these inline and emits results as assistant messages. */
-  private handleCliSlashCommand(session: Session, command: string) {
-    const sessionId = session.id;
-    console.log(`[ws-bridge] CLI slash command intercepted for session ${sessionTag(sessionId)}: ${command}`);
-
-    // Record in message history so it appears in the chat UI.
-    const ts = Date.now();
-    const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
-      type: "user_message",
-      content: command,
-      timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
-    };
-    session.messageHistory.push(userHistoryEntry);
-    session.lastUserMessage = command;
-    this.launcher?.touchUserMessage(session.id);
-    this.broadcastToBrowsers(session, userHistoryEntry);
-
-    // Send to the CLI without timestamp tagging.
-    if (session.claudeSdkAdapter) {
-      const accepted = session.claudeSdkAdapter.sendBrowserMessage({
-        type: "user_message",
-        content: command,
-      } as any);
-      if (!accepted) {
-        session.pendingMessages.push(JSON.stringify({ type: "user_message", content: command }));
-      }
-    } else {
-      const cliSessionId = this.launcher?.getSession(sessionId)?.cliSessionId || session.state.session_id || "";
-      const ndjson = JSON.stringify({
-        type: "user",
-        message: { role: "user", content: command },
-        parent_tool_use_id: null,
-        session_id: cliSessionId,
-      });
-      this.sendToCLI(session, ndjson);
-    }
-
-    // Mark session as generating so the UI shows the spinner.
-    this.setGenerating(session, true, "cli_slash_command");
-    this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-    this.persistSession(session);
-  }
-
-  /** Intercept /compact from the browser and trigger a kill+relaunch cycle.
-   *  The CLI doesn't expose a programmatic compact API, so we relaunch with
-   *  --resume and queue /compact as the first user message on the fresh process.
-   *  This must run BEFORE timestamp tagging -- the tag prefix breaks both the
-   *  SDK adapter's exact-match check and the CLI's internal /compact handler. */
-  private handleForceCompact(session: Session) {
-    const sessionId = session.id;
-    console.log(`[ws-bridge] /compact intercepted for session ${sessionTag(sessionId)}, triggering force-compact`);
-
-    // Record /compact in message history so it appears in the chat UI.
-    const ts = Date.now();
-    const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
-      type: "user_message",
-      content: "/compact",
-      timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
-    };
-    session.messageHistory.push(userHistoryEntry);
-    session.lastUserMessage = "/compact";
-    this.launcher?.touchUserMessage(session.id);
-    this.broadcastToBrowsers(session, userHistoryEntry);
-
-    // Queue /compact for the relaunched CLI process and keep the session in
-    // authoritative compacting state until the resumed CLI starts the real
-    // compaction lifecycle.
-    this.queueForceCompactPendingMessage(session);
-    if (this.onCLIRelaunchNeeded) {
-      this.onCLIRelaunchNeeded(sessionId);
-    }
-  }
 
   private handlePermissionResponse(
     session: Session,
@@ -8755,24 +7401,7 @@ export class WsBridge {
   }
 
   private handleInterrupt(session: Session, source: InterruptSource = "user") {
-    if (session.backendType === "codex" && source === "user") {
-      if (session.pendingCodexTurns.length > 1) {
-        const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-        const preservedTurn = activeTurnId
-          ? (session.pendingCodexTurns.find((turn) => turn.turnId === activeTurnId) ?? null)
-          : null;
-        session.pendingCodexTurns = preservedTurn ? [preservedTurn] : [];
-      }
-      replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
-      this.persistSession(session);
-    }
-    this.markTurnInterrupted(session, source);
-    const ndjson = JSON.stringify({
-      type: "control_request",
-      request_id: randomUUID(),
-      request: { subtype: "interrupt" },
-    });
-    this.sendToCLI(session, ndjson);
+    handleInterruptController(session, source, this.getBrowserControlRoutingDeps());
   }
 
   private markTurnInterrupted(session: Session, source: InterruptSource): void {
@@ -8817,108 +7446,11 @@ export class WsBridge {
   }
 
   private handleSetPermissionMode(session: Session, mode: string) {
-    // Route to the appropriate backend
-    if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
-      // SDK sessions: mode change is server-side only. The adapter logs it
-      // but does NOT forward to the CLI — the CLI's internal mode is irrelevant
-      // because --permission-prompt-tool stdio routes all permission decisions
-      // through canUseTool → handleSdkPermissionRequest, which checks the
-      // server-side mode for auto-approval.
-      session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode } as any);
-    } else {
-      const ndjson = JSON.stringify({
-        type: "control_request",
-        request_id: randomUUID(),
-        request: { subtype: "set_permission_mode", mode },
-      });
-      this.sendToCLI(session, ndjson);
-    }
-    // Optimistically update server-side state and broadcast to all browsers
-    const uiMode = mode === "plan" ? "plan" : "agent";
-    session.state.permissionMode = mode;
-    session.state.uiMode = uiMode;
-    // Also update the launcher's stored mode so CLI relaunch uses the latest
-    // mode, not the one from session creation (which is typically "plan").
-    const launcherInfo = this.launcher?.getSession(session.id);
-    if (launcherInfo) launcherInfo.permissionMode = mode;
-    this.broadcastToBrowsers(session, {
-      type: "session_update",
-      session: { permissionMode: mode, uiMode },
-    });
-    this.persistSession(session);
+    handleSetPermissionModeController(session, mode, this.getBrowserControlRoutingDeps());
   }
 
   private handleCodexSetPermissionMode(session: Session, mode: string) {
-    if (!mode || session.state.permissionMode === mode) return;
-
-    // Auto-resolve pending permission requests before relaunch.
-    // When switching to bypassPermissions (auto), approve pending requests so the
-    // Codex thread doesn't get stuck with unresolved approvals after process kill.
-    // For other transitions, cancel them — the new session uses the new policy.
-    if (session.pendingPermissions.size > 0) {
-      const approve = mode === "bypassPermissions";
-      for (const [reqId, perm] of session.pendingPermissions) {
-        // Send response to adapter so the JSON-RPC request is answered before
-        // the process is killed. Without this, the resumed thread has an
-        // unresolved approval and gets stuck permanently.
-        if (session.codexAdapter) {
-          session.codexAdapter.sendBrowserMessage({
-            type: "permission_response",
-            request_id: reqId,
-            behavior: approve ? "allow" : "deny",
-          } as BrowserOutgoingMessage);
-        }
-        // Broadcast UI resolution
-        if (approve) {
-          const approvedMsg: BrowserIncomingMessage = {
-            type: "permission_approved",
-            id: `approval-${reqId}`,
-            request_id: reqId,
-            tool_name: perm.tool_name,
-            tool_use_id: perm.tool_use_id,
-            summary: getApprovalSummary(perm.tool_name, perm.input),
-            timestamp: Date.now(),
-          };
-          session.messageHistory.push(approvedMsg);
-          this.broadcastToBrowsers(session, approvedMsg);
-        } else {
-          this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
-        }
-        // Clean up associated auto-approval / notification state
-        this.abortAutoApproval(session, reqId);
-        this.pushoverNotifier?.cancelPermission(session.id, reqId);
-        // Emit herd event for orchestator visibility
-        this.emitTakodeEvent(session.id, "permission_resolved", {
-          tool_name: perm.tool_name,
-          outcome: approve ? "approved" : "denied",
-        });
-      }
-      session.pendingPermissions.clear();
-      this.clearActionAttentionIfNoPermissions(session);
-    }
-
-    const previousAsk = session.state.askPermission !== false;
-    const codexUiMode = mode === "plan" ? "plan" : "agent";
-    const codexAskPermission = mode === "plan" ? previousAsk : mode !== "bypassPermissions";
-    session.state.permissionMode = mode;
-    session.state.uiMode = codexUiMode;
-    session.state.askPermission = codexAskPermission;
-    const launchInfo = this.launcher?.getSession(session.id);
-    if (launchInfo) {
-      launchInfo.permissionMode = mode;
-      launchInfo.askPermission = codexAskPermission;
-    }
-    this.broadcastToBrowsers(session, {
-      type: "session_update",
-      session: { permissionMode: mode, uiMode: codexUiMode, askPermission: codexAskPermission },
-    });
-    this.persistSession(session);
-
-    // Delay relaunch to let the adapter's async outgoing dispatch chain process
-    // the permission responses above. The relaunch kills the old process
-    // synchronously (SIGTERM), so without this delay the responses would be
-    // enqueued but never flushed to the Codex process stdin.
-    this.requestCodexIntentionalRelaunch(session, "set_permission_mode", 100);
+    handleCodexSetPermissionModeController(session, mode, this.getBrowserControlRoutingDeps());
   }
 
   private handleCodexSetReasoningEffort(session: Session, effort: string) {
@@ -8937,47 +7469,7 @@ export class WsBridge {
   }
 
   private handleSetAskPermission(session: Session, askPermission: boolean) {
-    if (session.backendType === "codex") {
-      const uiMode = session.state.uiMode === "plan" ? "plan" : "agent";
-      const newMode = uiMode === "plan" ? "plan" : askPermission ? "suggest" : "bypassPermissions";
-      if (session.state.askPermission === askPermission && session.state.permissionMode === newMode) return;
-      session.state.askPermission = askPermission;
-      session.state.permissionMode = newMode;
-      session.state.uiMode = uiMode;
-      const launchInfo = this.launcher?.getSession(session.id);
-      if (launchInfo) {
-        launchInfo.permissionMode = newMode;
-        launchInfo.askPermission = askPermission;
-      }
-      this.broadcastToBrowsers(session, {
-        type: "session_update",
-        session: { askPermission, permissionMode: newMode, uiMode },
-      });
-      this.persistSession(session);
-      this.requestCodexIntentionalRelaunch(session, "set_ask_permission");
-      return;
-    }
-
-    session.state.askPermission = askPermission;
-    // Resolve the new CLI permission mode based on current UI mode + new ask state
-    const uiMode = session.state.uiMode ?? "agent";
-    const newMode = uiMode === "plan" ? "plan" : askPermission ? "acceptEdits" : "bypassPermissions";
-    session.state.permissionMode = newMode;
-    this.broadcastToBrowsers(session, {
-      type: "session_update",
-      session: { askPermission, permissionMode: newMode, uiMode },
-    });
-    this.persistSession(session);
-    if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
-      // SDK sessions: forward the resolved mode to the CLI subprocess inline
-      // instead of restarting the process. The adapter calls query.setPermissionMode().
-      session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode: newMode } as any);
-      const launchInfo = this.launcher?.getSession(session.id);
-      if (launchInfo) launchInfo.permissionMode = newMode;
-    } else {
-      // WebSocket Claude sessions: trigger CLI restart with the new permission mode
-      this.onPermissionModeChanged?.(session.id, newMode);
-    }
+    handleSetAskPermissionController(session, askPermission, this.getBrowserControlRoutingDeps());
   }
 
   /** Mark an upcoming Codex adapter disconnect as intentional (e.g., relaunch).
@@ -9041,35 +7533,6 @@ export class WsBridge {
         request,
       }),
     );
-  }
-
-  private handleMcpGetStatus(session: Session) {
-    this.sendControlRequest(
-      session,
-      { subtype: "mcp_status" },
-      {
-        subtype: "mcp_status",
-        resolve: (response) => {
-          const servers = (response as { mcpServers?: McpServerDetail[] }).mcpServers ?? [];
-          this.broadcastToBrowsers(session, { type: "mcp_status", servers });
-        },
-      },
-    );
-  }
-
-  private handleMcpToggle(session: Session, serverName: string, enabled: boolean) {
-    this.sendControlRequest(session, { subtype: "mcp_toggle", serverName, enabled });
-    setTimeout(() => this.handleMcpGetStatus(session), 500);
-  }
-
-  private handleMcpReconnect(session: Session, serverName: string) {
-    this.sendControlRequest(session, { subtype: "mcp_reconnect", serverName });
-    setTimeout(() => this.handleMcpGetStatus(session), 1000);
-  }
-
-  private handleMcpSetServers(session: Session, servers: Record<string, McpServerConfig>) {
-    this.sendControlRequest(session, { subtype: "mcp_set_servers", servers });
-    setTimeout(() => this.handleMcpGetStatus(session), 2000);
   }
 
   // ── Transport helpers ───────────────────────────────────────────────────
@@ -9351,454 +7814,6 @@ export class WsBridge {
     this.broadcastPendingCodexInputs(session);
   }
 
-  private setPendingCodexInputCancelable(session: Session, id: string, cancelable: boolean): void {
-    const pending = session.pendingCodexInputs.find((item) => item.id === id);
-    if (!pending || pending.cancelable === cancelable) return;
-    pending.cancelable = cancelable;
-    this.broadcastPendingCodexInputs(session);
-    this.persistSession(session);
-  }
-
-  private setPendingCodexInputsCancelable(session: Session, ids: string[], cancelable: boolean): void {
-    let changed = false;
-    const idSet = new Set(ids);
-    for (const pending of session.pendingCodexInputs) {
-      if (!idSet.has(pending.id) || pending.cancelable === cancelable) continue;
-      pending.cancelable = cancelable;
-      changed = true;
-    }
-    if (!changed) return;
-    this.broadcastPendingCodexInputs(session);
-    this.persistSession(session);
-  }
-
-  private getCancelablePendingCodexInputs(session: Session): PendingCodexInput[] {
-    return session.pendingCodexInputs.filter((item) => item.cancelable);
-  }
-
-  private commitPendingCodexInputs(session: Session, ids: string[]): number[] {
-    const indexes: number[] = [];
-    for (const id of ids) {
-      const idx = this.commitPendingCodexInput(session, id);
-      if (typeof idx === "number" && idx >= 0) indexes.push(idx);
-    }
-    return indexes;
-  }
-
-  private getPendingCodexInputsByIds(session: Session, ids: string[]): PendingCodexInput[] {
-    const idSet = new Set(ids);
-    return session.pendingCodexInputs.filter((input) => idSet.has(input.id));
-  }
-
-  private recordSteeredCodexTurn(
-    session: Session,
-    turnId: string,
-    inputs: PendingCodexInput[],
-    committedHistoryIndexes: number[],
-  ): void {
-    if (inputs.length === 0) return;
-    const now = Date.now();
-    const pendingInputIds = inputs.map((input) => input.id);
-    this.enqueueCodexTurn(session, {
-      adapterMsg: {
-        type: "codex_start_pending",
-        pendingInputIds,
-        inputs: this.buildCodexBatchMessageInputs(inputs),
-      },
-      userMessageId: pendingInputIds[0]!,
-      pendingInputIds,
-      userContent: this.buildCodexPendingBatchRecoveryText(inputs),
-      historyIndex: committedHistoryIndexes[0] ?? -1,
-      status: "backend_acknowledged",
-      dispatchCount: 1,
-      createdAt: now,
-      updatedAt: now,
-      acknowledgedAt: now,
-      turnTarget: "queued",
-      lastError: null,
-      turnId,
-      disconnectedAt: null,
-      resumeConfirmedAt: null,
-    });
-    for (const idx of committedHistoryIndexes) {
-      this.trackUserMessageForTurn(session, idx, "queued");
-    }
-  }
-
-  private buildCodexBatchMessageInputs(
-    inputs: PendingCodexInput[],
-  ): import("./session-types.js").CodexPendingBatchInput[] {
-    return inputs.map((input) => ({
-      content: input.deliveryContent || input.content,
-      ...(input.vscodeSelection ? { vscodeSelection: input.vscodeSelection } : {}),
-    }));
-  }
-
-  private buildCodexPendingBatchRecoveryText(inputs: PendingCodexInput[]): string {
-    return inputs
-      .map((input) => {
-        const parts = [input.deliveryContent || input.content];
-        if (input.vscodeSelection) {
-          parts.push(this.formatVsCodeSelectionPrompt(input.vscodeSelection));
-        }
-        return parts.filter(Boolean).join("\n");
-      })
-      .filter(Boolean)
-      .join("\n\n");
-  }
-
-  private findQueuedCodexPendingStartBatchTurn(session: Session): CodexOutboundTurn | null {
-    return (
-      session.pendingCodexTurns.find(
-        (turn) => turn.status === "queued" && turn.turnId == null && turn.adapterMsg.type === "codex_start_pending",
-      ) ?? null
-    );
-  }
-
-  private getQueuedCodexPendingBatchInputs(session: Session): PendingCodexInput[] {
-    const head = this.getCodexHeadTurn(session);
-    const coveredIds = new Set<string>();
-    if (head && !(head.status === "queued" && head.turnId == null && head.adapterMsg.type === "codex_start_pending")) {
-      for (const id of head.pendingInputIds ?? [head.userMessageId]) {
-        coveredIds.add(id);
-      }
-    }
-    return this.getCancelablePendingCodexInputs(session).filter((input) => !coveredIds.has(input.id));
-  }
-
-  private rebuildQueuedCodexPendingStartBatch(session: Session): void {
-    const head = this.getCodexHeadTurn(session);
-    const headBlocksQueuedFollowUps = !!head && head.status === "blocked_broken_session";
-    const deliverable = this.getQueuedCodexPendingBatchInputs(session);
-    const existingQueuedTurn = this.findQueuedCodexPendingStartBatchTurn(session);
-    if (headBlocksQueuedFollowUps) {
-      if (!existingQueuedTurn) return;
-      const idx = session.pendingCodexTurns.indexOf(existingQueuedTurn);
-      if (idx >= 0) {
-        session.pendingCodexTurns.splice(idx, 1);
-      }
-      this.persistSession(session);
-      return;
-    }
-    if (deliverable.length === 0) {
-      if (!existingQueuedTurn) return;
-      const idx = session.pendingCodexTurns.indexOf(existingQueuedTurn);
-      if (idx >= 0) {
-        session.pendingCodexTurns.splice(idx, 1);
-      }
-      this.persistSession(session);
-      return;
-    }
-
-    if (existingQueuedTurn) {
-      existingQueuedTurn.adapterMsg = {
-        type: "codex_start_pending",
-        pendingInputIds: deliverable.map((input) => input.id),
-        inputs: this.buildCodexBatchMessageInputs(deliverable),
-      };
-      existingQueuedTurn.userMessageId = deliverable[0].id;
-      existingQueuedTurn.pendingInputIds = deliverable.map((input) => input.id);
-      existingQueuedTurn.userContent = this.buildCodexPendingBatchRecoveryText(deliverable);
-      existingQueuedTurn.updatedAt = Date.now();
-      existingQueuedTurn.lastError = null;
-      this.persistSession(session);
-      return;
-    }
-
-    const now = Date.now();
-    session.pendingCodexTurns.push({
-      adapterMsg: {
-        type: "codex_start_pending",
-        pendingInputIds: deliverable.map((input) => input.id),
-        inputs: this.buildCodexBatchMessageInputs(deliverable),
-      },
-      userMessageId: deliverable[0].id,
-      pendingInputIds: deliverable.map((input) => input.id),
-      userContent: this.buildCodexPendingBatchRecoveryText(deliverable),
-      historyIndex: -1,
-      status: session.state.backend_state === "broken" ? "blocked_broken_session" : "queued",
-      dispatchCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      acknowledgedAt: null,
-      turnTarget: null,
-      lastError:
-        session.state.backend_state === "broken"
-          ? session.state.backend_error || "Codex session needs relaunch before queued messages can run."
-          : null,
-      turnId: null,
-      disconnectedAt: null,
-      resumeConfirmedAt: null,
-    });
-    this.persistSession(session);
-  }
-
-  private queueCodexPendingStartBatch(session: Session, reason: string): void {
-    this.rebuildQueuedCodexPendingStartBatch(session);
-    this.dispatchQueuedCodexTurns(session, reason);
-  }
-
-  private trySteerPendingCodexInputs(session: Session, reason: string): boolean {
-    const adapter = session.codexAdapter;
-    const expectedTurnId = adapter?.getCurrentTurnId() ?? null;
-    if (!adapter || !expectedTurnId || session.state.backend_state !== "connected" || !adapter.isConnected()) {
-      if (!expectedTurnId) {
-        this.clearCodexFreshTurnRequirement(session, `${reason}_no_active_turn`);
-      }
-      return false;
-    }
-    if (session.codexFreshTurnRequiredUntilTurnId === expectedTurnId) {
-      console.log(
-        `[ws-bridge] Skipping Codex steer for session ${sessionTag(session.id)} while turn ${expectedTurnId} still owes a fresh turn (${reason})`,
-      );
-      return false;
-    }
-    if (session.codexFreshTurnRequiredUntilTurnId) {
-      this.clearCodexFreshTurnRequirement(session, `${reason}_active_turn_changed`);
-    }
-    this.pruneStalePendingCodexHerdInputs(session, `${reason}_before_steer`);
-    const deliverable = this.getCancelablePendingCodexInputs(session);
-    if (deliverable.length === 0) return false;
-    const ids = deliverable.map((input) => input.id);
-    this.setPendingCodexInputsCancelable(session, ids, false);
-    const accepted = adapter.sendBrowserMessage({
-      type: "codex_steer_pending",
-      pendingInputIds: ids,
-      expectedTurnId,
-      inputs: this.buildCodexBatchMessageInputs(deliverable),
-    });
-    if (!accepted) {
-      this.setPendingCodexInputsCancelable(session, ids, true);
-      return false;
-    }
-    console.log(
-      `[ws-bridge] Steered ${ids.length} pending Codex input(s) for session ${sessionTag(session.id)} (${reason})`,
-    );
-    return true;
-  }
-
-  private commitPendingCodexInput(session: Session, id: string): number | null {
-    const idx = session.pendingCodexInputs.findIndex((item) => item.id === id);
-    if (idx < 0) return null;
-    const pending = session.pendingCodexInputs[idx];
-    session.pendingCodexInputs.splice(idx, 1);
-
-    const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
-      type: "user_message",
-      content: pending.content,
-      timestamp: pending.timestamp,
-      id: pending.id,
-      ...(pending.imageRefs?.length ? { images: pending.imageRefs } : {}),
-      ...(pending.vscodeSelection ? { vscodeSelection: pending.vscodeSelection } : {}),
-      ...(pending.agentSource ? { agentSource: pending.agentSource } : {}),
-    };
-    session.messageHistory.push(userHistoryEntry);
-    const userMsgHistoryIdx = session.messageHistory.length - 1;
-    session.lastUserMessage = (pending.content || "").slice(0, 80);
-    this.launcher?.touchUserMessage(session.id);
-    this.broadcastToBrowsers(session, userHistoryEntry);
-    this.broadcastPendingCodexInputs(session);
-    if (this.onUserMessage) {
-      this.onUserMessage(session.id, [...session.messageHistory], session.state.cwd, session.isGenerating);
-    }
-    this.persistSession(session);
-    return userMsgHistoryIdx;
-  }
-
-  private removePendingCodexInput(session: Session, id: string): PendingCodexInput | null {
-    const idx = session.pendingCodexInputs.findIndex((item) => item.id === id);
-    if (idx < 0) return null;
-    const [removed] = session.pendingCodexInputs.splice(idx, 1);
-    this.broadcastPendingCodexInputs(session);
-    this.persistSession(session);
-    return removed;
-  }
-
-  private reconcileCodexResumedTurn(session: Session, snapshot: CodexResumeSnapshot): void {
-    const pending = this.getCodexTurnInRecovery(session);
-    const lastTurn = snapshot.lastTurn;
-    if (!pending) return;
-
-    if (!lastTurn) {
-      if (pending.turnId) {
-        console.log(
-          `[ws-bridge] Resumed Codex snapshot for session ${sessionTag(session.id)} has no lastTurn while pending turn ${pending.turnId} is in flight; retrying message`,
-        );
-        this.retryPendingCodexTurn(session, pending);
-      }
-      return;
-    }
-
-    const pendingText = this.normalizeResumedUserText(pending.userContent);
-    const resumedUserText = this.normalizeResumedUserText(this.extractUserTextFromResumedTurn(lastTurn));
-    const matchesTurnId = !!pending.turnId && pending.turnId === lastTurn.id;
-    const matchesText = !!pendingText && pendingText === resumedUserText;
-    if (!matchesTurnId && !matchesText) {
-      if (
-        !pending.turnId &&
-        lastTurn.status === "inProgress" &&
-        snapshot.threadStatus === "idle" &&
-        lastTurn.items.length === 0
-      ) {
-        console.log(
-          `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} ` +
-            "lost local turn identity after turn/start; thread is idle and turn has no items, retrying user message",
-        );
-        this.retryPendingCodexTurn(session, pending);
-        return;
-      }
-      if (pending.turnId && pending.turnId !== lastTurn.id) {
-        console.log(
-          `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} does not match pending turn ${pending.turnId}; retrying message`,
-        );
-        this.retryPendingCodexTurn(session, pending);
-      }
-      return;
-    }
-
-    const committedHistoryIndexes = this.commitPendingCodexInputs(
-      session,
-      pending.pendingInputIds ?? [pending.userMessageId],
-    );
-    if (committedHistoryIndexes.length > 0 && pending.historyIndex < 0) {
-      pending.historyIndex = committedHistoryIndexes[0];
-    }
-
-    const nonUserItems = lastTurn.items.filter((item) => item.type !== "userMessage");
-    if (nonUserItems.length === 0) {
-      console.log(
-        `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} has only user input; retrying message`,
-      );
-      this.retryPendingCodexTurn(session, pending);
-      return;
-    }
-
-    // If the thread is idle but the last turn claims inProgress, the turn was
-    // running in the dead CLI process and is now stale (e.g. compaction +
-    // disconnect). Retry immediately — the work from the old turn is lost, but
-    // Codex has compacted context and can pick up from a fresh turn. This check
-    // must run BEFORE recovery/synthesis because those would absorb partial
-    // results from a turn that will never continue.
-    if (lastTurn.status === "inProgress" && snapshot.threadStatus === "idle") {
-      console.log(
-        `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} reports inProgress but thread is idle; retrying user message`,
-      );
-      this.retryPendingCodexTurn(session, pending);
-      return;
-    }
-
-    const recovered = this.recoverAgentMessagesFromResumedTurn(session, lastTurn, pending);
-    const synthesizedToolResults = this.synthesizeCodexToolResultsFromResumedTurn(session, lastTurn, pending);
-    if (lastTurn.status === "inProgress") {
-      if (recovered > 0 || synthesizedToolResults > 0) {
-        session.consecutiveAdapterFailures = 0;
-        session.lastAdapterFailureAt = null;
-      }
-      // Thread is still active — keep the authoritative outbound turn at the
-      // head of the queue even if Codex replayed assistant/tool items during
-      // resume. Those replay artifacts are browser-visible, but the user turn
-      // is not complete until Codex reports a terminal turn status.
-      pending.status = "backend_acknowledged";
-      pending.turnId = lastTurn.id;
-      pending.resumeConfirmedAt = Date.now();
-      pending.updatedAt = pending.resumeConfirmedAt;
-      if (pending.turnTarget === "queued" && session.isGenerating) {
-        pending.turnTarget = "current";
-      }
-      if (pending.turnTarget !== "queued" && !session.isGenerating) {
-        const target = this.markRunningFromUserDispatch(session, "codex_resume_in_progress");
-        pending.turnTarget = target;
-        if (pending.historyIndex >= 0) {
-          this.trackUserMessageForTurn(session, pending.historyIndex, target);
-        }
-      }
-      this.rearmRecoveredQueuedHeadTurn(session, pending, "codex_resume_in_progress");
-      this.persistSession(session);
-      return;
-    }
-
-    if (recovered > 0) {
-      session.consecutiveAdapterFailures = 0;
-      session.lastAdapterFailureAt = null;
-      this.completeCodexTurn(session, pending);
-      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_recovered_messages");
-      this.dispatchQueuedCodexTurns(session, "codex_resume_recovered_messages");
-      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_recovered_messages_dispatched");
-      this.maybeFlushQueuedCodexMessages(session, "codex_resume_recovered_messages");
-      this.persistSession(session);
-      return;
-    }
-
-    if (synthesizedToolResults > 0) {
-      session.consecutiveAdapterFailures = 0;
-      session.lastAdapterFailureAt = null;
-      this.completeCodexTurn(session, pending);
-      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_synthesized_results");
-      this.dispatchQueuedCodexTurns(session, "codex_resume_synthesized_results");
-      this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_synthesized_results_dispatched");
-      this.maybeFlushQueuedCodexMessages(session, "codex_resume_synthesized_results");
-      this.persistSession(session);
-      return;
-    }
-
-    if (this.hasOnlyRetrySafeCodexResumedItems(nonUserItems)) {
-      console.log(
-        `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} contains reasoning-only items; retrying pending user message`,
-      );
-      this.retryPendingCodexTurn(session, pending);
-      return;
-    }
-
-    this.completeCodexTurn(session, pending);
-    this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_non_retryable");
-    this.dispatchQueuedCodexTurns(session, "codex_resume_non_retryable");
-    this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_resume_non_retryable_dispatched");
-    this.maybeFlushQueuedCodexMessages(session, "codex_resume_non_retryable");
-    console.warn(
-      `[ws-bridge] Resumed Codex turn ${lastTurn.id} for session ${sessionTag(session.id)} has non-user items but no recoverable agentMessage text; skipping auto-retry to avoid duplicate side effects`,
-    );
-    this.broadcastToBrowsers(session, {
-      type: "error",
-      message:
-        "Codex disconnected mid-turn and resumed with non-text tool activity. " +
-        "Automatic retry was skipped to avoid duplicate side effects.",
-    });
-    this.persistSession(session);
-  }
-
-  private hasOnlyRetrySafeCodexResumedItems(items: Array<Record<string, unknown>>): boolean {
-    if (items.length === 0) return false;
-    return items.every((item) => {
-      const itemType = typeof item.type === "string" ? item.type : "";
-      return CODEX_RETRY_SAFE_RESUME_ITEM_TYPES.has(itemType);
-    });
-  }
-
-  private extractUserTextFromResumedTurn(turn: CodexResumeTurnSnapshot): string {
-    for (const item of turn.items) {
-      if (item.type !== "userMessage") continue;
-      const content = Array.isArray(item.content) ? item.content : [];
-      const textParts: string[] = [];
-      for (const part of content) {
-        if (!part || typeof part !== "object") continue;
-        const rec = part as Record<string, unknown>;
-        if (rec.type === "text" && typeof rec.text === "string") {
-          textParts.push(rec.text);
-        }
-      }
-      if (textParts.length > 0) return textParts.join("\n");
-    }
-    return "";
-  }
-
-  private normalizeResumedUserText(text: string): string {
-    return text.trim().replace(/\s+/g, " ");
-  }
-
-  private normalizeCodexRecoveredAssistantText(text: string): string {
-    return text.trim().replace(/\s+/g, " ");
-  }
-
   private hydrateCodexResumedHistory(session: Session, snapshot: CodexResumeSnapshot): number {
     if (session.messageHistory.length > 0 || session.pendingCodexTurns.length > 0) return 0;
     if (!Array.isArray(snapshot.turns) || snapshot.turns.length === 0) return 0;
@@ -9821,7 +7836,7 @@ export class WsBridge {
       for (let i = 0; i < turn.items.length; i++) {
         const item = turn.items[i];
         if (item.type === "userMessage") {
-          const text = this.extractUserTextFromResumedTurn({ ...turn, items: [item] });
+          const text = extractUserTextFromResumedTurnController({ ...turn, items: [item] });
           if (!text.trim()) continue;
           const userMessage: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
             type: "user_message",
@@ -9878,193 +7893,6 @@ export class WsBridge {
       this.persistSession(session);
     }
     return hydrated;
-  }
-
-  private reconcileRecoveredQueuedTurnLifecycle(
-    session: Session,
-    reason: string,
-    options: { releasedHeadQueuedTurn?: boolean } = {},
-  ): void {
-    const previousEntries = getQueuedTurnLifecycleEntriesLifecycle(session);
-    const nextEntries = previousEntries.map((entry) => ({
-      reason: entry.reason,
-      userMessageIds: [...entry.userMessageIds],
-      interruptSource: entry.interruptSource,
-    }));
-    let clearedQueuedHead = false;
-
-    if (options.releasedHeadQueuedTurn && nextEntries.length > 0) {
-      nextEntries.shift();
-    }
-
-    const liveTurns = session.pendingCodexTurns.filter((turn) => turn.status !== "completed");
-    if (!session.isGenerating && liveTurns[0]?.turnTarget === "queued") {
-      liveTurns[0].turnTarget = null;
-      clearedQueuedHead = true;
-      if (nextEntries.length > 0) {
-        nextEntries.shift();
-      }
-    }
-
-    const rebuiltEntries: Array<{
-      reason: string;
-      userMessageIds: number[];
-      interruptSource: InterruptSource | null;
-    }> = [];
-    let nextEntryIdx = 0;
-    for (const turn of liveTurns) {
-      const isExplicitQueuedTurn = turn.turnTarget === "queued";
-      const isQueuedPendingBatchWithoutTarget =
-        turn.status !== "dispatched" &&
-        turn.status !== "backend_acknowledged" &&
-        turn.turnTarget == null &&
-        turn.adapterMsg.type === "codex_start_pending" &&
-        turn.turnId == null;
-      if (!isExplicitQueuedTurn && !(isQueuedPendingBatchWithoutTarget && nextEntryIdx < nextEntries.length)) {
-        continue;
-      }
-      rebuiltEntries.push({
-        reason: nextEntries[nextEntryIdx]?.reason ?? "queued_user_message",
-        userMessageIds:
-          nextEntries[nextEntryIdx]?.userMessageIds ?? (turn.historyIndex >= 0 ? [turn.historyIndex] : []),
-        interruptSource: nextEntries[nextEntryIdx]?.interruptSource ?? null,
-      });
-      nextEntryIdx += 1;
-    }
-
-    const lifecycleChanged =
-      JSON.stringify(previousEntries) !== JSON.stringify(rebuiltEntries) ||
-      clearedQueuedHead ||
-      options.releasedHeadQueuedTurn === true;
-    if (!lifecycleChanged) return;
-
-    replaceQueuedTurnLifecycleEntriesLifecycle(session, rebuiltEntries);
-    console.log(
-      `[ws-bridge] Reconciled queued-turn lifecycle for session ${sessionTag(session.id)} ` +
-        `(${reason}, queued=${rebuiltEntries.length}${clearedQueuedHead ? ", cleared_head" : ""})`,
-    );
-  }
-
-  private rearmRecoveredQueuedHeadTurn(session: Session, pending: CodexOutboundTurn, reason: string): void {
-    if (pending.turnTarget !== "queued" || session.isGenerating) return;
-
-    if (promoteNextQueuedTurnLifecycle(this.getGenerationLifecycleDeps(), session)) {
-      pending.turnTarget = "current";
-      console.log(
-        `[ws-bridge] Re-armed recovered queued Codex turn for session ${sessionTag(session.id)} ` +
-          `(${reason}, via_lifecycle_promotion)`,
-      );
-      return;
-    }
-
-    const target = this.markRunningFromUserDispatch(session, reason);
-    pending.turnTarget = target;
-    if (pending.historyIndex >= 0) {
-      this.trackUserMessageForTurn(session, pending.historyIndex, target);
-    }
-    console.log(
-      `[ws-bridge] Re-armed recovered queued Codex turn for session ${sessionTag(session.id)} ` +
-        `(${reason}, via_running_guard)`,
-    );
-  }
-
-  private findMatchingRecoveredCodexAssistant(
-    session: Session,
-    text: string,
-  ): Extract<BrowserIncomingMessage, { type: "assistant" }> | null {
-    const normalizedText = this.normalizeCodexRecoveredAssistantText(text);
-    if (!normalizedText) return null;
-
-    let scannedAssistants = 0;
-    for (let i = session.messageHistory.length - 1; i >= 0; i--) {
-      const entry = session.messageHistory[i];
-      if (entry.type !== "assistant") continue;
-      scannedAssistants += 1;
-      if (scannedAssistants > WsBridge.CODEX_ASSISTANT_REPLAY_SCAN_LIMIT) break;
-
-      const existing = entry as Extract<BrowserIncomingMessage, { type: "assistant" }>;
-      if (existing.parent_tool_use_id !== null) continue;
-      const textBlocks = existing.message.content.filter((block) => block.type === "text");
-      if (textBlocks.length !== 1) continue;
-
-      const existingText = this.normalizeCodexRecoveredAssistantText(textBlocks[0].text || "");
-      if (!existingText) continue;
-      if (existingText === normalizedText) return existing;
-    }
-
-    return null;
-  }
-
-  private retryPendingCodexTurn(session: Session, pending: CodexOutboundTurn): void {
-    const releasedHeadQueuedTurn = pending.turnTarget === "queued";
-    pending.status = session.state.backend_state === "broken" ? "blocked_broken_session" : "queued";
-    pending.updatedAt = Date.now();
-    pending.acknowledgedAt = null;
-    pending.lastError = null;
-    pending.turnTarget = null;
-    pending.turnId = null;
-    pending.disconnectedAt = null;
-    pending.resumeConfirmedAt = null;
-    this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_retry_pending_turn", { releasedHeadQueuedTurn });
-    this.dispatchQueuedCodexTurns(session, "codex_retry_pending_turn");
-    this.persistSession(session);
-  }
-
-  private recoverAgentMessagesFromResumedTurn(
-    session: Session,
-    turn: CodexResumeTurnSnapshot,
-    pending: CodexOutboundTurn,
-  ): number {
-    let matchedOrRecovered = 0;
-    const baseTs = pending.disconnectedAt ?? Date.now();
-
-    for (let i = 0; i < turn.items.length; i++) {
-      const item = turn.items[i];
-      if (item.type !== "agentMessage") continue;
-      const text = typeof item.text === "string" ? item.text : "";
-      if (!text.trim()) continue;
-
-      const itemId = typeof item.id === "string" ? item.id : `${turn.id}-${i}`;
-      const assistantId = `codex-agent-${itemId}`;
-      const alreadyExists = session.messageHistory.some((m) => m.type === "assistant" && m.message?.id === assistantId);
-      if (alreadyExists) {
-        matchedOrRecovered++;
-        continue;
-      }
-
-      // Codex compaction/replay snapshots can rewrite historical assistant item
-      // ids as generic "item-N" values. Match by text for those cases so the
-      // already-rendered assistant commentary is not emitted again.
-      if (/^item-\d+$/.test(itemId) && this.findMatchingRecoveredCodexAssistant(session, text)) {
-        matchedOrRecovered++;
-        continue;
-      }
-
-      const assistant: BrowserIncomingMessage = {
-        type: "assistant",
-        message: {
-          id: assistantId,
-          type: "message",
-          role: "assistant",
-          model: session.state.model || getDefaultModelForBackend("codex"),
-          content: [{ type: "text", text }],
-          stop_reason: null,
-          usage: {
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
-          },
-        },
-        parent_tool_use_id: null,
-        timestamp: baseTs + i + 1,
-      };
-      session.messageHistory.push(assistant);
-      this.broadcastToBrowsers(session, assistant);
-      matchedOrRecovered++;
-    }
-
-    return matchedOrRecovered;
   }
 
   /**
