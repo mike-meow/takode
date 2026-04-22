@@ -322,6 +322,7 @@ export interface PendingCodexInputImageDraft {
 
 export interface PendingCodexInput {
   id: string;
+  clientMsgId?: string;
   content: string;
   timestamp: number;
   cancelable: boolean;
@@ -348,7 +349,6 @@ export type BrowserOutgoingMessage =
       session_id?: string;
       images?: { media_type: string; data: string }[];
       imageRefs?: import("./image-store.js").ImageRef[];
-      draftImages?: PendingCodexInputImageDraft[];
       deliveryContent?: string;
       vscodeSelection?: VsCodeSelectionMetadata;
       client_msg_id?: string;

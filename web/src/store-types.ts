@@ -304,6 +304,7 @@ export interface AppState {
   ) => void;
   clearComposerDraft: (sessionId: string) => void;
   pendingUserUploads: Map<string, PendingUserUpload[]>;
+  pendingUserUploadRestorations: Map<string, Map<string, PendingUserUpload>>;
   addPendingUserUpload: (sessionId: string, upload: PendingUserUpload) => void;
   updatePendingUserUpload: (
     sessionId: string,
@@ -312,6 +313,7 @@ export interface AppState {
   ) => void;
   removePendingUserUpload: (sessionId: string, uploadId: string) => void;
   consumePendingUserUpload: (sessionId: string, uploadId: string) => PendingUserUpload | null;
+  getPendingUserUploadRestoration: (sessionId: string, uploadId: string) => PendingUserUpload | null;
   replyContexts: Map<string, { messageId: string; previewText: string }>;
   setReplyContext: (sessionId: string, context: { messageId: string; previewText: string } | null) => void;
   focusComposerTrigger: number;

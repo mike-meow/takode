@@ -28,7 +28,6 @@ import {
   type PermissionPipelineResult,
 } from "./permission-pipeline.js";
 import {
-  buildPendingCodexImageDrafts,
   getApprovalSummary,
   getAutoApprovalSummary,
   getDenialSummary,
@@ -1551,15 +1550,11 @@ export function routeAdapterBrowserMessage(
       if (ingested.historyEntry.id) {
         deps.addPendingCodexInput(session, {
           id: ingested.historyEntry.id,
+          ...(msg.client_msg_id ? { clientMsgId: msg.client_msg_id } : {}),
           content: ingested.historyEntry.content,
           timestamp: ingested.timestamp,
           cancelable: true,
           ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
-          ...(msg.draftImages?.length
-            ? { draftImages: msg.draftImages }
-            : msg.images?.length
-              ? { draftImages: buildPendingCodexImageDrafts(msg.images) }
-              : {}),
           ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
           ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
           ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),

@@ -3814,6 +3814,61 @@ describe("handleMessage: codex_pending_input_cancelled", () => {
       ],
     });
   });
+
+  it("restores browser-local upload images when a cancelled pending Codex input no longer carries draftImages", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    useStore.getState().addPendingUserUpload("s1", {
+      id: "pending-upload-restore-1",
+      content: "restore this image",
+      timestamp: Date.now(),
+      stage: "delivering",
+      images: [
+        {
+          name: "attachment-1.png",
+          base64: "restore-image-data",
+          mediaType: "image/png",
+        },
+      ],
+      prepared: {
+        deliveryContent: "restore this image\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+      },
+    });
+
+    fireMessage({
+      type: "user_message",
+      content: "restore this image",
+      timestamp: Date.now(),
+      id: "user-restore-1",
+      client_msg_id: "pending-upload-restore-1",
+      images: [{ imageId: "img-1", media_type: "image/png" }],
+    });
+
+    fireMessage({
+      type: "codex_pending_input_cancelled",
+      input: {
+        id: "pending-restore-1",
+        clientMsgId: "pending-upload-restore-1",
+        content: "restore this image",
+        timestamp: Date.now(),
+        cancelable: true,
+      },
+    });
+
+    const draft = useStore.getState().composerDrafts.get("s1");
+    expect(draft).toEqual({
+      text: "restore this image",
+      images: [
+        {
+          name: "attachment-1.png",
+          base64: "restore-image-data",
+          mediaType: "image/png",
+        },
+      ],
+    });
+  });
 });
 
 // ===========================================================================
@@ -4002,7 +4057,6 @@ describe("agentSource propagation", () => {
         deliveryContent:
           "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
         imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
-        draftImages: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
       },
     });
 
@@ -4039,7 +4093,6 @@ describe("agentSource propagation", () => {
         deliveryContent:
           "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
         imageRefs: [{ imageId: "img-2", media_type: "image/png" }],
-        draftImages: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
       },
     });
 

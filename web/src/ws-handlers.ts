@@ -286,8 +286,11 @@ function normalizeHistoryMessages(
 ): { chatMessages: ChatMessage[]; frozenCount: number } {
   const store = useStore.getState();
   const pendingUploads = store.pendingUserUploads.get(sessionId) ?? [];
+  const restorationUploads = [...(store.pendingUserUploadRestorations.get(sessionId)?.values() ?? [])];
   const pendingLocalImagesByClientMsgId = new Map(
-    pendingUploads.filter((upload) => upload.images.length > 0).map((upload) => [upload.id, upload.images] as const),
+    [...pendingUploads, ...restorationUploads]
+      .filter((upload) => upload.images.length > 0)
+      .map((upload) => [upload.id, upload.images] as const),
   );
   const chatMessages: ChatMessage[] = [];
   let frozenCount = 0;
@@ -369,7 +372,7 @@ function clearPendingUploadsCoveredByHistory(sessionId: string, historyMessages:
   if (pendingIds.size === 0) return;
   const store = useStore.getState();
   for (const pendingId of pendingIds) {
-    store.removePendingUserUpload(sessionId, pendingId);
+    store.consumePendingUserUpload(sessionId, pendingId);
   }
 }
 
@@ -480,13 +483,19 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "codex_pending_input_cancelled": {
+      const fallbackImages =
+        data.input.draftImages?.length
+          ? data.input.draftImages.map((img) => ({
+              name: img.name,
+              base64: img.base64,
+              mediaType: img.mediaType,
+            }))
+          : (data.input.clientMsgId
+              ? useStore.getState().getPendingUserUploadRestoration(sessionId, data.input.clientMsgId)?.images
+              : undefined) || [];
       store.setComposerDraft(sessionId, {
         text: data.input.content,
-        images: (data.input.draftImages ?? []).map((img) => ({
-          name: img.name,
-          base64: img.base64,
-          mediaType: img.mediaType,
-        })),
+        images: fallbackImages,
       });
       break;
     }

@@ -81,7 +81,7 @@ export function resetQuestRefreshStateForTests(): void {
   lastQuestBackgroundRefreshAt = 0;
 }
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppState>((set, get) => ({
   sessions: new Map(),
   sdkSessions: [],
   currentSessionId: getInitialSessionId(),
@@ -262,6 +262,7 @@ export const useStore = create<AppState>((set) => ({
   feedScrollPosition: new Map(),
   composerDrafts: new Map(),
   pendingUserUploads: new Map(),
+  pendingUserUploadRestorations: new Map(),
   replyContexts: new Map(),
   focusComposerTrigger: 0,
   turnActivityOverrides: new Map(),
@@ -1720,14 +1721,23 @@ export const useStore = create<AppState>((set) => ({
       });
       if (!consumed) return s;
       const pendingUserUploads = new Map(s.pendingUserUploads);
+      const pendingUserUploadRestorations = new Map(s.pendingUserUploadRestorations);
+      const sessionRestorations = new Map(pendingUserUploadRestorations.get(sessionId) ?? []);
+      sessionRestorations.set(uploadId, consumed);
       if (nextItems.length > 0) {
         pendingUserUploads.set(sessionId, nextItems);
       } else {
         pendingUserUploads.delete(sessionId);
       }
-      return { pendingUserUploads };
+      pendingUserUploadRestorations.set(sessionId, sessionRestorations);
+      return { pendingUserUploads, pendingUserUploadRestorations };
     });
     return consumed;
+  },
+
+  getPendingUserUploadRestoration: (sessionId, uploadId): PendingUserUpload | null => {
+    const restorations = get().pendingUserUploadRestorations.get(sessionId);
+    return restorations?.get(uploadId) ?? null;
   },
 
   setReplyContext: (sessionId, context) =>
@@ -1881,6 +1891,7 @@ export const useStore = create<AppState>((set) => ({
       feedScrollPosition: new Map(),
       composerDrafts: new Map(),
       pendingUserUploads: new Map(),
+      pendingUserUploadRestorations: new Map(),
       replyContexts: new Map(),
       focusComposerTrigger: 0,
       turnActivityOverrides: new Map(),

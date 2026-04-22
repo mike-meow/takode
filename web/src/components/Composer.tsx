@@ -1281,18 +1281,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
           uploadController.signal,
         );
         clearPendingUserUploadController(pendingId);
-        const draftImages = images.map((img) => ({
-          name: img.name,
-          base64: img.base64,
-          mediaType: img.mediaType,
-        }));
         const deliveryContent = `${finalContent}${prepared.attachmentAnnotation}`;
         const sent = sendToSession(sessionId, {
           type: "user_message",
           content: finalContent,
           deliveryContent,
           imageRefs: prepared.imageRefs,
-          draftImages,
           session_id: sessionId,
           client_msg_id: pendingId,
           ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
@@ -1307,7 +1301,6 @@ export function Composer({ sessionId }: { sessionId: string }) {
           prepared: {
             deliveryContent,
             imageRefs: prepared.imageRefs,
-            draftImages,
           },
         }));
         return;

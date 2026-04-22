@@ -133,7 +133,6 @@ export interface PendingUserUpload {
   prepared?: {
     deliveryContent: string;
     imageRefs: ImageRef[];
-    draftImages: Array<{ name: string; base64: string; mediaType: string }>;
   };
 }
 

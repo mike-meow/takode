@@ -16791,7 +16791,7 @@ describe("Codex image transport", () => {
           "describe this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\n" +
           `Attachment 1: ${join(homedir(), ".companion", "images", "s1", "img-1.orig.png")}]`,
         imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
-        draftImages: [{ name: "attachment-1.png", base64: "draft-image-data", mediaType: "image/png" }],
+        client_msg_id: "upload-client-1",
       }),
     );
     await flush();
@@ -16805,10 +16805,10 @@ describe("Codex image transport", () => {
 
     const session = bridge.getSession("s1")!;
     expect(session.pendingCodexInputs[0]).toMatchObject({
+      clientMsgId: "upload-client-1",
       content: "describe this screenshot",
       deliveryContent: expect.stringContaining("Attachment 1:"),
       imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
-      draftImages: [{ name: "attachment-1.png", base64: "draft-image-data", mediaType: "image/png" }],
     });
     expect(
       session.messageHistory.some(

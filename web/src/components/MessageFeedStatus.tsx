@@ -297,7 +297,6 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
               content: upload.content,
               deliveryContent: upload.prepared.deliveryContent,
               imageRefs: upload.prepared.imageRefs,
-              draftImages: upload.prepared.draftImages,
               ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
               session_id: sessionId,
               client_msg_id: upload.id,

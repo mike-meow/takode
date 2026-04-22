@@ -1253,13 +1253,6 @@ describe("Composer sending messages", () => {
         content: "inspect this screenshot",
         deliveryContent: expect.stringContaining("Attachment 1: /Users/test/.companion/images/s1/img-1.orig.png"),
         imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
-        draftImages: [
-          expect.objectContaining({
-            name: "screenshot.png",
-            base64: expect.any(String),
-            mediaType: "image/png",
-          }),
-        ],
         session_id: "s1",
         client_msg_id: expect.any(String),
       }),
